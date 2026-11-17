@@ -125,6 +125,9 @@ const READINESS: Record<string, string> = {
   needs_auth: 'Sign-in needed',
 };
 
+/** Connectors the user has expanded, kept while the list re-renders. */
+const openConnectors = new Set<string>();
+
 export class ConnectorsPage {
   readonly el = h('div', { class: 'page' });
   readonly key = 'page:connectors';
@@ -261,7 +264,9 @@ export class ConnectorsPage {
       }
     });
     const ready = c.readiness.state === 'ready';
-    const details = h('details', { class: 'connector' });
+    // Stays open across re-renders (a policy change reloads the list).
+    const details = h('details', { class: 'connector', open: openConnectors.has(c.id) });
+    details.addEventListener('toggle', () => (details.open ? openConnectors.add(c.id) : openConnectors.delete(c.id)));
     details.append(
       h(
         'summary',
@@ -276,17 +281,45 @@ export class ConnectorsPage {
         'div',
         { class: 'tool-list' },
         !ready && c.readiness.reason ? h('p', { class: 'hint' }, c.readiness.reason) : null,
-        c.tools.map((t) => {
-          const select = h(
-            'select',
-            { class: 'input small' },
-            h('option', { value: 'auto_approve', selected: t.policy === 'auto_approve' }, 'Allow'),
-            h('option', { value: 'ask', selected: t.policy === 'ask' }, 'Ask'),
-            h('option', { value: 'disable', selected: t.policy === 'disable' }, 'Off')
-          );
-          select.addEventListener('change', () => void api.setToolPolicy(c.id, t.name, select.value).catch((e) => toast(String(e), 'error')));
-          return h('div', { class: 'tool-row' }, h('div', {}, h('strong', {}, t.title ?? t.name), h('small', { class: 'muted' }, t.description)), select);
-        })
+        // As on Vibe's connector page: read-only and interactive functions apart, each group with
+        // its own "Always allow", and every function's own setting under it.
+        ([['Interactive', c.tools.filter((t) => !t.read_only)], ['Read-only', c.tools.filter((t) => t.read_only)]] as const)
+          .filter(([, tools]) => tools.length)
+          .map(([label, tools]) => {
+            const selects: HTMLSelectElement[] = [];
+            const rows = tools.map((t) => {
+              const select = h(
+                'select',
+                { class: 'input small' },
+                h('option', { value: 'auto_approve', selected: t.policy === 'auto_approve' }, 'Allow'),
+                h('option', { value: 'ask', selected: t.policy === 'ask' }, 'Ask'),
+                h('option', { value: 'disable', selected: t.policy === 'disable' }, 'Off')
+              );
+              selects.push(select);
+              select.addEventListener('change', () => {
+                void api.setToolPolicy(c.id, t.name, select.value).catch((e) => toast(String(e), 'error'));
+                all.checked = selects.every((x) => x.value === 'auto_approve');
+              });
+              return h('div', { class: 'tool-row' }, h('div', {}, h('strong', {}, t.title ?? t.name), h('small', { class: 'muted' }, t.description)), select);
+            });
+            const all = h('input', { type: 'checkbox', class: 'switch', checked: tools.every((t) => t.policy === 'auto_approve'), title: `Always allow every ${label.toLowerCase()} function` });
+            all.addEventListener('change', async () => {
+              const value = all.checked ? 'auto_approve' : 'ask';
+              try {
+                await Promise.all(tools.map((t) => api.setToolPolicy(c.id, t.name, value)));
+                selects.forEach((x) => (x.value = value));
+              } catch (e) {
+                toast(String(e), 'error');
+              }
+            });
+            return h(
+              'div',
+              { class: 'tool-group' },
+              h('div', { class: 'tool-group-head' }, h('strong', {}, `${label} functions`), h('span', { class: 'muted' }, String(tools.length)), h('span', { class: 'spacer' }), h('label', { class: 'tool-group-all' }, h('span', {}, 'Always allow'), all)),
+              rows
+            );
+          }),
+        h('div', { class: 'tool-list-foot' }, h('button', { class: 'btn btn-secondary btn-sm', on: { click: () => void this.load().then(() => toast('Tools refreshed.')) } }, icon('retry', 14), 'Refresh tools'))
       )
     );
     return details;

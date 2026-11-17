@@ -195,7 +195,7 @@ items most likely to differ:
 | Voice: Autosend on/off; cancel discards a recording | Send after dictation; a discard button while recording | Done |
 | Scheduled tasks: Once / Daily / Weekly (several days) / Monthly / Yearly, plain-words confirmation ("Every Monday at 9:00"), pause and resume, unread run in the sidebar | Same | Done |
 | Knowledge: inline read / write pills; edit by asking; a "Sensitive data" toggle | Citation pills for pages read; saves show as steps; facts and pages editable directly; personal-data filter in Settings | Adapted |
-| Connector detail: Interactive / Read-only functions, each with `Always allow`, `Refresh tools` | Connector page lists tools; approvals per call with Always allow | Partial |
+| Connector detail: Interactive / Read-only functions, each with `Always allow`, `Refresh tools` | Same: the two groups apart, each with an Always allow switch, every function's own Allow / Ask / Off, and Refresh tools; an expanded connector stays open while settings change | Done |
 | Canvas: versions with arrows, change view, restore; `Ask Work` on a selection | History: ‹ › through versions (who and when), a Changes view (added and struck-through lines), Restore as a new version; "Ask about this" on a selection; line breaks kept | Done |
 | Canvas preview of HTML, React, Mermaid, Marp; several canvases as tabs | Apps (HTML, JS) in the side panel; Markdown canvases. Not built: Mermaid / Marp preview (about 3 MB more in the binary, and the page's CSP forbids the inline styles Mermaid needs), tabs | Partial |
 | Mini apps: file list in code view, ZIP download | Single-file apps, downloaded as one HTML file | Adapted |
