@@ -183,6 +183,12 @@
           "markdownDescription": "Lets a connector tool run without asking even after untrusted content has been read."
         },
         {
+          "description": "Add a memory.",
+          "type": "string",
+          "const": "allow-chat-add-memory",
+          "markdownDescription": "Add a memory."
+        },
+        {
           "description": "Answer a question the assistant asked.",
           "type": "string",
           "const": "allow-chat-answer",
@@ -201,10 +207,22 @@
           "markdownDescription": "Delete a conversation."
         },
         {
+          "description": "Delete one memory, or all of them.",
+          "type": "string",
+          "const": "allow-chat-delete-memory",
+          "markdownDescription": "Delete one memory, or all of them."
+        },
+        {
           "description": "Delete a project, keeping its conversations.",
           "type": "string",
           "const": "allow-chat-delete-project",
           "markdownDescription": "Delete a project, keeping its conversations."
+        },
+        {
+          "description": "Delete a user skill.",
+          "type": "string",
+          "const": "allow-chat-delete-skill",
+          "markdownDescription": "Delete a user skill."
         },
         {
           "description": "Save a conversation as Markdown to a file the user picks.",
@@ -223,6 +241,18 @@
           "type": "string",
           "const": "allow-chat-get-instructions",
           "markdownDescription": "Read the user's standing instructions."
+        },
+        {
+          "description": "Read what the assistant remembers about the user.",
+          "type": "string",
+          "const": "allow-chat-get-memories",
+          "markdownDescription": "Read what the assistant remembers about the user."
+        },
+        {
+          "description": "Import a SKILL.md the user picks.",
+          "type": "string",
+          "const": "allow-chat-import-skill",
+          "markdownDescription": "Import a SKILL.md the user picks."
         },
         {
           "description": "List saved conversations.",
@@ -249,6 +279,12 @@
           "markdownDescription": "List model providers and whether each is configured."
         },
         {
+          "description": "List skills.",
+          "type": "string",
+          "const": "allow-chat-list-skills",
+          "markdownDescription": "List skills."
+        },
+        {
           "description": "Generate a sample reply under draft instructions.",
           "type": "string",
           "const": "allow-chat-preview-instructions",
@@ -273,6 +309,12 @@
           "markdownDescription": "Save a provider's settings and store its API key in the OS keychain."
         },
         {
+          "description": "Create or update a skill.",
+          "type": "string",
+          "const": "allow-chat-save-skill",
+          "markdownDescription": "Create or update a skill."
+        },
+        {
           "description": "Send a message and stream the reply.",
           "type": "string",
           "const": "allow-chat-send",
@@ -285,6 +327,18 @@
           "markdownDescription": "Remember the model new conversations start with."
         },
         {
+          "description": "Turn memory on or off.",
+          "type": "string",
+          "const": "allow-chat-set-memory-enabled",
+          "markdownDescription": "Turn memory on or off."
+        },
+        {
+          "description": "Turn a skill on or off.",
+          "type": "string",
+          "const": "allow-chat-set-skill-enabled",
+          "markdownDescription": "Turn a skill on or off."
+        },
+        {
           "description": "Send a one-word request to check a provider's key and address.",
           "type": "string",
           "const": "allow-chat-test-model",
@@ -295,6 +349,12 @@
           "type": "string",
           "const": "allow-chat-update-conversation",
           "markdownDescription": "Rename, pin, rate or move a conversation."
+        },
+        {
+          "description": "Edit a memory.",
+          "type": "string",
+          "const": "allow-chat-update-memory",
+          "markdownDescription": "Edit a memory."
         },
         {
           "description": "Report that the web app is signed out.",

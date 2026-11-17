@@ -15,7 +15,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::watch;
 
-use super::providers;
+use super::{builtins, memory, providers, skills};
 use super::store::{self, Conversation, Instructions, Project};
 use super::tools::{self, ApprovalMode, ChatTool, ASK_USER};
 use super::{ChatState, EVENT, LOCAL_ACCOUNT};
@@ -23,8 +23,9 @@ use crate::account::AccountId;
 use crate::tools::auth::keychain_secrets;
 use crate::tools::registry::ToolRegistry;
 
-/// Model calls in one turn before the engine stops a tool loop that does not converge.
-const MAX_STEPS: usize = 16;
+/// Model calls in one turn before the engine stops a tool loop that does not converge. The last
+/// step withholds the tools, so a long research run still ends in an answer.
+const MAX_STEPS: usize = 24;
 
 /// What the page sees of a turn, on [`EVENT`].
 #[derive(Debug, Clone, Serialize)]
@@ -103,12 +104,21 @@ const TONES: &[(&str, &str)] = &[
 ];
 
 /// The system prompt: who the assistant is, today's date, and the user's standing instructions.
-pub fn preamble(
-    instructions: &Instructions,
-    project: Option<&Project>,
-    workdir: Option<&str>,
-    tools: &[ChatTool],
-) -> String {
+/// What the system prompt is built from, beside the tools on offer.
+#[derive(Default)]
+pub struct Context<'a> {
+    pub instructions: Option<&'a Instructions>,
+    pub project: Option<&'a Project>,
+    pub workdir: Option<&'a str>,
+    pub memories: Option<&'a memory::Memories>,
+    pub skills: &'a [skills::Skill],
+}
+
+pub fn preamble(context: &Context<'_>, tools: &[ChatTool]) -> String {
+    let default_instructions = Instructions::default();
+    let instructions = context.instructions.unwrap_or(&default_instructions);
+    let project = context.project;
+    let workdir = context.workdir;
     let mut out = String::from(
         "You are a helpful, accurate assistant running in a desktop app. Answer in the user's \
          language. Use Markdown: short paragraphs, lists and tables where they help, fenced code \
@@ -140,12 +150,25 @@ pub fn preamble(
              your work, and report what you changed."
         ));
     }
-    if tools.len() > 1 {
+    if tools.iter().any(|t| t.name == builtins::WEB_SEARCH) {
+        out.push_str(
+            "\n\nWhen an answer depends on current or specific facts, search the web first. Cite \
+             what you use inline as Markdown links whose text is the site's name, like \
+             ([rust-lang.org](https://www.rust-lang.org/)), right after the claim they support.",
+        );
+    }
+    if tools.iter().any(|t| t.connector_id.is_some()) {
         out.push_str(
             "\n\nYou can use tools on the user's computer and services. Use them when they help, \
              explain briefly what you are doing, and never claim a tool ran when it did not. \
              The user may decline a call; respect that.",
         );
+    }
+    if let Some(memories) = context.memories.and_then(memory::prompt) {
+        out.push_str(&memories);
+    }
+    if let Some(skills) = skills::prompt(context.skills) {
+        out.push_str(&skills);
     }
     out
 }
@@ -256,16 +279,24 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
 
     let model = connect_model(&config_dir, &request.model).await?;
     let registry = app.state::<ToolRegistry>();
-    let offered = tools::available(&registry, request.connectors.as_deref());
+    let mut offered = tools::available(&registry, request.connectors.as_deref());
+    offered.splice(1..1, builtins::definitions(&config_dir));
     let definitions: Vec<_> = offered.iter().filter_map(ChatTool::definition).collect();
     let project = conversation
         .project_id
         .as_ref()
         .and_then(|pid| store::load_projects(&config_dir).into_iter().find(|p| &p.id == pid));
+    let instructions = store::load_instructions(&config_dir);
+    let memories = memory::load(&config_dir);
+    let skill_list = skills::list(&config_dir);
     let system = preamble(
-        &store::load_instructions(&config_dir),
-        project.as_ref(),
-        conversation.workdir.as_deref(),
+        &Context {
+            instructions: Some(&instructions),
+            project: project.as_ref(),
+            workdir: conversation.workdir.as_deref(),
+            memories: Some(&memories),
+            skills: &skill_list,
+        },
         &offered,
     );
     let reasoning = providers::supports_reasoning(&request.model);
@@ -274,10 +305,17 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         let Some((prompt, history)) = conversation.messages.split_last() else {
             return Err("empty conversation".into());
         };
+        let last_step = step + 1 == MAX_STEPS;
         let mut call = CompletionRequest::new(prompt.clone())
             .messages(history.iter().cloned())
-            .preamble(system.clone())
-            .tools(definitions.iter().cloned());
+            .preamble(if last_step {
+                format!("{system}\n\nYou have used every tool step available for this request. Answer now from what you have found, and say what you could not finish.")
+            } else {
+                system.clone()
+            });
+        if !last_step {
+            call = call.tools(definitions.iter().cloned());
+        }
         if reasoning && request.speed == Speed::Think {
             call = call.reasoning(Effort::High);
         }
@@ -378,6 +416,11 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
                         Err(_) => tools::Outcome { text: "The user dismissed the question.".into(), is_error: true },
                     }
                 }
+            } else if builtins::is_builtin(&name) {
+                tokio::select! {
+                    _ = cancelled(&mut cancel) => tools::Outcome { text: "Cancelled by the user.".into(), is_error: true },
+                    outcome = builtins::run(&config_dir, &name, &arguments) => outcome,
+                }
             } else if let Some(tool) = offered.iter().find(|t| t.name == name) {
                 tokio::select! {
                     _ = cancelled(&mut cancel) => tools::Outcome { text: "Cancelled by the user.".into(), is_error: true },
@@ -404,9 +447,7 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         if *cancel.borrow() {
             return Ok(true);
         }
-        if step + 1 == MAX_STEPS {
-            return Err("Stopped after too many tool steps.".into());
-        }
+
     }
 
     if conversation.title.is_empty() {
@@ -486,7 +527,10 @@ mod tests {
             name: "Ana".into(),
         };
         let project = Project { id: "p".into(), name: "Garden".into(), instructions: "Plants only.".into() };
-        let text = preamble(&instructions, Some(&project), Some("/src/app"), &[]);
+        let text = preamble(
+            &Context { instructions: Some(&instructions), project: Some(&project), workdir: Some("/src/app"), ..Default::default() },
+            &[],
+        );
         assert!(text.contains("Ana"));
         assert!(text.contains("Be brief"));
         assert!(text.contains("Use metric units."));

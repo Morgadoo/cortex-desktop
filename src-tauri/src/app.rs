@@ -89,6 +89,16 @@ pub fn run() {
                 chat::commands::chat_save_instructions,
                 chat::commands::chat_preview_instructions,
                 chat::commands::chat_export_conversation,
+                chat::commands::chat_get_memories,
+                chat::commands::chat_add_memory,
+                chat::commands::chat_update_memory,
+                chat::commands::chat_delete_memory,
+                chat::commands::chat_set_memory_enabled,
+                chat::commands::chat_list_skills,
+                chat::commands::chat_save_skill,
+                chat::commands::chat_delete_skill,
+                chat::commands::chat_set_skill_enabled,
+                chat::commands::chat_import_skill,
             ];
             commands(invoke)
         })
@@ -109,6 +119,9 @@ pub fn run() {
                 } else {
                     log::LevelFilter::Info
                 })
+                // Web search parses whole result pages; their parser's debug output is noise.
+                .level_for("html5ever", log::LevelFilter::Warn)
+                .level_for("selectors", log::LevelFilter::Warn)
                 .build(),
         )
         .plugin(tauri_plugin_deep_link::init())

@@ -92,3 +92,53 @@ commands.allow = ["chat_preview_instructions"]
 identifier = "allow-chat-export-conversation"
 description = "Save a conversation as Markdown to a file the user picks."
 commands.allow = ["chat_export_conversation"]
+
+[[permission]]
+identifier = "allow-chat-get-memories"
+description = "Read what the assistant remembers about the user."
+commands.allow = ["chat_get_memories"]
+
+[[permission]]
+identifier = "allow-chat-add-memory"
+description = "Add a memory."
+commands.allow = ["chat_add_memory"]
+
+[[permission]]
+identifier = "allow-chat-update-memory"
+description = "Edit a memory."
+commands.allow = ["chat_update_memory"]
+
+[[permission]]
+identifier = "allow-chat-delete-memory"
+description = "Delete one memory, or all of them."
+commands.allow = ["chat_delete_memory"]
+
+[[permission]]
+identifier = "allow-chat-set-memory-enabled"
+description = "Turn memory on or off."
+commands.allow = ["chat_set_memory_enabled"]
+
+[[permission]]
+identifier = "allow-chat-list-skills"
+description = "List skills."
+commands.allow = ["chat_list_skills"]
+
+[[permission]]
+identifier = "allow-chat-save-skill"
+description = "Create or update a skill."
+commands.allow = ["chat_save_skill"]
+
+[[permission]]
+identifier = "allow-chat-delete-skill"
+description = "Delete a user skill."
+commands.allow = ["chat_delete_skill"]
+
+[[permission]]
+identifier = "allow-chat-set-skill-enabled"
+description = "Turn a skill on or off."
+commands.allow = ["chat_set_skill_enabled"]
+
+[[permission]]
+identifier = "allow-chat-import-skill"
+description = "Import a SKILL.md the user picks."
+commands.allow = ["chat_import_skill"]

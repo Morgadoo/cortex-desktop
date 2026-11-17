@@ -7,6 +7,7 @@ import { api, listen, type ApprovalRequest, type ChatEvent } from './api';
 import { ChatView, HomeView, composer, conversationMenu, recordStepTimes, refreshConversations, viewCache } from './chat';
 import { clear, h, icon, modal, popover, promptText, confirmDialog, toast } from './dom';
 import { ConnectorsPage, PlaceholderPage, openInstructions } from './pages';
+import { KnowledgePage, SkillsPage } from './context';
 import { applyTheme, openSettings, reloadModels, setTheme, storedTheme } from './settings';
 import { applyEvent, back, changed, forward, navigate, state, subscribe, type Page } from './state';
 
@@ -43,7 +44,14 @@ function renderMain() {
     viewCache.chat = chat;
     view = chat;
   } else if (v.kind === 'page') {
-    view = v.page === 'connectors' ? new ConnectorsPage() : new PlaceholderPage(v.page);
+    view =
+      v.page === 'connectors'
+        ? new ConnectorsPage()
+        : v.page === 'skills'
+          ? new SkillsPage()
+          : v.page === 'knowledge'
+            ? new KnowledgePage()
+            : new PlaceholderPage(v.page);
   } else {
     const home = new HomeView(v.projectId ?? null);
     viewCache.home = home;
@@ -361,6 +369,7 @@ async function start() {
   state.instructions = instructions;
   state.projects = projects;
   state.conversations = conversations;
+  state.skills = await api.skills().catch(() => []);
   await reloadModels().catch((e) => toast(String(e), 'error'));
   changed();
   if (!state.models.length) void openSettings('providers');

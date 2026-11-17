@@ -133,6 +133,9 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
     // Links leave the app through the navigation policy, which opens the system browser.
     node.setAttribute('target', '_blank');
     node.setAttribute('rel', 'noopener noreferrer');
+    // A citation reads as a site name, not a sentence: show it as a pill.
+    const text = node.textContent?.trim() ?? '';
+    if (text && text.length <= 40 && !/\s{2,}/.test(text) && text.split(/\s+/).length <= 3) node.classList.add('cite');
   }
 });
 

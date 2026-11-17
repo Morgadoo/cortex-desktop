@@ -10,9 +10,13 @@
 //! - [`engine`]: one turn: stream a reply, run the tools it calls, repeat
 //! - [`tools`]: the app's connectors (filesystem, shell, MCP) and built-ins offered to the model
 
+pub mod builtins;
 pub mod commands;
 pub mod engine;
+pub mod memory;
 pub mod providers;
+pub mod search;
+pub mod skills;
 pub mod store;
 pub mod tools;
 

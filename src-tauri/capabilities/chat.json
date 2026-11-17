@@ -25,6 +25,16 @@
     "allow-chat-get-instructions",
     "allow-chat-save-instructions",
     "allow-chat-preview-instructions",
-    "allow-chat-export-conversation"
+    "allow-chat-export-conversation",
+    "allow-chat-get-memories",
+    "allow-chat-add-memory",
+    "allow-chat-update-memory",
+    "allow-chat-delete-memory",
+    "allow-chat-set-memory-enabled",
+    "allow-chat-list-skills",
+    "allow-chat-save-skill",
+    "allow-chat-delete-skill",
+    "allow-chat-set-skill-enabled",
+    "allow-chat-import-skill"
   ]
 }

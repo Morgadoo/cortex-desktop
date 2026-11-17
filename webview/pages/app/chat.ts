@@ -33,6 +33,17 @@ const ACTIONS: Record<string, string> = {
   browser__fetch: 'Fetched a page',
   browser__navigate: 'Browsed a page',
   tool_results__read: 'Read saved output',
+  web_search: 'Searched the web',
+  remember: 'Saved to knowledge',
+  forget: 'Removed from knowledge',
+  use_skill: 'Used a skill',
+};
+
+const BUILTIN_ICONS: Record<string, string> = {
+  web_search: 'search',
+  remember: 'book',
+  forget: 'book',
+  use_skill: 'skill',
 };
 
 /** What an approval card asks to allow. */
@@ -51,6 +62,7 @@ function humanize(name: string): string {
 
 export function toolLabel(name: string): { connector: string; action: string; icon: string } {
   if (name === 'ask_user') return { connector: '', action: 'Asked you', icon: 'chat' };
+  if (BUILTIN_ICONS[name]) return { connector: '', action: ACTIONS[name] ?? humanize(name), icon: BUILTIN_ICONS[name]! };
   const [connector = '', tool = name] = name.includes('__') ? name.split(/__(.*)/s) : ['', name];
   const label = CONNECTOR_LABELS[connector] ?? humanize(connector.replace(/^mcp-/, ''));
   const known = ACTIONS[name];
@@ -59,7 +71,7 @@ export function toolLabel(name: string): { connector: string; action: string; ic
 
 /** The argument worth showing next to a tool step: a path, a URL, a query or a command. */
 function argumentHint(args: Record<string, unknown>): string {
-  for (const key of ['path', 'url', 'query', 'command', 'script', 'pattern', 'question', 'name']) {
+  for (const key of ['path', 'url', 'query', 'fact', 'command', 'script', 'pattern', 'question', 'name']) {
     const value = args[key];
     // A file is known by its name; the folder is in the step's details.
     if (key === 'path' && typeof value === 'string' && value) return value.split(/[\\/]/).filter(Boolean).pop() ?? value;
@@ -110,6 +122,17 @@ function host(url: string): string {
   }
 }
 
+/** A page known only by its URL reads as its path; the host is in its own column. */
+function pagePath(url: string): string {
+  try {
+    const u = new URL(url);
+    const path = decodeURIComponent(u.pathname).replace(/\/$/, '');
+    return path ? `${path}${u.search}` : u.hostname;
+  } catch {
+    return url;
+  }
+}
+
 interface ResultRow {
   title: string;
   source: string;
@@ -151,7 +174,7 @@ function resultRows(part: Extract<Part, { kind: 'tool' }>): { heading: string; r
   const url = typeof part.arguments.url === 'string' ? part.arguments.url : null;
   if (url) {
     const titleMatch = part.output.match(/^(?:#\s*|Title:\s*)(.+)$/m);
-    return { heading: '', rows: [{ title: titleMatch?.[1]?.trim() || url, source: host(url), href: url }] };
+    return { heading: '', rows: [{ title: titleMatch?.[1]?.trim() || pagePath(url), source: host(url), href: url }] };
   }
   return null;
 }
@@ -174,6 +197,73 @@ function renderResults(results: { heading: string; rows: ResultRow[] }): HTMLEle
       )
     ),
     results.rows.length > shown.length ? h('div', { class: 'result-more muted' }, `and ${results.rows.length - shown.length} more`) : null
+  );
+}
+
+/** How a run of the same tool reads, by count. */
+const RUN_LABELS: Record<string, (n: number) => string> = {
+  browser__navigate: (n) => `Browsed ${n} pages`,
+  browser__fetch: (n) => `Fetched ${n} pages`,
+  web_search: (n) => `Searched the web · ${n} queries`,
+  filesystem__fs_read: (n) => `Read ${n} files`,
+  filesystem__fs_search: (n) => `Searched files · ${n} searches`,
+  filesystem__fs_write: (n) => `Wrote ${n} files`,
+  filesystem__fs_edit: (n) => `Edited ${n} files`,
+  bash__run: (n) => `Ran ${n} commands`,
+  remember: (n) => `Saved ${n} facts to knowledge`,
+};
+
+/** One table row per call: the page or file it touched, or the query and its top hits. */
+function runRows(part: Extract<Part, { kind: 'tool' }>, running: boolean): HTMLElement[] {
+  const results = resultRows(part);
+  const status = running ? h('span', { class: 'step-icon spin inline' }, icon('wait', 14)) : part.isError ? h('span', { class: 'step-badge' }, 'failed') : null;
+  if (results?.heading) {
+    return [
+      h('div', { class: 'results-head' }, icon('search', 15), h('span', { class: 'results-query' }, results.heading), h('span', { class: 'muted' }, `${results.rows.length} results`)),
+      ...results.rows.slice(0, 3).map((row) =>
+        h(row.href ? 'a' : 'div', { class: 'result-row', ...(row.href ? { href: row.href, target: '_blank', rel: 'noopener noreferrer' } : {}) }, icon(row.href ? 'globe' : 'file', 15), h('span', { class: 'result-title' }, row.title), h('span', { class: 'result-source' }, row.source))
+      ),
+    ];
+  }
+  const row = results?.rows[0];
+  const hint = argumentHint(part.arguments) || toolLabel(part.name).action;
+  const href = row?.href ?? (typeof part.arguments.url === 'string' ? part.arguments.url : undefined);
+  return [
+    h(
+      href ? 'a' : 'div',
+      { class: 'result-row', ...(href ? { href, target: '_blank', rel: 'noopener noreferrer' } : {}) },
+      icon(href ? 'globe' : toolLabel(part.name).icon, 15),
+      h('span', { class: 'result-title' }, row?.title ?? hint),
+      status,
+      h('span', { class: 'result-source' }, row?.source ?? (href ? host(href) : ''))
+    ),
+  ];
+}
+
+function renderToolRun(run: Extract<Part, { kind: 'tool' }>[], live: boolean, duration: number | undefined): HTMLElement {
+  const first = run[0]!;
+  const label = toolLabel(first.name);
+  const running = live && run.some((p) => p.output === null);
+  const failed = run.filter((p) => p.isError).length;
+  const title = RUN_LABELS[first.name]?.(run.length) ?? `${label.connector ? `${label.connector} · ` : ''}${label.action} ×${run.length}`;
+  const raw = h('details', { class: 'step-raw' }, h('summary', {}, 'Details'));
+  run.forEach((p, i) => {
+    raw.append(h('div', { class: 'step-label' }, `Call ${i + 1}`), h('pre', { class: 'step-pre' }, JSON.stringify(p.arguments, null, 2)));
+    if (p.output !== null) raw.append(h('pre', { class: 'step-pre' }, p.output.length > 3000 ? `${p.output.slice(0, 3000)}\n…` : p.output));
+  });
+  return h(
+    'div',
+    { class: 'step' },
+    h(
+      'div',
+      { class: 'step-row' },
+      h('span', { class: `step-icon${running ? ' spin' : ''}` }, icon(running ? 'wait' : label.icon, 16)),
+      h('span', { class: 'step-title' }, title),
+      failed ? h('span', { class: 'step-badge' }, `${failed} failed`) : null,
+      seconds(duration) ? h('span', { class: 'step-time' }, seconds(duration)) : null
+    ),
+    h('div', { class: 'step-content' }, h('div', { class: 'results-card' }, run.flatMap((p) => runRows(p, live && p.output === null)))),
+    h('div', { class: 'step-content' }, raw)
   );
 }
 
@@ -226,22 +316,40 @@ function renderReasoning(text: string, live: boolean, duration: number | undefin
   );
 }
 
-/** The header of a collapsed activity group: what was done last, and how much. */
+/** What each kind of tool call counts as in a group's header. */
+const KINDS: [RegExp, string, string][] = [
+  [/^web_search$/, 'search', 'searches'],
+  [/^browser__/, 'page', 'pages'],
+  [/^filesystem__fs_(read|search)$/, 'file lookup', 'file lookups'],
+  [/^filesystem__fs_(write|edit)$/, 'file change', 'file changes'],
+  [/^bash__/, 'command', 'commands'],
+  [/^(remember|forget)$/, 'memory update', 'memory updates'],
+  [/^use_skill$/, 'skill', 'skills'],
+];
+
+/** The header of a collapsed activity group: how much of what was done, e.g. "12 searches · 30 pages". */
 function groupSummary(parts: Part[], live: boolean): string {
   const last = parts[parts.length - 1];
   if (!last) return '';
-  const tools = parts.filter((p) => p.kind === 'tool').length;
-  // The last tool says most about what happened; reasoning alone is "Thought".
-  const lastTool = [...parts].reverse().find((p): p is Extract<Part, { kind: 'tool' }> => p.kind === 'tool');
-  let label: string;
   if (live) {
-    label = last.kind === 'tool' && last.output === null ? toolLabel(last.name).action : last.kind === 'reasoning' ? 'Thinking' : 'Working';
-  } else {
-    label = lastTool ? toolLabel(lastTool.name).action : 'Thought';
+    return last.kind === 'tool' && last.output === null ? toolLabel(last.name).action : last.kind === 'reasoning' ? 'Thinking' : 'Working';
   }
-  void tools;
-  const extra = parts.length > 1 ? ` · ${parts.length} steps` : '';
-  return `${label}${extra}`;
+  const tools = parts.filter((p): p is Extract<Part, { kind: 'tool' }> => p.kind === 'tool');
+  if (!tools.length) return 'Thought';
+  if (tools.length === 1) return toolLabel(tools[0]!.name).action;
+  const counts = new Map<string, number>();
+  let other = 0;
+  for (const t of tools) {
+    const kind = KINDS.find(([re]) => re.test(t.name));
+    if (kind) counts.set(kind[1], (counts.get(kind[1]) ?? 0) + 1);
+    else other += 1;
+  }
+  const labels = KINDS.filter(([, one]) => counts.has(one)).map(([, one, many]) => {
+    const n = counts.get(one)!;
+    return `${n} ${n === 1 ? one : many}`;
+  });
+  if (other) labels.push(`${other} ${other === 1 ? 'tool call' : 'tool calls'}`);
+  return labels.slice(0, 3).join(' · ');
 }
 
 /**
@@ -264,11 +372,27 @@ function renderParts(parts: Part[], live: boolean, key: string, durations: numbe
     const details = h('details', { class: 'activity', open });
     details.addEventListener('toggle', () => groupOpen.set(groupKey, { open: details.open, running: isTail }));
     const timeline = h('div', { class: 'timeline' });
-    g.parts.forEach((p, j) => {
+    // Consecutive calls to the same tool read as one step with a table, not a repeated label.
+    for (let j = 0; j < g.parts.length; ) {
+      const p = g.parts[j]!;
       const index = g.indices[j]!;
-      const stepLive = isTail && index === parts.length - 1;
-      timeline.append(p.kind === 'reasoning' ? renderReasoning(p.text, stepLive, durations[index]) : p.kind === 'tool' ? renderToolStep(p, live, durations[index]) : h('span'));
-    });
+      if (p.kind !== 'tool') {
+        const stepLive = isTail && index === parts.length - 1;
+        if (p.kind === 'reasoning') timeline.append(renderReasoning(p.text, stepLive, durations[index]));
+        j += 1;
+        continue;
+      }
+      let end = j + 1;
+      while (end < g.parts.length) {
+        const next = g.parts[end]!;
+        if (next.kind !== 'tool' || next.name !== p.name) break;
+        end += 1;
+      }
+      const run = g.parts.slice(j, end) as Extract<Part, { kind: 'tool' }>[];
+      const runDuration = g.indices.slice(j, end).reduce((sum, k) => sum + (durations[k] ?? 0), 0);
+      timeline.append(run.length === 1 ? renderToolStep(p, live, durations[index]) : renderToolRun(run, live, runDuration || undefined));
+      j = end;
+    }
     details.append(h('summary', {}, h('span', { class: 'activity-label' }, groupSummary(g.parts, isTail)), icon('chevron', 14)), timeline);
     out.push(details);
     group = null;
@@ -312,8 +436,69 @@ function renderUserTurn(turn: Turn): HTMLElement {
 function renderAssistantTurn(conversation: Conversation, turn: Turn, isLast: boolean, running: boolean): HTMLElement {
   const durations = isLast ? stepDurations.get(conversation.id) : undefined;
   const el = h('div', { class: 'turn turn-assistant' }, ...renderParts(turn.parts, false, `${conversation.id}:${turn.index}`, durations));
-  if (!isLast || !running) el.append(renderActions(conversation, turn, isLast));
+  if (!isLast || !running) {
+    const sources = renderSources(sourcesOf(turn.parts));
+    if (sources) el.append(sources);
+    el.append(renderActions(conversation, turn, isLast));
+  }
   return el;
+}
+
+interface Source {
+  url: string;
+  title: string;
+}
+
+/** What an answer drew on: the pages it links to, then any it opened; search hits when it cites none. */
+function sourcesOf(parts: Part[]): Source[] {
+  const found = new Map<string, Source>();
+  const add = (url: string, title: string) => {
+    if (!/^https?:/.test(url)) return;
+    const key = url.replace(/\/$/, '');
+    if (!found.has(key)) found.set(key, { url, title: title || host(url) });
+  };
+  for (const part of parts) {
+    if (part.kind === 'text') {
+      for (const m of part.text.matchAll(/\[([^\]]{1,120})\]\((https?:[^)\s]+)\)/g)) add(m[2]!, m[1]!);
+    }
+  }
+  for (const part of parts) {
+    if (part.kind === 'tool' && part.name.startsWith('browser__') && typeof part.arguments.url === 'string') {
+      add(part.arguments.url, resultRows(part)?.rows[0]?.title ?? '');
+    }
+  }
+  if (!found.size) {
+    for (const part of parts) {
+      if (part.kind === 'tool' && part.name === 'web_search') {
+        for (const row of resultRows(part)?.rows.slice(0, 5) ?? []) if (row.href) add(row.href, row.title);
+      }
+    }
+  }
+  return [...found.values()];
+}
+
+function renderSources(sources: Source[]): HTMLElement | null {
+  if (!sources.length) return null;
+  const chip = h(
+    'button',
+    { class: 'sources-chip' },
+    'Sources',
+    h('span', { class: 'source-dots' }, sources.slice(0, 3).map((s) => h('span', { class: 'source-dot' }, host(s.url).charAt(0).toUpperCase())))
+  );
+  chip.addEventListener('click', () =>
+    popover(
+      chip,
+      h(
+        'div',
+        { class: 'menu sources-menu' },
+        h('div', { class: 'menu-heading' }, `${sources.length} ${sources.length === 1 ? 'source' : 'sources'}`),
+        sources.map((s) =>
+          h('a', { class: 'menu-item source-item', href: s.url, target: '_blank', rel: 'noopener noreferrer' }, h('span', { class: 'source-dot' }, host(s.url).charAt(0).toUpperCase()), h('span', {}, h('strong', {}, s.title), h('small', { class: 'muted' }, host(s.url))))
+        )
+      )
+    )
+  );
+  return h('div', { class: 'sources-row' }, chip);
 }
 
 function renderActions(conversation: Conversation, turn: Turn, isLast: boolean): HTMLElement {
@@ -431,8 +616,14 @@ class Composer {
     this.textarea.addEventListener('input', () => {
       this.autosize();
       this.renderBar();
+      this.updateSlashMenu();
     });
     this.textarea.addEventListener('keydown', (e) => {
+      if (this.slashMenu && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === 'Tab' || e.key === 'Escape')) {
+        e.preventDefault();
+        this.slashKey(e.key);
+        return;
+      }
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
         e.preventDefault();
         void this.submit();
@@ -442,6 +633,57 @@ class Composer {
     this.bar = h('div', { class: 'composer-bar' });
     this.el = h('div', { class: 'composer' }, h('div', { class: 'composer-box' }, this.chips, this.textarea, this.bar));
     this.renderBar();
+  }
+
+  private slashMenu: { close: () => void; items: string[]; index: number; list: HTMLElement } | null = null;
+
+  /** Typing `/` at the start lists the enabled skills; picking one inserts `/name `. */
+  private updateSlashMenu() {
+    const match = this.textarea.value.match(/^\/([a-z0-9-]*)$/);
+    const skills = match ? state.skills.filter((s) => s.enabled && s.name.startsWith(match[1]!)) : [];
+    if (!skills.length) {
+      this.slashMenu?.close();
+      this.slashMenu = null;
+      return;
+    }
+    const list = h('div', { class: 'menu slash-menu' }, h('div', { class: 'menu-heading' }, 'Skills'));
+    const items = skills.map((s) => s.name);
+    const index = Math.min(this.slashMenu?.index ?? 0, items.length - 1);
+    skills.forEach((skill, i) =>
+      list.append(
+        h(
+          'button',
+          { class: `menu-item rich${i === index ? ' selected' : ''}`, on: { mousedown: (e: MouseEvent) => { e.preventDefault(); this.pickSkill(skill.name); } } },
+          icon('skill', 17),
+          h('span', {}, h('strong', {}, `/${skill.name}`), h('small', {}, skill.description))
+        )
+      )
+    );
+    this.slashMenu?.close();
+    const close = popover(this.textarea, list, 'above');
+    this.slashMenu = { close, items, index, list };
+  }
+
+  private slashKey(key: string) {
+    const menu = this.slashMenu!;
+    if (key === 'Escape') {
+      menu.close();
+      this.slashMenu = null;
+      return;
+    }
+    if (key === 'ArrowDown' || key === 'ArrowUp') {
+      menu.index = (menu.index + (key === 'ArrowDown' ? 1 : -1) + menu.items.length) % menu.items.length;
+      this.updateSlashMenu();
+      return;
+    }
+    this.pickSkill(menu.items[menu.index]!);
+  }
+
+  private pickSkill(name: string) {
+    this.slashMenu?.close();
+    this.slashMenu = null;
+    this.setText(`/${name} `);
+    this.textarea.focus();
   }
 
   attach(conversationId: string | null, placeholder: string) {
@@ -474,6 +716,11 @@ class Composer {
     if (this.running()) return;
     let text = this.textarea.value.trim();
     if (!text && this.attachments.length === 0) return;
+    // `/skill-name rest` asks for that skill explicitly.
+    const slash = text.match(/^\/([a-z0-9-]+)\s*([\s\S]*)$/);
+    if (slash && state.skills.some((s) => s.name === slash[1])) {
+      text = `Use the "${slash[1]}" skill.${slash[2] ? `\n\n${slash[2]}` : ''}`;
+    }
     for (const file of this.attachments) {
       text += `\n\n<attachment name="${file.name}">\n${file.text}\n</attachment>`;
     }

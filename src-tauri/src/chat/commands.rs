@@ -279,7 +279,10 @@ pub async fn chat_preview_instructions(
     let request = rig_core::completion::CompletionRequest::new(
         rig_core::completion::message::Message::user(prompt),
     )
-    .preamble(engine::preamble(&instructions, None, None, &[]))
+    .preamble(engine::preamble(
+        &engine::Context { instructions: Some(&instructions), ..Default::default() },
+        &[],
+    ))
     .max_tokens(400u64);
     let response = tokio::time::timeout(std::time::Duration::from_secs(60), model.call(request))
         .await
@@ -330,6 +333,102 @@ fn sanitize_file_name(title: &str) -> String {
         .collect();
     let name = name.trim();
     if name.is_empty() { "conversation".into() } else { name.chars().take(80).collect() }
+}
+
+#[tauri::command]
+pub fn chat_get_memories(app: AppHandle) -> Result<super::memory::Memories, String> {
+    Ok(super::memory::load(&config_dir(&app)?))
+}
+
+#[tauri::command]
+pub fn chat_add_memory(app: AppHandle, text: String) -> Result<super::memory::Memories, String> {
+    let dir = config_dir(&app)?;
+    let mut memories = super::memory::load(&dir);
+    super::memory::add(&mut memories, &text, "user")?;
+    super::memory::save(&dir, &memories)?;
+    Ok(memories)
+}
+
+#[tauri::command]
+pub fn chat_update_memory(app: AppHandle, id: String, text: String) -> Result<super::memory::Memories, String> {
+    let dir = config_dir(&app)?;
+    let mut memories = super::memory::load(&dir);
+    let text = text.trim();
+    if text.is_empty() || text.chars().count() > super::memory::MAX_LENGTH {
+        return Err(format!("A memory is 1 to {} characters.", super::memory::MAX_LENGTH));
+    }
+    let memory = memories.items.iter_mut().find(|m| m.id == id).ok_or("No such memory.")?;
+    memory.text = text.to_string();
+    super::memory::save(&dir, &memories)?;
+    Ok(memories)
+}
+
+#[tauri::command]
+pub fn chat_delete_memory(app: AppHandle, id: Option<String>) -> Result<super::memory::Memories, String> {
+    let dir = config_dir(&app)?;
+    let mut memories = super::memory::load(&dir);
+    match id {
+        Some(id) => {
+            super::memory::remove(&mut memories, &id);
+        }
+        None => memories.items.clear(),
+    }
+    super::memory::save(&dir, &memories)?;
+    Ok(memories)
+}
+
+#[tauri::command]
+pub fn chat_set_memory_enabled(app: AppHandle, enabled: bool) -> Result<super::memory::Memories, String> {
+    let dir = config_dir(&app)?;
+    let mut memories = super::memory::load(&dir);
+    memories.enabled = enabled;
+    super::memory::save(&dir, &memories)?;
+    Ok(memories)
+}
+
+#[tauri::command]
+pub fn chat_list_skills(app: AppHandle) -> Result<Vec<super::skills::Skill>, String> {
+    Ok(super::skills::list(&config_dir(&app)?))
+}
+
+#[tauri::command]
+pub fn chat_save_skill(app: AppHandle, name: String, description: String, body: String) -> Result<Vec<super::skills::Skill>, String> {
+    let dir = config_dir(&app)?;
+    super::skills::save(&dir, name.trim(), &description, &body)?;
+    Ok(super::skills::list(&dir))
+}
+
+#[tauri::command]
+pub fn chat_delete_skill(app: AppHandle, name: String) -> Result<Vec<super::skills::Skill>, String> {
+    let dir = config_dir(&app)?;
+    super::skills::delete(&dir, &name)?;
+    Ok(super::skills::list(&dir))
+}
+
+#[tauri::command]
+pub fn chat_set_skill_enabled(app: AppHandle, name: String, enabled: bool) -> Result<Vec<super::skills::Skill>, String> {
+    let dir = config_dir(&app)?;
+    super::skills::set_enabled(&dir, &name, enabled)?;
+    Ok(super::skills::list(&dir))
+}
+
+/// Imports a `SKILL.md` the user picks; returns the skill's name, or `None` when cancelled.
+#[tauri::command]
+pub async fn chat_import_skill(app: AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title("Import a skill (SKILL.md)")
+        .add_filter("Skill", &["md"])
+        .pick_file(move |path| {
+            let _ = tx.send(path);
+        });
+    let Some(path) = rx.await.map_err(|e| e.to_string())? else {
+        return Ok(None);
+    };
+    let path = path.into_path().map_err(|e| e.to_string())?;
+    super::skills::import(&config_dir(&app)?, &path).map(Some)
 }
 
 /// Manages chat state at startup.

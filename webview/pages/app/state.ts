@@ -5,6 +5,7 @@ import type {
   ChatEvent,
   ConversationSummary,
   Instructions,
+  Skill,
   Model,
   Part,
   Project,
@@ -64,6 +65,7 @@ export const state = {
   instructions: { tone: '', custom: '', name: '' } as Instructions,
   live: new Map<string, LiveTurn>(),
   approvals: [] as ApprovalRequest[],
+  skills: [] as Skill[],
   sidebarCollapsed: false,
   contextOpen: false,
   /** Code mode: the folder new sessions work in. */

@@ -79,6 +79,26 @@ export interface Instructions {
   name: string;
 }
 
+export interface Memory {
+  id: string;
+  text: string;
+  createdAt: string;
+  source: string;
+}
+
+export interface Memories {
+  enabled: boolean;
+  items: Memory[];
+}
+
+export interface Skill {
+  name: string;
+  description: string;
+  body: string;
+  origin: 'user' | 'builtin';
+  enabled: boolean;
+}
+
 export type Speed = 'fast' | 'think';
 export type ApprovalMode = 'ask' | 'accept_edits';
 
@@ -160,6 +180,18 @@ export const api = {
   saveInstructions: (instructions: Instructions) => call<void>('chat_save_instructions', { instructions }),
   previewInstructions: (instructions: Instructions, model: string, prompt: string) =>
     call<string>('chat_preview_instructions', { instructions, model, prompt }),
+
+  memories: () => call<Memories>('chat_get_memories'),
+  addMemory: (text: string) => call<Memories>('chat_add_memory', { text }),
+  updateMemory: (id: string, text: string) => call<Memories>('chat_update_memory', { id, text }),
+  deleteMemory: (id: string | null) => call<Memories>('chat_delete_memory', { id }),
+  setMemoryEnabled: (enabled: boolean) => call<Memories>('chat_set_memory_enabled', { enabled }),
+
+  skills: () => call<Skill[]>('chat_list_skills'),
+  saveSkill: (name: string, description: string, body: string) => call<Skill[]>('chat_save_skill', { name, description, body }),
+  deleteSkill: (name: string) => call<Skill[]>('chat_delete_skill', { name }),
+  setSkillEnabled: (name: string, enabled: boolean) => call<Skill[]>('chat_set_skill_enabled', { name, enabled }),
+  importSkill: () => call<string | null>('chat_import_skill'),
 
   respondApproval: (requestId: string, approved: boolean, always = false) =>
     call<void>('respond_tool_approval', { requestId, approved, always }),

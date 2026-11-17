@@ -517,3 +517,37 @@ select.input { cursor: pointer; }
   .settings-nav { width: 200px; }
   .page { padding: 28px 20px; }
 }
+
+/* ------------------------------------------------------------------ sources, citations, skills, knowledge */
+
+.markdown a.cite { display: inline-flex; align-items: center; padding: 0 7px; margin: 0 1px; border-radius: 8px; background: var(--accent-soft); font-size: 13px; font-weight: 600; line-height: 1.6; vertical-align: 1px; }
+.markdown a.cite:hover { text-decoration: none; background: color-mix(in srgb, var(--accent) 24%, transparent); }
+.sources-row { display: flex; }
+.sources-chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border: 1px solid var(--border-strong); border-radius: 10px; font-weight: 600; font-size: 14px; }
+.sources-chip:hover { background: var(--bg-hover); }
+.source-dots { display: inline-flex; }
+.source-dot { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--bg-active); border: 2px solid var(--bg); font-size: 10.5px; font-weight: 700; color: var(--text-secondary); flex-shrink: 0; }
+.source-dots .source-dot + .source-dot { margin-left: -6px; }
+.sources-menu { width: 380px; max-height: 60vh; overflow-y: auto; }
+.source-item { text-decoration: none; color: var(--text); }
+.source-item > span:last-child { display: flex; flex-direction: column; min-width: 0; }
+.source-item strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.slash-menu { width: 460px; max-height: 50vh; overflow-y: auto; }
+.skill-list, .memory-list { display: flex; flex-direction: column; }
+.skill-row { display: flex; align-items: center; gap: 12px; padding: 14px 6px; border-bottom: 1px solid var(--border); cursor: pointer; border-radius: 8px; }
+.skill-row:hover { background: var(--bg-hover); }
+.skill-name { white-space: nowrap; }
+.skill-desc { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.skill-editor { width: min(720px, 92vw); }
+.modal-head.flush { padding: 0 0 4px; }
+.textarea.short { min-height: 64px; }
+.textarea.mono { font: 13px/1.55 ui-monospace, "SF Mono", monospace; min-height: 260px; }
+.knowledge { display: flex; flex-direction: column; gap: 16px; }
+.memory-add { display: flex; gap: 8px; }
+.memory-row { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
+.memory-row .memory-text { flex: 1; color: var(--text); }
+.memory-row .input { flex: 1; }
+.memory-date { font-size: 12.5px; white-space: nowrap; }
+.step-icon.inline { margin-left: 0; padding: 0; background: none; }
+.results-card > .results-head:not(:first-child) { border-top: 1px solid var(--border-strong); }
+.markdown a.cite { margin: 0; }
