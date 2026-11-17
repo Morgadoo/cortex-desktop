@@ -15,7 +15,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::watch;
 
-use super::{agents, builtins, canvas, context, knowledge, libraries, media, memory, terminal, privacy, providers, sandbox, skills, subagents, tasks};
+use super::{agents, builtins, deferred, canvas, context, knowledge, libraries, media, memory, terminal, privacy, providers, sandbox, skills, subagents, tasks};
 use super::store::{self, Conversation, Instructions, Project};
 use super::tools::{self, ApprovalMode, ChatTool, ASK_USER};
 use super::{ChatState, EVENT, LOCAL_ACCOUNT};
@@ -441,7 +441,11 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         // A temporary chat leaves no trace: it does not add to or change knowledge.
         offered.retain(|t| t.name != builtins::REMEMBER && t.name != builtins::FORGET && t.name != builtins::KNOWLEDGE_WRITE);
     }
-    let definitions: Vec<_> = offered.iter().filter_map(ChatTool::definition).collect();
+    // Past a few dozen connector tools, the rest load on demand (Vibe's "Found tools").
+    let defer = deferred::should_defer(&offered);
+    if defer {
+        offered.push(deferred::find_tools_tool());
+    }
     let project = conversation
         .project_id
         .as_ref()
@@ -472,6 +476,9 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         &offered,
     );
     let mut system = system;
+    if defer {
+        system.push_str(&deferred::prompt(&offered, &conversation.loaded_tools));
+    }
     if let Some(agent) = &agent {
         system.push_str(&agents::notebook_prompt(&agents::notebook(&config_dir, &agent.id)));
     }
@@ -542,7 +549,12 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
             .messages(history.iter().cloned())
             .preamble(step_system);
         if !last_step {
-            call = call.tools(definitions.iter().cloned());
+            // Deferred tools go out once they are loaded; the rest every time.
+            let definitions = offered
+                .iter()
+                .filter(|t| !defer || !deferred::deferrable(t) || conversation.loaded_tools.contains(&t.name))
+                .filter_map(ChatTool::definition);
+            call = call.tools(definitions);
         }
         if reasoning && request.speed == Speed::Think {
             call = call.reasoning(Effort::High);
@@ -745,6 +757,16 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
                 output: outcome.text.clone(),
                 is_error: outcome.is_error,
             });
+            if call.function.name.as_str() == deferred::FIND_TOOLS && !outcome.is_error {
+                // What it found is loaded for the next step and the rest of the conversation.
+                if let Ok(found) = serde_json::from_str::<Value>(&outcome.text) {
+                    for name in found["matches"].as_array().into_iter().flatten().filter_map(|m| m["name"].as_str()) {
+                        if !conversation.loaded_tools.iter().any(|t| t == name) {
+                            conversation.loaded_tools.push(name.to_string());
+                        }
+                    }
+                }
+            }
             let mut result = call.result(vec![ToolResultContent::text(outcome.text)]);
             result.is_error = outcome.is_error;
             results.push(result);
@@ -851,6 +873,9 @@ impl Runner<'_> {
                 }
                 Err(e) => tools::Outcome { text: e, is_error: true },
             };
+        }
+        if name == deferred::FIND_TOOLS {
+            return tools::Outcome { text: deferred::find(self.offered, &arguments).0, is_error: false };
         }
         if name == agents::NOTEBOOK_TOOL {
             let Some(agent_id) = store::load_conversation(self.config_dir, self.id).ok().and_then(|c| c.agent_id) else {

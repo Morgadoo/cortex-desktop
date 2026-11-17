@@ -122,6 +122,9 @@ pub struct Conversation {
     /// Notices shown inline before the message at that index.
     #[serde(default)]
     pub notices: Vec<(usize, String)>,
+    /// Tools loaded on demand with `find_tools`, kept for the rest of the conversation.
+    #[serde(default)]
+    pub loaded_tools: Vec<String>,
     /// The note standing in for compacted turns.
     #[serde(default)]
     pub summary: Option<super::context::Summary>,
@@ -154,6 +157,7 @@ impl Conversation {
             times: Vec::new(),
             thought: Vec::new(),
             notices: Vec::new(),
+            loaded_tools: Vec::new(),
             ratings: Vec::new(),
             summary: None,
             usage: Default::default(),

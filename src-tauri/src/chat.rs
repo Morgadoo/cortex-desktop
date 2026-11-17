@@ -20,6 +20,7 @@ pub mod commands;
 pub mod context;
 pub mod engine;
 pub mod import;
+mod deferred;
 mod favicon;
 mod index;
 mod preview;

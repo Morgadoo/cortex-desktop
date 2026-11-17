@@ -41,6 +41,7 @@ const CONNECTOR_ICONS: Record<string, string> = {
 
 /** Past-tense labels for the built-in tools, as a timeline reads them. */
 const ACTIONS: Record<string, string> = {
+  find_tools: 'Found tools',
   filesystem__fs_search: 'Searched files',
   filesystem__fs_read: 'Read a file',
   filesystem__fs_write: 'Wrote a file',
@@ -68,6 +69,7 @@ const ACTIONS: Record<string, string> = {
 };
 
 const BUILTIN_ICONS: Record<string, string> = {
+  find_tools: 'tool',
   web_search: 'search',
   remember: 'book',
   forget: 'book',
@@ -538,16 +540,23 @@ function groupSummary(parts: Part[], live: boolean): string {
   if (tools.length === 1) return fileAction(tools[0]!) ?? toolLabel(tools[0]!.name).action;
   const counts = new Map<string, number>();
   let other = 0;
+  const others: string[] = [];
   for (const t of tools) {
     const kind = KINDS.find(([re]) => re.test(t.name));
     if (kind) counts.set(kind[1], (counts.get(kind[1]) ?? 0) + 1);
-    else other += 1;
+    else {
+      other += 1;
+      const label = fileAction(t) ?? toolLabel(t.name).action;
+      if (!others.includes(label)) others.push(label);
+    }
   }
   const labels = KINDS.filter(([, one]) => counts.has(one)).map(([, one, many]) => {
     const n = counts.get(one)!;
     return `${n} ${n === 1 ? one : many}`;
   });
-  if (other) labels.push(`${other} ${other === 1 ? 'tool call' : 'tool calls'}`);
+  // A few different steps read better by name ("Found tools · Create calendar event") than as a count.
+  if (other && others.length <= 2) labels.push(...others);
+  else if (other) labels.push(`${other} ${other === 1 ? 'tool call' : 'tool calls'}`);
   return labels.slice(0, 3).join(' · ');
 }
 

@@ -98,7 +98,7 @@ against the 5 that survived), and Mistral's documentation: docs.mistral.ai/vibe,
 | "Jump to bottom" button (Vibe 3.1.0) | Same | Done |
 | Composer placeholder "Type / for quick access" | Same | Done |
 | Code mode (screenshots): "New Session", Extensions in the sidebar, "Send a message", "Working · 12s" / "Thinking · …" status, "Created nyan-snake.html" / "Edited …" steps | Same; Extensions opens the connectors (MCP) | Done |
-| Code mode: "Found tools" / "Loaded tool details" steps | Vibe loads tool definitions on demand; here they are offered up front | N/A |
+| Code mode: "Found tools" / "Loaded tool details" steps (tools loaded on demand) | Same idea: past 30 connector tools, only the core ones (files, shell, browser, terminal) go with each request; the rest are named by connector, and `find_tools` loads the matches for the next step and the rest of the conversation. Shown as "Found tools" with what was loaded. Verified with a 35-tool MCP server: the model found and used the calendar tool | Done |
 | Thinking, collapsed when the answer arrives | Same | Done |
 | Activity timeline; "Running N actions" while working | Same; repeated tools merge into one table | Done |
 | Search results card | Same | Done |
