@@ -363,6 +363,12 @@
           "markdownDescription": "Set up semantic search for libraries and embed their documents."
         },
         {
+          "description": "Delete a message and its reply, export and import agents, export a conversation as JSON.",
+          "type": "string",
+          "const": "allow-chat-exchange-and-bundles",
+          "markdownDescription": "Delete a message and its reply, export and import agents, export a conversation as JSON."
+        },
+        {
           "description": "Export all conversations and data to a folder the user picks.",
           "type": "string",
           "const": "allow-chat-export-all",
@@ -643,6 +649,12 @@
           "type": "string",
           "const": "allow-chat-search-libraries",
           "markdownDescription": "Search document libraries."
+        },
+        {
+          "description": "Choose the web search engine.",
+          "type": "string",
+          "const": "allow-chat-search-settings",
+          "markdownDescription": "Choose the web search engine."
         },
         {
           "description": "Switch between answers to the last prompt.",

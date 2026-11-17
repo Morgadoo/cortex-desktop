@@ -1,4 +1,5 @@
 /** Agents mode: the workforce overview, an agent's page, and the agent editor. */
+import { tauriInvoke } from '../../shared/tauri';
 import { api, newId, type Agent, type AgentSpend } from './api';
 import { clear, confirmDialog, h, icon, modal, timeLabel, toast } from './dom';
 import { changed, navigate, state } from './state';
@@ -192,8 +193,21 @@ export class AgentsPage {
   constructor() {
     const create = h('button', { class: 'btn btn-primary' }, icon('plus', 16), 'New agent');
     create.addEventListener('click', () => void newAgent());
+    // Agents travel as one file: settings, notebook and their own skills.
+    const importBtn = h('button', { class: 'btn btn-secondary' }, icon('upload', 15), 'Import');
+    importBtn.addEventListener('click', async () => {
+      try {
+        const name = await tauriInvoke<string | null>('chat_import_agent');
+        if (name) {
+          await reloadAgents();
+          toast(`Added ${name}.`);
+        }
+      } catch (e) {
+        toast(String(e), 'error');
+      }
+    });
     this.el.append(
-      h('header', { class: 'page-header' }, h('div', {}, h('h1', {}, 'Your agents'), h('p', { class: 'muted' }, 'A workforce of assistants with their own instructions, tools and schedules. Chat with one, or give it tasks that run on their own.')), h('div', { class: 'page-actions' }, create)),
+      h('header', { class: 'page-header' }, h('div', {}, h('h1', {}, 'Your agents'), h('p', { class: 'muted' }, 'A workforce of assistants with their own instructions, tools and schedules. Chat with one, or give it tasks that run on their own.')), h('div', { class: 'page-actions' }, importBtn, create)),
       this.grid,
       h('div', { class: 'section-title' }, 'Add a ready-made agent'),
       this.templates
@@ -289,10 +303,12 @@ export class AgentPage {
     chat.addEventListener('click', () => this.onChat(agent.id));
     const edit = h('button', { class: 'btn btn-secondary' }, icon('edit', 15), 'Edit');
     edit.addEventListener('click', () => void editAgent(agent));
+    const exportBtn = h('button', { class: 'btn btn-secondary', title: 'Save this agent, its notebook and its skills as one file' }, icon('download', 15), 'Export');
+    exportBtn.addEventListener('click', () => void tauriInvoke<boolean>('chat_export_agent', { id: agent.id }).then((saved) => saved && toast('Agent exported.')).catch((e) => toast(String(e), 'error')));
     clear(
       this.head,
       h('div', { class: 'agent-title' }, avatar(agent, 'large'), h('div', {}, h('h1', {}, agent.name), h('p', { class: 'muted' }, agent.description))),
-      h('div', { class: 'page-actions' }, edit, chat)
+      h('div', { class: 'page-actions' }, exportBtn, edit, chat)
     );
     const stat = (value: string, label: string) => h('div', { class: 'agent-stat' }, h('strong', {}, value), h('small', { class: 'muted' }, label));
     const s = this.spend;

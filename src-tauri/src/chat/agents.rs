@@ -60,6 +60,61 @@ pub fn load(config_dir: &Path) -> Vec<Agent> {
         .unwrap_or_default()
 }
 
+/// An agent as one file: settings, notebook and the user's own skills it relies on.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Bundle {
+    /// Always `lumo-agent`.
+    pub format: String,
+    pub version: u32,
+    pub agent: Agent,
+    #[serde(default)]
+    pub notebook: String,
+    #[serde(default)]
+    pub skills: Vec<BundledSkill>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct BundledSkill {
+    pub name: String,
+    pub description: String,
+    pub body: String,
+}
+
+pub fn bundle(config_dir: &Path, id: &str) -> Result<Bundle, String> {
+    let agent = find(config_dir, id).ok_or("There is no such agent.")?;
+    // Built-in skills exist everywhere; only the user's own travel with the agent.
+    let skills = super::skills::list(config_dir)
+        .into_iter()
+        .filter(|s| s.origin == "user" && agent.skills.contains(&s.name))
+        .map(|s| BundledSkill { name: s.name, description: s.description, body: s.body })
+        .collect();
+    Ok(Bundle { format: "lumo-agent".into(), version: 1, notebook: notebook(config_dir, id), skills, agent })
+}
+
+/// Adds a bundled agent as a new one; skills of the same name already here are kept as they are.
+pub fn install(config_dir: &Path, bundle: Bundle) -> Result<Agent, String> {
+    if bundle.format != "lumo-agent" {
+        return Err("This file is not an exported agent.".into());
+    }
+    let existing = load(config_dir);
+    let mut agent = bundle.agent;
+    agent.id = uuid::Uuid::new_v4().to_string();
+    agent.created_at = Utc::now();
+    if existing.iter().any(|a| a.name.eq_ignore_ascii_case(&agent.name)) {
+        agent.name = format!("{} (imported)", agent.name);
+    }
+    let have = super::skills::list(config_dir);
+    for skill in bundle.skills.iter().filter(|s| !have.iter().any(|h| h.name == s.name)) {
+        super::skills::save(config_dir, &skill.name, &skill.description, &skill.body)?;
+    }
+    save(config_dir, agent.clone())?;
+    if !bundle.notebook.trim().is_empty() {
+        save_notebook(config_dir, &agent.id, &bundle.notebook)?;
+    }
+    Ok(agent)
+}
+
 pub fn find(config_dir: &Path, id: &str) -> Option<Agent> {
     load(config_dir).into_iter().find(|a| a.id == id)
 }
@@ -331,6 +386,43 @@ pub fn templates() -> Vec<Agent> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn agents_travel_as_bundles() {
+        let from = tempfile::tempdir().unwrap();
+        super::super::skills::save(from.path(), "triage-inbox", "Use when sorting email.", "1. Read.\n2. Sort.").unwrap();
+        let agent = Agent {
+            id: "a1".into(),
+            name: "Inbox helper".into(),
+            avatar: "📬".into(),
+            description: String::new(),
+            instructions: "Sort mail.".into(),
+            model: None,
+            tools: vec![],
+            skills: vec!["triage-inbox".into(), "data-analysis".into()],
+            ask_tools: vec![],
+            think: false,
+            fallback_model: None,
+            monthly_budget: Some(5.0),
+            created_at: Utc::now(),
+        };
+        save(from.path(), agent).unwrap();
+        save_notebook(from.path(), "a1", "Boss emails first.").unwrap();
+        let b = bundle(from.path(), "a1").unwrap();
+        assert_eq!(b.skills.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), ["triage-inbox"], "built-in skills stay behind");
+        let json = serde_json::to_string(&b).unwrap();
+
+        let to = tempfile::tempdir().unwrap();
+        let installed = install(to.path(), serde_json::from_str(&json).unwrap()).unwrap();
+        assert_ne!(installed.id, "a1");
+        assert_eq!(notebook(to.path(), &installed.id), "Boss emails first.");
+        assert!(super::super::skills::find(to.path(), "triage-inbox").is_some());
+        let again = install(to.path(), serde_json::from_str(&json).unwrap()).unwrap();
+        assert_eq!(again.name, "Inbox helper (imported)");
+        let mut wrong: Bundle = serde_json::from_str(&json).unwrap();
+        wrong.format = "other".into();
+        assert!(install(to.path(), wrong).is_err());
+    }
+
     use super::*;
 
     #[test]

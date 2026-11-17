@@ -703,7 +703,30 @@ function renderUserTurn(turn: Turn, conversationId: string, branch: HTMLElement 
     'div',
     { class: 'turn turn-user' },
     bubble,
-    h('div', { class: `turn-actions user-actions${branch ? ' pinned' : ''}` }, branch, turn.index >= 0 ? editButton(turn, conversationId, text) : null, copy, h('span', { class: 'turn-time' }, timeLabel(turn.time)))
+    h('div', { class: `turn-actions user-actions${branch ? ' pinned' : ''}` }, branch, turn.index >= 0 ? editButton(turn, conversationId, text) : null, copy, turn.index >= 0 ? deleteExchangeButton(turn, conversationId) : null, h('span', { class: 'turn-time' }, timeLabel(turn.time)))
+  );
+}
+
+/** Removes a sent message and the reply to it, to tidy a conversation. */
+function deleteExchangeButton(turn: Turn, conversationId: string): HTMLElement {
+  return h(
+    'button',
+    {
+      class: 'icon-btn small',
+      title: 'Delete this message and its reply',
+      on: {
+        click: async () => {
+          if (!(await confirmDialog('Delete this message?', 'The message and the reply to it are removed from the conversation.'))) return;
+          try {
+            await tauriInvoke('chat_delete_exchange', { id: conversationId, index: turn.index });
+            await viewCache.chat?.refresh(false);
+          } catch (e) {
+            toast(String(e), 'error');
+          }
+        },
+      },
+    },
+    icon('trash', 15)
   );
 }
 
@@ -2516,6 +2539,7 @@ export function conversationMenu(anchor: HTMLElement, id: string, title: string,
         toast('Branched. This chat continues from the same point.');
       }),
       item('download', 'Export as Markdown', () => void api.exportConversation(id).then((saved) => saved && toast('Conversation exported.'))),
+      item('code', 'Export as JSON', () => void tauriInvoke<boolean>('chat_export_conversation_json', { id }).then((saved) => saved && toast('Conversation exported.')).catch((e) => toast(String(e), 'error'))),
       item('settings', 'Chat settings…', () => void openChatSettings(id)),
       item('tag', 'Tags…', async () => {
         const current = state.conversations.find((c) => c.id === id)?.tags ?? [];

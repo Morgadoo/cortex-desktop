@@ -90,6 +90,8 @@
     "allow-chat-favicon",
     "allow-chat-link-preview",
     "allow-chat-debug",
+    "allow-chat-exchange-and-bundles",
+    "allow-chat-search-settings",
     "allow-chat-embeddings",
     "allow-chat-set-params",
     "allow-chat-follow-ups",

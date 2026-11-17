@@ -252,6 +252,10 @@ items most likely to differ:
 | The model searches earlier chats | open-webui (History search, Reference Chats), openbot.run | `search_chats` and `read_chat`, offered while memory is on; temporary chats are never found. Verified live | Done |
 | Model settings per chat | open-webui, LibreChat, onyx | Conversation menu → Chat settings: temperature, longest reply, and instructions for this chat only. Verified live | Done |
 | Quick ask from anywhere | osaurus | Global shortcut (Settings → General) opens a quick ask bar | Done |
+| Choice of web search engine | onyx, open-webui, LibreChat | Settings → Providers → Web search: keyless (default), SearXNG (your instance, JSON on), Brave Search or Tavily, keys in the keychain; a failing engine falls back to the keyless search. Parsers unit-tested; the API engines need keys this setup does not have | Done |
+| Agents exported and imported as files | osaurus (Bundles), lobehub, openbot.run | An agent's page → Export saves its settings, notebook and the user's own skills it uses as one `.lumo-agent.json`; Agents → Import adds it as a new agent (renamed if the name is taken; existing skills kept). Verified live | Done |
+| Delete a message and its reply | LibreChat, lobehub | Trash under a sent message removes it and the reply; refused inside the summarized part or where other versions branch off. Verified live | Done |
+| Export a conversation as JSON | open-webui, LibreChat | Conversation menu → Export as JSON: every turn, tool step and the usage totals | Done |
 | Continue a cut-off reply | LibreChat, lobehub | Continue on a stopped or failed reply picks up from the work already done | Done |
 
 ## Built for years of use

@@ -1,5 +1,9 @@
-//! Keyless web search for the `web_search` tool: Bing's HTML results page, with DuckDuckGo's as
-//! a fallback. Both are parsed with `scraper`; neither needs an account or an API key.
+//! Web search for the `web_search` tool.
+//!
+//! Keyless by default: Bing's HTML results page, with DuckDuckGo's as a fallback, both parsed
+//! with `scraper`. Settings can name another engine, as Open WebUI and Onyx allow: a SearXNG
+//! instance (self-hosted, private), Brave Search or Tavily (API keys in the keychain). When the
+//! chosen engine fails, the keyless search answers instead.
 
 use std::time::Duration;
 
@@ -90,6 +94,151 @@ fn client() -> Result<reqwest::Client, String> {
         .map_err(|e| e.to_string())
 }
 
+pub const SECRET: &str = "web-search";
+pub const ENGINES: &[&str] = &["auto", "searxng", "brave", "tavily"];
+
+#[derive(Debug, Clone, Serialize, serde::Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SearchSettings {
+    /// `auto` (keyless), `searxng`, `brave` or `tavily`.
+    pub engine: String,
+    /// SearXNG: the instance's address.
+    pub base_url: String,
+    /// Whether a key is saved in the keychain (never the key itself).
+    pub has_key: bool,
+}
+
+impl Default for SearchSettings {
+    fn default() -> Self {
+        Self { engine: "auto".into(), base_url: String::new(), has_key: false }
+    }
+}
+
+fn settings_path(config_dir: &std::path::Path) -> std::path::PathBuf {
+    super::store::chat_dir(config_dir).join("search.json")
+}
+
+pub fn load_settings(config_dir: &std::path::Path) -> SearchSettings {
+    std::fs::read_to_string(settings_path(config_dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+}
+
+pub fn save_settings(config_dir: &std::path::Path, settings: &SearchSettings) -> Result<(), String> {
+    let mut s = settings.clone();
+    if !ENGINES.contains(&s.engine.as_str()) {
+        s.engine = "auto".into();
+    }
+    s.base_url = s.base_url.trim().trim_end_matches('/').to_string();
+    super::store::write_json(&settings_path(config_dir), &s)
+}
+
+async fn key() -> Result<Option<String>, String> {
+    let account = crate::account::AccountId::parse(super::LOCAL_ACCOUNT)?;
+    crate::tools::auth::keychain_secrets(account).load(SECRET).await
+}
+
+/// SearXNG's JSON results (`format=json` must be enabled on the instance).
+pub fn parse_searxng(body: &serde_json::Value) -> Vec<Hit> {
+    hits_from(body.get("results"), "title", "url", "content")
+}
+
+/// Brave Search API: `web.results`.
+pub fn parse_brave(body: &serde_json::Value) -> Vec<Hit> {
+    hits_from(body.pointer("/web/results"), "title", "url", "description")
+}
+
+/// Tavily: `results`.
+pub fn parse_tavily(body: &serde_json::Value) -> Vec<Hit> {
+    hits_from(body.get("results"), "title", "url", "content")
+}
+
+fn hits_from(list: Option<&serde_json::Value>, title: &str, url: &str, snippet: &str) -> Vec<Hit> {
+    let field = |v: &serde_json::Value, k: &str| v.get(k).and_then(serde_json::Value::as_str).unwrap_or_default().to_string();
+    list.and_then(serde_json::Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .map(|v| Hit { title: strip_tags(&field(v, title)), url: field(v, url), snippet: strip_tags(&field(v, snippet)) })
+                .filter(|h| h.url.starts_with("http") && !h.title.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Brave marks matches with `<strong>`; plain text reads better in a tool result.
+fn strip_tags(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut inside = false;
+    for c in text.chars() {
+        match c {
+            '<' => inside = true,
+            '>' => inside = false,
+            c if !inside => out.push(c),
+            _ => {}
+        }
+    }
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Searches with the engine chosen in Settings, or the keyless one; a failing engine falls back.
+pub async fn search_with(config_dir: &std::path::Path, query: &str, max: usize) -> Result<Vec<Hit>, String> {
+    let settings = load_settings(config_dir);
+    if settings.engine == "auto" {
+        return search(query, max).await;
+    }
+    match engine_search(&settings, query, max).await {
+        Ok(hits) if !hits.is_empty() => Ok(dedup(hits, max)),
+        Ok(_) => search(query, max).await,
+        Err(e) => {
+            log::warn!("{} search failed, using the keyless search: {e}", settings.engine);
+            search(query, max).await
+        }
+    }
+}
+
+async fn engine_search(settings: &SearchSettings, query: &str, max: usize) -> Result<Vec<Hit>, String> {
+    let client = client()?;
+    let json = |r: reqwest::Response| async move {
+        let status = r.status();
+        if !status.is_success() {
+            return Err(format!("HTTP {status}"));
+        }
+        r.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+    };
+    match settings.engine.as_str() {
+        "searxng" => {
+            if settings.base_url.is_empty() {
+                return Err("no SearXNG address".into());
+            }
+            let r = client.get(format!("{}/search", settings.base_url)).query(&[("q", query), ("format", "json")]).send().await.map_err(|e| e.to_string())?;
+            Ok(parse_searxng(&json(r).await?))
+        }
+        "brave" => {
+            let key = key().await?.ok_or("no Brave Search key")?;
+            let r = client
+                .get("https://api.search.brave.com/res/v1/web/search")
+                .query(&[("q", query), ("count", &max.min(20).to_string())])
+                .header("X-Subscription-Token", key)
+                .header("Accept", "application/json")
+                .send()
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(parse_brave(&json(r).await?))
+        }
+        "tavily" => {
+            let key = key().await?.ok_or("no Tavily key")?;
+            let r = client
+                .post("https://api.tavily.com/search")
+                .bearer_auth(key)
+                .json(&serde_json::json!({ "query": query, "max_results": max.min(20) }))
+                .send()
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(parse_tavily(&json(r).await?))
+        }
+        other => Err(format!("unknown engine {other}")),
+    }
+}
+
 /// Up to `max` results for `query`, from the first engine that answers with any.
 pub async fn search(query: &str, max: usize) -> Result<Vec<Hit>, String> {
     let client = client()?;
@@ -159,6 +308,27 @@ mod tests {
         assert_eq!(hits[0].title, "Rust Programming Language");
         assert_eq!(hits[0].snippet, "A language empowering everyone.");
         assert_eq!(hits[1].url, "https://docs.rs/");
+    }
+
+    #[test]
+    fn api_engines_are_parsed() {
+        let searx = serde_json::json!({ "results": [{ "title": "Rig", "url": "https://rig.rs", "content": "Rust LLM library" }, { "title": "", "url": "https://x" }] });
+        assert_eq!(parse_searxng(&searx), vec![Hit { title: "Rig".into(), url: "https://rig.rs".into(), snippet: "Rust LLM library".into() }]);
+        let brave = serde_json::json!({ "web": { "results": [{ "title": "Tauri <strong>2</strong>", "url": "https://tauri.app", "description": "Build <strong>small</strong> apps" }] } });
+        assert_eq!(parse_brave(&brave)[0].snippet, "Build small apps");
+        assert_eq!(parse_brave(&brave)[0].title, "Tauri 2");
+        let tavily = serde_json::json!({ "results": [{ "title": "Docs", "url": "https://docs.rs", "content": "Crates" }] });
+        assert_eq!(parse_tavily(&tavily).len(), 1);
+        assert!(parse_brave(&serde_json::json!({})).is_empty());
+    }
+
+    #[test]
+    fn search_settings_fall_back_to_keyless() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(load_settings(dir.path()).engine, "auto");
+        save_settings(dir.path(), &SearchSettings { engine: "bogus".into(), base_url: "https://searx.example/ ".into(), has_key: false }).unwrap();
+        let s = load_settings(dir.path());
+        assert_eq!((s.engine.as_str(), s.base_url.as_str()), ("auto", "https://searx.example"));
     }
 
     #[test]

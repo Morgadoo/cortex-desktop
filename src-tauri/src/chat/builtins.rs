@@ -279,7 +279,7 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
                 return err("Give a search query.");
             }
             let max = args.get("max_results").and_then(Value::as_u64).unwrap_or(6).clamp(1, 10) as usize;
-            match search::search(&query, max).await {
+            match search::search_with(config_dir, &query, max).await {
                 Ok(hits) => ok(serde_json::to_string_pretty(&json!({ "query": query, "results": hits })).unwrap_or_default()),
                 Err(e) => err(e),
             }

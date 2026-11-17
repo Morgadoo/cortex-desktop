@@ -426,6 +426,47 @@ pub fn clean_tags(tags: &[String]) -> Vec<String> {
     out
 }
 
+fn is_prompt(message: &Message) -> bool {
+    matches!(message, Message::User { content } if content.iter().any(|c| matches!(c, UserContent::Text(_))))
+}
+
+/// Removes the message the user typed at `prompt` and the reply to it (everything up to the
+/// next typed message). Refused inside the summarized part, or where other versions branch off.
+pub fn delete_exchange(conversation: &mut Conversation, prompt: usize) -> Result<(), String> {
+    migrate(conversation);
+    if !conversation.messages.get(prompt).is_some_and(is_prompt) {
+        return Err("That is not a message you sent.".into());
+    }
+    let end = conversation.messages.iter().enumerate().skip(prompt + 1).find(|(_, m)| is_prompt(m)).map_or(conversation.messages.len(), |(i, _)| i);
+    if conversation.summary.as_ref().is_some_and(|s| s.upto > prompt) {
+        return Err("This part of the conversation is summarized for the model and cannot be removed.".into());
+    }
+    if conversation.branches.iter().any(|v| (prompt..end).contains(&v.start())) {
+        return Err("This message has other versions; it can be edited instead.".into());
+    }
+    let n = end - prompt;
+    conversation.messages.drain(prompt..end);
+    shift_all(&mut conversation.times, prompt, end);
+    shift_all(&mut conversation.ratings, prompt, end);
+    shift_all(&mut conversation.thought, prompt, end);
+    shift_all(&mut conversation.notices, prompt, end);
+    for v in conversation.branches.iter_mut().filter(|v| v.from >= end) {
+        v.from -= n;
+    }
+    conversation.updated_at = Utc::now();
+    Ok(())
+}
+
+/// Drops entries keyed inside `start..end` and moves later ones back.
+fn shift_all<T>(entries: &mut Vec<(usize, T)>, start: usize, end: usize) {
+    entries.retain(|(i, _)| !(start..end).contains(i));
+    for (i, _) in entries.iter_mut() {
+        if *i >= end {
+            *i -= end - start;
+        }
+    }
+}
+
 /// Index of the last message the user typed.
 pub fn last_prompt(conversation: &Conversation) -> Option<usize> {
     conversation.messages.iter().rposition(|m| match m {
@@ -679,6 +720,24 @@ pub fn view(conversation: &Conversation) -> ConversationView {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_exchange_is_deleted_with_its_reply() {
+        let mut c = Conversation::new("c".into(), None, None);
+        c.messages = vec![Message::user("one"), Message::assistant("1"), Message::user("two"), Message::assistant("2"), Message::user("three"), Message::assistant("3")];
+        let now = Utc::now();
+        c.times = vec![(0, now), (1, now), (2, now), (3, now), (4, now), (5, now)];
+        c.ratings = vec![(3, 1), (5, -1)];
+        delete_exchange(&mut c, 2).unwrap();
+        assert_eq!(c.messages.len(), 4);
+        assert_eq!(super::super::context::message_text(&c.messages[2]), "three");
+        assert_eq!(c.ratings, vec![(3, -1)], "the deleted reply's rating goes, later ones move back");
+        assert_eq!(c.times.iter().map(|(i, _)| *i).collect::<Vec<_>>(), vec![0, 1, 2, 3]);
+        assert!(delete_exchange(&mut c, 1).is_err(), "only typed messages start an exchange");
+        // The last exchange can go too.
+        delete_exchange(&mut c, 2).unwrap();
+        assert_eq!(c.messages.len(), 2);
+    }
+
     #[test]
     fn tags_are_cleaned() {
         let tags = clean_tags(&["#Work".into(), " work ".into(), "".into(), "Q4 plan".into()]);

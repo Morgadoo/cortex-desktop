@@ -502,3 +502,13 @@ commands.allow = ["chat_follow_ups"]
 identifier = "allow-chat-embeddings"
 description = "Set up semantic search for libraries and embed their documents."
 commands.allow = ["chat_embedding_settings", "chat_save_embedding_settings", "chat_index_libraries"]
+
+[[permission]]
+identifier = "allow-chat-search-settings"
+description = "Choose the web search engine."
+commands.allow = ["chat_search_settings", "chat_save_search_settings"]
+
+[[permission]]
+identifier = "allow-chat-exchange-and-bundles"
+description = "Delete a message and its reply, export and import agents, export a conversation as JSON."
+commands.allow = ["chat_delete_exchange", "chat_export_agent", "chat_import_agent", "chat_export_conversation_json"]

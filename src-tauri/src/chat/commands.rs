@@ -955,6 +955,112 @@ pub async fn chat_search_libraries(app: AppHandle, query: String, library_id: Op
     Ok(super::embeddings::search(&config_dir(&app)?, &only, &query, 8).await.0)
 }
 
+/// Removes a message the user sent and the reply to it.
+#[tauri::command]
+pub fn chat_delete_exchange(app: AppHandle, state: State<'_, ChatState>, id: String, index: usize) -> Result<(), String> {
+    if state.is_running(&id) {
+        return Err("Wait for the reply to finish first.".into());
+    }
+    let dir = config_dir(&app)?;
+    let mut conversation = store::load_conversation(&dir, &id)?;
+    store::delete_exchange(&mut conversation, index)?;
+    store::save_conversation(&dir, &conversation)
+}
+
+/// Saves an agent, its notebook and the skills it uses as one file, to back up or share.
+#[tauri::command]
+pub async fn chat_export_agent(app: AppHandle, id: String) -> Result<bool, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let dir = config_dir(&app)?;
+    let bundle = super::agents::bundle(&dir, &id)?;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_file_name(format!("{}.lumo-agent.json", sanitize_file_name(&bundle.agent.name)))
+        .add_filter("Agent", &["json"])
+        .save_file(move |path| {
+            let _ = tx.send(path);
+        });
+    let Some(path) = rx.await.map_err(|e| e.to_string())? else {
+        return Ok(false);
+    };
+    let path = path.into_path().map_err(|e| e.to_string())?;
+    std::fs::write(path, serde_json::to_string_pretty(&bundle).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+/// Adds an agent from an exported file; returns its name, or `None` when cancelled.
+#[tauri::command]
+pub async fn chat_import_agent(app: AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title("Import an agent")
+        .add_filter("Agent", &["json"])
+        .pick_file(move |path| {
+            let _ = tx.send(path);
+        });
+    let Some(path) = rx.await.map_err(|e| e.to_string())? else {
+        return Ok(None);
+    };
+    let path = path.into_path().map_err(|e| e.to_string())?;
+    let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let bundle: super::agents::Bundle = serde_json::from_str(&text).map_err(|_| "This file is not an exported agent.".to_string())?;
+    let agent = super::agents::install(&config_dir(&app)?, bundle)?;
+    Ok(Some(agent.name))
+}
+
+/// Writes a conversation as JSON, every message and tool step included, to a file the user picks.
+#[tauri::command]
+pub async fn chat_export_conversation_json(app: AppHandle, id: String) -> Result<bool, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let conversation = store::load_conversation(&config_dir(&app)?, &id)?;
+    let view = store::view(&conversation);
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_file_name(format!("{}.json", sanitize_file_name(&conversation.title)))
+        .add_filter("JSON", &["json"])
+        .save_file(move |path| {
+            let _ = tx.send(path);
+        });
+    let Some(path) = rx.await.map_err(|e| e.to_string())? else {
+        return Ok(false);
+    };
+    let path = path.into_path().map_err(|e| e.to_string())?;
+    let out = serde_json::json!({
+        "title": view.title,
+        "createdAt": conversation.created_at,
+        "updatedAt": conversation.updated_at,
+        "model": conversation.model,
+        "tags": conversation.tags,
+        "usage": conversation.usage,
+        "turns": view.turns,
+    });
+    std::fs::write(path, serde_json::to_string_pretty(&out).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub fn chat_search_settings(app: AppHandle) -> Result<super::search::SearchSettings, String> {
+    Ok(super::search::load_settings(&config_dir(&app)?))
+}
+
+/// Saves the web search engine; a key given is stored in the keychain.
+#[tauri::command]
+pub async fn chat_save_search_settings(app: AppHandle, settings: super::search::SearchSettings, key: Option<String>) -> Result<super::search::SearchSettings, String> {
+    let dir = config_dir(&app)?;
+    let mut settings = settings;
+    settings.has_key = super::search::load_settings(&dir).has_key;
+    if let Some(key) = key.map(|k| k.trim().to_string()).filter(|k| !k.is_empty()) {
+        secrets()?.store(super::search::SECRET, &key).await?;
+        settings.has_key = true;
+    }
+    super::search::save_settings(&dir, &settings)?;
+    Ok(super::search::load_settings(&dir))
+}
+
 #[tauri::command]
 pub fn chat_embedding_settings(app: AppHandle) -> Result<super::embeddings::EmbeddingSettings, String> {
     Ok(super::embeddings::load(&config_dir(&app)?))

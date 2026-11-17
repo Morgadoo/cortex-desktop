@@ -237,7 +237,60 @@ async function renderProviders(content: HTMLElement) {
   const sorted = [...providers].sort((a, b) => Number(b.ready) - Number(a.ready));
   for (const provider of sorted) list.append(providerCard(provider));
   content.append(await mediaCard());
+  content.append(await searchCard());
   content.append(await embeddingCard());
+}
+
+interface SearchSettings {
+  engine: 'auto' | 'searxng' | 'brave' | 'tavily';
+  baseUrl: string;
+  hasKey: boolean;
+}
+
+/** Which engine `web_search` uses: keyless by default, or SearXNG, Brave or Tavily. */
+async function searchCard(): Promise<HTMLElement> {
+  let current = await tauriInvoke<SearchSettings>('chat_search_settings');
+  const ENGINES: [SearchSettings['engine'], string, string][] = [
+    ['auto', 'Keyless (default)', 'Bing results, with DuckDuckGo as a fallback. No account needed.'],
+    ['searxng', 'SearXNG', 'Your own or a trusted instance; private and free. JSON output must be enabled on it.'],
+    ['brave', 'Brave Search', 'Independent index; needs a Brave Search API key.'],
+    ['tavily', 'Tavily', 'Made for AI agents; needs a Tavily API key.'],
+  ];
+  const engine = h('select', { class: 'input' }, ENGINES.map(([v, label]) => h('option', { value: v, selected: v === current.engine }, label)));
+  const hint = h('small', { class: 'muted' });
+  const baseUrl = h('input', { class: 'input', value: current.baseUrl, placeholder: 'https://searx.example.org' });
+  const key = h('input', { class: 'input', type: 'password', placeholder: current.hasKey ? 'Saved in the keychain' : 'API key' });
+  const urlField = h('div', { class: 'field' }, h('label', { class: 'field-label' }, 'Instance address'), baseUrl);
+  const keyField = h('div', { class: 'field' }, h('label', { class: 'field-label' }, 'API key'), key);
+  const sync = () => {
+    const v = engine.value as SearchSettings['engine'];
+    hint.textContent = ENGINES.find((e) => e[0] === v)?.[2] ?? '';
+    urlField.hidden = v !== 'searxng';
+    keyField.hidden = v !== 'brave' && v !== 'tavily';
+  };
+  engine.addEventListener('change', sync);
+  sync();
+  const save = h('button', { class: 'btn btn-primary' }, 'Save');
+  save.addEventListener('click', async () => {
+    try {
+      current = await tauriInvoke<SearchSettings>('chat_save_search_settings', { settings: { engine: engine.value, baseUrl: baseUrl.value, hasKey: current.hasKey }, key: key.value.trim() || null });
+      key.value = '';
+      key.placeholder = current.hasKey ? 'Saved in the keychain' : 'API key';
+      toast('Saved. If the engine fails, the keyless search answers instead.');
+    } catch (e) {
+      toast(String(e), 'error');
+    }
+  });
+  return card(
+    h('h3', {}, 'Web search'),
+    h('p', { class: 'muted' }, 'The engine the assistant searches the web with.'),
+    h('label', { class: 'field-label' }, 'Engine'),
+    engine,
+    hint,
+    urlField,
+    keyField,
+    h('div', { class: 'card-actions' }, save)
+  );
 }
 
 interface EmbeddingSettings {
