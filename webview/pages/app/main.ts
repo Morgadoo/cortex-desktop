@@ -182,6 +182,11 @@ function renderAgents(): HTMLElement {
   return section;
 }
 
+function switchMode(mode: 'work' | 'code' | 'agents') {
+  state.mode = mode;
+  navigate(mode === 'agents' ? { kind: 'page', page: 'agents' } : { kind: 'home' });
+}
+
 function newChat() {
   navigate({ kind: 'home' });
   composer.setText('');
@@ -202,7 +207,7 @@ function conversationLink(id: string, title: string, pinned: boolean, nested = f
   const running = state.live.has(id) && !state.live.get(id)?.error;
   return h(
     'div',
-    { class: `conv-link${active ? ' active' : ''}${nested ? ' nested' : ''}`, on: { click: () => navigate({ kind: 'chat', id }) }, title },
+    { class: `conv-link${active ? ' active' : ''}${nested ? ' nested' : ''}`, 'data-chat-id': id, on: { click: () => navigate({ kind: 'chat', id }) }, title },
     pinned ? icon('pin', 13) : null,
     h('span', { class: 'conv-title' }, title),
     state.conversations.find((c) => c.id === id)?.unread ? h('span', { class: 'unread-dot' }) : null,
@@ -324,12 +329,19 @@ let sidebarExpanded = false;
 
 function renderConversations(): HTMLElement {
   const code = state.mode === 'code';
-  const section = h('div', { class: 'sidebar-section' }, sectionHeading(code ? 'Sessions' : 'Chats'));
-  const loose = state.conversations.filter((c) => !c.archived && !c.projectId && !c.agentId && Boolean(c.workdir) === code);
+  const section = h('div', { class: 'sidebar-section' });
+  const all = state.conversations.filter((c) => !c.archived && !c.projectId && !c.agentId && Boolean(c.workdir) === code);
+  const pinned = all.filter((c) => c.pinned);
+  const loose = all.filter((c) => !c.pinned);
+  if (pinned.length) {
+    section.append(sectionHeading('Pinned'));
+    for (const c of pinned) section.append(conversationLink(c.id, c.title, true));
+  }
+  section.append(sectionHeading(code ? 'Sessions' : 'Chats'));
   if (!loose.length) section.append(h('p', { class: 'sidebar-empty' }, code ? 'No sessions yet' : 'No chats yet'));
   // A history of years stays a short list: the newest, the pinned and the open one, then more on request.
   const openId = state.view.kind === 'chat' ? state.view.id : null;
-  const shown = sidebarExpanded ? loose : loose.filter((c, i) => i < SIDEBAR_LIMIT || c.pinned || c.id === openId);
+  const shown = sidebarExpanded ? loose : loose.filter((c, i) => i < SIDEBAR_LIMIT || c.id === openId);
   for (const c of shown) section.append(conversationLink(c.id, c.title, c.pinned));
   if (loose.length > shown.length || (sidebarExpanded && loose.length > SIDEBAR_LIMIT)) {
     section.append(
@@ -466,7 +478,7 @@ function renderFooter(): HTMLElement {
 
 function openSearch() {
   void modal((close) => {
-    const input = h('input', { class: 'input', placeholder: 'Search everything you have discussed, or #tag' });
+    const input = h('input', { class: 'input', placeholder: 'Search chats and actions, or #tag' });
     const results = h('div', { class: 'search-results' });
     const row = (c: { id: string; title: string; archived: boolean; tags: string[]; updatedAt: string }, snippet: HTMLElement | null) =>
       h(
@@ -484,21 +496,57 @@ function openSearch() {
       text.split(pattern).forEach((piece, i) => out.append(i % 2 ? h('mark', {}, piece) : piece));
       return out;
     };
+    const actions: { label: string; icon: string; keys?: string; run: () => void }[] = [
+      { label: 'New chat', icon: 'plus', keys: 'Ctrl+N', run: newChat },
+      { label: 'Switch to Work', icon: 'chat', keys: 'Ctrl+Shift+1', run: () => switchMode('work') },
+      { label: 'Switch to Code', icon: 'terminal', keys: 'Ctrl+Shift+2', run: () => switchMode('code') },
+      { label: 'Switch to Agents', icon: 'sparkle', keys: 'Ctrl+Shift+3', run: () => switchMode('agents') },
+      { label: 'Skills', icon: 'skill', run: () => navigate({ kind: 'page', page: 'skills' }) },
+      { label: 'Knowledge', icon: 'book', run: () => navigate({ kind: 'page', page: 'knowledge' }) },
+      { label: 'Connectors', icon: 'plug', run: () => navigate({ kind: 'page', page: 'connectors' }) },
+      { label: 'Libraries', icon: 'library', run: () => navigate({ kind: 'page', page: 'libraries' }) },
+      { label: 'Workflows', icon: 'workflow', run: () => navigate({ kind: 'page', page: 'workflows' }) },
+      { label: 'Scheduled', icon: 'clock', run: () => navigate({ kind: 'page', page: 'scheduled' }) },
+      { label: 'Apps', icon: 'apps', run: () => navigate({ kind: 'page', page: 'apps' }) },
+      { label: 'Settings', icon: 'settings', keys: 'Ctrl+,', run: () => void openSettings() },
+      { label: 'Providers & models', icon: 'key', run: () => void openSettings('providers') },
+      { label: 'Audio settings', icon: 'mic', run: () => void openSettings('audio') },
+      { label: 'Appearance', icon: 'palette', run: () => void openSettings('appearance') },
+      { label: 'Recently deleted', icon: 'trash', run: () => void openSettings('profile') },
+      { label: 'Archived chats', icon: 'archive', run: openArchived },
+      { label: 'Toggle sidebar', icon: 'sidebar', keys: 'Ctrl+B', run: () => { state.sidebarCollapsed = !state.sidebarCollapsed; changed(); } },
+      { label: "What's new", icon: 'sparkle', run: openWhatsNew },
+    ];
+    const actionRows = (q: string) => {
+      const found = actions.filter((a) => !q || a.label.toLowerCase().includes(q));
+      if (!found.length) return [];
+      return [
+        h('div', { class: 'menu-heading' }, 'Actions'),
+        ...found.slice(0, q ? 6 : 15).map((a) =>
+          h('button', { class: 'menu-item', on: { click: () => { close(); a.run(); } } }, icon(a.icon, 16), h('span', {}, a.label), a.keys ? h('kbd', {}, a.keys) : null)
+        ),
+      ];
+    };
     let latest = 0;
     const render = async () => {
       const q = input.value.toLowerCase().trim();
       // `#tag` matches tags; words search titles and everything said, through the index.
       if (!q || q.startsWith('#')) {
         const tag = q.slice(1);
-        const found = state.conversations.filter((c) => !q || c.tags.some((t) => t.startsWith(tag))).slice(0, 30);
-        clear(results, found.length ? found.map((c) => row(c, null)) : h('p', { class: 'muted' }, 'Nothing found.'));
+        const found = state.conversations.filter((c) => !q || c.tags.some((t) => t.startsWith(tag))).slice(0, q ? 30 : 8);
+        clear(results, q ? null : actionRows(''), found.length ? [h('div', { class: 'menu-heading' }, 'Chats'), ...found.map((c) => row(c, null))] : h('p', { class: 'muted' }, 'Nothing found.'));
         return;
       }
       const ticket = ++latest;
       const hits = await api.search(q).catch(() => []);
       if (ticket !== latest) return;
       const terms = q.split(/\s+/).filter(Boolean);
-      clear(results, hits.length ? hits.map((hit) => row(hit, hit.snippet ? marked(hit.snippet, terms) : null)) : h('p', { class: 'muted' }, 'Nothing found in your conversations.'));
+      const acts = actionRows(q);
+      clear(
+        results,
+        acts,
+        hits.length ? [h('div', { class: 'menu-heading' }, 'Chats'), ...hits.map((hit) => row(hit, hit.snippet ? marked(hit.snippet, terms) : null))] : acts.length ? null : h('p', { class: 'muted' }, 'Nothing found in your conversations.')
+      );
     };
     input.addEventListener('input', () => void render());
     input.addEventListener('keydown', (e) => {
@@ -591,6 +639,26 @@ async function start() {
     } else if (mod && e.shiftKey && e.key.toLowerCase() === 'o') {
       e.preventDefault();
       newChat();
+    } else if (mod && !e.shiftKey && e.key.toLowerCase() === 'n') {
+      e.preventDefault();
+      newChat();
+    } else if (mod && !e.shiftKey && e.key.toLowerCase() === 'b') {
+      e.preventDefault();
+      state.sidebarCollapsed = !state.sidebarCollapsed;
+      changed();
+    } else if (mod && e.shiftKey && ['1', '2', '3', '!', '@', '#'].includes(e.key)) {
+      // Ctrl+Shift+1 / 2 / 3: Work, Code, Agents.
+      e.preventDefault();
+      const mode = (['work', 'code', 'agents'] as const)[Math.max(['1', '2', '3'].indexOf(e.key), ['!', '@', '#'].indexOf(e.key))]!;
+      switchMode(mode);
+    } else if (mod && !e.shiftKey && /^[1-9]$/.test(e.key)) {
+      // Ctrl+1–9: the chats in the sidebar, in order.
+      const links = [...document.querySelectorAll<HTMLElement>('.sidebar [data-chat-id]')];
+      const target = links[Number(e.key) - 1];
+      if (target?.dataset.chatId) {
+        e.preventDefault();
+        navigate({ kind: 'chat', id: target.dataset.chatId });
+      }
     }
   });
 

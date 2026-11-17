@@ -383,7 +383,8 @@ function renderDelegate(part: Extract<Part, { kind: 'tool' }>, live: boolean, du
     if (report) {
       const md = h('div', { class: 'markdown small' });
       md.append(markdown(report.report));
-      body.append(h('div', { class: 'step-label' }, 'Report'), md);
+      const steps = button({ variant: 'link', size: 'sm', icon: 'chevronRight', label: 'View every step', onClick: () => void showWorkerSteps(part.callId, i, task.title ?? `Task ${i + 1}`) });
+      body.append(h('div', { class: 'step-label' }, 'Report'), md, steps);
     }
     row.append(body);
     return row;
@@ -1466,7 +1467,13 @@ class Composer {
     const mic = h('button', { class: `icon-btn${this.recorder ? ' recording' : ''}`, title: this.recorder ? 'Stop and transcribe' : 'Dictate' }, icon(this.recorder ? 'stop' : 'mic', 17));
     mic.addEventListener('click', () => void this.toggleDictation());
 
-    const dictation = this.transcribing ? h('span', { class: 'dots' }) : this.recorder ? mic : null;
+    const discard = h('button', { class: 'icon-btn', title: 'Discard the recording' }, icon('close', 16));
+    discard.addEventListener('click', () => {
+      this.recorder?.cancel();
+      this.recorder = null;
+      this.renderBar();
+    });
+    const dictation = this.transcribing ? h('span', { class: 'dots' }) : this.recorder ? h('span', { class: 'dictation' }, discard, mic) : null;
     clear(this.bar, h('div', { class: 'bar-left' }, plus, approval), h('div', { class: 'bar-right' }, speed, modelBtn, dictation, action));
   }
 
@@ -1480,10 +1487,17 @@ class Composer {
     if (this.startingDictation) return;
     this.startingDictation = true;
     try {
-      const media = await tauriInvoke<{ speechModel: string | null }>('chat_media_models');
-      if (!media.speechModel) {
-        toast('Voice input needs a provider with speech-to-text, such as OpenAI or Groq.', 'error');
-        return void openSettings('providers');
+      const engine = audioSettings?.stt.engine ?? 'provider';
+      if (engine === 'off') {
+        toast('Voice input is off. Choose a speech-to-text engine in Settings → Audio.', 'error');
+        return void openSettings('audio');
+      }
+      if (engine === 'provider') {
+        const media = await tauriInvoke<{ speechModel: string | null }>('chat_media_models');
+        if (!media.speechModel) {
+          toast('Voice input needs speech-to-text: add OpenAI or Groq, or choose another engine in Settings → Audio.', 'error');
+          return void openSettings('audio');
+        }
       }
       this.recorder = await startRecording();
       this.renderBar();
@@ -1804,9 +1818,9 @@ function renderApprovals(): HTMLElement | null {
     h(
       'div',
       { class: 'dialog-actions' },
-      h('button', { class: 'btn btn-secondary', on: { click: () => respond(false) } }, 'Deny'),
+      h('button', { class: 'btn btn-secondary', on: { click: () => respond(false) } }, 'Decline'),
       h('button', { class: 'btn btn-secondary', on: { click: () => respond(true, true) } }, 'Always allow'),
-      h('button', { class: 'btn btn-primary', on: { click: () => respond(true) } }, 'Allow once')
+      h('button', { class: 'btn btn-primary', on: { click: () => respond(true) } }, 'Continue')
     )
   );
 }
@@ -2403,4 +2417,32 @@ function countSkillUse(name: string) {
   const uses = skillUses();
   uses[name] = (uses[name] ?? 0) + 1;
   writeStored(SKILL_USE_KEY, uses);
+}
+
+/** A sub-agent's transcript: each tool it called, with what came back, then its report. */
+async function showWorkerSteps(callId: string, index: number, title: string) {
+  const steps = await api.subagentTranscript(callId, index).catch(() => []);
+  void modal((close) =>
+    h(
+      'div',
+      { class: 'dialog-small wide worker-steps' },
+      modalHeader(title, close, { flush: true }),
+      steps.length
+        ? h(
+            'div',
+            { class: 'timeline' },
+            steps.map((s, n) =>
+              s.kind === 'call'
+                ? h(
+                    'details',
+                    { class: `worker-step${s.isError ? ' failed' : ''}` },
+                    h('summary', {}, h('span', { class: 'muted' }, `${n + 1}.`), icon(toolLabel(s.tool).icon, 15), h('strong', {}, toolLabel(s.tool).action), h('span', { class: 'muted worker-step-input' }, s.input)),
+                    h('pre', { class: 'step-pre' }, s.output)
+                  )
+                : h('div', { class: 'worker-step report' }, h('div', { class: 'step-label' }, 'Report'), markdown(s.output))
+            )
+          )
+        : h('p', { class: 'muted' }, 'The steps of this worker were not kept (it ran before this version).')
+    )
+  );
 }

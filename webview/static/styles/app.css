@@ -1165,3 +1165,13 @@ button.usage-meter:hover { background: var(--hover); }
 .whats-new li { margin: 4px 0 4px 18px; list-style: disc; color: var(--text-muted); }
 .usage-gauge span { white-space: nowrap; } .usage-gauge { font-size: var(--fs-xs, 12px); }
 .sticky-prompt { top: -8px; padding-top: 14px; background: var(--bg-elevated); }
+
+.worker-steps .timeline { display: flex; flex-direction: column; gap: 6px; max-height: 65vh; overflow-y: auto; }
+.worker-step summary { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 4px; border-radius: var(--radius-sm); }
+.worker-step summary:hover { background: var(--bg-hover); }
+.worker-step-input { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; font-size: var(--fs-sm); }
+.worker-step.failed strong { color: var(--danger); }
+.worker-step.report { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 6px; }
+
+.tool-toggle.ask { border-color: var(--warning, #d9a441); color: var(--warning, #d9a441); background: color-mix(in srgb, var(--warning, #d9a441) 10%, transparent); }
+.tool-toggle.blocked { opacity: 0.6; }

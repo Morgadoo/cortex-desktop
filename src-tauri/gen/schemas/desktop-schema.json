@@ -663,6 +663,12 @@
           "markdownDescription": "Read how the stored data is doing."
         },
         {
+          "description": "Read what a sub-agent did.",
+          "type": "string",
+          "const": "allow-chat-subagent-transcript",
+          "markdownDescription": "Read what a sub-agent did."
+        },
+        {
           "description": "Forget finished background commands.",
           "type": "string",
           "const": "allow-chat-terminal-clear",

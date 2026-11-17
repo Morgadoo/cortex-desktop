@@ -33,6 +33,10 @@ pub struct Agent {
     /// Skills it may load; all enabled ones when empty.
     #[serde(default)]
     pub skills: Vec<String>,
+    /// Tools (names or connector ids) that always ask before running for this agent, whatever
+    /// the approval mode: the "Ask" level of a tool policy (allowed / ask / blocked).
+    #[serde(default)]
+    pub ask_tools: Vec<String>,
     /// Think longer by default.
     #[serde(default)]
     pub think: bool,
@@ -244,12 +248,27 @@ pub fn parse_draft(text: &str, tools: &[&str], skills: &[String]) -> Result<Agen
         model: None,
         tools: list("tools").into_iter().filter(|t| tools.contains(&t.as_str())).collect(),
         skills: list("skills").into_iter().filter(|s| skills.contains(s)).collect(),
+        ask_tools: Vec::new(),
         think: value.get("think").and_then(|v| v.as_bool()).unwrap_or(false),
         fallback_model: None,
         monthly_budget: None,
         created_at: Utc::now(),
         name,
     })
+}
+
+/// The approval mode for one call: an agent's "ask" tools ask even when the mode would not.
+pub fn mode_for(agent: Option<&Agent>, tool: &str, mode: super::tools::ApprovalMode) -> super::tools::ApprovalMode {
+    use super::tools::ApprovalMode;
+    let Some(agent) = agent else { return mode };
+    let connector = tool.split_once("__").map_or(tool, |(c, _)| c);
+    let ask = agent.ask_tools.iter().any(|t| t == tool || t == connector);
+    match mode {
+        ApprovalMode::Auto | ApprovalMode::AcceptEdits if ask => ApprovalMode::Ask,
+        // Nobody can answer during a scheduled run: an "ask" tool is refused.
+        ApprovalMode::Autonomous if ask => ApprovalMode::Unattended,
+        other => other,
+    }
 }
 
 /// Ready-made agents a user can add with one click.
@@ -263,6 +282,7 @@ pub fn templates() -> Vec<Agent> {
         model: None,
         tools: tools.iter().map(|s| s.to_string()).collect(),
         skills: Vec::new(),
+        ask_tools: Vec::new(),
         think: false,
         fallback_model: None,
         monthly_budget: None,
@@ -350,6 +370,17 @@ mod tests {
         let prompt = team_prompt(&team, Some("researcher")).unwrap();
         assert!(prompt.contains("Writer") && !prompt.contains("**Researcher**"));
         assert!(team_prompt(&team[..1], Some("researcher")).is_none());
+    }
+
+    #[test]
+    fn ask_tools_raise_the_approval_mode() {
+        use crate::chat::tools::ApprovalMode;
+        let mut agent = templates().remove(0);
+        agent.ask_tools = vec!["bash".into()];
+        assert_eq!(mode_for(Some(&agent), "bash__run", ApprovalMode::Auto), ApprovalMode::Ask);
+        assert_eq!(mode_for(Some(&agent), "bash__run", ApprovalMode::Autonomous), ApprovalMode::Unattended);
+        assert_eq!(mode_for(Some(&agent), "web_search", ApprovalMode::Auto), ApprovalMode::Auto);
+        assert_eq!(mode_for(None, "bash__run", ApprovalMode::Auto), ApprovalMode::Auto);
     }
 
     #[test]

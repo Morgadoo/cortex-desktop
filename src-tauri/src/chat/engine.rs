@@ -690,11 +690,11 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
             name == ASK_USER
                 || offered.iter().find(|t| t.name == name).is_some_and(|tool| {
                     tool.connector_id.is_some()
-                        && tools::needs_approval(tool, &Value::Object(call.function.arguments.clone()), request.approval)
+                        && tools::needs_approval(tool, &Value::Object(call.function.arguments.clone()), agents::mode_for(agent.as_ref(), name, request.approval))
                 })
         };
         let mut outcomes: Vec<Option<tools::Outcome>> = (0..calls.len()).map(|_| None).collect();
-        let runner = Runner { app, config_dir: &config_dir, registry: &registry, offered: &offered, model: &model, request, id };
+        let runner = Runner { app, config_dir: &config_dir, registry: &registry, offered: &offered, model: &model, request, id, agent: agent.as_ref() };
         let concurrent = futures::future::join_all(
             calls.iter().enumerate().filter(|(_, c)| !waits_on_user(c)).map(|(i, c)| {
                 let runner = &runner;
@@ -785,6 +785,7 @@ struct Runner<'a> {
     model: &'a DynModel<Completion>,
     request: &'a TurnRequest,
     id: &'a str,
+    agent: Option<&'a agents::Agent>,
 }
 
 impl Runner<'_> {
@@ -850,7 +851,7 @@ impl Runner<'_> {
             return builtins::run(self.config_dir, name, &arguments).await;
         }
         match self.offered.iter().find(|t| t.name == name) {
-            Some(tool) => tools::execute(self.app, self.registry, tool, arguments, self.request.approval, self.id).await,
+            Some(tool) => tools::execute(self.app, self.registry, tool, arguments, agents::mode_for(self.agent, name, self.request.approval), self.id).await,
             None => tools::Outcome { text: format!("There is no tool named {name}."), is_error: true },
         }
     }
@@ -883,19 +884,24 @@ impl Runner<'_> {
                 let Some(dir) = store::load_conversation(self.config_dir, self.id).ok().and_then(|c| c.workdir) else {
                     return fail("Background commands need a coding session with a folder.");
                 };
-                match self.request.approval {
+                let gate = ChatTool {
+                    name: "terminal__start".into(),
+                    description: String::new(),
+                    parameters: Value::Null,
+                    connector_id: Some("terminal".into()),
+                    tool_name: "start".into(),
+                    read_only: false,
+                };
+                // Smart-approve: a command that is hard to undo asks even in Full auto.
+                let risky = tools::risk(&gate, arguments);
+                match agents::mode_for(self.agent, terminal::START, self.request.approval) {
                     ApprovalMode::Plan => return fail("Plan mode: nothing is started yet. Put this command in your plan."),
                     ApprovalMode::Unattended => return fail("This scheduled run may not start commands."),
-                    ApprovalMode::Auto | ApprovalMode::Autonomous => {}
-                    ApprovalMode::Ask | ApprovalMode::AcceptEdits => {
-                        let gate = ChatTool {
-                            name: "terminal__start".into(),
-                            description: String::new(),
-                            parameters: Value::Null,
-                            connector_id: Some("terminal".into()),
-                            tool_name: "start".into(),
-                            read_only: false,
-                        };
+                    ApprovalMode::Autonomous if risky.is_some() => {
+                        return fail(&format!("This command was not started: {}, and nobody is watching this scheduled run to approve it.", risky.unwrap_or_default()))
+                    }
+                    ApprovalMode::Auto | ApprovalMode::Autonomous if risky.is_none() => {}
+                    _ => {
                         if tools::request_approval(self.app, &gate, arguments).await == ApprovalDecision::Deny {
                             return fail("The user declined to start this command. Do not retry it; ask what they would like instead.");
                         }

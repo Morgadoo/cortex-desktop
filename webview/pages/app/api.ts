@@ -167,6 +167,7 @@ export interface Agent {
   model: string | null;
   tools: string[];
   skills: string[];
+  askTools: string[];
   think: boolean;
   fallbackModel: string | null;
   monthlyBudget: number | null;
@@ -341,6 +342,7 @@ export const api = {
   agentSpend: () => call<Record<string, AgentSpend>>('chat_agent_spend'),
   draftAgent: (description: string) => call<Agent>('chat_draft_agent', { description }),
   usageMonth: () => call<AgentSpend>('chat_usage_month'),
+  subagentTranscript: (callId: string, index: number) => call<{ kind: string; tool: string; input: string; output: string; isError: boolean }[]>('chat_subagent_transcript', { callId, index }),
   saveAgent: (agent: Agent) => call<Agent[]>('chat_save_agent', { agent }),
   deleteAgent: (id: string) => call<Agent[]>('chat_delete_agent', { id }),
 

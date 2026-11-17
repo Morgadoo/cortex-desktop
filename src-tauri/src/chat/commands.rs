@@ -1042,6 +1042,12 @@ pub fn chat_usage_month(app: AppHandle) -> Result<super::agents::Spend, String> 
     Ok(total)
 }
 
+/// What a sub-agent did, step by step.
+#[tauri::command]
+pub fn chat_subagent_transcript(app: AppHandle, call_id: String, index: usize) -> Result<Vec<super::subagents::Step>, String> {
+    Ok(super::subagents::transcript(&config_dir(&app)?, &call_id, index))
+}
+
 /// Full-text search over every conversation's title and messages.
 #[tauri::command]
 pub async fn chat_search(app: AppHandle, query: String) -> Result<Vec<super::index::Hit>, String> {

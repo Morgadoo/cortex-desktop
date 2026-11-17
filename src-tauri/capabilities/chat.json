@@ -84,6 +84,7 @@
     "allow-chat-agent-spend",
     "allow-chat-draft-agent",
     "allow-chat-usage-month",
+    "allow-chat-subagent-transcript",
     "allow-chat-read-spreadsheet",
     "allow-chat-terminal-list",
     "allow-chat-terminal-start",

@@ -149,6 +149,12 @@ async fn run_one(
     let definitions: Vec<_> = tools.iter().filter_map(ChatTool::definition).collect();
     let system = worker_preamble(&task, agent);
     let mut messages = vec![Message::user(format!("Begin: {}", task.title))];
+    let mut steps: Vec<Step> = Vec::new();
+    let finish = |steps: &mut Vec<Step>, report: Report| {
+        steps.push(Step { kind: "text".into(), tool: String::new(), input: String::new(), output: report.report.clone(), is_error: report.status != "done" });
+        save_transcript(config_dir, call_id, index, steps);
+        report
+    };
 
     for step in 0..=MAX_WORKER_STEPS {
         let last = step == MAX_WORKER_STEPS;
@@ -164,7 +170,7 @@ async fn run_one(
             Ok(r) => r,
             Err(e) => {
                 progress("failed", short(&e.to_string(), 120));
-                return Report { title: task.title.clone(), status: "failed", report: e.to_string(), steps: step };
+                return finish(&mut steps, Report { title: task.title.clone(), status: "failed", report: e.to_string(), steps: step });
             }
         };
         let calls: Vec<ToolCall> = response.tool_calls().cloned().collect();
@@ -187,11 +193,11 @@ async fn run_one(
             }
             if !is_report(&text) {
                 progress("failed", "No report".into());
-                return Report { title: task.title.clone(), status: "failed", report: "The worker did not write a report.".into(), steps: step };
+                return finish(&mut steps, Report { title: task.title.clone(), status: "failed", report: "The worker did not write a report.".into(), steps: step });
             }
             let report = short(&text, MAX_REPORT_CHARS);
             progress("done", format!("Done after {step} tool steps"));
-            return Report { title: task.title.clone(), status: "done", report, steps: step };
+            return finish(&mut steps, Report { title: task.title.clone(), status: "done", report, steps: step });
         }
         progress("running", activity(&calls[0]));
         let outcomes = join_all(calls.iter().map(|call| {
@@ -209,6 +215,15 @@ async fn run_one(
             }
         }))
         .await;
+        for (call, outcome) in calls.iter().zip(&outcomes) {
+            steps.push(Step {
+                kind: "call".into(),
+                tool: call.function.name.to_string(),
+                input: serde_json::to_string(&call.function.arguments).unwrap_or_default(),
+                output: short(&outcome.text, STEP_OUTPUT_CHARS),
+                is_error: outcome.is_error,
+            });
+        }
         let results = calls
             .iter()
             .zip(outcomes)
@@ -221,7 +236,7 @@ async fn run_one(
         messages.push(Message::tool_results(results));
     }
     progress("failed", "Ran out of steps".into());
-    Report { title: task.title, status: "failed", report: "The worker ran out of steps without a report.".into(), steps: MAX_WORKER_STEPS }
+    finish(&mut steps, Report { title: task.title, status: "failed", report: "The worker ran out of steps without a report.".into(), steps: MAX_WORKER_STEPS })
 }
 
 /// Runs every task at once; reports come back in task order. A task for a named agent runs
@@ -254,6 +269,42 @@ pub async fn run_all(
         run_one(app, config_dir, own.as_ref().unwrap_or(model), allowed, conversation_id, call_id, i, task.clone(), agent.as_ref())
     }))
     .await
+}
+
+/// One step of a worker, kept so the user can read what it did (Vibe's subagent history).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Step {
+    /// `call` for a tool call and its result, `text` for what the worker wrote.
+    pub kind: String,
+    pub tool: String,
+    pub input: String,
+    pub output: String,
+    pub is_error: bool,
+}
+
+/// Characters of each tool result kept in a transcript.
+const STEP_OUTPUT_CHARS: usize = 2_000;
+
+fn transcript_path(config_dir: &Path, call_id: &str, index: usize) -> Option<std::path::PathBuf> {
+    let safe = !call_id.is_empty() && call_id.len() <= 200 && call_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    safe.then(|| super::store::chat_dir(config_dir).join("subagents").join(format!("{call_id}-{index}.json")))
+}
+
+fn save_transcript(config_dir: &Path, call_id: &str, index: usize, steps: &[Step]) {
+    if let Some(path) = transcript_path(config_dir, call_id, index) {
+        if let Err(e) = super::store::write_json(&path, &steps) {
+            log::warn!("could not keep a worker's transcript: {e}");
+        }
+    }
+}
+
+/// What a worker did, step by step; empty when it was not kept.
+pub fn transcript(config_dir: &Path, call_id: &str, index: usize) -> Vec<Step> {
+    transcript_path(config_dir, call_id, index)
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
 }
 
 /// What the main conversation receives.
@@ -297,6 +348,16 @@ mod tests {
         assert!(!is_report("[called tool browser__fetch with {\"url\":\"https://x\"}]"));
         assert!(!is_report("Done."));
         assert!(is_report("The AI Act's obligations for high-risk systems apply from 2 August 2026, per Article 113."));
+    }
+
+    #[test]
+    fn transcripts_are_kept_by_call() {
+        let dir = tempfile::tempdir().unwrap();
+        let steps = vec![Step { kind: "call".into(), tool: "web_search".into(), input: "{}".into(), output: "3 results".into(), is_error: false }];
+        save_transcript(dir.path(), "call_abc-1", 0, &steps);
+        assert_eq!(transcript(dir.path(), "call_abc-1", 0), steps);
+        assert!(transcript(dir.path(), "call_abc-1", 1).is_empty());
+        assert!(transcript_path(dir.path(), "../x", 0).is_none());
     }
 
     #[test]

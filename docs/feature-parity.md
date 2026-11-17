@@ -158,7 +158,7 @@ equivalent, that is what is compared.
 | Unseen indicators for sessions needing attention (2.25.8) | Unread dots on chats and agents | Done |
 | Archived sessions hidden from active lists (2.25.8) | Archive | Done |
 | Pinned todo plan (2.25.8) | Plan panel beside the conversation | Done |
-| Subagent history with live status (2.25.5) | Sub-agent rows with live status and their reports; no switching into a worker's full transcript | Partial |
+| Subagent history with live status (2.25.5) | Sub-agent rows with live status and reports; "View every step" opens a worker's transcript (each tool call, its input and result, then the report), kept apart from the main context | Done |
 | Errors and warnings inline, not pop-ups (3.1.0) | Errors are cards in the conversation; notices (like a backup model taking over) are pop-ups | Partial |
 | Large tool outputs saved to a file, start and end shown to the model (3.0.1) | Results over 24,000 characters are cut, older ones cleared; `tool_results__read` reads them back | Adapted |
 | Footer: active model and thinking level; click to change (3.0.3) | Model and Fast / Think in the composer | Done |
@@ -171,6 +171,37 @@ equivalent, that is what is compared.
 | `/teleport` to Vibe Code Web (2.26.0) | No cloud sessions | N/A |
 | Worktrees, plugins, hooks, `vibe config schema`, headless `-p` limits | CLI and coding-agent configuration | N/A |
 | Mobile apps, admin rollout, workspaces | Single-user desktop app | N/A |
+
+### 13. From Mistral's docs, page by page (24 pages, about 300 items checked)
+
+The screens without screenshots were checked against Mistral's own pages for them (Knowledge,
+Scheduled tasks, Safety and approvals, Files and Canvas, Mini apps, Custom instructions,
+Projects, Connectors and MCP connectors, Libraries, Workflows, Spreadsheets, Voice mode, Web
+search, Image generation, Code interpreter, Work Desktop, and the Code Desktop pages). The
+items most likely to differ:
+
+| Vibe (docs) | Here | Status |
+|---|---|---|
+| Approval prompt: `Continue`, `Always allow`, `Decline` | Same labels | Done |
+| Stop interrupts the task (black square) | Same | Done |
+| Pinned chats in their own **Pinned** section | Same | Done |
+| Command palette (Cmd+K) with groups: Chats, Modes, Context, Settings, View, Actions… | Ctrl+K: Actions (new chat, modes, context pages, settings, sidebar, archive, recently deleted, what's new) and Chats, with content search | Done |
+| Shortcuts: new session, sidebar, settings, Work / Code, Cmd+1–9 to sessions | Ctrl+N, Ctrl+B, Ctrl+,, Ctrl+Shift+1 / 2 / 3 (Work / Code / Agents), Ctrl+1–9 to the chats in the sidebar | Done |
+| Voice: Autosend on/off; cancel discards a recording | Send after dictation; a discard button while recording | Done |
+| Scheduled tasks: Once / Daily / Weekly (several days) / Monthly / Yearly, plain-words confirmation ("Every Monday at 9:00"), pause and resume, unread run in the sidebar | Same | Done |
+| Knowledge: inline read / write pills; edit by asking; a "Sensitive data" toggle | Citation pills for pages read; saves show as steps; facts and pages editable directly; personal-data filter in Settings | Adapted |
+| Connector detail: Interactive / Read-only functions, each with `Always allow`, `Refresh tools` | Connector page lists tools; approvals per call with Always allow | Partial |
+| Canvas: versions with arrows, change view, restore; `Ask Work` on a selection | Versions; "Ask about this" on a selection; no change-tracking view | Partial |
+| Canvas preview of HTML, React, Mermaid, Marp; several canvases as tabs | Apps (HTML, JS) in the side panel; Markdown canvases; no Mermaid / Marp preview, no tabs | Partial |
+| Mini apps: file list in code view, ZIP download | Single-file apps, downloaded as one HTML file | Adapted |
+| Public share link for apps and spreadsheets | Nothing leaves the device | N/A |
+| Spreadsheets: sheet tabs, `Open in Google Sheets` | One sheet per canvas; .xlsx / CSV download | Partial |
+| Libraries: numbered footnotes jumping to the passage, roles, org sharing | Citations by document; single user | Partial |
+| Workflows: tag in the input and above the sent message, `Workflow started: {name}` | Chip in the input and the message; the plan panel follows the steps | Done |
+| Custom MCP connector: name, Server URL, description; auth detected (none, Bearer/Basic, OAuth 2.1 with dynamic registration) | Same | Done |
+| Work Desktop: `+` → Folders → Add a folder, Remove all | Folders in the + menu | Done |
+| Code Desktop right panel: Files, Git Changes, Terminal, Debug, Background processes; diff Unified / Split | Changes view and Terminal panel; unified diff only; no Files or Debug panel | Partial |
+| Integrated browser with "Open in external browser?" | Links open in the system browser | Adapted |
 
 ## The inspiration apps
 
@@ -196,7 +227,7 @@ equivalent, that is what is compared.
 | Failover to a backup model | openbot.run | Per-agent backup model, used when the main one fails before anything streamed, with a notice | Done |
 | Cost per bot and usage limits | open.bot | Spend per agent this month (conversations, tokens, dollars) on its card and page; optional monthly budget that stops further turns | Done |
 | Approval cards in the conversation (Approve / Review / Deny) | open.bot | Approval requests appear above the composer with the call's details: allow once, always, or deny | Adapted |
-| Tool policies per bot: allowed, ask, blocked | open.bot | Per agent: the tools it may use (others blocked) and the approval mode of its runs | Partial |
+| Tool policies per bot: allowed, ask, blocked | open.bot | Per agent, each tool is Allowed, Ask first (asks even in Full auto; refused in unattended runs) or Blocked | Done |
 | Channels: Slack, Teams, phone | openbot.run, open.bot | Local desktop app with no server to receive messages | N/A |
 | Multiplayer channels, SSO, SCIM, tenants, admin plane | open.bot | Single-user app | N/A |
 | Audit trail of what bots did | open.bot | Every tool step is kept in its conversation; each agent's page lists its runs | Adapted |

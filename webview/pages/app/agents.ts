@@ -82,22 +82,28 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
       h('option', { value: '' }, 'The model chosen in the composer'),
       state.models.map((m) => h('option', { value: m.reference, selected: base?.model === m.reference }, `${m.providerLabel} · ${m.name}`))
     );
+    // A policy per tool, as open.bot's: allowed, ask first, or blocked.
     const chosen = new Set(base?.tools ?? []);
+    const asking = new Set(base?.askTools ?? []);
     const allTools = h('input', { type: 'checkbox', class: 'switch', checked: chosen.size === 0 });
     const toolGrid = h('div', { class: 'tool-grid' });
+    const level = (id: string): 'allowed' | 'ask' | 'blocked' => (asking.has(id) ? 'ask' : allTools.checked || chosen.has(id) ? 'allowed' : 'blocked');
     const renderTools = () =>
       clear(
         toolGrid,
         TOOL_CHOICES.map((t) => {
-          const on = allTools.checked || chosen.has(t.id);
+          const now = level(t.id);
+          const cycle = () => {
+            // Allowed → Ask first → Blocked (only when choosing tools) → Allowed.
+            if (now === 'allowed') { asking.add(t.id); chosen.add(t.id); }
+            else if (now === 'ask' && !allTools.checked) { asking.delete(t.id); chosen.delete(t.id); }
+            else { asking.delete(t.id); chosen.add(t.id); }
+            renderTools();
+          };
           return h(
             'button',
-            {
-              class: `tool-toggle${on ? ' on' : ''}`,
-              disabled: allTools.checked,
-              on: { click: () => { if (chosen.has(t.id)) chosen.delete(t.id); else chosen.add(t.id); renderTools(); } },
-            },
-            on ? icon('check', 14) : icon('plus', 14),
+            { class: `tool-toggle ${now}${now !== 'blocked' ? ' on' : ''}`, title: now === 'ask' ? 'Asks before every use' : now === 'blocked' ? 'Not available to this agent' : 'Allowed', on: { click: cycle } },
+            icon(now === 'allowed' ? 'check' : now === 'ask' ? 'hand' : 'close', 14),
             t.label
           );
         })
@@ -122,7 +128,8 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
           description: description.value.trim(),
           instructions: instructions.value.trim(),
           model: model.value || null,
-          tools: allTools.checked ? [] : [...chosen],
+          tools: allTools.checked ? [] : [...chosen].filter((t) => level(t) !== 'blocked'),
+          askTools: [...asking],
           skills: base?.skills ?? [],
           think: think.checked,
           fallbackModel: fallback.value || null,
@@ -165,7 +172,7 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
       ),
       h('label', { class: 'field-label' }, 'Monthly budget (US dollars)'),
       budget,
-      h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'All tools'), h('small', { class: 'muted' }, 'Turn off to choose exactly what this agent may use.')), allTools),
+      h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'All tools'), h('small', { class: 'muted' }, 'Click a tool to cycle: allowed, ask first, blocked. Turn off to block what you do not pick.')), allTools),
       toolGrid,
       h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Think longer'), h('small', { class: 'muted' }, 'Use extended reasoning by default, where the model supports it.')), think),
       error,
