@@ -75,7 +75,8 @@ export const state = {
   models: [] as Model[],
   model: null as string | null,
   speed: 'fast' as Speed,
-  approval: 'ask' as ApprovalMode,
+  // Auto by default: the assistant decides when to ask (remembered per device).
+  approval: storedMode(),
   instructions: { tone: '', custom: '', name: '' } as Instructions,
   live: new Map<string, LiveTurn>(),
   approvals: [] as ApprovalRequest[],
@@ -237,5 +238,24 @@ export function applyEvent(event: ChatEvent): boolean {
     case 'done':
       if (live) endSteps(live);
       return true;
+  }
+}
+
+function storedMode(): ApprovalMode {
+  try {
+    const saved = localStorage.getItem('lumo.mode');
+    if (saved === 'ask' || saved === 'accept_edits' || saved === 'plan' || saved === 'auto') return saved;
+  } catch {
+    // Storage unavailable: the default.
+  }
+  return 'auto';
+}
+
+export function setMode(mode: ApprovalMode) {
+  state.approval = mode;
+  try {
+    localStorage.setItem('lumo.mode', mode);
+  } catch {
+    // Remembering is a convenience.
   }
 }

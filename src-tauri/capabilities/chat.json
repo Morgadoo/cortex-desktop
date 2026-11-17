@@ -87,6 +87,8 @@
     "allow-chat-subagent-transcript",
     "allow-chat-code-files",
     "allow-chat-code-read-file",
+    "allow-chat-favicon",
+    "allow-chat-link-preview",
     "allow-chat-read-spreadsheet",
     "allow-chat-terminal-list",
     "allow-chat-terminal-start",

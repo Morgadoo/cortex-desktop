@@ -694,10 +694,13 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
                         && tools::needs_approval(tool, &Value::Object(call.function.arguments.clone()), agents::mode_for(agent.as_ref(), name, request.approval))
                 })
         };
+        // Decided once: an approval given during the step ("Always allow") must not move a call
+        // out of the sequential queue after it was kept out of the concurrent batch.
+        let sequential: Vec<bool> = calls.iter().map(|c| waits_on_user(c)).collect();
         let mut outcomes: Vec<Option<tools::Outcome>> = (0..calls.len()).map(|_| None).collect();
         let runner = Runner { app, config_dir: &config_dir, registry: &registry, offered: &offered, model: &model, request, id, agent: agent.as_ref() };
         let concurrent = futures::future::join_all(
-            calls.iter().enumerate().filter(|(_, c)| !waits_on_user(c)).map(|(i, c)| {
+            calls.iter().enumerate().filter(|(i, _)| !sequential[*i]).map(|(i, c)| {
                 let runner = &runner;
                 async move { (i, runner.run(c).await) }
             }),
@@ -715,7 +718,7 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
             None => {}
         }
         for (i, call) in calls.iter().enumerate() {
-            if outcomes[i].is_some() || !waits_on_user(call) || *cancel.borrow() {
+            if outcomes[i].is_some() || !sequential[i] || *cancel.borrow() {
                 continue;
             }
             let outcome = if call.function.name.as_str() == ASK_USER && request.approval.unattended() {
@@ -886,7 +889,19 @@ impl Runner<'_> {
         }
         match self.offered.iter().find(|t| t.name == name) {
             // Approved just now under the agent's policy: do not ask a second time.
-            Some(tool) => tools::execute(self.app, self.registry, tool, arguments, if asked { ApprovalMode::Auto } else { agents::mode_for(self.agent, name, self.request.approval) }, self.id).await,
+            Some(tool) if asked => tools::execute(self.app, self.registry, tool, arguments, ApprovalMode::Auto, self.id).await,
+            Some(tool) => {
+                let mode = agents::mode_for(self.agent, name, self.request.approval);
+                // Auto: what Ask mode would confirm gets a quick check against the request.
+                if mode == ApprovalMode::Auto && tools::risk(tool, &arguments).is_none() && tools::needs_approval(tool, &arguments, ApprovalMode::Ask) {
+                    if let Some(reason) = self.auto_check(name, &arguments).await {
+                        if tools::request_approval_because(self.app, tool, &arguments, Some(&reason)).await == ApprovalDecision::Deny {
+                            return tools::Outcome { text: "The user declined this tool call. Do not retry it; ask what they would like instead.".into(), is_error: true };
+                        }
+                    }
+                }
+                tools::execute(self.app, self.registry, tool, arguments, mode, self.id).await
+            }
             None => tools::Outcome { text: format!("There is no tool named {name}."), is_error: true },
         }
     }
@@ -935,7 +950,15 @@ impl Runner<'_> {
                     ApprovalMode::Autonomous if risky.is_some() => {
                         return fail(&format!("This command was not started: {}, and nobody is watching this scheduled run to approve it.", risky.unwrap_or_default()))
                     }
-                    ApprovalMode::Auto | ApprovalMode::Autonomous if risky.is_none() => {}
+                    ApprovalMode::Autonomous if risky.is_none() => {}
+                    // Auto: the harness evaluates the command against the request.
+                    ApprovalMode::Auto if risky.is_none() => {
+                        if let Some(reason) = self.auto_check(terminal::START, arguments).await {
+                            if tools::request_approval_because(self.app, &gate, arguments, Some(&reason)).await == ApprovalDecision::Deny {
+                                return fail("The user declined to start this command. Do not retry it; ask what they would like instead.");
+                            }
+                        }
+                    }
                     _ => {
                         if tools::request_approval(self.app, &gate, arguments).await == ApprovalDecision::Deny {
                             return fail("The user declined to start this command. Do not retry it; ask what they would like instead.");
@@ -959,6 +982,22 @@ impl Runner<'_> {
                     Err(e) => fail(&e),
                 }
             }
+        }
+    }
+
+    /// Auto mode's judgement on one change: `None` to go ahead, or why to ask the user.
+    async fn auto_check(&self, tool: &str, arguments: &Value) -> Option<String> {
+        let conversation = store::load_conversation(self.config_dir, self.id).ok()?;
+        let request = store::last_prompt(&conversation)
+            .and_then(|i| conversation.messages.get(i))
+            .map(super::context::message_text)
+            .unwrap_or_default();
+        let prompt = tools::auto_check_prompt(&request, tool, arguments);
+        let call = rig_core::completion::CompletionRequest::new(Message::user(prompt));
+        match self.model.call(call).await {
+            Ok(response) => tools::auto_check_verdict(&response.text()),
+            // No answer: asking is the safe side.
+            Err(e) => Some(format!("the safety check could not run ({})", super::context::short_error(&e.to_string()))),
         }
     }
 

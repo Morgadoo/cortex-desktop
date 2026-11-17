@@ -1,11 +1,12 @@
 /** The home screen, a conversation, and the composer they share. */
 import { tauriInvoke } from '../../shared/tauri';
-import { api, newId, type Conversation, type Part, type Turn, type UsageTotals } from './api';
+import { api, newId, type ApprovalMode, type Conversation, type Part, type Turn, type UsageTotals } from './api';
 import { clear, confirmDialog, greeting, h, icon, markdown, modal, popover, promptText, timeLabel, toast } from './dom';
-import { changed, currentModel, navigate, state, type LiveTurn } from './state';
+import { changed, currentModel, navigate, setMode, state, type LiveTurn } from './state';
 import { openSettings } from './settings';
 import { openInstructions } from './pages';
-import { closePanel, enableAskAboutSelection, renderCanvasCard, setPanelHost } from './canvas';
+import { closePanel, enableAskAboutSelection, openSidePanel, renderCanvasCard, setPanelHost } from './canvas';
+import { hostOf, previewFor, siteIcon } from './favicon';
 import { renderCodeRun, renderImage } from './coderun';
 import { startRecording, toBase64, type Recording } from './dictation';
 import { audioSettings, speakText, type Playback } from './audio';
@@ -125,6 +126,15 @@ function argumentHint(args: Record<string, unknown>): string {
   }
   return '';
 }
+
+/** The modes, in menu order; the number keys pick them while the menu is open. */
+const MODE_ORDER: ApprovalMode[] = ['auto', 'accept_edits', 'plan', 'ask'];
+const MODES: Record<ApprovalMode, { name: string; desc: string }> = {
+  auto: { name: 'Auto', desc: 'The assistant handles permission decisions' },
+  accept_edits: { name: 'Accept edits', desc: 'Automatically accept all file edits' },
+  plan: { name: 'Plan', desc: 'Create a plan before making changes' },
+  ask: { name: 'Ask', desc: 'Ask before every change' },
+};
 
 // ---------------------------------------------------------------------------------------------
 // Turn rendering
@@ -492,6 +502,23 @@ const KINDS: [RegExp, string, string][] = [
 ];
 
 /** The header of a collapsed activity group: how much of what was done, e.g. "12 searches · 30 pages". */
+/** "Created index.html" or "Edited cart.py", as Vibe names file steps; null for other tools. */
+function fileAction(part: Extract<Part, { kind: 'tool' }>): string | null {
+  if (part.name !== 'filesystem__fs_write' && part.name !== 'filesystem__fs_edit') return null;
+  const path = typeof part.arguments.path === 'string' ? part.arguments.path : '';
+  const file = path.split(/[\\/]/).filter(Boolean).pop();
+  if (!file) return null;
+  if (part.output === null) return part.name === 'filesystem__fs_write' ? `Writing ${file}` : `Editing ${file}`;
+  if (part.isError) return null;
+  let created = false;
+  try {
+    created = Boolean((JSON.parse(part.output) as { created?: boolean }).created);
+  } catch {
+    created = false;
+  }
+  return part.name === 'filesystem__fs_edit' ? `Edited ${file}` : created ? `Created ${file}` : `Wrote ${file}`;
+}
+
 function groupSummary(parts: Part[], live: boolean): string {
   const last = parts[parts.length - 1];
   if (!last) return '';
@@ -507,7 +534,7 @@ function groupSummary(parts: Part[], live: boolean): string {
     const took = seconds(ms || undefined);
     return took ? `Thought for ${took}` : 'Thought';
   }
-  if (tools.length === 1) return toolLabel(tools[0]!.name).action;
+  if (tools.length === 1) return fileAction(tools[0]!) ?? toolLabel(tools[0]!.name).action;
   const counts = new Map<string, number>();
   let other = 0;
   for (const t of tools) {
@@ -725,15 +752,28 @@ function renderAssistantTurn(conversation: Conversation, turn: Turn, isLast: boo
 interface Source {
   url: string;
   title: string;
+  snippet: string;
 }
 
 /** What an answer drew on: the pages it links to, then any it opened; search hits when it cites none. */
 function sourcesOf(parts: Part[]): Source[] {
   const found = new Map<string, Source>();
+  // What the searches said about each page, for the Sources panel.
+  const snippets = new Map<string, { title: string; snippet: string }>();
+  for (const part of parts) {
+    if (part.kind !== 'tool' || part.name !== 'web_search' || !part.output) continue;
+    try {
+      const value = JSON.parse(part.output) as { results?: { url?: string; title?: string; snippet?: string }[] };
+      for (const r of value.results ?? []) if (r.url) snippets.set(r.url.replace(/\/$/, ''), { title: r.title ?? '', snippet: r.snippet ?? '' });
+    } catch {
+      // Not JSON: no snippets from this search.
+    }
+  }
   const add = (url: string, title: string) => {
     if (!/^https?:/.test(url)) return;
     const key = url.replace(/\/$/, '');
-    if (!found.has(key)) found.set(key, { url, title: title || host(url) });
+    const known = snippets.get(key);
+    if (!found.has(key)) found.set(key, { url, title: known?.title || title || host(url), snippet: known?.snippet ?? '' });
   };
   for (const part of parts) {
     if (part.kind === 'text') {
@@ -757,25 +797,10 @@ function sourcesOf(parts: Part[]): Source[] {
 
 function renderSources(sources: Source[]): HTMLElement | null {
   if (!sources.length) return null;
-  const chip = h(
-    'button',
-    { class: 'sources-chip' },
-    'Sources',
-    h('span', { class: 'source-dots' }, sources.slice(0, 3).map((s) => h('span', { class: 'source-dot' }, host(s.url).charAt(0).toUpperCase())))
-  );
-  chip.addEventListener('click', () =>
-    popover(
-      chip,
-      h(
-        'div',
-        { class: 'menu sources-menu' },
-        h('div', { class: 'menu-heading' }, `${sources.length} ${sources.length === 1 ? 'source' : 'sources'}`),
-        sources.map((s) =>
-          h('a', { class: 'menu-item source-item', href: s.url, target: '_blank', rel: 'noopener noreferrer' }, h('span', { class: 'source-dot' }, host(s.url).charAt(0).toUpperCase()), h('span', {}, h('strong', {}, s.title), h('small', { class: 'muted' }, host(s.url))))
-        )
-      )
-    )
-  );
+  // The sites' icons, overlapping, as on Vibe's Sources chip.
+  const distinct = [...new Map(sources.map((s) => [hostOf(s.url), s])).values()];
+  const chip = h('button', { class: 'sources-chip' }, 'Sources', h('span', { class: 'source-dots' }, distinct.slice(0, 3).map((s) => siteIcon(s.url, 'source-dot'))));
+  chip.addEventListener('click', () => openSourcesPanel(sources));
   return h('div', { class: 'sources-row' }, chip);
 }
 
@@ -890,7 +915,19 @@ function renderLiveTurn(conversationId: string, live: LiveTurn): HTMLElement {
     const label = toolLabel(live.pending);
     el.append(h('div', { class: 'status-line' }, h('span', { class: 'dots' }), `${label.connector ? `${label.connector} · ` : ''}${label.action}…`));
   } else if (busy && (live.parts.length === 0 || live.parts[live.parts.length - 1]?.kind !== 'text')) {
-    el.append(h('div', { class: 'status-line' }, h('span', { class: 'dots' }), 'Thinking'));
+    const last = live.parts[live.parts.length - 1];
+    // While it reasons, the first words of the thought say what it is working out.
+    const hint = last?.kind === 'reasoning' ? last.text.trim().split(/(?<=[.!?])\s/)[0]?.slice(0, 90) ?? '' : '';
+    el.append(
+      h(
+        'div',
+        { class: 'status-line' },
+        h('span', { class: 'dots' }),
+        last?.kind === 'reasoning' ? 'Thinking' : 'Working',
+        hint ? h('span', { class: 'status-hint' }, ` · ${hint}`) : null,
+        h('span', { class: 'live-timer', 'data-start': String(live.startedAt) }, ` · ${Math.max(0, Math.round((now - live.startedAt) / 1000))}s`)
+      )
+    );
   }
   if (live.error) {
     const resume = h('button', { class: 'btn btn-secondary' }, icon('retry', 15), 'Continue');
@@ -1099,6 +1136,13 @@ class Composer {
       if (this.slashMenu && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === 'Tab' || e.key === 'Escape')) {
         e.preventDefault();
         this.slashKey(e.key);
+        return;
+      }
+      // Shift+Tab cycles the modes, as in Claude. GTK names it ISO_Left_Tab, so match the code too.
+      if (e.shiftKey && (e.key === 'Tab' || e.code === 'Tab' || e.keyCode === 9)) {
+        e.preventDefault();
+        setMode(MODE_ORDER[(MODE_ORDER.indexOf(state.approval) + 1) % MODE_ORDER.length]!);
+        this.renderBar();
         return;
       }
       // Prompt history, as in Vibe: Up and Down walk earlier prompts; Ctrl+R searches them.
@@ -1403,31 +1447,45 @@ class Composer {
     const plus = h('button', { class: 'icon-btn', title: 'Add' }, icon('plus', 18));
     plus.addEventListener('click', () => this.openPlusMenu(plus));
 
-    const APPROVALS = {
-      ask: { icon: 'hand', name: 'Ask', desc: 'Ask before every change to your files or system' },
-      accept_edits: { icon: 'pencil', name: 'Accept edits', desc: 'Approve file edits automatically; still ask for the rest' },
-      plan: { icon: 'check', name: 'Plan', desc: 'Investigate and propose a plan; change nothing yet' },
-      auto: { icon: 'bolt', name: 'Full auto', desc: 'Make changes without asking; you can stop it at any time' },
-    } as const;
-    const approvalIcon = APPROVALS[state.approval].icon;
-    const approval = h('button', { class: `icon-btn tinted${state.approval === 'auto' ? ' warn' : ''}`, title: APPROVALS[state.approval].name }, icon(approvalIcon, 17));
+    // The mode, as in Claude: who decides about changes, and whether to build or plan first.
+    const approval = h('button', { class: `mode-pill mode-${state.approval}`, title: 'Mode (Shift+Tab to switch)' }, MODES[state.approval].name);
     approval.addEventListener('click', () => {
-      const option = (value: keyof typeof APPROVALS, name: string, desc: string, ic: string) =>
-        h(
-          'button',
-          { class: `menu-item rich${state.approval === value ? ' selected' : ''}`, on: { click: () => { state.approval = value; close(); this.renderBar(); } } },
-          icon(ic, 18),
-          h('span', {}, h('strong', {}, name), h('small', {}, desc))
-        );
+      const choose = (value: ApprovalMode) => {
+        setMode(value);
+        close();
+        document.removeEventListener('keydown', onKey, true);
+        this.renderBar();
+        this.focus();
+      };
+      const onKey = (e: KeyboardEvent) => {
+        const n = Number(e.key);
+        if (n >= 1 && n <= MODE_ORDER.length) {
+          e.preventDefault();
+          e.stopPropagation();
+          choose(MODE_ORDER[n - 1]!);
+        }
+      };
+      document.addEventListener('keydown', onKey, true);
       const close = popover(
         approval,
         h(
           'div',
-          { class: 'menu' },
-          (Object.keys(APPROVALS) as (keyof typeof APPROVALS)[]).map((k) => option(k, APPROVALS[k].name, APPROVALS[k].desc, APPROVALS[k].icon))
+          { class: 'menu mode-menu' },
+          h('div', { class: 'menu-heading' }, 'Mode'),
+          MODE_ORDER.map((value, i) =>
+            h(
+              'button',
+              { class: `menu-item rich mode-item${state.approval === value ? ' selected' : ''}`, on: { click: () => choose(value) } },
+              h('span', { class: 'mode-text' }, h('strong', {}, MODES[value].name), h('small', {}, MODES[value].desc)),
+              state.approval === value ? h('span', { class: 'mode-check' }, icon('check', 16)) : h('span', { class: 'mode-check' }),
+              h('span', { class: 'mode-key' }, String(i + 1))
+            )
+          )
         ),
         'above'
       );
+      // Closing the menu any other way also stops listening for its number keys.
+      setTimeout(() => document.addEventListener('mousedown', () => document.removeEventListener('keydown', onKey, true), { once: true }));
     });
 
     const model = currentModel();
@@ -1800,7 +1858,9 @@ function renderApprovals(): HTMLElement | null {
     state.approvals.shift();
     changed();
   };
-  const reason = request.reason?.kind === 'risky'
+  const reason = request.reason?.kind === 'auto'
+    ? h('p', { class: 'approval-risk auto' }, icon('sparkle', 14), `Auto checked this and wants your OK: ${request.reason.detail ?? 'it goes beyond what you asked'}.`)
+    : request.reason?.kind === 'risky'
     ? h('p', { class: 'approval-risk' }, icon('shield', 14), `This asks even in the current mode: ${request.reason.detail ?? 'it is hard to undo'}.`)
     : request.reason
     ? h('p', { class: 'muted' }, `This conversation has read content from ${request.reason.sources.join(', ') || 'an untrusted source'}, so the call needs your approval.`)
@@ -2081,7 +2141,8 @@ export class ChatView {
     });
     this.jump.addEventListener('click', () => this.scrollToBottom(true));
     enableAskAboutSelection(this.scroller, (quote) => composer.setQuote(quote));
-    composer.attach(id, 'Type / for quick access');
+    // Coding sessions read like Vibe Code: "Send a message".
+    composer.attach(id, state.conversations.find((c) => c.id === id)?.workdir ? 'Send a message' : 'Type / for quick access');
     this.bottom.append(this.jump, this.overlay, composer.el, h('div', { class: 'disclaimer' }, 'AI can make mistakes. Check answers.'));
     this.el.append(this.header, this.scroller, this.bottom, this.planPanel, this.sidePanel);
     // Apps open beside the conversation; Escape closes the panel.
@@ -2445,6 +2506,49 @@ async function showWorkerSteps(callId: string, index: number, title: string) {
             )
           )
         : h('p', { class: 'muted' }, 'The steps of this worker were not kept (it ran before this version).')
+    )
+  );
+}
+
+// The live timers tick between events, so "Working · 12s" keeps counting while a step runs.
+setInterval(() => {
+  document.querySelectorAll<HTMLElement>('.live-timer[data-start]').forEach((el) => {
+    const start = Number(el.dataset.start);
+    if (start) el.textContent = ` · ${Math.max(0, Math.round((Date.now() - start) / 1000))}s`;
+  });
+}, 1000);
+
+/** The Sources panel beside the conversation: each page with its site, title and what it says. */
+function openSourcesPanel(sources: Source[]) {
+  const close = iconButton({ icon: 'close', title: 'Close', size: 'sm', onClick: closePanel });
+  openSidePanel(
+    `sources:${sources.map((s) => s.url).join('|')}`,
+    h(
+      'div',
+      { class: 'panel-inner sources-panel' },
+      h('div', { class: 'panel-head' }, h('strong', { class: 'panel-title sources-title' }, 'Sources'), h('span', { class: 'spacer' }), close),
+      h(
+        'div',
+        { class: 'sources-list' },
+        sources.map((s) => {
+          const snippet = h('p', { class: 'source-snippet' }, s.snippet);
+          const title = h('strong', { class: 'source-title' }, s.title);
+          // A title that is only the site's name ("RTP"), or no description: the page's own, fetched once.
+          if (!s.snippet || s.title.trim().split(/\s+/).length <= 3) {
+            void previewFor(s.url).then((p) => {
+              if (p?.title && s.title.trim().split(/\s+/).length <= 3) title.textContent = p.title;
+              if (p?.description && !s.snippet) snippet.textContent = p.description;
+            });
+          }
+          return h(
+            'a',
+            { class: 'source-entry', href: s.url, target: '_blank', rel: 'noopener noreferrer' },
+            h('div', { class: 'source-site' }, siteIcon(s.url), h('span', {}, host(s.url))),
+            title,
+            snippet
+          );
+        })
+      )
     )
   );
 }

@@ -223,6 +223,31 @@ pub fn risk(tool: &ChatTool, input: &Value) -> Option<&'static str> {
     RISKY.iter().find(|(pattern, _)| squeezed.contains(pattern)).map(|(_, why)| *why)
 }
 
+/// The instruction for Auto mode's check: may this change run without asking?
+pub fn auto_check_prompt(request: &str, tool: &str, input: &Value) -> String {
+    let input = serde_json::to_string(input).unwrap_or_default();
+    let input: String = input.chars().take(2_000).collect();
+    format!(
+        "You decide whether an AI assistant may take an action without asking its user first.\n\n\
+         The user's latest request:\n{request}\n\nThe action: {tool} with input {input}\n\n\
+         Reply with one line. Write ALLOW when the request clearly calls for this action and it is \
+         easy to undo. Write ASK: and a short reason (under 15 words, addressed to the user) when \
+         it goes beyond the request, touches things outside the user's project or folders, sends \
+         or publishes anything to other people or services, spends money, deletes or overwrites \
+         work, or is hard to undo."
+    )
+}
+
+/// Reads the check's answer: `None` to go ahead, or the reason to ask. Anything unclear asks.
+pub fn auto_check_verdict(answer: &str) -> Option<String> {
+    let line = answer.trim().lines().next().unwrap_or_default().trim();
+    if line.to_ascii_uppercase().starts_with("ALLOW") {
+        return None;
+    }
+    let reason = line.split_once(':').map_or("", |(_, r)| r).trim();
+    Some(if reason.is_empty() { "this goes beyond what you asked".into() } else { reason.trim_end_matches('.').to_string() })
+}
+
 /// Whether a call should wait for the user before it runs, under `mode`.
 pub fn needs_approval(tool: &ChatTool, input: &Value, mode: ApprovalMode) -> bool {
     if tool.read_only || tool.connector_id.is_none() || reads_only(tool, input) {
@@ -246,7 +271,14 @@ const APPROVAL_WAIT: Duration = Duration::from_secs(15 * 60);
 /// Asks the page to approve a call, with the payload the registry's own gate uses, so one
 /// approval card serves both.
 pub(crate) async fn request_approval(app: &AppHandle, tool: &ChatTool, input: &Value) -> ApprovalDecision {
-    let reason = risk(tool, input).map(|why| json!({ "kind": "risky", "sources": [], "detail": why }));
+    request_approval_because(app, tool, input, None).await
+}
+
+/// Asks with a reason Auto mode gave, shown on the card.
+pub(crate) async fn request_approval_because(app: &AppHandle, tool: &ChatTool, input: &Value, auto_reason: Option<&str>) -> ApprovalDecision {
+    let reason = risk(tool, input)
+        .map(|why| json!({ "kind": "risky", "sources": [], "detail": why }))
+        .or_else(|| auto_reason.map(|why| json!({ "kind": "auto", "sources": [], "detail": why })));
     let (request_id, rx) = approvals::register();
     let _ = app.emit(
         "tool:approval_request",
@@ -395,6 +427,12 @@ mod tests {
         let shell = tool(Some("bash"), false);
         let read = tool(Some("filesystem"), true);
         assert!(needs_approval(&write, &none, ApprovalMode::Ask));
+        // Auto's check: clear yes, a reason to ask, and unclear answers ask.
+        assert_eq!(auto_check_verdict("ALLOW"), None);
+        assert_eq!(auto_check_verdict("allow - fine"), None);
+        assert_eq!(auto_check_verdict("ASK: it emails your whole team.").as_deref(), Some("it emails your whole team"));
+        assert!(auto_check_verdict("Hmm, not sure").is_some());
+        assert!(auto_check_prompt("fix the typo", "filesystem__fs_write", &json!({"path": "a.md"})).contains("fix the typo"));
         // Smart-approve: risky calls ask even in full auto.
         let rm = json!({"command": "cd build &&  rm   -rf  ./out"});
         assert_eq!(risk(&shell, &rm), Some("it deletes files recursively"));

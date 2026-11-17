@@ -61,6 +61,14 @@ function markOpen() {
   document.querySelectorAll<HTMLElement>('.app-card[data-canvas]').forEach((card) => card.classList.toggle('compact', card.dataset.canvas === panelId));
 }
 
+/** Shows `content` in the side panel; `id` marks what is open there. */
+export function openSidePanel(id: string, content: HTMLElement) {
+  if (!panelHost) return;
+  panelId = id;
+  panelHost(content);
+  markOpen();
+}
+
 export function closePanel() {
   panelId = null;
   panelHost?.(null);

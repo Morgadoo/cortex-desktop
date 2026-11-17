@@ -467,3 +467,13 @@ commands.allow = ["chat_code_files"]
 identifier = "allow-chat-code-read-file"
 description = "Read a file of a coding session's folder."
 commands.allow = ["chat_code_read_file"]
+
+[[permission]]
+identifier = "allow-chat-favicon"
+description = "Read a site's icon for sources."
+commands.allow = ["chat_favicon"]
+
+[[permission]]
+identifier = "allow-chat-link-preview"
+description = "Read a web page's preview for a citation."
+commands.allow = ["chat_link_preview"]

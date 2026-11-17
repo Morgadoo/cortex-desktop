@@ -152,6 +152,9 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
 });
 
 /** Model output as sanitized HTML. Never pass it to innerHTML without this. */
+/** Run on every rendered Markdown fragment; favicon.ts adds icons and hover cards to citations. */
+export const markdownHooks: ((root: DocumentFragment) => void)[] = [];
+
 export function markdown(text: string, options: { breaks?: boolean } = {}): DocumentFragment {
   // `breaks` keeps single line breaks, for documents where lines matter (poems, notes, canvases).
   const html = marked.parse(text, { async: false, breaks: options.breaks ?? false }) as string;
@@ -200,6 +203,7 @@ export function markdown(text: string, options: { breaks?: boolean } = {}): Docu
     head.before(wrap);
     wrap.append(head, pre);
   }
+  for (const hook of markdownHooks) hook(template.content);
   return template.content;
 }
 

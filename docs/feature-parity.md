@@ -97,11 +97,15 @@ against the 5 that survived), and Mistral's documentation: docs.mistral.ai/vibe,
 | `/branch` / `/fork` (Vibe 2.25.3, 3.0.4) | "Branch into a new chat" in the conversation menu | Done |
 | "Jump to bottom" button (Vibe 3.1.0) | Same | Done |
 | Composer placeholder "Type / for quick access" | Same | Done |
+| Code mode (screenshots): "New Session", Extensions in the sidebar, "Send a message", "Working · 12s" / "Thinking · …" status, "Created nyan-snake.html" / "Edited …" steps | Same; Extensions opens the connectors (MCP) | Done |
+| Code mode: "Found tools" / "Loaded tool details" steps | Vibe loads tool definitions on demand; here they are offered up front | N/A |
 | Thinking, collapsed when the answer arrives | Same | Done |
 | Activity timeline; "Running N actions" while working | Same; repeated tools merge into one table | Done |
 | Search results card | Same | Done |
 | ask_user question picker | Same | Done |
 | Citations inline, Sources chip | Same | Done |
+| Citations with each site's favicon; hover card with site, copy, preview image, title and description; Sources chip with overlapping favicons; Sources side panel (favicon, domain, title, snippet) (Vibe screenshots, Nov 2026) | Same. Favicons and previews are fetched by the app, cached in `chat/favicons/` and `chat/previews/`, and shown as `data:` images, since the page loads nothing from the web | Done |
+| AFP article reader (Vibe's AFP partnership) | No news-agency feed; sources open in the browser | N/A |
 | Actions row: rate, regenerate, copy, time | Same, plus edit-and-resend on your messages | Done |
 | Skill chip on a deep-research request | Skill, workflow, library, folder and canvas requests show as chips in your message; the plan panel follows the steps | Done |
 | Canvas card (edit, copy, download, expand) | Same, with versions and "Ask about this" on selected text | Done |
@@ -183,6 +187,7 @@ items most likely to differ:
 | Vibe (docs) | Here | Status |
 |---|---|---|
 | Approval prompt: `Continue`, `Always allow`, `Decline` | Same labels | Done |
+| Mode menu as in Claude: Auto (the assistant handles permission decisions), Accept edits, Plan; number keys; Shift+Tab | Mode menu with Auto (default), Accept edits, Plan and Ask; 1–4 pick, Shift+Tab cycles, remembered. In Auto, each change Ask would confirm is checked against the user's request by the model: clear ones run, others ask with the reason; hard-to-undo commands always ask | Done |
 | Stop interrupts the task (black square) | Same | Done |
 | Pinned chats in their own **Pinned** section | Same | Done |
 | Command palette (Cmd+K) with groups: Chats, Modes, Context, Settings, View, Actions… | Ctrl+K: Actions (new chat, modes, context pages, settings, sidebar, archive, recently deleted, what's new) and Chats, with content search | Done |

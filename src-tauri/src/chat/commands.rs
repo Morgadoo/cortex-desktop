@@ -1064,6 +1064,18 @@ pub fn chat_code_read_file(app: AppHandle, conversation_id: String, path: String
     super::code::read_file(&dir, &path)
 }
 
+/// A site's icon as a `data:` URL, for sources and citations; `None` when it has none.
+#[tauri::command]
+pub async fn chat_favicon(app: AppHandle, host: String) -> Result<Option<String>, String> {
+    Ok(super::favicon::get(&config_dir(&app)?, &host).await)
+}
+
+/// A web page's title, description and preview image, for the hover card on a citation.
+#[tauri::command]
+pub async fn chat_link_preview(app: AppHandle, url: String) -> Result<super::preview::Preview, String> {
+    super::preview::get(&config_dir(&app)?, &url).await
+}
+
 /// Full-text search over every conversation's title and messages.
 #[tauri::command]
 pub async fn chat_search(app: AppHandle, query: String) -> Result<Vec<super::index::Hit>, String> {

@@ -141,12 +141,14 @@ function renderSidebar() {
     clear(sidebar, top, modes, scroll, renderFooter());
     return;
   }
-  nav.append(navItem('plus', state.mode === 'code' ? 'New session' : 'New Chat', v.kind === 'home', newChat));
+  nav.append(navItem('plus', state.mode === 'code' ? 'New Session' : 'New Chat', v.kind === 'home', newChat));
   if (state.mode === 'work') {
     nav.append(navItem('apps', 'Apps', isPage('apps'), () => navigate({ kind: 'page', page: 'apps' }), h('span', { class: 'badge' }, 'Preview')));
   }
   const contextActive = CONTEXT_PAGES.some((c) => isPage(c.page));
   nav.append(navItem('context', 'Context', contextActive && !state.contextOpen, () => { state.contextOpen = !state.contextOpen; changed(); }));
+  // Code mode's Extensions, as in Vibe: the tools a session can plug in (MCP connectors).
+  if (state.mode === 'code') nav.append(navItem('apps', 'Extensions', v.kind === 'page' && v.page === 'connectors', () => navigate({ kind: 'page', page: 'connectors' })));
   if (state.contextOpen || contextActive) {
     const sub = h('div', { class: 'subnav' });
     for (const c of CONTEXT_PAGES) {

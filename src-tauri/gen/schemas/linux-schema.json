@@ -369,6 +369,12 @@
           "markdownDescription": "Save a conversation as Markdown to a file the user picks."
         },
         {
+          "description": "Read a site's icon for sources.",
+          "type": "string",
+          "const": "allow-chat-favicon",
+          "markdownDescription": "Read a site's icon for sources."
+        },
+        {
           "description": "Branch a conversation into a new one.",
           "type": "string",
           "const": "allow-chat-fork-conversation",
@@ -427,6 +433,12 @@
           "type": "string",
           "const": "allow-chat-knowledge-pages",
           "markdownDescription": "List knowledge pages."
+        },
+        {
+          "description": "Read a web page's preview for a citation.",
+          "type": "string",
+          "const": "allow-chat-link-preview",
+          "markdownDescription": "Read a web page's preview for a citation."
         },
         {
           "description": "List agents.",

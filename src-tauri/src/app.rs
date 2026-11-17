@@ -150,6 +150,8 @@ pub fn run() {
                 chat::commands::chat_subagent_transcript,
                 chat::commands::chat_code_files,
                 chat::commands::chat_code_read_file,
+                chat::commands::chat_favicon,
+                chat::commands::chat_link_preview,
                 chat::commands::chat_read_spreadsheet,
                 chat::commands::chat_terminal_list,
                 chat::commands::chat_terminal_start,
