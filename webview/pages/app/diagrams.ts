@@ -4,7 +4,7 @@
  * from its CDN; the frame reports its height so it fits the diagram.
  */
 import { appUrl } from './canvas';
-import { h, markdownHooks } from './dom';
+import { h, icon, markdown, markdownHooks } from './dom';
 
 const frames = new Map<string, HTMLIFrameElement>();
 let counter = 0;
@@ -41,18 +41,42 @@ export function isMarp(text: string): boolean {
   return /^\s*---\s*\n[\s\S]*?\bmarp\s*:\s*true\b[\s\S]*?\n---/.test(text);
 }
 
+/**
+ * A block shown two ways, as the user asked: the rendered preview, or its source (the code block
+ * with its copy button). Preview first; the switch sits in the block's head.
+ */
+function previewOrCode(block: Element, label: string, preview: () => Node): HTMLElement {
+  const body = h('div', { class: 'preview-body' });
+  const previewBtn = h('button', { class: 'seg active', title: 'Preview' }, icon('eye', 14), 'Preview');
+  const codeBtn = h('button', { class: 'seg', title: 'Code' }, icon('code', 14), 'Code');
+  let rendered: Node | null = null;
+  const show = (asPreview: boolean) => {
+    previewBtn.classList.toggle('active', asPreview);
+    codeBtn.classList.toggle('active', !asPreview);
+    rendered ??= preview();
+    body.replaceChildren(asPreview ? rendered : block);
+  };
+  previewBtn.addEventListener('click', () => show(true));
+  codeBtn.addEventListener('click', () => show(false));
+  const wrap = h('div', { class: 'preview-block' }, h('div', { class: 'preview-head' }, h('span', { class: 'muted' }, label), h('span', { class: 'spacer' }), h('div', { class: 'segmented' }, previewBtn, codeBtn)), body);
+  block.replaceWith(wrap);
+  show(true);
+  return wrap;
+}
+
 function drawDiagrams(root: DocumentFragment) {
   for (const code of root.querySelectorAll<HTMLElement>('pre code.language-mermaid, pre code.language-marp, pre code.language-markdown, pre code.language-md')) {
     const block = code.closest('.code-block') ?? code.closest('pre');
     if (!block) continue;
-    // A Markdown block is a deck only when its front matter says `marp: true`.
+    const text = code.textContent ?? '';
     const markdownBlock = code.classList.contains('language-markdown') || code.classList.contains('language-md');
-    if (markdownBlock && !isMarp(code.textContent ?? '')) continue;
-    const kind = code.classList.contains('language-mermaid') ? 'mermaid' : 'marp';
-    const frame = diagramFrame(code.textContent ?? '', kind);
-    const source = h('details', { class: 'diagram-source' }, h('summary', {}, kind === 'marp' ? 'Slides source' : 'Diagram source'));
-    block.replaceWith(h('div', { class: 'diagram' }, frame, source));
-    source.append(block);
+    // Markdown is a Marp deck when its front matter says `marp: true`; otherwise rendered Markdown.
+    const kind = code.classList.contains('language-mermaid') ? 'mermaid' : !markdownBlock || isMarp(text) ? 'marp' : 'markdown';
+    if (kind === 'markdown') {
+      previewOrCode(block, 'Markdown', () => h('div', { class: 'markdown preview-markdown' }, markdown(text)));
+    } else {
+      previewOrCode(block, kind === 'marp' ? 'Slides' : 'Diagram', () => diagramFrame(text, kind)).classList.add('diagram');
+    }
   }
 }
 

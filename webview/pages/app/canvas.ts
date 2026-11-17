@@ -311,8 +311,19 @@ export function renderCanvasCard(part: Extract<Part, { kind: 'tool' }>, live: bo
     expand.textContent = open ? 'Collapse' : 'Expand';
   });
 
+  // Preview or the Markdown source, as the user chooses.
+  const previewBtn = iconButton({ icon: 'eye', title: 'Preview', size: 'sm', active: true });
+  const codeBtn = iconButton({ icon: 'code', title: 'Markdown source', size: 'sm' });
+  const showSource = (source: boolean) => {
+    previewBtn.classList.toggle('active', !source);
+    codeBtn.classList.toggle('active', source);
+    clear(historyBar);
+    body.replaceChildren(source ? h('pre', { class: 'step-pre canvas-source' }, content) : canvasView(content));
+  };
+  previewBtn.addEventListener('click', () => showSource(false));
+  codeBtn.addEventListener('click', () => showSource(true));
   card.append(
-    h('div', { class: 'canvas-head' }, icon('file', 16), titleEl, h('span', { class: 'spacer' }), writing ? h('span', { class: 'dots' }) : null, history, edit, copy, download),
+    h('div', { class: 'canvas-head' }, icon('file', 16), titleEl, h('div', { class: 'view-switch' }, previewBtn, codeBtn), h('span', { class: 'spacer' }), writing ? h('span', { class: 'dots' }) : null, history, edit, copy, download),
     historyBar,
     body,
     expand

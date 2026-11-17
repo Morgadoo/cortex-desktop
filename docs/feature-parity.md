@@ -108,7 +108,7 @@ against the 5 that survived), and Mistral's documentation: docs.mistral.ai/vibe,
 | AFP article reader (Vibe's AFP partnership) | No news-agency feed; sources open in the browser | N/A |
 | Actions row: rate, regenerate, copy, time | Same, plus edit-and-resend on your messages | Done |
 | Skill chip on a deep-research request | Skill, workflow, library, folder and canvas requests show as chips in your message; the plan panel follows the steps | Done |
-| Canvas card (edit, copy, download, expand) | Same, with versions and "Ask about this" on selected text | Done |
+| Canvas card (edit, copy, download, expand) | Same, with versions, "Ask about this" on selected text, and a Preview / Code switch (the rendered document or its Markdown source); Markdown, Mermaid and Marp blocks in answers have the same switch | Done |
 
 ### 9. Code mode
 
