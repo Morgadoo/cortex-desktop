@@ -162,6 +162,9 @@ What the app does, following Mistral Vibe's design:
 - **Control.** Ask or Accept-edits approvals, unattended runs that cannot change anything unless allowed,
   edit and resend, temporary chats, retries and Continue after failures, and an optional privacy filter.
 
+See [docs/feature-parity.md](docs/feature-parity.md) for the feature-by-feature comparison with Mistral Vibe and the
+inspiration apps, including what is still missing.
+
 Any provider rig supports works: OpenAI, Anthropic, Gemini, Mistral, xAI, DeepSeek, OpenRouter, Groq,
 Together, Perplexity, Cohere, Moonshot, Z.ai, and local Ollama or llama.cpp. Keys are stored in the
 OS keychain from Settings → Providers & models, or read from the provider's usual environment
