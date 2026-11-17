@@ -1,8 +1,9 @@
 /** Context pages: Skills and Knowledge. */
+import { tauriInvoke } from '../../shared/tauri';
 import { api, type Memories, type Skill } from './api';
-import { clear, confirmDialog, h, icon, modal, toast } from './dom';
+import { clear, confirmDialog, h, icon, markdown, modal, toast } from './dom';
 import { state } from './state';
-import { emptyState, modalHeader, pageHeader, switchInput, tabs } from './ui';
+import { button, emptyState, iconButton, modalHeader, pageHeader, switchInput, tabs } from './ui';
 
 
 
@@ -156,10 +157,56 @@ export class SkillsPage {
 // ---------------------------------------------------------------------------------------------
 // Knowledge
 
+interface KnowledgePageData {
+  id: string;
+  title: string;
+  body: string;
+  author: string;
+  sources: string[];
+  updatedAt: string;
+}
+
+const knowledgeApi = {
+  pages: () => tauriInvoke<KnowledgePageData[]>('chat_knowledge_pages'),
+  save: (id: string | null, title: string, body: string) => tauriInvoke<KnowledgePageData[]>('chat_save_knowledge_page', { id, title, body }),
+  remove: (id: string) => tauriInvoke<KnowledgePageData[]>('chat_delete_knowledge_page', { id }),
+};
+
+/** A knowledge page's editor: title and Markdown, with a live preview. */
+function editKnowledgePage(page: KnowledgePageData | null, onSaved: (pages: KnowledgePageData[]) => void) {
+  void modal((close) => {
+    const title = h('input', { class: 'input', value: page?.title ?? '', placeholder: 'Acme account' });
+    const area = h('textarea', { class: 'input textarea mono canvas-editor' });
+    area.value = page?.body ?? '';
+    const preview = h('div', { class: 'markdown canvas-preview' });
+    const renderPreview = () => preview.replaceChildren(markdown(area.value || '*Nothing yet.*'));
+    area.addEventListener('input', renderPreview);
+    renderPreview();
+    const save = async () => {
+      try {
+        onSaved(await knowledgeApi.save(page?.id ?? null, title.value, area.value));
+        close();
+      } catch (e) {
+        toast(String(e), 'error');
+      }
+    };
+    return h(
+      'div',
+      { class: 'canvas-modal' },
+      modalHeader(title, close),
+      h('div', { class: 'canvas-split' }, area, preview),
+      page?.sources.length ? h('p', { class: 'muted knowledge-sources' }, `Sources: ${page.sources.join(' · ')}`) : null,
+      h('div', { class: 'dialog-actions canvas-actions' }, h('span', { class: 'hint' }, 'Markdown'), h('span', { class: 'spacer' }), button({ variant: 'secondary', label: 'Cancel', onClick: close }), button({ variant: 'primary', label: 'Save', onClick: () => void save() }))
+    );
+  }, true);
+}
+
 export class KnowledgePage {
   readonly el = h('div', { class: 'page' });
   readonly key = 'page:knowledge';
   private memories: Memories = { enabled: true, items: [] };
+  private pages: KnowledgePageData[] = [];
+  private tab: 'pages' | 'facts' = 'pages';
   private body = h('div', { class: 'knowledge' });
 
   constructor() {
@@ -169,8 +216,35 @@ export class KnowledgePage {
         this.set(await api.deleteMemory(null));
       }
     });
-    this.el.append(pageHeader('Knowledge', 'What the assistant remembers about you across conversations. Say “remember…” in any chat, or add facts here.', clearAll), this.body);
+    const newPage = button({ variant: 'primary', icon: 'plus', label: 'New page', onClick: () => editKnowledgePage(null, (p) => this.setPages(p)) });
+    this.el.append(pageHeader('Knowledge', 'Pages the assistant recalls when they are relevant, and short facts it always keeps in mind. It writes them as you chat; you can edit both.', newPage, clearAll), this.body);
     void api.memories().then((m) => this.set(m));
+    void knowledgeApi.pages().then((p) => this.setPages(p));
+  }
+
+  private setPages(pages: KnowledgePageData[]) {
+    this.pages = pages;
+    this.render();
+  }
+
+  private renderPages(): HTMLElement {
+    if (!this.pages.length) {
+      return emptyState('book', 'No pages yet', 'Pages hold longer context: a project, a client, how you like reports. Ask “keep this as a knowledge page”, or create one.');
+    }
+    const sorted = [...this.pages].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return h(
+      'div',
+      { class: 'knowledge-pages' },
+      sorted.map((p) =>
+        h(
+          'div',
+          { class: 'knowledge-card', on: { click: () => editKnowledgePage(p, (all) => this.setPages(all)) } },
+          h('div', { class: 'knowledge-card-head' }, icon('book', 16), h('strong', {}, p.title), h('span', { class: 'spacer' }), iconButton({ icon: 'trash', title: 'Delete page', size: 'sm', onClick: async (e) => { e.stopPropagation(); if (await confirmDialog(`Delete “${p.title}”?`, 'The assistant will no longer recall it.', 'Delete')) this.setPages(await knowledgeApi.remove(p.id)); } })),
+          h('p', { class: 'muted knowledge-excerpt' }, p.body.replace(/[#*_`>]/g, '').slice(0, 220) || 'Empty page'),
+          h('div', { class: 'knowledge-meta' }, h('span', {}, p.author === 'assistant' ? 'Written by the assistant' : 'Written by you'), h('span', {}, new Date(p.updatedAt).toLocaleDateString()), p.sources.length ? h('span', {}, `${p.sources.length} source${p.sources.length === 1 ? '' : 's'}`) : null)
+        )
+      )
+    );
   }
 
   private set(memories: Memories) {
@@ -239,7 +313,18 @@ export class KnowledgePage {
           })
         )
       : emptyState('book', 'Nothing saved yet', 'The assistant saves lasting facts as you chat, like your role, your projects and how you like answers.');
-    clear(this.body, toggle, adder, list);
+    const switcher = tabs(
+      [
+        { value: 'pages', label: 'Pages', count: this.pages.length },
+        { value: 'facts', label: 'Facts', count: m.items.length },
+      ],
+      this.tab,
+      (t) => {
+        this.tab = t;
+        this.render();
+      }
+    );
+    clear(this.body, toggle, switcher, this.tab === 'pages' ? this.renderPages() : h('div', {}, adder, list));
   }
 
   update() {}

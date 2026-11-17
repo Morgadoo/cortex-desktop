@@ -159,7 +159,7 @@ export function markdown(text: string): DocumentFragment {
   const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT);
   const texts: Text[] = [];
   while (walker.nextNode()) texts.push(walker.currentNode as Text);
-  const docRef = /\[([^\]\n]{1,80}\.(?:md|txt|pdf|html?|csv|json|ya?ml|docx?|rs|py|ts|js))\]/g;
+  const docRef = /\[(?:Knowledge: ([^\]\n]{1,80})|([^\]\n]{1,80}\.(?:md|txt|pdf|html?|csv|json|ya?ml|docx?|rs|py|ts|js)))\]/g;
   for (const node of texts) {
     if (node.parentElement?.closest('code, pre, a')) continue;
     const value = node.nodeValue ?? '';
@@ -169,7 +169,11 @@ export function markdown(text: string): DocumentFragment {
     let last = 0;
     for (const m of value.matchAll(docRef)) {
       frag.append(value.slice(last, m.index));
-      frag.append(h('span', { class: 'cite cite-doc', title: 'From your library' }, icon('file', 12), m[1]!));
+      frag.append(
+        m[1]
+          ? h('span', { class: 'cite cite-doc cite-knowledge', title: 'From your knowledge pages' }, icon('book', 12), m[1])
+          : h('span', { class: 'cite cite-doc', title: 'From your library' }, icon('file', 12), m[2]!)
+      );
       last = (m.index ?? 0) + m[0].length;
     }
     frag.append(value.slice(last));

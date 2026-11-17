@@ -332,3 +332,18 @@ commands.allow = ["chat_code_commit"]
 identifier = "allow-chat-code-pull-request"
 description = "Push a coding session's branch and open a pull request."
 commands.allow = ["chat_code_pull_request"]
+
+[[permission]]
+identifier = "allow-chat-knowledge-pages"
+description = "List knowledge pages."
+commands.allow = ["chat_knowledge_pages"]
+
+[[permission]]
+identifier = "allow-chat-save-knowledge-page"
+description = "Save a knowledge page."
+commands.allow = ["chat_save_knowledge_page"]
+
+[[permission]]
+identifier = "allow-chat-delete-knowledge-page"
+description = "Delete a knowledge page."
+commands.allow = ["chat_delete_knowledge_page"]

@@ -15,7 +15,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::watch;
 
-use super::{agents, builtins, canvas, context, libraries, media, memory, privacy, providers, sandbox, skills, subagents, tasks};
+use super::{agents, builtins, canvas, context, knowledge, libraries, media, memory, privacy, providers, sandbox, skills, subagents, tasks};
 use super::store::{self, Conversation, Instructions, Project};
 use super::tools::{self, ApprovalMode, ChatTool, ASK_USER};
 use super::{ChatState, EVENT, LOCAL_ACCOUNT};
@@ -423,7 +423,7 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
     }
     if conversation.temporary {
         // A temporary chat leaves no trace: it does not add to or change knowledge.
-        offered.retain(|t| t.name != builtins::REMEMBER && t.name != builtins::FORGET);
+        offered.retain(|t| t.name != builtins::REMEMBER && t.name != builtins::FORGET && t.name != builtins::KNOWLEDGE_WRITE);
     }
     let definitions: Vec<_> = offered.iter().filter_map(ChatTool::definition).collect();
     let project = conversation
@@ -455,6 +455,19 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         },
         &offered,
     );
+    // Knowledge pages that matter for this message come in full; the rest by title.
+    let system = if memories.enabled {
+        let query = store::last_prompt(&conversation)
+            .and_then(|i| conversation.messages.get(i))
+            .map(super::context::message_text)
+            .unwrap_or_default();
+        match knowledge::prompt(&knowledge::load(&config_dir), &query) {
+            Some(section) => format!("{system}{section}"),
+            None => system,
+        }
+    } else {
+        system
+    };
     let system = if request.approval == ApprovalMode::Plan {
         format!(
             "{system}\n\nPlan mode is on. Investigate with read-only tools, then present a numbered plan \

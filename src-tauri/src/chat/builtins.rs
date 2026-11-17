@@ -19,6 +19,9 @@ pub const CANVAS: &str = "canvas";
 pub const SCHEDULE_TASK: &str = "schedule_task";
 pub const SEARCH_LIBRARY: &str = "search_library";
 pub const SAVE_SKILL: &str = "save_skill";
+pub const KNOWLEDGE_WRITE: &str = "knowledge_write";
+pub const KNOWLEDGE_READ: &str = "knowledge_read";
+pub const KNOWLEDGE_SEARCH: &str = "knowledge_search";
 
 fn tool(name: &str, description: &str, parameters: Value) -> ChatTool {
     ChatTool {
@@ -159,6 +162,32 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
     }
     if memory::load(config_dir).enabled {
         out.push(tool(
+            KNOWLEDGE_WRITE,
+            "Create or update a knowledge page: lasting, detailed context worth keeping across \
+             conversations (a project, a client, a process, how the user wants something done). \
+             Updating replaces the body, so include what should stay. Name your sources.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "title": { "type": "string" },
+                    "content": { "type": "string", "description": "The whole page, in Markdown." },
+                    "id": { "type": "string", "description": "The page to update; omit to create, or to update by title." },
+                    "sources": { "type": "array", "items": { "type": "string" }, "description": "Where this came from: a conversation, document or URL." }
+                },
+                "required": ["title", "content"]
+            }),
+        ));
+        out.push(tool(
+            KNOWLEDGE_READ,
+            "Read a knowledge page in full, by id or title.",
+            json!({ "type": "object", "properties": { "page": { "type": "string" } }, "required": ["page"] }),
+        ));
+        out.push(tool(
+            KNOWLEDGE_SEARCH,
+            "Search the user's knowledge pages; returns the best matching pages with an excerpt.",
+            json!({ "type": "object", "properties": { "query": { "type": "string" } }, "required": ["query"] }),
+        ));
+        out.push(tool(
             REMEMBER,
             "Save one lasting fact about the user for future conversations.",
             json!({
@@ -209,7 +238,7 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
 }
 
 pub fn is_builtin(name: &str) -> bool {
-    matches!(name, WEB_SEARCH | REMEMBER | FORGET | USE_SKILL | UPDATE_PLAN | SCHEDULE_TASK | SEARCH_LIBRARY | SAVE_SKILL)
+    matches!(name, WEB_SEARCH | REMEMBER | FORGET | USE_SKILL | UPDATE_PLAN | SCHEDULE_TASK | SEARCH_LIBRARY | SAVE_SKILL | KNOWLEDGE_WRITE | KNOWLEDGE_READ | KNOWLEDGE_SEARCH)
 }
 
 fn ok(text: impl Into<String>) -> Outcome {
@@ -256,6 +285,34 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
             }
         }
         SCHEDULE_TASK => schedule(config_dir, args),
+        KNOWLEDGE_WRITE => {
+            let sources: Vec<String> = args
+                .get("sources")
+                .and_then(Value::as_array)
+                .map(|a| a.iter().filter_map(Value::as_str).map(String::from).collect())
+                .unwrap_or_default();
+            let id = str_arg("id");
+            match super::knowledge::write(config_dir, (!id.is_empty()).then_some(id.as_str()), &str_arg("title"), &str_arg("content"), "assistant", &sources) {
+                Ok(page) => ok(json!({ "id": page.id, "title": page.title, "saved": true }).to_string()),
+                Err(e) => err(e),
+            }
+        }
+        KNOWLEDGE_READ => {
+            let pages = super::knowledge::load(config_dir);
+            match super::knowledge::find(&pages, &str_arg("page")) {
+                Some(page) => ok(format!("# {}\n\n{}\n\nSources: {}", page.title, page.body, if page.sources.is_empty() { "none".into() } else { page.sources.join("; ") })),
+                None => err("There is no knowledge page with that id or title."),
+            }
+        }
+        KNOWLEDGE_SEARCH => {
+            let pages = super::knowledge::load(config_dir);
+            let hits: Vec<Value> = super::knowledge::rank(&pages, &str_arg("query"))
+                .into_iter()
+                .take(5)
+                .map(|(p, _)| json!({ "id": &p.id[..8], "title": p.title, "excerpt": p.body.chars().take(400).collect::<String>() }))
+                .collect();
+            if hits.is_empty() { ok("No knowledge page matches.") } else { ok(serde_json::to_string_pretty(&hits).unwrap_or_default()) }
+        }
         SAVE_SKILL => match skills::save(config_dir, &str_arg("name"), &str_arg("description"), &str_arg("instructions")) {
             Ok(()) => ok(format!("Saved the skill `{}`. The user can call it with /{}.", str_arg("name"), str_arg("name"))),
             Err(e) => err(e),
@@ -399,10 +456,10 @@ mod tests {
     #[test]
     fn definitions_follow_settings() {
         let dir = tempfile::tempdir().unwrap();
-        let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).filter(|n| n != super::super::sandbox::RUN_CODE && n != super::super::media::GENERATE_IMAGE && n != SAVE_SKILL).collect();
+        let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).filter(|n| n != super::super::sandbox::RUN_CODE && n != super::super::media::GENERATE_IMAGE && n != SAVE_SKILL && !n.starts_with("knowledge_")).collect();
         assert_eq!(names, [WEB_SEARCH, UPDATE_PLAN, DELEGATE, CANVAS, SCHEDULE_TASK, REMEMBER, FORGET, USE_SKILL]);
         memory::save(dir.path(), &memory::Memories { enabled: false, items: vec![] }).unwrap();
-        let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).filter(|n| n != super::super::sandbox::RUN_CODE && n != super::super::media::GENERATE_IMAGE && n != SAVE_SKILL).collect();
+        let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).filter(|n| n != super::super::sandbox::RUN_CODE && n != super::super::media::GENERATE_IMAGE && n != SAVE_SKILL && !n.starts_with("knowledge_")).collect();
         assert_eq!(names, [WEB_SEARCH, UPDATE_PLAN, DELEGATE, CANVAS, SCHEDULE_TASK, USE_SKILL]);
     }
 }

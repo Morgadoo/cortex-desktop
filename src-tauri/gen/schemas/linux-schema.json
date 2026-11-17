@@ -255,6 +255,12 @@
           "markdownDescription": "Delete a conversation."
         },
         {
+          "description": "Delete a knowledge page.",
+          "type": "string",
+          "const": "allow-chat-delete-knowledge-page",
+          "markdownDescription": "Delete a knowledge page."
+        },
+        {
           "description": "Delete a document library and its documents.",
           "type": "string",
           "const": "allow-chat-delete-library",
@@ -357,6 +363,12 @@
           "markdownDescription": "Keep a temporary conversation, such as a chosen comparison answer."
         },
         {
+          "description": "List knowledge pages.",
+          "type": "string",
+          "const": "allow-chat-knowledge-pages",
+          "markdownDescription": "List knowledge pages."
+        },
+        {
           "description": "List agents.",
           "type": "string",
           "const": "allow-chat-list-agents",
@@ -457,6 +469,12 @@
           "type": "string",
           "const": "allow-chat-save-instructions",
           "markdownDescription": "Save the user's standing instructions."
+        },
+        {
+          "description": "Save a knowledge page.",
+          "type": "string",
+          "const": "allow-chat-save-knowledge-page",
+          "markdownDescription": "Save a knowledge page."
         },
         {
           "description": "Create or update a project.",

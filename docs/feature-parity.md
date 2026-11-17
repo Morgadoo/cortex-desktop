@@ -82,6 +82,7 @@ against the 5 that survived), and Mistral's documentation: docs.mistral.ai/vibe,
 | Skills page (mine / built-in, search, import SKILL.md) | Same | Done |
 | Connectors page with a catalog | Same; MCP catalog with OAuth dynamic registration | Done |
 | Knowledge (memories) | Same; the model saves facts, the user edits them | Done |
+| Agentic Knowledge Base (release notes, Sept 2026): editable pages, recalled only when relevant, cited | Knowledge pages: written by the model (`knowledge_write`) or you, BM25 recall of the relevant ones into the prompt, others by title, `knowledge_read` / `knowledge_search`, [Knowledge: page] citation pills | Done |
 | Libraries | Local BM25 retrieval over documents, cited by document | Done |
 | Instructions modal with live preview | Same | Done |
 | Scheduled tasks: once, daily, weekly, monthly, yearly (docs) | All five, plus unattended / autonomous approval for each task | Done |

@@ -263,3 +263,28 @@ mod tests {
         assert!(estimate_tokens(&messages) > 0);
     }
 }
+
+/// The text of a message: the user's typed words, or the assistant's reply.
+pub fn message_text(message: &Message) -> String {
+    use rig_core::completion::message::{AssistantContent, UserContent};
+    match message {
+        Message::User { content } => content
+            .iter()
+            .filter_map(|c| match c {
+                UserContent::Text(t) => Some(t.text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        Message::Assistant(a) => a
+            .content
+            .iter()
+            .filter_map(|c| match c {
+                AssistantContent::Text(t) => Some(t.text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    }
+}

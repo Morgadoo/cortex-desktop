@@ -48,6 +48,10 @@ const ACTIONS: Record<string, string> = {
   forget: 'Removed from knowledge',
   use_skill: 'Used a skill',
   update_plan: 'Updated the plan',
+  knowledge_write: 'Saved to knowledge',
+  knowledge_read: 'Read a knowledge page',
+  knowledge_search: 'Searched knowledge',
+  save_skill: 'Saved a skill',
   canvas: 'Wrote a canvas',
   delegate: 'Ran sub-agents',
   schedule_task: 'Scheduled a task',
@@ -65,6 +69,10 @@ const BUILTIN_ICONS: Record<string, string> = {
   schedule_task: 'clock',
   search_library: 'library',
   run_code: 'terminal',
+  knowledge_write: 'book',
+  knowledge_read: 'book',
+  knowledge_search: 'book',
+  save_skill: 'skill',
   generate_image: 'sparkle',
 };
 

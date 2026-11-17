@@ -319,6 +319,23 @@ pub async fn chat_speak(app: AppHandle, text: String) -> Result<(String, String)
     Ok((base64::engine::general_purpose::STANDARD.encode(audio), mime))
 }
 
+#[tauri::command]
+pub fn chat_knowledge_pages(app: AppHandle) -> Result<Vec<super::knowledge::Page>, String> {
+    Ok(super::knowledge::load(&config_dir(&app)?))
+}
+
+#[tauri::command]
+pub fn chat_save_knowledge_page(app: AppHandle, id: Option<String>, title: String, body: String) -> Result<Vec<super::knowledge::Page>, String> {
+    let dir = config_dir(&app)?;
+    super::knowledge::write(&dir, id.as_deref(), &title, &body, "user", &[])?;
+    Ok(super::knowledge::load(&dir))
+}
+
+#[tauri::command]
+pub fn chat_delete_knowledge_page(app: AppHandle, id: String) -> Result<Vec<super::knowledge::Page>, String> {
+    super::knowledge::delete(&config_dir(&app)?, &id)
+}
+
 /// Adds guidance to a running turn; it joins the conversation at the turn's next step.
 #[tauri::command]
 pub fn chat_steer(state: State<'_, ChatState>, conversation_id: String, text: String) -> Result<bool, String> {

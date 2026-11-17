@@ -18,6 +18,7 @@ pub mod commands;
 pub mod context;
 pub mod engine;
 pub mod import;
+pub mod knowledge;
 pub mod libraries;
 pub mod media;
 pub mod memory;
