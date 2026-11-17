@@ -1,9 +1,10 @@
 /** The home screen, a conversation, and the composer they share. */
-import { api, newId, type Conversation, type Part, type Turn } from './api';
+import { api, newId, type Conversation, type Part, type Turn, type UsageTotals } from './api';
 import { clear, confirmDialog, greeting, h, icon, markdown, modal, popover, promptText, timeLabel, toast } from './dom';
 import { changed, currentModel, navigate, state, type LiveTurn } from './state';
 import { openSettings } from './settings';
 import { openInstructions } from './pages';
+import { enableAskAboutSelection, renderCanvasCard } from './canvas';
 
 // ---------------------------------------------------------------------------------------------
 // Tool labels
@@ -37,6 +38,9 @@ const ACTIONS: Record<string, string> = {
   remember: 'Saved to knowledge',
   forget: 'Removed from knowledge',
   use_skill: 'Used a skill',
+  update_plan: 'Updated the plan',
+  canvas: 'Wrote a canvas',
+  delegate: 'Ran sub-agents',
 };
 
 const BUILTIN_ICONS: Record<string, string> = {
@@ -44,6 +48,9 @@ const BUILTIN_ICONS: Record<string, string> = {
   remember: 'book',
   forget: 'book',
   use_skill: 'skill',
+  update_plan: 'check',
+  canvas: 'file',
+  delegate: 'workflow',
 };
 
 /** What an approval card asks to allow. */
@@ -233,7 +240,7 @@ function runRows(part: Extract<Part, { kind: 'tool' }>, running: boolean): HTMLE
       href ? 'a' : 'div',
       { class: 'result-row', ...(href ? { href, target: '_blank', rel: 'noopener noreferrer' } : {}) },
       icon(href ? 'globe' : toolLabel(part.name).icon, 15),
-      h('span', { class: 'result-title' }, row?.title ?? hint),
+      h('span', { class: `result-title${running ? ' shimmer' : ''}` }, row?.title ?? hint),
       status,
       h('span', { class: 'result-source' }, row?.source ?? (href ? host(href) : ''))
     ),
@@ -267,7 +274,102 @@ function renderToolRun(run: Extract<Part, { kind: 'tool' }>[], live: boolean, du
   );
 }
 
+interface PlanStep {
+  text: string;
+  status: string;
+}
+
+function planOf(part: Extract<Part, { kind: 'tool' }>): PlanStep[] {
+  const steps = part.arguments.steps;
+  return Array.isArray(steps) ? steps.filter((s): s is PlanStep => Boolean(s) && typeof (s as PlanStep).text === 'string') : [];
+}
+
+export function renderChecklist(steps: PlanStep[]): HTMLElement {
+  return h(
+    'div',
+    { class: 'checklist' },
+    steps.map((s) =>
+      h(
+        'div',
+        { class: `check-item ${s.status}` },
+        h('span', { class: 'check-box' }, s.status === 'done' ? icon('check', 12) : s.status === 'in_progress' ? h('span', { class: 'check-dot' }) : null),
+        h('span', {}, s.text)
+      )
+    )
+  );
+}
+
+function renderPlanStep(part: Extract<Part, { kind: 'tool' }>): HTMLElement {
+  const steps = planOf(part);
+  const done = steps.filter((s) => s.status === 'done').length;
+  return h(
+    'div',
+    { class: 'step' },
+    h('div', { class: 'step-row' }, h('span', { class: 'step-icon' }, icon('check', 16)), h('span', { class: 'step-title' }, `Plan · ${done}/${steps.length} done`)),
+    h('div', { class: 'step-content' }, renderChecklist(steps))
+  );
+}
+
+interface WorkerReport {
+  title: string;
+  status: string;
+  report: string;
+  steps: number;
+}
+
+/** A `delegate` call: one row per sub-agent, live while they work, with their reports after. */
+function renderDelegate(part: Extract<Part, { kind: 'tool' }>, live: boolean, duration: number | undefined): HTMLElement {
+  const tasks = Array.isArray(part.arguments.tasks) ? (part.arguments.tasks as { title?: string; instructions?: string }[]) : [];
+  let reports: WorkerReport[] = [];
+  try {
+    reports = part.output ? (JSON.parse(part.output) as { reports: WorkerReport[] }).reports ?? [] : [];
+  } catch {
+    reports = [];
+  }
+  const progress = state.subagents.get(part.callId) ?? [];
+  const running = live && part.output === null;
+  const doneCount = reports.filter((r) => r.status === 'done').length || progress.filter((p) => p?.status === 'done').length;
+  const rows = tasks.map((task, i) => {
+    const report = reports[i];
+    const now = progress[i];
+    const status = report?.status ?? now?.status ?? (running ? 'running' : 'failed');
+    const statusIcon = status === 'done' ? icon('checkCircle', 16) : status === 'failed' ? icon('close', 16) : h('span', { class: 'step-icon spin inline' }, icon('wait', 15));
+    const row = h('details', { class: `worker worker-${status}` });
+    row.append(
+      h(
+        'summary',
+        {},
+        h('span', { class: 'worker-status' }, statusIcon),
+        h('span', { class: 'worker-title' }, task.title ?? `Task ${i + 1}`),
+        h('span', { class: 'worker-activity muted' }, report ? `${report.steps} tool steps` : now?.activity ?? (running ? 'Waiting' : ''))
+      )
+    );
+    const body = h('div', { class: 'worker-body' }, h('div', { class: 'step-label' }, 'Task'), h('p', { class: 'muted' }, task.instructions ?? ''));
+    if (report) {
+      const md = h('div', { class: 'markdown small' });
+      md.append(markdown(report.report));
+      body.append(h('div', { class: 'step-label' }, 'Report'), md);
+    }
+    row.append(body);
+    return row;
+  });
+  return h(
+    'div',
+    { class: 'step' },
+    h(
+      'div',
+      { class: 'step-row' },
+      h('span', { class: `step-icon${running ? ' spin' : ''}` }, icon(running ? 'wait' : 'workflow', 16)),
+      h('span', { class: 'step-title' }, running ? `Running ${tasks.length} sub-agents in parallel` : `Ran ${tasks.length} sub-agents · ${doneCount} reported`),
+      seconds(duration) ? h('span', { class: 'step-time' }, seconds(duration)) : null
+    ),
+    h('div', { class: 'step-content' }, h('div', { class: 'workers' }, rows))
+  );
+}
+
 function renderToolStep(part: Extract<Part, { kind: 'tool' }>, live: boolean, duration: number | undefined): HTMLElement {
+  if (part.name === 'delegate') return renderDelegate(part, live, duration);
+  if (part.name === 'update_plan') return renderPlanStep(part);
   const label = toolLabel(part.name);
   const hint = argumentHint(part.arguments);
   const running = live && part.output === null;
@@ -278,7 +380,7 @@ function renderToolStep(part: Extract<Part, { kind: 'tool' }>, live: boolean, du
       'div',
       { class: 'step-row' },
       h('span', { class: `step-icon${running ? ' spin' : ''}` }, icon(running ? 'wait' : label.icon, 16)),
-      h('span', { class: 'step-title' }, title),
+      h('span', { class: `step-title${running ? ' shimmer' : ''}` }, title),
       hint && !resultRows(part)?.heading ? h('span', { class: 'step-hint' }, hint) : null,
       part.isError ? h('span', { class: 'step-badge' }, 'failed') : null,
       seconds(duration) ? h('span', { class: 'step-time' }, seconds(duration)) : null
@@ -325,6 +427,8 @@ const KINDS: [RegExp, string, string][] = [
   [/^bash__/, 'command', 'commands'],
   [/^(remember|forget)$/, 'memory update', 'memory updates'],
   [/^use_skill$/, 'skill', 'skills'],
+  [/^delegate$/, 'sub-agent run', 'sub-agent runs'],
+  [/^update_plan$/, 'plan update', 'plan updates'],
 ];
 
 /** The header of a collapsed activity group: how much of what was done, e.g. "12 searches · 30 pages". */
@@ -332,6 +436,8 @@ function groupSummary(parts: Part[], live: boolean): string {
   const last = parts[parts.length - 1];
   if (!last) return '';
   if (live) {
+    const running = parts.filter((p) => p.kind === 'tool' && p.output === null).length;
+    if (running > 1) return `Running ${running} actions`;
     return last.kind === 'tool' && last.output === null ? toolLabel(last.name).action : last.kind === 'reasoning' ? 'Thinking' : 'Working';
   }
   const tools = parts.filter((p): p is Extract<Part, { kind: 'tool' }> => p.kind === 'tool');
@@ -398,6 +504,11 @@ function renderParts(parts: Part[], live: boolean, key: string, durations: numbe
     group = null;
   };
   parts.forEach((part, i) => {
+    if (part.kind === 'tool' && part.name === 'canvas') {
+      flush();
+      out.push(renderCanvasCard(part, live));
+      return;
+    }
     if (part.kind === 'text') {
       flush();
       const body = h('div', { class: 'markdown' });
@@ -425,10 +536,30 @@ function renderUserTurn(turn: Turn): HTMLElement {
   const text = textOf(turn.parts);
   const copy = h('button', { class: 'icon-btn small', title: 'Copy' }, icon('copy', 15));
   copy.addEventListener('click', () => void navigator.clipboard.writeText(text));
+  // A skill invoked with /name reads as a chip ahead of the message.
+  let rest = text;
+  const chips: HTMLElement[] = [];
+  const canvasAsk = rest.match(/^Use a canvas for this\.\s*/);
+  if (canvasAsk) {
+    chips.push(h('span', { class: 'skill-chip' }, icon('file', 14), 'Canvas'));
+    rest = rest.slice(canvasAsk[0].length);
+  }
+  const skill = rest.match(/^Use the "([a-z0-9-]+)" skill\.\s*/);
+  if (skill) {
+    chips.push(h('span', { class: 'skill-chip' }, icon('skill', 14), skill[1]!));
+    rest = rest.slice(skill[0].length);
+  }
+  const quote = rest.match(/^((?:> .*(?:\n|$))+)\n*/);
+  let quoteEl: HTMLElement | null = null;
+  if (quote) {
+    quoteEl = h('div', { class: 'bubble-quote' }, icon('forward', 13), quote[1]!.replace(/^> /gm, '').trim());
+    rest = rest.slice(quote[0].length);
+  }
+  const bubble = h('div', { class: 'bubble' }, quoteEl, chips, rest);
   return h(
     'div',
     { class: 'turn turn-user' },
-    h('div', { class: 'bubble' }, text),
+    bubble,
     h('div', { class: 'turn-actions user-actions' }, copy, h('span', { class: 'turn-time' }, timeLabel(turn.time)))
   );
 }
@@ -436,6 +567,18 @@ function renderUserTurn(turn: Turn): HTMLElement {
 function renderAssistantTurn(conversation: Conversation, turn: Turn, isLast: boolean, running: boolean): HTMLElement {
   const durations = isLast ? stepDurations.get(conversation.id) : undefined;
   const el = h('div', { class: 'turn turn-assistant' }, ...renderParts(turn.parts, false, `${conversation.id}:${turn.index}`, durations));
+  // A reply that stopped after its tools ran, before answering, can pick up where it left off.
+  const unfinished = isLast && !running && turn.parts[turn.parts.length - 1]?.kind === 'tool' && !state.live.has(conversation.id);
+  if (unfinished) {
+    const resume = h('button', { class: 'btn btn-ghost' }, icon('retry', 15), 'Continue');
+    resume.addEventListener('click', () => {
+      if (!state.model) return void toast('Choose a model first.', 'error');
+      void api
+        .send({ conversationId: conversation.id, text: '', model: state.model, speed: state.speed, approval: state.approval, resume: true })
+        .catch((e) => toast(String(e), 'error'));
+    });
+    el.append(h('div', { class: 'error-card' }, icon('wait', 16), h('div', { class: 'grow' }, h('strong', {}, 'This reply stopped before it finished'), h('div', { class: 'hint' }, 'Continue picks up from the work already done.')), resume));
+  }
   if (!isLast || !running) {
     const sources = renderSources(sourcesOf(turn.parts));
     if (sources) el.append(sources);
@@ -533,7 +676,9 @@ function renderLiveTurn(conversationId: string, live: LiveTurn): HTMLElement {
   const durations = live.starts.map((start, i) => (live.ends[i] ?? now) - start);
   const el = h('div', { class: 'turn turn-assistant live' }, ...renderParts(live.parts, !live.error, `${conversationId}:live:${live.startedAt}`, durations));
   const busy = !live.error && !live.question;
-  if (live.question) {
+  if (live.compacting) {
+    el.append(h('div', { class: 'status-line' }, h('span', { class: 'dots' }), 'Summarizing earlier messages to make room'));
+  } else if (live.question) {
     el.append(h('div', { class: 'status-line' }, icon('wait', 16), 'Waiting for your answer'));
   } else if (live.pending) {
     const label = toolLabel(live.pending);
@@ -542,7 +687,22 @@ function renderLiveTurn(conversationId: string, live: LiveTurn): HTMLElement {
     el.append(h('div', { class: 'status-line' }, h('span', { class: 'dots' }), 'Thinking'));
   }
   if (live.error) {
-    el.append(h('div', { class: 'error-card' }, icon('close', 16), h('div', {}, h('strong', {}, 'The reply failed'), h('div', {}, live.error))));
+    const resume = h('button', { class: 'btn btn-ghost' }, icon('retry', 15), 'Continue');
+    resume.addEventListener('click', () => {
+      if (!state.model) return void toast('Choose a model first.', 'error');
+      void api
+        .send({ conversationId, text: '', model: state.model, speed: state.speed, approval: state.approval, resume: true })
+        .catch((e) => toast(String(e), 'error'));
+    });
+    el.append(
+      h(
+        'div',
+        { class: 'error-card' },
+        icon('close', 16),
+        h('div', { class: 'grow' }, h('strong', {}, 'The reply failed'), h('div', {}, live.error), h('p', { class: 'hint' }, 'Continue picks up from the work already done.')),
+        resume
+      )
+    );
   }
   return el;
 }
@@ -606,6 +766,10 @@ class Composer {
   readonly el: HTMLElement;
   private textarea: HTMLTextAreaElement;
   private attachments: Attachment[] = [];
+  /** Text the user selected and asked about. */
+  private quote: string | null = null;
+  /** Ask for the answer in a canvas. */
+  private useCanvas = false;
   private chips: HTMLElement;
   private bar: HTMLElement;
   private conversationId: string | null = null;
@@ -715,7 +879,12 @@ class Composer {
   async submit() {
     if (this.running()) return;
     let text = this.textarea.value.trim();
-    if (!text && this.attachments.length === 0) return;
+    if (!text && this.attachments.length === 0 && !this.quote) return;
+    if (this.quote) {
+      const quoted = this.quote.split('\n').map((l) => `> ${l}`).join('\n');
+      text = `${quoted}\n\n${text || 'Tell me more about this.'}`;
+    }
+    if (this.useCanvas) text = `Use a canvas for this.\n\n${text}`;
     // `/skill-name rest` asks for that skill explicitly.
     const slash = text.match(/^\/([a-z0-9-]+)\s*([\s\S]*)$/);
     if (slash && state.skills.some((s) => s.name === slash[1])) {
@@ -728,15 +897,39 @@ class Composer {
     if (ok) {
       this.textarea.value = '';
       this.attachments = [];
+      this.quote = null;
+      this.useCanvas = false;
       this.autosize();
       this.renderChips();
       this.renderBar();
     }
   }
 
+  setQuote(text: string) {
+    this.quote = text;
+    this.renderChips();
+    this.focus();
+  }
+
   private renderChips() {
+    const extra: HTMLElement[] = [];
+    if (this.quote) {
+      extra.push(
+        h(
+          'div',
+          { class: 'quote-chip' },
+          icon('forward', 15),
+          h('span', {}, this.quote),
+          h('button', { class: 'chip-x', title: 'Remove', on: { click: () => { this.quote = null; this.renderChips(); } } }, icon('close', 13))
+        )
+      );
+    }
+    if (this.useCanvas) {
+      extra.push(h('span', { class: 'chip tool-chip' }, icon('file', 14), 'Canvas', h('button', { class: 'chip-x', title: 'Remove', on: { click: () => { this.useCanvas = false; this.renderChips(); } } }, icon('close', 12))));
+    }
     clear(
       this.chips,
+      extra,
       this.attachments.map((file, i) =>
         h(
           'span',
@@ -839,6 +1032,7 @@ class Composer {
         'div',
         { class: 'menu' },
         item('upload', 'Attach files', () => this.pickFiles()),
+        item('file', 'Canvas', () => { this.useCanvas = true; this.renderChips(); this.focus(); }),
         item('folder', 'Give access to a folder', () => void grantFolder()),
         item('plug', 'Connectors', () => navigate({ kind: 'page', page: 'connectors' }), true),
         item('book', 'Instructions', () => void openInstructions(), true),
@@ -1089,6 +1283,7 @@ export class ChatView {
   private overlay = h('div', { class: 'composer-overlay' });
   private bottom = h('div', { class: 'chat-bottom' });
   private jump = h('button', { class: 'jump-btn', title: 'Scroll to bottom' }, icon('arrowDown', 18));
+  private planPanel = h('aside', { class: 'plan-panel' });
   private stickToBottom = true;
 
   constructor(private id: string) {
@@ -1100,9 +1295,10 @@ export class ChatView {
       this.jump.classList.toggle('visible', distance > 300);
     });
     this.jump.addEventListener('click', () => this.scrollToBottom(true));
+    enableAskAboutSelection(this.scroller, (quote) => composer.setQuote(quote));
     composer.attach(id, 'Reply…');
     this.bottom.append(this.jump, this.overlay, composer.el, h('div', { class: 'disclaimer' }, 'AI can make mistakes. Check important information.'));
-    this.el.append(this.header, this.scroller, this.bottom);
+    this.el.append(this.header, this.scroller, this.bottom, this.planPanel);
     void this.refresh(true);
   }
 
@@ -1111,7 +1307,18 @@ export class ChatView {
       this.conversation = await api.conversation(this.id);
       pendingUser.delete(this.id);
     } catch {
-      this.conversation = { id: this.id, title: '', projectId: null, workdir: null, model: null, pinned: false, turns: [], running: true };
+      this.conversation = {
+        id: this.id,
+        title: '',
+        projectId: null,
+        workdir: null,
+        model: null,
+        pinned: false,
+        turns: [],
+        running: true,
+        usage: { inputTokens: 0, outputTokens: 0, cost: 0, contextTokens: 0 },
+        compactedBefore: null,
+      };
     }
     const optimistic = pendingUser.get(this.id);
     if (optimistic && this.conversation.turns.length === 0) {
@@ -1133,9 +1340,19 @@ export class ChatView {
     if (!c) return;
     const running = state.live.has(this.id);
     const last = c.turns.length - 1;
+    const divider = c.compactedBefore;
+    let marked = false;
     clear(
       this.transcript,
-      c.turns.map((turn, i) => (turn.role === 'user' ? renderUserTurn(turn) : renderAssistantTurn(c, turn, i === last, running)))
+      c.turns.flatMap((turn, i) => {
+        const el = turn.role === 'user' ? renderUserTurn(turn) : renderAssistantTurn(c, turn, i === last, running);
+        // Turns before the summary point reach the model only through the summary.
+        if (divider !== null && divider !== undefined && !marked && turn.role === 'user' && turn.index >= divider) {
+          marked = true;
+          return [h('div', { class: 'compaction-divider' }, h('span', {}, icon('book', 14), 'Earlier messages are summarized for the model')), el];
+        }
+        return [el];
+      })
     );
   }
 
@@ -1152,6 +1369,7 @@ export class ChatView {
       await api.updateConversation({ id: this.id, pinned: !summary?.pinned });
       await refreshConversations();
     });
+    const meter = usageMeter(state.usage.get(this.id), c?.usage);
     const exportBtn = h('button', { class: 'icon-btn', title: 'Export as Markdown' }, icon('share', 18));
     exportBtn.addEventListener('click', () => void api.exportConversation(this.id).then((saved) => saved && toast('Conversation exported.')));
     clear(
@@ -1164,7 +1382,7 @@ export class ChatView {
         project || workdir ? h('span', { class: 'crumb-sep' }, '/') : null,
         titleBtn
       ),
-      h('div', { class: 'header-actions' }, pin, exportBtn)
+      h('div', { class: 'header-actions' }, meter, pin, exportBtn)
     );
   }
 
@@ -1172,6 +1390,12 @@ export class ChatView {
     this.renderHeader();
     const live = state.live.get(this.id);
     clear(this.liveSlot, live ? renderLiveTurn(this.id, live) : null);
+    // While the model works through a plan, the plan stays in view beside the conversation.
+    const plan = live ? [...live.parts].reverse().find((p): p is Extract<Part, { kind: 'tool' }> => p.kind === 'tool' && p.name === 'update_plan') : undefined;
+    const showPlan = Boolean(plan && !live?.error);
+    clear(this.planPanel, showPlan && plan ? [h('div', { class: 'plan-head' }, icon('check', 15), 'Plan'), renderChecklist(planOf(plan))] : null);
+    this.planPanel.classList.toggle('visible', showPlan);
+    this.el.classList.toggle('with-plan', showPlan);
     const approval = renderApprovals();
     const question = live?.question ? renderQuestion(this.id, live.question) : null;
     clear(this.overlay, approval, question);
@@ -1188,6 +1412,26 @@ export class ChatView {
   private scrollToBottom(smooth: boolean) {
     requestAnimationFrame(() => this.scroller.scrollTo({ top: this.scroller.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }));
   }
+}
+
+/** Tokens, cost and how full the model's window is, for the conversation header. */
+function usageMeter(live: { usage: UsageTotals; window: number } | undefined, stored: UsageTotals | undefined): HTMLElement | null {
+  const usage = live?.usage ?? stored;
+  if (!usage || !(usage.inputTokens || usage.outputTokens)) return null;
+  const pct = live && live.window ? Math.min(100, Math.round((usage.contextTokens / live.window) * 100)) : null;
+  const money = (n: number) => '$' + n.toFixed(n < 0.01 ? 4 : 2);
+  const lines = [
+    pct !== null && live ? `Context: ${usage.contextTokens.toLocaleString()} of ${live.window.toLocaleString()} tokens (${pct}%)` : '',
+    `Used: ${usage.inputTokens.toLocaleString()} in, ${usage.outputTokens.toLocaleString()} out`,
+    usage.cost > 0 ? `Cost: ${money(usage.cost)}` : '',
+  ].filter(Boolean);
+  const total = Math.round((usage.inputTokens + usage.outputTokens) / 1000);
+  return h(
+    'span',
+    { class: 'usage-meter', title: lines.join('. ') },
+    pct !== null ? h('span', { class: 'ring', style: `--pct:${pct}` }) : null,
+    h('span', {}, `${total}k tokens${usage.cost > 0 ? ' · ' + money(usage.cost) : ''}`)
+  );
 }
 
 export function conversationMenu(anchor: HTMLElement, id: string, title: string, pinned: boolean) {

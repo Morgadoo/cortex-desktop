@@ -35,6 +35,9 @@
     "allow-chat-save-skill",
     "allow-chat-delete-skill",
     "allow-chat-set-skill-enabled",
-    "allow-chat-import-skill"
+    "allow-chat-import-skill",
+    "allow-chat-get-canvas",
+    "allow-chat-save-canvas",
+    "allow-chat-export-canvas"
   ]
 }

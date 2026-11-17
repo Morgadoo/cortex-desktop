@@ -11,13 +11,16 @@
 //! - [`tools`]: the app's connectors (filesystem, shell, MCP) and built-ins offered to the model
 
 pub mod builtins;
+pub mod canvas;
 pub mod commands;
+pub mod context;
 pub mod engine;
 pub mod memory;
 pub mod providers;
 pub mod search;
 pub mod skills;
 pub mod store;
+pub mod subagents;
 pub mod tools;
 
 use std::collections::HashMap;

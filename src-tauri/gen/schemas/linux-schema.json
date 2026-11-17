@@ -225,10 +225,22 @@
           "markdownDescription": "Delete a user skill."
         },
         {
+          "description": "Save a canvas as Markdown to a file the user picks.",
+          "type": "string",
+          "const": "allow-chat-export-canvas",
+          "markdownDescription": "Save a canvas as Markdown to a file the user picks."
+        },
+        {
           "description": "Save a conversation as Markdown to a file the user picks.",
           "type": "string",
           "const": "allow-chat-export-conversation",
           "markdownDescription": "Save a conversation as Markdown to a file the user picks."
+        },
+        {
+          "description": "Read a canvas.",
+          "type": "string",
+          "const": "allow-chat-get-canvas",
+          "markdownDescription": "Read a canvas."
         },
         {
           "description": "Read one conversation.",
@@ -289,6 +301,12 @@
           "type": "string",
           "const": "allow-chat-preview-instructions",
           "markdownDescription": "Generate a sample reply under draft instructions."
+        },
+        {
+          "description": "Save the user's edit to a canvas as a new version.",
+          "type": "string",
+          "const": "allow-chat-save-canvas",
+          "markdownDescription": "Save the user's edit to a canvas as a new version."
         },
         {
           "description": "Save the user's standing instructions.",

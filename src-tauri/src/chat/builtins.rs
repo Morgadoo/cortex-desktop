@@ -11,6 +11,11 @@ pub const WEB_SEARCH: &str = "web_search";
 pub const REMEMBER: &str = "remember";
 pub const FORGET: &str = "forget";
 pub const USE_SKILL: &str = "use_skill";
+pub const UPDATE_PLAN: &str = "update_plan";
+/// Run by the engine, which holds the model the workers need.
+pub const DELEGATE: &str = "delegate";
+/// Run by the engine, which knows the conversation the canvas belongs to.
+pub const CANVAS: &str = "canvas";
 
 fn tool(name: &str, description: &str, parameters: Value) -> ChatTool {
     ChatTool {
@@ -39,6 +44,71 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             "required": ["query"]
         }),
     )];
+    out.push(tool(
+        UPDATE_PLAN,
+        "Show the user your plan for a multi-step task as a checklist, and update it as steps \
+         finish. Send the whole list each time.",
+        json!({
+            "type": "object",
+            "properties": {
+                "steps": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "text": { "type": "string" },
+                            "status": { "type": "string", "enum": ["pending", "in_progress", "done"] }
+                        },
+                        "required": ["text", "status"]
+                    }
+                }
+            },
+            "required": ["steps"]
+        }),
+    ));
+    out.push(tool(
+        DELEGATE,
+        "Hand independent parts of a broad task to sub-agents that work in parallel, each with a \
+         clean context and read-only tools (web search, browsing, reading files). Each returns a \
+         short report with sources. Use it for research spanning several topics, sources or \
+         files; do small lookups yourself. Write each task so it stands alone: the worker sees \
+         nothing of this conversation.",
+        json!({
+            "type": "object",
+            "properties": {
+                "tasks": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": super::subagents::MAX_TASKS,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "title": { "type": "string", "description": "A few words." },
+                            "instructions": { "type": "string", "description": "What to find or check, and what to report." }
+                        },
+                        "required": ["title", "instructions"]
+                    }
+                }
+            },
+            "required": ["tasks"]
+        }),
+    ));
+    out.push(tool(
+        CANVAS,
+        "Write a document the user will keep, read at length or edit: a report, letter, plan, \
+         article, README or code file. Creates a canvas, or with `id` replaces an existing one's \
+         text with a new version. Send the complete text each time, in Markdown (code in fenced \
+         blocks). Keep your chat reply to a sentence or two about what you wrote.",
+        json!({
+            "type": "object",
+            "properties": {
+                "id": { "type": "string", "description": "The canvas to update; omit to create one." },
+                "title": { "type": "string" },
+                "content": { "type": "string", "description": "The full document, in Markdown." }
+            },
+            "required": ["content"]
+        }),
+    ));
     if memory::load(config_dir).enabled {
         out.push(tool(
             REMEMBER,
@@ -74,7 +144,7 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
 }
 
 pub fn is_builtin(name: &str) -> bool {
-    matches!(name, WEB_SEARCH | REMEMBER | FORGET | USE_SKILL)
+    matches!(name, WEB_SEARCH | REMEMBER | FORGET | USE_SKILL | UPDATE_PLAN)
 }
 
 fn ok(text: impl Into<String>) -> Outcome {
@@ -120,6 +190,14 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
                 Err(e) => err(e),
             }
         }
+        UPDATE_PLAN => {
+            let steps = args.get("steps").and_then(Value::as_array).map_or(0, Vec::len);
+            if steps == 0 {
+                err("Give the plan's steps.")
+            } else {
+                ok(format!("Plan shown to the user ({steps} steps)."))
+            }
+        }
         USE_SKILL => match skills::find(config_dir, &str_arg("name")) {
             Some(skill) if skill.enabled => ok(format!("# Skill: {}\n\n{}", skill.name, skill.body)),
             Some(_) => err("That skill is turned off."),
@@ -160,9 +238,9 @@ mod tests {
     fn definitions_follow_settings() {
         let dir = tempfile::tempdir().unwrap();
         let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).collect();
-        assert_eq!(names, [WEB_SEARCH, REMEMBER, FORGET, USE_SKILL]);
+        assert_eq!(names, [WEB_SEARCH, UPDATE_PLAN, DELEGATE, CANVAS, REMEMBER, FORGET, USE_SKILL]);
         memory::save(dir.path(), &memory::Memories { enabled: false, items: vec![] }).unwrap();
         let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).collect();
-        assert_eq!(names, [WEB_SEARCH, USE_SKILL]);
+        assert_eq!(names, [WEB_SEARCH, UPDATE_PLAN, DELEGATE, CANVAS, USE_SKILL]);
     }
 }

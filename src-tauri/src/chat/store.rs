@@ -84,6 +84,11 @@ pub struct Conversation {
     /// The user's rating of each reply, by the index of its last message.
     #[serde(default)]
     pub ratings: Vec<(usize, i8)>,
+    /// The note standing in for compacted turns.
+    #[serde(default)]
+    pub summary: Option<super::context::Summary>,
+    #[serde(default)]
+    pub usage: super::context::UsageTotals,
 }
 
 impl Conversation {
@@ -101,6 +106,8 @@ impl Conversation {
             messages: Vec::new(),
             times: Vec::new(),
             ratings: Vec::new(),
+            summary: None,
+            usage: Default::default(),
         }
     }
 }
@@ -230,6 +237,9 @@ pub struct Turn {
 #[serde(rename_all = "camelCase")]
 pub struct ConversationView {
     pub id: String,
+    pub usage: super::context::UsageTotals,
+    /// Index of the first turn requests still carry verbatim, when earlier ones were compacted.
+    pub compacted_before: Option<usize>,
     pub title: String,
     pub project_id: Option<String>,
     pub workdir: Option<String>,
@@ -341,6 +351,8 @@ pub fn turns(conversation: &Conversation) -> Vec<Turn> {
 pub fn view(conversation: &Conversation) -> ConversationView {
     ConversationView {
         id: conversation.id.clone(),
+        usage: conversation.usage.clone(),
+        compacted_before: conversation.summary.as_ref().map(|s| s.upto),
         title: conversation.title.clone(),
         project_id: conversation.project_id.clone(),
         workdir: conversation.workdir.clone(),

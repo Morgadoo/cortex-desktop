@@ -99,6 +99,9 @@ pub fn run() {
                 chat::commands::chat_delete_skill,
                 chat::commands::chat_set_skill_enabled,
                 chat::commands::chat_import_skill,
+                chat::commands::chat_get_canvas,
+                chat::commands::chat_save_canvas,
+                chat::commands::chat_export_canvas,
             ];
             commands(invoke)
         })

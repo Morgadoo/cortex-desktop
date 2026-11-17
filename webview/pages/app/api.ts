@@ -56,8 +56,17 @@ export interface Turn {
   rating: number;
 }
 
+export interface UsageTotals {
+  inputTokens: number;
+  outputTokens: number;
+  cost: number;
+  contextTokens: number;
+}
+
 export interface Conversation {
   id: string;
+  usage: UsageTotals;
+  compactedBefore: number | null;
   title: string;
   projectId: string | null;
   workdir: string | null;
@@ -111,6 +120,10 @@ export type ChatEvent =
   | { type: 'toolEnd'; conversationId: string; callId: string; output: string; isError: boolean }
   | { type: 'question'; conversationId: string; callId: string; question: string; options: string[] }
   | { type: 'title'; conversationId: string; title: string }
+  | { type: 'subagent'; conversationId: string; callId: string; index: number; title: string; status: string; activity: string }
+  | { type: 'usage'; conversationId: string; usage: UsageTotals; contextWindow: number }
+  | { type: 'compacting'; conversationId: string }
+  | { type: 'compacted'; conversationId: string; upto: number }
   | { type: 'done'; conversationId: string; cancelled: boolean }
   | { type: 'error'; conversationId: string; message: string };
 
@@ -159,6 +172,7 @@ export const api = {
     approval: ApprovalMode;
     projectId?: string | null;
     workdir?: string | null;
+    resume?: boolean;
   }) => call<void>('chat_send', { request }),
   cancel: (conversationId: string) => call<boolean>('chat_cancel', { conversationId }),
   answer: (callId: string, answer: string) => call<boolean>('chat_answer', { callId, answer }),

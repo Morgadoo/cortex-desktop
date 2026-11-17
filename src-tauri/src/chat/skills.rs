@@ -63,12 +63,13 @@ Write a subject line, then the email: open with the point, keep paragraphs to 2 
 Match the formality to the recipient. Offer a shorter variant when the draft is over 150 words.",
     ),
     (
-        "research-report",
-        "---\nname: research-report\ndescription: Use when the user asks for research, a comparison or an overview of a topic that needs current sources.\n---\n\
-1. Plan 3 to 5 searches that cover the question from different angles; run them with web_search.\n\
-2. Open the most authoritative results (official sites, primary sources) to confirm details.\n\
-3. Write: a short answer first, then sections with headings, a comparison table when comparing options, and inline citations as Markdown links.\n\
-4. Flag conflicting sources and anything you could not verify.",
+        "deep-research",
+        "---\nname: deep-research\ndescription: Use when the user asks for research, a comparison, a market or state-of-the-art overview, or any question that needs many current sources.\n---\n\
+1. Say in one or two sentences how you will approach it, then call update_plan with 4 to 6 research areas.\n\
+2. Hand the areas to delegate, one task each, so sub-agents research them in parallel. Write every task so it stands alone: what to find, which kinds of sources to prefer, and what to report.\n\
+3. While they work, or after, run a few web_search calls yourself for anything cross-cutting, and open primary sources to confirm key figures.\n\
+4. Mark the plan's steps done as results come in.\n\
+5. Write the report: a short answer first, then one section per area with headings, a table when comparing options, inline citations as Markdown links, and a closing section on open questions and what you could not verify.",
     ),
 ];
 

@@ -142,3 +142,18 @@ commands.allow = ["chat_set_skill_enabled"]
 identifier = "allow-chat-import-skill"
 description = "Import a SKILL.md the user picks."
 commands.allow = ["chat_import_skill"]
+
+[[permission]]
+identifier = "allow-chat-get-canvas"
+description = "Read a canvas."
+commands.allow = ["chat_get_canvas"]
+
+[[permission]]
+identifier = "allow-chat-save-canvas"
+description = "Save the user's edit to a canvas as a new version."
+commands.allow = ["chat_save_canvas"]
+
+[[permission]]
+identifier = "allow-chat-export-canvas"
+description = "Save a canvas as Markdown to a file the user picks."
+commands.allow = ["chat_export_canvas"]

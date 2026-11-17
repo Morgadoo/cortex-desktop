@@ -5,6 +5,7 @@ import type {
   ChatEvent,
   ConversationSummary,
   Instructions,
+  UsageTotals,
   Skill,
   Model,
   Part,
@@ -21,6 +22,12 @@ export type View =
 
 export type Mode = 'work' | 'code';
 
+export interface SubagentStatus {
+  title: string;
+  status: string;
+  activity: string;
+}
+
 /** A reply as it streams in, before it is read back from disk. */
 export interface LiveTurn {
   parts: Part[];
@@ -29,13 +36,15 @@ export interface LiveTurn {
   question: { callId: string; question: string; options: string[] } | null;
   error: string | null;
   startedAt: number;
+  /** The model is summarizing earlier turns to make room. */
+  compacting: boolean;
   /** When each part began and ended, by index, for step durations. */
   starts: number[];
   ends: number[];
 }
 
 function fresh(): LiveTurn {
-  return { parts: [], pending: null, question: null, error: null, startedAt: Date.now(), starts: [], ends: [] };
+  return { parts: [], pending: null, question: null, error: null, startedAt: Date.now(), compacting: false, starts: [], ends: [] };
 }
 
 /** Starts a part, ending the one before it unless it already ended (a tool ends on its result). */
@@ -66,6 +75,10 @@ export const state = {
   live: new Map<string, LiveTurn>(),
   approvals: [] as ApprovalRequest[],
   skills: [] as Skill[],
+  /** Sub-agent progress by the `delegate` call that started them. */
+  subagents: new Map<string, SubagentStatus[]>(),
+  /** The latest usage of each conversation, and its model's window. */
+  usage: new Map<string, { usage: UsageTotals; window: number }>(),
   sidebarCollapsed: false,
   contextOpen: false,
   /** Code mode: the folder new sessions work in. */
@@ -191,6 +204,21 @@ export function applyEvent(event: ChatEvent): boolean {
       if (summary) summary.title = event.title;
       return false;
     }
+    case 'subagent': {
+      const list = state.subagents.get(event.callId) ?? [];
+      list[event.index] = { title: event.title, status: event.status, activity: event.activity };
+      state.subagents.set(event.callId, list);
+      return false;
+    }
+    case 'usage':
+      state.usage.set(id, { usage: event.usage, window: event.contextWindow });
+      return false;
+    case 'compacting':
+      ensure().compacting = true;
+      return false;
+    case 'compacted':
+      ensure().compacting = false;
+      return false;
     case 'error':
       ensure().error = event.message;
       endSteps(ensure());

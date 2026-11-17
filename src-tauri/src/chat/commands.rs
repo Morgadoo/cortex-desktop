@@ -431,6 +431,39 @@ pub async fn chat_import_skill(app: AppHandle) -> Result<Option<String>, String>
     super::skills::import(&config_dir(&app)?, &path).map(Some)
 }
 
+#[tauri::command]
+pub fn chat_get_canvas(app: AppHandle, id: String) -> Result<super::canvas::Canvas, String> {
+    super::canvas::load(&config_dir(&app)?, &id)
+}
+
+/// Saves the user's edit as a new version.
+#[tauri::command]
+pub fn chat_save_canvas(app: AppHandle, id: String, title: Option<String>, content: String) -> Result<super::canvas::Canvas, String> {
+    let dir = config_dir(&app)?;
+    let existing = super::canvas::load(&dir, &id)?;
+    super::canvas::write(&dir, &existing.conversation_id, Some(&id), title.as_deref(), &content, "user")
+}
+
+/// Writes a canvas as Markdown to a file the user picks.
+#[tauri::command]
+pub async fn chat_export_canvas(app: AppHandle, id: String) -> Result<bool, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let canvas = super::canvas::load(&config_dir(&app)?, &id)?;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_file_name(format!("{}.md", sanitize_file_name(&canvas.title)))
+        .add_filter("Markdown", &["md"])
+        .save_file(move |path| {
+            let _ = tx.send(path);
+        });
+    let Some(path) = rx.await.map_err(|e| e.to_string())? else {
+        return Ok(false);
+    };
+    std::fs::write(path.into_path().map_err(|e| e.to_string())?, canvas.content()).map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
 /// Manages chat state at startup.
 pub fn setup(app: &tauri::App) {
     app.manage(ChatState::default());
