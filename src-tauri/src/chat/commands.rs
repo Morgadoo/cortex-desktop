@@ -337,15 +337,26 @@ pub async fn chat_code_commit(app: AppHandle, conversation_id: String, message: 
     tokio::task::spawn_blocking(move || super::code::commit(&dir, &message)).await.map_err(|e| e.to_string())?
 }
 
+/// Pushes a coding session's branch and opens a pull request for it.
+#[tauri::command]
+pub async fn chat_code_pull_request(app: AppHandle, conversation_id: String, title: String) -> Result<super::code::PullRequest, String> {
+    let conversation = store::load_conversation(&config_dir(&app)?, &conversation_id)?;
+    let dir = conversation.workdir.ok_or("This conversation has no folder.")?;
+    if title.trim().is_empty() {
+        return Err("Give the pull request a title.".into());
+    }
+    tokio::task::spawn_blocking(move || super::code::open_pull_request(&dir, &title)).await.map_err(|e| e.to_string())?
+}
+
 /// Shows another answer to the last prompt.
 #[tauri::command]
-pub fn chat_select_version(app: AppHandle, state: State<'_, ChatState>, id: String, index: usize) -> Result<(), String> {
+pub fn chat_select_version(app: AppHandle, state: State<'_, ChatState>, id: String, from: usize, index: usize) -> Result<(), String> {
     if state.is_running(&id) {
         return Err("Wait for the reply to finish.".into());
     }
     let dir = config_dir(&app)?;
     let mut conversation = store::load_conversation(&dir, &id)?;
-    store::select_version(&mut conversation, index)?;
+    store::select_version(&mut conversation, from, index)?;
     store::save_conversation(&dir, &conversation)
 }
 

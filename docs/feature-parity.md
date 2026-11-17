@@ -109,7 +109,7 @@ against the 5 that survived), and Mistral's documentation: docs.mistral.ai/vibe,
 | File and terminal tools with approvals | Same; Accept edits lets file edits through | Done |
 | Knows the repository | Branch, uncommitted files, recent commits, and `AGENTS.md` / `CLAUDE.md` in the prompt | Done |
 | Review changes | Changes view: files with +/− and a coloured diff; edits appear as diffs in the timeline | Done |
-| Commit and open pull requests (docs) | Commit from the Changes view; pull requests not yet | Partial |
+| Commit and open pull requests (docs) | Commit, then Pull request: branches off the default branch, pushes, and opens the PR with `gh` or GitHub's compare page | Done |
 
 ### 10. Apps
 
@@ -144,7 +144,7 @@ against the 5 that survived), and Mistral's documentation: docs.mistral.ai/vibe,
 | Autonomous scheduled agents | openbot, grok-bot | Scheduled tasks with unattended / autonomous runs | Done |
 | Memory | open-webui, LibreChat | Knowledge | Done |
 | Prompt library | open-webui, LibreChat | Skills (`/name`) and Workflows | Done |
-| Response versions and branching | LibreChat, lobehub | Regenerate keeps earlier answers; editing any earlier message keeps the old continuation; ‹ 1 / n › switches. One branch point at a time (the latest) | Done |
+| Response versions and branching | LibreChat, lobehub | A branch tree: regenerate and edit branch at any message; ‹ 1 / n › switches; branch points inside a branch come back with it | Done |
 | Conversation import | LibreChat, open-webui | ChatGPT and Claude exports (zip or conversations.json), visible branch only | Done |
 | Archive / folders / tags | open-webui | Archive, pin, projects as folders, and tags searchable with `#tag` | Done |
 | Export | all | Each conversation as Markdown; all data | Done |
@@ -160,6 +160,5 @@ against the 5 that survived), and Mistral's documentation: docs.mistral.ai/vibe,
 - **Voice input against a real provider:** dictation was verified end to end in the app with a
   virtual microphone and a mock transcription endpoint. The test proxy has no transcription
   endpoint (404), so it has not run against a real speech-to-text model yet.
-- **Branch history:** one branch point is kept per conversation (the most recent), not a full tree.
-- **Pull requests:** Code mode commits, but does not open pull requests yet.
+- **Pull requests to non-GitHub remotes:** the branch is pushed, and the pull request is opened on that host by hand.
 - **Branding:** the app still carries the Lumo name and logo; a new name is the owner's decision.

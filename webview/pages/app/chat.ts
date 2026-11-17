@@ -784,10 +784,10 @@ function renderActions(conversation: Conversation, turn: Turn, isLast: boolean, 
 }
 
 /** ‹ 2 / 3 ›: earlier answers to the last prompt, kept when it was regenerated. */
-function versionSwitcher(conversationId: string, versions: { current: number; total: number; kind: string }): HTMLElement {
+function versionSwitcher(conversationId: string, versions: { from: number; current: number; total: number; kind: string }): HTMLElement {
   const go = (index: number) => async () => {
     try {
-      await api.selectVersion(conversationId, index);
+      await api.selectVersion(conversationId, versions.from, index);
       await viewCache.chat?.refresh(false);
     } catch (e) {
       toast(String(e), 'error');
@@ -1973,7 +1973,7 @@ export class ChatView {
         compactedBefore: null,
         agentId: null,
         archived: false,
-        versions: null,
+        versions: [],
       };
     }
     const optimistic = pendingUser.get(this.id);
@@ -2003,14 +2003,13 @@ export class ChatView {
       this.transcript,
       c.turns.flatMap((turn, i) => {
         // The branch switcher sits on the turn that varies: an edited message, or a regenerated answer.
-        const v = c.versions;
         const previous = c.turns[i - 1];
-        const branch =
-          v &&
-          ((turn.role === 'user' && v.kind === 'prompt' && turn.index === v.from) ||
-            (turn.role === 'assistant' && v.kind === 'answer' && previous?.role === 'user' && previous.index === v.from))
-            ? versionSwitcher(c.id, v)
-            : null;
+        const v = c.versions.find(
+          (b) =>
+            (turn.role === 'user' && b.kind === 'prompt' && turn.index === b.from) ||
+            (turn.role === 'assistant' && b.kind === 'answer' && previous?.role === 'user' && (previous.index === b.from || previous.index + 1 === b.from))
+        );
+        const branch = v ? versionSwitcher(c.id, v) : null;
         const el = turn.role === 'user' ? renderUserTurn(turn, c.id, branch) : renderAssistantTurn(c, turn, i === last, running, branch);
         // Turns before the summary point reach the model only through the summary.
         if (divider !== null && divider !== undefined && !marked && turn.role === 'user' && turn.index >= divider) {

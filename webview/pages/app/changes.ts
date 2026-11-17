@@ -1,6 +1,6 @@
 /** A coding session's working-tree changes: the files touched and their diffs. */
 import { tauriInvoke } from '../../shared/tauri';
-import { clear, h, icon, modal, toast } from './dom';
+import { clear, h, icon, modal, promptText, toast } from './dom';
 import { iconButton, modalHeader } from './ui';
 
 export interface ChangedFile {
@@ -119,11 +119,34 @@ export function openChanges(conversationId: string, folder: string) {
       show(null, all);
     };
     refresh.addEventListener('click', () => void load());
+    // Push the session's branch and open a pull request: GitHub CLI when installed, else the browser.
+    const pullRequest = h('button', { class: 'btn btn-secondary btn-sm' }, icon('share', 14), 'Pull request');
+    pullRequest.addEventListener('click', async () => {
+      const title = await promptText('Pull request title', '', 'What these changes do');
+      if (!title) return;
+      pullRequest.setAttribute('disabled', '');
+      try {
+        const pr = await tauriInvoke<{ branch: string; url: string | null; via: string }>('chat_code_pull_request', { conversationId, title });
+        if (pr.url) window.open(pr.url, '_blank', 'noopener');
+        toast(
+          pr.via === 'gh'
+            ? `Pull request opened from ${pr.branch}.`
+            : pr.via === 'browser'
+              ? `Pushed ${pr.branch}; finish the pull request in your browser.`
+              : `Pushed ${pr.branch}. The remote is not on GitHub, so open the pull request there.`
+        );
+        void load();
+      } catch (e) {
+        toast(String(e), 'error');
+      } finally {
+        pullRequest.removeAttribute('disabled');
+      }
+    });
     void load();
     return h(
       'div',
       { class: 'changes-modal' },
-      modalHeader(h('div', { class: 'modal-title' }, h('h2', {}, 'Changes'), title), close, { actions: [refresh] }),
+      modalHeader(h('div', { class: 'modal-title' }, h('h2', {}, 'Changes'), title), close, { actions: [pullRequest, refresh] }),
       h('div', { class: 'changes-body' }, list, view)
     );
   }, true);

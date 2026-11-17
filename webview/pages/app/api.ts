@@ -83,7 +83,7 @@ export interface Conversation {
   turns: Turn[];
   running: boolean;
   /** Which answer to the last prompt shows, when it was answered more than once. */
-  versions: { from: number; kind: 'answer' | 'prompt'; current: number; total: number } | null;
+  versions: { from: number; kind: 'answer' | 'prompt'; current: number; total: number }[];
 }
 
 export interface Project {
@@ -252,7 +252,7 @@ export const api = {
     archived?: boolean;
     tags?: string[];
   }) => call<void>('chat_update_conversation', { update }),
-  selectVersion: (id: string, index: number) => call<void>('chat_select_version', { id, index }),
+  selectVersion: (id: string, from: number, index: number) => call<void>('chat_select_version', { id, from, index }),
   steer: (conversationId: string, text: string) => call<boolean>('chat_steer', { conversationId, text }),
   commitChanges: (conversationId: string, message: string) => call<string>('chat_code_commit', { conversationId, message }),
   speak: (text: string) => call<[string, string]>('chat_speak', { text }),

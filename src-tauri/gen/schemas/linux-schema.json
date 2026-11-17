@@ -225,6 +225,12 @@
           "markdownDescription": "Commit a coding session's changes."
         },
         {
+          "description": "Push a coding session's branch and open a pull request.",
+          "type": "string",
+          "const": "allow-chat-code-pull-request",
+          "markdownDescription": "Push a coding session's branch and open a pull request."
+        },
+        {
           "description": "Read whether code runs without asking.",
           "type": "string",
           "const": "allow-chat-code-runs-allowed",

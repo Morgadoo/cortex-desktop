@@ -69,6 +69,7 @@
     "allow-chat-speak",
     "allow-chat-steer",
     "allow-chat-code-commit",
+    "allow-chat-code-pull-request",
     "allow-chat-select-version",
     "allow-chat-import-conversations",
     "allow-chat-set-media-models",

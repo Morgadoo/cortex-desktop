@@ -327,3 +327,8 @@ commands.allow = ["chat_steer"]
 identifier = "allow-chat-code-commit"
 description = "Commit a coding session's changes."
 commands.allow = ["chat_code_commit"]
+
+[[permission]]
+identifier = "allow-chat-code-pull-request"
+description = "Push a coding session's branch and open a pull request."
+commands.allow = ["chat_code_pull_request"]

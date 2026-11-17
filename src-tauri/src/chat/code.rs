@@ -146,6 +146,87 @@ pub fn commit(dir: &str, message: &str) -> Result<String, String> {
     Ok(run(&["log", "-1", "--oneline", "--no-decorate"])?.trim().to_string())
 }
 
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PullRequest {
+    pub branch: String,
+    /// Where to see or finish the pull request: the PR itself (via `gh`) or GitHub's compare page.
+    pub url: Option<String>,
+    /// `gh` when the GitHub CLI opened it, `browser` when the compare page finishes it.
+    pub via: String,
+}
+
+/// `owner/repo` of a GitHub remote URL (https or ssh), if it is one.
+pub fn github_repo(remote: &str) -> Option<String> {
+    let remote = remote.trim().trim_end_matches('/').trim_end_matches(".git");
+    let path = remote
+        .strip_prefix("https://github.com/")
+        .or_else(|| remote.strip_prefix("http://github.com/"))
+        .or_else(|| remote.strip_prefix("git@github.com:"))
+        .or_else(|| remote.strip_prefix("ssh://git@github.com/"))?;
+    let mut parts = path.split('/');
+    let (owner, repo) = (parts.next()?, parts.next()?);
+    (!owner.is_empty() && !repo.is_empty() && parts.next().is_none()).then(|| format!("{owner}/{repo}"))
+}
+
+/// A branch name from a title: `ai/` plus lowercase words joined by hyphens.
+fn branch_name(title: &str) -> String {
+    let slug: String = title
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|w| !w.is_empty())
+        .take(6)
+        .collect::<Vec<_>>()
+        .join("-");
+    format!("ai/{}", if slug.is_empty() { "changes".into() } else { slug })
+}
+
+/// Pushes the current branch (creating one first when on the default branch) and opens a pull
+/// request for it: with the GitHub CLI when it is installed and signed in, otherwise by handing
+/// back GitHub's compare page, where the user finishes it in the browser.
+pub fn open_pull_request(dir: &str, title: &str) -> Result<PullRequest, String> {
+    let path = Path::new(dir);
+    let run = |args: &[&str]| -> Result<String, String> {
+        let out = Command::new("git").arg("-C").arg(path).args(args).env("LC_ALL", "C").output().map_err(|e| e.to_string())?;
+        if out.status.success() {
+            Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+        } else {
+            Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+        }
+    };
+    let remote = run(&["remote", "get-url", "origin"]).map_err(|_| "This repository has no `origin` remote to push to.".to_string())?;
+    let default = run(&["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])
+        .ok()
+        .and_then(|r| r.strip_prefix("origin/").map(str::to_string))
+        .unwrap_or_else(|| "main".into());
+    let mut branch = run(&["rev-parse", "--abbrev-ref", "HEAD"])?;
+    if branch == default || branch == "HEAD" {
+        branch = branch_name(title);
+        run(&["switch", "-c", &branch])?;
+    }
+    run(&["push", "-u", "origin", &branch]).map_err(|e| format!("Pushing {branch} failed: {e}"))?;
+
+    let repo = github_repo(&remote);
+    // The GitHub CLI, when it is installed and signed in, opens the pull request directly.
+    if repo.is_some() {
+        let mut gh = Command::new("gh");
+        gh.current_dir(path).args(["pr", "create", "--head", &branch, "--base", &default, "--title", title.trim(), "--fill"]);
+        if let Ok(out) = gh.output() {
+            if out.status.success() {
+                let url = String::from_utf8_lossy(&out.stdout).lines().rev().find(|l| l.starts_with("https://")).map(str::to_string);
+                return Ok(PullRequest { branch, url, via: "gh".into() });
+            }
+        }
+    }
+    Ok(match repo {
+        Some(repo) => PullRequest { url: Some(format!("https://github.com/{repo}/compare/{default}...{branch}?expand=1")), branch, via: "browser".into() },
+        None => PullRequest { branch, url: None, via: "none".into() },
+    })
+}
+
 fn parse(numstat: &str, names: &str) -> Vec<ChangedFile> {
     let statuses: Vec<(String, String)> = names
         .lines()
@@ -234,6 +315,42 @@ mod tests {
         assert!(!changes(plain.path().to_str().unwrap()).git);
         assert!(commit(plain.path().to_str().unwrap(), "x").is_err());
         assert!(!prompt(plain.path().to_str().unwrap()).contains("Git:"));
+    }
+
+    #[test]
+    fn reads_github_remotes() {
+        assert_eq!(github_repo("https://github.com/acme/app.git").as_deref(), Some("acme/app"));
+        assert_eq!(github_repo("git@github.com:acme/app.git").as_deref(), Some("acme/app"));
+        assert_eq!(github_repo("ssh://git@github.com/acme/app").as_deref(), Some("acme/app"));
+        assert_eq!(github_repo("https://gitlab.com/acme/app.git"), None);
+        assert_eq!(branch_name("Simplify totals: use sum()!"), "ai/simplify-totals-use-sum");
+    }
+
+    #[test]
+    fn pushes_a_new_branch_for_a_pull_request() {
+        if Command::new("git").arg("--version").output().is_err() {
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let remote = tmp.path().join("remote.git");
+        let work = tmp.path().join("work");
+        sh(tmp.path(), &["init", "-q", "--bare", "-b", "main", remote.to_str().unwrap()]);
+        sh(tmp.path(), &["clone", "-q", remote.to_str().unwrap(), work.to_str().unwrap()]);
+        sh(&work, &["config", "user.name", "t"]);
+        sh(&work, &["config", "user.email", "t@t"]);
+        sh(&work, &["switch", "-q", "-c", "main"]);
+        std::fs::write(work.join("a.txt"), "one\n").unwrap();
+        commit(work.to_str().unwrap(), "First").unwrap();
+        sh(&work, &["push", "-q", "-u", "origin", "main"]);
+        std::fs::write(work.join("a.txt"), "two\n").unwrap();
+        commit(work.to_str().unwrap(), "Second").unwrap();
+
+        // On the default branch: a branch is made from the title and pushed; a non-GitHub remote
+        // has no page to open.
+        let pr = open_pull_request(work.to_str().unwrap(), "Use two").unwrap();
+        assert_eq!(pr, PullRequest { branch: "ai/use-two".into(), url: None, via: "none".into() });
+        let remote_branches = Command::new("git").arg("-C").arg(&remote).args(["branch", "--list"]).output().unwrap();
+        assert!(String::from_utf8_lossy(&remote_branches.stdout).contains("ai/use-two"));
     }
 
     #[test]

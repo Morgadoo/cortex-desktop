@@ -91,9 +91,13 @@ pub struct Conversation {
     /// Free-form labels, lowercase, for finding conversations again.
     #[serde(default)]
     pub tags: Vec<String>,
-    /// Earlier answers to the last prompt, kept when it was answered again.
-    #[serde(default)]
+    /// Branch point saved before branching became a tree; moved into `branches` on first use.
+    #[serde(default, skip_serializing)]
     pub versions: Option<Versions>,
+    /// Every point where the conversation branched, ordered by position. Branch points inside a
+    /// stored branch travel with it and come back when it is shown again.
+    #[serde(default)]
+    pub branches: Vec<Versions>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     #[serde(default)]
@@ -129,6 +133,7 @@ impl Conversation {
             archived: false,
             tags: Vec::new(),
             versions: None,
+            branches: Vec::new(),
             created_at: now,
             updated_at: now,
             messages: Vec::new(),
@@ -311,13 +316,13 @@ pub struct ConversationView {
     pub pinned: bool,
     pub archived: bool,
     pub turns: Vec<Turn>,
-    /// Which answer to the last prompt is showing, when there are several.
-    pub versions: Option<VersionsView>,
+    /// The branch points along the showing path, each with its switcher position.
+    pub versions: Vec<VersionsView>,
 }
 
-/// Branches of a conversation from one point: every continuation it had, the one showing and the
-/// others in order around it. Regenerating an answer branches after its prompt; editing a sent
-/// message branches at that message. One branch point is kept: the most recent.
+/// One point where a conversation branched: every continuation it had from there, the one
+/// showing and the others in order around it. Regenerating an answer branches after its prompt;
+/// editing a sent message branches at that message.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Versions {
@@ -330,6 +335,9 @@ pub struct Versions {
     pub kind: String,
     /// The continuations not showing, in order, with the showing one at `current` between them.
     pub others: Vec<Vec<Message>>,
+    /// Branch points inside each stored continuation, aligned with `others`.
+    #[serde(default)]
+    pub nested: Vec<Vec<Versions>>,
     pub current: usize,
 }
 
@@ -373,45 +381,82 @@ pub fn last_prompt(conversation: &Conversation) -> Option<usize> {
     })
 }
 
+/// Moves a branch point saved in the old single-point format into the tree.
+fn migrate(conversation: &mut Conversation) {
+    if let Some(mut v) = conversation.versions.take() {
+        if v.kind.is_empty() {
+            v.from += 1;
+            v.kind = "answer".into();
+        }
+        conversation.branches.push(v);
+    }
+}
+
+/// Takes the branch points that sit inside the messages from `start` on.
+fn take_inner(conversation: &mut Conversation, start: usize) -> Vec<Versions> {
+    let (inner, outer): (Vec<_>, Vec<_>) = std::mem::take(&mut conversation.branches).into_iter().partition(|v| v.start() > start);
+    conversation.branches = outer;
+    inner
+}
+
 /// Keeps everything from message `from` on as a branch before it is replaced; the new
-/// continuation will show last.
+/// continuation shows last. Branch points further along go with the stored branch.
 pub fn keep_branch(conversation: &mut Conversation, from: usize, kind: &str) {
+    migrate(conversation);
     let tail: Vec<Message> = conversation.messages.get(from..).map(<[Message]>::to_vec).unwrap_or_default();
     if tail.is_empty() {
         return;
     }
-    let mut all = match conversation.versions.take().filter(|v| v.start() == from && v.kind == kind) {
-        Some(v) => {
-            let mut all = v.others;
-            all.insert(v.current.min(all.len()), tail);
-            all
-        }
-        None => vec![tail],
+    let inner = take_inner(conversation, from);
+    let mut point = match conversation.branches.iter().position(|v| v.start() == from) {
+        Some(i) => conversation.branches.remove(i),
+        None => Versions { from, kind: kind.to_string(), ..Default::default() },
     };
-    all.truncate(20);
-    let current = all.len();
-    conversation.versions = Some(Versions { from, kind: kind.to_string(), others: all, current });
+    point.nested.resize(point.others.len(), Vec::new());
+    let at = point.current.min(point.others.len());
+    point.others.insert(at, tail);
+    point.nested.insert(at, inner);
+    if point.others.len() > 20 {
+        point.others.remove(0);
+        point.nested.remove(0);
+    }
+    point.current = point.others.len();
+    point.kind = kind.to_string();
+    conversation.branches.push(point);
+    conversation.branches.sort_by_key(Versions::start);
 }
 
-/// Shows branch `target` (0-based) at the conversation's branch point.
-pub fn select_version(conversation: &mut Conversation, target: usize) -> Result<(), String> {
-    let versions = conversation.versions.take().ok_or("This conversation has no other versions.")?;
-    let start = versions.start();
-    if start > conversation.messages.len() || target > versions.others.len() {
-        conversation.versions = Some(versions);
+/// Shows branch `target` (0-based) at the branch point that starts at message `from`.
+pub fn select_version(conversation: &mut Conversation, from: usize, target: usize) -> Result<(), String> {
+    migrate(conversation);
+    let index = conversation
+        .branches
+        .iter()
+        .position(|v| v.start() == from)
+        .ok_or("There are no other versions here.")?;
+    let start = conversation.branches[index].start();
+    if start > conversation.messages.len() || target > conversation.branches[index].others.len() {
         return Err("There is no such version.".into());
     }
+    let mut point = conversation.branches.remove(index);
+    point.nested.resize(point.others.len(), Vec::new());
     let live = conversation.messages.split_off(start);
-    let mut all = versions.others;
-    all.insert(versions.current.min(all.len()), live);
-    let chosen = all.remove(target);
+    let live_inner = take_inner(conversation, start);
+    let at = point.current.min(point.others.len());
+    point.others.insert(at, live);
+    point.nested.insert(at, live_inner);
+    let chosen = point.others.remove(target);
+    let chosen_inner = point.nested.remove(target);
     conversation.messages.extend(chosen);
+    conversation.branches.extend(chosen_inner);
     conversation.times.retain(|(i, _)| *i < start);
     conversation.ratings.retain(|(i, _)| *i < start);
     if conversation.summary.as_ref().is_some_and(|s| s.upto > start) {
         conversation.summary = None;
     }
-    conversation.versions = Some(Versions { from: versions.from, kind: versions.kind, others: all, current: target });
+    point.current = target;
+    conversation.branches.push(point);
+    conversation.branches.sort_by_key(Versions::start);
     Ok(())
 }
 
@@ -558,15 +603,19 @@ pub fn view(conversation: &Conversation) -> ConversationView {
         turns: turns(conversation),
         versions: conversation
             .versions
-            .as_ref()
+            .iter()
+            .map(|v| {
+                let mut v = v.clone();
+                if v.kind.is_empty() {
+                    v.from += 1;
+                    v.kind = "answer".into();
+                }
+                v
+            })
+            .chain(conversation.branches.iter().cloned())
             .filter(|v| v.start() <= conversation.messages.len() && !v.others.is_empty())
-            .map(|v| VersionsView {
-                // A legacy answer branch starts after its prompt.
-                from: if v.kind.is_empty() { v.from } else { v.start() },
-                kind: if v.kind.is_empty() { "answer".into() } else { v.kind.clone() },
-                current: v.current,
-                total: v.others.len() + 1,
-            }),
+            .map(|v| VersionsView { from: v.start(), kind: v.kind.clone(), current: v.current, total: v.others.len() + 1 })
+            .collect(),
     }
 }
 
@@ -597,22 +646,22 @@ mod tests {
         keep_branch(&mut c, 0, "answer");
         c.messages.truncate(1);
         c.messages.push(Message::assistant("A3"));
-        let v = view(&c).versions.unwrap();
+        let v = view(&c).versions[0].clone();
         assert_eq!((v.current, v.total), (2, 3));
-        select_version(&mut c, 0).unwrap();
+        select_version(&mut c, 0, 0).unwrap();
         assert_eq!(text(&c), "A1");
-        select_version(&mut c, 1).unwrap();
+        select_version(&mut c, 0, 1).unwrap();
         assert_eq!(text(&c), "A2");
-        assert!(select_version(&mut c, 7).is_err());
+        assert!(select_version(&mut c, 0, 7).is_err());
         assert_eq!(text(&c), "A2", "a bad index leaves the answer as it was");
-        select_version(&mut c, 2).unwrap();
+        select_version(&mut c, 0, 2).unwrap();
         assert_eq!(text(&c), "A3");
         // The branch point survives later messages; they belong to the branch showing.
         c.messages.push(Message::user("Next"));
         c.messages.push(Message::assistant("N1"));
-        select_version(&mut c, 0).unwrap();
+        select_version(&mut c, 0, 0).unwrap();
         assert_eq!(c.messages.len(), 2, "branch A1 had no follow-up");
-        select_version(&mut c, 2).unwrap();
+        select_version(&mut c, 0, 2).unwrap();
         assert_eq!(text(&c), "N1", "the follow-up came back with its branch");
 
         // Editing an earlier message branches there and keeps the old continuation.
@@ -620,12 +669,41 @@ mod tests {
         c.messages.truncate(2);
         c.messages.push(Message::user("Next, edited"));
         c.messages.push(Message::assistant("E1"));
-        let v = view(&c).versions.unwrap();
+        // Both branch points are live now: the answer to Q, and the edited follow-up.
+        let views = view(&c).versions;
+        assert_eq!(views.len(), 2);
+        let v = &views[1];
         assert_eq!((v.from, v.kind.as_str(), v.current, v.total), (2, "prompt", 1, 2));
-        select_version(&mut c, 0).unwrap();
+        select_version(&mut c, 2, 0).unwrap();
         assert_eq!(text(&c), "N1");
-        select_version(&mut c, 1).unwrap();
+        select_version(&mut c, 2, 1).unwrap();
         assert_eq!(text(&c), "E1");
+
+        // A tree: switching the first answer away stores the edit branch inside it, and
+        // switching back brings both the follow-up and its own branch point back.
+        select_version(&mut c, 0, 0).unwrap();
+        assert_eq!(c.messages.len(), 2);
+        assert_eq!(view(&c).versions.len(), 1, "the inner branch point left with its branch");
+        select_version(&mut c, 0, 2).unwrap();
+        assert_eq!(text(&c), "E1");
+        let views = view(&c).versions;
+        assert_eq!(views.len(), 2, "the inner branch point came back");
+        select_version(&mut c, 2, 0).unwrap();
+        assert_eq!(text(&c), "N1");
+    }
+
+    #[test]
+    fn old_single_branch_points_still_load() {
+        let mut c = Conversation::new("o".into(), None, None);
+        c.messages.push(Message::user("Q"));
+        c.messages.push(Message::assistant("A2"));
+        // Saved before branching: the branch held answers after prompt 0.
+        c.versions = Some(Versions { from: 0, kind: String::new(), others: vec![vec![Message::assistant("A1")]], nested: vec![], current: 1 });
+        let v = view(&c).versions;
+        assert_eq!((v[0].from, v[0].total), (1, 2));
+        select_version(&mut c, 1, 0).unwrap();
+        assert_eq!(c.messages.len(), 2);
+        assert!(c.versions.is_none() && c.branches.len() == 1);
     }
 
     use super::*;
