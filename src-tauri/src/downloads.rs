@@ -47,6 +47,7 @@ impl Tracked {
 impl Downloads {
     /// Records a file the app saved itself, outside the webview's download handling, so
     /// `reveal_download` accepts it.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub fn record(&self, path: PathBuf) -> Option<String> {
         Some(self.0.lock().ok()?.complete(path))
     }

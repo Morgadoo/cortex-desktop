@@ -564,7 +564,7 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         // with backoff, as long as nothing reached the user yet.
         let mut attempt = 0u32;
         // When the model started and stopped thinking, for "Thought for 4s".
-        let mut thought_ms: Option<u32> = None;
+        let mut thought_ms: Option<u32>;
         let response = loop {
             attempt += 1;
             let mut thinking: Option<(std::time::Instant, Option<std::time::Instant>)> = None;

@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 use std::process::Stdio;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Mutex, OnceLock};
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -114,7 +114,7 @@ pub fn start(conversation_id: &str, dir: &str, command: &str) -> Result<String, 
     let mut child = tokio::process::Command::new("sh");
     #[cfg(not(windows))]
     child.args(["-c", command]);
-    let mut child = child
+    let child = child
         .current_dir(dir)
         .env("FORCE_COLOR", "0")
         .env("NO_COLOR", "1")

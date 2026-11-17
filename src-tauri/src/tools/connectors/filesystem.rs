@@ -204,6 +204,7 @@ impl FilesystemConnector {
 /// Every directory Lumo keeps state in, including the webview's cookies and storage.
 fn app_directories(app_handle: &AppHandle) -> Vec<PathBuf> {
     let path = app_handle.path();
+    #[cfg_attr(not(target_os = "macos"), allow(unused_mut))]
     let mut dirs: Vec<PathBuf> = [
         path.app_config_dir(),
         path.app_data_dir(),

@@ -86,12 +86,7 @@ pub fn split_sheets(content: &str, fallback_name: &str) -> Vec<(String, String)>
     out.into_iter().map(|(n, c)| (n, c.trim().to_string())).collect()
 }
 
-/// Writes rows as an Excel workbook: numbers stay numbers, the first row is a bold header.
-pub fn write_xlsx(path: &Path, sheet_name: &str, rows: &[Vec<String>]) -> Result<(), String> {
-    write_workbook(path, &[(sheet_name.to_string(), rows.to_vec())])
-}
-
-/// Writes several sheets into one workbook, in order.
+/// Writes sheets into one workbook, in order: numbers stay numbers, each first row is a bold header.
 pub fn write_workbook(path: &Path, sheets: &[(String, Vec<Vec<String>>)]) -> Result<(), String> {
     use rust_xlsxwriter::{Format, Workbook};
     let mut workbook = Workbook::new();
@@ -194,7 +189,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("budget.xlsx");
         let rows = parse_csv("Item,Cost\nRent,1200\nFood,350.5\n");
-        write_xlsx(&path, "Budget: May", &rows).unwrap();
+        write_workbook(&path, &[("Budget: May".to_string(), rows)]).unwrap();
         let sheets = read_workbook(&std::fs::read(&path).unwrap()).unwrap();
         assert_eq!(sheets.len(), 1);
         assert_eq!(sheets[0].0, "Budget May");
