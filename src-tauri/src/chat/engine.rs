@@ -15,7 +15,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::watch;
 
-use super::{agents, builtins, canvas, context, knowledge, libraries, media, memory, privacy, providers, sandbox, skills, subagents, tasks};
+use super::{agents, builtins, canvas, context, knowledge, libraries, media, memory, terminal, privacy, providers, sandbox, skills, subagents, tasks};
 use super::store::{self, Conversation, Instructions, Project};
 use super::tools::{self, ApprovalMode, ChatTool, ASK_USER};
 use super::{ChatState, EVENT, LOCAL_ACCOUNT};
@@ -421,6 +421,10 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         // Nobody can answer a question during a scheduled run.
         offered.retain(|t| t.name != ASK_USER);
     }
+    if conversation.workdir.is_some() {
+        // Coding sessions get a terminal for long-running commands.
+        offered.extend(terminal::definitions());
+    }
     if conversation.temporary {
         // A temporary chat leaves no trace: it does not add to or change knowledge.
         offered.retain(|t| t.name != builtins::REMEMBER && t.name != builtins::FORGET && t.name != builtins::KNOWLEDGE_WRITE);
@@ -774,6 +778,9 @@ impl Runner<'_> {
         if name == sandbox::RUN_CODE {
             return self.run_code(&arguments).await;
         }
+        if name == terminal::START || name == terminal::READ || name == terminal::STOP {
+            return self.terminal(name, &arguments).await;
+        }
         if name == media::GENERATE_IMAGE {
             return media::generate(self.config_dir, self.id, &arguments).await;
         }
@@ -788,6 +795,70 @@ impl Runner<'_> {
 }
 
 impl Runner<'_> {
+    /// Background commands in the session's folder; starting one asks like any shell command.
+    async fn terminal(&self, name: &str, arguments: &Value) -> tools::Outcome {
+        let fail = |text: &str| tools::Outcome { text: text.into(), is_error: true };
+        let arg = |k: &str| arguments.get(k).and_then(Value::as_str).unwrap_or_default().trim().to_string();
+        match name {
+            terminal::READ => match terminal::get(&arg("id")) {
+                Some(view) if view.conversation_id == self.id => {
+                    let chars = arguments.get("chars").and_then(Value::as_u64).unwrap_or(4000).clamp(200, 20_000) as usize;
+                    tools::Outcome {
+                        text: format!("Status: {}{}\n\n{}", view.status, view.exit_code.map(|c| format!(" (exit {c})")).unwrap_or_default(), terminal::tail(&view, chars)),
+                        is_error: false,
+                    }
+                }
+                _ => fail("There is no background command with that id here."),
+            },
+            terminal::STOP => match terminal::get(&arg("id")) {
+                Some(view) if view.conversation_id == self.id => match terminal::stop(&view.id) {
+                    Ok(()) => tools::Outcome { text: "Stopped.".into(), is_error: false },
+                    Err(e) => fail(&e),
+                },
+                _ => fail("There is no background command with that id here."),
+            },
+            _ => {
+                let Some(dir) = store::load_conversation(self.config_dir, self.id).ok().and_then(|c| c.workdir) else {
+                    return fail("Background commands need a coding session with a folder.");
+                };
+                match self.request.approval {
+                    ApprovalMode::Plan => return fail("Plan mode: nothing is started yet. Put this command in your plan."),
+                    ApprovalMode::Unattended => return fail("This scheduled run may not start commands."),
+                    ApprovalMode::Auto | ApprovalMode::Autonomous => {}
+                    ApprovalMode::Ask | ApprovalMode::AcceptEdits => {
+                        let gate = ChatTool {
+                            name: "terminal__start".into(),
+                            description: String::new(),
+                            parameters: Value::Null,
+                            connector_id: Some("terminal".into()),
+                            tool_name: "start".into(),
+                            read_only: false,
+                        };
+                        if tools::request_approval(self.app, &gate, arguments).await == ApprovalDecision::Deny {
+                            return fail("The user declined to start this command. Do not retry it; ask what they would like instead.");
+                        }
+                    }
+                }
+                match terminal::start(self.id, &dir, &arg("command")) {
+                    Ok(id) => {
+                        // A moment for the first lines (a server's address, an early error).
+                        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                        let view = terminal::get(&id);
+                        tools::Outcome {
+                            text: format!(
+                                "Started in the background with id {id}. Status: {}.\n{}",
+                                view.as_ref().map_or("running", |v| v.status.as_str()),
+                                view.as_ref().map(|v| terminal::tail(v, 2000)).unwrap_or_default()
+                            ),
+                            is_error: false,
+                        }
+                    }
+                    Err(e) => fail(&e),
+                }
+            }
+        }
+    }
+
     /// Runs code once the user allows it: every run in "ask" modes, unless they allowed all.
     async fn run_code(&self, arguments: &Value) -> tools::Outcome {
         match self.request.approval {

@@ -579,6 +579,30 @@
           "markdownDescription": "Add guidance to a running turn."
         },
         {
+          "description": "Forget finished background commands.",
+          "type": "string",
+          "const": "allow-chat-terminal-clear",
+          "markdownDescription": "Forget finished background commands."
+        },
+        {
+          "description": "List background commands.",
+          "type": "string",
+          "const": "allow-chat-terminal-list",
+          "markdownDescription": "List background commands."
+        },
+        {
+          "description": "Start a background command.",
+          "type": "string",
+          "const": "allow-chat-terminal-start",
+          "markdownDescription": "Start a background command."
+        },
+        {
+          "description": "Stop a background command.",
+          "type": "string",
+          "const": "allow-chat-terminal-stop",
+          "markdownDescription": "Stop a background command."
+        },
+        {
           "description": "Send a one-word request to check a provider's key and address.",
           "type": "string",
           "const": "allow-chat-test-model",

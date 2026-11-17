@@ -132,6 +132,10 @@ pub fn run() {
                 chat::commands::chat_speak,
                 chat::commands::chat_steer,
                 chat::commands::chat_read_spreadsheet,
+                chat::commands::chat_terminal_list,
+                chat::commands::chat_terminal_start,
+                chat::commands::chat_terminal_stop,
+                chat::commands::chat_terminal_clear,
                 chat::commands::chat_knowledge_pages,
                 chat::commands::chat_save_knowledge_page,
                 chat::commands::chat_delete_knowledge_page,
@@ -338,6 +342,8 @@ pub fn run() {
             }
 
             if matches!(event, tauri::RunEvent::Exit) {
+                // Background commands from coding sessions end with the app.
+                chat::terminal::stop_all();
                 if let Some(cache) = app.try_state::<skills::SkillCache>() {
                     cache.activate(None);
                 }

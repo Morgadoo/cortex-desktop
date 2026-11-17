@@ -31,6 +31,7 @@ pub mod skills;
 pub mod store;
 pub mod subagents;
 pub mod tasks;
+pub mod terminal;
 pub mod tools;
 pub mod workflows;
 

@@ -352,3 +352,23 @@ commands.allow = ["chat_delete_knowledge_page"]
 identifier = "allow-chat-read-spreadsheet"
 description = "Read an uploaded workbook."
 commands.allow = ["chat_read_spreadsheet"]
+
+[[permission]]
+identifier = "allow-chat-terminal-list"
+description = "List background commands."
+commands.allow = ["chat_terminal_list"]
+
+[[permission]]
+identifier = "allow-chat-terminal-start"
+description = "Start a background command."
+commands.allow = ["chat_terminal_start"]
+
+[[permission]]
+identifier = "allow-chat-terminal-stop"
+description = "Stop a background command."
+commands.allow = ["chat_terminal_stop"]
+
+[[permission]]
+identifier = "allow-chat-terminal-clear"
+description = "Forget finished background commands."
+commands.allow = ["chat_terminal_clear"]

@@ -336,6 +336,29 @@ pub fn chat_delete_knowledge_page(app: AppHandle, id: String) -> Result<Vec<supe
     super::knowledge::delete(&config_dir(&app)?, &id)
 }
 
+#[tauri::command]
+pub fn chat_terminal_list(conversation_id: String) -> Vec<super::terminal::CommandView> {
+    super::terminal::list(&conversation_id)
+}
+
+/// Starts a background command the user typed in the Terminal panel.
+#[tauri::command]
+pub async fn chat_terminal_start(app: AppHandle, conversation_id: String, command: String) -> Result<String, String> {
+    let conversation = store::load_conversation(&config_dir(&app)?, &conversation_id)?;
+    let dir = conversation.workdir.ok_or("This conversation has no folder.")?;
+    super::terminal::start(&conversation_id, &dir, &command)
+}
+
+#[tauri::command]
+pub fn chat_terminal_stop(id: String) -> Result<(), String> {
+    super::terminal::stop(&id)
+}
+
+#[tauri::command]
+pub fn chat_terminal_clear(conversation_id: String) {
+    super::terminal::clear_finished(&conversation_id);
+}
+
 /// Reads an uploaded workbook (base64) into CSV text per sheet.
 #[tauri::command]
 pub fn chat_read_spreadsheet(data: String) -> Result<Vec<(String, String)>, String> {

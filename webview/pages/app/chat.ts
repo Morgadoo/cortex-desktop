@@ -11,6 +11,7 @@ import { startRecording, toBase64, type Recording } from './dictation';
 import { editWorkflow, workflowPrompt, workflowsApi } from './workflows';
 import type { Workflow } from './api';
 import { diffLines, loadChanges, openChanges } from './changes';
+import { openTerminal } from './terminal';
 import { button, chip, iconButton, modalHeader, trigger } from './ui';
 
 // ---------------------------------------------------------------------------------------------
@@ -20,6 +21,7 @@ const CONNECTOR_LABELS: Record<string, string> = {
   filesystem: 'Files',
   bash: 'Terminal',
   sandbox: 'Code',
+  terminal: 'Terminal',
   browser: 'Web',
   proton_mail: 'Mail',
   luminance: 'Luminance',
@@ -30,6 +32,7 @@ const CONNECTOR_ICONS: Record<string, string> = {
   filesystem: 'file',
   bash: 'terminal',
   sandbox: 'terminal',
+  terminal: 'terminal',
   browser: 'globe',
 };
 
@@ -49,6 +52,9 @@ const ACTIONS: Record<string, string> = {
   use_skill: 'Used a skill',
   update_plan: 'Updated the plan',
   knowledge_write: 'Saved to knowledge',
+  terminal_start: 'Started a background command',
+  terminal_read: 'Read command output',
+  terminal_stop: 'Stopped a command',
   knowledge_read: 'Read a knowledge page',
   knowledge_search: 'Searched knowledge',
   save_skill: 'Saved a skill',
@@ -70,6 +76,9 @@ const BUILTIN_ICONS: Record<string, string> = {
   search_library: 'library',
   run_code: 'terminal',
   knowledge_write: 'book',
+  terminal_start: 'terminal',
+  terminal_read: 'terminal',
+  terminal_stop: 'terminal',
   knowledge_read: 'book',
   knowledge_search: 'book',
   save_skill: 'skill',
@@ -82,6 +91,7 @@ const REQUESTS: Record<string, string> = {
   filesystem__fs_edit: 'editing a file',
   bash__run: 'running a command',
   sandbox__run_code: 'running this code',
+  terminal__start: 'starting a background command',
   browser__fetch: 'sending a web request',
   browser__navigate: 'opening a page',
 };
@@ -1711,7 +1721,9 @@ function renderApprovals(): HTMLElement | null {
     { class: 'approval-card' },
     h('div', { class: 'approval-head' }, icon(tool.icon, 18), h('strong', {}, asking)),
     reason,
-    request.tool_name === 'run_code' && typeof (request.input as { code?: unknown }).code === 'string'
+    request.tool_name === 'start' && request.connector_id === 'terminal'
+      ? h('pre', { class: 'step-pre' }, h('code', {}, `$ ${String((request.input as { command?: unknown }).command ?? '')}`))
+      : request.tool_name === 'run_code' && typeof (request.input as { code?: unknown }).code === 'string'
       ? h('pre', { class: 'step-pre' }, h('code', {}, (request.input as { code: string }).code))
       : h('pre', { class: 'step-pre' }, JSON.stringify(request.input, null, 2)),
     h(
@@ -2059,6 +2071,7 @@ export class ChatView {
     const meter = usageMeter(state.usage.get(this.id), c?.usage);
     const exportBtn = h('button', { class: 'icon-btn', title: 'Export as Markdown' }, icon('share', 18));
     let changesBtn: HTMLElement | null = null;
+    let terminalBtn: HTMLElement | null = null;
     if (workdir) {
       if (this.changeCount === undefined) {
         this.changeCount = null;
@@ -2068,6 +2081,7 @@ export class ChatView {
           .then(() => this.renderHeader());
       }
       if (this.changeCount !== -1) {
+        terminalBtn = trigger({ icon: 'terminal', label: 'Terminal', title: 'Background commands in this folder', chevron: false, onClick: () => openTerminal(this.id, workdir.split(/[\\/]/).pop() ?? workdir) });
         changesBtn = trigger({ icon: 'file', label: 'Changes', title: 'Uncommitted changes in this folder', chevron: false, class: 'changes-btn', trailing: this.changeCount ? h('span', { class: 'count-badge' }, String(this.changeCount)) : null });
         changesBtn.addEventListener('click', () => openChanges(this.id, workdir.split(/[\\/]/).pop() ?? workdir));
       }
@@ -2084,7 +2098,7 @@ export class ChatView {
         project || workdir ? h('span', { class: 'crumb-sep' }, '/') : null,
         titleBtn
       ),
-      h('div', { class: 'header-actions' }, changesBtn, meter, pin, exportBtn)
+      h('div', { class: 'header-actions' }, terminalBtn, changesBtn, meter, pin, exportBtn)
     );
   }
 

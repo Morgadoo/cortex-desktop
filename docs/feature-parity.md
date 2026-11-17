@@ -111,6 +111,7 @@ against the 5 that survived), and Mistral's documentation: docs.mistral.ai/vibe,
 | Knows the repository | Branch, uncommitted files, recent commits, and `AGENTS.md` / `CLAUDE.md` in the prompt | Done |
 | Review changes | Changes view: files with +/− and a coloured diff; edits appear as diffs in the timeline | Done |
 | Commit and open pull requests (docs) | Commit, then Pull request: branches off the default branch, pushes, and opens the PR with `gh` or GitHub's compare page | Done |
+| Integrated terminal and background commands (Vibe Desktop, release notes Nov 2026) | Terminal panel in coding sessions: run long commands (dev servers, watchers) in the folder, live output, stop; the model starts, reads and stops them (`terminal_*`), starting asks for approval; stopping ends the whole process group; all stop when the app quits | Done |
 
 ### 10. Apps
 
