@@ -381,6 +381,12 @@
           "markdownDescription": "Read a site's icon for sources."
         },
         {
+          "description": "Suggest follow-up messages after a reply.",
+          "type": "string",
+          "const": "allow-chat-follow-ups",
+          "markdownDescription": "Suggest follow-up messages after a reply."
+        },
+        {
           "description": "Branch a conversation into a new one.",
           "type": "string",
           "const": "allow-chat-fork-conversation",
@@ -667,6 +673,12 @@
           "type": "string",
           "const": "allow-chat-set-memory-enabled",
           "markdownDescription": "Turn memory on or off."
+        },
+        {
+          "description": "Save a conversation's own model settings.",
+          "type": "string",
+          "const": "allow-chat-set-params",
+          "markdownDescription": "Save a conversation's own model settings."
         },
         {
           "description": "Turn the privacy filter on or off.",

@@ -1,8 +1,9 @@
 /** The home screen, a conversation, and the composer they share. */
 import { tauriInvoke } from '../../shared/tauri';
-import { api, newId, type ApprovalMode, type Conversation, type Part, type Turn, type UsageTotals } from './api';
+import { api, newId, type ApprovalMode, type ChatParams, type Conversation, type Part, type Turn, type UsageTotals } from './api';
+import { fillVariables } from './variables';
 import { clear, confirmDialog, greeting, h, icon, markdown, modal, popover, promptText, timeLabel, toast } from './dom';
-import { changed, currentModel, navigate, setMode, state, type LiveTurn } from './state';
+import { changed, currentModel, followUpsOn, navigate, setMode, state, type LiveTurn } from './state';
 import { openSettings } from './settings';
 import { openInstructions } from './pages';
 import { closePanel, enableAskAboutSelection, openSidePanel, renderCanvasCard, setPanelHost } from './canvas';
@@ -996,6 +997,7 @@ async function send(text: string, conversationId: string | null, images: { media
   const agent = agentId ? state.agents.find((a) => a.id === agentId) : undefined;
   const workdir = !conversationId && state.mode === 'code' ? state.workdir : null;
   const temporary = !conversationId && temporaryNext;
+  if (conversationId) followUps.delete(conversationId);
   if (!conversationId) {
     pendingUser.set(id, { text, images });
     navigate({ kind: 'chat', id });
@@ -1176,7 +1178,7 @@ class Composer {
       }
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
         e.preventDefault();
-        void this.submit();
+        void this.submit(e.altKey);
       }
     });
     this.textarea.addEventListener('paste', async (e) => {
@@ -1319,11 +1321,20 @@ class Composer {
     return this.conversationId !== null && state.live.has(this.conversationId) && !state.live.get(this.conversationId)?.error;
   }
 
-  async submit() {
+  async submit(queue = false) {
     if (this.running()) {
-      // Steer: what the user types while a task runs joins it at its next step.
+      // Steer: what the user types while a task runs joins it at its next step. Queued
+      // messages wait instead, and go one by one once the task ends.
       const text = this.textarea.value.trim();
       if (!text || !this.conversationId) return;
+      if (queue) {
+        queued.set(this.conversationId, [...(queued.get(this.conversationId) ?? []), text]);
+        this.textarea.value = '';
+        this.autosize();
+        this.renderChips();
+        this.renderBar();
+        return;
+      }
       if (await api.steer(this.conversationId, text).catch(() => false)) {
         this.textarea.value = '';
         this.autosize();
@@ -1350,6 +1361,10 @@ class Composer {
       countSkillUse(slash[1]!);
       text = `Use the "${slash[1]}" skill.${slash[2] ? `\n\n${slash[2]}` : ''}`;
     }
+    // `{{current_date}}` fills in; other `{{blanks}}` ask for a value first.
+    const filled = await fillVariables(text);
+    if (filled === null) return;
+    text = filled;
     for (const file of this.attachments.filter((a) => !a.image)) {
       text += `\n\n<attachment name="${file.name}">\n${file.text}\n</attachment>`;
     }
@@ -1380,6 +1395,30 @@ class Composer {
 
   renderChips() {
     const extra: HTMLElement[] = [];
+    // Messages waiting for the running task to end, with Send now (steer) and remove.
+    const waiting = this.conversationId ? queued.get(this.conversationId) ?? [] : [];
+    waiting.forEach((text, i) => {
+      const id = this.conversationId!;
+      const drop = () => {
+        const list = queued.get(id) ?? [];
+        list.splice(i, 1);
+        if (list.length) queued.set(id, list);
+        else queued.delete(id);
+        this.renderChips();
+      };
+      extra.push(
+        h(
+          'div',
+          { class: 'queued-row' },
+          icon('clock', 14),
+          h('span', { class: 'queued-label' }, 'Queued'),
+          h('span', { class: 'queued-text', title: text }, text),
+          h('button', { class: 'link-btn', title: 'Send it to the running task now', on: { click: () => { drop(); void api.steer(id, text); } } }, 'Send now'),
+          h('button', { class: 'link-btn', title: 'Edit', on: { click: () => { drop(); this.setText(text); this.focus(); } } }, 'Edit'),
+          iconButton({ icon: 'close', title: 'Remove from the queue', size: 'xs', class: 'chip-x', onClick: drop })
+        )
+      );
+    });
     if (this.quote) {
       extra.push(
         h(
@@ -1463,6 +1502,7 @@ class Composer {
 
   renderBar() {
     const running = this.running();
+    this.textarea.placeholder = running ? 'Steer the task: Enter sends it now, Alt+Enter queues it for after' : this.placeholder;
     const plus = h('button', { class: 'icon-btn', title: 'Add' }, icon('plus', 18));
     plus.addEventListener('click', () => this.openPlusMenu(plus));
 
@@ -2199,6 +2239,7 @@ export class ChatView {
         compactedBefore: null,
         agentId: null,
         archived: false,
+        params: { temperature: null, maxTokens: null, instructions: '' },
         versions: [],
       };
     }
@@ -2243,7 +2284,8 @@ export class ChatView {
           return [h('div', { class: 'compaction-divider' }, h('span', {}, icon('book', 14), 'Earlier messages are summarized for the model')), el];
         }
         return [el];
-      })
+      }),
+      !running && c.turns[last]?.role === 'assistant' ? followUpRow(c.id) : null
     );
   }
 
@@ -2409,6 +2451,13 @@ ${body.innerHTML}
     await this.refresh(false);
   }
 
+  /** Redraws with something new under the last answer, keeping it in view if the bottom was. */
+  showAddedBelow() {
+    const distance = this.scroller.scrollHeight - this.scroller.scrollTop - this.scroller.clientHeight;
+    this.renderTranscript();
+    if (distance < 160) this.scrollToBottom(true);
+  }
+
   /** Reads the newest answer aloud, when auto-play is on. */
   readLatestAloud() {
     const last = this.conversation?.turns[this.conversation.turns.length - 1];
@@ -2467,6 +2516,7 @@ export function conversationMenu(anchor: HTMLElement, id: string, title: string,
         toast('Branched. This chat continues from the same point.');
       }),
       item('download', 'Export as Markdown', () => void api.exportConversation(id).then((saved) => saved && toast('Conversation exported.'))),
+      item('settings', 'Chat settings…', () => void openChatSettings(id)),
       item('tag', 'Tags…', async () => {
         const current = state.conversations.find((c) => c.id === id)?.tags ?? [];
         const next = await promptText('Tags (comma separated)', current.join(', '));
@@ -2491,6 +2541,89 @@ export function conversationMenu(anchor: HTMLElement, id: string, title: string,
       }, true)
     )
   );
+}
+
+/** Messages queued behind a running task, by conversation. */
+const queued = new Map<string, string[]>();
+/** Suggested next messages under the last answer, by conversation. */
+const followUps = new Map<string, string[]>();
+
+/** After a turn ends: the next queued message goes, or else follow-ups are suggested. */
+export function turnEnded(id: string, ok: boolean) {
+  const list = queued.get(id);
+  if (ok && list?.length) {
+    const next = list.shift()!;
+    if (!list.length) queued.delete(id);
+    composer.renderChips();
+    void send(next, id);
+    return;
+  }
+  if (ok) void suggestFollowUps(id);
+}
+
+async function suggestFollowUps(id: string) {
+  const model = state.model;
+  if (!followUpsOn() || !model || temporaryChats.has(id)) return;
+  try {
+    const list = await api.followUps(id, model);
+    // Something was sent meanwhile: these no longer fit.
+    if (state.live.has(id)) return;
+    followUps.set(id, list);
+    if (viewCache.chat?.key === `chat:${id}`) viewCache.chat.showAddedBelow();
+  } catch {
+    // Suggestions are optional; a failed request shows none.
+  }
+}
+
+function followUpRow(id: string): HTMLElement | null {
+  const list = followUps.get(id);
+  if (!list?.length) return null;
+  return h(
+    'div',
+    { class: 'follow-ups' },
+    h('span', { class: 'follow-ups-label' }, 'Follow-ups'),
+    list.map((text) => h('button', { class: 'follow-up', on: { click: () => { followUps.delete(id); void send(text, id); } } }, icon('forward', 14), h('span', {}, text)))
+  );
+}
+
+/** One conversation's model settings: temperature, reply length and its own instructions. */
+async function openChatSettings(id: string) {
+  let current: ChatParams;
+  try {
+    current = (await api.conversation(id)).params;
+  } catch {
+    current = { temperature: null, maxTokens: null, instructions: '' };
+  }
+  await modal((close) => {
+    const temperature = h('input', { class: 'input', type: 'number', min: '0', max: '2', step: '0.1', placeholder: 'Model default', value: current.temperature ?? '' });
+    const maxTokens = h('input', { class: 'input', type: 'number', min: '16', step: '1', placeholder: 'Model default', value: current.maxTokens ?? '' });
+    const instructions = h('textarea', { class: 'input', rows: 5, placeholder: 'For example: answer in Portuguese; keep code in TypeScript.' }, current.instructions);
+    const number = (el: HTMLInputElement) => (el.value.trim() === '' || Number.isNaN(Number(el.value)) ? null : Number(el.value));
+    const save = async () => {
+      try {
+        await api.setParams(id, { temperature: number(temperature), maxTokens: number(maxTokens), instructions: instructions.value });
+        close();
+        toast('Saved. The next reply uses these settings.');
+      } catch (e) {
+        toast(String(e), 'error');
+      }
+    };
+    return h(
+      'div',
+      { class: 'dialog-small wide' },
+      h('h2', {}, 'Chat settings'),
+      h('p', { class: 'muted' }, 'For this conversation only. Empty fields follow the model.'),
+      h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Temperature'), temperature, h('span', { class: 'field-hint' }, '0 is focused and repeatable, 1 is balanced, up to 2 is inventive.')),
+      h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Longest reply (tokens)'), maxTokens),
+      h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Instructions for this chat'), instructions, h('span', { class: 'field-hint' }, 'Added to your standing instructions.')),
+      h(
+        'div',
+        { class: 'dialog-actions' },
+        h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'),
+        h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Save')
+      )
+    );
+  });
 }
 
 /** The views on screen, so streamed events update them in place. */

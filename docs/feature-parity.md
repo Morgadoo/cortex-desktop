@@ -245,6 +245,13 @@ items most likely to differ:
 | Personal-data filter | (none) | Optional redaction before cloud models | Extra |
 | Context management | (best practice) | Tool-result clearing, compaction at 60%, measured tokens and cost | Done |
 | Design system | T3 Code | Tokens, shared components, T3's control styling and palettes | Done |
+| Suggested follow-ups after each answer | open-webui (Follow-Up Prompts) | Three next questions under the last answer, written by the chat's model; one click sends. Settings → General turns them off. Verified live | Done |
+| Prompt variables | open-webui, LibreChat | `{{current_date}}`, `{{current_time}}`, `{{current_weekday}}`, `{{user_name}}` fill in on send; any other `{{blank}}` opens a small form first, `{{tone|formal|casual}}` a choice. Works in typed prompts and workflows. Verified live | Done |
+| Message queue beside steering | LibreChat, open-webui, openbot.run | While a task runs, Enter steers it and Alt+Enter queues the message; queued messages show above the composer with Send now, Edit and remove, and go one by one when the task ends. Verified live | Done |
+| The model searches earlier chats | open-webui (History search, Reference Chats), openbot.run | `search_chats` and `read_chat`, offered while memory is on; temporary chats are never found. Verified live | Done |
+| Model settings per chat | open-webui, LibreChat, onyx | Conversation menu → Chat settings: temperature, longest reply, and instructions for this chat only. Verified live | Done |
+| Quick ask from anywhere | osaurus | Global shortcut (Settings → General) opens a quick ask bar | Done |
+| Continue a cut-off reply | LibreChat, lobehub | Continue on a stopped or failed reply picks up from the work already done | Done |
 
 ## Built for years of use
 

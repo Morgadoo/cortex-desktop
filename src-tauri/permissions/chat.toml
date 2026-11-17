@@ -487,3 +487,13 @@ commands.allow = ["chat_debug"]
 identifier = "allow-chat-save-shared-page"
 description = "Save a conversation as a web page to share."
 commands.allow = ["chat_save_shared_page"]
+
+[[permission]]
+identifier = "allow-chat-set-params"
+description = "Save a conversation's own model settings."
+commands.allow = ["chat_set_params"]
+
+[[permission]]
+identifier = "allow-chat-follow-ups"
+description = "Suggest follow-up messages after a reply."
+commands.allow = ["chat_follow_ups"]

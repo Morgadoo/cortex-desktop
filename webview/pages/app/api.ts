@@ -106,6 +106,12 @@ export interface UsageTotals {
   contextTokens: number;
 }
 
+export interface ChatParams {
+  temperature: number | null;
+  maxTokens: number | null;
+  instructions: string;
+}
+
 export interface Conversation {
   id: string;
   usage: UsageTotals;
@@ -117,6 +123,8 @@ export interface Conversation {
   model: string | null;
   pinned: boolean;
   archived: boolean;
+  /** This conversation's own model settings. */
+  params: ChatParams;
   turns: Turn[];
   running: boolean;
   /** Which answer to the last prompt shows, when it was answered more than once. */
@@ -272,6 +280,8 @@ export const api = {
 
   conversations: () => call<ConversationSummary[]>('chat_list_conversations'),
   conversation: (id: string) => call<Conversation>('chat_get_conversation', { id }),
+  setParams: (id: string, params: ChatParams) => call<ChatParams>('chat_set_params', { id, params }),
+  followUps: (id: string, model: string) => call<string[]>('chat_follow_ups', { id, model }),
   send: (request: {
     conversationId: string;
     text: string;

@@ -22,6 +22,8 @@ pub const SAVE_SKILL: &str = "save_skill";
 pub const KNOWLEDGE_WRITE: &str = "knowledge_write";
 pub const KNOWLEDGE_READ: &str = "knowledge_read";
 pub const KNOWLEDGE_SEARCH: &str = "knowledge_search";
+pub const SEARCH_CHATS: &str = "search_chats";
+pub const READ_CHAT: &str = "read_chat";
 
 fn tool(name: &str, description: &str, parameters: Value) -> ChatTool {
     ChatTool {
@@ -188,6 +190,24 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             "Search the user's knowledge pages; returns the best matching pages with an excerpt.",
             json!({ "type": "object", "properties": { "query": { "type": "string" } }, "required": ["query"] }),
         ));
+        // Earlier conversations, as Open WebUI's history search: years of chats stay usable.
+        out.push(tool(
+            SEARCH_CHATS,
+            "Search the user's earlier conversations by words in their titles and messages. Use it \
+             when the user refers to something discussed before (\"what did we decide about…\", \
+             \"like last time\"). Returns conversation ids, titles, dates and a snippet; read one \
+             in full with read_chat.",
+            json!({
+                "type": "object",
+                "properties": { "query": { "type": "string", "description": "A few distinctive words." } },
+                "required": ["query"]
+            }),
+        ));
+        out.push(tool(
+            READ_CHAT,
+            "Read an earlier conversation's messages, by the id search_chats returned.",
+            json!({ "type": "object", "properties": { "id": { "type": "string" } }, "required": ["id"] }),
+        ));
         out.push(tool(
             REMEMBER,
             "Save one lasting fact about the user for future conversations.",
@@ -239,7 +259,7 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
 }
 
 pub fn is_builtin(name: &str) -> bool {
-    matches!(name, WEB_SEARCH | REMEMBER | FORGET | USE_SKILL | UPDATE_PLAN | SCHEDULE_TASK | SEARCH_LIBRARY | SAVE_SKILL | KNOWLEDGE_WRITE | KNOWLEDGE_READ | KNOWLEDGE_SEARCH)
+    matches!(name, WEB_SEARCH | REMEMBER | FORGET | USE_SKILL | UPDATE_PLAN | SCHEDULE_TASK | SEARCH_LIBRARY | SAVE_SKILL | KNOWLEDGE_WRITE | KNOWLEDGE_READ | KNOWLEDGE_SEARCH | SEARCH_CHATS | READ_CHAT)
 }
 
 fn ok(text: impl Into<String>) -> Outcome {
@@ -314,6 +334,25 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
                 .collect();
             if hits.is_empty() { ok("No knowledge page matches.") } else { ok(serde_json::to_string_pretty(&hits).unwrap_or_default()) }
         }
+        SEARCH_CHATS => {
+            let query = str_arg("query");
+            if query.is_empty() {
+                return err("Give a search query.");
+            }
+            let hits = search_chats(config_dir, &query);
+            if hits.is_empty() {
+                return ok(json!({ "query": query, "conversations": [], "note": "No earlier conversation matched; try other words." }).to_string());
+            }
+            let rows: Vec<Value> = hits
+                .iter()
+                .map(|h| json!({ "id": h.id, "title": h.title, "date": h.updated_at.format("%Y-%m-%d").to_string(), "snippet": h.snippet }))
+                .collect();
+            ok(serde_json::to_string_pretty(&json!({ "query": query, "conversations": rows })).unwrap_or_default())
+        }
+        READ_CHAT => match super::store::load_conversation(config_dir, &str_arg("id")) {
+            Ok(c) if !c.temporary => ok(chat_transcript(&c, READ_CHAT_LIMIT)),
+            _ => err("There is no conversation with that id; use an id from search_chats."),
+        },
         SAVE_SKILL => match skills::save(config_dir, &str_arg("name"), &str_arg("description"), &str_arg("instructions")) {
             Ok(()) => ok(format!("Saved the skill `{}`. The user can call it with /{}.", str_arg("name"), str_arg("name"))),
             Err(e) => err(e),
@@ -416,6 +455,58 @@ fn schedule(config_dir: &Path, args: &Value) -> Outcome {
     }
 }
 
+/// How much of an earlier conversation `read_chat` returns.
+const READ_CHAT_LIMIT: usize = 24_000;
+
+/// Earlier conversations matching `query`: every word first; failing that, the most words.
+fn search_chats(config_dir: &Path, query: &str) -> Vec<super::index::Hit> {
+    let all = super::index::search(config_dir, query, 8);
+    let words: Vec<&str> = query.split_whitespace().filter(|w| w.chars().count() > 2).collect();
+    if !all.is_empty() || words.len() < 2 {
+        return all;
+    }
+    let mut found: Vec<(usize, super::index::Hit)> = Vec::new();
+    for word in words {
+        for hit in super::index::search(config_dir, word, 20) {
+            match found.iter_mut().find(|(_, h)| h.id == hit.id) {
+                Some((n, _)) => *n += 1,
+                None => found.push((1, hit)),
+            }
+        }
+    }
+    found.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.updated_at.cmp(&a.1.updated_at)));
+    found.into_iter().take(8).map(|(_, h)| h).collect()
+}
+
+/// What was said in a conversation, as plain text, cut at `limit` characters.
+pub(super) fn chat_transcript(conversation: &super::store::Conversation, limit: usize) -> String {
+    let mut text = format!("# {}
+Date: {}
+\n", conversation.title, conversation.created_at.format("%Y-%m-%d"));
+    for turn in super::store::turns(conversation) {
+        let said: Vec<String> = turn
+            .parts
+            .iter()
+            .filter_map(|p| match p {
+                super::store::Part::Text { text } => Some(text.clone()),
+                super::store::Part::Tool { name, .. } => Some(format!("[used {name}]")),
+                _ => None,
+            })
+            .collect();
+        if said.is_empty() {
+            continue;
+        }
+        text.push_str(if turn.role == "user" { "User: " } else { "Assistant: " });
+        text.push_str(&said.join("\n"));
+        text.push_str("\n\n");
+        if text.chars().count() > limit {
+            let cut: String = text.chars().take(limit).collect();
+            return format!("{cut}\n\n[The rest of the conversation is cut off.]");
+        }
+    }
+    text
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -458,9 +549,26 @@ mod tests {
     fn definitions_follow_settings() {
         let dir = tempfile::tempdir().unwrap();
         let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).filter(|n| n != super::super::sandbox::RUN_CODE && n != super::super::media::GENERATE_IMAGE && n != SAVE_SKILL && !n.starts_with("knowledge_")).collect();
-        assert_eq!(names, [WEB_SEARCH, UPDATE_PLAN, DELEGATE, CANVAS, SCHEDULE_TASK, REMEMBER, FORGET, USE_SKILL]);
+        assert_eq!(names, [WEB_SEARCH, UPDATE_PLAN, DELEGATE, CANVAS, SCHEDULE_TASK, SEARCH_CHATS, READ_CHAT, REMEMBER, FORGET, USE_SKILL]);
         memory::save(dir.path(), &memory::Memories { enabled: false, items: vec![] }).unwrap();
         let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).filter(|n| n != super::super::sandbox::RUN_CODE && n != super::super::media::GENERATE_IMAGE && n != SAVE_SKILL && !n.starts_with("knowledge_")).collect();
         assert_eq!(names, [WEB_SEARCH, UPDATE_PLAN, DELEGATE, CANVAS, SCHEDULE_TASK, USE_SKILL]);
+    }
+
+    #[tokio::test]
+    async fn earlier_chats_are_found_and_read() {
+        use rig_core::completion::Message;
+        let dir = tempfile::tempdir().unwrap();
+        let mut c = super::super::store::Conversation::new("c1".into(), None, None);
+        c.title = "Kitchen renovation".into();
+        c.messages = vec![Message::user("Which oak worktop should we pick?"), Message::assistant("The 40 mm solid oak one, oiled.")];
+        super::super::store::save_conversation(dir.path(), &c).unwrap();
+        let found = run(dir.path(), SEARCH_CHATS, &json!({"query": "oak worktop"})).await;
+        assert!(found.text.contains("\"c1\"") && found.text.contains("Kitchen renovation"), "{}", found.text);
+        // Not every word needs to match.
+        assert!(run(dir.path(), SEARCH_CHATS, &json!({"query": "walnut worktop"})).await.text.contains("c1"));
+        let read = run(dir.path(), READ_CHAT, &json!({"id": "c1"})).await;
+        assert!(read.text.contains("User: Which oak") && read.text.contains("Assistant: The 40 mm"));
+        assert!(run(dir.path(), READ_CHAT, &json!({"id": "nope"})).await.is_error);
     }
 }

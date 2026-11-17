@@ -252,6 +252,23 @@ function storedMode(): ApprovalMode {
   return 'auto';
 }
 
+/** Whether three follow-up questions are suggested after each answer (on unless turned off). */
+export function followUpsOn(): boolean {
+  try {
+    return localStorage.getItem('lumo.followUps') !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+export function setFollowUps(on: boolean) {
+  try {
+    localStorage.setItem('lumo.followUps', on ? 'on' : 'off');
+  } catch {
+    // Remembering is a convenience.
+  }
+}
+
 export function setMode(mode: ApprovalMode) {
   state.approval = mode;
   try {

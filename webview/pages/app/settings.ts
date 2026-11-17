@@ -2,7 +2,7 @@
 import { tauriInvoke } from '../../shared/tauri';
 import { api, type AppSettings, type Provider } from './api';
 import { clear, h, icon, modal, toast } from './dom';
-import { changed, state } from './state';
+import { changed, followUpsOn, setFollowUps, state } from './state';
 import { button, card, modalHeader, switchInput } from './ui';
 import { audioApi, refreshAudioSettings, speakText, type AudioView } from './audio';
 import { ACCENTS, BACKGROUNDS, accentHex, applyAppearance, setAccent, setBackground, storedAccent, storedBackground } from './appearance';
@@ -499,6 +499,9 @@ async function renderGeneral(content: HTMLElement) {
       row('Enable quick ask', '', switchInput(settings.search_shortcut_enabled, (v) => { settings.search_shortcut_enabled = v; persist(); })),
       row('Settings shortcut', 'Ctrl+, opens settings.', switchInput(settings.settings_hotkey_enabled, (v) => { settings.settings_hotkey_enabled = v; persist(); })),
       row('Launch at startup', 'Open the app when you sign in to your computer.', switchInput(settings.launch_at_startup, (v) => { settings.launch_at_startup = v; persist(); }))
+    ),
+    card(
+      row('Suggest follow-ups', 'After each answer, offer three next questions. Each takes one short extra request to the model.', switchInput(followUpsOn(), (v) => setFollowUps(v)))
     )
   );
 }

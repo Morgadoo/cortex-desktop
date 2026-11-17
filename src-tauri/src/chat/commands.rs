@@ -567,6 +567,62 @@ pub fn chat_save_instructions(app: AppHandle, instructions: Instructions) -> Res
     store::save_instructions(&config_dir(&app)?, &instructions)
 }
 
+/// Saves a conversation's own model settings.
+#[tauri::command]
+pub fn chat_set_params(app: AppHandle, id: String, params: store::ChatParams) -> Result<store::ChatParams, String> {
+    let dir = config_dir(&app)?;
+    let mut conversation = store::load_conversation(&dir, &id)?;
+    conversation.params = params.clamped();
+    store::save_conversation(&dir, &conversation)?;
+    Ok(conversation.params)
+}
+
+/// Three short messages the user might send next, from the latest exchange (Open WebUI's
+/// follow-up prompts). Empty when the provider gives nothing usable.
+#[tauri::command]
+pub async fn chat_follow_ups(app: AppHandle, id: String, model: String) -> Result<Vec<String>, String> {
+    let dir = config_dir(&app)?;
+    let conversation = store::load_conversation(&dir, &id)?;
+    let turns = store::turns(&conversation);
+    let text_of = |t: &store::Turn| {
+        t.parts.iter().filter_map(|p| if let store::Part::Text { text } = p { Some(text.as_str()) } else { None }).collect::<Vec<_>>().join("\n")
+    };
+    let Some(answer) = turns.iter().rev().find(|t| t.role == "assistant").map(text_of).filter(|t| !t.trim().is_empty()) else {
+        return Ok(Vec::new());
+    };
+    let question = turns.iter().rev().find(|t| t.role == "user").map(text_of).unwrap_or_default();
+    let model = engine::connect_model(&dir, &model).await?;
+    let request = rig_core::completion::CompletionRequest::new(rig_core::completion::message::Message::user(follow_up_prompt(&question, &answer)))
+        .max_tokens(200u64);
+    let response = tokio::time::timeout(std::time::Duration::from_secs(30), model.call(request))
+        .await
+        .map_err(|_| "The provider did not answer in time.".to_string())?
+        .map_err(|e| e.to_string())?;
+    Ok(parse_follow_ups(&response.text()))
+}
+
+fn follow_up_prompt(question: &str, answer: &str) -> String {
+    let cut = |t: &str, n: usize| t.chars().take(n).collect::<String>();
+    format!(
+        "Suggest three short follow-up messages the user might send next in this conversation, \
+         written as the user, in the user's language. Each under 12 words, each a different \
+         direction (go deeper, apply it, an alternative). One per line, no numbering, no quotes.\n\n\
+         User: {}\n\nAssistant: {}",
+        cut(question, 2_000),
+        cut(answer, 4_000)
+    )
+}
+
+/// Lines of the reply, without list marks or quotes, at most three.
+fn parse_follow_ups(text: &str) -> Vec<String> {
+    text.lines()
+        .map(|l| l.trim().trim_start_matches(|c: char| c.is_ascii_digit() || matches!(c, '-' | '*' | '•' | '.' | ')')).trim())
+        .map(|l| l.trim_matches(|c| matches!(c, '"' | '“' | '”')).trim().to_string())
+        .filter(|l| !l.is_empty() && l.chars().count() <= 120 && !l.ends_with(':'))
+        .take(3)
+        .collect()
+}
+
 /// A sample reply under unsaved instructions, for the instructions dialog's preview.
 #[tauri::command]
 pub async fn chat_preview_instructions(
@@ -1199,6 +1255,13 @@ pub fn setup(app: &tauri::App) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn follow_ups_are_clean_lines() {
+        let got = parse_follow_ups("1. How do I start?\n- \"Show an example\"\n\nHere are some:\nWhat about costs?\nA fourth one");
+        assert_eq!(got, vec!["How do I start?", "Show an example", "What about costs?"]);
+        assert!(follow_up_prompt("q", "a").contains("three short follow-up"));
+    }
 
     #[test]
     fn update_distinguishes_null_from_missing_project() {

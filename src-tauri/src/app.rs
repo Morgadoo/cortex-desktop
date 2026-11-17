@@ -153,6 +153,8 @@ pub fn run() {
                 chat::commands::chat_favicon,
                 chat::commands::chat_link_preview,
                 chat::commands::chat_debug,
+                chat::commands::chat_set_params,
+                chat::commands::chat_follow_ups,
                 chat::commands::chat_save_shared_page,
                 chat::commands::chat_read_spreadsheet,
                 chat::commands::chat_terminal_list,

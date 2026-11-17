@@ -476,6 +476,9 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         &offered,
     );
     let mut system = system;
+    if !conversation.params.instructions.is_empty() {
+        system.push_str(&format!("\n\n## Instructions for this conversation\n{}", conversation.params.instructions));
+    }
     if defer {
         system.push_str(&deferred::prompt(&offered, &conversation.loaded_tools));
     }
@@ -555,6 +558,13 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
                 .filter(|t| !defer || !deferred::deferrable(t) || conversation.loaded_tools.contains(&t.name))
                 .filter_map(ChatTool::definition);
             call = call.tools(definitions);
+        }
+        // This conversation's own model settings.
+        if let Some(t) = conversation.params.temperature {
+            call = call.temperature(t);
+        }
+        if let Some(n) = conversation.params.max_tokens {
+            call = call.max_tokens(n);
         }
         if reasoning && request.speed == Speed::Think {
             call = call.reasoning(Effort::High);

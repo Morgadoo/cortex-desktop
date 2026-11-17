@@ -125,6 +125,9 @@ pub struct Conversation {
     /// Tools loaded on demand with `find_tools`, kept for the rest of the conversation.
     #[serde(default)]
     pub loaded_tools: Vec<String>,
+    /// Model settings for this conversation only (temperature, reply length, instructions).
+    #[serde(default, skip_serializing_if = "ChatParams::is_empty")]
+    pub params: ChatParams,
     /// The note standing in for compacted turns.
     #[serde(default)]
     pub summary: Option<super::context::Summary>,
@@ -158,9 +161,40 @@ impl Conversation {
             thought: Vec::new(),
             notices: Vec::new(),
             loaded_tools: Vec::new(),
+            params: ChatParams::default(),
             ratings: Vec::new(),
             summary: None,
             usage: Default::default(),
+        }
+    }
+}
+
+/// Model settings for one conversation; unset ones follow the model's defaults.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatParams {
+    /// 0 (focused) to 2 (inventive).
+    #[serde(default)]
+    pub temperature: Option<f64>,
+    /// The longest reply, in tokens.
+    #[serde(default)]
+    pub max_tokens: Option<u64>,
+    /// Instructions for this conversation, added to the standing ones.
+    #[serde(default)]
+    pub instructions: String,
+}
+
+impl ChatParams {
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// Settings within what providers accept.
+    pub fn clamped(self) -> Self {
+        Self {
+            temperature: self.temperature.filter(|t| t.is_finite()).map(|t| t.clamp(0.0, 2.0)),
+            max_tokens: self.max_tokens.filter(|&n| n > 0).map(|n| n.clamp(16, 128_000)),
+            instructions: self.instructions.trim().chars().take(8_000).collect(),
         }
     }
 }
@@ -333,6 +367,7 @@ pub struct ConversationView {
     pub model: Option<String>,
     pub pinned: bool,
     pub archived: bool,
+    pub params: ChatParams,
     pub turns: Vec<Turn>,
     /// The branch points along the showing path, each with its switcher position.
     pub versions: Vec<VersionsView>,
@@ -622,6 +657,7 @@ pub fn view(conversation: &Conversation) -> ConversationView {
         model: conversation.model.clone(),
         pinned: conversation.pinned,
         archived: conversation.archived,
+        params: conversation.params.clone(),
         turns: turns(conversation),
         versions: conversation
             .versions

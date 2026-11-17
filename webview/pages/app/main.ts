@@ -5,7 +5,7 @@
  */
 import { api, listen, type ApprovalRequest, type ChatEvent } from './api';
 import { tauriInvoke } from '../../shared/tauri';
-import { ChatView, CompareView, HomeView, composer, conversationMenu, recordStepTimes, refreshConversations, viewCache } from './chat';
+import { ChatView, CompareView, HomeView, composer, conversationMenu, recordStepTimes, refreshConversations, turnEnded, viewCache } from './chat';
 import { clear, h, icon, modal, popover, promptText, confirmDialog, toast } from './dom';
 import { ConnectorsPage, PlaceholderPage, openInstructions } from './pages';
 import { KnowledgePage, SkillsPage } from './context';
@@ -602,6 +602,7 @@ async function start() {
           chat.renderTranscript();
           chat.update();
           if (event.type === 'done' && !event.cancelled) chat.readLatestAloud();
+          turnEnded(id, event.type === 'done' && !event.cancelled);
         });
       } else {
         if (!failed) state.live.delete(id);
