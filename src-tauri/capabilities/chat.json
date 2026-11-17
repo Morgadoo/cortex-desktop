@@ -1,0 +1,30 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "chat",
+  "description": "The native chat page in the main window: providers, conversations and streaming replies.",
+  "local": true,
+  "windows": [
+    "lumo-window"
+  ],
+  "permissions": [
+    "allow-chat-list-providers",
+    "allow-chat-save-provider",
+    "allow-chat-list-models",
+    "allow-chat-set-default-model",
+    "allow-chat-test-model",
+    "allow-chat-list-conversations",
+    "allow-chat-get-conversation",
+    "allow-chat-send",
+    "allow-chat-cancel",
+    "allow-chat-answer",
+    "allow-chat-update-conversation",
+    "allow-chat-delete-conversation",
+    "allow-chat-list-projects",
+    "allow-chat-save-project",
+    "allow-chat-delete-project",
+    "allow-chat-get-instructions",
+    "allow-chat-save-instructions",
+    "allow-chat-preview-instructions",
+    "allow-chat-export-conversation"
+  ]
+}

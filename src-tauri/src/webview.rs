@@ -4,6 +4,9 @@ use tauri::{Manager, WebviewUrl};
 /// Bundled sign-in page, shown whenever there is no session to load the web app with.
 pub const LOGIN_PAGE: &str = "login.html";
 
+/// The native chat page the main window opens on.
+pub const APP_PAGE: &str = "index.html";
+
 /// Where the main window starts.
 pub fn main_window_url() -> WebviewUrl {
     if crate::e2e_testing_enabled() {
@@ -13,7 +16,7 @@ pub fn main_window_url() -> WebviewUrl {
         );
         WebviewUrl::App("e2e_testing_stub.html".into())
     } else {
-        WebviewUrl::App(LOGIN_PAGE.into())
+        WebviewUrl::App(if crate::HOSTED_WEB_APP { LOGIN_PAGE } else { APP_PAGE }.into())
     }
 }
 
@@ -44,7 +47,8 @@ fn remember_login_page(app_handle: &tauri::AppHandle, url: &url::Url) {
 }
 
 fn resume_web_app(app_handle: &tauri::AppHandle) {
-    if crate::e2e_testing_enabled() {
+    // The native chat page is the app now; there is no hosted web app to resume.
+    if crate::e2e_testing_enabled() || !crate::HOSTED_WEB_APP {
         return;
     }
 

@@ -183,6 +183,120 @@
           "markdownDescription": "Lets a connector tool run without asking even after untrusted content has been read."
         },
         {
+          "description": "Answer a question the assistant asked.",
+          "type": "string",
+          "const": "allow-chat-answer",
+          "markdownDescription": "Answer a question the assistant asked."
+        },
+        {
+          "description": "Stop a reply in progress.",
+          "type": "string",
+          "const": "allow-chat-cancel",
+          "markdownDescription": "Stop a reply in progress."
+        },
+        {
+          "description": "Delete a conversation.",
+          "type": "string",
+          "const": "allow-chat-delete-conversation",
+          "markdownDescription": "Delete a conversation."
+        },
+        {
+          "description": "Delete a project, keeping its conversations.",
+          "type": "string",
+          "const": "allow-chat-delete-project",
+          "markdownDescription": "Delete a project, keeping its conversations."
+        },
+        {
+          "description": "Save a conversation as Markdown to a file the user picks.",
+          "type": "string",
+          "const": "allow-chat-export-conversation",
+          "markdownDescription": "Save a conversation as Markdown to a file the user picks."
+        },
+        {
+          "description": "Read one conversation.",
+          "type": "string",
+          "const": "allow-chat-get-conversation",
+          "markdownDescription": "Read one conversation."
+        },
+        {
+          "description": "Read the user's standing instructions.",
+          "type": "string",
+          "const": "allow-chat-get-instructions",
+          "markdownDescription": "Read the user's standing instructions."
+        },
+        {
+          "description": "List saved conversations.",
+          "type": "string",
+          "const": "allow-chat-list-conversations",
+          "markdownDescription": "List saved conversations."
+        },
+        {
+          "description": "List the models of every configured provider.",
+          "type": "string",
+          "const": "allow-chat-list-models",
+          "markdownDescription": "List the models of every configured provider."
+        },
+        {
+          "description": "List projects.",
+          "type": "string",
+          "const": "allow-chat-list-projects",
+          "markdownDescription": "List projects."
+        },
+        {
+          "description": "List model providers and whether each is configured.",
+          "type": "string",
+          "const": "allow-chat-list-providers",
+          "markdownDescription": "List model providers and whether each is configured."
+        },
+        {
+          "description": "Generate a sample reply under draft instructions.",
+          "type": "string",
+          "const": "allow-chat-preview-instructions",
+          "markdownDescription": "Generate a sample reply under draft instructions."
+        },
+        {
+          "description": "Save the user's standing instructions.",
+          "type": "string",
+          "const": "allow-chat-save-instructions",
+          "markdownDescription": "Save the user's standing instructions."
+        },
+        {
+          "description": "Create or update a project.",
+          "type": "string",
+          "const": "allow-chat-save-project",
+          "markdownDescription": "Create or update a project."
+        },
+        {
+          "description": "Save a provider's settings and store its API key in the OS keychain.",
+          "type": "string",
+          "const": "allow-chat-save-provider",
+          "markdownDescription": "Save a provider's settings and store its API key in the OS keychain."
+        },
+        {
+          "description": "Send a message and stream the reply.",
+          "type": "string",
+          "const": "allow-chat-send",
+          "markdownDescription": "Send a message and stream the reply."
+        },
+        {
+          "description": "Remember the model new conversations start with.",
+          "type": "string",
+          "const": "allow-chat-set-default-model",
+          "markdownDescription": "Remember the model new conversations start with."
+        },
+        {
+          "description": "Send a one-word request to check a provider's key and address.",
+          "type": "string",
+          "const": "allow-chat-test-model",
+          "markdownDescription": "Send a one-word request to check a provider's key and address."
+        },
+        {
+          "description": "Rename, pin, rate or move a conversation.",
+          "type": "string",
+          "const": "allow-chat-update-conversation",
+          "markdownDescription": "Rename, pin, rate or move a conversation."
+        },
+        {
           "description": "Report that the web app is signed out.",
           "type": "string",
           "const": "allow-clear-active-account",

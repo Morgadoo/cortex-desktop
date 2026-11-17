@@ -40,6 +40,7 @@ const entries = {
     'bridges/quick-ask.ts': 'quick-ask.js',
     'bridges/theme-reporter.ts': 'theme-reporter.js',
     // Loaded by the local pages in static/.
+    'pages/app/main.ts': 'app.js',
     'pages/login.ts': 'login.js',
     'pages/search.ts': 'search.js',
     'pages/theme.ts': 'theme.js',

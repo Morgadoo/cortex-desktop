@@ -1,0 +1,197 @@
+/**
+ * Typed wrappers over the chat commands in `src-tauri/src/chat/commands.rs`, and the events Rust
+ * pushes back. The shapes mirror the Rust structs' camelCase serialization.
+ */
+import { tauriInvoke } from '../../shared/tauri';
+
+export interface ProviderSettings {
+  enabled: boolean;
+  hasKey: boolean;
+  baseUrl: string | null;
+  customModels: string[];
+}
+
+export interface Provider {
+  vendor: string;
+  label: string;
+  keyUrl: string;
+  local: boolean;
+  requiresKey: boolean;
+  defaultBaseUrl: string;
+  envKey: string | null;
+  settings: ProviderSettings;
+  ready: boolean;
+}
+
+export interface Model {
+  reference: string;
+  vendor: string;
+  providerLabel: string;
+  id: string;
+  name: string;
+  reasoning: boolean;
+  tools: boolean;
+  contextWindow: number | null;
+}
+
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  projectId: string | null;
+  workdir: string | null;
+  pinned: boolean;
+  updatedAt: string;
+}
+
+export type Part =
+  | { kind: 'text'; text: string }
+  | { kind: 'reasoning'; text: string }
+  | { kind: 'tool'; callId: string; name: string; arguments: Record<string, unknown>; output: string | null; isError: boolean };
+
+export interface Turn {
+  role: 'user' | 'assistant';
+  parts: Part[];
+  index: number;
+  time: string | null;
+  rating: number;
+}
+
+export interface Conversation {
+  id: string;
+  title: string;
+  projectId: string | null;
+  workdir: string | null;
+  model: string | null;
+  pinned: boolean;
+  turns: Turn[];
+  running: boolean;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  instructions: string;
+}
+
+export interface Instructions {
+  tone: string;
+  custom: string;
+  name: string;
+}
+
+export type Speed = 'fast' | 'think';
+export type ApprovalMode = 'ask' | 'accept_edits';
+
+export type ChatEvent =
+  | { type: 'started'; conversationId: string }
+  | { type: 'text'; conversationId: string; text: string }
+  | { type: 'reasoning'; conversationId: string; text: string }
+  | { type: 'toolPending'; conversationId: string; name: string }
+  | { type: 'toolStart'; conversationId: string; callId: string; name: string; arguments: Record<string, unknown> }
+  | { type: 'toolEnd'; conversationId: string; callId: string; output: string; isError: boolean }
+  | { type: 'question'; conversationId: string; callId: string; question: string; options: string[] }
+  | { type: 'title'; conversationId: string; title: string }
+  | { type: 'done'; conversationId: string; cancelled: boolean }
+  | { type: 'error'; conversationId: string; message: string };
+
+export interface ApprovalRequest {
+  request_id: string;
+  connector_id: string | null;
+  tool_name: string;
+  input: unknown;
+  reason: { kind: string; sources: string[]; destination?: string } | null;
+}
+
+/** A connector as `get_tool_registry` reports it; only the fields the page reads. */
+export interface ConnectorManifest {
+  id: string;
+  display_name: string;
+  description?: string;
+  icon: string | null;
+  enabled: boolean;
+  readiness: { state: string; reason?: string };
+  tools: { name: string; title?: string; description: string; policy: 'auto_approve' | 'ask' | 'disable'; read_only?: boolean }[];
+}
+
+const call = tauriInvoke;
+
+export const api = {
+  providers: () => call<Provider[]>('chat_list_providers'),
+  saveProvider: (provider: {
+    vendor: string;
+    enabled: boolean;
+    baseUrl?: string | null;
+    customModels?: string[];
+    apiKey?: string;
+    clearKey?: boolean;
+  }) => call<Provider>('chat_save_provider', { provider }),
+  models: () => call<{ models: Model[]; defaultModel: string | null }>('chat_list_models'),
+  setDefaultModel: (reference: string) => call<void>('chat_set_default_model', { reference }),
+  testModel: (reference: string) => call<string>('chat_test_model', { reference }),
+
+  conversations: () => call<ConversationSummary[]>('chat_list_conversations'),
+  conversation: (id: string) => call<Conversation>('chat_get_conversation', { id }),
+  send: (request: {
+    conversationId: string;
+    text: string;
+    model: string;
+    speed: Speed;
+    approval: ApprovalMode;
+    projectId?: string | null;
+    workdir?: string | null;
+  }) => call<void>('chat_send', { request }),
+  cancel: (conversationId: string) => call<boolean>('chat_cancel', { conversationId }),
+  answer: (callId: string, answer: string) => call<boolean>('chat_answer', { callId, answer }),
+  updateConversation: (update: {
+    id: string;
+    title?: string;
+    pinned?: boolean;
+    projectId?: string | null;
+    rating?: [number, number];
+  }) => call<void>('chat_update_conversation', { update }),
+  deleteConversation: (id: string) => call<void>('chat_delete_conversation', { id }),
+  exportConversation: (id: string) => call<boolean>('chat_export_conversation', { id }),
+
+  projects: () => call<Project[]>('chat_list_projects'),
+  saveProject: (project: Project) => call<Project[]>('chat_save_project', { project }),
+  deleteProject: (id: string) => call<Project[]>('chat_delete_project', { id }),
+
+  instructions: () => call<Instructions>('chat_get_instructions'),
+  saveInstructions: (instructions: Instructions) => call<void>('chat_save_instructions', { instructions }),
+  previewInstructions: (instructions: Instructions, model: string, prompt: string) =>
+    call<string>('chat_preview_instructions', { instructions, model, prompt }),
+
+  respondApproval: (requestId: string, approved: boolean, always = false) =>
+    call<void>('respond_tool_approval', { requestId, approved, always }),
+
+  connectors: () => call<ConnectorManifest[]>('get_tool_registry', {}),
+  setConnectorEnabled: (connectorId: string, enabled: boolean) =>
+    call<void>('set_connector_enabled', { connectorId, enabled }),
+  setToolPolicy: (connectorId: string, toolName: string, policy: string) =>
+    call<void>('set_tool_policy', { connectorId, toolName, policy }),
+
+  pickDirectory: () => call<string | null>('pick_directory'),
+  appSettings: () => call<AppSettings>('get_app_settings'),
+  saveAppSettings: (settings: AppSettings) => call<void>('save_app_settings', { settings }),
+};
+
+export interface AppSettings {
+  search_shortcut: string;
+  search_shortcut_enabled: boolean;
+  launch_at_startup: boolean;
+  filesystem_allowed_roots: string[];
+  filesystem_write_enabled: boolean;
+  bash_enabled: boolean;
+  settings_hotkey_enabled: boolean;
+}
+
+/** Subscribes to a Rust event; resolves to the unsubscribe function. */
+export function listen<T>(event: string, handler: (payload: T) => void): Promise<() => void> {
+  const listener = window.__TAURI__?.event?.listen ?? window.__TAURI_INTERNALS__?.event?.listen;
+  if (!listener) return Promise.resolve(() => {});
+  return listener(event, (e) => handler(e.payload as T));
+}
+
+export function newId(): string {
+  return crypto.randomUUID();
+}

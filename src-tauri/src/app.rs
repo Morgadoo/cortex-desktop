@@ -7,7 +7,7 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 use crate::settings::{self, load_device_settings};
 use crate::tools::{self, registry::ToolRegistry};
 use crate::{
-    account, browser_login, downloads, main_window, notifications, pdf_export, quick_ask,
+    account, browser_login, chat, downloads, main_window, notifications, pdf_export, quick_ask,
     reporting, reset, schedules, skills, theme, tray, updater, webview,
 };
 
@@ -70,6 +70,25 @@ pub fn run() {
                 tools::commands::list_mcp_servers,
                 tools::commands::remove_mcp_server,
                 tools::commands::pick_directory,
+                chat::commands::chat_list_providers,
+                chat::commands::chat_save_provider,
+                chat::commands::chat_list_models,
+                chat::commands::chat_set_default_model,
+                chat::commands::chat_test_model,
+                chat::commands::chat_list_conversations,
+                chat::commands::chat_get_conversation,
+                chat::commands::chat_send,
+                chat::commands::chat_cancel,
+                chat::commands::chat_answer,
+                chat::commands::chat_update_conversation,
+                chat::commands::chat_delete_conversation,
+                chat::commands::chat_list_projects,
+                chat::commands::chat_save_project,
+                chat::commands::chat_delete_project,
+                chat::commands::chat_get_instructions,
+                chat::commands::chat_save_instructions,
+                chat::commands::chat_preview_instructions,
+                chat::commands::chat_export_conversation,
             ];
             commands(invoke)
         })
@@ -150,7 +169,10 @@ pub fn run() {
             app.manage(crate::feature_flags::DesktopFeatureFlags::default());
             if crate::e2e_testing_enabled() {
                 account::seed_e2e_account(&app.state::<account::ActiveAccount>());
+            } else if !crate::HOSTED_WEB_APP {
+                account::seed_local_account(&app.state::<account::ActiveAccount>());
             }
+            chat::commands::setup(app);
             app.manage(skills::SkillCache::new(app.path().app_cache_dir()?.join("skill-runtime"),
                 app.state::<account::ActiveAccount>().get()));
             app.manage(schedules::coordinator::ScheduleCoordinator::start(app.handle()));
@@ -205,7 +227,9 @@ pub fn run() {
                 let _ = autostart_manager.disable();
             }
 
-            app.add_capability(main_window::web_app_capability(crate::LUMO_URL)?)?;
+            if crate::HOSTED_WEB_APP || crate::e2e_testing_enabled() {
+                app.add_capability(main_window::web_app_capability(crate::LUMO_URL)?)?;
+            }
             main_window::build(app)?;
 
             let app_handle = app.handle().clone();

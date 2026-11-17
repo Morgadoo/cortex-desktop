@@ -33,26 +33,38 @@ pub fn web_app_capability(lumo_url: &str) -> Result<String, String> {
 }
 
 pub fn build(app: &App) -> tauri::Result<WebviewWindow> {
-    let window = tauri::WebviewWindowBuilder::new(app, LABEL, webview::main_window_url())
-        .title("Lumo: Your Private AI Assistant")
-        .visible(crate::e2e_testing_enabled())
-        .inner_size(1200.0, 800.0)
+    let e2e = crate::e2e_testing_enabled();
+    let mut builder = tauri::WebviewWindowBuilder::new(app, LABEL, webview::main_window_url())
+        .title("Lumo")
+        // The bundled chat page shows itself; only the hosted web app used to reveal the window.
+        .visible(e2e || !crate::HOSTED_WEB_APP)
+        .inner_size(1280.0, 840.0)
+        .min_inner_size(720.0, 520.0)
         .prevent_overflow()
         .center()
-        // Available synchronously before the hosted web app creates its API config.
         .initialization_script(format!(
             "window.lumoDesktopVersion = {};",
             serde_json::to_string(&app.package_info().version.to_string())?,
-        ))
-        .initialization_script(include_str!("../dist/scripts/connectors.js"))
-        .initialization_script(include_str!("../dist/scripts/settings-hotkey.js"))
-        .initialization_script(include_str!("../dist/scripts/account-identity.js"))
-        .initialization_script(include_str!("../dist/scripts/schedules.js"))
-        .initialization_script(include_str!("../dist/scripts/notifications.js"))
-        .initialization_script(include_str!("../dist/scripts/skills.js"))
-        .initialization_script(include_str!("../dist/scripts/quick-ask.js"))
-        .initialization_script(include_str!("../dist/scripts/download-feedback.js"))
-        .initialization_script(include_str!("../dist/scripts/theme-reporter.js"))
+        ));
+    // The bridges were written for the hosted web app. The native chat page talks to Rust
+    // directly, and the account bridge would sign its local profile out, so only the e2e stub,
+    // which still exercises the bridge contract, gets them.
+    if e2e || crate::HOSTED_WEB_APP {
+        for script in [
+            include_str!("../dist/scripts/connectors.js"),
+            include_str!("../dist/scripts/settings-hotkey.js"),
+            include_str!("../dist/scripts/account-identity.js"),
+            include_str!("../dist/scripts/schedules.js"),
+            include_str!("../dist/scripts/notifications.js"),
+            include_str!("../dist/scripts/skills.js"),
+            include_str!("../dist/scripts/quick-ask.js"),
+            include_str!("../dist/scripts/download-feedback.js"),
+            include_str!("../dist/scripts/theme-reporter.js"),
+        ] {
+            builder = builder.initialization_script(script);
+        }
+    }
+    let window = builder
         .on_download(downloads::on_download)
         .disable_drag_drop_handler()
         .on_navigation({

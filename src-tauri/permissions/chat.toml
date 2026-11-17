@@ -1,0 +1,94 @@
+[[permission]]
+identifier = "allow-chat-list-providers"
+description = "List model providers and whether each is configured."
+commands.allow = ["chat_list_providers"]
+
+[[permission]]
+identifier = "allow-chat-save-provider"
+description = "Save a provider's settings and store its API key in the OS keychain."
+commands.allow = ["chat_save_provider"]
+
+[[permission]]
+identifier = "allow-chat-list-models"
+description = "List the models of every configured provider."
+commands.allow = ["chat_list_models"]
+
+[[permission]]
+identifier = "allow-chat-set-default-model"
+description = "Remember the model new conversations start with."
+commands.allow = ["chat_set_default_model"]
+
+[[permission]]
+identifier = "allow-chat-test-model"
+description = "Send a one-word request to check a provider's key and address."
+commands.allow = ["chat_test_model"]
+
+[[permission]]
+identifier = "allow-chat-list-conversations"
+description = "List saved conversations."
+commands.allow = ["chat_list_conversations"]
+
+[[permission]]
+identifier = "allow-chat-get-conversation"
+description = "Read one conversation."
+commands.allow = ["chat_get_conversation"]
+
+[[permission]]
+identifier = "allow-chat-send"
+description = "Send a message and stream the reply."
+commands.allow = ["chat_send"]
+
+[[permission]]
+identifier = "allow-chat-cancel"
+description = "Stop a reply in progress."
+commands.allow = ["chat_cancel"]
+
+[[permission]]
+identifier = "allow-chat-answer"
+description = "Answer a question the assistant asked."
+commands.allow = ["chat_answer"]
+
+[[permission]]
+identifier = "allow-chat-update-conversation"
+description = "Rename, pin, rate or move a conversation."
+commands.allow = ["chat_update_conversation"]
+
+[[permission]]
+identifier = "allow-chat-delete-conversation"
+description = "Delete a conversation."
+commands.allow = ["chat_delete_conversation"]
+
+[[permission]]
+identifier = "allow-chat-list-projects"
+description = "List projects."
+commands.allow = ["chat_list_projects"]
+
+[[permission]]
+identifier = "allow-chat-save-project"
+description = "Create or update a project."
+commands.allow = ["chat_save_project"]
+
+[[permission]]
+identifier = "allow-chat-delete-project"
+description = "Delete a project, keeping its conversations."
+commands.allow = ["chat_delete_project"]
+
+[[permission]]
+identifier = "allow-chat-get-instructions"
+description = "Read the user's standing instructions."
+commands.allow = ["chat_get_instructions"]
+
+[[permission]]
+identifier = "allow-chat-save-instructions"
+description = "Save the user's standing instructions."
+commands.allow = ["chat_save_instructions"]
+
+[[permission]]
+identifier = "allow-chat-preview-instructions"
+description = "Generate a sample reply under draft instructions."
+commands.allow = ["chat_preview_instructions"]
+
+[[permission]]
+identifier = "allow-chat-export-conversation"
+description = "Save a conversation as Markdown to a file the user picks."
+commands.allow = ["chat_export_conversation"]

@@ -1,5 +1,4 @@
 pub mod bash;
-#[allow(dead_code)] // Retained for future use; not registered.
 pub mod browser;
 pub mod echo;
 pub mod filesystem;
