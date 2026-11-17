@@ -3,6 +3,8 @@ import { api, listen, type ConnectorManifest, type Instructions } from './api';
 import { clear, h, icon, markdown, modal, toast } from './dom';
 import { state, type Page } from './state';
 import { openSettings } from './settings';
+import { tauriInvoke } from '../../shared/tauri';
+import { CONNECTOR_CATEGORIES, FEATURED_MCP_SERVERS, type ConnectorCatalogEntry } from '../../shared/connector-catalog';
 
 const TONES: { id: string; label: string; description: string }[] = [
   { id: '', label: 'Default', description: 'Natural style, no personalization.' },
@@ -130,7 +132,7 @@ export class ConnectorsPage {
   readonly key = 'page:connectors';
   private connectors: ConnectorManifest[] = [];
   private filter = '';
-  private tab: 'enabled' | 'all' = 'all';
+  private tab: 'enabled' | 'all' | 'catalog' = 'all';
   private list = h('div', { class: 'connector-list' });
   private unlisten: Promise<() => void>;
 
@@ -144,8 +146,12 @@ export class ConnectorsPage {
     const renderTabs = () =>
       clear(
         tabs,
-        (['all', 'enabled'] as const).map((t) =>
-          h('button', { class: `tab${this.tab === t ? ' active' : ''}`, on: { click: () => { this.tab = t; renderTabs(); this.render(); } } }, t === 'all' ? `All ${this.connectors.length}` : `Enabled ${this.connectors.filter((c) => c.enabled).length}`)
+        (['all', 'enabled', 'catalog'] as const).map((t) =>
+          h(
+            'button',
+            { class: `tab${this.tab === t ? ' active' : ''}`, on: { click: () => { this.tab = t; renderTabs(); this.render(); } } },
+            t === 'all' ? `Yours ${this.connectors.length}` : t === 'enabled' ? `Enabled ${this.connectors.filter((c) => c.enabled).length}` : `Catalog ${FEATURED_MCP_SERVERS.length}`
+          )
         )
       );
     this.renderTabs = renderTabs;
@@ -175,6 +181,10 @@ export class ConnectorsPage {
   }
 
   private render() {
+    if (this.tab === 'catalog') {
+      this.renderCatalog();
+      return;
+    }
     const shown = this.connectors.filter(
       (c) => (this.tab === 'all' || c.enabled) && (!this.filter || `${c.display_name} ${c.description ?? ''}`.toLowerCase().includes(this.filter))
     );
@@ -183,6 +193,61 @@ export class ConnectorsPage {
       return;
     }
     clear(this.list, shown.map((c) => this.row(c)));
+  }
+
+  /** Ready-made MCP servers, grouped by category; adding one registers it for OAuth sign-in. */
+  private renderCatalog() {
+    const installed = new Set(this.connectors.map((c) => c.id));
+    const entries = FEATURED_MCP_SERVERS.filter((e) => !this.filter || `${e.name} ${e.description}`.toLowerCase().includes(this.filter));
+    const groups = CONNECTOR_CATEGORIES.map((cat) => ({ cat, items: entries.filter((e) => e.category === cat.id) })).filter((g) => g.items.length);
+    clear(
+      this.list,
+      groups.length ? null : emptyState('plug', 'No match', 'Try another search.'),
+      groups.flatMap((g) => [
+        h('div', { class: 'section-title' }, g.cat.label),
+        h('div', { class: 'catalog-grid' }, g.items.map((entry) => this.catalogCard(entry, installed.has(entry.id)))),
+      ])
+    );
+  }
+
+  private catalogCard(entry: ConnectorCatalogEntry, installed: boolean): HTMLElement {
+    const action = installed
+      ? h('span', { class: 'status-badge ok' }, 'Added')
+      : entry.url
+        ? h('button', { class: 'btn btn-ghost small-btn' }, icon('plus', 14), 'Add')
+        : h('span', { class: 'muted small-note', title: 'Runs a local command; add it under Settings → Permissions → MCP servers.' }, 'Manual setup');
+    if (!installed && entry.url && action instanceof HTMLButtonElement) {
+      action.addEventListener('click', async () => {
+        action.disabled = true;
+        try {
+          await tauriInvoke('save_mcp_server', {
+            server: {
+              id: entry.server_id ?? entry.id.replace(/^mcp-/, ''),
+              display_name: entry.name,
+              description: entry.description,
+              transport: 'http',
+              url: entry.url,
+              auth: { type: 'oauth', scopes: [] },
+              request_headers: {},
+            },
+          });
+          toast(`${entry.name} added. Connect it to sign in.`);
+          this.tab = 'all';
+          this.renderTabs();
+          await this.load();
+        } catch (e) {
+          action.disabled = false;
+          toast(String(e), 'error');
+        }
+      });
+    }
+    return h(
+      'div',
+      { class: 'catalog-card' },
+      h('img', { class: 'connector-icon', src: entry.iconSrc, alt: '' }),
+      h('div', { class: 'catalog-text' }, h('strong', {}, entry.name), h('small', { class: 'muted' }, entry.description)),
+      action
+    );
   }
 
   private row(c: ConnectorManifest): HTMLElement {
@@ -206,6 +271,7 @@ export class ConnectorsPage {
         c.icon && c.icon.startsWith('data:') ? h('img', { class: 'connector-icon', src: c.icon, alt: '' }) : h('span', { class: 'connector-icon fallback' }, icon(c.id === 'bash' ? 'terminal' : c.id === 'filesystem' ? 'file' : c.id === 'browser' ? 'globe' : 'plug', 18)),
         h('span', { class: 'connector-text' }, h('strong', {}, c.display_name), h('small', { class: 'muted' }, c.description ?? `${c.tools.length} tools`)),
         h('span', { class: `status-badge ${ready ? 'ok' : 'warn'}` }, READINESS[c.readiness.state] ?? c.readiness.state),
+        !ready && c.id.startsWith('mcp-') ? this.connectButton(c) : null,
         toggle
       ),
       h(
@@ -226,6 +292,24 @@ export class ConnectorsPage {
       )
     );
     return details;
+  }
+
+  /** Starts the connector's sign-in (OAuth in the browser) or connection. */
+  private connectButton(c: ConnectorManifest): HTMLElement {
+    const button = h('button', { class: 'btn btn-ghost small-btn' }, 'Connect');
+    button.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      button.textContent = 'Connecting…';
+      try {
+        await tauriInvoke('connect_connector', { connectorId: c.id });
+        toast(`${c.display_name} connected.`);
+      } catch (err) {
+        toast(String(err), 'error');
+      }
+      await this.load();
+    });
+    return button;
   }
 
   update() {}
