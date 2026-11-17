@@ -317,3 +317,13 @@ commands.allow = ["chat_select_version"]
 identifier = "allow-chat-import-conversations"
 description = "Import a ChatGPT or Claude export."
 commands.allow = ["chat_import_conversations"]
+
+[[permission]]
+identifier = "allow-chat-steer"
+description = "Add guidance to a running turn."
+commands.allow = ["chat_steer"]
+
+[[permission]]
+identifier = "allow-chat-code-commit"
+description = "Commit a coding session's changes."
+commands.allow = ["chat_code_commit"]

@@ -122,6 +122,30 @@ pub fn changes(dir: &str) -> Changes {
     Changes { git: true, branch: Some(branch.trim().to_string()), files, diff, truncated }
 }
 
+/// Commits every change in `dir` (untracked files included) with `message`; returns the commit
+/// summary line.
+pub fn commit(dir: &str, message: &str) -> Result<String, String> {
+    let message = message.trim();
+    if message.is_empty() {
+        return Err("Write a commit message.".into());
+    }
+    let path = Path::new(dir);
+    if git(path, &["rev-parse", "--is-inside-work-tree"]).is_none() {
+        return Err("This folder is not a git repository.".into());
+    }
+    let run = |args: &[&str]| -> Result<String, String> {
+        let out = Command::new("git").arg("-C").arg(path).args(args).env("LC_ALL", "C").output().map_err(|e| e.to_string())?;
+        if out.status.success() {
+            Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+        } else {
+            Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+        }
+    };
+    run(&["add", "-A"])?;
+    run(&["commit", "-q", "-m", message])?;
+    Ok(run(&["log", "-1", "--oneline", "--no-decorate"])?.trim().to_string())
+}
+
 fn parse(numstat: &str, names: &str) -> Vec<ChangedFile> {
     let statuses: Vec<(String, String)> = names
         .lines()
@@ -198,8 +222,17 @@ mod tests {
         ]);
         assert!(c.diff.contains("+TWO"));
 
+        // Committing takes everything, untracked files included.
+        sh(dir, &["config", "user.name", "t"]);
+        sh(dir, &["config", "user.email", "t@t"]);
+        let line = commit(dir.to_str().unwrap(), "Simplify totals").unwrap();
+        assert!(line.ends_with("Simplify totals"), "{line}");
+        assert!(changes(dir.to_str().unwrap()).files.is_empty());
+        assert!(commit(dir.to_str().unwrap(), "  ").is_err());
+
         let plain = tempfile::tempdir().unwrap();
         assert!(!changes(plain.path().to_str().unwrap()).git);
+        assert!(commit(plain.path().to_str().unwrap(), "x").is_err());
         assert!(!prompt(plain.path().to_str().unwrap()).contains("Git:"));
     }
 

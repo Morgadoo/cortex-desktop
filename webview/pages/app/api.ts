@@ -138,7 +138,8 @@ export type Frequency =
   | { kind: 'once'; date: string; time: string }
   | { kind: 'daily'; time: string }
   | { kind: 'weekly'; days: number[]; time: string }
-  | { kind: 'monthly'; day: number; time: string };
+  | { kind: 'monthly'; day: number; time: string }
+  | { kind: 'yearly'; month: number; day: number; time: string };
 
 export interface Task {
   id: string;
@@ -159,10 +160,11 @@ export interface Task {
 }
 
 export type Speed = 'fast' | 'think';
-export type ApprovalMode = 'ask' | 'accept_edits';
+export type ApprovalMode = 'ask' | 'accept_edits' | 'plan' | 'auto';
 
 export type ChatEvent =
   | { type: 'started'; conversationId: string }
+  | { type: 'steered'; conversationId: string; text: string }
   | { type: 'text'; conversationId: string; text: string }
   | { type: 'reasoning'; conversationId: string; text: string }
   | { type: 'toolPending'; conversationId: string; name: string }
@@ -249,6 +251,8 @@ export const api = {
     archived?: boolean;
   }) => call<void>('chat_update_conversation', { update }),
   selectVersion: (id: string, index: number) => call<void>('chat_select_version', { id, index }),
+  steer: (conversationId: string, text: string) => call<boolean>('chat_steer', { conversationId, text }),
+  commitChanges: (conversationId: string, message: string) => call<string>('chat_code_commit', { conversationId, message }),
   speak: (text: string) => call<[string, string]>('chat_speak', { text }),
   importConversations: () => call<{ imported: number; skipped: number; source: string } | null>('chat_import_conversations'),
   deleteConversation: (id: string) => call<void>('chat_delete_conversation', { id }),

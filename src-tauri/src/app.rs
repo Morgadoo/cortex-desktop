@@ -130,6 +130,8 @@ pub fn run() {
                 chat::commands::chat_code_runs_allowed,
                 chat::commands::chat_set_code_runs_allowed,
                 chat::commands::chat_speak,
+                chat::commands::chat_steer,
+                chat::commands::chat_code_commit,
                 chat::commands::chat_select_version,
                 chat::commands::chat_import_conversations,
                 chat::commands::chat_set_media_models,

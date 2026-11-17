@@ -51,6 +51,8 @@ pub struct ChatState {
     running: Mutex<HashMap<String, watch::Sender<bool>>>,
     /// `ask_user` call id → where the user's answer goes.
     questions: Mutex<HashMap<String, oneshot::Sender<String>>>,
+    /// Conversation id → messages the user sent while its turn was running.
+    steering: Mutex<HashMap<String, Vec<String>>>,
 }
 
 impl ChatState {
@@ -80,6 +82,24 @@ impl ChatState {
         }
     }
 
+    /// Queues guidance for a running turn; false when nothing is running.
+    pub fn steer(&self, conversation: &str, text: String) -> bool {
+        if !self.is_running(conversation) {
+            return false;
+        }
+        Self::lock(&self.steering).entry(conversation.to_string()).or_default().push(text);
+        true
+    }
+
+    /// The guidance waiting for a turn, removed from the queue.
+    pub fn take_steering(&self, conversation: &str) -> Vec<String> {
+        Self::lock(&self.steering).remove(conversation).unwrap_or_default()
+    }
+
+    pub fn has_steering(&self, conversation: &str) -> bool {
+        Self::lock(&self.steering).get(conversation).is_some_and(|v| !v.is_empty())
+    }
+
     pub fn is_running(&self, conversation: &str) -> bool {
         Self::lock(&self.running).contains_key(conversation)
     }
@@ -104,6 +124,18 @@ impl ChatState {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn guidance_waits_for_a_running_turn() {
+        let state = ChatState::default();
+        assert!(!state.steer("c", "ignored".into()), "nothing is running");
+        let _rx = state.begin("c").unwrap();
+        assert!(state.steer("c", "focus on the EU".into()));
+        assert!(state.steer("c", "and keep it short".into()));
+        assert!(state.has_steering("c"));
+        assert_eq!(state.take_steering("c"), ["focus on the EU", "and keep it short"]);
+        assert!(!state.has_steering("c"));
+    }
+
     use super::*;
 
     #[test]

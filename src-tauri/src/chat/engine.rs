@@ -35,6 +35,9 @@ const MAX_ATTEMPTS: u32 = 3;
 pub enum ChatEvent {
     #[serde(rename_all = "camelCase")]
     Started { conversation_id: String },
+    /// The user's guidance, sent while the turn ran, has joined the conversation.
+    #[serde(rename_all = "camelCase")]
+    Steered { conversation_id: String, text: String },
     #[serde(rename_all = "camelCase")]
     Text { conversation_id: String, text: String },
     #[serde(rename_all = "camelCase")]
@@ -418,6 +421,10 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         // Nobody can answer a question during a scheduled run.
         offered.retain(|t| t.name != ASK_USER);
     }
+    if conversation.temporary {
+        // A temporary chat leaves no trace: it does not add to or change knowledge.
+        offered.retain(|t| t.name != builtins::REMEMBER && t.name != builtins::FORGET);
+    }
     let definitions: Vec<_> = offered.iter().filter_map(ChatTool::definition).collect();
     let project = conversation
         .project_id
@@ -448,6 +455,15 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         },
         &offered,
     );
+    let system = if request.approval == ApprovalMode::Plan {
+        format!(
+            "{system}\n\nPlan mode is on. Investigate with read-only tools, then present a numbered plan \
+             of the changes you would make (files, commands, risks) and stop. Do not try to change \
+             anything; the user approves the plan and then switches to an editing mode."
+        )
+    } else {
+        system
+    };
     let reasoning = providers::supports_reasoning(&request.model);
     let window = context::context_window(&request.model);
     // Personal data in what the user typed is swapped for placeholders before a cloud request.
@@ -457,6 +473,12 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
     compact_if_needed(app, &model, &mut conversation, window, &config_dir).await;
 
     for step in 0..MAX_STEPS {
+        // Guidance the user sent while this turn was running joins the conversation here.
+        for text in app.state::<ChatState>().take_steering(id) {
+            conversation.messages.push(Message::user(format!("(Sent while you were working) {text}")));
+            conversation.times.push((conversation.messages.len() - 1, Utc::now()));
+            emit(app, ChatEvent::Steered { conversation_id: id.into(), text });
+        }
         let mut carried = context::request_messages(&conversation.messages, conversation.summary.as_ref());
         if filter {
             carried = privacy::redact_messages(&carried, &mut redactions);
@@ -575,6 +597,10 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         if calls.is_empty() {
             conversation.times.push((conversation.messages.len() - 1, Utc::now()));
             store::save_conversation(&config_dir, &conversation)?;
+            // The user added guidance while the answer streamed: answer that too.
+            if app.state::<ChatState>().has_steering(id) && step + 1 < MAX_STEPS {
+                continue;
+            }
             break;
         }
         store::save_conversation(&config_dir, &conversation)?;
@@ -758,7 +784,13 @@ impl Runner<'_> {
                     is_error: true,
                 }
             }
-            ApprovalMode::Autonomous => {}
+            ApprovalMode::Plan => {
+                return tools::Outcome {
+                    text: "Plan mode: code is not run yet. Put this step in your plan instead.".into(),
+                    is_error: true,
+                }
+            }
+            ApprovalMode::Autonomous | ApprovalMode::Auto => {}
             ApprovalMode::Ask | ApprovalMode::AcceptEdits if sandbox::always_allowed(self.config_dir) => {}
             ApprovalMode::Ask | ApprovalMode::AcceptEdits => {
                 let Some(tool) = self.offered.iter().find(|t| t.name == sandbox::RUN_CODE) else {

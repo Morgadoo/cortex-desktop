@@ -44,10 +44,12 @@ export interface LiveTurn {
   /** When each part began and ended, by index, for step durations. */
   starts: number[];
   ends: number[];
+  /** Guidance the user sent while the turn ran, shown where it joined. */
+  steers: string[];
 }
 
 function fresh(): LiveTurn {
-  return { parts: [], pending: null, question: null, error: null, startedAt: Date.now(), compacting: false, starts: [], ends: [] };
+  return { parts: [], pending: null, question: null, error: null, startedAt: Date.now(), compacting: false, starts: [], ends: [], steers: [] };
 }
 
 /** Starts a part, ending the one before it unless it already ended (a tool ends on its result). */
@@ -156,6 +158,9 @@ export function applyEvent(event: ChatEvent): boolean {
   switch (event.type) {
     case 'started':
       state.live.set(id, fresh());
+      return false;
+    case 'steered':
+      ensure().steers.push(event.text);
       return false;
     case 'text': {
       const turn = ensure();

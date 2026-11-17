@@ -35,6 +35,46 @@ pub struct Skill {
 
 const BUILTIN: &[(&str, &str)] = &[
     (
+        "data-analysis",
+        "---\nname: data-analysis\ndescription: Use when the user wants to inspect, clean, transform, aggregate or chart data, or find anomalies in a spreadsheet, CSV or table.\n---\n1. Load the data with run_code (pandas when available) and report its shape, columns, types and missing values.\n2. Ask what question the data should answer if it is not clear.\n3. Clean only what the question needs, and say what you changed (dropped rows, parsed dates, fixed types).\n4. Compute the aggregates or tests that answer the question; look for outliers and anomalies and explain them.\n5. Make one or two clear charts saved as images, and summarize the findings with the numbers that support them.",
+    ),
+    (
+        "doc-coauthoring",
+        "---\nname: doc-coauthoring\ndescription: Use when co-writing a proposal, technical spec, decision document or RFC with the user.\n---\n1. Agree on the document's audience, goal and length before drafting; ask with ask_user if they are unclear.\n2. Propose an outline and wait for the user's go-ahead.\n3. Draft in a canvas, section by section, marking open questions inline as **[Open: …]**.\n4. When the user edits the canvas, keep their changes and build on them; never silently rewrite what they wrote.\n5. End each round with the open questions and the next section to write.",
+    ),
+    (
+        "document-review",
+        "---\nname: document-review\ndescription: Use when checking a document for completeness, compliance, consistency or quality.\n---\n1. Ask what the document will be judged against (a template, policy, checklist or audience) unless given.\n2. Read the whole document before commenting.\n3. Report findings in a table: location, issue, severity (blocker, major, minor), suggested fix.\n4. Check consistency of names, numbers, dates and terminology across sections.\n5. Finish with the three changes that would improve it most.",
+    ),
+    (
+        "internal-comms",
+        "---\nname: internal-comms\ndescription: Use for status reports, leadership or third-party updates, FAQs, newsletters and incident reports.\n---\n1. Identify the audience and the one thing they must take away.\n2. Use the right template: status (progress, risks, asks), leadership update (headline, impact, decision needed), FAQ (question and answer pairs), incident report (summary, impact, timeline, cause, actions).\n3. Pull facts from the conversation, connected sources and libraries; mark anything unverified.\n4. Write it in a canvas, short and skimmable, with the most important point first.",
+    ),
+    (
+        "meeting-prep",
+        "---\nname: meeting-prep\ndescription: Use when preparing for an upcoming meeting or briefing on a calendar item.\n---\n1. Find what the meeting is about: the invite, related mail, documents and earlier notes, using the connectors available.\n2. Summarize the context, the attendees and what each likely wants.\n3. Propose an agenda with the decisions to reach and the questions to ask.\n4. List what the user should read or bring, with links.",
+    ),
+    (
+        "research-synthesis",
+        "---\nname: research-synthesis\ndescription: Use when combining several sources, files or notes into one structured brief.\n---\n1. List the sources and what each covers.\n2. Extract the key claims from each, with where they come from.\n3. Group them into themes; note where sources agree, disagree or leave gaps.\n4. Write a brief: summary, themes with citations, contradictions, open questions.",
+    ),
+    (
+        "skill-creator",
+        "---\nname: skill-creator\ndescription: Use when the user wants to create, update or delete a skill, or to turn a way of working into a reusable skill.\n---\n1. Ask what the skill is for and when it should be used, unless that is already clear.\n2. Write the description as a trigger that says when to use it (\"Use when …\"), not what it does.\n3. Write focused, numbered instructions; one skill does one job.\n4. Show the draft, take changes, then save it with save_skill. To update, save under the same name.\n5. Tell the user they can call it with /name and manage it under Context, then Skills.",
+    ),
+    (
+        "stakeholder-translator",
+        "---\nname: stakeholder-translator\ndescription: Use when reframing content for a different audience, such as executives, engineers, customers or legal.\n---\n1. Ask who the new audience is and what they care about, unless given.\n2. Keep the facts; change the framing, vocabulary, length and level of detail.\n3. For executives lead with impact and decisions; for engineers with specifics and constraints; for customers with benefits and next steps.\n4. Point out anything in the original the new audience would misread.",
+    ),
+    (
+        "structured-extraction",
+        "---\nname: structured-extraction\ndescription: Use when pulling tables, fields or JSON out of emails, PDFs or free text.\n---\n1. Agree on the fields to extract and their types; propose a schema if none is given.\n2. Extract every record, keeping values exactly as written and normalizing only formats (dates, numbers) the user asked for.\n3. Mark missing or ambiguous values explicitly instead of guessing.\n4. Return a Markdown table or a JSON block, and save a CSV with run_code when the data is large.",
+    ),
+    (
+        "getting-started",
+        "---\nname: getting-started\ndescription: Use when a first-time user asks what this assistant can do, or wants a tour or to set it up.\n---\n1. Explain briefly what it can do here: chat in Work, coding sessions in Code, agents, skills, knowledge, libraries, connectors, scheduled tasks, canvases, mini apps, code runs and images.\n2. Ask with ask_user what they want to use it for first.\n3. Offer to set up what fits: knowledge about them, a project, a library, a connector or a scheduled task.\n4. Walk through one real task end to end, then suggest two next steps.",
+    ),
+    (
         "set-up-my-knowledge",
         "---\nname: set-up-my-knowledge\ndescription: Use when the user wants to set up their knowledge, or says \"get to know me\" or \"set up my profile\".\n---\n1. Explain in one sentence that knowledge is what you remember about them across chats, and that they can see and edit it under Context, then Knowledge.\n2. Ask, with ask_user, which areas to cover: work and role, current projects, tools they use, writing style, and personal preferences. Let them pick several.\n3. For each area chosen, ask one or two short questions at a time; do not interrogate.\n4. Save each durable fact with remember, as one short sentence in the third person (\"Works as a product designer at a fintech\").\n5. End with a list of what you saved and how to change it.",
     ),

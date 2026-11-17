@@ -1014,7 +1014,7 @@ select.input { cursor: pointer; }
 
 /* Cards, menus and dialogs: hairline borders on the raised surface; menus are frosted. */
 .card { background: var(--bg-elevated); border-color: var(--border); border-radius: var(--radius-lg); }
-.menu { border-color: var(--border-strong); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--bg-elevated) 86%, transparent); backdrop-filter: blur(16px) saturate(1.1); }
+.menu { border-color: var(--border-strong); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--bg-elevated) 96%, transparent); backdrop-filter: blur(16px) saturate(1.1); }
 .menu-item { padding: 7px 9px; border-radius: var(--radius-sm); font-size: var(--fs-md); }
 .flyout { background: color-mix(in srgb, var(--bg-elevated) 86%, transparent); backdrop-filter: blur(16px) saturate(1.1); border-radius: var(--radius-lg); }
 .modal { border-color: var(--border-strong); border-radius: var(--radius-xl); }
@@ -1033,3 +1033,11 @@ select.input { cursor: pointer; }
 .archived-row { display: flex; align-items: center; gap: var(--space-2); padding: 4px 6px; border-radius: var(--radius-md); }
 .archived-row:hover { background: var(--bg-hover); }
 .archived-title { text-align: left; padding: 6px 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ------------------------------------------------------------------ steering, modes, commit */
+
+.steer-note { display: flex; align-items: flex-start; gap: var(--space-2); margin: var(--space-2) 0; padding: 8px 12px; border-left: 2px solid var(--accent); background: var(--accent-soft); border-radius: 0 var(--radius-md) var(--radius-md) 0; font-size: var(--fs-sm); color: var(--text-secondary); }
+.steer-note strong { color: var(--text); font-weight: 600; }
+.icon-btn.tinted.warn { color: var(--warning); }
+.commit-box { display: flex; gap: 6px; padding: 4px 2px 10px; margin-bottom: 6px; border-bottom: 1px solid var(--border); }
+.commit-box .input { flex: 1; min-width: 0; }

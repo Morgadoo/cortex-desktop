@@ -1,6 +1,6 @@
 /** A coding session's working-tree changes: the files touched and their diffs. */
 import { tauriInvoke } from '../../shared/tauri';
-import { clear, h, icon, modal } from './dom';
+import { clear, h, icon, modal, toast } from './dom';
 import { iconButton, modalHeader } from './ui';
 
 export interface ChangedFile {
@@ -92,10 +92,23 @@ export function openChanges(conversationId: string, folder: string) {
           changes.truncated && !file ? h('p', { class: 'muted diff-note' }, 'The diff is long; showing the beginning.') : null
         );
       };
+      const message = h('input', { class: 'input small', placeholder: 'Commit message' });
+      const commit = h('button', { class: 'btn btn-primary btn-sm' }, 'Commit all');
+      commit.addEventListener('click', async () => {
+        try {
+          const line = await tauriInvoke<string>('chat_code_commit', { conversationId, message: message.value });
+          toast(`Committed ${line}`);
+          message.value = '';
+          void load();
+        } catch (e) {
+          toast(String(e), 'error');
+        }
+      });
       const all = h('button', { class: 'chg-row all active' }, h('span', { class: 'grow' }, `All files (${changes.files.length})`), stat(changes.files.reduce((a, f) => a + f.additions, 0), changes.files.reduce((a, f) => a + f.deletions, 0)));
       all.addEventListener('click', () => show(null, all));
       clear(
         list,
+        h('div', { class: 'commit-box' }, message, commit),
         all,
         changes.files.map((f) => {
           const row = h('button', { class: 'chg-row', title: f.path }, h('span', { class: `chg-letter ${f.status}` }, STATUS_LETTER[f.status]), h('span', { class: 'chg-path' }, f.path), stat(f.additions, f.deletions));

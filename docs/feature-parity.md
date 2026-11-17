@@ -9,9 +9,9 @@ Status: **Done** (matches), **Adapted** (same job, done differently on purpose),
 
 ## Mistral Vibe, screen by screen
 
-The Vibe screenshots in the source conversation were the reference. Rows 1–6 were checked
-against the screenshots side by side. The rest were matched from screenshots described earlier
-in that conversation.
+References: the Vibe screenshots from the source conversation (rows 1–6 checked side by side
+against the 5 that survived), and Mistral's documentation: docs.mistral.ai/vibe,
+/vibe/work/web/skills and /vibe/choose-chat-work-code. Rows marked "(docs)" come from it.
 
 ### 1. Sidebar
 
@@ -60,9 +60,11 @@ in that conversation.
 | Sanitize my Knowledge | `sanitize-my-knowledge` | Done |
 | Build my Knowledge from Connectors | `build-knowledge-from-connectors` | Done |
 | Create a Skill from my Knowledge | `create-skill-from-knowledge`, through the `save_skill` tool | Done |
-| (none) | deep-research, write-email, summarize-document, challenge-my-thinking | Extra |
+| Built-ins documented at docs.mistral.ai/vibe/work/web/skills: challenge-my-thinking, data-analysis, deep-research, doc-coauthoring, document-review, internal-comms, meeting-prep, research-synthesis, skill-creator, stakeholder-translator, structured-extraction, vibe-work-onboarding | All twelve (onboarding is `getting-started`) | Done |
+| Skills toggled individually, built-ins included | Same, on the Skills page | Done |
+| (none) | write-email, summarize-document | Extra |
 
-### 5–6. Approval mode and speed
+### 5–6. Approval mode and speed (also Mistral's docs)
 
 | Vibe | Here | Status |
 |---|---|---|
@@ -70,6 +72,8 @@ in that conversation.
 | Accept edits: approve file edits automatically | Same | Done |
 | Fast: quick answers | Same | Done |
 | Think: complex tasks | Same; reasoning effort through rig, refused gracefully by models that cannot reason | Done |
+| Code approval modes Ask / Plan / Accept edits / Full auto (Vibe Code) | All four; Plan refuses changes and asks for a plan, Full auto asks nothing | Done |
+| Steer or stop a running task (docs.mistral.ai/vibe) | Typing while a task runs sends guidance that joins at its next step; Stop still stops | Done |
 
 ### 7. Context pages
 
@@ -80,7 +84,8 @@ in that conversation.
 | Knowledge (memories) | Same; the model saves facts, the user edits them | Done |
 | Libraries | Local BM25 retrieval over documents, cited by document | Done |
 | Instructions modal with live preview | Same | Done |
-| Scheduled tasks | Same, plus unattended / autonomous approval for each task | Done |
+| Scheduled tasks: once, daily, weekly, monthly, yearly (docs) | All five, plus unattended / autonomous approval for each task | Done |
+| Temporary Chat kept out of history, search, memory and training (docs) | Out of history and search, deleted on restart, and the memory tools are withheld | Done |
 
 ### 8. Conversation
 
@@ -104,6 +109,7 @@ in that conversation.
 | File and terminal tools with approvals | Same; Accept edits lets file edits through | Done |
 | Knows the repository | Branch, uncommitted files, recent commits, and `AGENTS.md` / `CLAUDE.md` in the prompt | Done |
 | Review changes | Changes view: files with +/− and a coloured diff; edits appear as diffs in the timeline | Done |
+| Commit and open pull requests (docs) | Commit from the Changes view; pull requests not yet | Partial |
 
 ### 10. Apps
 

@@ -129,9 +129,10 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             "properties": {
                 "title": { "type": "string", "description": "A few words for the task list." },
                 "prompt": { "type": "string", "description": "What to do on each run, written to stand alone." },
-                "frequency": { "type": "string", "enum": ["once", "daily", "weekly", "monthly"] },
+                "frequency": { "type": "string", "enum": ["once", "daily", "weekly", "monthly", "yearly"] },
                 "time": { "type": "string", "description": "24-hour local time, HH:MM." },
                 "days": { "type": "array", "items": { "type": "string" }, "description": "Weekly: day names, e.g. [\"monday\"]." },
+                "month": { "type": "integer", "minimum": 1, "maximum": 12, "description": "For yearly: the month, 1–12." },
                 "day_of_month": { "type": "integer", "minimum": 1, "maximum": 31 },
                 "date": { "type": "string", "description": "Once: YYYY-MM-DD." },
                 "agent": { "type": "string", "description": "Name of an agent to run it as, if the user named one." }
@@ -313,6 +314,11 @@ fn schedule(config_dir: &Path, args: &Value) -> Outcome {
             Frequency::Weekly { days, time }
         }
         "monthly" => Frequency::Monthly { day: args.get("day_of_month").and_then(Value::as_u64).unwrap_or(1).min(31) as u8, time },
+        "yearly" => Frequency::Yearly {
+            month: args.get("month").and_then(Value::as_u64).unwrap_or(1).clamp(1, 12) as u8,
+            day: args.get("day_of_month").and_then(Value::as_u64).unwrap_or(1).clamp(1, 31) as u8,
+            time,
+        },
         other => return err(format!("Unknown frequency `{other}`.")),
     };
     let agent_id = match s("agent") {

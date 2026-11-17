@@ -30,6 +30,11 @@ pub enum ApprovalMode {
     Ask,
     /// File edits run without asking; other changes still ask.
     AcceptEdits,
+    /// Plan first: the model investigates and proposes; anything that would change something is
+    /// refused, with a note to describe the change instead.
+    Plan,
+    /// Full auto: nothing asks; the user is watching and can stop the turn.
+    Auto,
     /// A scheduled run with nobody watching: anything that would ask is refused.
     Unattended,
     /// A scheduled run the user allowed to make changes: nothing asks.
@@ -174,7 +179,8 @@ pub fn needs_approval(tool: &ChatTool, input: &Value, mode: ApprovalMode) -> boo
         return false;
     }
     match mode {
-        ApprovalMode::Ask | ApprovalMode::Unattended => true,
+        ApprovalMode::Ask | ApprovalMode::Unattended | ApprovalMode::Plan => true,
+        ApprovalMode::Auto => false,
         ApprovalMode::AcceptEdits => tool.connector_id.as_deref() != Some("filesystem"),
         ApprovalMode::Autonomous => false,
     }
@@ -235,6 +241,14 @@ pub async fn execute(
     let Some(connector_id) = tool.connector_id.as_deref() else {
         return Outcome { text: "This tool is handled by the app.".into(), is_error: true };
     };
+    if mode == ApprovalMode::Plan && needs_approval(tool, &input, mode) {
+        return Outcome {
+            text: "Plan mode: nothing is changed yet. Do not retry; finish your investigation and \
+                present this step in your plan, so the user can approve the plan and switch modes."
+                .into(),
+            is_error: true,
+        };
+    }
     if mode == ApprovalMode::Unattended && needs_approval(tool, &input, mode) {
         return Outcome {
             text: "This scheduled run may not make changes, so the call was not made. Describe \
@@ -243,7 +257,7 @@ pub async fn execute(
             is_error: true,
         };
     }
-    let approved = mode == ApprovalMode::Autonomous || if needs_approval(tool, &input, mode) {
+    let approved = matches!(mode, ApprovalMode::Autonomous | ApprovalMode::Auto) || if needs_approval(tool, &input, mode) {
         match request_approval(app, tool, &input).await {
             ApprovalDecision::Deny => {
                 return Outcome {
@@ -315,6 +329,8 @@ mod tests {
         let shell = tool(Some("bash"), false);
         let read = tool(Some("filesystem"), true);
         assert!(needs_approval(&write, &none, ApprovalMode::Ask));
+        assert!(needs_approval(&write, &none, ApprovalMode::Plan), "plan mode refuses what would ask");
+        assert!(!needs_approval(&write, &none, ApprovalMode::Auto), "full auto asks for nothing");
         assert!(!needs_approval(&write, &none, ApprovalMode::AcceptEdits));
         assert!(needs_approval(&shell, &none, ApprovalMode::AcceptEdits));
         assert!(!needs_approval(&read, &none, ApprovalMode::Ask));

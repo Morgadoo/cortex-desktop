@@ -589,6 +589,11 @@ function renderUserTurn(turn: Turn, conversationId: string): HTMLElement {
   // A skill invoked with /name reads as a chip ahead of the message.
   let rest = text;
   const chips: HTMLElement[] = [];
+  const steered = rest.match(/^\(Sent while you were working\) /);
+  if (steered) {
+    chips.push(h('span', { class: 'skill-chip' }, icon('forward', 14), 'Added while working'));
+    rest = rest.slice(steered[0].length);
+  }
   const workflow = rest.match(/^Run the "(.+?)" workflow\. Go through these steps[\s\S]*?\n\n/);
   if (workflow) {
     chips.push(h('span', { class: 'skill-chip' }, icon('workflow', 14), workflow[1]!));
@@ -840,6 +845,9 @@ function renderLiveTurn(conversationId: string, live: LiveTurn): HTMLElement {
   const now = Date.now();
   const durations = live.starts.map((start, i) => (live.ends[i] ?? now) - start);
   const el = h('div', { class: 'turn turn-assistant live' }, ...renderParts(live.parts, !live.error, `${conversationId}:live:${live.startedAt}`, durations));
+  for (const text of live.steers) {
+    el.append(h('div', { class: 'steer-note' }, icon('forward', 14), h('span', {}, h('strong', {}, 'You, while it worked: '), text)));
+  }
   const busy = !live.error && !live.question;
   if (live.compacting) {
     el.append(h('div', { class: 'status-line' }, h('span', { class: 'dots' }), 'Summarizing earlier messages to make room'));
@@ -1165,7 +1173,19 @@ class Composer {
   }
 
   async submit() {
-    if (this.running()) return;
+    if (this.running()) {
+      // Steer: what the user types while a task runs joins it at its next step.
+      const text = this.textarea.value.trim();
+      if (!text || !this.conversationId) return;
+      if (await api.steer(this.conversationId, text).catch(() => false)) {
+        this.textarea.value = '';
+        this.autosize();
+        this.renderBar();
+      } else {
+        toast('The task finished before your message arrived; send it as a new message.');
+      }
+      return;
+    }
     let text = this.textarea.value.trim();
     if (!text && this.attachments.length === 0 && !this.quote && !this.workflow) return;
     if (this.quote) {
@@ -1280,10 +1300,16 @@ class Composer {
     const plus = h('button', { class: 'icon-btn', title: 'Add' }, icon('plus', 18));
     plus.addEventListener('click', () => this.openPlusMenu(plus));
 
-    const approvalIcon = state.approval === 'ask' ? 'hand' : 'pencil';
-    const approval = h('button', { class: 'icon-btn tinted', title: state.approval === 'ask' ? 'Ask before changes' : 'Accept edits' }, icon(approvalIcon, 17));
+    const APPROVALS = {
+      ask: { icon: 'hand', name: 'Ask', desc: 'Ask before every change to your files or system' },
+      accept_edits: { icon: 'pencil', name: 'Accept edits', desc: 'Approve file edits automatically; still ask for the rest' },
+      plan: { icon: 'check', name: 'Plan', desc: 'Investigate and propose a plan; change nothing yet' },
+      auto: { icon: 'bolt', name: 'Full auto', desc: 'Make changes without asking; you can stop it at any time' },
+    } as const;
+    const approvalIcon = APPROVALS[state.approval].icon;
+    const approval = h('button', { class: `icon-btn tinted${state.approval === 'auto' ? ' warn' : ''}`, title: APPROVALS[state.approval].name }, icon(approvalIcon, 17));
     approval.addEventListener('click', () => {
-      const option = (value: 'ask' | 'accept_edits', name: string, desc: string, ic: string) =>
+      const option = (value: keyof typeof APPROVALS, name: string, desc: string, ic: string) =>
         h(
           'button',
           { class: `menu-item rich${state.approval === value ? ' selected' : ''}`, on: { click: () => { state.approval = value; close(); this.renderBar(); } } },
@@ -1295,8 +1321,7 @@ class Composer {
         h(
           'div',
           { class: 'menu' },
-          option('ask', 'Ask', 'Ask before every change to your files or system', 'hand'),
-          option('accept_edits', 'Accept edits', 'Approve file edits automatically; still ask for the rest', 'pencil')
+          (Object.keys(APPROVALS) as (keyof typeof APPROVALS)[]).map((k) => option(k, APPROVALS[k].name, APPROVALS[k].desc, APPROVALS[k].icon))
         ),
         'above'
       );
@@ -1328,7 +1353,9 @@ class Composer {
     modelBtn.addEventListener('click', () => (state.models.length ? openModelPicker(modelBtn, () => this.renderBar()) : void openSettings('providers')));
 
     const hasText = this.textarea.value.trim().length > 0 || this.attachments.length > 0 || Boolean(this.workflow);
-    const action = running
+    const action = running && hasText
+      ? h('button', { class: 'send-btn', title: 'Send guidance to the running task', on: { click: () => void this.submit() } }, icon('send', 18))
+      : running
       ? h('button', { class: 'send-btn stop', title: 'Stop', on: { click: () => this.conversationId && void api.cancel(this.conversationId) } }, icon('stop', 16))
       : hasText || this.recorder || this.transcribing
         ? h('button', { class: 'send-btn', title: 'Send', disabled: !hasText, on: { click: () => void this.submit() } }, icon('send', 18))

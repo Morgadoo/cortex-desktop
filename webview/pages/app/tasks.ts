@@ -4,6 +4,8 @@ import { clear, confirmDialog, h, icon, modal, toast } from './dom';
 import { navigate, state } from './state';
 import { modalHeader } from './ui';
 
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
 const SUGGESTIONS: { title: string; prompt: string; frequency: Frequency }[] = [
   { title: 'Weekly AI industry news summary', prompt: 'Send me a summary of the most important AI industry news from the past week: model releases, funding, regulation and notable research. Five bullets with dates and sources.', frequency: { kind: 'weekly', days: [0], time: '05:30' } },
   { title: 'Weekly deep research report on AI agent tools', prompt: 'Research what changed this week in AI agent tools and frameworks (open source and commercial). Write a short report with a comparison table and sources.', frequency: { kind: 'weekly', days: [0], time: '10:50' } },
@@ -29,11 +31,16 @@ export function editTask(existing: Task | null, onSaved: (tasks: Task[]) => void
     const kind = h(
       'select',
       { class: 'input' },
-      (['once', 'daily', 'weekly', 'monthly'] as const).map((k) => h('option', { value: k, selected: freq.kind === k }, k === 'once' ? 'Once' : k.charAt(0).toUpperCase() + k.slice(1)))
+      (['once', 'daily', 'weekly', 'monthly', 'yearly'] as const).map((k) => h('option', { value: k, selected: freq.kind === k }, k === 'once' ? 'Once' : k.charAt(0).toUpperCase() + k.slice(1)))
     );
     const time = h('input', { class: 'input', type: 'time', value: freq.time });
     const date = h('input', { class: 'input', type: 'date', value: freq.kind === 'once' ? freq.date : new Date(Date.now() + 86400000).toISOString().slice(0, 10) });
-    const dayOfMonth = h('input', { class: 'input', type: 'number', min: 1, max: 31, value: String(freq.kind === 'monthly' ? freq.day : 1) });
+    const dayOfMonth = h('input', { class: 'input', type: 'number', min: 1, max: 31, value: String(freq.kind === 'monthly' || freq.kind === 'yearly' ? freq.day : 1) });
+    const month = h(
+      'select',
+      { class: 'input' },
+      MONTH_NAMES.map((m, i) => h('option', { value: String(i + 1), selected: freq.kind === 'yearly' ? freq.month === i + 1 : i === new Date().getMonth() }, m))
+    );
     const days = new Set<number>(freq.kind === 'weekly' ? freq.days : [0]);
     const dayPicker = h('div', { class: 'day-picker' });
     const renderDays = () =>
@@ -50,7 +57,8 @@ export function editTask(existing: Task | null, onSaved: (tasks: Task[]) => void
         extra,
         kind.value === 'once' ? h('div', {}, h('label', { class: 'field-label' }, 'Date'), date) : null,
         kind.value === 'weekly' ? h('div', {}, h('label', { class: 'field-label' }, 'Days'), dayPicker) : null,
-        kind.value === 'monthly' ? h('div', {}, h('label', { class: 'field-label' }, 'Day of the month'), dayOfMonth) : null
+        kind.value === 'monthly' ? h('div', {}, h('label', { class: 'field-label' }, 'Day of the month'), dayOfMonth) : null,
+        kind.value === 'yearly' ? h('div', { class: 'freq-row' }, h('div', { class: 'grow' }, h('label', { class: 'field-label' }, 'Month'), month), h('div', {}, h('label', { class: 'field-label' }, 'Day'), dayOfMonth)) : null
       );
     };
     kind.addEventListener('change', renderExtra);
@@ -72,6 +80,8 @@ export function editTask(existing: Task | null, onSaved: (tasks: Task[]) => void
             ? { kind: 'daily', time: t }
             : kind.value === 'monthly'
               ? { kind: 'monthly', day: Number(dayOfMonth.value) || 1, time: t }
+              : kind.value === 'yearly'
+                ? { kind: 'yearly', month: Number(month.value) || 1, day: Number(dayOfMonth.value) || 1, time: t }
               : { kind: 'weekly', days: [...days].sort(), time: t };
       try {
         onSaved(
@@ -242,5 +252,7 @@ function describe(f: Frequency): string {
       return `Every ${f.days.map((d) => names[d]).join(', ')} at ${f.time}`;
     case 'monthly':
       return `Every month on day ${f.day} at ${f.time}`;
+    case 'yearly':
+      return `Every year on ${MONTH_NAMES[f.month - 1] ?? '?'} ${f.day} at ${f.time}`;
   }
 }

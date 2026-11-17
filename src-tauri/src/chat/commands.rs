@@ -314,6 +314,24 @@ pub async fn chat_speak(app: AppHandle, text: String) -> Result<(String, String)
     Ok((base64::engine::general_purpose::STANDARD.encode(audio), mime))
 }
 
+/// Adds guidance to a running turn; it joins the conversation at the turn's next step.
+#[tauri::command]
+pub fn chat_steer(state: State<'_, ChatState>, conversation_id: String, text: String) -> Result<bool, String> {
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return Ok(false);
+    }
+    Ok(state.steer(&conversation_id, text))
+}
+
+/// Commits the working tree of a coding session's folder.
+#[tauri::command]
+pub async fn chat_code_commit(app: AppHandle, conversation_id: String, message: String) -> Result<String, String> {
+    let conversation = store::load_conversation(&config_dir(&app)?, &conversation_id)?;
+    let dir = conversation.workdir.ok_or("This conversation has no folder.")?;
+    tokio::task::spawn_blocking(move || super::code::commit(&dir, &message)).await.map_err(|e| e.to_string())?
+}
+
 /// Shows another answer to the last prompt.
 #[tauri::command]
 pub fn chat_select_version(app: AppHandle, state: State<'_, ChatState>, id: String, index: usize) -> Result<(), String> {

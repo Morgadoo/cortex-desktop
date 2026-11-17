@@ -219,6 +219,12 @@
           "markdownDescription": "Show the working tree changes of a coding session."
         },
         {
+          "description": "Commit a coding session's changes.",
+          "type": "string",
+          "const": "allow-chat-code-commit",
+          "markdownDescription": "Commit a coding session's changes."
+        },
+        {
           "description": "Read whether code runs without asking.",
           "type": "string",
           "const": "allow-chat-code-runs-allowed",
@@ -535,6 +541,12 @@
           "type": "string",
           "const": "allow-chat-speak",
           "markdownDescription": "Read an answer aloud."
+        },
+        {
+          "description": "Add guidance to a running turn.",
+          "type": "string",
+          "const": "allow-chat-steer",
+          "markdownDescription": "Add guidance to a running turn."
         },
         {
           "description": "Send a one-word request to check a provider's key and address.",

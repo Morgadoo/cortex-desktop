@@ -31,6 +31,9 @@ pub enum Frequency {
     /// `day` of the month, clamped to the month's length.
     #[serde(rename_all = "camelCase")]
     Monthly { day: u8, time: String },
+    /// Every year on `month` (1–12) and `day`, clamped to the month's length.
+    #[serde(rename_all = "camelCase")]
+    Yearly { month: u8, day: u8, time: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -127,6 +130,21 @@ pub fn next_run(frequency: &Frequency, after: DateTime<Utc>) -> Result<Option<Da
             }
             Ok(None)
         }
+        Frequency::Yearly { month, day, time } => {
+            if *month == 0 || *month > 12 || *day == 0 || *day > 31 {
+                return Err("A yearly task needs a month from 1 to 12 and a day from 1 to 31.".into());
+            }
+            let time = parse_time(time)?;
+            for year in today.year()..=today.year() + 2 {
+                let d = u32::from(*day).min(days_in_month(year, u32::from(*month)));
+                if let Some(at) = NaiveDate::from_ymd_opt(year, u32::from(*month), d).and_then(|date| local(date, time)) {
+                    if at > after {
+                        return Ok(Some(at));
+                    }
+                }
+            }
+            Ok(None)
+        }
     }
 }
 
@@ -153,6 +171,11 @@ pub fn describe(frequency: &Frequency) -> String {
             }
         }
         Frequency::Monthly { day, time } => format!("Every month on day {day} at {time}"),
+        Frequency::Yearly { month, day, time } => {
+            const MONTHS: [&str; 12] = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+            let name = MONTHS.get(usize::from(month.saturating_sub(1))).copied().unwrap_or("?");
+            format!("Every year on {name} {day} at {time}")
+        }
     }
 }
 
@@ -272,6 +295,17 @@ mod tests {
 
     fn at(y: i32, m: u32, d: u32, h: u32, min: u32) -> DateTime<Utc> {
         Local.with_ymd_and_hms(y, m, d, h, min, 0).single().unwrap().with_timezone(&Utc)
+    }
+
+    #[test]
+    fn yearly_runs_on_its_date_and_clamps_leap_days() {
+        let f = Frequency::Yearly { month: 3, day: 15, time: "10:00".into() };
+        assert_eq!(next_run(&f, at(2026, 11, 17, 8, 0)).unwrap(), Some(at(2027, 3, 15, 10, 0)));
+        assert_eq!(next_run(&f, at(2027, 3, 14, 8, 0)).unwrap(), Some(at(2027, 3, 15, 10, 0)));
+        let leap = Frequency::Yearly { month: 2, day: 29, time: "09:00".into() };
+        assert_eq!(next_run(&leap, at(2026, 11, 17, 8, 0)).unwrap(), Some(at(2027, 2, 28, 9, 0)));
+        assert!(next_run(&Frequency::Yearly { month: 13, day: 1, time: "09:00".into() }, at(2026, 1, 1, 0, 0)).is_err());
+        assert_eq!(describe(&f), "Every year on March 15 at 10:00");
     }
 
     #[test]
