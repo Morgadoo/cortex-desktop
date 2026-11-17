@@ -46,7 +46,7 @@ export class LibrariesPage {
   private body = h('div', { class: 'libraries' });
 
   constructor() {
-    const create = h('button', { class: 'btn btn-light' }, icon('plus', 16), 'New library');
+    const create = h('button', { class: 'btn btn-primary' }, icon('plus', 16), 'New library');
     create.addEventListener('click', async () => {
       const name = await promptText('New library', '', 'e.g. Energy regulation');
       if (!name) return;
@@ -96,7 +96,7 @@ export class LibrariesPage {
       }
       await this.load();
     });
-    const remove = h('button', { class: 'btn btn-ghost danger' }, 'Delete library');
+    const remove = h('button', { class: 'btn btn-danger' }, 'Delete library');
     remove.addEventListener('click', async () => {
       if (!(await confirmDialog('Delete library?', `“${lib.name}” and its ${lib.documents.length} documents will be removed from this device.`))) return;
       await api.remove(lib.id);

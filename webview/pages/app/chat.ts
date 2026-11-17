@@ -10,6 +10,7 @@ import { renderCodeRun, renderImage } from './coderun';
 import { editWorkflow, workflowPrompt, workflowsApi } from './workflows';
 import type { Workflow } from './api';
 import { diffLines, loadChanges, openChanges } from './changes';
+import { button, chip, iconButton, modalHeader, trigger } from './ui';
 
 // ---------------------------------------------------------------------------------------------
 // Tool labels
@@ -644,7 +645,7 @@ function editButton(turn: Turn, conversationId: string, text: string): HTMLEleme
         'div',
         { class: 'edit-box' },
         area,
-        h('div', { class: 'dialog-actions' }, h('button', { class: 'btn btn-ghost', on: { click: () => void viewCache.chat?.refresh(false) } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Send'))
+        h('div', { class: 'dialog-actions' }, h('button', { class: 'btn btn-secondary', on: { click: () => void viewCache.chat?.refresh(false) } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Send'))
       )
     );
     area.focus();
@@ -658,7 +659,7 @@ function renderAssistantTurn(conversation: Conversation, turn: Turn, isLast: boo
   // A reply that stopped after its tools ran, before answering, can pick up where it left off.
   const unfinished = isLast && !running && turn.parts[turn.parts.length - 1]?.kind === 'tool' && !state.live.has(conversation.id);
   if (unfinished) {
-    const resume = h('button', { class: 'btn btn-ghost' }, icon('retry', 15), 'Continue');
+    const resume = h('button', { class: 'btn btn-secondary' }, icon('retry', 15), 'Continue');
     resume.addEventListener('click', () => {
       if (!state.model) return void toast('Choose a model first.', 'error');
       void api
@@ -775,7 +776,7 @@ function renderLiveTurn(conversationId: string, live: LiveTurn): HTMLElement {
     el.append(h('div', { class: 'status-line' }, h('span', { class: 'dots' }), 'Thinking'));
   }
   if (live.error) {
-    const resume = h('button', { class: 'btn btn-ghost' }, icon('retry', 15), 'Continue');
+    const resume = h('button', { class: 'btn btn-secondary' }, icon('retry', 15), 'Continue');
     resume.addEventListener('click', () => {
       if (!state.model) return void toast('Choose a model first.', 'error');
       void api
@@ -911,10 +912,10 @@ function openCompareDialog(onDone: () => void) {
     return h(
       'div',
       { class: 'dialog-small' },
-      h('div', { class: 'modal-head flush' }, h('h2', {}, 'Compare models'), h('button', { class: 'icon-btn', on: { click: close } }, icon('close', 18))),
+      modalHeader('Compare models', close, { flush: true }),
       h('p', { class: 'muted' }, 'Your next message goes to each model side by side. Keep the answer you like best and carry on with that model.'),
       list,
-      h('div', { class: 'dialog-actions' }, h('button', { class: 'btn btn-ghost', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: start } }, 'Compare'))
+      h('div', { class: 'dialog-actions' }, h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: start } }, 'Compare'))
     );
   });
 }
@@ -1138,40 +1139,30 @@ class Composer {
           { class: 'quote-chip' },
           icon('forward', 15),
           h('span', {}, this.quote),
-          h('button', { class: 'chip-x', title: 'Remove', on: { click: () => { this.quote = null; this.renderChips(); } } }, icon('close', 13))
+          iconButton({ icon: 'close', title: 'Remove quote', size: 'xs', class: 'chip-x', onClick: () => { this.quote = null; this.renderChips(); } })
         )
       );
     }
     if (!this.conversationId && compareModels.length > 1) {
-      extra.push(
-        h(
-          'span',
-          { class: 'chip tool-chip' },
-          icon('apps', 14),
-          `Compare · ${compareModels.map(modelName).join(' vs ')}`,
-          h('button', { class: 'chip-x', title: 'Stop comparing', on: { click: () => { compareModels = []; this.renderChips(); } } }, icon('close', 12))
-        )
-      );
+      extra.push(chip({ icon: 'apps', tone: 'accent', label: `Compare · ${compareModels.map(modelName).join(' vs ')}`, onRemove: () => { compareModels = []; this.renderChips(); } }));
     }
-    const chip = (ic: string, label: string, clearIt: () => void) =>
-      h('span', { class: 'chip tool-chip' }, icon(ic, 14), label, h('button', { class: 'chip-x', title: 'Remove', on: { click: () => { clearIt(); this.renderChips(); this.renderBar(); } } }, icon('close', 12)));
-    if (this.workflow) extra.push(chip('workflow', `Workflow · ${this.workflow.name}`, () => (this.workflow = null)));
-    if (this.library) extra.push(chip('library', `Library · ${this.library}`, () => (this.library = null)));
-    if (this.folder) extra.push(chip('folder', this.folder.split(/[\\/]/).pop() || this.folder, () => (this.folder = null)));
+    const tokenChip = (ic: string, label: string, clearIt: () => void) =>
+      chip({ icon: ic, label, tone: 'accent', onRemove: () => { clearIt(); this.renderChips(); this.renderBar(); } });
+    if (this.workflow) extra.push(tokenChip('workflow', `Workflow · ${this.workflow.name}`, () => (this.workflow = null)));
+    if (this.library) extra.push(tokenChip('library', `Library · ${this.library}`, () => (this.library = null)));
+    if (this.folder) extra.push(tokenChip('folder', this.folder.split(/[\\/]/).pop() || this.folder, () => (this.folder = null)));
     if (this.useCanvas) {
-      extra.push(h('span', { class: 'chip tool-chip' }, icon('file', 14), 'Canvas', h('button', { class: 'chip-x', title: 'Remove', on: { click: () => { this.useCanvas = false; this.renderChips(); } } }, icon('close', 12))));
+      extra.push(chip({ icon: 'file', tone: 'accent', label: 'Canvas', onRemove: () => { this.useCanvas = false; this.renderChips(); } }));
     }
     clear(
       this.chips,
       extra,
       this.attachments.map((file, i) =>
-        h(
-          'span',
-          { class: 'chip' },
-          file.image ? h('img', { class: 'chip-thumb', src: `data:${file.image.mediaType};base64,${file.image.data}`, alt: '' }) : icon('file', 14),
-          file.name,
-          h('button', { class: 'chip-x', title: 'Remove', on: { click: () => { this.attachments.splice(i, 1); this.renderChips(); this.renderBar(); } } }, icon('close', 12))
-        )
+        chip({
+          leading: file.image ? h('img', { class: 'chip-thumb', src: `data:${file.image.mediaType};base64,${file.image.data}`, alt: '' }) : icon('file', 14),
+          label: file.name,
+          onRemove: () => { this.attachments.splice(i, 1); this.renderChips(); this.renderBar(); },
+        })
       )
     );
   }
@@ -1236,7 +1227,7 @@ class Composer {
     });
 
     const model = currentModel();
-    const speed = h('button', { class: 'pill-btn', title: 'Response mode' }, state.speed === 'fast' ? 'Fast' : 'Think', icon('chevron', 14));
+    const speed = trigger({ label: state.speed === 'fast' ? 'Fast' : 'Think', title: 'Response mode' });
     speed.addEventListener('click', () => {
       const option = (value: 'fast' | 'think', name: string, desc: string, ic: string) =>
         h(
@@ -1257,7 +1248,7 @@ class Composer {
       );
     });
 
-    const modelBtn = h('button', { class: 'pill-btn model-btn', title: 'Model' }, model ? model.name : state.models.length ? 'Choose model' : 'Add a provider', icon('chevron', 14));
+    const modelBtn = trigger({ label: model ? model.name : state.models.length ? 'Choose model' : 'Add a provider', title: 'Model', class: 'model-btn' });
     modelBtn.addEventListener('click', () => (state.models.length ? openModelPicker(modelBtn, () => this.renderBar()) : void openSettings('providers')));
 
     const hasText = this.textarea.value.trim().length > 0 || this.attachments.length > 0 || Boolean(this.workflow);
@@ -1380,7 +1371,7 @@ class Composer {
       };
       search.addEventListener('input', render);
       render();
-      const create = h('button', { class: 'link-btn', on: { click: done(() => navigate({ kind: 'page', page: 'skills' })) } }, icon('plus', 14), 'New skill');
+      const create = button({ variant: 'link', size: 'sm', icon: 'plus', label: 'New skill', onClick: done(() => navigate({ kind: 'page', page: 'skills' })) });
       setTimeout(() => search.focus());
       return [h('div', { class: 'flyout-head' }, search, create), tabs, list];
     };
@@ -1606,8 +1597,8 @@ function renderApprovals(): HTMLElement | null {
     h(
       'div',
       { class: 'dialog-actions' },
-      h('button', { class: 'btn btn-ghost', on: { click: () => respond(false) } }, 'Deny'),
-      h('button', { class: 'btn btn-ghost', on: { click: () => respond(true, true) } }, 'Always allow'),
+      h('button', { class: 'btn btn-secondary', on: { click: () => respond(false) } }, 'Deny'),
+      h('button', { class: 'btn btn-secondary', on: { click: () => respond(true, true) } }, 'Always allow'),
       h('button', { class: 'btn btn-primary', on: { click: () => respond(true) } }, 'Allow once')
     )
   );
@@ -1675,14 +1666,14 @@ export class HomeView {
     });
     const banner =
       state.models.length === 0
-        ? h('div', { class: 'composer-banner' }, icon('key', 16), h('span', {}, 'Add an API key or a local server to start chatting'), h('button', { class: 'link-btn', on: { click: () => void openSettings('providers') } }, 'Add provider'))
+        ? h('div', { class: 'composer-banner' }, icon('key', 16), h('span', {}, 'Add an API key or a local server to start chatting'), button({ variant: 'link', label: 'Add provider', onClick: () => void openSettings('providers') }))
         : !code && !agent && !bannerDismissed
           ? h(
               'div',
               { class: 'composer-banner connect' },
               h('span', { class: 'banner-app' }, BANNER_APPS[new Date().getMinutes() % BANNER_APPS.length]),
               h('span', { class: 'grow' }, 'Work mode is better with your apps connected'),
-              h('button', { class: 'link-btn strong', on: { click: () => navigate({ kind: 'page', page: 'connectors' }) } }, 'Connect'),
+              button({ variant: 'link', label: 'Connect', class: 'strong', onClick: () => navigate({ kind: 'page', page: 'connectors' }) }),
               dismiss
             )
           : null;
@@ -1758,7 +1749,7 @@ export class CompareView {
     private columns: { id: string; model: string }[]
   ) {
     this.key = `compare:${columns.map((c) => c.id).join(',')}`;
-    const discard = h('button', { class: 'btn btn-ghost' }, icon('trash', 15), 'Discard all');
+    const discard = h('button', { class: 'btn btn-secondary' }, icon('trash', 15), 'Discard all');
     discard.addEventListener('click', async () => {
       await Promise.allSettled(this.columns.map((c) => api.deleteConversation(c.id)));
       navigate({ kind: 'home' });
@@ -1947,7 +1938,7 @@ export class ChatView {
           .then(() => this.renderHeader());
       }
       if (this.changeCount !== -1) {
-        changesBtn = h('button', { class: 'pill-btn changes-btn', title: 'Uncommitted changes in this folder' }, icon('file', 15), 'Changes', this.changeCount ? h('span', { class: 'count-badge' }, String(this.changeCount)) : null);
+        changesBtn = trigger({ icon: 'file', label: 'Changes', title: 'Uncommitted changes in this folder', chevron: false, class: 'changes-btn', trailing: this.changeCount ? h('span', { class: 'count-badge' }, String(this.changeCount)) : null });
         changesBtn.addEventListener('click', () => openChanges(this.id, workdir.split(/[\\/]/).pop() ?? workdir));
       }
     }

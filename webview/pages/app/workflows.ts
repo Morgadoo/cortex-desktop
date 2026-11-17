@@ -2,6 +2,7 @@
 import { tauriInvoke } from '../../shared/tauri';
 import type { Workflow } from './api';
 import { clear, confirmDialog, h, icon, modal, toast } from './dom';
+import { modalHeader, pageHeader } from './ui';
 
 export const workflowsApi = {
   list: () => tauriInvoke<Workflow[]>('chat_workflows'),
@@ -39,7 +40,7 @@ export function editWorkflow(workflow: Workflow | null, onSaved: (all: Workflow[
     return h(
       'div',
       { class: 'dialog-small wide' },
-      h('div', { class: 'modal-head flush' }, h('h2', {}, workflow ? (workflow.builtin ? 'Customize workflow' : 'Edit workflow') : 'New workflow'), h('button', { class: 'icon-btn', on: { click: close } }, icon('close', 18))),
+      modalHeader(workflow ? (workflow.builtin ? 'Customize workflow' : 'Edit workflow') : 'New workflow', close, { flush: true }),
       workflow?.builtin ? h('p', { class: 'muted' }, 'This is a built-in workflow. Saving keeps your version in its place.') : null,
       h('label', { class: 'field-label' }, 'Name'),
       name,
@@ -47,7 +48,7 @@ export function editWorkflow(workflow: Workflow | null, onSaved: (all: Workflow[
       description,
       h('label', { class: 'field-label' }, 'Steps'),
       steps,
-      h('div', { class: 'dialog-actions' }, h('button', { class: 'btn btn-ghost', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Save'))
+      h('div', { class: 'dialog-actions' }, h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Save'))
     );
   });
 }
@@ -58,10 +59,10 @@ export class WorkflowsPage {
   private list = h('div', { class: 'skill-list' });
 
   constructor() {
-    const create = h('button', { class: 'btn btn-light' }, icon('plus', 16), 'New workflow');
+    const create = h('button', { class: 'btn btn-primary' }, icon('plus', 16), 'New workflow');
     create.addEventListener('click', () => editWorkflow(null, (all) => this.render(all)));
     this.el.append(
-      h('header', { class: 'page-header' }, h('div', {}, h('h1', {}, 'Workflows'), h('p', { class: 'muted' }, 'Step-by-step recipes for work you repeat. Pick one from the + menu and the assistant runs the steps in order, as a plan you can follow.')), h('div', { class: 'page-actions' }, create)),
+      pageHeader('Workflows', 'Step-by-step recipes for work you repeat. Pick one from the + menu and the assistant runs the steps in order, as a plan you can follow.', create),
       this.list
     );
     void workflowsApi.list().then((all) => this.render(all));
@@ -71,7 +72,7 @@ export class WorkflowsPage {
     clear(
       this.list,
       all.map((w) => {
-        const edit = h('button', { class: 'btn btn-ghost small' }, w.builtin ? 'Customize' : 'Edit');
+        const edit = h('button', { class: 'btn btn-secondary btn-sm' }, w.builtin ? 'Customize' : 'Edit');
         edit.addEventListener('click', () => editWorkflow(w, (next) => this.render(next)));
         const remove = w.builtin ? null : h('button', { class: 'icon-btn', title: 'Delete' }, icon('trash', 16));
         remove?.addEventListener('click', async () => {

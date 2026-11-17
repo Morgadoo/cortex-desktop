@@ -2,6 +2,7 @@
 import { tauriInvoke } from '../../shared/tauri';
 import type { Part } from './api';
 import { clear, h, icon, markdown, modal, toast } from './dom';
+import { button, iconButton, modalHeader } from './ui';
 
 interface Canvas {
   id: string;
@@ -63,12 +64,12 @@ function renderAppCard(part: Extract<Part, { kind: 'tool' }>, live: boolean): HT
   const source = h('button', { class: 'seg' }, 'Code');
   preview.addEventListener('click', () => { preview.classList.add('active'); source.classList.remove('active'); showPreview(); });
   source.addEventListener('click', () => { source.classList.add('active'); preview.classList.remove('active'); showCode(); });
-  const copy = h('button', { class: 'canvas-btn', title: 'Copy code' }, icon('copy', 15), 'Copy');
+  const copy = button({ variant: 'subtle', size: 'sm', icon: 'copy', label: 'Copy', title: 'Copy code' });
   copy.addEventListener('click', () => { void navigator.clipboard.writeText(code); toast('Code copied.'); });
-  const full = h('button', { class: 'canvas-btn icon-only', title: 'Open larger' }, icon('share', 16));
+  const full = iconButton({ icon: 'share', title: 'Open larger', size: 'sm' });
   full.addEventListener('click', () => {
     if (!id) return;
-    void modal((close) => h('div', { class: 'app-modal' }, h('div', { class: 'modal-head' }, h('h2', {}, title), h('button', { class: 'icon-btn', on: { click: close } }, icon('close', 18))), appFrame(id, version)), true);
+    void modal((close) => h('div', { class: 'app-modal' }, modalHeader(title, close), appFrame(id, version)), true);
   });
   showPreview();
   const card = h('div', { class: 'canvas-card app-card' }, h('div', { class: 'canvas-head' }, icon('apps', 16), h('span', { class: 'canvas-title' }, title), h('div', { class: 'segmented' }, preview, source), h('span', { class: 'spacer' }), copy, full), body);
@@ -88,17 +89,17 @@ export function renderCanvasCard(part: Extract<Part, { kind: 'tool' }>, live: bo
   const titleEl = h('span', { class: 'canvas-title' }, title);
   const card = h('div', { class: 'canvas-card' });
 
-  const copy = h('button', { class: 'canvas-btn', title: 'Copy' }, icon('copy', 15), 'Copy');
+  const copy = button({ variant: 'subtle', size: 'sm', icon: 'copy', label: 'Copy', title: 'Copy' });
   copy.addEventListener('click', () => {
     void navigator.clipboard.writeText(content);
     toast('Canvas copied.');
   });
-  const download = h('button', { class: 'canvas-btn icon-only', title: 'Download as Markdown' }, icon('download', 16));
+  const download = iconButton({ icon: 'download', title: 'Download as Markdown', size: 'sm' });
   download.addEventListener('click', () => {
     const id = idOf(part);
     if (id) void api.export(id).then((saved) => saved && toast('Canvas saved.')).catch((e) => toast(String(e), 'error'));
   });
-  const edit = h('button', { class: 'canvas-btn', title: 'Edit' }, icon('edit', 15), 'Edit');
+  const edit = button({ variant: 'subtle', size: 'sm', icon: 'edit', label: 'Edit', title: 'Edit' });
   edit.addEventListener('click', async () => {
     const id = idOf(part);
     if (!id) return;
@@ -154,9 +155,9 @@ function openEditor(title: string, content: string, onSave: (title: string, cont
     return h(
       'div',
       { class: 'canvas-modal' },
-      h('div', { class: 'modal-head' }, titleInput, h('button', { class: 'icon-btn', title: 'Close', on: { click: close } }, icon('close', 18))),
+      modalHeader(titleInput, close),
       h('div', { class: 'canvas-split' }, area, preview),
-      h('div', { class: 'dialog-actions canvas-actions' }, h('span', { class: 'hint' }, 'Markdown · Ctrl+S saves a new version'), h('span', { class: 'spacer' }), h('button', { class: 'btn btn-ghost', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Save'))
+      h('div', { class: 'dialog-actions canvas-actions' }, h('span', { class: 'hint' }, 'Markdown · Ctrl+S saves a new version'), h('span', { class: 'spacer' }), h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Save'))
     );
   }, true);
 }

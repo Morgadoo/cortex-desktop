@@ -3,6 +3,7 @@ import { tauriInvoke } from '../../shared/tauri';
 import { api, type AppSettings, type Provider } from './api';
 import { clear, h, icon, modal, toast } from './dom';
 import { changed, state } from './state';
+import { card, modalHeader, switchInput } from './ui';
 
 export type Section = 'profile' | 'providers' | 'permissions' | 'general' | 'appearance';
 
@@ -67,7 +68,7 @@ export function openSettings(section: Section = 'profile'): Promise<void> {
     };
     const renderBody = async () => {
       const title = SECTIONS.find((s) => s.id === current)!.label;
-      clear(body, h('div', { class: 'modal-head' }, h('h2', {}, title), h('button', { class: 'icon-btn', title: 'Close', on: { click: close } }, icon('close', 18))));
+      clear(body, modalHeader(title, close));
       const content = h('div', { class: 'settings-content' });
       body.append(content);
       try {
@@ -95,19 +96,11 @@ function initials(name: string): string {
     .join('') || 'U';
 }
 
-function card(...children: (HTMLElement | null)[]): HTMLElement {
-  return h('section', { class: 'card' }, children);
-}
 
 function row(label: string, description: string, control: HTMLElement): HTMLElement {
   return h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, label), description ? h('small', { class: 'muted' }, description) : null), control);
 }
 
-function switchInput(checked: boolean, onChange: (value: boolean) => void): HTMLInputElement {
-  const input = h('input', { type: 'checkbox', class: 'switch', checked });
-  input.addEventListener('change', () => onChange(input.checked));
-  return input;
-}
 
 function renderProfile(content: HTMLElement) {
   const name = h('input', { class: 'input', value: state.instructions.name, placeholder: 'Your name' });
@@ -136,7 +129,7 @@ function renderProfile(content: HTMLElement) {
         h(
           'button',
           {
-            class: 'btn btn-ghost',
+            class: 'btn btn-secondary',
             on: {
               click: async () => {
                 try {
@@ -251,7 +244,7 @@ function providerCard(provider: Provider): HTMLElement {
     }
   };
 
-  const test = h('button', { class: 'btn btn-ghost' }, 'Test');
+  const test = h('button', { class: 'btn btn-secondary' }, 'Test');
   test.addEventListener('click', async () => {
     // The model in use, else one the user added, else the first the catalog lists.
     const ofProvider = state.models.filter((m) => m.vendor === provider.vendor);
@@ -288,7 +281,7 @@ function providerCard(provider: Provider): HTMLElement {
       h(
         'div',
         { class: 'card-actions' },
-        provider.settings.hasKey ? h('button', { class: 'btn btn-ghost danger', on: { click: () => void save(true) } }, 'Remove key') : null,
+        provider.settings.hasKey ? h('button', { class: 'btn btn-danger', on: { click: () => void save(true) } }, 'Remove key') : null,
         test,
         h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Save')
       )
@@ -323,7 +316,7 @@ async function renderPermissions(content: HTMLElement) {
         : h('p', { class: 'muted' }, 'No folders yet. The assistant cannot see your files.')
     );
   renderRoots();
-  const add = h('button', { class: 'btn btn-ghost' }, icon('plus', 16), 'Add folder');
+  const add = h('button', { class: 'btn btn-secondary' }, icon('plus', 16), 'Add folder');
   add.addEventListener('click', async () => {
     const dir = await api.pickDirectory();
     if (dir && !settings.filesystem_allowed_roots.includes(dir)) {

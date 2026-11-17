@@ -16,6 +16,7 @@ import { AppsPage } from './apps';
 import { WorkflowsPage } from './workflows';
 import { applyTheme, openSettings, reloadModels, setTheme, storedTheme } from './settings';
 import { applyEvent, back, changed, forward, navigate, state, subscribe, type Page } from './state';
+import { modalHeader } from './ui';
 
 interface View {
   readonly el: HTMLElement;
@@ -280,7 +281,7 @@ function editProject(id: string) {
       return lib;
     };
     void renderFiles();
-    const addFiles = h('button', { class: 'btn btn-ghost' }, icon('upload', 15), 'Add files');
+    const addFiles = h('button', { class: 'btn btn-secondary' }, icon('upload', 15), 'Add files');
     addFiles.addEventListener('click', async () => {
       const lib = await renderFiles();
       const result = await tauriInvoke<{ errors: string[] } | null>('chat_add_documents', { id: lib.id });
@@ -302,7 +303,7 @@ function editProject(id: string) {
     return h(
       'div',
       { class: 'dialog-small wide' },
-      h('div', { class: 'modal-head flush' }, h('h2', {}, 'Project settings'), h('button', { class: 'icon-btn', on: { click: close } }, icon('close', 18))),
+      modalHeader('Project settings', close, { flush: true }),
       h('div', { class: 'freq-row' }, h('div', { class: 'grow' }, h('label', { class: 'field-label' }, 'Name'), name), h('div', {}, h('label', { class: 'field-label' }, 'Icon'), projIcon)),
       h('label', { class: 'field-label' }, 'Tone'),
       tone,
@@ -311,7 +312,7 @@ function editProject(id: string) {
       h('label', { class: 'field-label' }, 'Files', addFiles),
       files,
       h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Use other chats as context'), h('small', { class: 'muted' }, "New conversations see short summaries of this project's other conversations.")), share),
-      h('div', { class: 'dialog-actions' }, h('button', { class: 'btn btn-ghost', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Save'))
+      h('div', { class: 'dialog-actions' }, h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Save'))
     );
   });
 }

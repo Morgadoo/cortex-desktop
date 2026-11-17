@@ -1,6 +1,7 @@
 /** A code run in the conversation: the program, what it printed, and the charts it saved. */
 import type { Part } from './api';
 import { h, icon, modal, toast } from './dom';
+import { iconButton } from './ui';
 
 interface RunReport {
   language: string;
@@ -60,7 +61,7 @@ export function renderImage(part: Extract<Part, { kind: 'tool' }>, live: boolean
   } else {
     body = h('pre', { class: 'run-stderr' }, part.output ?? 'The image could not be made.');
   }
-  const copy = h('button', { class: 'canvas-btn icon-only', title: 'Copy prompt' }, icon('copy', 15));
+  const copy = iconButton({ icon: 'copy', title: 'Copy prompt', size: 'sm' });
   copy.addEventListener('click', () => {
     void navigator.clipboard.writeText(prompt);
     toast('Prompt copied.');
@@ -88,7 +89,7 @@ export function renderCodeRun(part: Extract<Part, { kind: 'tool' }>, live: boole
       : failed
         ? h('span', { class: 'step-badge' }, report?.exit_code != null ? `exit ${report.exit_code}` : 'failed')
         : h('span', { class: 'run-ok' }, icon('check', 14));
-  const copy = h('button', { class: 'canvas-btn icon-only', title: 'Copy code' }, icon('copy', 15));
+  const copy = iconButton({ icon: 'copy', title: 'Copy code', size: 'sm' });
   copy.addEventListener('click', (e) => {
     e.preventDefault();
     void navigator.clipboard.writeText(code);

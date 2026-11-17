@@ -2,21 +2,10 @@
 import { api, type Memories, type Skill } from './api';
 import { clear, confirmDialog, h, icon, modal, toast } from './dom';
 import { state } from './state';
+import { emptyState, modalHeader, pageHeader, switchInput, tabs } from './ui';
 
-function header(title: string, subtitle: string, ...actions: (HTMLElement | null)[]): HTMLElement {
-  return h('header', { class: 'page-header' }, h('div', {}, h('h1', {}, title), h('p', { class: 'muted' }, subtitle)), h('div', { class: 'page-actions' }, actions));
-}
 
-function emptyState(ic: string, title: string, body: string): HTMLElement {
-  return h('div', { class: 'empty-state' }, h('div', { class: 'empty-icon' }, icon(ic, 22)), h('h3', {}, title), h('p', { class: 'muted' }, body));
-}
 
-function switchInput(checked: boolean, onChange: (value: boolean) => void, title = ''): HTMLInputElement {
-  const input = h('input', { type: 'checkbox', class: 'switch', checked, title });
-  input.addEventListener('click', (e) => e.stopPropagation());
-  input.addEventListener('change', () => onChange(input.checked));
-  return input;
-}
 
 // ---------------------------------------------------------------------------------------------
 // Skills
@@ -44,7 +33,7 @@ export function editSkill(skill: Skill | null, onSaved: (skills: Skill[]) => voi
     const remove =
       skill && !builtin
         ? h('button', {
-            class: 'btn btn-ghost danger',
+            class: 'btn btn-danger',
             on: {
               click: async () => {
                 if (!(await confirmDialog('Delete skill?', `“${skill.name}” will be removed from this device.`))) return;
@@ -57,7 +46,7 @@ export function editSkill(skill: Skill | null, onSaved: (skills: Skill[]) => voi
     return h(
       'div',
       { class: 'dialog-small wide skill-editor' },
-      h('div', { class: 'modal-head flush' }, h('h2', {}, skill ? (builtin ? `Customize ${skill.name}` : `Edit ${skill.name}`) : 'New skill'), h('button', { class: 'icon-btn', on: { click: close } }, icon('close', 18))),
+      modalHeader(skill ? (builtin ? `Customize ${skill.name}` : `Edit ${skill.name}`) : 'New skill', close, { flush: true }),
       builtin ? h('p', { class: 'hint' }, 'Built-in skills are read-only. Saving creates your own copy with the same name, which takes its place.') : null,
       h('label', { class: 'field-label' }, 'Name'),
       name,
@@ -66,7 +55,7 @@ export function editSkill(skill: Skill | null, onSaved: (skills: Skill[]) => voi
       h('label', { class: 'field-label' }, 'Instructions'),
       body,
       error,
-      h('div', { class: 'dialog-actions' }, remove, h('span', { class: 'spacer' }), h('button', { class: 'btn btn-ghost', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Save'))
+      h('div', { class: 'dialog-actions' }, remove, h('span', { class: 'spacer' }), h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Save'))
     );
   });
 }
@@ -78,10 +67,10 @@ export class SkillsPage {
   private tab: 'mine' | 'builtin' = 'mine';
   private filter = '';
   private list = h('div', { class: 'skill-list' });
-  private tabs = h('div', { class: 'tabs' });
+  private tabs: HTMLElement = h('div', { class: 'tabs' });
 
   constructor() {
-    const importBtn = h('button', { class: 'btn btn-ghost' }, 'Import');
+    const importBtn = h('button', { class: 'btn btn-secondary' }, 'Import');
     importBtn.addEventListener('click', async () => {
       try {
         const name = await api.importSkill();
@@ -93,7 +82,7 @@ export class SkillsPage {
         toast(String(e), 'error');
       }
     });
-    const create = h('button', { class: 'btn btn-light' }, icon('plus', 16), 'New skill');
+    const create = h('button', { class: 'btn btn-primary' }, icon('plus', 16), 'New skill');
     create.addEventListener('click', () => void editSkill(null, (skills) => this.set(skills)));
     const search = h('input', { class: 'input', placeholder: 'Search skills' });
     search.addEventListener('input', () => {
@@ -101,7 +90,7 @@ export class SkillsPage {
       this.render();
     });
     this.el.append(
-      header('Skills', 'Instructions the assistant can reuse. Set them up once and it applies them when a request matches, or call one with /name.', importBtn, create),
+      pageHeader('Skills', 'Instructions the assistant can reuse. Set them up once and it applies them when a request matches, or call one with /name.', importBtn, create),
       this.tabs,
       h('div', { class: 'toolbar' }, h('div', { class: 'search-wrap' }, icon('search', 16), search)),
       this.list
@@ -122,10 +111,18 @@ export class SkillsPage {
   private render() {
     const mine = this.skills.filter((s) => s.origin === 'user');
     const builtin = this.skills.filter((s) => s.origin === 'builtin');
-    clear(
-      this.tabs,
-      h('button', { class: `tab${this.tab === 'mine' ? ' active' : ''}`, on: { click: () => { this.tab = 'mine'; this.render(); } } }, `My skills ${mine.length}`),
-      h('button', { class: `tab${this.tab === 'builtin' ? ' active' : ''}`, on: { click: () => { this.tab = 'builtin'; this.render(); } } }, `Built-in ${builtin.length}`)
+    this.tabs.replaceWith(
+      (this.tabs = tabs(
+        [
+          { value: 'mine', label: 'My skills', count: mine.length },
+          { value: 'builtin', label: 'Built-in', count: builtin.length },
+        ],
+        this.tab,
+        (tab) => {
+          this.tab = tab;
+          this.render();
+        }
+      ))
     );
     const shown = (this.tab === 'mine' ? mine : builtin).filter((s) => !this.filter || `${s.name} ${s.description}`.toLowerCase().includes(this.filter));
     if (!shown.length) {
@@ -166,13 +163,13 @@ export class KnowledgePage {
   private body = h('div', { class: 'knowledge' });
 
   constructor() {
-    const clearAll = h('button', { class: 'btn btn-ghost danger' }, 'Delete all');
+    const clearAll = h('button', { class: 'btn btn-danger' }, 'Delete all');
     clearAll.addEventListener('click', async () => {
       if (await confirmDialog('Delete all knowledge?', 'The assistant will forget everything it saved about you.', 'Delete all')) {
         this.set(await api.deleteMemory(null));
       }
     });
-    this.el.append(header('Knowledge', 'What the assistant remembers about you across conversations. Say “remember…” in any chat, or add facts here.', clearAll), this.body);
+    this.el.append(pageHeader('Knowledge', 'What the assistant remembers about you across conversations. Say “remember…” in any chat, or add facts here.', clearAll), this.body);
     void api.memories().then((m) => this.set(m));
   }
 

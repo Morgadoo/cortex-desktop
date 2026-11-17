@@ -5,6 +5,7 @@ import { state, type Page } from './state';
 import { openSettings } from './settings';
 import { tauriInvoke } from '../../shared/tauri';
 import { CONNECTOR_CATEGORIES, FEATURED_MCP_SERVERS, type ConnectorCatalogEntry } from '../../shared/connector-catalog';
+import { emptyState, modalHeader } from './ui';
 
 const TONES: { id: string; label: string; description: string }[] = [
   { id: '', label: 'Default', description: 'Natural style, no personalization.' },
@@ -86,7 +87,7 @@ export function openInstructions(): Promise<void> {
     return h(
       'div',
       { class: 'instructions' },
-      h('div', { class: 'modal-head' }, h('h2', {}, 'Instructions'), h('button', { class: 'icon-btn', title: 'Close', on: { click: close } }, icon('close', 18))),
+      modalHeader('Instructions', close),
       h(
         'div',
         { class: 'instructions-grid' },
@@ -117,9 +118,6 @@ function pageHeader(title: string, subtitle: string, ...actions: (HTMLElement | 
   return h('header', { class: 'page-header' }, h('div', {}, h('h1', {}, title), h('p', { class: 'muted' }, subtitle)), h('div', { class: 'page-actions' }, actions));
 }
 
-function emptyState(ic: string, title: string, body: string, ...actions: HTMLElement[]): HTMLElement {
-  return h('div', { class: 'empty-state' }, h('div', { class: 'empty-icon' }, icon(ic, 22)), h('h3', {}, title), h('p', { class: 'muted' }, body), actions.length ? h('div', { class: 'empty-actions' }, actions) : null);
-}
 
 const READINESS: Record<string, string> = {
   ready: 'Ready',
@@ -155,7 +153,7 @@ export class ConnectorsPage {
         )
       );
     this.renderTabs = renderTabs;
-    const addBtn = h('button', { class: 'btn btn-light' }, icon('plus', 16), 'Add MCP server');
+    const addBtn = h('button', { class: 'btn btn-primary' }, icon('plus', 16), 'Add MCP server');
     addBtn.addEventListener('click', () => void openSettings('permissions'));
     this.el.append(
       pageHeader('Connectors', 'Give the assistant your tools: files, the terminal, the web and any MCP server.', addBtn),
@@ -214,7 +212,7 @@ export class ConnectorsPage {
     const action = installed
       ? h('span', { class: 'status-badge ok' }, 'Added')
       : entry.url
-        ? h('button', { class: 'btn btn-ghost small-btn' }, icon('plus', 14), 'Add')
+        ? h('button', { class: 'btn btn-secondary btn-sm' }, icon('plus', 14), 'Add')
         : h('span', { class: 'muted small-note', title: 'Runs a local command; add it under Settings → Permissions → MCP servers.' }, 'Manual setup');
     if (!installed && entry.url && action instanceof HTMLButtonElement) {
       action.addEventListener('click', async () => {
@@ -296,7 +294,7 @@ export class ConnectorsPage {
 
   /** Starts the connector's sign-in (OAuth in the browser) or connection. */
   private connectButton(c: ConnectorManifest): HTMLElement {
-    const button = h('button', { class: 'btn btn-ghost small-btn' }, 'Connect');
+    const button = h('button', { class: 'btn btn-secondary btn-sm' }, 'Connect');
     button.addEventListener('click', async (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -379,7 +377,7 @@ export class PlaceholderPage {
   constructor(page: Page) {
     this.key = `page:${page}`;
     const info = PLACEHOLDERS[page];
-    const instructions = h('button', { class: 'btn btn-light', on: { click: () => void openInstructions() } }, icon('book', 16), 'Instructions');
+    const instructions = h('button', { class: 'btn btn-primary', on: { click: () => void openInstructions() } }, icon('book', 16), 'Instructions');
     this.el.append(pageHeader(info.title, info.subtitle, page === 'skills' || page === 'knowledge' ? instructions : null), emptyState(info.icon, info.empty, info.body));
   }
   update() {}

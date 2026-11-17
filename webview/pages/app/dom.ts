@@ -243,7 +243,7 @@ export function promptText(title: string, value = '', placeholder = ''): Promise
       h(
         'div',
         { class: 'dialog-actions' },
-        h('button', { class: 'btn btn-ghost', on: { click: close } }, 'Cancel'),
+        h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'),
         h('button', { class: 'btn btn-primary', on: { click: submit } }, 'Save')
       )
     );
@@ -261,7 +261,7 @@ export function confirmDialog(title: string, body: string, action = 'Delete'): P
       h(
         'div',
         { class: 'dialog-actions' },
-        h('button', { class: 'btn btn-ghost', on: { click: close } }, 'Cancel'),
+        h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'),
         h('button', { class: 'btn btn-danger', on: { click: () => { ok = true; close(); } } }, action)
       )
     )

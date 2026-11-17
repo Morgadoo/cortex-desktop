@@ -3,6 +3,7 @@ import { tauriInvoke } from '../../shared/tauri';
 import { appFrame } from './canvas';
 import { clear, h, icon, modal } from './dom';
 import { navigate } from './state';
+import { button, emptyState, modalHeader, pageHeader } from './ui';
 
 interface AppCanvas {
   id: string;
@@ -18,7 +19,7 @@ export class AppsPage {
 
   constructor() {
     this.el.append(
-      h('header', { class: 'page-header' }, h('div', {}, h('h1', {}, 'Apps'), h('p', { class: 'muted' }, 'Interactive mini apps the assistant built for you. Ask for one in any chat: "build me a pomodoro timer", "make a chart of these numbers".'))),
+      pageHeader('Apps', 'Interactive mini apps the assistant built for you. Ask for one in any chat: "build me a pomodoro timer", "make a chart of these numbers".'),
       this.grid
     );
     void this.load();
@@ -27,15 +28,15 @@ export class AppsPage {
   private async load() {
     const apps = await tauriInvoke<AppCanvas[]>('chat_list_apps');
     if (!apps.length) {
-      clear(this.grid, h('div', { class: 'empty-state wide' }, h('div', { class: 'empty-icon' }, icon('apps', 22)), h('h3', {}, 'No apps yet'), h('p', { class: 'muted' }, 'Ask the assistant to build a calculator, a game, a form or a dashboard. It runs here, sandboxed.')));
+      clear(this.grid, emptyState('apps', 'No apps yet', 'Ask the assistant to build a calculator, a game, a form or a dashboard. It runs here, sandboxed.'));
       return;
     }
     clear(
       this.grid,
       apps.map((app) => {
-        const open = h('button', { class: 'canvas-btn' }, icon('share', 15), 'Open');
-        open.addEventListener('click', () => void modal((close) => h('div', { class: 'app-modal' }, h('div', { class: 'modal-head' }, h('h2', {}, app.title), h('button', { class: 'icon-btn', on: { click: close } }, icon('close', 18))), appFrame(app.id, app.versions.length)), true));
-        const chat = h('button', { class: 'canvas-btn' }, icon('chat', 15), 'Conversation');
+        const open = button({ variant: 'subtle', size: 'sm', icon: 'share', label: 'Open' });
+        open.addEventListener('click', () => void modal((close) => h('div', { class: 'app-modal' }, modalHeader(app.title, close), appFrame(app.id, app.versions.length)), true));
+        const chat = button({ variant: 'subtle', size: 'sm', icon: 'chat', label: 'Conversation' });
         chat.addEventListener('click', () => navigate({ kind: 'chat', id: app.conversationId }));
         return h(
           'div',

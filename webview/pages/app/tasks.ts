@@ -2,6 +2,7 @@
 import { api, newId, type Frequency, type Task } from './api';
 import { clear, confirmDialog, h, icon, modal, toast } from './dom';
 import { navigate, state } from './state';
+import { modalHeader } from './ui';
 
 const SUGGESTIONS: { title: string; prompt: string; frequency: Frequency }[] = [
   { title: 'Weekly AI industry news summary', prompt: 'Send me a summary of the most important AI industry news from the past week: model releases, funding, regulation and notable research. Five bullets with dates and sources.', frequency: { kind: 'weekly', days: [0], time: '05:30' } },
@@ -99,7 +100,7 @@ export function editTask(existing: Task | null, onSaved: (tasks: Task[]) => void
     return h(
       'div',
       { class: 'dialog-small wide task-editor' },
-      h('div', { class: 'modal-head flush' }, h('h2', {}, existing ? 'Edit task' : 'New task'), h('button', { class: 'icon-btn', on: { click: close } }, icon('close', 18))),
+      modalHeader(existing ? 'Edit task' : 'New task', close, { flush: true }),
       h('label', { class: 'field-label' }, 'Title'),
       title,
       h('label', { class: 'field-label' }, 'Instructions'),
@@ -110,7 +111,7 @@ export function editTask(existing: Task | null, onSaved: (tasks: Task[]) => void
       agent,
       h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Allow changes'), h('small', { class: 'muted' }, 'Let runs write files or run commands without asking. Off: runs only read and report.')), allowChanges),
       error,
-      h('div', { class: 'dialog-actions' }, h('button', { class: 'btn btn-ghost', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, existing ? 'Save' : 'Schedule'))
+      h('div', { class: 'dialog-actions' }, h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, existing ? 'Save' : 'Schedule'))
     );
   });
 }
@@ -127,7 +128,7 @@ export class TasksPage {
   /** `agentId` narrows the page to one agent's tasks. */
   constructor(private agentId: string | null = null) {
     this.key = `page:scheduled:${agentId ?? ''}`;
-    const create = h('button', { class: 'btn btn-light' }, icon('plus', 16), 'New task');
+    const create = h('button', { class: 'btn btn-primary' }, icon('plus', 16), 'New task');
     create.addEventListener('click', () => void editTask(null, (t) => this.set(t), agentId ? { agentId } : undefined));
     const search = h('input', { class: 'input', placeholder: 'Search scheduled tasks' });
     search.addEventListener('input', () => {
@@ -213,7 +214,7 @@ export class TasksPage {
       if (await confirmDialog('Delete task?', `“${t.title}” will stop running.`)) this.set(await api.deleteTask(t.id));
     });
     const last = t.lastConversation
-      ? h('button', { class: 'link-btn small', on: { click: (e: MouseEvent) => { e.stopPropagation(); navigate({ kind: 'chat', id: t.lastConversation! }); } } }, t.lastStatus === 'failed' ? 'Last run failed' : t.lastStatus === 'running' ? 'Running…' : 'Last result')
+      ? h('button', { class: 'btn btn-link btn-sm', on: { click: (e: MouseEvent) => { e.stopPropagation(); navigate({ kind: 'chat', id: t.lastConversation! }); } } }, t.lastStatus === 'failed' ? 'Last run failed' : t.lastStatus === 'running' ? 'Running…' : 'Last result')
       : null;
     return h(
       'div',

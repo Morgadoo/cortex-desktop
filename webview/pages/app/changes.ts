@@ -1,6 +1,7 @@
 /** A coding session's working-tree changes: the files touched and their diffs. */
 import { tauriInvoke } from '../../shared/tauri';
 import { clear, h, icon, modal } from './dom';
+import { iconButton, modalHeader } from './ui';
 
 export interface ChangedFile {
   path: string;
@@ -55,7 +56,7 @@ export function openChanges(conversationId: string, folder: string) {
     const list = h('div', { class: 'changes-files' });
     const view = h('div', { class: 'changes-diff' }, h('div', { class: 'status-line' }, h('span', { class: 'dots' }), 'Reading changes'));
     const title = h('span', { class: 'muted' }, folder);
-    const refresh = h('button', { class: 'icon-btn', title: 'Refresh' }, icon('retry', 16));
+    const refresh = iconButton({ icon: 'retry', title: 'Refresh' });
     const load = async () => {
       const changes = await loadChanges(conversationId).catch((e) => ({ git: false, branch: null, files: [], diff: String(e), truncated: false }) as Changes);
       title.textContent = changes.branch ? `${folder} · ${changes.branch}` : folder;
@@ -109,7 +110,7 @@ export function openChanges(conversationId: string, folder: string) {
     return h(
       'div',
       { class: 'changes-modal' },
-      h('div', { class: 'modal-head' }, h('h2', {}, 'Changes'), title, h('span', { class: 'spacer' }), refresh, h('button', { class: 'icon-btn', title: 'Close', on: { click: close } }, icon('close', 18))),
+      modalHeader(h('div', { class: 'modal-title' }, h('h2', {}, 'Changes'), title), close, { actions: [refresh] }),
       h('div', { class: 'changes-body' }, list, view)
     );
   }, true);

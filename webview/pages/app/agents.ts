@@ -3,6 +3,7 @@ import { api, newId, type Agent } from './api';
 import { clear, confirmDialog, h, icon, modal, timeLabel, toast } from './dom';
 import { changed, navigate, state } from './state';
 import { TasksPage } from './tasks';
+import { modalHeader } from './ui';
 
 /** Tools an agent can be given, by the name the engine matches. */
 const TOOL_CHOICES: { id: string; label: string }[] = [
@@ -88,7 +89,7 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
     };
     const remove = existing
       ? h('button', {
-          class: 'btn btn-ghost danger',
+          class: 'btn btn-danger',
           on: {
             click: async () => {
               if (!(await confirmDialog('Delete agent?', `${existing.name} and its settings will be removed. Its conversations stay.`))) return;
@@ -103,7 +104,7 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
     return h(
       'div',
       { class: 'dialog-small wide agent-editor' },
-      h('div', { class: 'modal-head flush' }, h('h2', {}, existing ? `Edit ${existing.name}` : 'New agent'), h('button', { class: 'icon-btn', on: { click: close } }, icon('close', 18))),
+      modalHeader(existing ? `Edit ${existing.name}` : 'New agent', close, { flush: true }),
       h('div', { class: 'freq-row' }, h('div', { class: 'grow' }, h('label', { class: 'field-label' }, 'Name'), name), h('div', {}, h('label', { class: 'field-label' }, 'Avatar'), avatarInput)),
       h('label', { class: 'field-label' }, 'Description'),
       description,
@@ -115,7 +116,7 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
       toolGrid,
       h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Think longer'), h('small', { class: 'muted' }, 'Use extended reasoning by default, where the model supports it.')), think),
       error,
-      h('div', { class: 'dialog-actions' }, remove, h('span', { class: 'spacer' }), h('button', { class: 'btn btn-ghost', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, existing ? 'Save' : 'Create agent'))
+      h('div', { class: 'dialog-actions' }, remove, h('span', { class: 'spacer' }), h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, existing ? 'Save' : 'Create agent'))
     );
   }, false);
 }
@@ -128,7 +129,7 @@ export class AgentsPage {
   private templates = h('div', { class: 'agent-grid' });
 
   constructor() {
-    const create = h('button', { class: 'btn btn-light' }, icon('plus', 16), 'New agent');
+    const create = h('button', { class: 'btn btn-primary' }, icon('plus', 16), 'New agent');
     create.addEventListener('click', () => void editAgent(null));
     this.el.append(
       h('header', { class: 'page-header' }, h('div', {}, h('h1', {}, 'Your agents'), h('p', { class: 'muted' }, 'A workforce of assistants with their own instructions, tools and schedules. Chat with one, or give it tasks that run on their own.')), h('div', { class: 'page-actions' }, create)),
@@ -144,7 +145,7 @@ export class AgentsPage {
             'button',
             { class: 'agent-card template', on: { click: () => void editAgent(null, t) } },
             h('div', { class: 'agent-card-head' }, avatar(t, 'large'), h('div', {}, h('strong', {}, t.name), h('small', { class: 'muted' }, t.description))),
-            h('span', { class: 'link-btn small' }, icon('plus', 14), 'Add')
+            h('span', { class: 'btn btn-link btn-sm' }, icon('plus', 14), 'Add')
           )
         )
       );
@@ -202,9 +203,9 @@ export class AgentPage {
       clear(this.head, h('h1', {}, 'Agent not found'));
       return;
     }
-    const chat = h('button', { class: 'btn btn-light' }, icon('chat', 16), `Chat with ${agent.name}`);
+    const chat = h('button', { class: 'btn btn-primary' }, icon('chat', 16), `Chat with ${agent.name}`);
     chat.addEventListener('click', () => this.onChat(agent.id));
-    const edit = h('button', { class: 'btn btn-ghost' }, icon('edit', 15), 'Edit');
+    const edit = h('button', { class: 'btn btn-secondary' }, icon('edit', 15), 'Edit');
     edit.addEventListener('click', () => void editAgent(agent));
     clear(
       this.head,
