@@ -717,6 +717,12 @@
           "markdownDescription": "Edit a memory."
         },
         {
+          "description": "Read this month's usage.",
+          "type": "string",
+          "const": "allow-chat-usage-month",
+          "markdownDescription": "Read this month's usage."
+        },
+        {
           "description": "List workflows.",
           "type": "string",
           "const": "allow-chat-workflows",

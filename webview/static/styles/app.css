@@ -1151,3 +1151,17 @@ button.usage-meter:hover { background: var(--hover); }
 
 .history-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
 .show-more { color: var(--text-muted); }
+
+/* ------------------------------------------------------------------ sticky prompt, usage gauge, risk */
+
+.sticky-prompt { display: none; position: sticky; top: 0; z-index: 4; margin: 0 auto; max-width: 820px; width: 100%; text-align: left; padding: 8px 14px; border-radius: 0 0 var(--radius-md) var(--radius-md); background: color-mix(in srgb, var(--bg-elevated) 96%, transparent); border: 1px solid var(--border); border-top: 0; color: var(--text-muted); font-size: var(--fs-sm); backdrop-filter: blur(8px); }
+.sticky-prompt.visible { display: block; }
+.sticky-prompt span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sticky-prompt:hover { color: var(--text); }
+.usage-gauge { display: flex; justify-content: space-between; gap: 10px; padding: 6px 10px; font-size: var(--fs-sm); }
+.approval-risk { display: flex; align-items: center; gap: 6px; color: var(--warning, #d9a441); font-size: var(--fs-sm); }
+.whats-new section { margin-top: var(--space-3); }
+.whats-new h4 { margin-bottom: 6px; }
+.whats-new li { margin: 4px 0 4px 18px; list-style: disc; color: var(--text-muted); }
+.usage-gauge span { white-space: nowrap; } .usage-gauge { font-size: var(--fs-xs, 12px); }
+.sticky-prompt { top: -8px; padding-top: 14px; background: var(--bg-elevated); }

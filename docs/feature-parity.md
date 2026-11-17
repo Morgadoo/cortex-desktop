@@ -142,7 +142,7 @@ equivalent, that is what is compared.
 |---|---|---|
 | Thinking shown as a collapsible "Thought" row (3.0.2), "Thought for 1s" (screenshots) | Same; the duration is stored with the reply, so it survives a restart | Done |
 | Tool calls fold into a compact summary line (2.25.1) | Same; repeated tools merge into a table | Done |
-| Ctrl+O toggles all tool groups (2.25.1) | Each group toggles on its own | Partial |
+| Ctrl+O toggles all tool groups (2.25.1) | Same | Done |
 | Ctrl+R searches prompt history (3.1.0) | Same; Up / Down in an empty composer walk earlier prompts | Done |
 | "Jump to bottom" button (3.1.0) | Same | Done |
 | `/context` (3.1.0) | Click the usage meter | Done |
@@ -162,11 +162,11 @@ equivalent, that is what is compared.
 | Errors and warnings inline, not pop-ups (3.1.0) | Errors are cards in the conversation; notices (like a backup model taking over) are pop-ups | Partial |
 | Large tool outputs saved to a file, start and end shown to the model (3.0.1) | Results over 24,000 characters are cut, older ones cleared; `tool_results__read` reads them back | Adapted |
 | Footer: active model and thinking level; click to change (3.0.3) | Model and Fast / Think in the composer | Done |
-| Monthly usage gauge (3.1.0) | Per conversation (meter) and per agent (this month, budget); no account-wide monthly total | Partial |
+| Monthly usage gauge (3.1.0) | This month's tokens, cost and chats in the profile menu; also per conversation and per agent | Done |
 | Session PRs shown with links (3.0.3) | Changes view opens the pull request | Done |
-| Smart-approve: repeated risky calls escalate to a prompt (2.25.4) | Approval modes; no risk classifier | Missing |
-| Sticky prompt pinned above the section being read (3.1.1) | Not built | Missing |
-| `/release-notes` (3.0.4) | The updater shows release notes on update only | Missing |
+| Smart-approve: risky calls escalate to a prompt and say why (2.25.4) | Commands that are hard to undo (recursive deletes, sudo, force-push, piping a download into a shell, dropping tables…) and deleting tools always ask, in every mode, with the reason; scheduled runs refuse them. A fixed list, not a classifier | Adapted |
+| Sticky prompt pinned above the section being read (3.1.1) | Same; click it to jump back to the prompt | Done |
+| `/release-notes` (3.0.4) | "What's new" in the profile menu | Done |
 | Vim keybindings, mouse capture, cursor blink (3.0.2, 3.1.1) | Terminal-editor settings | N/A |
 | `/teleport` to Vibe Code Web (2.26.0) | No cloud sessions | N/A |
 | Worktrees, plugins, hooks, `vibe config schema`, headless `-p` limits | CLI and coding-agent configuration | N/A |

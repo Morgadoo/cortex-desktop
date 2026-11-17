@@ -1786,7 +1786,9 @@ function renderApprovals(): HTMLElement | null {
     state.approvals.shift();
     changed();
   };
-  const reason = request.reason
+  const reason = request.reason?.kind === 'risky'
+    ? h('p', { class: 'approval-risk' }, icon('shield', 14), `This asks even in the current mode: ${request.reason.detail ?? 'it is hard to undo'}.`)
+    : request.reason
     ? h('p', { class: 'muted' }, `This conversation has read content from ${request.reason.sources.join(', ') || 'an untrusted source'}, so the call needs your approval.`)
     : null;
   return h(
@@ -2035,6 +2037,9 @@ export class ChatView {
   private overlay = h('div', { class: 'composer-overlay' });
   private bottom = h('div', { class: 'chat-bottom' });
   private jump = h('button', { class: 'jump-btn', title: 'Scroll to bottom' }, icon('arrowDown', 18));
+  /** The prompt of the part being read, pinned at the top once it scrolls away (Vibe's sticky prompt). */
+  private sticky = h('button', { class: 'sticky-prompt' });
+  private stickyTarget: HTMLElement | null = null;
   private planPanel = h('aside', { class: 'plan-panel' });
   private sidePanel = h('aside', { class: 'side-panel' });
   /** Files changed in the session's folder: undefined until asked, null while asking, -1 without git. */
@@ -2043,7 +2048,18 @@ export class ChatView {
 
   constructor(private id: string) {
     this.key = `chat:${id}`;
-    this.scroller.append(h('div', { class: 'chat-column' }, this.transcript, this.liveSlot));
+    this.scroller.append(this.sticky, h('div', { class: 'chat-column' }, this.transcript, this.liveSlot));
+    this.sticky.addEventListener('click', () => this.stickyTarget?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    this.scroller.addEventListener('scroll', () => this.updateSticky());
+    // Ctrl+O folds or unfolds every activity group at once.
+    this.el.addEventListener('keydown', (e) => {
+      if (e.key === 'o' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+        e.preventDefault();
+        const groups = [...this.transcript.querySelectorAll<HTMLDetailsElement>('details.activity'), ...this.liveSlot.querySelectorAll<HTMLDetailsElement>('details.activity')];
+        const open = groups.some((g) => !g.open);
+        groups.forEach((g) => (g.open = open));
+      }
+    });
     this.scroller.addEventListener('scroll', () => {
       const distance = this.scroller.scrollHeight - this.scroller.scrollTop - this.scroller.clientHeight;
       this.stickToBottom = distance < 80;
@@ -2200,6 +2216,23 @@ export class ChatView {
     composer.el.classList.toggle('hidden', Boolean(question));
     composer.renderBar();
     if (this.stickToBottom) this.scrollToBottom(false);
+  }
+
+  private updateSticky() {
+    const top = this.scroller.getBoundingClientRect().top;
+    const prompts = [...this.transcript.querySelectorAll<HTMLElement>('.turn-user')];
+    // The last prompt that has scrolled fully out of view, while its answer is still on screen.
+    const passed = prompts.filter((p) => p.getBoundingClientRect().bottom < top + 4);
+    const current = passed[passed.length - 1] ?? null;
+    const next = current ? prompts[prompts.indexOf(current) + 1] : undefined;
+    const answerVisible = !next || next.getBoundingClientRect().top > top + 60;
+    const show = Boolean(current && answerVisible);
+    this.sticky.classList.toggle('visible', show);
+    if (show && current !== this.stickyTarget) {
+      this.stickyTarget = current;
+      const text = current!.querySelector('.bubble')?.textContent?.trim() ?? '';
+      clear(this.sticky, h('span', {}, text.length > 160 ? `${text.slice(0, 160)}…` : text));
+    }
   }
 
   /** The turn ended: the stored conversation replaces the live one. */

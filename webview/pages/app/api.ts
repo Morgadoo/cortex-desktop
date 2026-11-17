@@ -230,7 +230,7 @@ export interface ApprovalRequest {
   connector_id: string | null;
   tool_name: string;
   input: unknown;
-  reason: { kind: string; sources: string[]; destination?: string } | null;
+  reason: { kind: string; sources: string[]; destination?: string; detail?: string } | null;
 }
 
 /** A connector as `get_tool_registry` reports it; only the fields the page reads. */
@@ -340,6 +340,7 @@ export const api = {
   saveAgentNotebook: (id: string, text: string) => call<void>('chat_save_agent_notebook', { id, text }),
   agentSpend: () => call<Record<string, AgentSpend>>('chat_agent_spend'),
   draftAgent: (description: string) => call<Agent>('chat_draft_agent', { description }),
+  usageMonth: () => call<AgentSpend>('chat_usage_month'),
   saveAgent: (agent: Agent) => call<Agent[]>('chat_save_agent', { agent }),
   deleteAgent: (id: string) => call<Agent[]>('chat_delete_agent', { id }),
 

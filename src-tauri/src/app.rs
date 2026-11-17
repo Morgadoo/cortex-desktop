@@ -146,6 +146,7 @@ pub fn run() {
                 chat::commands::chat_save_agent_notebook,
                 chat::commands::chat_agent_spend,
                 chat::commands::chat_draft_agent,
+                chat::commands::chat_usage_month,
                 chat::commands::chat_read_spreadsheet,
                 chat::commands::chat_terminal_list,
                 chat::commands::chat_terminal_start,

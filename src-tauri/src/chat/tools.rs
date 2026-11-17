@@ -173,10 +173,64 @@ fn reads_only(tool: &ChatTool, input: &Value) -> bool {
     }
 }
 
+/// Commands and calls that are hard to undo, which ask even in Accept edits and Full auto, as
+/// Vibe's smart-approve does. Each pattern comes with what the user is told.
+const RISKY: &[(&str, &str)] = &[
+    ("rm -rf", "it deletes files recursively"),
+    ("rm -fr", "it deletes files recursively"),
+    ("rm -r ", "it deletes folders"),
+    ("sudo ", "it runs as administrator"),
+    ("mkfs", "it formats a disk"),
+    ("dd if=", "it writes raw data to a device"),
+    ("> /dev/sd", "it writes to a disk device"),
+    ("chmod -r 777", "it opens permissions on a whole tree"),
+    ("git push --force", "it rewrites the remote history"),
+    ("git push -f", "it rewrites the remote history"),
+    ("git reset --hard", "it discards uncommitted work"),
+    ("git clean -fd", "it deletes untracked files"),
+    ("| sh", "it runs a downloaded script"),
+    ("| bash", "it runs a downloaded script"),
+    ("drop table", "it deletes a database table"),
+    ("drop database", "it deletes a database"),
+    ("shutdown", "it shuts the computer down"),
+    ("reboot", "it restarts the computer"),
+    (":(){", "it is a fork bomb"),
+];
+
+/// Why a call is risky, if it is: a dangerous command anywhere in its input, or a deletion.
+pub fn risk(tool: &ChatTool, input: &Value) -> Option<&'static str> {
+    if tool.read_only {
+        return None;
+    }
+    let name = tool.tool_name.to_ascii_lowercase();
+    if ["delete", "remove", "unlink", "rmdir"].iter().any(|w| name.contains(w)) {
+        return Some("it deletes something");
+    }
+    fn texts(value: &Value, out: &mut String) {
+        match value {
+            Value::String(s) => {
+                out.push_str(&s.to_ascii_lowercase());
+                out.push('\n');
+            }
+            Value::Array(items) => items.iter().for_each(|v| texts(v, out)),
+            Value::Object(map) => map.values().for_each(|v| texts(v, out)),
+            _ => {}
+        }
+    }
+    let mut text = String::new();
+    texts(input, &mut text);
+    let squeezed = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    RISKY.iter().find(|(pattern, _)| squeezed.contains(pattern)).map(|(_, why)| *why)
+}
+
 /// Whether a call should wait for the user before it runs, under `mode`.
 pub fn needs_approval(tool: &ChatTool, input: &Value, mode: ApprovalMode) -> bool {
     if tool.read_only || tool.connector_id.is_none() || reads_only(tool, input) {
         return false;
+    }
+    if risk(tool, input).is_some() {
+        // Smart-approve: what is hard to undo always asks, whatever the mode.
+        return true;
     }
     match mode {
         ApprovalMode::Ask | ApprovalMode::Unattended | ApprovalMode::Plan => true,
@@ -192,6 +246,7 @@ const APPROVAL_WAIT: Duration = Duration::from_secs(15 * 60);
 /// Asks the page to approve a call, with the payload the registry's own gate uses, so one
 /// approval card serves both.
 pub(crate) async fn request_approval(app: &AppHandle, tool: &ChatTool, input: &Value) -> ApprovalDecision {
+    let reason = risk(tool, input).map(|why| json!({ "kind": "risky", "sources": [], "detail": why }));
     let (request_id, rx) = approvals::register();
     let _ = app.emit(
         "tool:approval_request",
@@ -200,7 +255,7 @@ pub(crate) async fn request_approval(app: &AppHandle, tool: &ChatTool, input: &V
             "connector_id": tool.connector_id,
             "tool_name": tool.tool_name,
             "input": input,
-            "reason": null,
+            "reason": reason,
         }),
     );
     match tokio::time::timeout(APPROVAL_WAIT, rx).await {
@@ -257,7 +312,18 @@ pub async fn execute(
             is_error: true,
         };
     }
-    let approved = matches!(mode, ApprovalMode::Autonomous | ApprovalMode::Auto) || if needs_approval(tool, &input, mode) {
+    if mode == ApprovalMode::Autonomous {
+        if let Some(why) = risk(tool, &input) {
+            return Outcome {
+                text: format!(
+                    "This call was not made: {why}, and nobody is watching this scheduled run to \
+                     approve it. Describe what you would have run instead."
+                ),
+                is_error: true,
+            };
+        }
+    }
+    let approved = if needs_approval(tool, &input, mode) {
         match request_approval(app, tool, &input).await {
             ApprovalDecision::Deny => {
                 return Outcome {
@@ -270,7 +336,7 @@ pub async fn execute(
             ApprovalDecision::Once | ApprovalDecision::Always => true,
         }
     } else {
-        false
+        matches!(mode, ApprovalMode::Autonomous | ApprovalMode::Auto)
     };
     let context = CallContext {
         conversation: Some(conversation_id),
@@ -329,6 +395,13 @@ mod tests {
         let shell = tool(Some("bash"), false);
         let read = tool(Some("filesystem"), true);
         assert!(needs_approval(&write, &none, ApprovalMode::Ask));
+        // Smart-approve: risky calls ask even in full auto.
+        let rm = json!({"command": "cd build &&  rm   -rf  ./out"});
+        assert_eq!(risk(&shell, &rm), Some("it deletes files recursively"));
+        assert!(needs_approval(&shell, &rm, ApprovalMode::Auto));
+        assert!(needs_approval(&shell, &json!({"args": ["git", "push --force"]}), ApprovalMode::AcceptEdits));
+        assert!(risk(&shell, &json!({"command": "ls -la && cargo test"})).is_none());
+        assert!(!needs_approval(&shell, &json!({"command": "ls"}), ApprovalMode::Auto));
         assert!(needs_approval(&write, &none, ApprovalMode::Plan), "plan mode refuses what would ask");
         assert!(!needs_approval(&write, &none, ApprovalMode::Auto), "full auto asks for nothing");
         assert!(!needs_approval(&write, &none, ApprovalMode::AcceptEdits));

@@ -447,3 +447,8 @@ commands.allow = ["chat_agent_spend"]
 identifier = "allow-chat-draft-agent"
 description = "Draft an agent from a description."
 commands.allow = ["chat_draft_agent"]
+
+[[permission]]
+identifier = "allow-chat-usage-month"
+description = "Read this month's usage."
+commands.allow = ["chat_usage_month"]

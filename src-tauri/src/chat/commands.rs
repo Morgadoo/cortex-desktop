@@ -1026,6 +1026,22 @@ pub async fn chat_draft_agent(app: AppHandle, description: String) -> Result<sup
 /// The tool names an agent can be given, matching the editor's choices.
 const TOOL_CHOICES: &[&str] = &["web_search", "browser", "filesystem", "bash", "delegate", "update_plan", "canvas", "schedule_task", "use_skill", "remember"];
 
+/// Tokens and cost across all conversations this calendar month, for the usage gauge.
+#[tauri::command]
+pub fn chat_usage_month(app: AppHandle) -> Result<super::agents::Spend, String> {
+    use chrono::Datelike;
+    let now = chrono::Utc::now();
+    let mut total = super::agents::Spend::default();
+    for c in store::list_conversations(&config_dir(&app)?) {
+        if c.updated_at.year() == now.year() && c.updated_at.month() == now.month() {
+            total.runs += 1;
+            total.tokens += c.tokens;
+            total.cost += c.cost;
+        }
+    }
+    Ok(total)
+}
+
 /// Full-text search over every conversation's title and messages.
 #[tauri::command]
 pub async fn chat_search(app: AppHandle, query: String) -> Result<Vec<super::index::Hit>, String> {
