@@ -137,7 +137,10 @@ model call happens in Rust (`src-tauri/src/chat/`):
 | `chat/builtins.rs` | Built-in tools: web search, plans, canvas, scheduling, knowledge, skills, library search |
 | `chat/agents.rs`, `chat/tasks.rs` | The agent workforce and the scheduler that runs tasks unattended |
 | `chat/libraries.rs`, `chat/search.rs` | Local BM25 retrieval over your documents, and keyless web search |
-| `chat/memory.rs`, `chat/skills.rs`, `chat/canvas.rs`, `chat/privacy.rs` | Knowledge, `SKILL.md` skills, versioned canvases, and the personal-data filter |
+| `chat/memory.rs`, `chat/skills.rs`, `chat/canvas.rs`, `chat/privacy.rs` | Knowledge, `SKILL.md` skills, versioned canvases and mini apps (served on `lumoapp://`), and the personal-data filter |
+| `chat/sandbox.rs` | `run_code`: Python, JavaScript or Bash in a per-conversation workspace, isolated with bubblewrap where available |
+| `chat/media.rs` | `generate_image` and voice input, through rig's image-generation and transcription models |
+| `chat/code.rs` | Coding sessions: git branch, status and recent commits, the project's `AGENTS.md`, and the Changes view |
 
 What the app does, following Mistral Vibe's design:
 
@@ -148,7 +151,14 @@ What the app does, following Mistral Vibe's design:
 - **Grounded answers.** Web search with citation pills and a Sources chip; library passages cited by document.
 - **Context.** Skills (with `/name`), Knowledge (memories the model saves and you edit), Connectors (a catalog
   of MCP servers), Libraries, Instructions with a live preview, and Projects.
-- **Work products.** Canvases you and the model both edit, with versions and export.
+- **Work products.** Canvases you and the model both edit, with versions and export; mini apps that run
+  live in a sandbox (listed under Apps); code runs with their output and charts; generated images.
+- **Coding sessions.** The model knows the branch, the uncommitted files and the project's `AGENTS.md`;
+  a Changes view shows the working tree's diff, and file edits appear as diffs in the timeline.
+- **Compare models.** Send one message to two or three models side by side and keep the best answer.
+- **Voice and images.** Dictate with the microphone; attach images for vision models; ask for images.
+- **Projects.** Instructions, tone, icon, files the model searches, and optional context from the
+  project's other chats. Settings can export every conversation and all local data.
 - **Control.** Ask or Accept-edits approvals, unattended runs that cannot change anything unless allowed,
   edit and resend, temporary chats, retries and Continue after failures, and an optional privacy filter.
 
