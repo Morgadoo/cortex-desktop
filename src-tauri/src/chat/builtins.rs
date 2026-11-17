@@ -17,6 +17,7 @@ pub const DELEGATE: &str = "delegate";
 /// Run by the engine, which knows the conversation the canvas belongs to.
 pub const CANVAS: &str = "canvas";
 pub const SCHEDULE_TASK: &str = "schedule_task";
+pub const SEARCH_LIBRARY: &str = "search_library";
 
 fn tool(name: &str, description: &str, parameters: Value) -> ChatTool {
     ChatTool {
@@ -131,6 +132,23 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             "required": ["title", "prompt", "frequency", "time"]
         }),
     ));
+    let libraries = super::libraries::list(config_dir);
+    if libraries.iter().any(|l| !l.documents.is_empty()) {
+        out.push(tool(
+            SEARCH_LIBRARY,
+            "Search the user's document libraries and get the most relevant passages with their \
+             document names. Use specific keywords; search again with other words if the first \
+             results miss.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "query": { "type": "string" },
+                    "library": { "type": "string", "description": "A library name, to search only that one." }
+                },
+                "required": ["query"]
+            }),
+        ));
+    }
     if memory::load(config_dir).enabled {
         out.push(tool(
             REMEMBER,
@@ -166,7 +184,7 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
 }
 
 pub fn is_builtin(name: &str) -> bool {
-    matches!(name, WEB_SEARCH | REMEMBER | FORGET | USE_SKILL | UPDATE_PLAN | SCHEDULE_TASK)
+    matches!(name, WEB_SEARCH | REMEMBER | FORGET | USE_SKILL | UPDATE_PLAN | SCHEDULE_TASK | SEARCH_LIBRARY)
 }
 
 fn ok(text: impl Into<String>) -> Outcome {
@@ -213,6 +231,27 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
             }
         }
         SCHEDULE_TASK => schedule(config_dir, args),
+        SEARCH_LIBRARY => {
+            let query = str_arg("query");
+            if query.is_empty() {
+                return err("Give a search query.");
+            }
+            let wanted = str_arg("library");
+            let only: Vec<String> = if wanted.is_empty() {
+                Vec::new()
+            } else {
+                match super::libraries::list(config_dir).into_iter().find(|l| l.name.eq_ignore_ascii_case(&wanted)) {
+                    Some(l) => vec![l.id],
+                    None => return err(format!("There is no library named {wanted}.")),
+                }
+            };
+            let hits = super::libraries::search(config_dir, &only, &query, 6);
+            if hits.is_empty() {
+                ok(json!({ "query": query, "passages": [], "note": "Nothing matched; try other keywords." }).to_string())
+            } else {
+                ok(serde_json::to_string_pretty(&json!({ "query": query, "passages": hits })).unwrap_or_default())
+            }
+        }
         UPDATE_PLAN => {
             let steps = args.get("steps").and_then(Value::as_array).map_or(0, Vec::len);
             if steps == 0 {

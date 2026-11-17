@@ -183,6 +183,12 @@
           "markdownDescription": "Lets a connector tool run without asking even after untrusted content has been read."
         },
         {
+          "description": "Add documents the user picks to a library.",
+          "type": "string",
+          "const": "allow-chat-add-documents",
+          "markdownDescription": "Add documents the user picks to a library."
+        },
+        {
           "description": "Add a memory.",
           "type": "string",
           "const": "allow-chat-add-memory",
@@ -207,6 +213,12 @@
           "markdownDescription": "Stop a reply in progress."
         },
         {
+          "description": "Create a document library.",
+          "type": "string",
+          "const": "allow-chat-create-library",
+          "markdownDescription": "Create a document library."
+        },
+        {
           "description": "Delete an agent.",
           "type": "string",
           "const": "allow-chat-delete-agent",
@@ -217,6 +229,12 @@
           "type": "string",
           "const": "allow-chat-delete-conversation",
           "markdownDescription": "Delete a conversation."
+        },
+        {
+          "description": "Delete a document library and its documents.",
+          "type": "string",
+          "const": "allow-chat-delete-library",
+          "markdownDescription": "Delete a document library and its documents."
         },
         {
           "description": "Delete one memory, or all of them.",
@@ -297,6 +315,12 @@
           "markdownDescription": "List saved conversations."
         },
         {
+          "description": "List document libraries.",
+          "type": "string",
+          "const": "allow-chat-list-libraries",
+          "markdownDescription": "List document libraries."
+        },
+        {
           "description": "List the models of every configured provider.",
           "type": "string",
           "const": "allow-chat-list-models",
@@ -331,6 +355,12 @@
           "type": "string",
           "const": "allow-chat-preview-instructions",
           "markdownDescription": "Generate a sample reply under draft instructions."
+        },
+        {
+          "description": "Remove a document from a library.",
+          "type": "string",
+          "const": "allow-chat-remove-document",
+          "markdownDescription": "Remove a document from a library."
         },
         {
           "description": "Run a scheduled task now.",
@@ -379,6 +409,12 @@
           "type": "string",
           "const": "allow-chat-save-task",
           "markdownDescription": "Create or update a scheduled task."
+        },
+        {
+          "description": "Search document libraries.",
+          "type": "string",
+          "const": "allow-chat-search-libraries",
+          "markdownDescription": "Search document libraries."
         },
         {
           "description": "Send a message and stream the reply.",

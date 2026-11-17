@@ -667,3 +667,25 @@ select.input { cursor: pointer; }
 .modal:has(.agent-editor), .modal:has(.task-editor), .modal:has(.skill-editor), .modal:has(.dialog-small.wide) { width: min(680px, 94vw); }
 .task-editor, .agent-editor, .skill-editor, .dialog-small.wide { width: 100%; }
 .btn { white-space: nowrap; }
+
+/* ------------------------------------------------------------------ libraries, editing, temporary chats */
+
+.libraries { display: flex; flex-direction: column; gap: 14px; }
+.library-actions { display: flex; gap: 8px; align-items: center; }
+.doc-list { display: flex; flex-direction: column; }
+.doc-row { display: grid; grid-template-columns: 18px 1fr auto auto 30px; gap: 12px; align-items: center; padding: 9px 6px; border-bottom: 1px solid var(--border); }
+.doc-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.passage-list { display: flex; flex-direction: column; gap: 10px; }
+.passage { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; background: var(--bg-elevated); }
+.passage-head { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+.passage-head .muted { margin-left: auto; font-size: 12.5px; }
+.passage p { margin: 8px 0 0; font-size: 14px; color: var(--text-secondary); }
+.edit-box { width: min(78%, 680px); display: flex; flex-direction: column; gap: 8px; }
+.edit-area { min-height: 80px; }
+.home { position: relative; }
+.temp-toggle { position: absolute; top: 18px; right: 24px; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; border: 1px solid var(--border-strong); color: var(--text-secondary); font-size: 13.5px; font-weight: 500; }
+.temp-toggle:hover { background: var(--bg-hover); }
+.temp-toggle.on { border-color: var(--accent); color: var(--accent-strong); background: var(--accent-soft); }
+.temp-badge { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 20px; background: var(--accent-soft); color: var(--accent-strong); font-size: 12.5px; font-weight: 600; }
+.composer-input { min-height: 34px; }
+.markdown .cite-doc { display: inline-flex; align-items: center; gap: 4px; padding: 0 7px; border-radius: 8px; background: var(--bg-active); color: var(--text-secondary); font-size: 12.5px; font-weight: 600; line-height: 1.7; vertical-align: 1px; }

@@ -524,9 +524,78 @@ pub fn chat_run_task(app: AppHandle, id: String) -> Result<(), String> {
     super::tasks::run_now(&app, &id)
 }
 
+#[tauri::command]
+pub fn chat_list_libraries(app: AppHandle) -> Result<Vec<super::libraries::Library>, String> {
+    Ok(super::libraries::list(&config_dir(&app)?))
+}
+
+#[tauri::command]
+pub fn chat_create_library(app: AppHandle, name: String, description: String) -> Result<super::libraries::Library, String> {
+    super::libraries::create(&config_dir(&app)?, &name, &description)
+}
+
+#[tauri::command]
+pub fn chat_delete_library(app: AppHandle, id: String) -> Result<(), String> {
+    super::libraries::delete(&config_dir(&app)?, &id)
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddResult {
+    pub library: super::libraries::Library,
+    pub errors: Vec<String>,
+}
+
+/// Asks for files and adds each to the library, reporting the ones that could not be read.
+#[tauri::command]
+pub async fn chat_add_documents(app: AppHandle, id: String) -> Result<Option<AddResult>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title("Add documents")
+        .add_filter("Documents", &["pdf", "md", "txt", "html", "htm", "csv", "json", "yaml", "yml", "xml", "rs", "py", "js", "ts", "go", "java", "c", "cpp", "h", "sql", "log"])
+        .pick_files(move |paths| {
+            let _ = tx.send(paths);
+        });
+    let Some(paths) = rx.await.map_err(|e| e.to_string())? else {
+        return Ok(None);
+    };
+    let dir = config_dir(&app)?;
+    let mut errors = Vec::new();
+    for path in paths {
+        let Ok(path) = path.into_path() else { continue };
+        if let Err(e) = tokio::task::spawn_blocking({
+            let dir = dir.clone();
+            let id = id.clone();
+            move || super::libraries::add(&dir, &id, &path)
+        })
+        .await
+        .map_err(|e| e.to_string())?
+        {
+            errors.push(e);
+        }
+    }
+    Ok(Some(AddResult { library: super::libraries::load(&dir, &id)?, errors }))
+}
+
+#[tauri::command]
+pub fn chat_remove_document(app: AppHandle, library_id: String, document_id: String) -> Result<super::libraries::Library, String> {
+    super::libraries::remove(&config_dir(&app)?, &library_id, &document_id)
+}
+
+#[tauri::command]
+pub fn chat_search_libraries(app: AppHandle, query: String, library_id: Option<String>) -> Result<Vec<super::libraries::Passage>, String> {
+    let only: Vec<String> = library_id.into_iter().collect();
+    Ok(super::libraries::search(&config_dir(&app)?, &only, &query, 8))
+}
+
 /// Manages chat state at startup.
 pub fn setup(app: &tauri::App) {
     app.manage(ChatState::default());
+    if let Ok(dir) = config_dir(app.handle()) {
+        super::store::purge_temporary(&dir);
+    }
     super::tasks::start(app.handle().clone());
 }
 

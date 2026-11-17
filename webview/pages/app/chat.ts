@@ -41,6 +41,8 @@ const ACTIONS: Record<string, string> = {
   update_plan: 'Updated the plan',
   canvas: 'Wrote a canvas',
   delegate: 'Ran sub-agents',
+  schedule_task: 'Scheduled a task',
+  search_library: 'Searched your libraries',
 };
 
 const BUILTIN_ICONS: Record<string, string> = {
@@ -51,6 +53,8 @@ const BUILTIN_ICONS: Record<string, string> = {
   update_plan: 'check',
   canvas: 'file',
   delegate: 'workflow',
+  schedule_task: 'clock',
+  search_library: 'library',
 };
 
 /** What an approval card asks to allow. */
@@ -162,15 +166,15 @@ function resultRows(part: Extract<Part, { kind: 'tool' }>): { heading: string; r
     if (typeof record.url === 'string' && typeof record.title === 'string' && record.title) {
       return { heading: '', rows: [{ title: record.title, source: host(record.url), href: record.url }] };
     }
-    const list = ['results', 'items', 'matches', 'links', 'files'].map((k) => record[k]).find(Array.isArray) as unknown[] | undefined;
+    const list = ['results', 'passages', 'items', 'matches', 'links', 'files'].map((k) => record[k]).find(Array.isArray) as unknown[] | undefined;
     if (list) {
       const rows = list
         .filter((x): x is Record<string, unknown> => Boolean(x) && typeof x === 'object')
         .map((x) => {
           const href = [x.url, x.href, x.link].find((v): v is string => typeof v === 'string');
           const path = typeof x.path === 'string' ? x.path : '';
-          const title = [x.title, x.name, x.text, path, href].find((v): v is string => typeof v === 'string' && v.length > 0) ?? '';
-          const source = href ? host(href) : path ? path.split(/[\\/]/).slice(-2, -1)[0] ?? '' : '';
+          const title = [x.title, x.document, x.name, x.text, path, href].find((v): v is string => typeof v === 'string' && v.length > 0) ?? '';
+          const source = href ? host(href) : typeof x.library === 'string' ? x.library : path ? path.split(/[\\/]/).slice(-2, -1)[0] ?? '' : '';
           return { title, source, href };
         })
         .filter((r) => r.title);
@@ -429,6 +433,7 @@ const KINDS: [RegExp, string, string][] = [
   [/^use_skill$/, 'skill', 'skills'],
   [/^delegate$/, 'sub-agent run', 'sub-agent runs'],
   [/^update_plan$/, 'plan update', 'plan updates'],
+  [/^search_library$/, 'library search', 'library searches'],
 ];
 
 /** The header of a collapsed activity group: how much of what was done, e.g. "12 searches · 30 pages". */
@@ -532,7 +537,7 @@ function textOf(parts: Part[]): string {
     .join('\n\n');
 }
 
-function renderUserTurn(turn: Turn): HTMLElement {
+function renderUserTurn(turn: Turn, conversationId: string): HTMLElement {
   const text = textOf(turn.parts);
   const copy = h('button', { class: 'icon-btn small', title: 'Copy' }, icon('copy', 15));
   copy.addEventListener('click', () => void navigator.clipboard.writeText(text));
@@ -560,8 +565,44 @@ function renderUserTurn(turn: Turn): HTMLElement {
     'div',
     { class: 'turn turn-user' },
     bubble,
-    h('div', { class: 'turn-actions user-actions' }, copy, h('span', { class: 'turn-time' }, timeLabel(turn.time)))
+    h('div', { class: 'turn-actions user-actions' }, turn.index >= 0 ? editButton(turn, conversationId, text) : null, copy, h('span', { class: 'turn-time' }, timeLabel(turn.time)))
   );
+}
+
+/** Edit a sent message: the conversation is answered again from that point. */
+function editButton(turn: Turn, conversationId: string, text: string): HTMLElement {
+  const button = h('button', { class: 'icon-btn small', title: 'Edit' }, icon('edit', 15));
+  button.addEventListener('click', () => {
+    const el = button.closest('.turn-user');
+    if (!el) return;
+    const area = h('textarea', { class: 'input textarea edit-area', rows: 3 });
+    area.value = text;
+    const save = async () => {
+      if (!state.model) return void toast('Choose a model first.', 'error');
+      try {
+        await api.send({ conversationId, text: area.value, model: state.model, speed: state.speed, approval: state.approval, editIndex: turn.index });
+      } catch (e) {
+        toast(String(e), 'error');
+      }
+    };
+    area.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        void save();
+      }
+      if (e.key === 'Escape') void viewCache.chat?.refresh(false);
+    });
+    el.replaceChildren(
+      h(
+        'div',
+        { class: 'edit-box' },
+        area,
+        h('div', { class: 'dialog-actions' }, h('button', { class: 'btn btn-ghost', on: { click: () => void viewCache.chat?.refresh(false) } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Send'))
+      )
+    );
+    area.focus();
+  });
+  return button;
 }
 
 function renderAssistantTurn(conversation: Conversation, turn: Turn, isLast: boolean, running: boolean): HTMLElement {
@@ -732,6 +773,7 @@ async function send(text: string, conversationId: string | null) {
   const agentId = !conversationId && state.view.kind === 'home' ? state.view.agentId ?? null : null;
   const agent = agentId ? state.agents.find((a) => a.id === agentId) : undefined;
   const workdir = !conversationId && state.mode === 'code' ? state.workdir : null;
+  const temporary = !conversationId && temporaryNext;
   if (!conversationId) {
     pendingUser.set(id, text);
     navigate({ kind: 'chat', id });
@@ -748,7 +790,10 @@ async function send(text: string, conversationId: string | null) {
       projectId,
       workdir,
       agentId,
+      temporary,
     });
+    if (temporary) temporaryChats.add(id);
+    temporaryNext = false;
     void refreshConversations();
   } catch (e) {
     toast(String(e), 'error');
@@ -756,6 +801,10 @@ async function send(text: string, conversationId: string | null) {
   }
   return true;
 }
+
+/** The next new conversation is temporary: kept out of the history and deleted on restart. */
+let temporaryNext = false;
+const temporaryChats = new Set<string>();
 
 /** Messages typed on the home screen, shown before the new conversation is on disk. */
 const pendingUser = new Map<string, string>();
@@ -866,6 +915,8 @@ class Composer {
     this.placeholder = placeholder;
     this.textarea.placeholder = placeholder;
     this.renderBar();
+    // Measured while detached the box collapses; size it once it is on screen again.
+    requestAnimationFrame(() => this.autosize());
   }
 
   focus() {
@@ -1221,6 +1272,7 @@ export class HomeView {
   }
 
   build() {
+    this.noModels = state.models.length === 0;
     const project = state.projects.find((p) => p.id === this.projectId);
     const agent = state.agents.find((a) => a.id === this.agentId);
     const code = state.mode === 'code' && !agent;
@@ -1257,16 +1309,26 @@ export class HomeView {
             )
           )
         );
+    const ghost = h('button', { class: `temp-toggle${temporaryNext ? ' on' : ''}`, title: 'Temporary chat: not saved to history' }, icon('wait', 16), temporaryNext ? 'Temporary chat' : 'Temporary');
+    ghost.addEventListener('click', () => {
+      temporaryNext = !temporaryNext;
+      this.build();
+    });
     clear(
       this.el,
+      code ? null : ghost,
       h('div', { class: 'home-inner' }, agent ? h('span', { class: 'agent-avatar large' }, agent.avatar || agent.name.charAt(0)) : h('div', { class: 'brand-mark' }), title, h('div', { class: 'composer-wrap' }, banner, composer.el), suggestions)
     );
     setTimeout(() => composer.focus());
   }
 
   update() {
+    // The models load after the first render; redraw once whether a provider exists is known.
+    if ((state.models.length === 0) !== this.noModels) this.build();
     composer.renderBar();
   }
+
+  private noModels = state.models.length === 0;
 }
 
 async function pickWorkdir() {
@@ -1366,7 +1428,7 @@ export class ChatView {
     clear(
       this.transcript,
       c.turns.flatMap((turn, i) => {
-        const el = turn.role === 'user' ? renderUserTurn(turn) : renderAssistantTurn(c, turn, i === last, running);
+        const el = turn.role === 'user' ? renderUserTurn(turn, c.id) : renderAssistantTurn(c, turn, i === last, running);
         // Turns before the summary point reach the model only through the summary.
         if (divider !== null && divider !== undefined && !marked && turn.role === 'user' && turn.index >= divider) {
           marked = true;
@@ -1398,6 +1460,7 @@ export class ChatView {
       h(
         'div',
         { class: 'crumbs' },
+        temporaryChats.has(this.id) ? h('span', { class: 'temp-badge' }, icon('wait', 14), 'Temporary') : null,
         project ? h('button', { class: 'crumb', on: { click: () => navigate({ kind: 'home', projectId: project.id }) } }, icon('folder', 15), project.name) : null,
         workdir ? h('span', { class: 'crumb' }, icon('terminal', 15), workdir.split(/[\\/]/).pop() ?? workdir) : null,
         project || workdir ? h('span', { class: 'crumb-sep' }, '/') : null,

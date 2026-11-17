@@ -215,6 +215,8 @@ export const api = {
     workdir?: string | null;
     resume?: boolean;
     agentId?: string | null;
+    editIndex?: number;
+    temporary?: boolean;
   }) => call<void>('chat_send', { request }),
   cancel: (conversationId: string) => call<boolean>('chat_cancel', { conversationId }),
   answer: (callId: string, answer: string) => call<boolean>('chat_answer', { callId, answer }),

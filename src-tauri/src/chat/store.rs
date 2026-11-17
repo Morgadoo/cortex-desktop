@@ -82,6 +82,9 @@ pub struct Conversation {
     /// Finished while the user was elsewhere and not opened since.
     #[serde(default)]
     pub unread: bool,
+    /// Kept out of the history and deleted on the next start.
+    #[serde(default)]
+    pub temporary: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     #[serde(default)]
@@ -113,6 +116,7 @@ impl Conversation {
             agent_id: None,
             task_id: None,
             unread: false,
+            temporary: false,
             created_at: now,
             updated_at: now,
             messages: Vec::new(),
@@ -130,6 +134,16 @@ pub fn load_conversation(config_dir: &Path, id: &str) -> Result<Conversation, St
 
 pub fn save_conversation(config_dir: &Path, conversation: &Conversation) -> Result<(), String> {
     write_json(&conversation_path(config_dir, &conversation.id)?, conversation)
+}
+
+/// Deletes the temporary conversations a previous session left behind.
+pub fn purge_temporary(config_dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(conversations_dir(config_dir)) else { return };
+    for entry in entries.filter_map(Result::ok) {
+        if read_json::<Conversation>(&entry.path()).is_some_and(|c| c.temporary) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
 }
 
 pub fn delete_conversation(config_dir: &Path, id: &str) -> Result<(), String> {
@@ -163,6 +177,7 @@ pub fn list_conversations(config_dir: &Path) -> Vec<ConversationSummary> {
         .filter_map(Result::ok)
         .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
         .filter_map(|e| read_json::<Conversation>(&e.path()))
+        .filter(|c| !c.temporary)
         .map(|c| ConversationSummary {
             title: if c.title.is_empty() { "New chat".into() } else { c.title },
             id: c.id,

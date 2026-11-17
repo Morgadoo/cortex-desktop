@@ -15,7 +15,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::watch;
 
-use super::{agents, builtins, canvas, context, memory, providers, skills, subagents, tasks};
+use super::{agents, builtins, canvas, context, libraries, memory, providers, skills, subagents, tasks};
 use super::store::{self, Conversation, Instructions, Project};
 use super::tools::{self, ApprovalMode, ChatTool, ASK_USER};
 use super::{ChatState, EVENT, LOCAL_ACCOUNT};
@@ -91,6 +91,12 @@ pub struct TurnRequest {
     pub approval: ApprovalMode,
     #[serde(default)]
     pub project_id: Option<String>,
+    /// Replace the prompt at this message index with `text` and answer again from there.
+    #[serde(default)]
+    pub edit_index: Option<usize>,
+    /// Keep the conversation out of the history; it is deleted on the next start.
+    #[serde(default)]
+    pub temporary: bool,
     /// The agent to run as; only read when the conversation is created.
     #[serde(default)]
     pub agent_id: Option<String>,
@@ -133,6 +139,7 @@ pub struct Context<'a> {
     pub skills: &'a [skills::Skill],
     pub canvases: &'a [canvas::Canvas],
     pub agent: Option<&'a agents::Agent>,
+    pub libraries: &'a [libraries::Library],
 }
 
 pub fn preamble(context: &Context<'_>, tools: &[ChatTool]) -> String {
@@ -213,6 +220,11 @@ pub fn preamble(context: &Context<'_>, tools: &[ChatTool]) -> String {
     }
     if let Some(canvases) = canvas::prompt(context.canvases) {
         out.push_str(&canvases);
+    }
+    if tools.iter().any(|t| t.name == builtins::SEARCH_LIBRARY) {
+        if let Some(libraries) = libraries::prompt(context.libraries) {
+            out.push_str(&libraries);
+        }
     }
     out
 }
@@ -306,12 +318,28 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
             let mut c = Conversation::new(id.to_string(), request.project_id.clone(), None);
             c.workdir = request.workdir.clone().filter(|d| !d.trim().is_empty());
             c.agent_id = request.agent_id.clone();
+            c.temporary = request.temporary;
             c
         }
     };
     conversation.model = Some(request.model.clone());
 
-    if request.resume {
+    if let Some(index) = request.edit_index {
+        let is_prompt = conversation.messages.get(index).is_some_and(|m| {
+            matches!(m, Message::User { content } if content.iter().any(|c| matches!(c, rig_core::completion::message::UserContent::Text(_))))
+        });
+        if !is_prompt || request.text.trim().is_empty() {
+            return Err("That message cannot be edited.".into());
+        }
+        conversation.messages.truncate(index);
+        conversation.times.retain(|(i, _)| *i < index);
+        conversation.ratings.retain(|(i, _)| *i < index);
+        if conversation.summary.as_ref().is_some_and(|s| s.upto > index) {
+            conversation.summary = None;
+        }
+        conversation.messages.push(Message::user(request.text.trim()));
+        conversation.times.push((conversation.messages.len() - 1, Utc::now()));
+    } else if request.resume {
         if conversation.messages.is_empty() {
             return Err("There is nothing to continue.".into());
         }
@@ -354,6 +382,7 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         skill_list.retain(|s| agent.skills.contains(&s.name));
     }
     let canvases = canvas::list_for(&config_dir, id);
+    let library_list = libraries::list(&config_dir);
     let system = preamble(
         &Context {
             instructions: Some(&instructions),
@@ -363,6 +392,7 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
             skills: &skill_list,
             canvases: &canvases,
             agent: agent.as_ref(),
+            libraries: &library_list,
         },
         &offered,
     );
@@ -723,6 +753,8 @@ pub async fn run_task(app: AppHandle, task: tasks::Task) {
         approval: if task.allow_changes { ApprovalMode::Autonomous } else { ApprovalMode::Unattended },
         project_id: None,
         agent_id: task.agent_id.clone(),
+        edit_index: None,
+        temporary: false,
         resume: false,
         workdir: None,
         connectors: None,

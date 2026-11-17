@@ -110,6 +110,12 @@ pub fn run() {
                 chat::commands::chat_save_task,
                 chat::commands::chat_delete_task,
                 chat::commands::chat_run_task,
+                chat::commands::chat_list_libraries,
+                chat::commands::chat_create_library,
+                chat::commands::chat_delete_library,
+                chat::commands::chat_add_documents,
+                chat::commands::chat_remove_document,
+                chat::commands::chat_search_libraries,
             ];
             commands(invoke)
         })

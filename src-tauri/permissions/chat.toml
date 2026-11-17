@@ -197,3 +197,33 @@ commands.allow = ["chat_delete_task"]
 identifier = "allow-chat-run-task"
 description = "Run a scheduled task now."
 commands.allow = ["chat_run_task"]
+
+[[permission]]
+identifier = "allow-chat-list-libraries"
+description = "List document libraries."
+commands.allow = ["chat_list_libraries"]
+
+[[permission]]
+identifier = "allow-chat-create-library"
+description = "Create a document library."
+commands.allow = ["chat_create_library"]
+
+[[permission]]
+identifier = "allow-chat-delete-library"
+description = "Delete a document library and its documents."
+commands.allow = ["chat_delete_library"]
+
+[[permission]]
+identifier = "allow-chat-add-documents"
+description = "Add documents the user picks to a library."
+commands.allow = ["chat_add_documents"]
+
+[[permission]]
+identifier = "allow-chat-remove-document"
+description = "Remove a document from a library."
+commands.allow = ["chat_remove_document"]
+
+[[permission]]
+identifier = "allow-chat-search-libraries"
+description = "Search document libraries."
+commands.allow = ["chat_search_libraries"]

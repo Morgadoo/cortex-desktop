@@ -148,6 +148,26 @@ export function markdown(text: string): DocumentFragment {
   });
   const template = document.createElement('template');
   template.innerHTML = clean;
+  // Library citations arrive as [document.ext]; show them as pills like web citations.
+  const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT);
+  const texts: Text[] = [];
+  while (walker.nextNode()) texts.push(walker.currentNode as Text);
+  const docRef = /\[([^\]\n]{1,80}\.(?:md|txt|pdf|html?|csv|json|ya?ml|docx?|rs|py|ts|js))\]/g;
+  for (const node of texts) {
+    if (node.parentElement?.closest('code, pre, a')) continue;
+    const value = node.nodeValue ?? '';
+    if (!docRef.test(value)) continue;
+    docRef.lastIndex = 0;
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    for (const m of value.matchAll(docRef)) {
+      frag.append(value.slice(last, m.index));
+      frag.append(h('span', { class: 'cite cite-doc', title: 'From your library' }, icon('file', 12), m[1]!));
+      last = (m.index ?? 0) + m[0].length;
+    }
+    frag.append(value.slice(last));
+    node.replaceWith(frag);
+  }
   for (const pre of template.content.querySelectorAll('pre')) {
     const code = pre.querySelector('code');
     const lang = code?.className.match(/language-([\w+-]+)/)?.[1] ?? '';

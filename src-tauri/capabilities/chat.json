@@ -46,6 +46,12 @@
     "allow-chat-list-tasks",
     "allow-chat-save-task",
     "allow-chat-delete-task",
-    "allow-chat-run-task"
+    "allow-chat-run-task",
+    "allow-chat-list-libraries",
+    "allow-chat-create-library",
+    "allow-chat-delete-library",
+    "allow-chat-add-documents",
+    "allow-chat-remove-document",
+    "allow-chat-search-libraries"
   ]
 }

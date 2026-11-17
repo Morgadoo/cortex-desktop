@@ -10,6 +10,7 @@ import { ConnectorsPage, PlaceholderPage, openInstructions } from './pages';
 import { KnowledgePage, SkillsPage } from './context';
 import { AgentPage, AgentsPage, avatar, editAgent, reloadAgents } from './agents';
 import { TasksPage } from './tasks';
+import { LibrariesPage } from './libraries';
 import { applyTheme, openSettings, reloadModels, setTheme, storedTheme } from './settings';
 import { applyEvent, back, changed, forward, navigate, state, subscribe, type Page } from './state';
 
@@ -54,6 +55,8 @@ function renderMain() {
           ? new SkillsPage()
           : v.page === 'agents'
             ? new AgentsPage()
+            : v.page === 'libraries'
+              ? new LibrariesPage()
             : v.page === 'scheduled'
               ? new TasksPage()
           : v.page === 'knowledge'
@@ -78,7 +81,7 @@ function navItem(ic: string, label: string, active: boolean, onClick: () => void
 
 const CONTEXT_PAGES: { page: Page; label: string; preview?: boolean }[] = [
   { page: 'skills', label: 'Skills' },
-  { page: 'agents', label: 'Agents', preview: true },
+  { page: 'agents', label: 'Agents' },
   { page: 'knowledge', label: 'Knowledge' },
   { page: 'connectors', label: 'Connectors' },
   { page: 'libraries', label: 'Libraries' },

@@ -16,6 +16,7 @@ pub mod canvas;
 pub mod commands;
 pub mod context;
 pub mod engine;
+pub mod libraries;
 pub mod memory;
 pub mod providers;
 pub mod search;
