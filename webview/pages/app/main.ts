@@ -4,7 +4,7 @@
  * this page renders what it streams back.
  */
 import { api, listen, type ApprovalRequest, type ChatEvent } from './api';
-import { ChatView, HomeView, composer, conversationMenu, refreshConversations, viewCache } from './chat';
+import { ChatView, HomeView, composer, conversationMenu, recordStepTimes, refreshConversations, viewCache } from './chat';
 import { clear, h, icon, modal, popover, promptText, confirmDialog, toast } from './dom';
 import { ConnectorsPage, PlaceholderPage, openInstructions } from './pages';
 import { applyTheme, openSettings, reloadModels, setTheme, storedTheme } from './settings';
@@ -301,6 +301,8 @@ async function start() {
   void listen<ChatEvent>('chat://event', (event) => {
     const id = event.conversationId;
     if (applyEvent(event)) {
+      const live = state.live.get(id);
+      if (live) recordStepTimes(id, live.starts, live.ends);
       // A failed turn keeps its live state, so the partial reply and the error stay on screen
       // until the next send; a finished one is replaced by what was saved.
       const failed = event.type === 'error';

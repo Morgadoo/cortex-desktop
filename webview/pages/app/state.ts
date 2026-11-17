@@ -28,6 +28,28 @@ export interface LiveTurn {
   question: { callId: string; question: string; options: string[] } | null;
   error: string | null;
   startedAt: number;
+  /** When each part began and ended, by index, for step durations. */
+  starts: number[];
+  ends: number[];
+}
+
+function fresh(): LiveTurn {
+  return { parts: [], pending: null, question: null, error: null, startedAt: Date.now(), starts: [], ends: [] };
+}
+
+/** Starts a part, ending the one before it unless it already ended (a tool ends on its result). */
+function begin(turn: LiveTurn, part: Part) {
+  const now = Date.now();
+  const previous = turn.parts.length - 1;
+  if (previous >= 0 && turn.ends[previous] === undefined) turn.ends[previous] = now;
+  turn.parts.push(part);
+  turn.starts.push(now);
+}
+
+/** Closes the last part when the turn ends. */
+export function endSteps(turn: LiveTurn) {
+  const last = turn.parts.length - 1;
+  if (last >= 0 && turn.ends[last] === undefined) turn.ends[last] = Date.now();
 }
 
 export const state = {
@@ -107,20 +129,20 @@ export function applyEvent(event: ChatEvent): boolean {
   let live = state.live.get(id);
   const ensure = (): LiveTurn => {
     if (!live) {
-      live = { parts: [], pending: null, question: null, error: null, startedAt: Date.now() };
+      live = fresh();
       state.live.set(id, live);
     }
     return live;
   };
   switch (event.type) {
     case 'started':
-      state.live.set(id, { parts: [], pending: null, question: null, error: null, startedAt: Date.now() });
+      state.live.set(id, fresh());
       return false;
     case 'text': {
       const turn = ensure();
       const last = turn.parts[turn.parts.length - 1];
       if (last?.kind === 'text') last.text += event.text;
-      else turn.parts.push({ kind: 'text', text: event.text });
+      else begin(turn, { kind: 'text', text: event.text });
       turn.pending = null;
       return false;
     }
@@ -128,7 +150,7 @@ export function applyEvent(event: ChatEvent): boolean {
       const turn = ensure();
       const last = turn.parts[turn.parts.length - 1];
       if (last?.kind === 'reasoning') last.text += event.text;
-      else turn.parts.push({ kind: 'reasoning', text: event.text });
+      else begin(turn, { kind: 'reasoning', text: event.text });
       return false;
     }
     case 'toolPending':
@@ -137,7 +159,7 @@ export function applyEvent(event: ChatEvent): boolean {
     case 'toolStart': {
       const turn = ensure();
       turn.pending = null;
-      turn.parts.push({
+      begin(turn, {
         kind: 'tool',
         callId: event.callId,
         name: event.name,
@@ -149,8 +171,10 @@ export function applyEvent(event: ChatEvent): boolean {
     }
     case 'toolEnd': {
       const turn = ensure();
-      const part = turn.parts.find((p) => p.kind === 'tool' && p.callId === event.callId);
+      const index = turn.parts.findIndex((p) => p.kind === 'tool' && p.callId === event.callId);
+      const part = turn.parts[index];
       if (part?.kind === 'tool') {
+        turn.ends[index] = Date.now();
         part.output = event.output;
         part.isError = event.isError;
       }
@@ -167,8 +191,10 @@ export function applyEvent(event: ChatEvent): boolean {
     }
     case 'error':
       ensure().error = event.message;
+      endSteps(ensure());
       return true;
     case 'done':
+      if (live) endSteps(live);
       return true;
   }
 }

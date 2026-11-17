@@ -61,6 +61,8 @@ export function toolLabel(name: string): { connector: string; action: string; ic
 function argumentHint(args: Record<string, unknown>): string {
   for (const key of ['path', 'url', 'query', 'command', 'script', 'pattern', 'question', 'name']) {
     const value = args[key];
+    // A file is known by its name; the folder is in the step's details.
+    if (key === 'path' && typeof value === 'string' && value) return value.split(/[\\/]/).filter(Boolean).pop() ?? value;
     if (typeof value === 'string' && value) return value;
     if (key === 'script' && value && typeof value === 'object') {
       const program = (value as { program?: unknown }).program;
@@ -73,61 +75,213 @@ function argumentHint(args: Record<string, unknown>): string {
 // ---------------------------------------------------------------------------------------------
 // Turn rendering
 
-function renderToolStep(part: Extract<Part, { kind: 'tool' }>, live: boolean): HTMLElement {
+/**
+ * How long each step of a conversation's latest reply took, by its position in the reply's parts.
+ * Measured while the reply streams and kept for the session, so "Thought for 3s" survives the
+ * reload from disk.
+ */
+const stepDurations = new Map<string, number[]>();
+
+/** Whether the user opened or closed an activity group, so live re-renders keep their choice. */
+const groupOpen = new Map<string, boolean>();
+
+export function recordStepTimes(conversationId: string, startedAt: number[], endedAt: number[]) {
+  stepDurations.set(
+    conversationId,
+    startedAt.map((start, i) => Math.max(0, (endedAt[i] ?? Date.now()) - start))
+  );
+}
+
+function seconds(ms: number | undefined): string {
+  if (ms === undefined || ms < 950) return '';
+  const s = Math.round(ms / 1000);
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
+function host(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+}
+
+interface ResultRow {
+  title: string;
+  source: string;
+  href?: string;
+}
+
+/** Turns a structured tool result into rows for a results card; null when it has no list shape. */
+function resultRows(part: Extract<Part, { kind: 'tool' }>): { heading: string; rows: ResultRow[] } | null {
+  if (part.output === null || part.isError) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(part.output);
+  } catch {
+    value = null;
+  }
+  const query = argumentHint(part.arguments);
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    // One fetched page: { title, url, content, ... }.
+    if (typeof record.url === 'string' && typeof record.title === 'string' && record.title) {
+      return { heading: '', rows: [{ title: record.title, source: host(record.url), href: record.url }] };
+    }
+    const list = ['results', 'items', 'matches', 'links', 'files'].map((k) => record[k]).find(Array.isArray) as unknown[] | undefined;
+    if (list) {
+      const rows = list
+        .filter((x): x is Record<string, unknown> => Boolean(x) && typeof x === 'object')
+        .map((x) => {
+          const href = [x.url, x.href, x.link].find((v): v is string => typeof v === 'string');
+          const path = typeof x.path === 'string' ? x.path : '';
+          const title = [x.title, x.name, x.text, path, href].find((v): v is string => typeof v === 'string' && v.length > 0) ?? '';
+          const source = href ? host(href) : path ? path.split(/[\\/]/).slice(-2, -1)[0] ?? '' : '';
+          return { title, source, href };
+        })
+        .filter((r) => r.title);
+      if (rows.length) return { heading: query, rows };
+    }
+  }
+  // A fetched or browsed page: show the page itself as the one result.
+  const url = typeof part.arguments.url === 'string' ? part.arguments.url : null;
+  if (url) {
+    const titleMatch = part.output.match(/^(?:#\s*|Title:\s*)(.+)$/m);
+    return { heading: '', rows: [{ title: titleMatch?.[1]?.trim() || url, source: host(url), href: url }] };
+  }
+  return null;
+}
+
+function renderResults(results: { heading: string; rows: ResultRow[] }): HTMLElement {
+  const shown = results.rows.slice(0, 8);
+  return h(
+    'div',
+    { class: 'results-card' },
+    results.heading
+      ? h('div', { class: 'results-head' }, icon('search', 15), h('span', { class: 'results-query' }, results.heading), h('span', { class: 'muted' }, `${results.rows.length} ${results.rows.length === 1 ? 'result' : 'results'}`))
+      : null,
+    shown.map((row) =>
+      h(
+        row.href ? 'a' : 'div',
+        { class: 'result-row', ...(row.href ? { href: row.href, target: '_blank', rel: 'noopener noreferrer' } : {}) },
+        icon(row.href ? 'globe' : 'file', 15),
+        h('span', { class: 'result-title' }, row.title),
+        h('span', { class: 'result-source' }, row.source)
+      )
+    ),
+    results.rows.length > shown.length ? h('div', { class: 'result-more muted' }, `and ${results.rows.length - shown.length} more`) : null
+  );
+}
+
+function renderToolStep(part: Extract<Part, { kind: 'tool' }>, live: boolean, duration: number | undefined): HTMLElement {
   const label = toolLabel(part.name);
   const hint = argumentHint(part.arguments);
   const running = live && part.output === null;
-  const details = h('details', { class: `step step-tool${part.isError ? ' step-error' : ''}` });
-  const summary = h(
-    'summary',
-    {},
-    h('span', { class: `step-icon${running ? ' spin' : ''}` }, icon(running ? 'wait' : label.icon, 16)),
-    h('span', { class: 'step-title' }, label.connector ? `${label.connector} · ${label.action}` : label.action),
-    hint ? h('span', { class: 'step-hint' }, hint) : null,
-    part.isError ? h('span', { class: 'step-badge' }, 'failed') : null
+  const title = label.connector ? `${label.connector} · ${label.action}` : label.action;
+  const step = h('div', { class: `step${part.isError ? ' step-error' : ''}` });
+  step.append(
+    h(
+      'div',
+      { class: 'step-row' },
+      h('span', { class: `step-icon${running ? ' spin' : ''}` }, icon(running ? 'wait' : label.icon, 16)),
+      h('span', { class: 'step-title' }, title),
+      hint && !resultRows(part)?.heading ? h('span', { class: 'step-hint' }, hint) : null,
+      part.isError ? h('span', { class: 'step-badge' }, 'failed') : null,
+      seconds(duration) ? h('span', { class: 'step-time' }, seconds(duration)) : null
+    )
   );
-  details.append(summary);
-  const body = h('div', { class: 'step-body' });
+  const results = resultRows(part);
+  if (results) {
+    step.append(h('div', { class: 'step-content' }, renderResults(results)));
+  }
+  // The raw call, for anyone who wants to see exactly what ran.
+  const raw = h('details', { class: 'step-raw' });
   const args = JSON.stringify(part.arguments, null, 2);
-  if (args !== '{}') body.append(h('div', { class: 'step-label' }, 'Input'), h('pre', { class: 'step-pre' }, args));
+  raw.append(h('summary', {}, results ? 'Details' : part.isError ? 'Error details' : 'Input and result'));
+  if (args !== '{}') raw.append(h('div', { class: 'step-label' }, 'Input'), h('pre', { class: 'step-pre' }, args));
   if (part.output !== null) {
     const output = part.output.length > 6000 ? `${part.output.slice(0, 6000)}\n…` : part.output;
-    body.append(h('div', { class: 'step-label' }, part.isError ? 'Error' : 'Result'), h('pre', { class: 'step-pre' }, output));
+    raw.append(h('div', { class: 'step-label' }, part.isError ? 'Error' : 'Result'), h('pre', { class: 'step-pre' }, output));
   }
-  details.append(body);
-  return details;
+  if (args !== '{}' || part.output !== null) step.append(h('div', { class: 'step-content' }, raw));
+  return step;
 }
 
-function renderReasoning(text: string, live: boolean): HTMLElement {
-  const details = h('details', { class: 'step step-reasoning', open: live });
-  details.append(
-    h('summary', {}, h('span', { class: 'step-icon' }, icon(live ? 'brain' : 'checkCircle', 16)), h('span', { class: 'step-title' }, live ? 'Thinking' : 'Thought')),
-    h('div', { class: 'step-body reasoning-text' }, text.trim())
+function renderReasoning(text: string, live: boolean, duration: number | undefined): HTMLElement {
+  const took = seconds(duration);
+  return h(
+    'div',
+    { class: 'step' },
+    h(
+      'div',
+      { class: 'step-row' },
+      h('span', { class: 'step-icon' }, icon(live ? 'brain' : 'checkCircle', 16)),
+      h('span', { class: 'step-title' }, live ? 'Thinking' : took ? `Thought for ${took}` : 'Thought')
+    ),
+    h('div', { class: 'step-content reasoning-text' }, text.trim())
   );
-  return details;
 }
 
-/** Text, and the activity between it, in the order the model produced them. */
-function renderParts(parts: Part[], live: boolean): HTMLElement[] {
+/** The header of a collapsed activity group: what was done last, and how much. */
+function groupSummary(parts: Part[], live: boolean): string {
+  const last = parts[parts.length - 1];
+  if (!last) return '';
+  const tools = parts.filter((p) => p.kind === 'tool').length;
+  // The last tool says most about what happened; reasoning alone is "Thought".
+  const lastTool = [...parts].reverse().find((p): p is Extract<Part, { kind: 'tool' }> => p.kind === 'tool');
+  let label: string;
+  if (live) {
+    label = last.kind === 'tool' && last.output === null ? toolLabel(last.name).action : last.kind === 'reasoning' ? 'Thinking' : 'Working';
+  } else {
+    label = lastTool ? toolLabel(lastTool.name).action : 'Thought';
+  }
+  void tools;
+  const extra = parts.length > 1 ? ` · ${parts.length} steps` : '';
+  return `${label}${extra}`;
+}
+
+/**
+ * Text, and the activity between it, in the order the model produced them. Each run of activity
+ * is one group: open while it is happening, folded under its last step once the answer follows.
+ */
+function renderParts(parts: Part[], live: boolean, key: string, durations: number[] = []): HTMLElement[] {
   const out: HTMLElement[] = [];
-  let timeline: HTMLElement | null = null;
+  let group: { parts: Part[]; indices: number[] } | null = null;
+  const groups: { parts: Part[]; indices: number[] }[] = [];
+  const flush = () => {
+    if (!group) return;
+    const g = group;
+    const groupIndex = groups.length;
+    groups.push(g);
+    const isTail = live && g.indices[g.indices.length - 1] === parts.length - 1;
+    const groupKey = `${key}:${groupIndex}`;
+    const open = groupOpen.get(groupKey) ?? isTail;
+    const details = h('details', { class: 'activity', open });
+    details.addEventListener('toggle', () => groupOpen.set(groupKey, details.open));
+    const timeline = h('div', { class: 'timeline' });
+    g.parts.forEach((p, j) => {
+      const index = g.indices[j]!;
+      const stepLive = isTail && index === parts.length - 1;
+      timeline.append(p.kind === 'reasoning' ? renderReasoning(p.text, stepLive, durations[index]) : p.kind === 'tool' ? renderToolStep(p, live, durations[index]) : h('span'));
+    });
+    details.append(h('summary', {}, h('span', { class: 'activity-label' }, groupSummary(g.parts, isTail)), icon('chevron', 14)), timeline);
+    out.push(details);
+    group = null;
+  };
   parts.forEach((part, i) => {
-    const isLast = i === parts.length - 1;
     if (part.kind === 'text') {
-      timeline = null;
+      flush();
       const body = h('div', { class: 'markdown' });
       body.append(markdown(part.text));
-      if (live && isLast) body.classList.add('streaming');
+      if (live && i === parts.length - 1) body.classList.add('streaming');
       out.push(body);
       return;
     }
-    if (!timeline) {
-      timeline = h('div', { class: 'timeline' });
-      out.push(timeline);
-    }
-    if (part.kind === 'reasoning') timeline.append(renderReasoning(part.text, live && isLast));
-    else timeline.append(renderToolStep(part, live));
+    group ??= { parts: [], indices: [] };
+    group.parts.push(part);
+    group.indices.push(i);
   });
+  flush();
   return out;
 }
 
@@ -151,7 +305,8 @@ function renderUserTurn(turn: Turn): HTMLElement {
 }
 
 function renderAssistantTurn(conversation: Conversation, turn: Turn, isLast: boolean, running: boolean): HTMLElement {
-  const el = h('div', { class: 'turn turn-assistant' }, ...renderParts(turn.parts, false));
+  const durations = isLast ? stepDurations.get(conversation.id) : undefined;
+  const el = h('div', { class: 'turn turn-assistant' }, ...renderParts(turn.parts, false, `${conversation.id}:${turn.index}`, durations));
   if (!isLast || !running) el.append(renderActions(conversation, turn, isLast));
   return el;
 }
@@ -183,8 +338,10 @@ function renderActions(conversation: Conversation, turn: Turn, isLast: boolean):
   return actions;
 }
 
-function renderLiveTurn(live: LiveTurn): HTMLElement {
-  const el = h('div', { class: 'turn turn-assistant live' }, ...renderParts(live.parts, true));
+function renderLiveTurn(conversationId: string, live: LiveTurn): HTMLElement {
+  const now = Date.now();
+  const durations = live.starts.map((start, i) => (live.ends[i] ?? now) - start);
+  const el = h('div', { class: 'turn turn-assistant live' }, ...renderParts(live.parts, !live.error, `${conversationId}:live`, durations));
   const busy = !live.error && !live.question;
   if (live.question) {
     el.append(h('div', { class: 'status-line' }, icon('wait', 16), 'Waiting for your answer'));
@@ -762,7 +919,7 @@ export class ChatView {
   update() {
     this.renderHeader();
     const live = state.live.get(this.id);
-    clear(this.liveSlot, live ? renderLiveTurn(live) : null);
+    clear(this.liveSlot, live ? renderLiveTurn(this.id, live) : null);
     const approval = renderApprovals();
     const question = live?.question ? renderQuestion(this.id, live.question) : null;
     clear(this.overlay, approval, question);
