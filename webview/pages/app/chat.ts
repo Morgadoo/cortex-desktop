@@ -82,8 +82,12 @@ function argumentHint(args: Record<string, unknown>): string {
  */
 const stepDurations = new Map<string, number[]>();
 
-/** Whether the user opened or closed an activity group, so live re-renders keep their choice. */
-const groupOpen = new Map<string, boolean>();
+/**
+ * Whether the user opened or closed an activity group, and whether the group was still running
+ * when they did. A choice made while the model works lasts until its result arrives, so finished
+ * steps always fold away under the answer; a choice made afterwards sticks.
+ */
+const groupOpen = new Map<string, { open: boolean; running: boolean }>();
 
 export function recordStepTimes(conversationId: string, startedAt: number[], endedAt: number[]) {
   stepDurations.set(
@@ -255,9 +259,10 @@ function renderParts(parts: Part[], live: boolean, key: string, durations: numbe
     groups.push(g);
     const isTail = live && g.indices[g.indices.length - 1] === parts.length - 1;
     const groupKey = `${key}:${groupIndex}`;
-    const open = groupOpen.get(groupKey) ?? isTail;
+    const choice = groupOpen.get(groupKey);
+    const open = choice && choice.running === isTail ? choice.open : isTail;
     const details = h('details', { class: 'activity', open });
-    details.addEventListener('toggle', () => groupOpen.set(groupKey, details.open));
+    details.addEventListener('toggle', () => groupOpen.set(groupKey, { open: details.open, running: isTail }));
     const timeline = h('div', { class: 'timeline' });
     g.parts.forEach((p, j) => {
       const index = g.indices[j]!;
@@ -341,7 +346,7 @@ function renderActions(conversation: Conversation, turn: Turn, isLast: boolean):
 function renderLiveTurn(conversationId: string, live: LiveTurn): HTMLElement {
   const now = Date.now();
   const durations = live.starts.map((start, i) => (live.ends[i] ?? now) - start);
-  const el = h('div', { class: 'turn turn-assistant live' }, ...renderParts(live.parts, !live.error, `${conversationId}:live`, durations));
+  const el = h('div', { class: 'turn turn-assistant live' }, ...renderParts(live.parts, !live.error, `${conversationId}:live:${live.startedAt}`, durations));
   const busy = !live.error && !live.question;
   if (live.question) {
     el.append(h('div', { class: 'status-line' }, icon('wait', 16), 'Waiting for your answer'));
