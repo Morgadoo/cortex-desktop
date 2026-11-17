@@ -11,6 +11,7 @@
 //! - [`tools`]: the app's connectors (filesystem, shell, MCP) and built-ins offered to the model
 
 pub mod agents;
+pub mod audio;
 pub mod builtins;
 pub mod canvas;
 pub mod code;

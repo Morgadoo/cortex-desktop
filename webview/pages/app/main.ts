@@ -17,6 +17,7 @@ import { WorkflowsPage } from './workflows';
 import { applyTheme, openSettings, reloadModels, setTheme, storedTheme } from './settings';
 import { applyEvent, back, changed, forward, navigate, state, subscribe, type Page } from './state';
 import { button, emptyState, iconButton, modalHeader } from './ui';
+import { refreshAudioSettings } from './audio';
 
 interface View {
   readonly el: HTMLElement;
@@ -440,6 +441,7 @@ declare global {
 }
 
 async function start() {
+  void refreshAudioSettings();
   applyTheme(storedTheme());
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme(storedTheme()));
   try {
@@ -471,6 +473,7 @@ async function start() {
           if (!failed) state.live.delete(id);
           chat.renderTranscript();
           chat.update();
+          if (event.type === 'done' && !event.cancelled) chat.readLatestAloud();
         });
       } else {
         if (!failed) state.live.delete(id);

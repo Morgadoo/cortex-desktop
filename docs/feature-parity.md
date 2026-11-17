@@ -139,6 +139,7 @@ against the 5 that survived), and Mistral's documentation: docs.mistral.ai/vibe,
 | Image generation | open-webui, LibreChat, lobehub | `generate_image` via rig (OpenAI, xAI, Together) | Done |
 | Voice input | open-webui, lobehub | Dictation via rig transcription (OpenAI, Groq) | Done |
 | Read aloud (TTS) | open-webui, lobehub | Speaker under each answer, via rig speech models (xAI, OpenAI); verified live | Done |
+| Audio provider setup | open-webui (Admin → Audio) | Settings → Audio, as Open WebUI sets it up. Speech to text: chat providers, any OpenAI-compatible server (base URL, key, model, language) or ElevenLabs. Text to speech: chat providers, OpenAI-compatible (Kokoro, LocalAI, Speaches…), xAI, ElevenLabs (account voices listed) or the system voice. Each has its voice, speed and keychain-stored key. Auto-send after dictation, auto-play of answers. OpenAI-compatible TTS and auto-play verified live | Done |
 | RAG over documents | open-webui, onyx | Libraries and project files, cited | Done |
 | Web search with citations | open-webui, onyx, LibreChat | Keyless web search, citation pills, Sources | Done |
 | Deep research | onyx | deep-research skill with parallel sub-agents | Done |
@@ -162,6 +163,8 @@ against the 5 that survived), and Mistral's documentation: docs.mistral.ai/vibe,
   Comparing against fresh screenshots of the current Vibe app is the way to close this.
 - **Voice input against a real provider:** dictation was verified end to end in the app with a
   virtual microphone and a mock transcription endpoint. The test proxy has no transcription
-  endpoint (404), so it has not run against a real speech-to-text model yet.
+  endpoint (404), so it has not run against a real speech-to-text model yet. The same applies to
+  the OpenAI-compatible and ElevenLabs speech-to-text engines and to ElevenLabs voices, which
+  need keys this setup does not have.
 - **Pull requests to non-GitHub remotes:** the branch is pushed, and the pull request is opened on that host by hand.
 - **Branding:** the app still carries the Lumo name and logo; a new name is the owner's decision.

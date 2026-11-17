@@ -308,15 +308,94 @@ pub async fn chat_transcribe(app: AppHandle, audio: String, mime: String) -> Res
         "audio/mpeg" => "mp3",
         _ => "webm",
     };
-    super::media::transcribe(&config_dir(&app)?, bytes, &format!("speech.{ext}")).await
+    let dir = config_dir(&app)?;
+    let settings = super::audio::load(&dir).stt;
+    super::audio::transcribe(&dir, bytes, &format!("speech.{ext}"), &settings).await
 }
 
 /// Reads text aloud; returns base64 audio and its media type.
 #[tauri::command]
-pub async fn chat_speak(app: AppHandle, text: String) -> Result<(String, String), String> {
+pub async fn chat_speak(app: AppHandle, text: String) -> Result<SpeechOut, String> {
     use base64::Engine as _;
-    let (audio, mime) = super::media::speak(&config_dir(&app)?, &text).await?;
-    Ok((base64::engine::general_purpose::STANDARD.encode(audio), mime))
+    let dir = config_dir(&app)?;
+    let settings = super::audio::load(&dir).tts;
+    let prose = super::media::speakable(&text);
+    if prose.is_empty() {
+        return Err("There is nothing to read.".into());
+    }
+    Ok(match super::audio::speak(&dir, &prose, &settings).await? {
+        Some((audio, mime)) => SpeechOut::Audio { data: base64::engine::general_purpose::STANDARD.encode(audio), mime },
+        // The page speaks it with the system voice.
+        None => SpeechOut::Browser { text: prose, rate: settings.speed, voice: settings.voice },
+    })
+}
+
+#[derive(serde::Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum SpeechOut {
+    Audio { data: String, mime: String },
+    Browser { text: String, rate: f32, voice: String },
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioView {
+    pub settings: super::audio::AudioSettings,
+    /// What the `provider` engines resolve to now.
+    pub provider_speech_model: Option<String>,
+    pub provider_voice_model: Option<String>,
+}
+
+#[tauri::command]
+pub fn chat_audio_settings(app: AppHandle) -> Result<AudioView, String> {
+    let dir = config_dir(&app)?;
+    let file = super::providers::load(&dir);
+    Ok(AudioView {
+        settings: super::audio::load(&dir),
+        provider_speech_model: super::media::speech_model(&file),
+        provider_voice_model: super::media::voice_model(&file),
+    })
+}
+
+/// Saves the audio settings; a key is stored in the keychain when given, removed when cleared.
+#[tauri::command]
+pub async fn chat_save_audio_settings(
+    app: AppHandle,
+    settings: super::audio::AudioSettings,
+    stt_key: Option<String>,
+    tts_key: Option<String>,
+    clear_stt_key: bool,
+    clear_tts_key: bool,
+) -> Result<AudioView, String> {
+    let dir = config_dir(&app)?;
+    let previous = super::audio::load(&dir);
+    let mut settings = super::audio::normalize(settings);
+    settings.stt.has_key = previous.stt.has_key;
+    settings.tts.has_key = previous.tts.has_key;
+    for (key, clear, name, has) in [
+        (stt_key, clear_stt_key, super::audio::STT_SECRET, &mut settings.stt.has_key),
+        (tts_key, clear_tts_key, super::audio::TTS_SECRET, &mut settings.tts.has_key),
+    ] {
+        if clear {
+            secrets()?.delete(name).await?;
+            *has = false;
+        }
+        if let Some(key) = key.map(|k| k.trim().to_string()).filter(|k| !k.is_empty()) {
+            secrets()?.store(name, &key).await?;
+            *has = true;
+        }
+    }
+    super::audio::save(&dir, &settings)?;
+    chat_audio_settings(app)
+}
+
+/// Voices for a text-to-speech engine: the account's voices for ElevenLabs, the known ones else.
+#[tauri::command]
+pub async fn chat_audio_voices(engine: String, base_url: String) -> Result<Vec<(String, String)>, String> {
+    if engine == "elevenlabs" {
+        return super::audio::elevenlabs_voices(base_url.trim().trim_end_matches('/')).await;
+    }
+    Ok(super::audio::known_voices(&engine))
 }
 
 #[tauri::command]

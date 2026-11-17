@@ -4,13 +4,15 @@ import { api, type AppSettings, type Provider } from './api';
 import { clear, h, icon, modal, toast } from './dom';
 import { changed, state } from './state';
 import { button, card, modalHeader, switchInput } from './ui';
+import { audioApi, refreshAudioSettings, speakText, type AudioView } from './audio';
 import { ACCENTS, BACKGROUNDS, accentHex, applyAppearance, setAccent, setBackground, storedAccent, storedBackground } from './appearance';
 
-export type Section = 'profile' | 'providers' | 'permissions' | 'general' | 'appearance';
+export type Section = 'profile' | 'providers' | 'audio' | 'permissions' | 'general' | 'appearance';
 
 const SECTIONS: { id: Section; label: string; icon: string; group: string }[] = [
   { id: 'profile', label: 'Profile', icon: 'user', group: 'General settings' },
   { id: 'providers', label: 'Providers & models', icon: 'key', group: 'General settings' },
+  { id: 'audio', label: 'Audio', icon: 'mic', group: 'General settings' },
   { id: 'permissions', label: 'Permissions', icon: 'shield', group: 'App settings' },
   { id: 'general', label: 'General', icon: 'monitor', group: 'App settings' },
   { id: 'appearance', label: 'Appearance', icon: 'palette', group: 'App settings' },
@@ -77,6 +79,7 @@ export function openSettings(section: Section = 'profile'): Promise<void> {
       try {
         if (current === 'profile') renderProfile(content);
         if (current === 'providers') await renderProviders(content);
+        if (current === 'audio') await renderAudio(content);
         if (current === 'permissions') await renderPermissions(content);
         if (current === 'general') await renderGeneral(content);
         if (current === 'appearance') renderAppearance(content);
@@ -552,5 +555,124 @@ function renderAppearance(content: HTMLElement) {
       h('div', { class: 'bg-tiles' }, tiles),
       h('div', { class: 'card-actions start' }, button({ variant: 'subtle', size: 'sm', icon: 'reset', label: 'Reset appearance', onClick: () => { setAccent('theme'); setBackground('default'); rerender(); } }))
     )
+  );
+}
+
+
+const STT_ENGINES: [string, string][] = [
+  ['provider', 'Your chat providers'],
+  ['openai', 'OpenAI-compatible server'],
+  ['elevenlabs', 'ElevenLabs'],
+  ['off', 'Off'],
+];
+const TTS_ENGINES: [string, string][] = [
+  ['provider', 'Your chat providers'],
+  ['openai', 'OpenAI-compatible server'],
+  ['xai', 'xAI'],
+  ['elevenlabs', 'ElevenLabs'],
+  ['browser', 'System voice'],
+  ['off', 'Off'],
+];
+
+/** Settings → Audio: the speech engines, as Open WebUI sets them up. */
+async function renderAudio(content: HTMLElement) {
+  let view: AudioView = await audioApi.get();
+  const s = structuredClone(view.settings);
+  const select = (options: [string, string][], value: string, onChange: (v: string) => void) => {
+    const el = h('select', { class: 'input' }, options.map(([v, l]) => h('option', { value: v, selected: v === value }, l)));
+    el.addEventListener('change', () => onChange(el.value));
+    return el;
+  };
+  const text = (value: string, placeholder: string, onInput: (v: string) => void, type = 'text') => {
+    const el = h('input', { class: 'input', type, value, placeholder, autocomplete: 'off' });
+    el.addEventListener('input', () => onInput(el.value));
+    return el;
+  };
+  const keys = { sttKey: '', ttsKey: '', clearSttKey: false, clearTtsKey: false };
+  const keyField = (has: boolean, onInput: (v: string) => void, onClear: () => void) => {
+    const input = text('', has ? '•••••••• saved in keychain' : 'API key', onInput, 'password');
+    const clearBtn = has ? button({ variant: 'subtle', size: 'sm', label: 'Remove key', onClick: () => { onClear(); input.placeholder = 'Removed on save'; } }) : null;
+    return h('div', { class: 'key-row' }, input, clearBtn);
+  };
+  const field = (label: string, control: HTMLElement, hint?: string) =>
+    h('div', { class: 'field' }, h('label', { class: 'field-label' }, label), control, hint ? h('small', { class: 'field-hint' }, hint) : null);
+
+  const sttBody = h('div', { class: 'audio-fields' });
+  const ttsBody = h('div', { class: 'audio-fields' });
+  const renderStt = () =>
+    clear(
+      sttBody,
+      field('Engine', select(STT_ENGINES, s.stt.engine, (v) => { s.stt.engine = v as typeof s.stt.engine; renderStt(); })),
+      s.stt.engine === 'provider'
+        ? h('p', { class: 'muted small' }, view.providerSpeechModel ? `Uses ${view.providerSpeechModel}. Change it under Providers & models.` : 'None of your providers offers speech-to-text (OpenAI or Groq). Choose another engine.')
+        : null,
+      s.stt.engine === 'openai' ? field('API base URL', text(s.stt.baseUrl, 'https://api.openai.com/v1  ·  https://api.groq.com/openai/v1  ·  http://localhost:8000/v1', (v) => (s.stt.baseUrl = v)), 'Any server with /audio/transcriptions: OpenAI, Groq, Speaches, LocalAI, faster-whisper-server.') : null,
+      s.stt.engine === 'openai' || s.stt.engine === 'elevenlabs' ? field('API key', keyField(s.stt.hasKey, (v) => (keys.sttKey = v), () => (keys.clearSttKey = true))) : null,
+      s.stt.engine === 'openai' || s.stt.engine === 'elevenlabs' ? field('Model', text(s.stt.model, s.stt.engine === 'elevenlabs' ? 'scribe_v1' : 'whisper-1  ·  gpt-4o-mini-transcribe  ·  whisper-large-v3-turbo', (v) => (s.stt.model = v))) : null,
+      s.stt.engine !== 'off' && s.stt.engine !== 'provider' ? field('Language', text(s.stt.language, 'Detect automatically, or a code like en, pt', (v) => (s.stt.language = v))) : null,
+      s.stt.engine !== 'off' ? h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Send after dictation'), h('small', { class: 'muted' }, 'Send the message as soon as the transcript arrives.')), switchInput(s.stt.autoSend, (v) => (s.stt.autoSend = v))) : null
+    );
+  const voiceList = h('datalist', { id: 'tts-voices' });
+  const loadVoices = async () => {
+    const voices = s.tts.engine === 'browser' && 'speechSynthesis' in window
+      ? speechSynthesis.getVoices().map((v) => [v.name, `${v.name} (${v.lang})`] as [string, string])
+      : await audioApi.voices(s.tts.engine, s.tts.baseUrl).catch(() => [] as [string, string][]);
+    clear(voiceList, voices.map(([id, name]) => h('option', { value: id }, name)));
+  };
+  const renderTts = () => {
+    const needsServer = ['openai', 'xai', 'elevenlabs'].includes(s.tts.engine);
+    const voiceInput = h('input', { class: 'input', value: s.tts.voice, placeholder: s.tts.engine === 'elevenlabs' ? 'Voice id (pick from the list once the key is saved)' : s.tts.engine === 'xai' ? 'eve' : 'alloy', list: 'tts-voices', autocomplete: 'off' });
+    voiceInput.addEventListener('input', () => (s.tts.voice = voiceInput.value));
+    const speed = h('input', { type: 'range', min: '0.5', max: '2', step: '0.05', value: String(s.tts.speed), class: 'speed-range' });
+    const speedLabel = h('span', { class: 'muted' }, `${s.tts.speed.toFixed(2)}×`);
+    speed.addEventListener('input', () => { s.tts.speed = Number(speed.value); speedLabel.textContent = `${s.tts.speed.toFixed(2)}×`; });
+    clear(
+      ttsBody,
+      field('Engine', select(TTS_ENGINES, s.tts.engine, (v) => { s.tts.engine = v as typeof s.tts.engine; renderTts(); void loadVoices(); })),
+      s.tts.engine === 'provider'
+        ? h('p', { class: 'muted small' }, view.providerVoiceModel ? `Uses ${view.providerVoiceModel}. Change it under Providers & models.` : 'None of your providers offers text-to-speech (OpenAI or xAI). Choose another engine.')
+        : null,
+      s.tts.engine === 'browser' ? h('p', { class: 'muted small' }, 'Uses the voices installed on this computer. Nothing leaves the device.') : null,
+      needsServer ? field('API base URL', text(s.tts.baseUrl, s.tts.engine === 'elevenlabs' ? 'https://api.elevenlabs.io' : s.tts.engine === 'xai' ? 'https://api.x.ai' : 'https://api.openai.com/v1  ·  http://localhost:8880/v1', (v) => (s.tts.baseUrl = v)), s.tts.engine === 'openai' ? 'Any server with /audio/speech: OpenAI, Kokoro-FastAPI, LocalAI, Speaches.' : 'Leave empty for the service default.') : null,
+      needsServer ? field('API key', keyField(s.tts.hasKey, (v) => (keys.ttsKey = v), () => (keys.clearTtsKey = true))) : null,
+      needsServer ? field('Model', text(s.tts.model, s.tts.engine === 'elevenlabs' ? 'eleven_multilingual_v2' : s.tts.engine === 'xai' ? 'grok-tts' : 'tts-1  ·  gpt-4o-mini-tts  ·  kokoro', (v) => (s.tts.model = v))) : null,
+      s.tts.engine !== 'off' && s.tts.engine !== 'provider' ? field('Voice', h('div', {}, voiceInput, voiceList)) : null,
+      s.tts.engine !== 'off' && s.tts.engine !== 'xai' ? field('Speed', h('div', { class: 'speed-row' }, speed, speedLabel)) : null,
+      s.tts.engine !== 'off' ? h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Read answers aloud automatically'), h('small', { class: 'muted' }, 'Each answer is read when it finishes.')), switchInput(s.tts.autoPlay, (v) => (s.tts.autoPlay = v))) : null
+    );
+  };
+  renderStt();
+  renderTts();
+  void loadVoices();
+
+  const persist = async () => {
+    view = await audioApi.save(s, keys);
+    Object.assign(s, structuredClone(view.settings));
+    keys.sttKey = keys.ttsKey = '';
+    keys.clearSttKey = keys.clearTtsKey = false;
+    await refreshAudioSettings();
+    renderStt();
+    renderTts();
+    void loadVoices();
+  };
+  const save = button({ variant: 'primary', label: 'Save', onClick: async () => { try { await persist(); toast('Audio settings saved.'); } catch (e) { toast(String(e), 'error'); } } });
+  const test = button({
+    variant: 'secondary',
+    icon: 'speaker',
+    label: 'Save and test voice',
+    onClick: async () => {
+      try {
+        await persist();
+        await speakText('Hello! This is how answers will sound.');
+      } catch (e) {
+        toast(String(e), 'error');
+      }
+    },
+  });
+  content.append(
+    h('p', { class: 'muted intro' }, 'Choose how voice input is transcribed and how answers are read aloud, with any compatible service or one running on your own machine. Keys stay in the OS keychain.'),
+    card(h('h3', {}, 'Speech to text'), h('p', { class: 'muted' }, 'Used by the microphone in the composer.'), sttBody),
+    card(h('h3', {}, 'Text to speech'), h('p', { class: 'muted' }, 'Used by the speaker under each answer.'), ttsBody),
+    h('div', { class: 'card-actions' }, test, save)
   );
 }

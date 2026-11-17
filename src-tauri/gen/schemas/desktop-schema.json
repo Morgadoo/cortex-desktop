@@ -207,6 +207,18 @@
           "markdownDescription": "Answer a question the assistant asked."
         },
         {
+          "description": "Read the audio settings.",
+          "type": "string",
+          "const": "allow-chat-audio-settings",
+          "markdownDescription": "Read the audio settings."
+        },
+        {
+          "description": "List text-to-speech voices.",
+          "type": "string",
+          "const": "allow-chat-audio-voices",
+          "markdownDescription": "List text-to-speech voices."
+        },
+        {
           "description": "Stop a reply in progress.",
           "type": "string",
           "const": "allow-chat-cancel",
@@ -463,6 +475,12 @@
           "type": "string",
           "const": "allow-chat-save-agent",
           "markdownDescription": "Create or update an agent."
+        },
+        {
+          "description": "Save the audio settings and keys.",
+          "type": "string",
+          "const": "allow-chat-save-audio-settings",
+          "markdownDescription": "Save the audio settings and keys."
         },
         {
           "description": "Save the user's edit to a canvas as a new version.",

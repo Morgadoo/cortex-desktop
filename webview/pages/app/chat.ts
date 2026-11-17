@@ -8,6 +8,7 @@ import { openInstructions } from './pages';
 import { enableAskAboutSelection, renderCanvasCard } from './canvas';
 import { renderCodeRun, renderImage } from './coderun';
 import { startRecording, toBase64, type Recording } from './dictation';
+import { audioSettings, speakText, type Playback } from './audio';
 import { editWorkflow, workflowPrompt, workflowsApi } from './workflows';
 import type { Workflow } from './api';
 import { diffLines, loadChanges, openChanges } from './changes';
@@ -818,36 +819,45 @@ function versionSwitcher(conversationId: string, versions: { from: number; curre
   return h('span', { class: 'versions', title: versions.kind === 'prompt' ? 'Versions of this message and what followed' : 'Answers to this message' }, prev, h('span', { class: 'versions-label' }, `${versions.current + 1} / ${versions.total}`), next);
 }
 
-/** The audio that is playing, so starting another stops it. */
-let speaking: { audio: HTMLAudioElement; button: HTMLButtonElement } | null = null;
+/** What is being read aloud, so starting another stops it. */
+let speaking: { playback: Playback | null; button: HTMLButtonElement | null } | null = null;
 
 function stopSpeaking() {
   if (!speaking) return;
-  speaking.audio.pause();
-  speaking.button.classList.remove('active');
-  speaking.button.replaceChildren(icon('speaker', 16));
+  speaking.playback?.stop();
+  speaking.button?.classList.remove('active');
+  speaking.button?.replaceChildren(icon('speaker', 16));
   speaking = null;
+}
+
+/** Reads a finished answer aloud when auto-play is on. */
+export function autoPlay(text: string) {
+  if (!audioSettings?.tts.autoPlay || audioSettings.tts.engine === 'off' || !text.trim()) return;
+  stopSpeaking();
+  void speakText(text)
+    .then((playback) => {
+      speaking = { playback, button: null };
+    })
+    .catch((e) => toast(String(e), 'error'));
 }
 
 /** Reads an answer aloud with the voice model; a second click stops it. */
 function readAloudButton(text: string): HTMLButtonElement {
   const button = iconButton({ icon: 'speaker', title: 'Read aloud', size: 'sm' });
-  let cached: string | null = null;
   button.addEventListener('click', async () => {
     if (speaking?.button === button) return stopSpeaking();
     stopSpeaking();
     button.classList.add('active');
     button.replaceChildren(h('span', { class: 'dots' }));
+    speaking = { playback: null, button };
     try {
-      if (!cached) {
-        const [audio, mime] = await api.speak(text);
-        cached = `data:${mime};base64,${audio}`;
-      }
-      const audio = new Audio(cached);
-      speaking = { audio, button };
+      const playback = await speakText(text);
+      if (speaking?.button !== button) return playback.stop();
+      speaking.playback = playback;
       button.replaceChildren(icon('stop', 14));
-      audio.addEventListener('ended', stopSpeaking);
-      await audio.play();
+      void playback.done.then(() => {
+        if (speaking?.button === button) stopSpeaking();
+      });
     } catch (e) {
       stopSpeaking();
       button.classList.remove('active');
@@ -1436,6 +1446,8 @@ class Composer {
       const current = this.textarea.value;
       this.setText(current ? `${current.trimEnd()} ${text}` : text);
       this.focus();
+      // Open WebUI's "instant auto-send": dictation goes straight out.
+      if (audioSettings?.stt.autoSend && text.trim()) void this.submit();
     } catch (e) {
       toast(String(e), 'error');
     } finally {
@@ -2123,6 +2135,12 @@ export class ChatView {
   /** The turn ended: the stored conversation replaces the live one. */
   async finished() {
     await this.refresh(false);
+  }
+
+  /** Reads the newest answer aloud, when auto-play is on. */
+  readLatestAloud() {
+    const last = this.conversation?.turns[this.conversation.turns.length - 1];
+    if (last?.role === 'assistant') autoPlay(textOf(last.parts));
   }
 
   private scrollToBottom(smooth: boolean) {

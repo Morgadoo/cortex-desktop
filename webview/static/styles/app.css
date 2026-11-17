@@ -1084,3 +1084,11 @@ select.input { cursor: pointer; }
 .term-status { font-size: var(--fs-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 8px; border-radius: var(--radius-pill); background: var(--bg-active); color: var(--text-muted); }
 .term-status.running { color: var(--success); background: color-mix(in srgb, var(--success) 14%, transparent); }
 .term-output { margin: 0; padding: 10px 12px; max-height: 360px; overflow: auto; background: var(--bg-code); border-top: 1px solid var(--border); font: 12px/1.5 var(--font-mono); white-space: pre-wrap; word-break: break-word; }
+
+/* ------------------------------------------------------------------ audio settings */
+
+.audio-fields { display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-3); }
+.key-row { display: flex; gap: 8px; align-items: center; }
+.key-row .input { flex: 1; }
+.speed-row { display: flex; align-items: center; gap: 12px; }
+.speed-range { flex: 1; accent-color: var(--accent); }

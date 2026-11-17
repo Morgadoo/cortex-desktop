@@ -372,3 +372,18 @@ commands.allow = ["chat_terminal_stop"]
 identifier = "allow-chat-terminal-clear"
 description = "Forget finished background commands."
 commands.allow = ["chat_terminal_clear"]
+
+[[permission]]
+identifier = "allow-chat-audio-settings"
+description = "Read the audio settings."
+commands.allow = ["chat_audio_settings"]
+
+[[permission]]
+identifier = "allow-chat-save-audio-settings"
+description = "Save the audio settings and keys."
+commands.allow = ["chat_save_audio_settings"]
+
+[[permission]]
+identifier = "allow-chat-audio-voices"
+description = "List text-to-speech voices."
+commands.allow = ["chat_audio_voices"]
