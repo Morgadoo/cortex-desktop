@@ -52,6 +52,38 @@ pub const APP_CSP: &str = "default-src 'none'; \
     font-src https://fonts.gstatic.com data:; img-src data: blob: https:; media-src data: blob: https:; \
     connect-src https:; form-action 'none'; base-uri 'none'";
 
+/// The address, under the app protocol, of the page that draws Mermaid diagrams.
+pub const DIAGRAM_PAGE: &str = "_diagram";
+
+/// Draws the Mermaid code in its URL's fragment with Mermaid from the CDN mini apps may use, and
+/// tells the conversation its height. Runs sandboxed, with no access to the app.
+const DIAGRAM_HTML: &str = r#"<!doctype html><html><head><meta charset="utf-8">
+<style>html,body{margin:0;background:transparent;font-family:system-ui,sans-serif}#out{display:flex;justify-content:center;padding:8px}#out svg{max-width:100%;height:auto}.err{color:#e5866d;font:12px ui-monospace,monospace;white-space:pre-wrap;padding:8px}</style>
+</head><body><div id="out"></div>
+<script type="module">
+const params = new URLSearchParams(location.hash.slice(1));
+const key = params.get('key') || '';
+// Paint the card's colour, so the frame blends with the conversation in either theme.
+const bg = params.get('bg') || '';
+if (/^(#[0-9a-f]{3,8}|rgba?\([\d\s.,%]+\))$/i.test(bg)) document.documentElement.style.background = document.body.style.background = bg;
+document.documentElement.style.colorScheme = params.get('theme') === 'light' ? 'light' : 'dark';
+const out = document.getElementById('out');
+const report = () => parent.postMessage({ diagramKey: key, height: Math.ceil(document.documentElement.scrollHeight) }, '*');
+try {
+  const { default: mermaid } = await import('https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs');
+  mermaid.initialize({ startOnLoad: false, theme: params.get('theme') === 'light' ? 'default' : 'dark', securityLevel: 'strict' });
+  const { svg } = await mermaid.render('diagram', params.get('code') || '');
+  out.innerHTML = svg;
+} catch (e) {
+  const div = document.createElement('div');
+  div.className = 'err';
+  div.textContent = 'This diagram could not be drawn: ' + (e && e.message ? e.message : String(e));
+  out.replaceChildren(div);
+}
+report();
+new ResizeObserver(report).observe(document.body);
+</script></body></html>"#;
+
 /// An app's HTML: its content, unwrapped from a ```html fence if the model added one.
 pub fn app_html(content: &str) -> String {
     let trimmed = content.trim();
@@ -69,8 +101,17 @@ pub fn app_html(content: &str) -> String {
 
 /// Serves `lumoapp://localhost/<canvas id>` to the sandboxed preview frame.
 pub fn serve(config_dir: &Path, path: &str) -> tauri::http::Response<Vec<u8>> {
-    let id = path.trim_start_matches('/').split(['?', '/']).next().unwrap_or_default();
+    let id = path.trim_start_matches('/').split(['?', '/', '#']).next().unwrap_or_default();
     let builder = tauri::http::Response::builder();
+    if id == DIAGRAM_PAGE {
+        // Mermaid diagrams from answers, drawn in the same sandbox as mini apps.
+        return builder
+            .status(200)
+            .header("Content-Type", "text/html; charset=utf-8")
+            .header("Content-Security-Policy", APP_CSP)
+            .body(DIAGRAM_HTML.as_bytes().to_vec())
+            .unwrap_or_default();
+    }
     match load(config_dir, id) {
         Ok(canvas) if canvas.kind == "app" => builder
             .status(200)

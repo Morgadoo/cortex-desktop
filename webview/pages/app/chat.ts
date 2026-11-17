@@ -7,6 +7,7 @@ import { openSettings } from './settings';
 import { openInstructions } from './pages';
 import { closePanel, enableAskAboutSelection, openSidePanel, renderCanvasCard, setPanelHost } from './canvas';
 import { hostOf, previewFor, siteIcon } from './favicon';
+import './diagrams';
 import { renderCodeRun, renderImage } from './coderun';
 import { startRecording, toBase64, type Recording } from './dictation';
 import { audioSettings, speakText, type Playback } from './audio';
