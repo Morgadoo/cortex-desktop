@@ -238,11 +238,7 @@ pub fn preamble(context: &Context<'_>, tools: &[ChatTool]) -> String {
         }
     }
     if let Some(dir) = workdir {
-        out.push_str(&format!(
-            "\n\nThis is a coding session in the folder `{dir}`. Read the code before changing \
-             it, keep changes focused, run the project's own build and test commands to check \
-             your work, and report what you changed."
-        ));
+        out.push_str(&super::code::prompt(dir));
     }
     if tools.iter().any(|t| t.name == builtins::WEB_SEARCH) {
         out.push_str(

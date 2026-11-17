@@ -60,6 +60,7 @@
     "allow-chat-list-apps",
     "allow-chat-keep-conversation",
     "allow-chat-media-models",
+    "allow-chat-code-changes",
     "allow-chat-set-media-models",
     "allow-chat-transcribe"
   ]

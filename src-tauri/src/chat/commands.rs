@@ -224,6 +224,14 @@ pub fn chat_delete_conversation(app: AppHandle, state: State<'_, ChatState>, id:
     store::delete_conversation(&config_dir(&app)?, &id)
 }
 
+/// The working tree's changes in a coding session's folder.
+#[tauri::command]
+pub async fn chat_code_changes(app: AppHandle, conversation_id: String) -> Result<super::code::Changes, String> {
+    let conversation = store::load_conversation(&config_dir(&app)?, &conversation_id)?;
+    let dir = conversation.workdir.ok_or("This conversation has no folder.")?;
+    tokio::task::spawn_blocking(move || super::code::changes(&dir)).await.map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn chat_media_models(app: AppHandle) -> Result<super::media::MediaModels, String> {
     Ok(super::media::models(&config_dir(&app)?))

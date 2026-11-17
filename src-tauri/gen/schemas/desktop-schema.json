@@ -213,6 +213,12 @@
           "markdownDescription": "Stop a reply in progress."
         },
         {
+          "description": "Show the working tree changes of a coding session.",
+          "type": "string",
+          "const": "allow-chat-code-changes",
+          "markdownDescription": "Show the working tree changes of a coding session."
+        },
+        {
           "description": "Create a document library.",
           "type": "string",
           "const": "allow-chat-create-library",

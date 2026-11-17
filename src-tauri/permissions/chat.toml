@@ -272,3 +272,8 @@ commands.allow = ["chat_set_media_models"]
 identifier = "allow-chat-transcribe"
 description = "Transcribe voice input."
 commands.allow = ["chat_transcribe"]
+
+[[permission]]
+identifier = "allow-chat-code-changes"
+description = "Show the working tree changes of a coding session."
+commands.allow = ["chat_code_changes"]

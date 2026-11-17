@@ -7,6 +7,7 @@ import { openSettings } from './settings';
 import { openInstructions } from './pages';
 import { enableAskAboutSelection, renderCanvasCard } from './canvas';
 import { renderCodeRun, renderImage } from './coderun';
+import { diffLines, loadChanges, openChanges } from './changes';
 
 // ---------------------------------------------------------------------------------------------
 // Tool labels
@@ -400,6 +401,13 @@ function renderToolStep(part: Extract<Part, { kind: 'tool' }>, live: boolean, du
   const results = resultRows(part);
   if (results) {
     step.append(h('div', { class: 'step-content' }, renderResults(results)));
+  }
+  // A file edit reads best as the lines it took out and put in.
+  const before = part.arguments.old_string;
+  const after = part.arguments.new_string;
+  if (part.name === 'filesystem__fs_edit' && typeof before === 'string' && typeof after === 'string') {
+    const lines = [...before.split('\n').map((l) => `-${l}`), ...after.split('\n').map((l) => `+${l}`)];
+    step.append(h('div', { class: 'step-content' }, diffLines(lines.length > 80 ? [...lines.slice(0, 80), ` … ${lines.length - 80} more lines`] : lines)));
   }
   // The raw call, for anyone who wants to see exactly what ran.
   const raw = h('details', { class: 'step-raw' });
@@ -1643,6 +1651,8 @@ export class ChatView {
   private bottom = h('div', { class: 'chat-bottom' });
   private jump = h('button', { class: 'jump-btn', title: 'Scroll to bottom' }, icon('arrowDown', 18));
   private planPanel = h('aside', { class: 'plan-panel' });
+  /** Files changed in the session's folder: undefined until asked, null while asking, -1 without git. */
+  private changeCount: number | null | undefined = undefined;
   private stickToBottom = true;
 
   constructor(private id: string) {
@@ -1702,6 +1712,7 @@ export class ChatView {
   }
 
   renderTranscript() {
+    this.changeCount = undefined;
     const c = this.conversation;
     if (!c) return;
     const running = state.live.has(this.id);
@@ -1737,6 +1748,20 @@ export class ChatView {
     });
     const meter = usageMeter(state.usage.get(this.id), c?.usage);
     const exportBtn = h('button', { class: 'icon-btn', title: 'Export as Markdown' }, icon('share', 18));
+    let changesBtn: HTMLElement | null = null;
+    if (workdir) {
+      if (this.changeCount === undefined) {
+        this.changeCount = null;
+        void loadChanges(this.id)
+          .then((c) => (this.changeCount = c.git ? c.files.length : -1))
+          .catch(() => (this.changeCount = -1))
+          .then(() => this.renderHeader());
+      }
+      if (this.changeCount !== -1) {
+        changesBtn = h('button', { class: 'pill-btn changes-btn', title: 'Uncommitted changes in this folder' }, icon('file', 15), 'Changes', this.changeCount ? h('span', { class: 'count-badge' }, String(this.changeCount)) : null);
+        changesBtn.addEventListener('click', () => openChanges(this.id, workdir.split(/[\\/]/).pop() ?? workdir));
+      }
+    }
     exportBtn.addEventListener('click', () => void api.exportConversation(this.id).then((saved) => saved && toast('Conversation exported.')));
     clear(
       this.header,
@@ -1749,7 +1774,7 @@ export class ChatView {
         project || workdir ? h('span', { class: 'crumb-sep' }, '/') : null,
         titleBtn
       ),
-      h('div', { class: 'header-actions' }, meter, pin, exportBtn)
+      h('div', { class: 'header-actions' }, changesBtn, meter, pin, exportBtn)
     );
   }
 

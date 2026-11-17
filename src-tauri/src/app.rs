@@ -123,6 +123,7 @@ pub fn run() {
                 chat::commands::chat_list_apps,
                 chat::commands::chat_keep_conversation,
                 chat::commands::chat_media_models,
+                chat::commands::chat_code_changes,
                 chat::commands::chat_set_media_models,
                 chat::commands::chat_transcribe,
             ];

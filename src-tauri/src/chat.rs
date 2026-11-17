@@ -13,6 +13,7 @@
 pub mod agents;
 pub mod builtins;
 pub mod canvas;
+pub mod code;
 pub mod commands;
 pub mod context;
 pub mod engine;
