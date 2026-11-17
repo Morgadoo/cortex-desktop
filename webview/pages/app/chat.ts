@@ -1,11 +1,12 @@
 /** The home screen, a conversation, and the composer they share. */
+import { tauriInvoke } from '../../shared/tauri';
 import { api, newId, type Conversation, type Part, type Turn, type UsageTotals } from './api';
 import { clear, confirmDialog, greeting, h, icon, markdown, modal, popover, promptText, timeLabel, toast } from './dom';
 import { changed, currentModel, navigate, state, type LiveTurn } from './state';
 import { openSettings } from './settings';
 import { openInstructions } from './pages';
 import { enableAskAboutSelection, renderCanvasCard } from './canvas';
-import { renderCodeRun } from './coderun';
+import { renderCodeRun, renderImage } from './coderun';
 
 // ---------------------------------------------------------------------------------------------
 // Tool labels
@@ -59,6 +60,7 @@ const BUILTIN_ICONS: Record<string, string> = {
   schedule_task: 'clock',
   search_library: 'library',
   run_code: 'terminal',
+  generate_image: 'sparkle',
 };
 
 /** What an approval card asks to allow. */
@@ -517,6 +519,11 @@ function renderParts(parts: Part[], live: boolean, key: string, durations: numbe
     if (part.kind === 'tool' && part.name === 'canvas') {
       flush();
       out.push(renderCanvasCard(part, live));
+      return;
+    }
+    if (part.kind === 'tool' && part.name === 'generate_image') {
+      flush();
+      out.push(renderImage(part, live, key.split(':')[0] ?? ''));
       return;
     }
     if (part.kind === 'tool' && part.name === 'run_code') {
@@ -1211,7 +1218,59 @@ class Composer {
       ? h('button', { class: 'send-btn stop', title: 'Stop', on: { click: () => this.conversationId && void api.cancel(this.conversationId) } }, icon('stop', 16))
       : h('button', { class: 'send-btn', title: 'Send', disabled: !hasText, on: { click: () => void this.submit() } }, icon('send', 18));
 
-    clear(this.bar, h('div', { class: 'bar-left' }, plus, approval), h('div', { class: 'bar-right' }, speed, modelBtn, action));
+    const mic = h('button', { class: `icon-btn${this.recorder ? ' recording' : ''}`, title: this.recorder ? 'Stop and transcribe' : 'Dictate' }, icon(this.recorder ? 'stop' : 'mic', 17));
+    mic.addEventListener('click', () => void this.toggleDictation());
+
+    clear(this.bar, h('div', { class: 'bar-left' }, plus, approval), h('div', { class: 'bar-right' }, speed, modelBtn, this.transcribing ? h('span', { class: 'dots' }) : mic, action));
+  }
+
+  private recorder: MediaRecorder | null = null;
+  private transcribing = false;
+
+  /** Records from the microphone; stopping sends the audio to the speech model. */
+  private async toggleDictation() {
+    if (this.recorder) {
+      this.recorder.stop();
+      return;
+    }
+    const media = await tauriInvoke<{ speechModel: string | null }>('chat_media_models');
+    if (!media.speechModel) {
+      toast('Voice input needs a provider with speech-to-text, such as OpenAI or Groq.', 'error');
+      return void openSettings('providers');
+    }
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e) {
+      return void toast(`The microphone is not available: ${String(e)}`, 'error');
+    }
+    const chunks: Blob[] = [];
+    const recorder = new MediaRecorder(stream);
+    recorder.addEventListener('dataavailable', (e) => chunks.push(e.data));
+    recorder.addEventListener('stop', async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      this.recorder = null;
+      this.transcribing = true;
+      this.renderBar();
+      try {
+        const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        let binary = '';
+        for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+        const text = await tauriInvoke<string>('chat_transcribe', { audio: btoa(binary), mime: blob.type });
+        const current = this.textarea.value;
+        this.setText(current ? `${current.trimEnd()} ${text}` : text);
+        this.focus();
+      } catch (e) {
+        toast(String(e), 'error');
+      } finally {
+        this.transcribing = false;
+        this.renderBar();
+      }
+    });
+    recorder.start();
+    this.recorder = recorder;
+    this.renderBar();
   }
 
   private openPlusMenu(anchor: HTMLElement) {

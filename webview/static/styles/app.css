@@ -752,3 +752,16 @@ select.input { cursor: pointer; }
 .compare-option:hover { background: var(--bg-hover); }
 .compare-option .muted { margin-left: auto; font-size: 12px; }
 .model-item .tag { flex: none; }
+
+/* ------------------------------------------------------------------ generated images and voice */
+
+.image-card { border: 1px solid var(--border-strong); border-radius: 16px; overflow: hidden; background: var(--bg-elevated); max-width: 520px; }
+.generated-image { display: block; width: 100%; height: auto; cursor: zoom-in; }
+.image-wait { display: flex; align-items: center; gap: 10px; height: 280px; justify-content: center; color: var(--text-secondary); background: linear-gradient(110deg, var(--bg-hover) 30%, var(--bg-elevated) 50%, var(--bg-hover) 70%); background-size: 200% 100%; animation: shimmer 1.6s linear infinite; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+.image-caption { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; font-size: 13px; border-top: 1px solid var(--border); }
+.image-caption .muted { flex: 1; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.image-modal { display: flex; align-items: center; justify-content: center; height: 100%; cursor: zoom-out; }
+.image-modal img { max-width: 100%; max-height: 100%; border-radius: 12px; }
+.icon-btn.recording { color: #fff; background: var(--danger, #e5484d); animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.6; } }

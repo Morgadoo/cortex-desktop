@@ -69,6 +69,10 @@ pub struct ProvidersFile {
     pub providers: BTreeMap<String, ProviderSettings>,
     /// `vendor/model` the composer starts on.
     pub default_model: Option<String>,
+    /// `vendor/model` for `generate_image`; a default for the providers set up when unset.
+    pub image_model: Option<String>,
+    /// `vendor/model` for voice input; a default for the providers set up when unset.
+    pub speech_model: Option<String>,
 }
 
 pub fn file_path(config_dir: &Path) -> PathBuf {

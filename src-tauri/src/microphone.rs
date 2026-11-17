@@ -1,14 +1,24 @@
-//! Microphone access for dictation in the hosted web app, and nothing else.
+//! Microphone access for dictation, in the hosted web app or the native app's own page only.
 //!
 //! wry grants every media-capture request on macOS, whatever the origin or frame, and the
 //! Linux hook used to allow any audio request. Model-generated script runs on other origins
 //! (the artifact shell on lumo-api), so access is limited to the web app's own origin.
 
-/// Whether a page at `url` may use the microphone: only the exact `LUMO_URL` origin.
+/// Whether a page at `url` may use the microphone: the exact `LUMO_URL` origin, and in the
+/// native app its own bundled page (for dictation in the composer). Mini apps run on the
+/// `lumoapp` scheme in sandboxed frames and never qualify.
 pub fn is_allowed(url: &url::Url) -> bool {
-    crate::LUMO_URL
+    let hosted = crate::LUMO_URL
         .parse::<url::Url>()
-        .is_ok_and(|lumo| lumo.origin() == url.origin())
+        .is_ok_and(|lumo| lumo.origin() == url.origin());
+    hosted || (!crate::HOSTED_WEB_APP && is_app_page(url))
+}
+
+/// The app's own bundled page: `tauri://localhost` on macOS and Linux, `http://tauri.localhost`
+/// on Windows.
+fn is_app_page(url: &url::Url) -> bool {
+    let host = url.host_str() == Some(if url.scheme() == "tauri" { "localhost" } else { "tauri.localhost" });
+    host && matches!(url.scheme(), "tauri" | "http" | "https") && url.port().is_none()
 }
 
 #[cfg(target_os = "macos")]
@@ -146,6 +156,11 @@ mod tests {
         let api = crate::LUMO_URL.replace("//lumo.", "//lumo-api.");
         assert!(!is_allowed(&url(&format!("{api}/lumo/v1/artifact-shell"))));
         assert!(!is_allowed(&url("https://evil.example/")));
-        assert!(!is_allowed(&url("tauri://localhost/login.html")));
+        // The native app's own page may dictate; nothing else on a local scheme may.
+        assert_eq!(is_allowed(&url("tauri://localhost/index.html")), !crate::HOSTED_WEB_APP);
+        assert_eq!(is_allowed(&url("http://tauri.localhost/index.html")), !crate::HOSTED_WEB_APP);
+        assert!(!is_allowed(&url("lumoapp://localhost/app-id")));
+        assert!(!is_allowed(&url("http://lumoapp.localhost/app-id")));
+        assert!(!is_allowed(&url("http://tauri.localhost:8080/")));
     }
 }

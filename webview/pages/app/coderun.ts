@@ -1,6 +1,6 @@
 /** A code run in the conversation: the program, what it printed, and the charts it saved. */
 import type { Part } from './api';
-import { h, icon, toast } from './dom';
+import { h, icon, modal, toast } from './dom';
 
 interface RunReport {
   language: string;
@@ -35,6 +35,42 @@ function parse(output: string | null): RunReport | null {
 
 function size(bytes: number): string {
   return bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/** An image the model generated, saved in the conversation's workspace. */
+export function renderImage(part: Extract<Part, { kind: 'tool' }>, live: boolean, conversationId: string): HTMLElement {
+  const prompt = typeof part.arguments.prompt === 'string' ? part.arguments.prompt : '';
+  const running = live && part.output === null;
+  let file = '';
+  try {
+    file = part.output && !part.isError ? ((JSON.parse(part.output) as { file?: string }).file ?? '') : '';
+  } catch {
+    file = '';
+  }
+  let body: HTMLElement;
+  if (running) {
+    body = h('div', { class: 'image-wait' }, h('span', { class: 'dots' }), 'Creating the image…');
+  } else if (file) {
+    const url = workspaceUrl(conversationId, file);
+    const img = h('img', { class: 'generated-image', src: url, alt: prompt, title: 'Open larger' });
+    img.addEventListener('click', () =>
+      void modal((close) => h('div', { class: 'image-modal', on: { click: close } }, h('img', { src: url, alt: prompt })), true)
+    );
+    body = img;
+  } else {
+    body = h('pre', { class: 'run-stderr' }, part.output ?? 'The image could not be made.');
+  }
+  const copy = h('button', { class: 'canvas-btn icon-only', title: 'Copy prompt' }, icon('copy', 15));
+  copy.addEventListener('click', () => {
+    void navigator.clipboard.writeText(prompt);
+    toast('Prompt copied.');
+  });
+  return h(
+    'div',
+    { class: 'canvas-step' },
+    h('div', { class: 'canvas-label' }, running ? 'Creating an image…' : part.isError ? 'Could not create the image' : 'Created an image'),
+    h('div', { class: 'image-card' }, body, h('div', { class: 'image-caption' }, h('span', { class: 'muted' }, prompt), copy))
+  );
 }
 
 export function renderCodeRun(part: Extract<Part, { kind: 'tool' }>, live: boolean, conversationId: string): HTMLElement {

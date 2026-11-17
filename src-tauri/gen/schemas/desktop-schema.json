@@ -375,6 +375,12 @@
           "markdownDescription": "List scheduled tasks."
         },
         {
+          "description": "Read the image and speech models.",
+          "type": "string",
+          "const": "allow-chat-media-models",
+          "markdownDescription": "Read the image and speech models."
+        },
+        {
           "description": "Generate a sample reply under draft instructions.",
           "type": "string",
           "const": "allow-chat-preview-instructions",
@@ -459,6 +465,12 @@
           "markdownDescription": "Remember the model new conversations start with."
         },
         {
+          "description": "Choose the image and speech models.",
+          "type": "string",
+          "const": "allow-chat-set-media-models",
+          "markdownDescription": "Choose the image and speech models."
+        },
+        {
           "description": "Turn memory on or off.",
           "type": "string",
           "const": "allow-chat-set-memory-enabled",
@@ -481,6 +493,12 @@
           "type": "string",
           "const": "allow-chat-test-model",
           "markdownDescription": "Send a one-word request to check a provider's key and address."
+        },
+        {
+          "description": "Transcribe voice input.",
+          "type": "string",
+          "const": "allow-chat-transcribe",
+          "markdownDescription": "Transcribe voice input."
         },
         {
           "description": "Rename, pin, rate or move a conversation.",

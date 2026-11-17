@@ -17,6 +17,7 @@ pub mod commands;
 pub mod context;
 pub mod engine;
 pub mod libraries;
+pub mod media;
 pub mod memory;
 pub mod privacy;
 pub mod providers;

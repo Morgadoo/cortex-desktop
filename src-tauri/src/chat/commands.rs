@@ -224,6 +224,40 @@ pub fn chat_delete_conversation(app: AppHandle, state: State<'_, ChatState>, id:
     store::delete_conversation(&config_dir(&app)?, &id)
 }
 
+#[tauri::command]
+pub fn chat_media_models(app: AppHandle) -> Result<super::media::MediaModels, String> {
+    Ok(super::media::models(&config_dir(&app)?))
+}
+
+/// Chooses the image and speech models; an empty value goes back to the default.
+#[tauri::command]
+pub fn chat_set_media_models(app: AppHandle, image_model: Option<String>, speech_model: Option<String>) -> Result<super::media::MediaModels, String> {
+    let dir = config_dir(&app)?;
+    let mut file = super::providers::load(&dir);
+    file.image_model = image_model.filter(|m| !m.trim().is_empty());
+    file.speech_model = speech_model.filter(|m| !m.trim().is_empty());
+    super::providers::save(&dir, &file)?;
+    Ok(super::media::models(&dir))
+}
+
+/// Transcribes speech recorded in the composer (base64 audio).
+#[tauri::command]
+pub async fn chat_transcribe(app: AppHandle, audio: String, mime: String) -> Result<String, String> {
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(audio.as_bytes()).map_err(|e| e.to_string())?;
+    if bytes.len() > 25 * 1024 * 1024 {
+        return Err("That recording is too long.".into());
+    }
+    let ext = match mime.split(';').next().unwrap_or_default() {
+        "audio/ogg" => "ogg",
+        "audio/mp4" | "audio/m4a" => "m4a",
+        "audio/wav" | "audio/x-wav" => "wav",
+        "audio/mpeg" => "mp3",
+        _ => "webm",
+    };
+    super::media::transcribe(&config_dir(&app)?, bytes, &format!("speech.{ext}")).await
+}
+
 /// Keeps a temporary conversation, such as the answer chosen in a model comparison.
 #[tauri::command]
 pub fn chat_keep_conversation(app: AppHandle, id: String) -> Result<(), String> {

@@ -165,6 +165,45 @@ async function renderProviders(content: HTMLElement) {
   content.append(list);
   const sorted = [...providers].sort((a, b) => Number(b.ready) - Number(a.ready));
   for (const provider of sorted) list.append(providerCard(provider));
+  content.append(await mediaCard());
+}
+
+interface MediaModels {
+  imageModel: string | null;
+  speechModel: string | null;
+  imageVendors: string[];
+  speechVendors: string[];
+}
+
+/** Which models make images and transcribe voice input. */
+async function mediaCard(): Promise<HTMLElement> {
+  const media = await tauriInvoke<MediaModels>('chat_media_models');
+  const image = h('input', { class: 'input', value: media.imageModel ?? '', placeholder: 'xai/grok-imagine-image, openai/gpt-image-1' });
+  const speech = h('input', { class: 'input', value: media.speechModel ?? '', placeholder: 'openai/gpt-4o-mini-transcribe, groq/whisper-large-v3-turbo' });
+  const save = h('button', { class: 'btn btn-primary' }, 'Save');
+  save.addEventListener('click', async () => {
+    try {
+      const saved = await tauriInvoke<MediaModels>('chat_set_media_models', { imageModel: image.value.trim() || null, speechModel: speech.value.trim() || null });
+      image.value = saved.imageModel ?? '';
+      speech.value = saved.speechModel ?? '';
+      toast(saved.imageModel || saved.speechModel ? 'Saved.' : 'Saved. No provider set up can serve these yet.');
+    } catch (e) {
+      toast(String(e), 'error');
+    }
+  });
+  const note = (vendors: string[], what: string) =>
+    h('small', { class: 'muted' }, vendors.length ? `Available from: ${vendors.join(', ')}. Leave empty for the default.` : `Set up a provider that offers ${what} to use this.`);
+  return card(
+    h('h3', {}, 'Images and voice'),
+    h('p', { class: 'muted' }, 'The assistant creates images with the image model, and the microphone button in the composer transcribes with the speech model.'),
+    h('label', { class: 'field-label' }, 'Image model'),
+    image,
+    note(media.imageVendors, 'image generation (OpenAI, xAI or Together)'),
+    h('label', { class: 'field-label' }, 'Speech-to-text model'),
+    speech,
+    note(media.speechVendors, 'speech-to-text (OpenAI or Groq)'),
+    h('div', { class: 'card-actions' }, save)
+  );
 }
 
 function providerCard(provider: Provider): HTMLElement {

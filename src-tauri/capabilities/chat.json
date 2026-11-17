@@ -58,6 +58,9 @@
     "allow-chat-project-library",
     "allow-chat-export-all",
     "allow-chat-list-apps",
-    "allow-chat-keep-conversation"
+    "allow-chat-keep-conversation",
+    "allow-chat-media-models",
+    "allow-chat-set-media-models",
+    "allow-chat-transcribe"
   ]
 }

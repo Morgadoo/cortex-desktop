@@ -257,3 +257,18 @@ commands.allow = ["chat_list_apps"]
 identifier = "allow-chat-keep-conversation"
 description = "Keep a temporary conversation, such as a chosen comparison answer."
 commands.allow = ["chat_keep_conversation"]
+
+[[permission]]
+identifier = "allow-chat-media-models"
+description = "Read the image and speech models."
+commands.allow = ["chat_media_models"]
+
+[[permission]]
+identifier = "allow-chat-set-media-models"
+description = "Choose the image and speech models."
+commands.allow = ["chat_set_media_models"]
+
+[[permission]]
+identifier = "allow-chat-transcribe"
+description = "Transcribe voice input."
+commands.allow = ["chat_transcribe"]

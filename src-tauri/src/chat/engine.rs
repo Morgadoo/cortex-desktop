@@ -15,7 +15,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::watch;
 
-use super::{agents, builtins, canvas, context, libraries, memory, privacy, providers, sandbox, skills, subagents, tasks};
+use super::{agents, builtins, canvas, context, libraries, media, memory, privacy, providers, sandbox, skills, subagents, tasks};
 use super::store::{self, Conversation, Instructions, Project};
 use super::tools::{self, ApprovalMode, ChatTool, ASK_USER};
 use super::{ChatState, EVENT, LOCAL_ACCOUNT};
@@ -284,7 +284,7 @@ pub fn preamble(context: &Context<'_>, tools: &[ChatTool]) -> String {
 }
 
 /// The API key for `vendor` from the keychain, if one is saved.
-async fn api_key(vendor: &str) -> Result<Option<String>, String> {
+pub(crate) async fn api_key(vendor: &str) -> Result<Option<String>, String> {
     let account = AccountId::parse(LOCAL_ACCOUNT)?;
     keychain_secrets(account)
         .load(&providers::secret_name(vendor))
@@ -740,6 +740,9 @@ impl Runner<'_> {
         }
         if name == sandbox::RUN_CODE {
             return self.run_code(&arguments).await;
+        }
+        if name == media::GENERATE_IMAGE {
+            return media::generate(self.config_dir, self.id, &arguments).await;
         }
         if builtins::is_builtin(name) {
             return builtins::run(self.config_dir, name, &arguments).await;

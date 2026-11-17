@@ -103,13 +103,18 @@ pub fn build(app: &App) -> tauri::Result<WebviewWindow> {
 }
 
 /// WebKitGTK denies getUserMedia unless the permission-request signal is answered, and wry never
-/// connects it. Audio only, and only while the page is the web app itself.
+/// connects it. Audio only, and only while the page is the web app or the native chat page.
 #[cfg(target_os = "linux")]
 fn allow_microphone(window: &WebviewWindow) {
     use webkit2gtk::glib::prelude::*;
     use webkit2gtk::{PermissionRequestExt, UserMediaPermissionRequestExt, WebViewExt as _};
 
     if let Err(e) = window.with_webview(|webview| {
+        // getUserMedia only exists with media streams on, which WebKitGTK leaves off.
+        if let Some(settings) = webview.inner().settings() {
+            use webkit2gtk::SettingsExt as _;
+            settings.set_enable_media_stream(true);
+        }
         webview.inner().connect_permission_request(|view, request| {
             let Some(media) = request.downcast_ref::<webkit2gtk::UserMediaPermissionRequest>()
             else {
