@@ -551,8 +551,11 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         // Transient failures (dropped connections, rate limits, overloaded servers) are retried
         // with backoff, as long as nothing reached the user yet.
         let mut attempt = 0u32;
+        // When the model started and stopped thinking, for "Thought for 4s".
+        let mut thought_ms: Option<u32> = None;
         let response = loop {
             attempt += 1;
+            let mut thinking: Option<(std::time::Instant, Option<std::time::Instant>)> = None;
             let mut stream = model.stream(call.clone()).map_err(|e| e.to_string())?;
             let mut streamed_text = String::new();
             let mut streamed_anything = false;
@@ -567,6 +570,9 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
                         Some(Ok(Item::Event(event))) => match event {
                             StreamEvent::Text { text, .. } => {
                                 streamed_anything = true;
+                                if let Some((_, end @ None)) = &mut thinking {
+                                    *end = Some(std::time::Instant::now());
+                                }
                                 let text = if filter { restore_streamed(&redactions, &mut held, &text) } else { text };
                                 streamed_text.push_str(&text);
                                 if !text.is_empty() {
@@ -575,10 +581,14 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
                             }
                             StreamEvent::Reasoning { text, .. } => {
                                 streamed_anything = true;
+                                thinking.get_or_insert((std::time::Instant::now(), None));
                                 emit(app, ChatEvent::Reasoning { conversation_id: id.into(), text });
                             }
                             StreamEvent::Start { kind: PartKind::ToolCall, name: Some(name), .. } => {
                                 streamed_anything = true;
+                                if let Some((_, end @ None)) = &mut thinking {
+                                    *end = Some(std::time::Instant::now());
+                                }
                                 emit(app, ChatEvent::ToolPending { conversation_id: id.into(), name: name.to_string() });
                             }
                             _ => {}
@@ -597,6 +607,7 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
                 return Ok(true);
             }
 
+            thought_ms = thinking.map(|(start, end)| end.unwrap_or_else(std::time::Instant::now).duration_since(start).as_millis().min(u32::MAX as u128) as u32);
             match stream.finish().await {
                 Ok(response) => break response,
                 Err(e) if e.is_retryable() && !streamed_anything && attempt < MAX_ATTEMPTS => {
@@ -646,6 +657,9 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         };
         if let Some(message) = message {
             conversation.messages.push(message);
+            if let Some(ms) = thought_ms {
+                conversation.thought.push((conversation.messages.len() - 1, ms));
+            }
         }
         conversation.updated_at = Utc::now();
 

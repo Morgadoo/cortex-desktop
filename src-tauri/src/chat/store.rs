@@ -116,6 +116,9 @@ pub struct Conversation {
     /// The user's rating of each reply, by the index of its last message.
     #[serde(default)]
     pub ratings: Vec<(usize, i8)>,
+    /// How long the model thought before each reply message, in milliseconds, by message index.
+    #[serde(default)]
+    pub thought: Vec<(usize, u32)>,
     /// The note standing in for compacted turns.
     #[serde(default)]
     pub summary: Option<super::context::Summary>,
@@ -146,6 +149,7 @@ impl Conversation {
             updated_at: now,
             messages: Vec::new(),
             times: Vec::new(),
+            thought: Vec::new(),
             ratings: Vec::new(),
             summary: None,
             usage: Default::default(),
@@ -274,7 +278,12 @@ pub fn save_instructions(config_dir: &Path, instructions: &Instructions) -> Resu
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Part {
     Text { text: String },
-    Reasoning { text: String },
+    Reasoning {
+        text: String,
+        /// How long the model thought, in milliseconds, when measured.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        ms: Option<u32>,
+    },
     #[serde(rename_all = "camelCase")]
     Image { media_type: String, data: String },
     #[serde(rename_all = "camelCase")]
@@ -448,6 +457,7 @@ pub fn select_version(conversation: &mut Conversation, from: usize, target: usiz
     conversation.messages.extend(chosen);
     conversation.branches.extend(chosen_inner);
     conversation.times.retain(|(i, _)| *i < start);
+    conversation.thought.retain(|(i, _)| *i < start);
     conversation.ratings.retain(|(i, _)| *i < start);
     if conversation.summary.as_ref().is_some_and(|s| s.upto > start) {
         conversation.summary = None;
@@ -533,7 +543,7 @@ pub fn turns(conversation: &Conversation) -> Vec<Turn> {
                         Some(Part::Text { text: t.text.clone() })
                     }
                     AssistantContent::Reasoning(r) if !r.text.is_empty() => {
-                        Some(Part::Reasoning { text: r.text.clone() })
+                        Some(Part::Reasoning { text: r.text.clone(), ms: conversation.thought.iter().find(|(k, _)| *k == index).map(|(_, ms)| *ms) })
                     }
                     AssistantContent::ToolCall(call) => Some(Part::Tool {
                         call_id: call.id.to_string(),

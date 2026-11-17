@@ -133,6 +133,45 @@ against the 5 that survived), and Mistral's documentation: docs.mistral.ai/vibe,
 | Light / dark / system | Same | Done |
 | (none) | Accent colour (presets + custom) and background palettes: the graphite default, plus T3 Code's six | Extra |
 
+### 12. Vibe changelog, September–November 2026 (versions 2.25–3.1.2)
+
+Checked item by item. Many are for the Vibe CLI in a terminal; where one has a desktop
+equivalent, that is what is compared.
+
+| Vibe | Here | Status |
+|---|---|---|
+| Thinking shown as a collapsible "Thought" row (3.0.2), "Thought for 1s" (screenshots) | Same; the duration is stored with the reply, so it survives a restart | Done |
+| Tool calls fold into a compact summary line (2.25.1) | Same; repeated tools merge into a table | Done |
+| Ctrl+O toggles all tool groups (2.25.1) | Each group toggles on its own | Partial |
+| Ctrl+R searches prompt history (3.1.0) | Same; Up / Down in an empty composer walk earlier prompts | Done |
+| "Jump to bottom" button (3.1.0) | Same | Done |
+| `/context` (3.1.0) | Click the usage meter | Done |
+| `/branch`, `/fork` (2.25.3, 3.0.4) | "Branch into a new chat" | Done |
+| `/skills` with search, on/off, preview (3.1.2, 2.25.5) | Skills page: search, toggles, the skill's text | Done |
+| Skills invoked with `@` (Vibe Work docs) | `@` or `/` at the start of the composer | Done |
+| Project skills override global ones (3.1.2) | Your skills override built-ins of the same name | Done |
+| Messages sent during a wait reach the agent at once (3.1.2) | Steering: typing while a task runs joins it at its next step | Done |
+| `/loop`: recurring prompts in natural language (2.26.0) | Ask for it in chat (`schedule_task`), or Scheduled | Done |
+| `/voice`, narrator reads turns aloud, Esc stops it (2.26.1) | Settings → Audio, read aloud and auto-play; the speaker button stops it | Done |
+| Side panel of background processes with Stop (2.26.0) | Terminal panel in coding sessions | Done |
+| Undo and redo in the composer (2.26.0) | The system's undo and redo in the text box | Done |
+| Unseen indicators for sessions needing attention (2.25.8) | Unread dots on chats and agents | Done |
+| Archived sessions hidden from active lists (2.25.8) | Archive | Done |
+| Pinned todo plan (2.25.8) | Plan panel beside the conversation | Done |
+| Subagent history with live status (2.25.5) | Sub-agent rows with live status and their reports; no switching into a worker's full transcript | Partial |
+| Errors and warnings inline, not pop-ups (3.1.0) | Errors are cards in the conversation; notices (like a backup model taking over) are pop-ups | Partial |
+| Large tool outputs saved to a file, start and end shown to the model (3.0.1) | Results over 24,000 characters are cut, older ones cleared; `tool_results__read` reads them back | Adapted |
+| Footer: active model and thinking level; click to change (3.0.3) | Model and Fast / Think in the composer | Done |
+| Monthly usage gauge (3.1.0) | Per conversation (meter) and per agent (this month, budget); no account-wide monthly total | Partial |
+| Session PRs shown with links (3.0.3) | Changes view opens the pull request | Done |
+| Smart-approve: repeated risky calls escalate to a prompt (2.25.4) | Approval modes; no risk classifier | Missing |
+| Sticky prompt pinned above the section being read (3.1.1) | Not built | Missing |
+| `/release-notes` (3.0.4) | The updater shows release notes on update only | Missing |
+| Vim keybindings, mouse capture, cursor blink (3.0.2, 3.1.1) | Terminal-editor settings | N/A |
+| `/teleport` to Vibe Code Web (2.26.0) | No cloud sessions | N/A |
+| Worktrees, plugins, hooks, `vibe config schema`, headless `-p` limits | CLI and coding-agent configuration | N/A |
+| Mobile apps, admin rollout, workspaces | Single-user desktop app | N/A |
+
 ## The inspiration apps
 
 | Feature | Seen in | Here | Status |
@@ -156,6 +195,11 @@ against the 5 that survived), and Mistral's documentation: docs.mistral.ai/vibe,
 | Agents hand tasks to each other | openbot.run, open.bot (orchestrator → specialists) | `delegate` tasks can name a teammate; it works with its own instructions, model and allowed tools, and reports back. The assistant's prompt lists the team | Done |
 | Failover to a backup model | openbot.run | Per-agent backup model, used when the main one fails before anything streamed, with a notice | Done |
 | Cost per bot and usage limits | open.bot | Spend per agent this month (conversations, tokens, dollars) on its card and page; optional monthly budget that stops further turns | Done |
+| Approval cards in the conversation (Approve / Review / Deny) | open.bot | Approval requests appear above the composer with the call's details: allow once, always, or deny | Adapted |
+| Tool policies per bot: allowed, ask, blocked | open.bot | Per agent: the tools it may use (others blocked) and the approval mode of its runs | Partial |
+| Channels: Slack, Teams, phone | openbot.run, open.bot | Local desktop app with no server to receive messages | N/A |
+| Multiplayer channels, SSO, SCIM, tenants, admin plane | open.bot | Single-user app | N/A |
+| Audit trail of what bots did | open.bot | Every tool step is kept in its conversation; each agent's page lists its runs | Adapted |
 | Memory | open-webui, LibreChat | Knowledge | Done |
 | Prompt library | open-webui, LibreChat | Skills (`/name`) and Workflows | Done |
 | Response versions and branching | LibreChat, lobehub | A branch tree: regenerate and edit branch at any message; ‹ 1 / n › switches; branch points inside a branch come back with it | Done |
@@ -172,6 +216,8 @@ against the 5 that survived), and Mistral's documentation: docs.mistral.ai/vibe,
 |---|---|
 | A long history stays fast | A conversation index (`chat/index/`) keeps each sidebar row with the file's size and time; listing parses only files that changed. Rebuilt automatically if missing |
 | Find anything ever said | Search (Ctrl+K) covers titles and every message, all words must match, with highlighted snippets; `#tag` still filters tags |
+| The list stays short | The sidebar shows the newest 30 chats, plus pinned and open ones, then "Show more"; search reaches all |
+| It adapts to you | Skills you use most come first in the `/` menu; earlier prompts are a keystroke away (Up, Ctrl+R) |
 | Mistakes are recoverable | Deleting moves a conversation to Recently deleted for 30 days (Settings → Profile), with Restore |
 | Files are protected | The first change of each day keeps a copy of the conversation as it was; state files are copied daily; 30 days kept |
 | Damage is visible | A file that cannot be read is reported in Settings with "Restore the backup"; the damaged file is kept in `quarantine/` |

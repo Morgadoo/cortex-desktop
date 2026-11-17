@@ -500,7 +500,12 @@ function groupSummary(parts: Part[], live: boolean): string {
     return last.kind === 'tool' && last.output === null ? toolLabel(last.name).action : last.kind === 'reasoning' ? 'Thinking' : 'Working';
   }
   const tools = parts.filter((p): p is Extract<Part, { kind: 'tool' }> => p.kind === 'tool');
-  if (!tools.length) return 'Thought';
+  if (!tools.length) {
+    // "Thought for 4s", from the time measured while it streamed or the one stored with it.
+    const ms = parts.reduce((n, p) => n + (p.kind === 'reasoning' ? p.ms ?? 0 : 0), 0);
+    const took = seconds(ms || undefined);
+    return took ? `Thought for ${took}` : 'Thought';
+  }
   if (tools.length === 1) return toolLabel(tools[0]!.name).action;
   const counts = new Map<string, number>();
   let other = 0;
@@ -543,7 +548,7 @@ function renderParts(parts: Part[], live: boolean, key: string, durations: numbe
       const index = g.indices[j]!;
       if (p.kind !== 'tool') {
         const stepLive = isTail && index === parts.length - 1;
-        if (p.kind === 'reasoning') timeline.append(renderReasoning(p.text, stepLive, durations[index]));
+        if (p.kind === 'reasoning') timeline.append(renderReasoning(p.text, stepLive, durations[index] ?? p.ms));
         j += 1;
         continue;
       }
@@ -1095,6 +1100,16 @@ class Composer {
         this.slashKey(e.key);
         return;
       }
+      // Prompt history, as in Vibe: Up and Down walk earlier prompts; Ctrl+R searches them.
+      if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.shiftKey && this.walkHistory(e.key === 'ArrowUp' ? 1 : -1)) {
+        e.preventDefault();
+        return;
+      }
+      if (e.key === 'r' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+        e.preventDefault();
+        this.searchHistory();
+        return;
+      }
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
         e.preventDefault();
         void this.submit();
@@ -1120,11 +1135,52 @@ class Composer {
   }
 
   private slashMenu: { close: () => void; items: string[]; index: number; list: HTMLElement } | null = null;
+  /** Where Up/Down is in the prompt history: -1 is the draft being typed. */
+  private historyIndex = -1;
+  private draft = '';
 
-  /** Typing `/` at the start lists the enabled skills; picking one inserts `/name `. */
+  /** Steps through earlier prompts while the caret is on the first (Up) or last (Down) line. */
+  private walkHistory(step: 1 | -1): boolean {
+    const value = this.textarea.value;
+    const caret = this.textarea.selectionStart;
+    const atEdge = step === 1 ? !value.slice(0, caret).includes('\n') : !value.slice(caret).includes('\n');
+    // Only from an empty composer, or while already walking, so arrows still move the caret.
+    if (!atEdge || (this.historyIndex === -1 && value.trim())) return false;
+    const history = promptHistory();
+    const next = this.historyIndex + step;
+    if (next < -1 || next >= history.length) return false;
+    if (this.historyIndex === -1) this.draft = value;
+    this.historyIndex = next;
+    this.setText(next === -1 ? this.draft : history[next]!);
+    return true;
+  }
+
+  /** Ctrl+R: search earlier prompts and put one in the composer. */
+  private searchHistory() {
+    const history = promptHistory();
+    if (!history.length) return toast('No earlier prompts yet.');
+    void modal((close) => {
+      const input = h('input', { class: 'input', placeholder: 'Search your earlier prompts' });
+      const results = h('div', { class: 'search-results' });
+      const render = () => {
+        const q = input.value.toLowerCase().trim();
+        const found = history.filter((p) => !q || p.toLowerCase().includes(q)).slice(0, 30);
+        clear(results, found.length ? found.map((p) => h('button', { class: 'menu-item', on: { click: () => { close(); this.setText(p); this.focus(); } } }, icon('clock', 15), h('span', { class: 'history-text' }, p))) : h('p', { class: 'muted' }, 'No match.'));
+      };
+      input.addEventListener('input', render);
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') (results.querySelector('button') as HTMLButtonElement | null)?.click(); });
+      render();
+      setTimeout(() => input.focus());
+      return h('div', { class: 'dialog-small wide' }, input, results);
+    });
+  }
+
+  /** Typing `/` (or `@`, as Vibe Work does) at the start lists the enabled skills; picking one inserts `/name `. */
   private updateSlashMenu() {
-    const match = this.textarea.value.match(/^\/([a-z0-9-]*)$/);
-    const skills = match ? state.skills.filter((s) => s.enabled && s.name.startsWith(match[1]!)) : [];
+    const match = this.textarea.value.match(/^[/@]([a-z0-9-]*)$/);
+    // The skills used most come first: the menu learns from use.
+    const uses = skillUses();
+    const skills = match ? state.skills.filter((s) => s.enabled && s.name.startsWith(match[1]!)).sort((a, b) => (uses[b.name] ?? 0) - (uses[a.name] ?? 0)) : [];
     if (!skills.length) {
       this.slashMenu?.close();
       this.slashMenu = null;
@@ -1224,8 +1280,10 @@ class Composer {
     if (this.library) text = `Search the "${this.library}" library (search_library) for this, and cite what you use.\n\n${text}`;
     if (this.workflow) text = workflowPrompt(this.workflow, text);
     // `/skill-name rest` asks for that skill explicitly.
-    const slash = text.match(/^\/([a-z0-9-]+)\s*([\s\S]*)$/);
+    const typed = this.textarea.value.trim();
+    const slash = text.match(/^[/@]([a-z0-9-]+)\s*([\s\S]*)$/);
     if (slash && state.skills.some((s) => s.name === slash[1])) {
+      countSkillUse(slash[1]!);
       text = `Use the "${slash[1]}" skill.${slash[2] ? `\n\n${slash[2]}` : ''}`;
     }
     for (const file of this.attachments.filter((a) => !a.image)) {
@@ -1234,6 +1292,9 @@ class Composer {
     const images = this.attachments.flatMap((a) => (a.image ? [a.image] : []));
     const ok = await send(text.trim(), this.conversationId, images);
     if (ok) {
+      if (typed) rememberPrompt(typed);
+      this.historyIndex = -1;
+      this.draft = '';
       this.textarea.value = '';
       this.attachments = [];
       this.quote = null;
@@ -2265,4 +2326,48 @@ async function showContext(id: string) {
       h('p', { class: 'muted small' }, 'The total is what the provider measured; the split is an estimate.')
     )
   );
+}
+
+// ---------------------------------------------------------------------------------------------
+// What the composer learns from use, kept on this device: earlier prompts and skill counts.
+
+const HISTORY_KEY = 'lumo.promptHistory';
+const SKILL_USE_KEY = 'lumo.skillUses';
+
+function readStored<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStored(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Storage can be unavailable; history is a convenience.
+  }
+}
+
+/** Earlier prompts, newest first. */
+function promptHistory(): string[] {
+  return readStored<string[]>(HISTORY_KEY, []);
+}
+
+function rememberPrompt(text: string) {
+  const history = promptHistory().filter((p) => p !== text);
+  history.unshift(text);
+  writeStored(HISTORY_KEY, history.slice(0, 300));
+}
+
+function skillUses(): Record<string, number> {
+  return readStored<Record<string, number>>(SKILL_USE_KEY, {});
+}
+
+function countSkillUse(name: string) {
+  const uses = skillUses();
+  uses[name] = (uses[name] ?? 0) + 1;
+  writeStored(SKILL_USE_KEY, uses);
 }

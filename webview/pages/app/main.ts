@@ -141,7 +141,7 @@ function renderSidebar() {
     clear(sidebar, top, modes, scroll, renderFooter());
     return;
   }
-  nav.append(navItem('plus', state.mode === 'code' ? 'New session' : 'New chat', v.kind === 'home', newChat));
+  nav.append(navItem('plus', state.mode === 'code' ? 'New session' : 'New Chat', v.kind === 'home', newChat));
   if (state.mode === 'work') {
     nav.append(navItem('apps', 'Apps', isPage('apps'), () => navigate({ kind: 'page', page: 'apps' }), h('span', { class: 'badge' }, 'Preview')));
   }
@@ -318,12 +318,29 @@ function editProject(id: string) {
   });
 }
 
+/** Chats listed before "Show more"; search (Ctrl+K) reaches all of them. */
+const SIDEBAR_LIMIT = 30;
+let sidebarExpanded = false;
+
 function renderConversations(): HTMLElement {
   const code = state.mode === 'code';
-  const section = h('div', { class: 'sidebar-section' }, sectionHeading(code ? 'Sessions' : 'Conversations'));
+  const section = h('div', { class: 'sidebar-section' }, sectionHeading(code ? 'Sessions' : 'Chats'));
   const loose = state.conversations.filter((c) => !c.archived && !c.projectId && !c.agentId && Boolean(c.workdir) === code);
-  if (!loose.length) section.append(h('p', { class: 'sidebar-empty' }, code ? 'No sessions yet' : 'No conversations yet'));
-  for (const c of loose) section.append(conversationLink(c.id, c.title, c.pinned));
+  if (!loose.length) section.append(h('p', { class: 'sidebar-empty' }, code ? 'No sessions yet' : 'No chats yet'));
+  // A history of years stays a short list: the newest, the pinned and the open one, then more on request.
+  const openId = state.view.kind === 'chat' ? state.view.id : null;
+  const shown = sidebarExpanded ? loose : loose.filter((c, i) => i < SIDEBAR_LIMIT || c.pinned || c.id === openId);
+  for (const c of shown) section.append(conversationLink(c.id, c.title, c.pinned));
+  if (loose.length > shown.length || (sidebarExpanded && loose.length > SIDEBAR_LIMIT)) {
+    section.append(
+      h(
+        'button',
+        { class: 'nav-link sub show-more', on: { click: () => { sidebarExpanded = !sidebarExpanded; changed(); } } },
+        icon(sidebarExpanded ? 'chevron' : 'more', 15),
+        h('span', { class: 'nav-label' }, sidebarExpanded ? 'Show fewer' : `Show ${loose.length - shown.length} more`)
+      )
+    );
+  }
   const archived = state.conversations.filter((c) => c.archived);
   if (archived.length) {
     section.append(h('button', { class: 'nav-link sub archived-link', on: { click: openArchived } }, icon('archive', 15), h('span', { class: 'nav-label' }, `Archived (${archived.length})`)));
