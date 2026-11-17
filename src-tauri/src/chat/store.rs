@@ -88,6 +88,9 @@ pub struct Conversation {
     /// Hidden from the main list; still searchable and openable.
     #[serde(default)]
     pub archived: bool,
+    /// Free-form labels, lowercase, for finding conversations again.
+    #[serde(default)]
+    pub tags: Vec<String>,
     /// Earlier answers to the last prompt, kept when it was answered again.
     #[serde(default)]
     pub versions: Option<Versions>,
@@ -124,6 +127,7 @@ impl Conversation {
             unread: false,
             temporary: false,
             archived: false,
+            tags: Vec::new(),
             versions: None,
             created_at: now,
             updated_at: now,
@@ -167,6 +171,7 @@ pub fn delete_conversation(config_dir: &Path, id: &str) -> Result<(), String> {
 #[serde(rename_all = "camelCase")]
 pub struct ConversationSummary {
     pub archived: bool,
+    pub tags: Vec<String>,
     pub id: String,
     pub title: String,
     pub project_id: Option<String>,
@@ -189,6 +194,7 @@ pub fn list_conversations(config_dir: &Path) -> Vec<ConversationSummary> {
         .filter(|c| !c.temporary)
         .map(|c| ConversationSummary {
             archived: c.archived,
+            tags: c.tags.clone(),
             title: if c.title.is_empty() { "New chat".into() } else { c.title },
             id: c.id,
             project_id: c.project_id,
@@ -309,23 +315,54 @@ pub struct ConversationView {
     pub versions: Option<VersionsView>,
 }
 
-/// Every answer the last prompt received: the one showing, and the others in order around it.
+/// Branches of a conversation from one point: every continuation it had, the one showing and the
+/// others in order around it. Regenerating an answer branches after its prompt; editing a sent
+/// message branches at that message. One branch point is kept: the most recent.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Versions {
-    /// Index of the prompt they answer.
-    pub prompt: usize,
-    /// The answers not showing, in order, with the showing one at `current` between them.
+    /// Message index where the branches start.
+    #[serde(alias = "prompt")]
+    pub from: usize,
+    /// `answer` (a regenerated reply) or `prompt` (an edited message). Empty for data saved before
+    /// branching, whose branches start one message later.
+    #[serde(default)]
+    pub kind: String,
+    /// The continuations not showing, in order, with the showing one at `current` between them.
     pub others: Vec<Vec<Message>>,
     pub current: usize,
+}
+
+impl Versions {
+    /// Index of the first message the branches replace.
+    fn start(&self) -> usize {
+        if self.kind.is_empty() { self.from + 1 } else { self.from }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VersionsView {
-    /// 0-based position of the showing answer.
+    /// Message index of the prompt the branches start at.
+    pub from: usize,
+    /// `answer` or `prompt`: which turn shows the switcher.
+    pub kind: String,
+    /// 0-based position of the showing branch.
     pub current: usize,
     pub total: usize,
+}
+
+/// Tags as stored: trimmed, lowercase, without a leading `#`, deduplicated, at most 12.
+pub fn clean_tags(tags: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for tag in tags {
+        let tag: String = tag.trim().trim_start_matches('#').trim().to_lowercase().chars().take(32).collect();
+        if !tag.is_empty() && !out.contains(&tag) {
+            out.push(tag);
+        }
+    }
+    out.truncate(12);
+    out
 }
 
 /// Index of the last message the user typed.
@@ -336,47 +373,45 @@ pub fn last_prompt(conversation: &Conversation) -> Option<usize> {
     })
 }
 
-/// Keeps the current answer to `prompt` before it is answered again; the new one goes last.
-pub fn keep_answer(conversation: &mut Conversation, prompt: usize) {
-    let answer: Vec<Message> = conversation.messages.get(prompt + 1..).map(<[Message]>::to_vec).unwrap_or_default();
-    if answer.is_empty() {
+/// Keeps everything from message `from` on as a branch before it is replaced; the new
+/// continuation will show last.
+pub fn keep_branch(conversation: &mut Conversation, from: usize, kind: &str) {
+    let tail: Vec<Message> = conversation.messages.get(from..).map(<[Message]>::to_vec).unwrap_or_default();
+    if tail.is_empty() {
         return;
     }
-    let mut all = match conversation.versions.take().filter(|v| v.prompt == prompt) {
+    let mut all = match conversation.versions.take().filter(|v| v.start() == from && v.kind == kind) {
         Some(v) => {
             let mut all = v.others;
-            all.insert(v.current.min(all.len()), answer);
+            all.insert(v.current.min(all.len()), tail);
             all
         }
-        None => vec![answer],
+        None => vec![tail],
     };
     all.truncate(20);
     let current = all.len();
-    conversation.versions = Some(Versions { prompt, others: all, current });
+    conversation.versions = Some(Versions { from, kind: kind.to_string(), others: all, current });
 }
 
-/// Shows answer `target` (0-based) to the last prompt.
+/// Shows branch `target` (0-based) at the conversation's branch point.
 pub fn select_version(conversation: &mut Conversation, target: usize) -> Result<(), String> {
-    let prompt = last_prompt(conversation).ok_or("There is nothing to switch.")?;
-    let versions = conversation.versions.take().filter(|v| v.prompt == prompt).ok_or("This answer has no other versions.")?;
-    let live = conversation.messages.split_off(prompt + 1);
-    let mut all = versions.others;
-    all.insert(versions.current.min(all.len()), live);
-    if target >= all.len() {
-        // Put things back as they were.
-        let live = all.remove(versions.current.min(all.len() - 1));
-        conversation.messages.extend(live);
-        conversation.versions = Some(Versions { prompt, others: all, current: versions.current });
+    let versions = conversation.versions.take().ok_or("This conversation has no other versions.")?;
+    let start = versions.start();
+    if start > conversation.messages.len() || target > versions.others.len() {
+        conversation.versions = Some(versions);
         return Err("There is no such version.".into());
     }
+    let live = conversation.messages.split_off(start);
+    let mut all = versions.others;
+    all.insert(versions.current.min(all.len()), live);
     let chosen = all.remove(target);
     conversation.messages.extend(chosen);
-    conversation.times.retain(|(i, _)| *i <= prompt);
-    conversation.ratings.retain(|(i, _)| *i <= prompt);
-    if conversation.summary.as_ref().is_some_and(|s| s.upto > prompt) {
+    conversation.times.retain(|(i, _)| *i < start);
+    conversation.ratings.retain(|(i, _)| *i < start);
+    if conversation.summary.as_ref().is_some_and(|s| s.upto > start) {
         conversation.summary = None;
     }
-    conversation.versions = Some(Versions { prompt, others: all, current: target });
+    conversation.versions = Some(Versions { from: versions.from, kind: versions.kind, others: all, current: target });
     Ok(())
 }
 
@@ -524,13 +559,25 @@ pub fn view(conversation: &Conversation) -> ConversationView {
         versions: conversation
             .versions
             .as_ref()
-            .filter(|v| Some(v.prompt) == last_prompt(conversation) && !v.others.is_empty())
-            .map(|v| VersionsView { current: v.current, total: v.others.len() + 1 }),
+            .filter(|v| v.start() <= conversation.messages.len() && !v.others.is_empty())
+            .map(|v| VersionsView {
+                // A legacy answer branch starts after its prompt.
+                from: if v.kind.is_empty() { v.from } else { v.start() },
+                kind: if v.kind.is_empty() { "answer".into() } else { v.kind.clone() },
+                current: v.current,
+                total: v.others.len() + 1,
+            }),
     }
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn tags_are_cleaned() {
+        let tags = clean_tags(&["#Work".into(), " work ".into(), "".into(), "Q4 plan".into()]);
+        assert_eq!(tags, ["work", "q4 plan"]);
+    }
+
     #[test]
     fn regenerated_answers_are_kept_as_versions() {
         let mut c = Conversation::new("v".into(), None, None);
@@ -544,10 +591,10 @@ mod tests {
             _ => String::new(),
         };
         // Regenerate twice: keep the answer, then a new one is written.
-        keep_answer(&mut c, 0);
+        keep_branch(&mut c, 0, "answer");
         c.messages.truncate(1);
         c.messages.push(Message::assistant("A2"));
-        keep_answer(&mut c, 0);
+        keep_branch(&mut c, 0, "answer");
         c.messages.truncate(1);
         c.messages.push(Message::assistant("A3"));
         let v = view(&c).versions.unwrap();
@@ -560,9 +607,25 @@ mod tests {
         assert_eq!(text(&c), "A2", "a bad index leaves the answer as it was");
         select_version(&mut c, 2).unwrap();
         assert_eq!(text(&c), "A3");
-        // A new prompt starts fresh: no versions to show.
+        // The branch point survives later messages; they belong to the branch showing.
         c.messages.push(Message::user("Next"));
-        assert!(view(&c).versions.is_none());
+        c.messages.push(Message::assistant("N1"));
+        select_version(&mut c, 0).unwrap();
+        assert_eq!(c.messages.len(), 2, "branch A1 had no follow-up");
+        select_version(&mut c, 2).unwrap();
+        assert_eq!(text(&c), "N1", "the follow-up came back with its branch");
+
+        // Editing an earlier message branches there and keeps the old continuation.
+        keep_branch(&mut c, 2, "prompt");
+        c.messages.truncate(2);
+        c.messages.push(Message::user("Next, edited"));
+        c.messages.push(Message::assistant("E1"));
+        let v = view(&c).versions.unwrap();
+        assert_eq!((v.from, v.kind.as_str(), v.current, v.total), (2, "prompt", 1, 2));
+        select_version(&mut c, 0).unwrap();
+        assert_eq!(text(&c), "N1");
+        select_version(&mut c, 1).unwrap();
+        assert_eq!(text(&c), "E1");
     }
 
     use super::*;

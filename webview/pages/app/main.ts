@@ -395,15 +395,29 @@ function renderFooter(): HTMLElement {
 
 function openSearch() {
   void modal((close) => {
-    const input = h('input', { class: 'input', placeholder: 'Search conversations' });
+    const input = h('input', { class: 'input', placeholder: 'Search conversations, or #tag' });
     const results = h('div', { class: 'search-results' });
     const render = () => {
       const q = input.value.toLowerCase().trim();
-      const found = state.conversations.filter((c) => !q || c.title.toLowerCase().includes(q)).slice(0, 30);
+      // `#tag` matches tags only; plain words match titles and tags.
+      const tagQuery = q.startsWith('#') ? q.slice(1) : null;
+      const found = state.conversations
+        .filter((c) =>
+          !q ? true : tagQuery !== null ? c.tags.some((t) => t.startsWith(tagQuery)) : c.title.toLowerCase().includes(q) || c.tags.some((t) => t.includes(q))
+        )
+        .slice(0, 30);
       clear(
         results,
         found.length
-          ? found.map((c) => h('button', { class: 'menu-item', on: { click: () => { close(); navigate({ kind: 'chat', id: c.id }); } } }, icon('chat', 16), h('span', {}, c.title)))
+          ? found.map((c) =>
+              h(
+                'button',
+                { class: 'menu-item', on: { click: () => { close(); navigate({ kind: 'chat', id: c.id }); } } },
+                icon(c.archived ? 'archive' : 'chat', 16),
+                h('span', {}, c.title),
+                c.tags.length ? h('span', { class: 'tag-list' }, c.tags.map((t) => h('span', { class: 'tag' }, `#${t}`))) : null
+              )
+            )
           : h('p', { class: 'muted' }, 'Nothing found.')
       );
     };

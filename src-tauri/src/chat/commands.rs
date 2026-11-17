@@ -178,6 +178,8 @@ pub struct UpdateConversation {
     pub unread: Option<bool>,
     #[serde(default)]
     pub archived: Option<bool>,
+    #[serde(default)]
+    pub tags: Option<Vec<String>>,
     /// `(turn index, -1 | 0 | 1)`.
     #[serde(default)]
     pub rating: Option<(usize, i8)>,
@@ -207,6 +209,9 @@ pub fn chat_update_conversation(app: AppHandle, update: UpdateConversation) -> R
     }
     if let Some(unread) = update.unread {
         conversation.unread = unread;
+    }
+    if let Some(tags) = update.tags {
+        conversation.tags = store::clean_tags(&tags);
     }
     if let Some(archived) = update.archived {
         conversation.archived = archived;

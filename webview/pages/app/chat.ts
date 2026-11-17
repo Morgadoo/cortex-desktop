@@ -582,7 +582,7 @@ function textOf(parts: Part[]): string {
     .join('\n\n');
 }
 
-function renderUserTurn(turn: Turn, conversationId: string): HTMLElement {
+function renderUserTurn(turn: Turn, conversationId: string, branch: HTMLElement | null = null): HTMLElement {
   const text = textOf(turn.parts);
   const copy = h('button', { class: 'icon-btn small', title: 'Copy' }, icon('copy', 15));
   copy.addEventListener('click', () => void navigator.clipboard.writeText(text));
@@ -634,7 +634,7 @@ function renderUserTurn(turn: Turn, conversationId: string): HTMLElement {
     'div',
     { class: 'turn turn-user' },
     bubble,
-    h('div', { class: 'turn-actions user-actions' }, turn.index >= 0 ? editButton(turn, conversationId, text) : null, copy, h('span', { class: 'turn-time' }, timeLabel(turn.time)))
+    h('div', { class: `turn-actions user-actions${branch ? ' pinned' : ''}` }, branch, turn.index >= 0 ? editButton(turn, conversationId, text) : null, copy, h('span', { class: 'turn-time' }, timeLabel(turn.time)))
   );
 }
 
@@ -674,7 +674,7 @@ function editButton(turn: Turn, conversationId: string, text: string): HTMLEleme
   return button;
 }
 
-function renderAssistantTurn(conversation: Conversation, turn: Turn, isLast: boolean, running: boolean): HTMLElement {
+function renderAssistantTurn(conversation: Conversation, turn: Turn, isLast: boolean, running: boolean, branch: HTMLElement | null = null): HTMLElement {
   const durations = isLast ? stepDurations.get(conversation.id) : undefined;
   const el = h('div', { class: 'turn turn-assistant' }, ...renderParts(turn.parts, false, `${conversation.id}:${turn.index}`, durations));
   // A reply that stopped after its tools ran, before answering, can pick up where it left off.
@@ -692,7 +692,7 @@ function renderAssistantTurn(conversation: Conversation, turn: Turn, isLast: boo
   if (!isLast || !running) {
     const sources = renderSources(sourcesOf(turn.parts));
     if (sources) el.append(sources);
-    el.append(renderActions(conversation, turn, isLast));
+    el.append(renderActions(conversation, turn, isLast, branch));
   }
   return el;
 }
@@ -754,7 +754,7 @@ function renderSources(sources: Source[]): HTMLElement | null {
   return h('div', { class: 'sources-row' }, chip);
 }
 
-function renderActions(conversation: Conversation, turn: Turn, isLast: boolean): HTMLElement {
+function renderActions(conversation: Conversation, turn: Turn, isLast: boolean, branch: HTMLElement | null = null): HTMLElement {
   const rate = (value: number) => async () => {
     const next = turn.rating === value ? 0 : value;
     turn.rating = next;
@@ -768,11 +768,10 @@ function renderActions(conversation: Conversation, turn: Turn, isLast: boolean):
     copy.replaceChildren(icon('check', 16));
     setTimeout(() => copy.replaceChildren(icon('copy', 16)), 1200);
   });
-  const versions = isLast && conversation.versions ? versionSwitcher(conversation.id, conversation.versions) : null;
   const actions = h(
     'div',
     { class: 'turn-actions' },
-    versions,
+    branch,
     h('button', { class: `icon-btn small${turn.rating > 0 ? ' active-good' : ''}`, title: 'Good reply', on: { click: rate(1) } }, icon('thumbUp', 16)),
     h('button', { class: `icon-btn small${turn.rating < 0 ? ' active-bad' : ''}`, title: 'Bad reply', on: { click: rate(-1) } }, icon('thumbDown', 16)),
     isLast ? h('button', { class: 'icon-btn small', title: 'Regenerate', on: { click: () => void regenerate(conversation.id) } }, icon('retry', 16)) : null,
@@ -785,7 +784,7 @@ function renderActions(conversation: Conversation, turn: Turn, isLast: boolean):
 }
 
 /** ‹ 2 / 3 ›: earlier answers to the last prompt, kept when it was regenerated. */
-function versionSwitcher(conversationId: string, versions: { current: number; total: number }): HTMLElement {
+function versionSwitcher(conversationId: string, versions: { current: number; total: number; kind: string }): HTMLElement {
   const go = (index: number) => async () => {
     try {
       await api.selectVersion(conversationId, index);
@@ -798,7 +797,7 @@ function versionSwitcher(conversationId: string, versions: { current: number; to
   const next = iconButton({ icon: 'forward', title: 'Next answer', size: 'xs', onClick: go(versions.current + 1) });
   prev.disabled = versions.current === 0;
   next.disabled = versions.current >= versions.total - 1;
-  return h('span', { class: 'versions', title: 'Answers to this message' }, prev, h('span', { class: 'versions-label' }, `${versions.current + 1} / ${versions.total}`), next);
+  return h('span', { class: 'versions', title: versions.kind === 'prompt' ? 'Versions of this message and what followed' : 'Answers to this message' }, prev, h('span', { class: 'versions-label' }, `${versions.current + 1} / ${versions.total}`), next);
 }
 
 /** The audio that is playing, so starting another stops it. */
@@ -2003,7 +2002,16 @@ export class ChatView {
     clear(
       this.transcript,
       c.turns.flatMap((turn, i) => {
-        const el = turn.role === 'user' ? renderUserTurn(turn, c.id) : renderAssistantTurn(c, turn, i === last, running);
+        // The branch switcher sits on the turn that varies: an edited message, or a regenerated answer.
+        const v = c.versions;
+        const previous = c.turns[i - 1];
+        const branch =
+          v &&
+          ((turn.role === 'user' && v.kind === 'prompt' && turn.index === v.from) ||
+            (turn.role === 'assistant' && v.kind === 'answer' && previous?.role === 'user' && previous.index === v.from))
+            ? versionSwitcher(c.id, v)
+            : null;
+        const el = turn.role === 'user' ? renderUserTurn(turn, c.id, branch) : renderAssistantTurn(c, turn, i === last, running, branch);
         // Turns before the summary point reach the model only through the summary.
         if (divider !== null && divider !== undefined && !marked && turn.role === 'user' && turn.index >= divider) {
           marked = true;
@@ -2128,6 +2136,13 @@ export function conversationMenu(anchor: HTMLElement, id: string, title: string,
       }),
       item('folder', 'Move to project', () => void moveToProject(id)),
       item('download', 'Export as Markdown', () => void api.exportConversation(id).then((saved) => saved && toast('Conversation exported.'))),
+      item('tag', 'Tags…', async () => {
+        const current = state.conversations.find((c) => c.id === id)?.tags ?? [];
+        const next = await promptText('Tags (comma separated)', current.join(', '));
+        if (next === null || next === undefined) return;
+        await api.updateConversation({ id, tags: next.split(',') });
+        await refreshConversations();
+      }),
       item('archive', state.conversations.find((c) => c.id === id)?.archived ? 'Unarchive' : 'Archive', async () => {
         const archived = !state.conversations.find((c) => c.id === id)?.archived;
         await api.updateConversation({ id, archived });

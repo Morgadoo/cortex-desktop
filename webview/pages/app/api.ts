@@ -44,6 +44,7 @@ export interface ConversationSummary {
   unread: boolean;
   pinned: boolean;
   archived: boolean;
+  tags: string[];
   updatedAt: string;
 }
 
@@ -82,7 +83,7 @@ export interface Conversation {
   turns: Turn[];
   running: boolean;
   /** Which answer to the last prompt shows, when it was answered more than once. */
-  versions: { current: number; total: number } | null;
+  versions: { from: number; kind: 'answer' | 'prompt'; current: number; total: number } | null;
 }
 
 export interface Project {
@@ -249,6 +250,7 @@ export const api = {
     projectId?: string | null;
     rating?: [number, number];
     archived?: boolean;
+    tags?: string[];
   }) => call<void>('chat_update_conversation', { update }),
   selectVersion: (id: string, index: number) => call<void>('chat_select_version', { id, index }),
   steer: (conversationId: string, text: string) => call<boolean>('chat_steer', { conversationId, text }),

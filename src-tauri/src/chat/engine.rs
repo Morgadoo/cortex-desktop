@@ -308,7 +308,7 @@ fn rewind_to_last_prompt(conversation: &mut Conversation) -> bool {
     match store::last_prompt(conversation) {
         Some(index) => {
             // The answer being replaced stays available as an earlier version.
-            store::keep_answer(conversation, index);
+            store::keep_branch(conversation, index, "answer");
             conversation.messages.truncate(index + 1);
             conversation.times.retain(|(i, _)| *i <= index);
             conversation.ratings.retain(|(i, _)| *i <= index);
@@ -380,8 +380,9 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         if !is_prompt || request.text.trim().is_empty() {
             return Err("That message cannot be edited.".into());
         }
+        // The old message and everything after it stay available as a branch.
+        store::keep_branch(&mut conversation, index, "prompt");
         conversation.messages.truncate(index);
-        conversation.versions = None;
         conversation.times.retain(|(i, _)| *i < index);
         conversation.ratings.retain(|(i, _)| *i < index);
         if conversation.summary.as_ref().is_some_and(|s| s.upto > index) {
@@ -404,7 +405,6 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
     } else {
         conversation.messages.push(user_message(request.text.trim(), &request.images)?);
         conversation.times.push((conversation.messages.len() - 1, Utc::now()));
-        conversation.versions = None;
     }
     conversation.updated_at = Utc::now();
     store::save_conversation(&config_dir, &conversation)?;

@@ -144,9 +144,9 @@ against the 5 that survived), and Mistral's documentation: docs.mistral.ai/vibe,
 | Autonomous scheduled agents | openbot, grok-bot | Scheduled tasks with unattended / autonomous runs | Done |
 | Memory | open-webui, LibreChat | Knowledge | Done |
 | Prompt library | open-webui, LibreChat | Skills (`/name`) and Workflows | Done |
-| Response versions | LibreChat, lobehub | Regenerate keeps earlier answers; ‹ 1 / n › switches between them. Branching at earlier turns: not yet | Done (last turn) |
+| Response versions and branching | LibreChat, lobehub | Regenerate keeps earlier answers; editing any earlier message keeps the old continuation; ‹ 1 / n › switches. One branch point at a time (the latest) | Done |
 | Conversation import | LibreChat, open-webui | ChatGPT and Claude exports (zip or conversations.json), visible branch only | Done |
-| Archive / folders / tags | open-webui | Archive, pin, and projects as folders; no free-form tags | Done (no tags) |
+| Archive / folders / tags | open-webui | Archive, pin, projects as folders, and tags searchable with `#tag` | Done |
 | Export | all | Each conversation as Markdown; all data | Done |
 | Personal-data filter | (none) | Optional redaction before cloud models | Extra |
 | Context management | (best practice) | Tool-result clearing, compaction at 60%, measured tokens and cost | Done |
@@ -160,6 +160,6 @@ against the 5 that survived), and Mistral's documentation: docs.mistral.ai/vibe,
 - **Voice input against a real provider:** dictation was verified end to end in the app with a
   virtual microphone and a mock transcription endpoint. The test proxy has no transcription
   endpoint (404), so it has not run against a real speech-to-text model yet.
-- **Branching at earlier turns:** answer versions are kept for the last message only.
-- **Tags:** conversations can be archived, pinned and grouped in projects, but not tagged.
+- **Branch history:** one branch point is kept per conversation (the most recent), not a full tree.
+- **Pull requests:** Code mode commits, but does not open pull requests yet.
 - **Branding:** the app still carries the Lumo name and logo; a new name is the owner's decision.
