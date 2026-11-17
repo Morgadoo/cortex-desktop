@@ -950,9 +950,48 @@ pub fn chat_remove_document(app: AppHandle, library_id: String, document_id: Str
 }
 
 #[tauri::command]
-pub fn chat_search_libraries(app: AppHandle, query: String, library_id: Option<String>) -> Result<Vec<super::libraries::Passage>, String> {
+pub async fn chat_search_libraries(app: AppHandle, query: String, library_id: Option<String>) -> Result<Vec<super::libraries::Passage>, String> {
     let only: Vec<String> = library_id.into_iter().collect();
-    Ok(super::libraries::search(&config_dir(&app)?, &only, &query, 8))
+    Ok(super::embeddings::search(&config_dir(&app)?, &only, &query, 8).await.0)
+}
+
+#[tauri::command]
+pub fn chat_embedding_settings(app: AppHandle) -> Result<super::embeddings::EmbeddingSettings, String> {
+    Ok(super::embeddings::load(&config_dir(&app)?))
+}
+
+/// Saves semantic-search settings; a key given is stored in the keychain.
+#[tauri::command]
+pub async fn chat_save_embedding_settings(
+    app: AppHandle,
+    settings: super::embeddings::EmbeddingSettings,
+    key: Option<String>,
+    clear_key: bool,
+) -> Result<super::embeddings::EmbeddingSettings, String> {
+    let dir = config_dir(&app)?;
+    let mut settings = settings;
+    settings.has_key = super::embeddings::load(&dir).has_key;
+    if clear_key {
+        secrets()?.delete(super::embeddings::SECRET).await?;
+        settings.has_key = false;
+    }
+    if let Some(key) = key.map(|k| k.trim().to_string()).filter(|k| !k.is_empty()) {
+        secrets()?.store(super::embeddings::SECRET, &key).await?;
+        settings.has_key = true;
+    }
+    super::embeddings::save(&dir, &settings)?;
+    Ok(super::embeddings::load(&dir))
+}
+
+/// Embeds every library passage not embedded yet, so the first search is quick. Returns how many.
+#[tauri::command]
+pub async fn chat_index_libraries(app: AppHandle) -> Result<usize, String> {
+    let dir = config_dir(&app)?;
+    let settings = super::embeddings::load(&dir);
+    if !super::embeddings::ready(&settings) {
+        return Err("Turn on semantic search and set its server and model first.".into());
+    }
+    super::embeddings::index(&dir, &settings, &[]).await
 }
 
 #[tauri::command]

@@ -3,7 +3,7 @@
 //! Local-first retrieval. Documents are extracted to text once (PDF through rig's loader, HTML
 //! through `scraper`, everything else as text) and stored under `<config>/chat/libraries/<id>/`.
 //! Search is BM25 over overlapping passages, so it needs no embedding model and works with any
-//! provider; the `search_library` tool hands the model the best passages with their document
+//! provider; with an embedding model set up, `embeddings` adds semantic search and fuses both; the `search_library` tool hands the model the best passages with their document
 //! names, which it cites.
 
 use std::collections::HashMap;
@@ -167,13 +167,28 @@ pub fn add(config_dir: &Path, library_id: &str, path: &Path) -> Result<Library, 
     Ok(library)
 }
 
+/// Where a library keeps its documents' text (and their cached vectors).
+pub fn docs_dir(config_dir: &Path, library_id: &str) -> Result<PathBuf, String> {
+    Ok(lib_dir(config_dir, library_id)?.join("docs"))
+}
+
 pub fn remove(config_dir: &Path, library_id: &str, document_id: &str) -> Result<Library, String> {
     let mut library = load(config_dir, library_id)?;
     if !valid_id(document_id) {
         return Err("invalid document id".into());
     }
     library.documents.retain(|d| d.id != document_id);
-    let _ = std::fs::remove_file(lib_dir(config_dir, library_id)?.join("docs").join(format!("{document_id}.txt")));
+    let docs = docs_dir(config_dir, library_id)?;
+    let _ = std::fs::remove_file(docs.join(format!("{document_id}.txt")));
+    // Its cached vectors, for every model.
+    if let Ok(entries) = std::fs::read_dir(&docs) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with(&format!("{document_id}.")) && name.ends_with(".vec.json") {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
     save(config_dir, &library)?;
     Ok(library)
 }

@@ -12,6 +12,7 @@
 
 pub mod agents;
 pub mod audio;
+pub mod embeddings;
 mod backup;
 pub mod builtins;
 pub mod canvas;

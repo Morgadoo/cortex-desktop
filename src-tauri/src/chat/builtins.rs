@@ -371,11 +371,11 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
                     None => return err(format!("There is no library named {wanted}.")),
                 }
             };
-            let hits = super::libraries::search(config_dir, &only, &query, 6);
+            let (hits, note) = super::embeddings::search(config_dir, &only, &query, 6).await;
             if hits.is_empty() {
-                ok(json!({ "query": query, "passages": [], "note": "Nothing matched; try other keywords." }).to_string())
+                ok(json!({ "query": query, "passages": [], "note": note.unwrap_or_else(|| "Nothing matched; try other keywords.".into()) }).to_string())
             } else {
-                ok(serde_json::to_string_pretty(&json!({ "query": query, "passages": hits })).unwrap_or_default())
+                ok(serde_json::to_string_pretty(&json!({ "query": query, "passages": hits, "note": note })).unwrap_or_default())
             }
         }
         UPDATE_PLAN => {

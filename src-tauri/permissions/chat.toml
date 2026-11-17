@@ -497,3 +497,8 @@ commands.allow = ["chat_set_params"]
 identifier = "allow-chat-follow-ups"
 description = "Suggest follow-up messages after a reply."
 commands.allow = ["chat_follow_ups"]
+
+[[permission]]
+identifier = "allow-chat-embeddings"
+description = "Set up semantic search for libraries and embed their documents."
+commands.allow = ["chat_embedding_settings", "chat_save_embedding_settings", "chat_index_libraries"]

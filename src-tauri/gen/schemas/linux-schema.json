@@ -357,6 +357,12 @@
           "markdownDescription": "Draft an agent from a description."
         },
         {
+          "description": "Set up semantic search for libraries and embed their documents.",
+          "type": "string",
+          "const": "allow-chat-embeddings",
+          "markdownDescription": "Set up semantic search for libraries and embed their documents."
+        },
+        {
           "description": "Export all conversations and data to a folder the user picks.",
           "type": "string",
           "const": "allow-chat-export-all",

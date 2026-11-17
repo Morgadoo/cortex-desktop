@@ -237,6 +237,81 @@ async function renderProviders(content: HTMLElement) {
   const sorted = [...providers].sort((a, b) => Number(b.ready) - Number(a.ready));
   for (const provider of sorted) list.append(providerCard(provider));
   content.append(await mediaCard());
+  content.append(await embeddingCard());
+}
+
+interface EmbeddingSettings {
+  enabled: boolean;
+  baseUrl: string;
+  model: string;
+  hasKey: boolean;
+}
+
+/** Semantic search for libraries: an OpenAI-compatible embedding model, fused with keyword search. */
+async function embeddingCard(): Promise<HTMLElement> {
+  let current = await tauriInvoke<EmbeddingSettings>('chat_embedding_settings');
+  const PRESETS: [string, string, string][] = [
+    ['Ollama (this computer)', 'http://localhost:11434/v1', 'nomic-embed-text'],
+    ['LM Studio (this computer)', 'http://localhost:1234/v1', 'text-embedding-nomic-embed-text-v1.5'],
+    ['OpenAI', 'https://api.openai.com/v1', 'text-embedding-3-small'],
+    ['Mistral', 'https://api.mistral.ai/v1', 'mistral-embed'],
+  ];
+  const baseUrl = h('input', { class: 'input', value: current.baseUrl, placeholder: 'http://localhost:11434/v1' });
+  const model = h('input', { class: 'input', value: current.model, placeholder: 'nomic-embed-text' });
+  const key = h('input', { class: 'input', type: 'password', placeholder: current.hasKey ? 'Saved in the keychain' : 'Not needed for local servers' });
+  const presets = h(
+    'div',
+    { class: 'preset-row' },
+    PRESETS.map(([label, url, m]) => h('button', { class: 'chip-btn', on: { click: () => { baseUrl.value = url; model.value = m; } } }, label))
+  );
+  let enabled = current.enabled;
+  const status = h('small', { class: 'muted' });
+  const save = h('button', { class: 'btn btn-primary' }, 'Save');
+  const indexNow = h('button', { class: 'btn btn-secondary' }, 'Embed documents now');
+  const persist = async () => {
+    current = await tauriInvoke<EmbeddingSettings>('chat_save_embedding_settings', {
+      settings: { enabled, baseUrl: baseUrl.value, model: model.value, hasKey: current.hasKey },
+      key: key.value.trim() || null,
+      clearKey: false,
+    });
+    key.value = '';
+    key.placeholder = current.hasKey ? 'Saved in the keychain' : 'Not needed for local servers';
+  };
+  save.addEventListener('click', async () => {
+    try {
+      await persist();
+      toast('Saved.');
+    } catch (e) {
+      toast(String(e), 'error');
+    }
+  });
+  indexNow.addEventListener('click', async () => {
+    indexNow.setAttribute('disabled', '');
+    status.textContent = 'Embedding library documents…';
+    try {
+      await persist();
+      const n = await tauriInvoke<number>('chat_index_libraries');
+      status.textContent = n ? `Embedded ${n} passages. Library searches now match by meaning too.` : 'Every document is already embedded.';
+    } catch (e) {
+      status.textContent = String(e);
+    } finally {
+      indexNow.removeAttribute('disabled');
+    }
+  });
+  return card(
+    h('h3', {}, 'Semantic search'),
+    h('p', { class: 'muted' }, 'Library searches always match words. With an embedding model they also match meaning ("cancel the contract" finds the termination clause), and both rankings are merged. Any OpenAI-compatible embeddings server works, including Ollama on this computer.'),
+    row('Use semantic search', 'Documents are embedded once and kept with the library.', switchInput(enabled, (v) => { enabled = v; })),
+    presets,
+    h('label', { class: 'field-label' }, 'Server base URL'),
+    baseUrl,
+    h('label', { class: 'field-label' }, 'Embedding model'),
+    model,
+    h('label', { class: 'field-label' }, 'API key'),
+    key,
+    status,
+    h('div', { class: 'card-actions' }, indexNow, save)
+  );
 }
 
 interface MediaModels {

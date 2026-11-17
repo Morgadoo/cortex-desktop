@@ -90,6 +90,7 @@
     "allow-chat-favicon",
     "allow-chat-link-preview",
     "allow-chat-debug",
+    "allow-chat-embeddings",
     "allow-chat-set-params",
     "allow-chat-follow-ups",
     "allow-chat-save-shared-page",

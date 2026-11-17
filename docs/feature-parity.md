@@ -221,6 +221,7 @@ items most likely to differ:
 | Read aloud (TTS) | open-webui, lobehub | Speaker under each answer, via rig speech models (xAI, OpenAI); verified live | Done |
 | Audio provider setup | open-webui (Admin → Audio) | Settings → Audio, as Open WebUI sets it up. Speech to text: chat providers, any OpenAI-compatible server (base URL, key, model, language) or ElevenLabs. Text to speech: chat providers, OpenAI-compatible (Kokoro, LocalAI, Speaches…), xAI, ElevenLabs (account voices listed) or the system voice. Each has its voice, speed and keychain-stored key. Auto-send after dictation, auto-play of answers. OpenAI-compatible TTS and auto-play verified live | Done |
 | RAG over documents | open-webui, onyx | Libraries and project files, cited | Done |
+| Hybrid retrieval (keywords + embeddings) | open-webui, onyx, LibreChat, lobehub | Settings → Providers → Semantic search: any OpenAI-compatible embeddings server (Ollama, LM Studio, OpenAI, Mistral presets). Passages are embedded once and cached per model; BM25 and vector rankings merge by reciprocal rank fusion; if the server fails, keyword results come back with a note. Verified live against a local OpenAI-compatible test server ("cancel the contract" → the Termination section); not yet run against a real embedding model | Done |
 | Web search with citations | open-webui, onyx, LibreChat | Keyless web search, citation pills, Sources | Done |
 | Deep research | onyx | deep-research skill with parallel sub-agents | Done |
 | MCP tools | LibreChat, lobehub, osaurus | MCP connectors and catalog | Done |
