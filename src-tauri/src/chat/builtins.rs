@@ -16,6 +16,7 @@ pub const UPDATE_PLAN: &str = "update_plan";
 pub const DELEGATE: &str = "delegate";
 /// Run by the engine, which knows the conversation the canvas belongs to.
 pub const CANVAS: &str = "canvas";
+pub const SCHEDULE_TASK: &str = "schedule_task";
 
 fn tool(name: &str, description: &str, parameters: Value) -> ChatTool {
     ChatTool {
@@ -109,6 +110,27 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             "required": ["content"]
         }),
     ));
+    out.push(tool(
+        SCHEDULE_TASK,
+        "Schedule a prompt to run automatically, when the user asks for something recurring or \
+         later (\"every Monday at 9, send me…\", \"tomorrow at 8 remind me…\"). Each run \
+         starts a new conversation with the prompt. Write the prompt so it stands alone. Times \
+         are the user's local time.",
+        json!({
+            "type": "object",
+            "properties": {
+                "title": { "type": "string", "description": "A few words for the task list." },
+                "prompt": { "type": "string", "description": "What to do on each run, written to stand alone." },
+                "frequency": { "type": "string", "enum": ["once", "daily", "weekly", "monthly"] },
+                "time": { "type": "string", "description": "24-hour local time, HH:MM." },
+                "days": { "type": "array", "items": { "type": "string" }, "description": "Weekly: day names, e.g. [\"monday\"]." },
+                "day_of_month": { "type": "integer", "minimum": 1, "maximum": 31 },
+                "date": { "type": "string", "description": "Once: YYYY-MM-DD." },
+                "agent": { "type": "string", "description": "Name of an agent to run it as, if the user named one." }
+            },
+            "required": ["title", "prompt", "frequency", "time"]
+        }),
+    ));
     if memory::load(config_dir).enabled {
         out.push(tool(
             REMEMBER,
@@ -144,7 +166,7 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
 }
 
 pub fn is_builtin(name: &str) -> bool {
-    matches!(name, WEB_SEARCH | REMEMBER | FORGET | USE_SKILL | UPDATE_PLAN)
+    matches!(name, WEB_SEARCH | REMEMBER | FORGET | USE_SKILL | UPDATE_PLAN | SCHEDULE_TASK)
 }
 
 fn ok(text: impl Into<String>) -> Outcome {
@@ -190,6 +212,7 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
                 Err(e) => err(e),
             }
         }
+        SCHEDULE_TASK => schedule(config_dir, args),
         UPDATE_PLAN => {
             let steps = args.get("steps").and_then(Value::as_array).map_or(0, Vec::len);
             if steps == 0 {
@@ -207,9 +230,75 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
     }
 }
 
+fn schedule(config_dir: &Path, args: &Value) -> Outcome {
+    use super::tasks::{self, Frequency};
+    let s = |k: &str| args.get(k).and_then(Value::as_str).unwrap_or_default().trim().to_string();
+    let time = s("time");
+    let frequency = match s("frequency").as_str() {
+        "once" => Frequency::Once { date: s("date"), time },
+        "daily" => Frequency::Daily { time },
+        "weekly" => {
+            let days: Vec<u8> = args
+                .get("days")
+                .and_then(Value::as_array)
+                .map(|a| a.iter().filter_map(Value::as_str).filter_map(tasks::weekday_index).collect())
+                .unwrap_or_default();
+            Frequency::Weekly { days, time }
+        }
+        "monthly" => Frequency::Monthly { day: args.get("day_of_month").and_then(Value::as_u64).unwrap_or(1).min(31) as u8, time },
+        other => return err(format!("Unknown frequency `{other}`.")),
+    };
+    let agent_id = match s("agent") {
+        name if name.is_empty() => None,
+        name => match super::agents::load(config_dir).into_iter().find(|a| a.name.eq_ignore_ascii_case(&name)) {
+            Some(agent) => Some(agent.id),
+            None => return err(format!("There is no agent named {name}.")),
+        },
+    };
+    let task = tasks::Task {
+        id: uuid::Uuid::new_v4().to_string(),
+        title: s("title"),
+        prompt: s("prompt"),
+        frequency: frequency.clone(),
+        agent_id,
+        model: None,
+        enabled: true,
+        allow_changes: false,
+        created_at: chrono::Utc::now(),
+        last_run: None,
+        last_conversation: None,
+        last_status: None,
+        next_run: None,
+    };
+    let id = task.id.clone();
+    match tasks::save(config_dir, task) {
+        Ok(saved) => {
+            let next = saved.iter().find(|t| t.id == id).and_then(|t| t.next_run);
+            ok(json!({
+                "scheduled": tasks::describe(&frequency),
+                "next_run": next.map(|n| n.with_timezone(&chrono::Local).format("%A %-d %B %Y, %H:%M").to_string()),
+                "note": "Tell the user it is scheduled; they can pause or edit it on the Scheduled page."
+            })
+            .to_string())
+        }
+        Err(e) => err(e),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn scheduling_from_chat_creates_a_task() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = run(dir.path(), SCHEDULE_TASK, &json!({"title": "AI news", "prompt": "Brief me", "frequency": "weekly", "time": "09:00", "days": ["monday"]})).await;
+        assert!(!out.is_error, "{}", out.text);
+        assert!(out.text.contains("Every Monday at 09:00"));
+        assert_eq!(super::super::tasks::load(dir.path()).len(), 1);
+        let bad = run(dir.path(), SCHEDULE_TASK, &json!({"title": "x", "prompt": "y", "frequency": "hourly", "time": "09:00"})).await;
+        assert!(bad.is_error);
+    }
 
     #[tokio::test]
     async fn memory_tools_save_and_forget() {
@@ -238,9 +327,9 @@ mod tests {
     fn definitions_follow_settings() {
         let dir = tempfile::tempdir().unwrap();
         let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).collect();
-        assert_eq!(names, [WEB_SEARCH, UPDATE_PLAN, DELEGATE, CANVAS, REMEMBER, FORGET, USE_SKILL]);
+        assert_eq!(names, [WEB_SEARCH, UPDATE_PLAN, DELEGATE, CANVAS, SCHEDULE_TASK, REMEMBER, FORGET, USE_SKILL]);
         memory::save(dir.path(), &memory::Memories { enabled: false, items: vec![] }).unwrap();
         let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).collect();
-        assert_eq!(names, [WEB_SEARCH, UPDATE_PLAN, DELEGATE, CANVAS, USE_SKILL]);
+        assert_eq!(names, [WEB_SEARCH, UPDATE_PLAN, DELEGATE, CANVAS, SCHEDULE_TASK, USE_SKILL]);
     }
 }

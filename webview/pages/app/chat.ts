@@ -729,6 +729,8 @@ async function send(text: string, conversationId: string | null) {
   }
   const id = conversationId ?? newId();
   const projectId = state.view.kind === 'home' ? state.view.projectId ?? null : null;
+  const agentId = !conversationId && state.view.kind === 'home' ? state.view.agentId ?? null : null;
+  const agent = agentId ? state.agents.find((a) => a.id === agentId) : undefined;
   const workdir = !conversationId && state.mode === 'code' ? state.workdir : null;
   if (!conversationId) {
     pendingUser.set(id, text);
@@ -737,7 +739,16 @@ async function send(text: string, conversationId: string | null) {
     viewCache.chat?.addOptimistic(text);
   }
   try {
-    await api.send({ conversationId: id, text, model, speed: state.speed, approval: state.approval, projectId, workdir });
+    await api.send({
+      conversationId: id,
+      text,
+      model: agent?.model ?? model,
+      speed: agent?.think ? 'think' : state.speed,
+      approval: state.approval,
+      projectId,
+      workdir,
+      agentId,
+    });
     void refreshConversations();
   } catch (e) {
     toast(String(e), 'error');
@@ -1204,14 +1215,15 @@ const SUGGESTIONS = [
 export class HomeView {
   readonly el = h('div', { class: 'home' });
   readonly key: string;
-  constructor(private projectId: string | null) {
-    this.key = `home:${projectId ?? ''}:${state.mode}`;
+  constructor(private projectId: string | null, private agentId: string | null = null) {
+    this.key = `home:${projectId ?? ''}:${agentId ?? ''}:${state.mode}`;
     this.build();
   }
 
   build() {
     const project = state.projects.find((p) => p.id === this.projectId);
-    const code = state.mode === 'code';
+    const agent = state.agents.find((a) => a.id === this.agentId);
+    const code = state.mode === 'code' && !agent;
     const title = code
       ? h(
           'h1',
@@ -1220,13 +1232,15 @@ export class HomeView {
           h('button', { class: 'folder-pick', on: { click: () => void pickWorkdir() } }, icon('folder', 26), state.workdir ? state.workdir.split(/[\\/]/).pop() ?? state.workdir : 'Choose a folder'),
           '?'
         )
-      : h('h1', { class: 'greeting' }, project ? `New chat in ${project.name}` : greeting(state.instructions.name));
+      : agent
+        ? h('h1', { class: 'greeting' }, `What should ${agent.name} do?`)
+        : h('h1', { class: 'greeting' }, project ? `New chat in ${project.name}` : greeting(state.instructions.name));
     composer.attach(null, code ? 'What do you want to build?' : 'Ask anything. Type / for quick actions');
     const banner =
       state.models.length === 0
         ? h('div', { class: 'composer-banner' }, icon('key', 16), h('span', {}, 'Add an API key or a local server to start chatting'), h('button', { class: 'link-btn', on: { click: () => void openSettings('providers') } }, 'Add provider'))
         : null;
-    const suggestions = code
+    const suggestions = code || agent
       ? null
       : h(
           'div',
@@ -1245,7 +1259,7 @@ export class HomeView {
         );
     clear(
       this.el,
-      h('div', { class: 'home-inner' }, h('div', { class: 'brand-mark' }), title, h('div', { class: 'composer-wrap' }, banner, composer.el), suggestions)
+      h('div', { class: 'home-inner' }, agent ? h('span', { class: 'agent-avatar large' }, agent.avatar || agent.name.charAt(0)) : h('div', { class: 'brand-mark' }), title, h('div', { class: 'composer-wrap' }, banner, composer.el), suggestions)
     );
     setTimeout(() => composer.focus());
   }
@@ -1306,6 +1320,12 @@ export class ChatView {
     try {
       this.conversation = await api.conversation(this.id);
       pendingUser.delete(this.id);
+      // Opening a conversation that finished in the background marks it read.
+      const summary = state.conversations.find((c) => c.id === this.id);
+      if (summary?.unread && !state.live.has(this.id)) {
+        summary.unread = false;
+        void api.updateConversation({ id: this.id, unread: false }).then(() => changed());
+      }
     } catch {
       this.conversation = {
         id: this.id,
@@ -1318,6 +1338,7 @@ export class ChatView {
         running: true,
         usage: { inputTokens: 0, outputTokens: 0, cost: 0, contextTokens: 0 },
         compactedBefore: null,
+        agentId: null,
       };
     }
     const optimistic = pendingUser.get(this.id);

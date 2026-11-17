@@ -38,6 +38,14 @@
     "allow-chat-import-skill",
     "allow-chat-get-canvas",
     "allow-chat-save-canvas",
-    "allow-chat-export-canvas"
+    "allow-chat-export-canvas",
+    "allow-chat-list-agents",
+    "allow-chat-agent-templates",
+    "allow-chat-save-agent",
+    "allow-chat-delete-agent",
+    "allow-chat-list-tasks",
+    "allow-chat-save-task",
+    "allow-chat-delete-task",
+    "allow-chat-run-task"
   ]
 }

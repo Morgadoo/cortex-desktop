@@ -189,6 +189,12 @@
           "markdownDescription": "Add a memory."
         },
         {
+          "description": "List ready-made agents.",
+          "type": "string",
+          "const": "allow-chat-agent-templates",
+          "markdownDescription": "List ready-made agents."
+        },
+        {
           "description": "Answer a question the assistant asked.",
           "type": "string",
           "const": "allow-chat-answer",
@@ -199,6 +205,12 @@
           "type": "string",
           "const": "allow-chat-cancel",
           "markdownDescription": "Stop a reply in progress."
+        },
+        {
+          "description": "Delete an agent.",
+          "type": "string",
+          "const": "allow-chat-delete-agent",
+          "markdownDescription": "Delete an agent."
         },
         {
           "description": "Delete a conversation.",
@@ -223,6 +235,12 @@
           "type": "string",
           "const": "allow-chat-delete-skill",
           "markdownDescription": "Delete a user skill."
+        },
+        {
+          "description": "Delete a scheduled task.",
+          "type": "string",
+          "const": "allow-chat-delete-task",
+          "markdownDescription": "Delete a scheduled task."
         },
         {
           "description": "Save a canvas as Markdown to a file the user picks.",
@@ -267,6 +285,12 @@
           "markdownDescription": "Import a SKILL.md the user picks."
         },
         {
+          "description": "List agents.",
+          "type": "string",
+          "const": "allow-chat-list-agents",
+          "markdownDescription": "List agents."
+        },
+        {
           "description": "List saved conversations.",
           "type": "string",
           "const": "allow-chat-list-conversations",
@@ -297,10 +321,28 @@
           "markdownDescription": "List skills."
         },
         {
+          "description": "List scheduled tasks.",
+          "type": "string",
+          "const": "allow-chat-list-tasks",
+          "markdownDescription": "List scheduled tasks."
+        },
+        {
           "description": "Generate a sample reply under draft instructions.",
           "type": "string",
           "const": "allow-chat-preview-instructions",
           "markdownDescription": "Generate a sample reply under draft instructions."
+        },
+        {
+          "description": "Run a scheduled task now.",
+          "type": "string",
+          "const": "allow-chat-run-task",
+          "markdownDescription": "Run a scheduled task now."
+        },
+        {
+          "description": "Create or update an agent.",
+          "type": "string",
+          "const": "allow-chat-save-agent",
+          "markdownDescription": "Create or update an agent."
         },
         {
           "description": "Save the user's edit to a canvas as a new version.",
@@ -331,6 +373,12 @@
           "type": "string",
           "const": "allow-chat-save-skill",
           "markdownDescription": "Create or update a skill."
+        },
+        {
+          "description": "Create or update a scheduled task.",
+          "type": "string",
+          "const": "allow-chat-save-task",
+          "markdownDescription": "Create or update a scheduled task."
         },
         {
           "description": "Send a message and stream the reply.",

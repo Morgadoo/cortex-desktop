@@ -73,6 +73,15 @@ pub struct Conversation {
     /// Code sessions: the folder the assistant works in.
     #[serde(default)]
     pub workdir: Option<String>,
+    /// The agent the conversation runs as.
+    #[serde(default)]
+    pub agent_id: Option<String>,
+    /// The scheduled task that started it.
+    #[serde(default)]
+    pub task_id: Option<String>,
+    /// Finished while the user was elsewhere and not opened since.
+    #[serde(default)]
+    pub unread: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     #[serde(default)]
@@ -101,6 +110,9 @@ impl Conversation {
             model,
             pinned: false,
             workdir: None,
+            agent_id: None,
+            task_id: None,
+            unread: false,
             created_at: now,
             updated_at: now,
             messages: Vec::new(),
@@ -136,6 +148,9 @@ pub struct ConversationSummary {
     pub title: String,
     pub project_id: Option<String>,
     pub workdir: Option<String>,
+    pub agent_id: Option<String>,
+    pub task_id: Option<String>,
+    pub unread: bool,
     pub pinned: bool,
     pub updated_at: DateTime<Utc>,
 }
@@ -153,6 +168,9 @@ pub fn list_conversations(config_dir: &Path) -> Vec<ConversationSummary> {
             id: c.id,
             project_id: c.project_id,
             workdir: c.workdir,
+            agent_id: c.agent_id,
+            task_id: c.task_id,
+            unread: c.unread,
             pinned: c.pinned,
             updated_at: c.updated_at,
         })
@@ -243,6 +261,7 @@ pub struct ConversationView {
     pub title: String,
     pub project_id: Option<String>,
     pub workdir: Option<String>,
+    pub agent_id: Option<String>,
     pub model: Option<String>,
     pub pinned: bool,
     pub turns: Vec<Turn>,
@@ -356,6 +375,7 @@ pub fn view(conversation: &Conversation) -> ConversationView {
         title: conversation.title.clone(),
         project_id: conversation.project_id.clone(),
         workdir: conversation.workdir.clone(),
+        agent_id: conversation.agent_id.clone(),
         model: conversation.model.clone(),
         pinned: conversation.pinned,
         turns: turns(conversation),

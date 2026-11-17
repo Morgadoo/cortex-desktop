@@ -616,3 +616,54 @@ select.input { cursor: pointer; }
 .quote-chip span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tool-chip { font-weight: 600; }
 .bubble-quote { display: flex; gap: 6px; align-items: flex-start; color: var(--text-muted); font-size: 13.5px; border-left: 2px solid var(--border-strong); padding-left: 8px; margin-bottom: 6px; max-height: 4.5em; overflow: hidden; }
+
+/* ------------------------------------------------------------------ agents and scheduled tasks */
+
+.mode-switch:has(button:nth-child(3)) { grid-template-columns: 1fr 1fr 1fr; }
+.agent-avatar { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; border-radius: 10px; background: var(--accent-soft); color: var(--accent-strong); font-weight: 700; }
+.agent-avatar.small { width: 22px; height: 22px; font-size: 13px; border-radius: 7px; }
+.agent-avatar.large { width: 48px; height: 48px; font-size: 24px; border-radius: 14px; }
+.unread-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+.section-title { font-weight: 600; color: var(--text-secondary); margin-top: 12px; }
+.agent-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.agent-card { display: flex; flex-direction: column; gap: 14px; padding: 16px; border: 1px solid var(--border-strong); border-radius: 16px; background: var(--bg-elevated); text-align: left; transition: border-color 0.15s, transform 0.15s; }
+.agent-card:hover { border-color: var(--accent); }
+.agent-card.template { background: transparent; border-style: dashed; }
+.agent-card-head { display: flex; gap: 12px; align-items: flex-start; }
+.agent-card-head > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.agent-card-head small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.agent-card-foot { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.empty-state.wide { grid-column: 1 / -1; }
+.agent-title { display: flex; gap: 16px; align-items: center; }
+.agent-title h1 { margin: 0; }
+.agent-title p { margin: 4px 0 0; }
+.run-list { display: flex; flex-direction: column; }
+.run-row { display: grid; grid-template-columns: 18px 1fr auto auto; gap: 12px; align-items: center; padding: 10px 6px; border-bottom: 1px solid var(--border); text-align: left; border-radius: 8px; }
+.run-row:hover { background: var(--bg-hover); }
+.run-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.page.embedded { padding: 0; max-width: none; margin-top: 18px; }
+.page.embedded .page-header h1 { font-size: 20px; }
+.empty-line { padding: 12px 6px; margin: 0; }
+.task-list { display: flex; flex-direction: column; }
+.task-row { display: flex; align-items: center; gap: 12px; padding: 13px 8px; border-bottom: 1px solid var(--border); cursor: pointer; text-align: left; width: 100%; border-radius: 8px; }
+.task-row:hover { background: var(--bg-hover); }
+.task-row .icon { color: var(--text-muted); }
+.task-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.task-text .muted { font-size: 13px; }
+.suggestion-row strong { font-weight: 600; }
+.suggestion-row .muted { font-size: 13.5px; }
+.link-btn.small { font-size: 13px; display: inline-flex; align-items: center; gap: 4px; color: var(--accent-strong); }
+.freq-row { display: flex; gap: 12px; align-items: flex-end; }
+.freq-row > div { flex: 1; }
+.day-picker { display: flex; gap: 6px; flex-wrap: wrap; }
+.day { padding: 6px 10px; border-radius: 9px; border: 1px solid var(--border-strong); font-weight: 600; font-size: 13px; }
+.day.on { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
+.task-editor, .agent-editor { width: min(640px, 92vw); max-height: calc(100vh - 80px); overflow-y: auto; }
+.avatar-input { width: 72px; text-align: center; font-size: 20px; }
+.tool-grid { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 0 8px; }
+.tool-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 20px; border: 1px solid var(--border-strong); font-size: 13.5px; font-weight: 500; }
+.tool-toggle.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
+.tool-toggle:disabled { opacity: 0.55; }
+.modal:has(.agent-editor), .modal:has(.task-editor), .modal:has(.skill-editor), .modal:has(.dialog-small.wide) { width: min(680px, 94vw); }
+.task-editor, .agent-editor, .skill-editor, .dialog-small.wide { width: 100%; }
+.btn { white-space: nowrap; }

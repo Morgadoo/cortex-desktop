@@ -8,6 +8,8 @@ import { ChatView, HomeView, composer, conversationMenu, recordStepTimes, refres
 import { clear, h, icon, modal, popover, promptText, confirmDialog, toast } from './dom';
 import { ConnectorsPage, PlaceholderPage, openInstructions } from './pages';
 import { KnowledgePage, SkillsPage } from './context';
+import { AgentPage, AgentsPage, avatar, editAgent, reloadAgents } from './agents';
+import { TasksPage } from './tasks';
 import { applyTheme, openSettings, reloadModels, setTheme, storedTheme } from './settings';
 import { applyEvent, back, changed, forward, navigate, state, subscribe, type Page } from './state';
 
@@ -25,8 +27,9 @@ let view: View | null = null;
 function viewKey(): string {
   const v = state.view;
   if (v.kind === 'chat') return `chat:${v.id}`;
-  if (v.kind === 'page') return `page:${v.page}`;
-  return `home:${v.projectId ?? ''}:${state.mode}`;
+  if (v.kind === 'page') return v.page === 'scheduled' ? 'page:scheduled:' : `page:${v.page}`;
+  if (v.kind === 'agent') return `agent:${v.id}`;
+  return `home:${v.projectId ?? ''}:${v.agentId ?? ''}:${state.mode}`;
 }
 
 function renderMain() {
@@ -49,11 +52,17 @@ function renderMain() {
         ? new ConnectorsPage()
         : v.page === 'skills'
           ? new SkillsPage()
+          : v.page === 'agents'
+            ? new AgentsPage()
+            : v.page === 'scheduled'
+              ? new TasksPage()
           : v.page === 'knowledge'
             ? new KnowledgePage()
             : new PlaceholderPage(v.page);
+  } else if (v.kind === 'agent') {
+    view = new AgentPage(v.id, (agentId) => navigate({ kind: 'home', agentId }));
   } else {
-    const home = new HomeView(v.projectId ?? null);
+    const home = new HomeView(v.projectId ?? null, v.agentId ?? null);
     viewCache.home = home;
     view = home;
   }
@@ -96,12 +105,26 @@ function renderSidebar() {
   const modes = h(
     'div',
     { class: 'mode-switch' },
-    (['work', 'code'] as const).map((mode) =>
-      h('button', { class: state.mode === mode ? 'active' : '', on: { click: () => { state.mode = mode; navigate({ kind: 'home' }); } } }, mode === 'work' ? 'Work' : 'Code')
+    (['work', 'code', 'agents'] as const).map((mode) =>
+      h(
+        'button',
+        { class: state.mode === mode ? 'active' : '', on: { click: () => { state.mode = mode; navigate(mode === 'agents' ? { kind: 'page', page: 'agents' } : { kind: 'home' }); } } },
+        mode === 'work' ? 'Work' : mode === 'code' ? 'Code' : 'Agents'
+      )
     )
   );
 
   const nav = h('div', { class: 'nav' });
+  if (state.mode === 'agents') {
+    nav.append(
+      navItem('plus', 'New agent', false, () => void editAgent(null)),
+      navItem('apps', 'All agents', isPage('agents'), () => navigate({ kind: 'page', page: 'agents' })),
+      navItem('clock', 'Scheduled', isPage('scheduled'), () => navigate({ kind: 'page', page: 'scheduled' }))
+    );
+    const scroll = h('div', { class: 'sidebar-scroll' }, nav, renderAgents());
+    clear(sidebar, top, modes, scroll, renderFooter());
+    return;
+  }
   nav.append(navItem('plus', state.mode === 'code' ? 'New session' : 'New chat', v.kind === 'home', newChat));
   if (state.mode === 'work') {
     nav.append(navItem('apps', 'Apps', isPage('apps'), () => navigate({ kind: 'page', page: 'apps' }), h('span', { class: 'badge' }, 'Preview')));
@@ -120,6 +143,27 @@ function renderSidebar() {
 
   const scroll = h('div', { class: 'sidebar-scroll' }, nav, renderProjects(), renderConversations());
   clear(sidebar, top, modes, scroll, renderFooter());
+}
+
+function renderAgents(): HTMLElement {
+  const section = h('div', { class: 'sidebar-section' }, sectionHeading('Agents'));
+  if (!state.agents.length) section.append(h('p', { class: 'sidebar-empty' }, 'No agents yet'));
+  for (const agent of state.agents) {
+    const active = (state.view.kind === 'agent' && state.view.id === agent.id) || (state.view.kind === 'home' && state.view.agentId === agent.id);
+    const runs = state.conversations.filter((c) => c.agentId === agent.id);
+    const unread = runs.some((c) => c.unread);
+    section.append(
+      h(
+        'div',
+        { class: `conv-link project${active ? ' active' : ''}`, on: { click: () => navigate({ kind: 'agent', id: agent.id }) } },
+        avatar(agent),
+        h('span', { class: 'conv-title' }, agent.name),
+        unread ? h('span', { class: 'unread-dot' }) : null
+      )
+    );
+    for (const c of runs.slice(0, 4)) section.append(conversationLink(c.id, c.title, c.pinned, true));
+  }
+  return section;
 }
 
 function newChat() {
@@ -145,6 +189,7 @@ function conversationLink(id: string, title: string, pinned: boolean, nested = f
     { class: `conv-link${active ? ' active' : ''}${nested ? ' nested' : ''}`, on: { click: () => navigate({ kind: 'chat', id }) }, title },
     pinned ? icon('pin', 13) : null,
     h('span', { class: 'conv-title' }, title),
+    state.conversations.find((c) => c.id === id)?.unread ? h('span', { class: 'unread-dot' }) : null,
     running ? h('span', { class: 'dots small' }) : null,
     more
   );
@@ -216,7 +261,7 @@ function editProjectInstructions(id: string) {
 function renderConversations(): HTMLElement {
   const code = state.mode === 'code';
   const section = h('div', { class: 'sidebar-section' }, sectionHeading(code ? 'Sessions' : 'Conversations'));
-  const loose = state.conversations.filter((c) => !c.projectId && Boolean(c.workdir) === code);
+  const loose = state.conversations.filter((c) => !c.projectId && !c.agentId && Boolean(c.workdir) === code);
   if (!loose.length) section.append(h('p', { class: 'sidebar-empty' }, code ? 'No sessions yet' : 'No conversations yet'));
   for (const c of loose) section.append(conversationLink(c.id, c.title, c.pinned));
   return section;
@@ -308,6 +353,8 @@ async function start() {
 
   void listen<ChatEvent>('chat://event', (event) => {
     const id = event.conversationId;
+    // A scheduled run starts a conversation the page has not seen yet.
+    if (event.type === 'started' && !state.conversations.some((c) => c.id === id)) void refreshConversations();
     if (applyEvent(event)) {
       const live = state.live.get(id);
       if (live) recordStepTimes(id, live.starts, live.ends);
@@ -370,6 +417,7 @@ async function start() {
   state.projects = projects;
   state.conversations = conversations;
   state.skills = await api.skills().catch(() => []);
+  await reloadAgents().catch(() => undefined);
   await reloadModels().catch((e) => toast(String(e), 'error'));
   changed();
   if (!state.models.length) void openSettings('providers');

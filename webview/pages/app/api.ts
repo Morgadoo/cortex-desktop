@@ -39,6 +39,9 @@ export interface ConversationSummary {
   title: string;
   projectId: string | null;
   workdir: string | null;
+  agentId: string | null;
+  taskId: string | null;
+  unread: boolean;
   pinned: boolean;
   updatedAt: string;
 }
@@ -70,6 +73,7 @@ export interface Conversation {
   title: string;
   projectId: string | null;
   workdir: string | null;
+  agentId: string | null;
   model: string | null;
   pinned: boolean;
   turns: Turn[];
@@ -106,6 +110,43 @@ export interface Skill {
   body: string;
   origin: 'user' | 'builtin';
   enabled: boolean;
+}
+
+export interface Agent {
+  id: string;
+  name: string;
+  avatar: string;
+  description: string;
+  instructions: string;
+  model: string | null;
+  tools: string[];
+  skills: string[];
+  think: boolean;
+  createdAt: string;
+}
+
+export type Frequency =
+  | { kind: 'once'; date: string; time: string }
+  | { kind: 'daily'; time: string }
+  | { kind: 'weekly'; days: number[]; time: string }
+  | { kind: 'monthly'; day: number; time: string };
+
+export interface Task {
+  id: string;
+  title: string;
+  prompt: string;
+  frequency: Frequency;
+  agentId: string | null;
+  model: string | null;
+  enabled: boolean;
+  allowChanges: boolean;
+  createdAt: string;
+  lastRun: string | null;
+  lastConversation: string | null;
+  lastStatus: string | null;
+  nextRun: string | null;
+  /** "Every Monday at 09:00". */
+  schedule: string;
 }
 
 export type Speed = 'fast' | 'think';
@@ -173,6 +214,7 @@ export const api = {
     projectId?: string | null;
     workdir?: string | null;
     resume?: boolean;
+    agentId?: string | null;
   }) => call<void>('chat_send', { request }),
   cancel: (conversationId: string) => call<boolean>('chat_cancel', { conversationId }),
   answer: (callId: string, answer: string) => call<boolean>('chat_answer', { callId, answer }),
@@ -180,6 +222,7 @@ export const api = {
     id: string;
     title?: string;
     pinned?: boolean;
+    unread?: boolean;
     projectId?: string | null;
     rating?: [number, number];
   }) => call<void>('chat_update_conversation', { update }),
@@ -206,6 +249,16 @@ export const api = {
   deleteSkill: (name: string) => call<Skill[]>('chat_delete_skill', { name }),
   setSkillEnabled: (name: string, enabled: boolean) => call<Skill[]>('chat_set_skill_enabled', { name, enabled }),
   importSkill: () => call<string | null>('chat_import_skill'),
+
+  agents: () => call<Agent[]>('chat_list_agents'),
+  agentTemplates: () => call<Agent[]>('chat_agent_templates'),
+  saveAgent: (agent: Agent) => call<Agent[]>('chat_save_agent', { agent }),
+  deleteAgent: (id: string) => call<Agent[]>('chat_delete_agent', { id }),
+
+  tasks: () => call<Task[]>('chat_list_tasks'),
+  saveTask: (task: Omit<Task, 'schedule'>) => call<Task[]>('chat_save_task', { task }),
+  deleteTask: (id: string) => call<Task[]>('chat_delete_task', { id }),
+  runTask: (id: string) => call<void>('chat_run_task', { id }),
 
   respondApproval: (requestId: string, approved: boolean, always = false) =>
     call<void>('respond_tool_approval', { requestId, approved, always }),

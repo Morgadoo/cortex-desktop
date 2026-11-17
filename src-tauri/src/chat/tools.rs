@@ -30,6 +30,17 @@ pub enum ApprovalMode {
     Ask,
     /// File edits run without asking; other changes still ask.
     AcceptEdits,
+    /// A scheduled run with nobody watching: anything that would ask is refused.
+    Unattended,
+    /// A scheduled run the user allowed to make changes: nothing asks.
+    Autonomous,
+}
+
+impl ApprovalMode {
+    /// Nobody is there to answer questions or approvals.
+    pub fn unattended(self) -> bool {
+        matches!(self, Self::Unattended | Self::Autonomous)
+    }
 }
 
 /// A tool as offered to the model, and where calls to it go.
@@ -163,8 +174,9 @@ pub fn needs_approval(tool: &ChatTool, input: &Value, mode: ApprovalMode) -> boo
         return false;
     }
     match mode {
-        ApprovalMode::Ask => true,
+        ApprovalMode::Ask | ApprovalMode::Unattended => true,
         ApprovalMode::AcceptEdits => tool.connector_id.as_deref() != Some("filesystem"),
+        ApprovalMode::Autonomous => false,
     }
 }
 
@@ -223,7 +235,15 @@ pub async fn execute(
     let Some(connector_id) = tool.connector_id.as_deref() else {
         return Outcome { text: "This tool is handled by the app.".into(), is_error: true };
     };
-    let approved = if needs_approval(tool, &input, mode) {
+    if mode == ApprovalMode::Unattended && needs_approval(tool, &input, mode) {
+        return Outcome {
+            text: "This scheduled run may not make changes, so the call was not made. Describe \
+                what you would have done instead; the user can allow changes for this task."
+                .into(),
+            is_error: true,
+        };
+    }
+    let approved = mode == ApprovalMode::Autonomous || if needs_approval(tool, &input, mode) {
         match request_approval(app, tool, &input).await {
             ApprovalDecision::Deny => {
                 return Outcome {

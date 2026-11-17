@@ -236,7 +236,8 @@ export class ConnectorsPage {
 }
 
 /** Sections that exist in the navigation but have no local implementation yet. */
-const PLACEHOLDERS: Record<Exclude<Page, 'connectors'>, { title: string; subtitle: string; icon: string; empty: string; body: string }> = {
+const PLACEHOLDERS: Record<Page, { title: string; subtitle: string; icon: string; empty: string; body: string }> = {
+  connectors: { title: 'Connectors', subtitle: '', icon: 'plug', empty: '', body: '' },
   skills: {
     title: 'Skills',
     subtitle: 'Reusable instructions the assistant can follow. Set them up once, use them whenever you need.',
@@ -284,7 +285,7 @@ const PLACEHOLDERS: Record<Exclude<Page, 'connectors'>, { title: string; subtitl
 export class PlaceholderPage {
   readonly el = h('div', { class: 'page' });
   readonly key: string;
-  constructor(page: Exclude<Page, 'connectors'>) {
+  constructor(page: Page) {
     this.key = `page:${page}`;
     const info = PLACEHOLDERS[page];
     const instructions = h('button', { class: 'btn btn-light', on: { click: () => void openInstructions() } }, icon('book', 16), 'Instructions');

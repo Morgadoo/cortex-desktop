@@ -3,6 +3,7 @@ import type {
   ApprovalMode,
   ApprovalRequest,
   ChatEvent,
+  Agent,
   ConversationSummary,
   Instructions,
   UsageTotals,
@@ -16,11 +17,12 @@ import type {
 export type Page = 'connectors' | 'skills' | 'scheduled' | 'apps' | 'agents' | 'knowledge' | 'libraries';
 
 export type View =
-  | { kind: 'home'; projectId?: string | null }
+  | { kind: 'home'; projectId?: string | null; agentId?: string | null }
+  | { kind: 'agent'; id: string }
   | { kind: 'chat'; id: string }
   | { kind: 'page'; page: Page };
 
-export type Mode = 'work' | 'code';
+export type Mode = 'work' | 'code' | 'agents';
 
 export interface SubagentStatus {
   title: string;
@@ -75,6 +77,7 @@ export const state = {
   live: new Map<string, LiveTurn>(),
   approvals: [] as ApprovalRequest[],
   skills: [] as Skill[],
+  agents: [] as Agent[],
   /** Sub-agent progress by the `delegate` call that started them. */
   subagents: new Map<string, SubagentStatus[]>(),
   /** The latest usage of each conversation, and its model's window. */

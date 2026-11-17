@@ -10,6 +10,7 @@
 //! - [`engine`]: one turn: stream a reply, run the tools it calls, repeat
 //! - [`tools`]: the app's connectors (filesystem, shell, MCP) and built-ins offered to the model
 
+pub mod agents;
 pub mod builtins;
 pub mod canvas;
 pub mod commands;
@@ -21,6 +22,7 @@ pub mod search;
 pub mod skills;
 pub mod store;
 pub mod subagents;
+pub mod tasks;
 pub mod tools;
 
 use std::collections::HashMap;

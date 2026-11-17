@@ -174,6 +174,8 @@ pub struct UpdateConversation {
     /// `Some(None)` moves it out of its project.
     #[serde(default, deserialize_with = "serde_with_none::deserialize")]
     pub project_id: Option<Option<String>>,
+    #[serde(default)]
+    pub unread: Option<bool>,
     /// `(turn index, -1 | 0 | 1)`.
     #[serde(default)]
     pub rating: Option<(usize, i8)>,
@@ -200,6 +202,9 @@ pub fn chat_update_conversation(app: AppHandle, update: UpdateConversation) -> R
     }
     if let Some(pinned) = update.pinned {
         conversation.pinned = pinned;
+    }
+    if let Some(unread) = update.unread {
+        conversation.unread = unread;
     }
     if let Some(project_id) = update.project_id {
         conversation.project_id = project_id;
@@ -464,9 +469,65 @@ pub async fn chat_export_canvas(app: AppHandle, id: String) -> Result<bool, Stri
     Ok(true)
 }
 
+#[tauri::command]
+pub fn chat_list_agents(app: AppHandle) -> Result<Vec<super::agents::Agent>, String> {
+    Ok(super::agents::load(&config_dir(&app)?))
+}
+
+#[tauri::command]
+pub fn chat_agent_templates() -> Vec<super::agents::Agent> {
+    super::agents::templates()
+}
+
+#[tauri::command]
+pub fn chat_save_agent(app: AppHandle, agent: super::agents::Agent) -> Result<Vec<super::agents::Agent>, String> {
+    super::agents::save(&config_dir(&app)?, agent)
+}
+
+#[tauri::command]
+pub fn chat_delete_agent(app: AppHandle, id: String) -> Result<Vec<super::agents::Agent>, String> {
+    super::agents::delete(&config_dir(&app)?, &id)
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskView {
+    #[serde(flatten)]
+    pub task: super::tasks::Task,
+    pub schedule: String,
+}
+
+fn task_views(tasks: Vec<super::tasks::Task>) -> Vec<TaskView> {
+    tasks
+        .into_iter()
+        .map(|task| TaskView { schedule: super::tasks::describe(&task.frequency), task })
+        .collect()
+}
+
+#[tauri::command]
+pub fn chat_list_tasks(app: AppHandle) -> Result<Vec<TaskView>, String> {
+    Ok(task_views(super::tasks::load(&config_dir(&app)?)))
+}
+
+#[tauri::command]
+pub fn chat_save_task(app: AppHandle, task: super::tasks::Task) -> Result<Vec<TaskView>, String> {
+    super::tasks::save(&config_dir(&app)?, task).map(task_views)
+}
+
+#[tauri::command]
+pub fn chat_delete_task(app: AppHandle, id: String) -> Result<Vec<TaskView>, String> {
+    super::tasks::delete(&config_dir(&app)?, &id).map(task_views)
+}
+
+#[tauri::command]
+pub fn chat_run_task(app: AppHandle, id: String) -> Result<(), String> {
+    super::tasks::run_now(&app, &id)
+}
+
 /// Manages chat state at startup.
 pub fn setup(app: &tauri::App) {
     app.manage(ChatState::default());
+    super::tasks::start(app.handle().clone());
 }
 
 #[cfg(test)]

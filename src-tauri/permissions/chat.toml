@@ -157,3 +157,43 @@ commands.allow = ["chat_save_canvas"]
 identifier = "allow-chat-export-canvas"
 description = "Save a canvas as Markdown to a file the user picks."
 commands.allow = ["chat_export_canvas"]
+
+[[permission]]
+identifier = "allow-chat-list-agents"
+description = "List agents."
+commands.allow = ["chat_list_agents"]
+
+[[permission]]
+identifier = "allow-chat-agent-templates"
+description = "List ready-made agents."
+commands.allow = ["chat_agent_templates"]
+
+[[permission]]
+identifier = "allow-chat-save-agent"
+description = "Create or update an agent."
+commands.allow = ["chat_save_agent"]
+
+[[permission]]
+identifier = "allow-chat-delete-agent"
+description = "Delete an agent."
+commands.allow = ["chat_delete_agent"]
+
+[[permission]]
+identifier = "allow-chat-list-tasks"
+description = "List scheduled tasks."
+commands.allow = ["chat_list_tasks"]
+
+[[permission]]
+identifier = "allow-chat-save-task"
+description = "Create or update a scheduled task."
+commands.allow = ["chat_save_task"]
+
+[[permission]]
+identifier = "allow-chat-delete-task"
+description = "Delete a scheduled task."
+commands.allow = ["chat_delete_task"]
+
+[[permission]]
+identifier = "allow-chat-run-task"
+description = "Run a scheduled task now."
+commands.allow = ["chat_run_task"]

@@ -102,6 +102,14 @@ pub fn run() {
                 chat::commands::chat_get_canvas,
                 chat::commands::chat_save_canvas,
                 chat::commands::chat_export_canvas,
+                chat::commands::chat_list_agents,
+                chat::commands::chat_agent_templates,
+                chat::commands::chat_save_agent,
+                chat::commands::chat_delete_agent,
+                chat::commands::chat_list_tasks,
+                chat::commands::chat_save_task,
+                chat::commands::chat_delete_task,
+                chat::commands::chat_run_task,
             ];
             commands(invoke)
         })

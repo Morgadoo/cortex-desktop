@@ -15,7 +15,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::watch;
 
-use super::{builtins, canvas, context, memory, providers, skills, subagents};
+use super::{agents, builtins, canvas, context, memory, providers, skills, subagents, tasks};
 use super::store::{self, Conversation, Instructions, Project};
 use super::tools::{self, ApprovalMode, ChatTool, ASK_USER};
 use super::{ChatState, EVENT, LOCAL_ACCOUNT};
@@ -91,6 +91,9 @@ pub struct TurnRequest {
     pub approval: ApprovalMode,
     #[serde(default)]
     pub project_id: Option<String>,
+    /// The agent to run as; only read when the conversation is created.
+    #[serde(default)]
+    pub agent_id: Option<String>,
     /// Pick up where a failed or stopped turn left off, with nothing added or removed.
     #[serde(default)]
     pub resume: bool,
@@ -129,6 +132,7 @@ pub struct Context<'a> {
     pub memories: Option<&'a memory::Memories>,
     pub skills: &'a [skills::Skill],
     pub canvases: &'a [canvas::Canvas],
+    pub agent: Option<&'a agents::Agent>,
 }
 
 pub fn preamble(context: &Context<'_>, tools: &[ChatTool]) -> String {
@@ -136,7 +140,19 @@ pub fn preamble(context: &Context<'_>, tools: &[ChatTool]) -> String {
     let instructions = context.instructions.unwrap_or(&default_instructions);
     let project = context.project;
     let workdir = context.workdir;
-    let mut out = String::from(
+    let mut out = String::new();
+    if let Some(agent) = context.agent {
+        out.push_str(&format!("You are {}", agent.name));
+        if !agent.description.trim().is_empty() {
+            out.push_str(&format!(": {}", agent.description.trim()));
+        }
+        out.push_str("\n\n");
+        if !agent.instructions.trim().is_empty() {
+            out.push_str(agent.instructions.trim());
+            out.push_str("\n\n");
+        }
+    }
+    out.push_str(
         "You are a helpful, accurate assistant running in a desktop app. Answer in the user's \
          language. Use Markdown: short paragraphs, lists and tables where they help, fenced code \
          blocks with a language tag. When you are unsure, say so instead of guessing.",
@@ -289,6 +305,7 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         Err(_) => {
             let mut c = Conversation::new(id.to_string(), request.project_id.clone(), None);
             c.workdir = request.workdir.clone().filter(|d| !d.trim().is_empty());
+            c.agent_id = request.agent_id.clone();
             c
         }
     };
@@ -315,8 +332,16 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
 
     let model = connect_model(&config_dir, &request.model).await?;
     let registry = app.state::<ToolRegistry>();
+    let agent = conversation.agent_id.as_deref().and_then(|a| agents::find(&config_dir, a));
     let mut offered = tools::available(&registry, request.connectors.as_deref());
     offered.splice(1..1, builtins::definitions(&config_dir));
+    if let Some(agent) = &agent {
+        offered.retain(|t| t.name == ASK_USER || agents::allows(agent, &t.name));
+    }
+    if request.approval.unattended() {
+        // Nobody can answer a question during a scheduled run.
+        offered.retain(|t| t.name != ASK_USER);
+    }
     let definitions: Vec<_> = offered.iter().filter_map(ChatTool::definition).collect();
     let project = conversation
         .project_id
@@ -324,7 +349,10 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         .and_then(|pid| store::load_projects(&config_dir).into_iter().find(|p| &p.id == pid));
     let instructions = store::load_instructions(&config_dir);
     let memories = memory::load(&config_dir);
-    let skill_list = skills::list(&config_dir);
+    let mut skill_list = skills::list(&config_dir);
+    if let Some(agent) = agent.as_ref().filter(|a| !a.skills.is_empty()) {
+        skill_list.retain(|s| agent.skills.contains(&s.name));
+    }
     let canvases = canvas::list_for(&config_dir, id);
     let system = preamble(
         &Context {
@@ -334,6 +362,7 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
             memories: Some(&memories),
             skills: &skill_list,
             canvases: &canvases,
+            agent: agent.as_ref(),
         },
         &offered,
     );
@@ -486,7 +515,9 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
             if outcomes[i].is_some() || !waits_on_user(call) || *cancel.borrow() {
                 continue;
             }
-            let outcome = if call.function.name.as_str() == ASK_USER {
+            let outcome = if call.function.name.as_str() == ASK_USER && request.approval.unattended() {
+                tools::Outcome { text: "Nobody is available to answer during this scheduled run; continue with your best judgement and state your assumptions.".into(), is_error: false }
+            } else if call.function.name.as_str() == ASK_USER {
                 ask_user(app, id, call, &mut cancel).await
             } else {
                 tokio::select! {
@@ -655,6 +686,61 @@ async fn compact_if_needed(
             warn!("compaction failed; continuing with tool-result clearing only");
             emit(app, ChatEvent::Compacted { conversation_id: id, upto: covered });
         }
+    }
+}
+
+/// Runs a scheduled task: a new unread conversation with the task's prompt, under its agent.
+pub async fn run_task(app: AppHandle, task: tasks::Task) {
+    let Ok(config_dir) = config_dir(&app) else { return };
+    let agent = task.agent_id.as_deref().and_then(|a| agents::find(&config_dir, a));
+    let providers_file = providers::load(&config_dir);
+    let model = task
+        .model
+        .clone()
+        .or_else(|| agent.as_ref().and_then(|a| a.model.clone()))
+        .or(providers_file.default_model.clone());
+    let Some(model) = model else {
+        warn!("scheduled task {} has no model to run on", task.title);
+        tasks::record(&config_dir, &task.id, "", "failed");
+        return;
+    };
+    let id = uuid::Uuid::new_v4().to_string();
+    let mut conversation = Conversation::new(id.clone(), None, Some(model.clone()));
+    conversation.title = task.title.clone();
+    conversation.agent_id = task.agent_id.clone();
+    conversation.task_id = Some(task.id.clone());
+    conversation.unread = true;
+    if let Err(e) = store::save_conversation(&config_dir, &conversation) {
+        warn!("could not start scheduled task {}: {e}", task.title);
+        return;
+    }
+    let Some(cancel) = app.state::<ChatState>().begin(&id) else { return };
+    let request = TurnRequest {
+        conversation_id: id.clone(),
+        text: task.prompt.clone(),
+        model,
+        speed: if agent.as_ref().is_some_and(|a| a.think) { Speed::Think } else { Speed::Fast },
+        approval: if task.allow_changes { ApprovalMode::Autonomous } else { ApprovalMode::Unattended },
+        project_id: None,
+        agent_id: task.agent_id.clone(),
+        resume: false,
+        workdir: None,
+        connectors: None,
+    };
+    run_turn(app.clone(), request, cancel).await;
+    let finished = store::load_conversation(&config_dir, &id).ok();
+    let answered = finished
+        .as_ref()
+        .and_then(|c| c.messages.last())
+        .is_some_and(|m| matches!(m, Message::Assistant(_)));
+    tasks::record(&config_dir, &task.id, &id, if answered { "ok" } else { "failed" });
+    notify(&app, &task.title, if answered { "Your scheduled task finished." } else { "Your scheduled task could not finish." });
+}
+
+fn notify(app: &AppHandle, title: &str, body: &str) {
+    use tauri_plugin_notification::NotificationExt;
+    if let Err(e) = app.notification().builder().title(title).body(body).show() {
+        warn!("could not show a notification: {e}");
     }
 }
 
