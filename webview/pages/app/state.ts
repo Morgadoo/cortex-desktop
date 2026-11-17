@@ -164,6 +164,7 @@ export function applyEvent(event: ChatEvent): boolean {
       ensure().steers.push(event.text);
       return false;
     case 'notice':
+      ensure().parts.push({ kind: 'notice', text: event.text });
       return false;
     case 'text': {
       const turn = ensure();

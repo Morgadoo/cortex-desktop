@@ -130,6 +130,10 @@ pub fn request_messages(messages: &[Message], summary: Option<&Summary>) -> Vec<
 
 /// The first line of an error, short enough for a notice.
 pub fn short_error(text: &str) -> String {
+    // A provider's JSON error reads better as just its message.
+    if let Some(m) = regex::Regex::new(r#""message"\s*:\s*"([^"]{1,200})""#).ok().and_then(|re| re.captures(text)) {
+        return m[1].to_string();
+    }
     let line = text.lines().next().unwrap_or_default();
     if line.chars().count() > 120 { format!("{}…", line.chars().take(120).collect::<String>()) } else { line.to_string() }
 }
@@ -344,6 +348,7 @@ mod tests {
         assert!(context_window("openai/gpt-5.5") >= 100_000);
         assert_eq!(context_window("nobody/nothing"), DEFAULT_WINDOW);
         assert!(estimate_tokens(&messages) > 0);
+        assert_eq!(short_error(r#"ProviderResponseError: status 400: {"error":{"code":"model_not_found","message":"unknown provider for model x"}}"#), "unknown provider for model x");
         // The context view: what is counted is named, and the rest is the instructions and tools.
         let view = breakdown(&messages, None, 50_000, 128_000);
         assert_eq!(view.slices[0].label, "Instructions, knowledge, skills and tool definitions");

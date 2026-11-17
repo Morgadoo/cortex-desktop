@@ -1238,3 +1238,17 @@ button.usage-meter:hover { background: var(--hover); }
 .mode-check { color: var(--accent); display: flex; justify-content: flex-end; }
 .mode-key { color: var(--text-muted); font-size: var(--fs-sm); text-align: right; }
 .approval-risk.auto { color: var(--accent); }
+
+.notice-line { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--radius-md); background: color-mix(in srgb, var(--warning, #d9a441) 10%, transparent); color: var(--warning, #d9a441); font-size: var(--fs-sm); }
+
+/* ------------------------------------------------------------------ library footnotes */
+
+.footnote-ref { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 4px; margin: 0 1px; border-radius: 9px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 700; vertical-align: 2px; cursor: pointer; }
+.footnote-ref:hover { background: color-mix(in srgb, var(--accent) 24%, transparent); }
+.footnotes-wrap { border-top: 1px solid var(--border); padding-top: 10px; }
+.footnotes { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.footnote { padding: 8px 10px; border-radius: var(--radius-md); transition: background 0.6s; }
+.footnote.flash { background: var(--accent-soft); }
+.footnote-head { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); }
+.footnote-n { color: var(--accent); font-weight: 700; min-width: 16px; }
+.footnote-text { margin: 4px 0 0 22px; color: var(--text-muted); font-size: var(--fs-sm); line-height: 1.5; }

@@ -611,6 +611,12 @@ function renderParts(parts: Part[], live: boolean, key: string, durations: numbe
       out.push(renderCodeRun(part, live, key.split(':')[0] ?? ''));
       return;
     }
+    if (part.kind === 'notice') {
+      // Inline, as in Vibe 3.1.0: what happened to the reply stays with it.
+      flush();
+      out.push(h('div', { class: 'notice-line' }, icon('wait', 14), h('span', {}, part.text)));
+      return;
+    }
     if (part.kind === 'text') {
       flush();
       const body = h('div', { class: 'markdown' });
@@ -729,6 +735,7 @@ function editButton(turn: Turn, conversationId: string, text: string): HTMLEleme
 function renderAssistantTurn(conversation: Conversation, turn: Turn, isLast: boolean, running: boolean, branch: HTMLElement | null = null): HTMLElement {
   const durations = isLast ? stepDurations.get(conversation.id) : undefined;
   const el = h('div', { class: 'turn turn-assistant' }, ...renderParts(turn.parts, false, `${conversation.id}:${turn.index}`, durations));
+  numberLibraryCitations(el, turn.parts);
   // A reply that stopped after its tools ran, before answering, can pick up where it left off.
   const unfinished = isLast && !running && turn.parts[turn.parts.length - 1]?.kind === 'tool' && !state.live.has(conversation.id);
   if (unfinished) {
@@ -2551,4 +2558,56 @@ function openSourcesPanel(sources: Source[]) {
       )
     )
   );
+}
+
+/**
+ * Library citations as numbered footnotes, as in Vibe: each [document] in the answer becomes a
+ * number, and the passages the answer drew on are listed under it; a number jumps to its passage.
+ */
+function numberLibraryCitations(el: HTMLElement, parts: Part[]) {
+  const pills = [...el.querySelectorAll<HTMLElement>('.cite-doc:not(.cite-knowledge)')];
+  if (!pills.length) return;
+  // The passages each document gave, from the library searches of this reply.
+  const passages = new Map<string, { library: string; text: string }>();
+  for (const part of parts) {
+    if (part.kind !== 'tool' || part.name !== 'search_library' || !part.output) continue;
+    try {
+      const value = JSON.parse(part.output) as { passages?: { library?: string; document?: string; text?: string }[] };
+      for (const p of value.passages ?? []) {
+        if (p.document && p.text && !passages.has(p.document)) passages.set(p.document, { library: p.library ?? '', text: p.text });
+      }
+    } catch {
+      // Not JSON: no passages from this search.
+    }
+  }
+  const numbers = new Map<string, number>();
+  const notes = h('ol', { class: 'footnotes' });
+  for (const pill of pills) {
+    const doc = pill.textContent?.trim() ?? '';
+    if (!doc) continue;
+    let n = numbers.get(doc);
+    if (n === undefined) {
+      n = numbers.size + 1;
+      numbers.set(doc, n);
+      const passage = passages.get(doc);
+      const note = h(
+        'li',
+        { class: 'footnote' },
+        h('div', { class: 'footnote-head' }, h('span', { class: 'footnote-n' }, String(n)), icon('file', 13), h('strong', {}, doc), passage?.library ? h('span', { class: 'muted' }, ` · ${passage.library}`) : null),
+        passage ? h('p', { class: 'footnote-text' }, passage.text.length > 420 ? `${passage.text.slice(0, 420).trim()}…` : passage.text) : null
+      );
+      notes.append(note);
+    }
+    const target = notes.children[n - 1] as HTMLElement;
+    const marker = h('button', { class: 'footnote-ref', title: doc }, String(n));
+    marker.addEventListener('click', () => {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      target.classList.remove('flash');
+      void target.offsetWidth;
+      target.classList.add('flash');
+    });
+    pill.replaceWith(marker);
+  }
+  const lastText = [...el.querySelectorAll('.markdown')].pop();
+  (lastText ?? el).after(h('div', { class: 'footnotes-wrap' }, h('div', { class: 'step-label' }, 'Library sources'), notes));
 }

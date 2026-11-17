@@ -119,6 +119,9 @@ pub struct Conversation {
     /// How long the model thought before each reply message, in milliseconds, by message index.
     #[serde(default)]
     pub thought: Vec<(usize, u32)>,
+    /// Notices shown inline before the message at that index.
+    #[serde(default)]
+    pub notices: Vec<(usize, String)>,
     /// The note standing in for compacted turns.
     #[serde(default)]
     pub summary: Option<super::context::Summary>,
@@ -150,6 +153,7 @@ impl Conversation {
             messages: Vec::new(),
             times: Vec::new(),
             thought: Vec::new(),
+            notices: Vec::new(),
             ratings: Vec::new(),
             summary: None,
             usage: Default::default(),
@@ -278,6 +282,9 @@ pub fn save_instructions(config_dir: &Path, instructions: &Instructions) -> Resu
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Part {
     Text { text: String },
+    /// Something the user should know about the reply, shown inline (Vibe 3.1.0): a backup
+    /// model taking over, for example.
+    Notice { text: String },
     Reasoning {
         text: String,
         /// How long the model thought, in milliseconds, when measured.
@@ -458,6 +465,7 @@ pub fn select_version(conversation: &mut Conversation, from: usize, target: usiz
     conversation.branches.extend(chosen_inner);
     conversation.times.retain(|(i, _)| *i < start);
     conversation.thought.retain(|(i, _)| *i < start);
+    conversation.notices.retain(|(i, _)| *i < start);
     conversation.ratings.retain(|(i, _)| *i < start);
     if conversation.summary.as_ref().is_some_and(|s| s.upto > start) {
         conversation.summary = None;
@@ -554,6 +562,8 @@ pub fn turns(conversation: &Conversation) -> Vec<Turn> {
                     }),
                     _ => None,
                 });
+                let notices = conversation.notices.iter().filter(|(k, _)| *k == index).map(|(_, text)| Part::Notice { text: text.clone() });
+                let parts: Vec<Part> = notices.chain(parts).collect();
                 match out.last_mut() {
                     Some(turn) if turn.role == "assistant" => {
                         turn.parts.extend(parts);
@@ -561,7 +571,7 @@ pub fn turns(conversation: &Conversation) -> Vec<Turn> {
                     }
                     _ => out.push(Turn {
                         role: "assistant",
-                        parts: parts.collect(),
+                        parts,
                         index,
                         time: None,
                         rating: 0,

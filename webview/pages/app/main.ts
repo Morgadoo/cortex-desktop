@@ -586,7 +586,6 @@ async function start() {
 
   void listen<ChatEvent>('chat://event', (event) => {
     const id = event.conversationId;
-    if (event.type === 'notice') toast(event.text);
     // A scheduled run starts a conversation the page has not seen yet.
     if (event.type === 'started' && !state.conversations.some((c) => c.id === id)) void refreshConversations();
     if (applyEvent(event)) {

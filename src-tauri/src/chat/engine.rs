@@ -627,7 +627,9 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
                             model = next;
                             attempt = 0;
                             let label = backup.rsplit('/').next().unwrap_or(&backup).to_string();
-                            emit(app, ChatEvent::Notice { conversation_id: id.into(), text: format!("The model failed ({}); continuing with {label}.", super::context::short_error(&e.to_string())) });
+                            let text = format!("The model failed ({}); continuing with {label}.", super::context::short_error(&e.to_string()));
+                            conversation.notices.push((conversation.messages.len(), text.clone()));
+                            emit(app, ChatEvent::Notice { conversation_id: id.into(), text });
                         }
                         Err(_) => {
                             store::save_conversation(&config_dir, &conversation)?;

@@ -977,6 +977,7 @@ fn conversation_markdown(conversation: &store::Conversation) -> String {
                 store::Part::Tool { name, .. } => text.push_str(&format!("_Used {name}_\n\n")),
                 store::Part::Image { .. } => text.push_str("_[image]_\n\n"),
                 store::Part::Reasoning { .. } => {}
+                store::Part::Notice { text: t } => text.push_str(&format!("> {t}\n\n")),
             }
         }
     }

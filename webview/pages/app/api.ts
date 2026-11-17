@@ -87,6 +87,7 @@ export interface ContextBreakdown {
 export type Part =
   | { kind: 'text'; text: string }
   | { kind: 'reasoning'; text: string; ms?: number }
+  | { kind: 'notice'; text: string }
   | { kind: 'image'; mediaType: string; data: string }
   | { kind: 'tool'; callId: string; name: string; arguments: Record<string, unknown>; output: string | null; isError: boolean };
 

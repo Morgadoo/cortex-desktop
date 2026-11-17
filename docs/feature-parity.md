@@ -163,7 +163,7 @@ equivalent, that is what is compared.
 | Archived sessions hidden from active lists (2.25.8) | Archive | Done |
 | Pinned todo plan (2.25.8) | Plan panel beside the conversation | Done |
 | Subagent history with live status (2.25.5) | Sub-agent rows with live status and reports; "View every step" opens a worker's transcript (each tool call, its input and result, then the report), kept apart from the main context | Done |
-| Errors and warnings inline, not pop-ups (3.1.0) | Errors are cards in the conversation; notices (like a backup model taking over) are pop-ups | Partial |
+| Errors and warnings inline, not pop-ups (3.1.0) | Errors are cards in the conversation; notices (a backup model taking over) are lines in the reply, kept with it | Done |
 | Large tool outputs saved to a file, start and end shown to the model (3.0.1) | Results over 24,000 characters are cut, older ones cleared; `tool_results__read` reads them back | Adapted |
 | Footer: active model and thinking level; click to change (3.0.3) | Model and Fast / Think in the composer | Done |
 | Monthly usage gauge (3.1.0) | This month's tokens, cost and chats in the profile menu; also per conversation and per agent | Done |
@@ -201,7 +201,7 @@ items most likely to differ:
 | Mini apps: file list in code view, ZIP download | Single-file apps, downloaded as one HTML file | Adapted |
 | Public share link for apps and spreadsheets | Nothing leaves the device | N/A |
 | Spreadsheets: sheet tabs, `Open in Google Sheets` | One sheet per canvas; .xlsx / CSV download | Partial |
-| Libraries: numbered footnotes jumping to the passage, roles, org sharing | Citations by document; single user | Partial |
+| Libraries: numbered footnotes jumping to the passage, roles, org sharing | Numbered markers; the passages used are listed under the answer and a marker jumps to its passage. Roles and sharing: single user | Done (sharing N/A) |
 | Workflows: tag in the input and above the sent message, `Workflow started: {name}` | Chip in the input and the message; the plan panel follows the steps | Done |
 | Custom MCP connector: name, Server URL, description; auth detected (none, Bearer/Basic, OAuth 2.1 with dynamic registration) | Same | Done |
 | Work Desktop: `+` → Folders → Add a folder, Remove all | Folders in the + menu | Done |
