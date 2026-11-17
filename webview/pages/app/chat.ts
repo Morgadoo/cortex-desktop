@@ -7,6 +7,7 @@ import { openSettings } from './settings';
 import { openInstructions } from './pages';
 import { enableAskAboutSelection, renderCanvasCard } from './canvas';
 import { renderCodeRun, renderImage } from './coderun';
+import { startRecording, toBase64, type Recording } from './dictation';
 import { editWorkflow, workflowPrompt, workflowsApi } from './workflows';
 import type { Workflow } from './api';
 import { diffLines, loadChanges, openChanges } from './changes';
@@ -1265,53 +1266,49 @@ class Composer {
     clear(this.bar, h('div', { class: 'bar-left' }, plus, approval), h('div', { class: 'bar-right' }, speed, modelBtn, dictation, action));
   }
 
-  private recorder: MediaRecorder | null = null;
+  private recorder: Recording | null = null;
   private transcribing = false;
+  private startingDictation = false;
 
   /** Records from the microphone; stopping sends the audio to the speech model. */
   private async toggleDictation() {
-    if (this.recorder) {
-      this.recorder.stop();
-      return;
-    }
-    const media = await tauriInvoke<{ speechModel: string | null }>('chat_media_models');
-    if (!media.speechModel) {
-      toast('Voice input needs a provider with speech-to-text, such as OpenAI or Groq.', 'error');
-      return void openSettings('providers');
-    }
-    let stream: MediaStream;
+    if (this.recorder) return void this.finishDictation();
+    if (this.startingDictation) return;
+    this.startingDictation = true;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch (e) {
-      return void toast(`The microphone is not available: ${String(e)}`, 'error');
-    }
-    const chunks: Blob[] = [];
-    const recorder = new MediaRecorder(stream);
-    recorder.addEventListener('dataavailable', (e) => chunks.push(e.data));
-    recorder.addEventListener('stop', async () => {
-      stream.getTracks().forEach((t) => t.stop());
-      this.recorder = null;
-      this.transcribing = true;
-      this.renderBar();
-      try {
-        const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
-        const bytes = new Uint8Array(await blob.arrayBuffer());
-        let binary = '';
-        for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-        const text = await tauriInvoke<string>('chat_transcribe', { audio: btoa(binary), mime: blob.type });
-        const current = this.textarea.value;
-        this.setText(current ? `${current.trimEnd()} ${text}` : text);
-        this.focus();
-      } catch (e) {
-        toast(String(e), 'error');
-      } finally {
-        this.transcribing = false;
-        this.renderBar();
+      const media = await tauriInvoke<{ speechModel: string | null }>('chat_media_models');
+      if (!media.speechModel) {
+        toast('Voice input needs a provider with speech-to-text, such as OpenAI or Groq.', 'error');
+        return void openSettings('providers');
       }
-    });
-    recorder.start();
-    this.recorder = recorder;
+      this.recorder = await startRecording();
+      this.renderBar();
+    } catch (e) {
+      toast(`The microphone is not available: ${String(e)}`, 'error');
+    } finally {
+      this.startingDictation = false;
+    }
+  }
+
+  private async finishDictation() {
+    const recording = this.recorder;
+    if (!recording) return;
+    this.recorder = null;
+    this.transcribing = true;
     this.renderBar();
+    try {
+      const audio = await recording.stop();
+      if (audio.size < 1000) throw new Error('Nothing was recorded.');
+      const text = await tauriInvoke<string>('chat_transcribe', { audio: await toBase64(audio), mime: audio.type });
+      const current = this.textarea.value;
+      this.setText(current ? `${current.trimEnd()} ${text}` : text);
+      this.focus();
+    } catch (e) {
+      toast(String(e), 'error');
+    } finally {
+      this.transcribing = false;
+      this.renderBar();
+    }
   }
 
   folder: string | null = null;
