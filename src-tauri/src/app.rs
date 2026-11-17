@@ -149,7 +149,10 @@ pub fn run() {
         // Mini apps the assistant builds run from here, in a sandboxed frame with their own CSP.
         .register_uri_scheme_protocol("lumoapp", |ctx, request| {
             match crate::settings::get_config_dir(ctx.app_handle()) {
-                Ok(dir) => chat::canvas::serve(&dir, request.uri().path()),
+                Ok(dir) => match request.uri().path().strip_prefix("/sandbox/") {
+                    Some(rest) => chat::sandbox::serve(&dir, rest),
+                    None => chat::canvas::serve(&dir, request.uri().path()),
+                },
                 Err(_) => tauri::http::Response::builder().status(500).body(Vec::new()).unwrap_or_default(),
             }
         })

@@ -15,13 +15,13 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::watch;
 
-use super::{agents, builtins, canvas, context, libraries, memory, privacy, providers, skills, subagents, tasks};
+use super::{agents, builtins, canvas, context, libraries, memory, privacy, providers, sandbox, skills, subagents, tasks};
 use super::store::{self, Conversation, Instructions, Project};
 use super::tools::{self, ApprovalMode, ChatTool, ASK_USER};
 use super::{ChatState, EVENT, LOCAL_ACCOUNT};
 use crate::account::AccountId;
 use crate::tools::auth::keychain_secrets;
-use crate::tools::registry::ToolRegistry;
+use crate::tools::registry::{ApprovalDecision, ToolRegistry};
 
 /// Model calls in one turn before the engine stops a tool loop that does not converge. The last
 /// step withholds the tools, so a long research run still ends in an answer.
@@ -738,6 +738,9 @@ impl Runner<'_> {
                 Err(e) => tools::Outcome { text: e, is_error: true },
             };
         }
+        if name == sandbox::RUN_CODE {
+            return self.run_code(&arguments).await;
+        }
         if builtins::is_builtin(name) {
             return builtins::run(self.config_dir, name, &arguments).await;
         }
@@ -745,6 +748,39 @@ impl Runner<'_> {
             Some(tool) => tools::execute(self.app, self.registry, tool, arguments, self.request.approval, self.id).await,
             None => tools::Outcome { text: format!("There is no tool named {name}."), is_error: true },
         }
+    }
+}
+
+impl Runner<'_> {
+    /// Runs code once the user allows it: every run in "ask" modes, unless they allowed all.
+    async fn run_code(&self, arguments: &Value) -> tools::Outcome {
+        match self.request.approval {
+            ApprovalMode::Unattended => {
+                return tools::Outcome {
+                    text: "This scheduled run may not run code; the user can allow changes for this task.".into(),
+                    is_error: true,
+                }
+            }
+            ApprovalMode::Autonomous => {}
+            ApprovalMode::Ask | ApprovalMode::AcceptEdits if sandbox::always_allowed() => {}
+            ApprovalMode::Ask | ApprovalMode::AcceptEdits => {
+                let Some(tool) = self.offered.iter().find(|t| t.name == sandbox::RUN_CODE) else {
+                    return tools::Outcome { text: "Running code is not available.".into(), is_error: true };
+                };
+                let gate = ChatTool { connector_id: Some("sandbox".into()), ..tool.clone() };
+                match tools::request_approval(self.app, &gate, arguments).await {
+                    ApprovalDecision::Deny => {
+                        return tools::Outcome {
+                            text: "The user declined to run this code. Do not retry it; ask what they would like instead.".into(),
+                            is_error: true,
+                        }
+                    }
+                    ApprovalDecision::Always => sandbox::allow_always(),
+                    ApprovalDecision::Once => {}
+                }
+            }
+        }
+        sandbox::run(self.config_dir, self.id, arguments).await
     }
 }
 

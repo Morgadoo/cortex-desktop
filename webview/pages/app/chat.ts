@@ -5,6 +5,7 @@ import { changed, currentModel, navigate, state, type LiveTurn } from './state';
 import { openSettings } from './settings';
 import { openInstructions } from './pages';
 import { enableAskAboutSelection, renderCanvasCard } from './canvas';
+import { renderCodeRun } from './coderun';
 
 // ---------------------------------------------------------------------------------------------
 // Tool labels
@@ -12,6 +13,7 @@ import { enableAskAboutSelection, renderCanvasCard } from './canvas';
 const CONNECTOR_LABELS: Record<string, string> = {
   filesystem: 'Files',
   bash: 'Terminal',
+  sandbox: 'Code',
   browser: 'Web',
   proton_mail: 'Mail',
   luminance: 'Luminance',
@@ -21,6 +23,7 @@ const CONNECTOR_LABELS: Record<string, string> = {
 const CONNECTOR_ICONS: Record<string, string> = {
   filesystem: 'file',
   bash: 'terminal',
+  sandbox: 'terminal',
   browser: 'globe',
 };
 
@@ -55,6 +58,7 @@ const BUILTIN_ICONS: Record<string, string> = {
   delegate: 'workflow',
   schedule_task: 'clock',
   search_library: 'library',
+  run_code: 'terminal',
 };
 
 /** What an approval card asks to allow. */
@@ -62,6 +66,7 @@ const REQUESTS: Record<string, string> = {
   filesystem__fs_write: 'writing a file',
   filesystem__fs_edit: 'editing a file',
   bash__run: 'running a command',
+  sandbox__run_code: 'running this code',
   browser__fetch: 'sending a web request',
   browser__navigate: 'opening a page',
 };
@@ -512,6 +517,11 @@ function renderParts(parts: Part[], live: boolean, key: string, durations: numbe
     if (part.kind === 'tool' && part.name === 'canvas') {
       flush();
       out.push(renderCanvasCard(part, live));
+      return;
+    }
+    if (part.kind === 'tool' && part.name === 'run_code') {
+      flush();
+      out.push(renderCodeRun(part, live, key.split(':')[0] ?? ''));
       return;
     }
     if (part.kind === 'text') {
@@ -1290,7 +1300,9 @@ function renderApprovals(): HTMLElement | null {
     { class: 'approval-card' },
     h('div', { class: 'approval-head' }, icon(tool.icon, 18), h('strong', {}, asking)),
     reason,
-    h('pre', { class: 'step-pre' }, JSON.stringify(request.input, null, 2)),
+    request.tool_name === 'run_code' && typeof (request.input as { code?: unknown }).code === 'string'
+      ? h('pre', { class: 'step-pre' }, h('code', {}, (request.input as { code: string }).code))
+      : h('pre', { class: 'step-pre' }, JSON.stringify(request.input, null, 2)),
     h(
       'div',
       { class: 'dialog-actions' },

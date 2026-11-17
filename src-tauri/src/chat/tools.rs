@@ -185,7 +185,7 @@ const APPROVAL_WAIT: Duration = Duration::from_secs(15 * 60);
 
 /// Asks the page to approve a call, with the payload the registry's own gate uses, so one
 /// approval card serves both.
-async fn request_approval(app: &AppHandle, tool: &ChatTool, input: &Value) -> ApprovalDecision {
+pub(crate) async fn request_approval(app: &AppHandle, tool: &ChatTool, input: &Value) -> ApprovalDecision {
     let (request_id, rx) = approvals::register();
     let _ = app.emit(
         "tool:approval_request",
