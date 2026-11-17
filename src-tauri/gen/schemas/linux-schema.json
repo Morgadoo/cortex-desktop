@@ -249,6 +249,12 @@
           "markdownDescription": "Read whether code runs without asking."
         },
         {
+          "description": "Read what fills a conversation's context window.",
+          "type": "string",
+          "const": "allow-chat-context-breakdown",
+          "markdownDescription": "Read what fills a conversation's context window."
+        },
+        {
           "description": "Create a document library.",
           "type": "string",
           "const": "allow-chat-create-library",
@@ -265,6 +271,12 @@
           "type": "string",
           "const": "allow-chat-delete-conversation",
           "markdownDescription": "Delete a conversation."
+        },
+        {
+          "description": "Delete conversations from the trash for good.",
+          "type": "string",
+          "const": "allow-chat-delete-forever",
+          "markdownDescription": "Delete conversations from the trash for good."
         },
         {
           "description": "Delete a knowledge page.",
@@ -325,6 +337,12 @@
           "type": "string",
           "const": "allow-chat-export-conversation",
           "markdownDescription": "Save a conversation as Markdown to a file the user picks."
+        },
+        {
+          "description": "Branch a conversation into a new one.",
+          "type": "string",
+          "const": "allow-chat-fork-conversation",
+          "markdownDescription": "Branch a conversation into a new one."
         },
         {
           "description": "Read a canvas.",
@@ -459,10 +477,22 @@
           "markdownDescription": "Read an uploaded workbook."
         },
         {
+          "description": "Replace a damaged conversation with its backup.",
+          "type": "string",
+          "const": "allow-chat-recover-conversation",
+          "markdownDescription": "Replace a damaged conversation with its backup."
+        },
+        {
           "description": "Remove a document from a library.",
           "type": "string",
           "const": "allow-chat-remove-document",
           "markdownDescription": "Remove a document from a library."
+        },
+        {
+          "description": "Restore a deleted conversation.",
+          "type": "string",
+          "const": "allow-chat-restore-conversation",
+          "markdownDescription": "Restore a deleted conversation."
         },
         {
           "description": "Run a scheduled task now.",
@@ -531,6 +561,12 @@
           "markdownDescription": "Save a workflow."
         },
         {
+          "description": "Search conversations by title and content.",
+          "type": "string",
+          "const": "allow-chat-search",
+          "markdownDescription": "Search conversations by title and content."
+        },
+        {
           "description": "Search document libraries.",
           "type": "string",
           "const": "allow-chat-search-libraries",
@@ -597,6 +633,12 @@
           "markdownDescription": "Add guidance to a running turn."
         },
         {
+          "description": "Read how the stored data is doing.",
+          "type": "string",
+          "const": "allow-chat-storage-health",
+          "markdownDescription": "Read how the stored data is doing."
+        },
+        {
           "description": "Forget finished background commands.",
           "type": "string",
           "const": "allow-chat-terminal-clear",
@@ -631,6 +673,12 @@
           "type": "string",
           "const": "allow-chat-transcribe",
           "markdownDescription": "Transcribe voice input."
+        },
+        {
+          "description": "List deleted conversations.",
+          "type": "string",
+          "const": "allow-chat-trash",
+          "markdownDescription": "List deleted conversations."
         },
         {
           "description": "Rename, pin, rate or move a conversation.",

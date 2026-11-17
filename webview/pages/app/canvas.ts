@@ -44,7 +44,88 @@ export function appFrame(id: string, version = 0): HTMLIFrameElement {
   });
 }
 
-/** A mini app the model built: a live preview, its code, and a way to open it larger. */
+/**
+ * The side panel, as in Vibe: an app opens beside the conversation instead of inside it. The
+ * open chat registers where the panel goes; cards showing the open app turn compact.
+ */
+type PanelHost = (content: HTMLElement | null) => void;
+let panelHost: PanelHost | null = null;
+let panelId: string | null = null;
+
+export function setPanelHost(host: PanelHost | null) {
+  panelHost = host;
+  panelId = null;
+}
+
+function markOpen() {
+  document.querySelectorAll<HTMLElement>('.app-card[data-canvas]').forEach((card) => card.classList.toggle('compact', card.dataset.canvas === panelId));
+}
+
+export function closePanel() {
+  panelId = null;
+  panelHost?.(null);
+  markOpen();
+}
+
+interface AppInfo {
+  id: string;
+  title: string;
+  code: string;
+  version: number;
+}
+
+/** Preview and code, switched by the two icon buttons. */
+function viewSwitch(app: AppInfo, body: HTMLElement, frameClass = '') {
+  const code = iconButton({ icon: 'code', title: 'Code', size: 'sm' });
+  const eye = iconButton({ icon: 'eye', title: 'Preview', size: 'sm' });
+  const show = (preview: boolean) => {
+    eye.classList.toggle('active', preview);
+    code.classList.toggle('active', !preview);
+    const frame = appFrame(app.id, app.version);
+    if (frameClass) frame.classList.add(frameClass);
+    clear(body, preview ? frame : h('pre', { class: 'step-pre app-code' }, app.code));
+  };
+  code.addEventListener('click', () => show(false));
+  eye.addEventListener('click', () => show(true));
+  show(true);
+  return h('div', { class: 'view-switch' }, code, eye);
+}
+
+function download(id: string) {
+  void api.export(id).then((saved) => saved && toast('App saved as a web page.')).catch((e) => toast(String(e), 'error'));
+}
+
+export function openAppPanel(app: AppInfo) {
+  if (!panelHost) return;
+  const body = h('div', { class: 'panel-body' });
+  const close = iconButton({ icon: 'close', title: 'Close', size: 'sm' });
+  close.addEventListener('click', closePanel);
+  const copy = iconButton({ icon: 'copy', title: 'Copy code', size: 'sm' });
+  copy.addEventListener('click', () => { void navigator.clipboard.writeText(app.code); toast('Code copied.'); });
+  const full = iconButton({ icon: 'expand', title: 'Full screen', size: 'sm' });
+  full.addEventListener('click', () => void modal((done) => h('div', { class: 'app-modal' }, modalHeader(app.title, done), appFrame(app.id, app.version)), true));
+  const save = iconButton({ icon: 'download', title: 'Download as a web page', size: 'sm' });
+  save.addEventListener('click', () => download(app.id));
+  panelId = app.id;
+  panelHost(
+    h(
+      'div',
+      { class: 'panel-inner' },
+      h(
+        'div',
+        { class: 'panel-head' },
+        h('div', { class: 'panel-tools' }, close, viewSwitch(app, body, 'panel-frame')),
+        h('strong', { class: 'panel-title' }, app.title),
+        h('span', { class: 'spacer' }),
+        h('div', { class: 'panel-tools' }, copy, full, save)
+      ),
+      body
+    )
+  );
+  markOpen();
+}
+
+/** A mini app the model built: a preview in the reply that opens in the side panel. */
 function renderAppCard(part: Extract<Part, { kind: 'tool' }>, live: boolean): HTMLElement {
   const title = typeof part.arguments.title === 'string' && part.arguments.title ? part.arguments.title : 'App';
   const code = typeof part.arguments.content === 'string' ? part.arguments.content : '';
@@ -55,27 +136,28 @@ function renderAppCard(part: Extract<Part, { kind: 'tool' }>, live: boolean): HT
   } catch {
     version = 0;
   }
-  const body = h('div', { class: 'app-body' });
-  const showPreview = () => clear(body, id && part.output ? appFrame(id, version) : h('div', { class: 'status-line app-wait' }, h('span', { class: 'dots' }), 'Building the app…'));
-  const showCode = () => {
-    const pre = h('pre', { class: 'step-pre app-code' }, code);
-    clear(body, pre);
-  };
-  const preview = h('button', { class: 'seg active' }, 'Preview');
-  const source = h('button', { class: 'seg' }, 'Code');
-  preview.addEventListener('click', () => { preview.classList.add('active'); source.classList.remove('active'); showPreview(); });
-  source.addEventListener('click', () => { source.classList.add('active'); preview.classList.remove('active'); showCode(); });
-  const copy = button({ variant: 'subtle', size: 'sm', icon: 'copy', label: 'Copy', title: 'Copy code' });
-  copy.addEventListener('click', () => { void navigator.clipboard.writeText(code); toast('Code copied.'); });
-  const full = iconButton({ icon: 'share', title: 'Open larger', size: 'sm' });
-  full.addEventListener('click', () => {
-    if (!id) return;
-    void modal((close) => h('div', { class: 'app-modal' }, modalHeader(title, close), appFrame(id, version)), true);
-  });
-  showPreview();
-  const card = h('div', { class: 'canvas-card app-card' }, h('div', { class: 'canvas-head' }, icon('apps', 16), h('span', { class: 'canvas-title' }, title), h('div', { class: 'segmented' }, preview, source), h('span', { class: 'spacer' }), copy, full), body);
   const created = typeof part.arguments.id !== 'string' || !part.arguments.id;
-  return h('div', { class: 'canvas-step' }, h('div', { class: 'canvas-label' }, live && part.output === null ? 'Building an app…' : created ? 'Built an app' : 'Updated an app'), card);
+  const label = h('div', { class: 'canvas-label' }, live && part.output === null ? 'Building an app…' : created ? 'Created an app' : 'Edited an app');
+  if (!id || !part.output) {
+    return h('div', { class: 'canvas-step' }, label, h('div', { class: 'canvas-card app-card' }, h('div', { class: 'status-line app-wait' }, h('span', { class: 'dots' }), `Building ${title}…`)));
+  }
+  const app: AppInfo = { id, title, code, version };
+  const open = () => openAppPanel(app);
+  // Compact: the chip shown while the app is open in the panel.
+  const chip = h('button', { class: 'app-chip', on: { click: open } }, h('span', { class: 'app-chip-icon' }, icon('react', 22)), h('span', {}, h('strong', {}, title), h('small', {}, 'App')));
+  const body = h('div', { class: 'app-body' });
+  const save = iconButton({ icon: 'download', title: 'Download as a web page', size: 'sm' });
+  save.addEventListener('click', () => download(id));
+  const expand = h('button', { class: 'canvas-expand', on: { click: open } }, 'Expand');
+  const card = h(
+    'div',
+    { class: `canvas-card app-card${panelId === id ? ' compact' : ''}`, 'data-canvas': id },
+    chip,
+    h('div', { class: 'canvas-head' }, icon('react', 16), h('span', { class: 'canvas-title' }, title), h('span', { class: 'spacer' }), viewSwitch(app, body), save),
+    body,
+    expand
+  );
+  return h('div', { class: 'canvas-step' }, label, card);
 }
 
 /** A canvas the model created or updated, shown as a document card in the reply. */

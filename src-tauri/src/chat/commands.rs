@@ -737,9 +737,13 @@ pub async fn chat_export_canvas(app: AppHandle, id: String) -> Result<bool, Stri
     use tauri_plugin_dialog::DialogExt;
     let canvas = super::canvas::load(&config_dir(&app)?, &id)?;
     let sheet = canvas.kind == "sheet";
+    let web_app = canvas.kind == "app";
     let (tx, rx) = tokio::sync::oneshot::channel();
     let dialog = app.dialog().file();
-    let dialog = if sheet {
+    let dialog = if web_app {
+        // A single HTML file that runs in any browser.
+        dialog.set_file_name(format!("{}.html", sanitize_file_name(&canvas.title))).add_filter("Web page", &["html"])
+    } else if sheet {
         dialog
             .set_file_name(format!("{}.xlsx", sanitize_file_name(&canvas.title)))
             .add_filter("Excel workbook", &["xlsx"])
@@ -761,6 +765,10 @@ pub async fn chat_export_canvas(app: AppHandle, id: String) -> Result<bool, Stri
         } else {
             super::sheets::write_xlsx(&path.with_extension("xlsx"), &canvas.title, &super::sheets::parse_csv(&csv))?;
         }
+        return Ok(true);
+    }
+    if web_app {
+        std::fs::write(path, super::canvas::app_html(canvas.content())).map_err(|e| e.to_string())?;
         return Ok(true);
     }
     std::fs::write(path, canvas.content()).map_err(|e| e.to_string())?;
@@ -980,11 +988,79 @@ pub fn chat_list_apps(app: AppHandle) -> Result<Vec<super::canvas::Canvas>, Stri
     Ok(super::canvas::list_apps(&config_dir(&app)?))
 }
 
+
+/// Full-text search over every conversation's title and messages.
+#[tauri::command]
+pub async fn chat_search(app: AppHandle, query: String) -> Result<Vec<super::index::Hit>, String> {
+    let dir = config_dir(&app)?;
+    tokio::task::spawn_blocking(move || super::index::search(&dir, &query, 40)).await.map_err(|e| e.to_string())
+}
+
+/// Deleted conversations, kept for 30 days.
+#[tauri::command]
+pub fn chat_trash(app: AppHandle) -> Result<Vec<super::backup::TrashItem>, String> {
+    Ok(super::backup::list_trash(&config_dir(&app)?))
+}
+
+#[tauri::command]
+pub fn chat_restore_conversation(app: AppHandle, id: String) -> Result<(), String> {
+    super::backup::restore(&config_dir(&app)?, &id)
+}
+
+/// Deletes one conversation from the trash for good, or empties it.
+#[tauri::command]
+pub fn chat_delete_forever(app: AppHandle, id: Option<String>) -> Result<(), String> {
+    super::backup::delete_forever(&config_dir(&app)?, id.as_deref())
+}
+
+/// How the stored data is doing: counts, size, backups, and files that cannot be read.
+#[tauri::command]
+pub async fn chat_storage_health(app: AppHandle) -> Result<super::backup::Health, String> {
+    let dir = config_dir(&app)?;
+    tokio::task::spawn_blocking(move || super::backup::health(&dir)).await.map_err(|e| e.to_string())
+}
+
+/// Replaces a damaged conversation with its newest backup; returns that backup's date.
+#[tauri::command]
+pub fn chat_recover_conversation(app: AppHandle, id: String) -> Result<String, String> {
+    super::backup::recover(&config_dir(&app)?, &id)
+}
+
+/// What fills the model's context window in a conversation.
+#[tauri::command]
+pub fn chat_context_breakdown(app: AppHandle, id: String) -> Result<super::context::Breakdown, String> {
+    let dir = config_dir(&app)?;
+    let c = store::load_conversation(&dir, &id)?;
+    let reference = c.model.clone().or_else(|| providers::load(&dir).default_model).unwrap_or_default();
+    Ok(super::context::breakdown(&c.messages, c.summary.as_ref(), c.usage.context_tokens, super::context::context_window(&reference)))
+}
+
+/// Branches a conversation into a new one that continues from the same point.
+#[tauri::command]
+pub fn chat_fork_conversation(app: AppHandle, id: String) -> Result<String, String> {
+    let dir = config_dir(&app)?;
+    let mut c = store::load_conversation(&dir, &id)?;
+    let title = if c.title.is_empty() { engine::fallback_title(&c) } else { c.title.clone() };
+    c.id = uuid::Uuid::new_v4().to_string();
+    c.title = format!("{title} (branch)");
+    c.pinned = false;
+    c.unread = false;
+    c.temporary = false;
+    c.archived = false;
+    c.task_id = None;
+    c.created_at = chrono::Utc::now();
+    c.updated_at = c.created_at;
+    store::save_conversation(&dir, &c)?;
+    Ok(c.id)
+}
+
 /// Manages chat state at startup.
 pub fn setup(app: &tauri::App) {
     app.manage(ChatState::default());
     if let Ok(dir) = config_dir(app.handle()) {
         super::store::purge_temporary(&dir);
+        // Off the startup path: copying state files and pruning old backups can touch many files.
+        std::thread::spawn(move || super::backup::daily(&dir));
     }
     super::tasks::start(app.handle().clone());
 }

@@ -396,37 +396,45 @@ function renderFooter(): HTMLElement {
 
 function openSearch() {
   void modal((close) => {
-    const input = h('input', { class: 'input', placeholder: 'Search conversations, or #tag' });
+    const input = h('input', { class: 'input', placeholder: 'Search everything you have discussed, or #tag' });
     const results = h('div', { class: 'search-results' });
-    const render = () => {
-      const q = input.value.toLowerCase().trim();
-      // `#tag` matches tags only; plain words match titles and tags.
-      const tagQuery = q.startsWith('#') ? q.slice(1) : null;
-      const found = state.conversations
-        .filter((c) =>
-          !q ? true : tagQuery !== null ? c.tags.some((t) => t.startsWith(tagQuery)) : c.title.toLowerCase().includes(q) || c.tags.some((t) => t.includes(q))
-        )
-        .slice(0, 30);
-      clear(
-        results,
-        found.length
-          ? found.map((c) =>
-              h(
-                'button',
-                { class: 'menu-item', on: { click: () => { close(); navigate({ kind: 'chat', id: c.id }); } } },
-                icon(c.archived ? 'archive' : 'chat', 16),
-                h('span', {}, c.title),
-                c.tags.length ? h('span', { class: 'tag-list' }, c.tags.map((t) => h('span', { class: 'tag' }, `#${t}`))) : null
-              )
-            )
-          : h('p', { class: 'muted' }, 'Nothing found.')
+    const row = (c: { id: string; title: string; archived: boolean; tags: string[]; updatedAt: string }, snippet: HTMLElement | null) =>
+      h(
+        'button',
+        { class: `menu-item${snippet ? ' rich' : ''}`, on: { click: () => { close(); navigate({ kind: 'chat', id: c.id }); } } },
+        icon(c.archived ? 'archive' : 'chat', 16),
+        snippet ? h('span', {}, h('strong', {}, c.title), snippet) : h('span', {}, c.title),
+        c.tags.length ? h('span', { class: 'tag-list' }, c.tags.map((t) => h('span', { class: 'tag' }, `#${t}`))) : null,
+        h('span', { class: 'search-date' }, new Date(c.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }))
       );
+    /** The snippet with the searched words marked. */
+    const marked = (text: string, terms: string[]): HTMLElement => {
+      const out = h('small', {});
+      const pattern = new RegExp(`(${terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi');
+      text.split(pattern).forEach((piece, i) => out.append(i % 2 ? h('mark', {}, piece) : piece));
+      return out;
     };
-    input.addEventListener('input', render);
+    let latest = 0;
+    const render = async () => {
+      const q = input.value.toLowerCase().trim();
+      // `#tag` matches tags; words search titles and everything said, through the index.
+      if (!q || q.startsWith('#')) {
+        const tag = q.slice(1);
+        const found = state.conversations.filter((c) => !q || c.tags.some((t) => t.startsWith(tag))).slice(0, 30);
+        clear(results, found.length ? found.map((c) => row(c, null)) : h('p', { class: 'muted' }, 'Nothing found.'));
+        return;
+      }
+      const ticket = ++latest;
+      const hits = await api.search(q).catch(() => []);
+      if (ticket !== latest) return;
+      const terms = q.split(/\s+/).filter(Boolean);
+      clear(results, hits.length ? hits.map((hit) => row(hit, hit.snippet ? marked(hit.snippet, terms) : null)) : h('p', { class: 'muted' }, 'Nothing found in your conversations.'));
+    };
+    input.addEventListener('input', () => void render());
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') (results.querySelector('button') as HTMLButtonElement | null)?.click();
     });
-    render();
+    void render();
     return h('div', { class: 'dialog-small wide' }, input, results);
   });
 }

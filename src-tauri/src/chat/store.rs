@@ -13,6 +13,10 @@ use rig_core::completion::message::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// The conversation file format. Raise it when a change needs [`migrate`] to convert older files;
+/// files record the format they were written in, so a migration knows what it is reading.
+pub const SCHEMA: u32 = 2;
+
 pub fn chat_dir(config_dir: &Path) -> PathBuf {
     config_dir.join("chat")
 }
@@ -62,6 +66,9 @@ fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Option<T> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Conversation {
+    /// The format this file was written in; see [`SCHEMA`].
+    #[serde(default)]
+    pub schema: u32,
     pub id: String,
     pub title: String,
     #[serde(default)]
@@ -120,6 +127,7 @@ impl Conversation {
     pub fn new(id: String, project_id: Option<String>, model: Option<String>) -> Self {
         let now = Utc::now();
         Self {
+            schema: SCHEMA,
             id,
             title: String::new(),
             project_id,
@@ -150,7 +158,16 @@ pub fn load_conversation(config_dir: &Path, id: &str) -> Result<Conversation, St
 }
 
 pub fn save_conversation(config_dir: &Path, conversation: &Conversation) -> Result<(), String> {
-    write_json(&conversation_path(config_dir, &conversation.id)?, conversation)
+    let path = conversation_path(config_dir, &conversation.id)?;
+    if !conversation.temporary {
+        super::backup::before_overwrite(config_dir, &path);
+    }
+    if conversation.schema < SCHEMA {
+        let mut current = conversation.clone();
+        current.schema = SCHEMA;
+        return write_json(&path, &current);
+    }
+    write_json(&path, conversation)
 }
 
 /// Deletes the temporary conversations a previous session left behind.
@@ -163,16 +180,13 @@ pub fn purge_temporary(config_dir: &Path) {
     }
 }
 
+/// Deleting moves the conversation to the trash, where it stays for 30 days.
 pub fn delete_conversation(config_dir: &Path, id: &str) -> Result<(), String> {
-    match std::fs::remove_file(conversation_path(config_dir, id)?) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(e.to_string()),
-    }
+    super::backup::trash(config_dir, id)
 }
 
 /// A sidebar row.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConversationSummary {
     pub archived: bool,
@@ -185,34 +199,13 @@ pub struct ConversationSummary {
     pub task_id: Option<String>,
     pub unread: bool,
     pub pinned: bool,
+    pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
+/// The sidebar rows, from the index (see [`super::index`]), so a long history stays fast.
 pub fn list_conversations(config_dir: &Path) -> Vec<ConversationSummary> {
-    let Ok(entries) = std::fs::read_dir(conversations_dir(config_dir)) else {
-        return Vec::new();
-    };
-    let mut out: Vec<ConversationSummary> = entries
-        .filter_map(Result::ok)
-        .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
-        .filter_map(|e| read_json::<Conversation>(&e.path()))
-        .filter(|c| !c.temporary)
-        .map(|c| ConversationSummary {
-            archived: c.archived,
-            tags: c.tags.clone(),
-            title: if c.title.is_empty() { "New chat".into() } else { c.title },
-            id: c.id,
-            project_id: c.project_id,
-            workdir: c.workdir,
-            agent_id: c.agent_id,
-            task_id: c.task_id,
-            unread: c.unread,
-            pinned: c.pinned,
-            updated_at: c.updated_at,
-        })
-        .collect();
-    out.sort_by(|a, b| b.pinned.cmp(&a.pinned).then(b.updated_at.cmp(&a.updated_at)));
-    out
+    super::index::list(config_dir)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

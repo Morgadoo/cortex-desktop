@@ -93,6 +93,10 @@ against the 5 that survived), and Mistral's documentation: docs.mistral.ai/vibe,
 | Vibe | Here | Status |
 |---|---|---|
 | Breadcrumb header (project / title ▾) | Same, plus a usage and cost meter | Done |
+| `/context` view (Vibe 3.1.0) | Clicking the usage meter shows what fills the window: instructions and tools, messages, answers, tool calls and results, thinking, images, summary | Done |
+| `/branch` / `/fork` (Vibe 2.25.3, 3.0.4) | "Branch into a new chat" in the conversation menu | Done |
+| "Jump to bottom" button (Vibe 3.1.0) | Same | Done |
+| Composer placeholder "Type / for quick access" | Same | Done |
 | Thinking, collapsed when the answer arrives | Same | Done |
 | Activity timeline; "Running N actions" while working | Same; repeated tools merge into one table | Done |
 | Search results card | Same | Done |
@@ -118,6 +122,7 @@ against the 5 that survived), and Mistral's documentation: docs.mistral.ai/vibe,
 | Vibe | Here | Status |
 |---|---|---|
 | Apps (Preview) | Mini apps the model builds, run in a sandboxed frame with their own CSP; Preview / Code; Apps page | Done |
+| App canvas opens beside the chat (Vibe screenshots, Nov 2026): the reply keeps a compact "title · App" card with an accent border; the side panel has close, code / preview, title, copy, full screen, download; inline, the preview is clipped with an Expand bar | Same layout; Download saves the app as one HTML file; Escape closes the panel | Done |
 | Spreadsheets (release notes, Sept 2026): analyse, clean and create Excel/CSV, edit in Canvas, download .xlsx | Sheet canvases (CSV) edited as a grid with rows/columns, saved as versions; download as .xlsx (rust_xlsxwriter) or CSV; uploaded .xlsx/.xls/.ods read into CSV (calamine); heavy analysis via run_code | Done |
 
 ### 11. Settings and appearance
@@ -156,11 +161,22 @@ against the 5 that survived), and Mistral's documentation: docs.mistral.ai/vibe,
 | Context management | (best practice) | Tool-result clearing, compaction at 60%, measured tokens and cost | Done |
 | Design system | T3 Code | Tokens, shared components, T3's control styling and palettes | Done |
 
+## Built for years of use
+
+| Need | Here |
+|---|---|
+| A long history stays fast | A conversation index (`chat/index/`) keeps each sidebar row with the file's size and time; listing parses only files that changed. Rebuilt automatically if missing |
+| Find anything ever said | Search (Ctrl+K) covers titles and every message, all words must match, with highlighted snippets; `#tag` still filters tags |
+| Mistakes are recoverable | Deleting moves a conversation to Recently deleted for 30 days (Settings → Profile), with Restore |
+| Files are protected | The first change of each day keeps a copy of the conversation as it was; state files are copied daily; 30 days kept |
+| Damage is visible | A file that cannot be read is reported in Settings with "Restore the backup"; the damaged file is kept in `quarantine/` |
+| Formats can evolve | Each conversation records its format version (`schema`), so migrations know what they read |
+
 ## Known gaps
 
-- **Reference coverage:** only 5 of the Vibe screenshots survived in the session that built this,
-  so sections 1–6 were checked against images and the rest against written notes of them.
-  Comparing against fresh screenshots of the current Vibe app is the way to close this.
+- **Reference coverage:** sections 1–6 were checked against the first 5 Vibe screenshots, and the
+  app canvas flow (thinking, card, side panel) against 3 fresh ones from November 2026. Screens
+  without a screenshot (Context pages, Scheduled, Settings, Code mode) follow Mistral's docs.
 - **Voice input against a real provider:** dictation was verified end to end in the app with a
   virtual microphone and a mock transcription endpoint. The test proxy has no transcription
   endpoint (404), so it has not run against a real speech-to-text model yet. The same applies to

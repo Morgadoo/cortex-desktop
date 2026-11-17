@@ -5,7 +5,7 @@ import { clear, confirmDialog, greeting, h, icon, markdown, modal, popover, prom
 import { changed, currentModel, navigate, state, type LiveTurn } from './state';
 import { openSettings } from './settings';
 import { openInstructions } from './pages';
-import { enableAskAboutSelection, renderCanvasCard } from './canvas';
+import { closePanel, enableAskAboutSelection, renderCanvasCard, setPanelHost } from './canvas';
 import { renderCodeRun, renderImage } from './coderun';
 import { startRecording, toBase64, type Recording } from './dictation';
 import { audioSettings, speakText, type Playback } from './audio';
@@ -1080,7 +1080,7 @@ class Composer {
   private chips: HTMLElement;
   private bar: HTMLElement;
   private conversationId: string | null = null;
-  private placeholder = 'Ask anything. Type / for quick actions';
+  private placeholder = 'Type / for quick access';
 
   constructor() {
     this.textarea = h('textarea', { class: 'composer-input', rows: 1, placeholder: this.placeholder });
@@ -1797,7 +1797,7 @@ export class HomeView {
       : agent
         ? h('h1', { class: 'greeting' }, `What should ${agent.name} do?`)
         : h('h1', { class: 'greeting' }, project ? `${project.icon ? `${project.icon} ` : ''}New chat in ${project.name}` : greeting(state.instructions.name));
-    composer.attach(null, code ? 'What do you want to build?' : 'Ask anything. Type / for quick actions');
+    composer.attach(null, code ? 'What do you want to build?' : 'Type / for quick access');
     const dismiss = h('button', { class: 'icon-btn small', title: 'Dismiss' }, icon('close', 16));
     dismiss.addEventListener('click', () => {
       bannerDismissed = true;
@@ -1975,6 +1975,7 @@ export class ChatView {
   private bottom = h('div', { class: 'chat-bottom' });
   private jump = h('button', { class: 'jump-btn', title: 'Scroll to bottom' }, icon('arrowDown', 18));
   private planPanel = h('aside', { class: 'plan-panel' });
+  private sidePanel = h('aside', { class: 'side-panel' });
   /** Files changed in the session's folder: undefined until asked, null while asking, -1 without git. */
   private changeCount: number | null | undefined = undefined;
   private stickToBottom = true;
@@ -1989,9 +1990,17 @@ export class ChatView {
     });
     this.jump.addEventListener('click', () => this.scrollToBottom(true));
     enableAskAboutSelection(this.scroller, (quote) => composer.setQuote(quote));
-    composer.attach(id, 'Reply…');
-    this.bottom.append(this.jump, this.overlay, composer.el, h('div', { class: 'disclaimer' }, 'AI can make mistakes. Check important information.'));
-    this.el.append(this.header, this.scroller, this.bottom, this.planPanel);
+    composer.attach(id, 'Type / for quick access');
+    this.bottom.append(this.jump, this.overlay, composer.el, h('div', { class: 'disclaimer' }, 'AI can make mistakes. Check answers.'));
+    this.el.append(this.header, this.scroller, this.bottom, this.planPanel, this.sidePanel);
+    // Apps open beside the conversation; Escape closes the panel.
+    setPanelHost((content) => {
+      clear(this.sidePanel, content);
+      this.el.classList.toggle('with-panel', content !== null);
+    });
+    this.el.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.el.classList.contains('with-panel') && !document.querySelector('.modal-backdrop')) closePanel();
+    });
     void this.refresh(true);
   }
 
@@ -2080,7 +2089,7 @@ export class ChatView {
       await api.updateConversation({ id: this.id, pinned: !summary?.pinned });
       await refreshConversations();
     });
-    const meter = usageMeter(state.usage.get(this.id), c?.usage);
+    const meter = usageMeter(this.id, state.usage.get(this.id), c?.usage);
     const exportBtn = h('button', { class: 'icon-btn', title: 'Export as Markdown' }, icon('share', 18));
     let changesBtn: HTMLElement | null = null;
     let terminalBtn: HTMLElement | null = null;
@@ -2149,7 +2158,7 @@ export class ChatView {
 }
 
 /** Tokens, cost and how full the model's window is, for the conversation header. */
-function usageMeter(live: { usage: UsageTotals; window: number } | undefined, stored: UsageTotals | undefined): HTMLElement | null {
+function usageMeter(id: string, live: { usage: UsageTotals; window: number } | undefined, stored: UsageTotals | undefined): HTMLElement | null {
   const usage = live?.usage ?? stored;
   if (!usage || !(usage.inputTokens || usage.outputTokens)) return null;
   const pct = live && live.window ? Math.min(100, Math.round((usage.contextTokens / live.window) * 100)) : null;
@@ -2161,8 +2170,8 @@ function usageMeter(live: { usage: UsageTotals; window: number } | undefined, st
   ].filter(Boolean);
   const total = Math.round((usage.inputTokens + usage.outputTokens) / 1000);
   return h(
-    'span',
-    { class: 'usage-meter', title: lines.join('. ') },
+    'button',
+    { class: 'usage-meter', title: `${lines.join('. ')}. Click to see what fills the context.`, on: { click: () => void showContext(id) } },
     pct !== null ? h('span', { class: 'ring', style: { '--pct': String(pct) } }) : null,
     h('span', {}, `${total}k tokens${usage.cost > 0 ? ' · ' + money(usage.cost) : ''}`)
   );
@@ -2188,6 +2197,12 @@ export function conversationMenu(anchor: HTMLElement, id: string, title: string,
         await refreshConversations();
       }),
       item('folder', 'Move to project', () => void moveToProject(id)),
+      item('branch', 'Branch into a new chat', async () => {
+        const branch = await api.forkConversation(id);
+        await refreshConversations();
+        navigate({ kind: 'chat', id: branch });
+        toast('Branched. This chat continues from the same point.');
+      }),
       item('download', 'Export as Markdown', () => void api.exportConversation(id).then((saved) => saved && toast('Conversation exported.'))),
       item('tag', 'Tags…', async () => {
         const current = state.conversations.find((c) => c.id === id)?.tags ?? [];
@@ -2205,7 +2220,7 @@ export function conversationMenu(anchor: HTMLElement, id: string, title: string,
       }),
       h('div', { class: 'menu-sep' }),
       item('trash', 'Delete', async () => {
-        if (await confirmDialog('Delete conversation?', `“${title}” will be deleted from this device.`)) {
+        if (await confirmDialog('Delete conversation?', `“${title}” moves to Recently deleted, where it stays for 30 days (Settings → Profile).`)) {
           await api.deleteConversation(id);
           if (state.view.kind === 'chat' && state.view.id === id) navigate({ kind: 'home' });
           await refreshConversations();
@@ -2217,3 +2232,37 @@ export function conversationMenu(anchor: HTMLElement, id: string, title: string,
 
 /** The views on screen, so streamed events update them in place. */
 export const viewCache: { chat: ChatView | null; home: HomeView | null } = { chat: null, home: null };
+
+const SLICE_COLORS = ['var(--accent)', '#4fa3d1', '#5fb98a', '#d9a441', '#c96f9b', '#8c8fd6', '#9aa0a6', '#d97a5b'];
+
+/** The context view: what the next request carries, and how full the model's window is. */
+async function showContext(id: string) {
+  const view = await api.contextBreakdown(id).catch((e) => (toast(String(e), 'error'), null));
+  if (!view) return;
+  const used = view.measured || view.slices.reduce((n, s) => n + s.tokens, 0);
+  const pct = Math.min(100, Math.round((used / view.window) * 100));
+  const k = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n));
+  void modal((close) =>
+    h(
+      'div',
+      { class: 'dialog-small wide context-view' },
+      modalHeader('Context', close),
+      h('p', { class: 'muted' }, `${used.toLocaleString()} of ${view.window.toLocaleString()} tokens in use (${pct}%). Older messages are summarized automatically at 60%.`),
+      h(
+        'div',
+        { class: 'context-bar' },
+        view.slices.map((s, i) => h('span', { title: s.label, style: { width: `${(s.tokens / view.window) * 100}%`, background: SLICE_COLORS[i % SLICE_COLORS.length]! } }))
+      ),
+      h(
+        'div',
+        { class: 'context-legend' },
+        view.slices.map((s, i) =>
+          h('div', { class: 'context-row' }, h('span', { class: 'context-dot', style: { background: SLICE_COLORS[i % SLICE_COLORS.length]! } }), h('span', { class: 'grow' }, s.label), h('span', { class: 'muted' }, `${k(s.tokens)} · ${((s.tokens / view.window) * 100).toFixed(1)}%`))
+        )
+      ),
+      view.summarizedMessages ? h('p', { class: 'muted small' }, `${view.summarizedMessages} earlier messages are carried as a summary.`) : null,
+      view.clearedResults ? h('p', { class: 'muted small' }, `${view.clearedResults} older tool results are shortened; the assistant runs a tool again if it needs one.`) : null,
+      h('p', { class: 'muted small' }, 'The total is what the provider measured; the split is an estimate.')
+    )
+  );
+}

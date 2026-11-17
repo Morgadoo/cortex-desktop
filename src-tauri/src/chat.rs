@@ -12,6 +12,7 @@
 
 pub mod agents;
 pub mod audio;
+mod backup;
 pub mod builtins;
 pub mod canvas;
 pub mod code;
@@ -19,6 +20,7 @@ pub mod commands;
 pub mod context;
 pub mod engine;
 pub mod import;
+mod index;
 pub mod knowledge;
 pub mod libraries;
 pub mod media;

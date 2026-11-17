@@ -109,6 +109,60 @@ function row(label: string, description: string, control: HTMLElement): HTMLElem
 
 
 function renderProfile(content: HTMLElement) {
+  const dataCard = card();
+  /** Storage, backups, anything damaged, and the conversations deleted in the last 30 days. */
+  const renderData = async () => {
+    const [health, trash] = await Promise.all([api.storageHealth(), api.trash()]);
+    const size = health.bytes > 1_048_576 ? `${(health.bytes / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(health.bytes / 1024))} KB`;
+    const refresh = () => { window.dispatchEvent(new Event('chat:conversations-changed')); void renderData(); };
+    clear(
+      dataCard,
+      h('h3', {}, 'Storage and backups'),
+      h(
+        'p',
+        { class: 'muted' },
+        `${health.conversations.toLocaleString()} conversations, ${size} on this device. `,
+        health.newestBackup
+          ? `A copy of each conversation is kept before its first change of the day, for ${health.keepDays} days (${health.backupDays} day${health.backupDays === 1 ? '' : 's'} so far, newest ${health.newestBackup}).`
+          : `A copy of each conversation is kept before its first change of the day, for ${health.keepDays} days.`
+      ),
+      health.damaged.length
+        ? h(
+            'div',
+            { class: 'data-warning' },
+            h('strong', {}, `${health.damaged.length} conversation file${health.damaged.length === 1 ? '' : 's'} cannot be read`),
+            health.damaged.map((d) =>
+              h(
+                'div',
+                { class: 'data-row' },
+                h('span', { class: 'grow mono' }, d.id),
+                d.backup
+                  ? button({ variant: 'secondary', size: 'sm', label: `Restore the ${d.backup} backup`, onClick: async () => { try { await api.recoverConversation(d.id); toast('Restored from the backup.'); refresh(); } catch (e) { toast(String(e), 'error'); } } })
+                  : h('span', { class: 'muted' }, 'No backup yet; the file is kept as it is.')
+              )
+            )
+          )
+        : null,
+      h('h4', {}, 'Recently deleted'),
+      trash.length
+        ? h(
+            'div',
+            { class: 'data-list' },
+            trash.map((t) =>
+              h(
+                'div',
+                { class: 'data-row' },
+                h('span', { class: 'grow' }, t.title),
+                h('span', { class: 'muted' }, `${t.daysLeft} day${t.daysLeft === 1 ? '' : 's'} left`),
+                button({ variant: 'secondary', size: 'sm', label: 'Restore', onClick: async () => { try { await api.restoreConversation(t.id); toast('Conversation restored.'); refresh(); } catch (e) { toast(String(e), 'error'); } } }),
+                button({ variant: 'subtle', size: 'sm', label: 'Delete now', onClick: async () => { await api.deleteForever(t.id); void renderData(); } })
+              )
+            ),
+            h('div', { class: 'card-actions' }, button({ variant: 'danger', size: 'sm', label: 'Empty', onClick: async () => { await api.deleteForever(null); void renderData(); } }))
+          )
+        : h('p', { class: 'muted' }, `Nothing. Deleted conversations wait here for ${health.keepDays} days.`)
+    );
+  };
   const name = h('input', { class: 'input', value: state.instructions.name, placeholder: 'Your name' });
   const save = h('button', { class: 'btn btn-primary' }, 'Save');
   save.addEventListener('click', async () => {
@@ -167,8 +221,10 @@ function renderProfile(content: HTMLElement) {
           },
         })
       )
-    )
+    ),
+    dataCard
   );
+  void renderData();
 }
 
 async function renderProviders(content: HTMLElement) {

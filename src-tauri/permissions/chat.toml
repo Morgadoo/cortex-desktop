@@ -387,3 +387,43 @@ commands.allow = ["chat_save_audio_settings"]
 identifier = "allow-chat-audio-voices"
 description = "List text-to-speech voices."
 commands.allow = ["chat_audio_voices"]
+
+[[permission]]
+identifier = "allow-chat-search"
+description = "Search conversations by title and content."
+commands.allow = ["chat_search"]
+
+[[permission]]
+identifier = "allow-chat-trash"
+description = "List deleted conversations."
+commands.allow = ["chat_trash"]
+
+[[permission]]
+identifier = "allow-chat-restore-conversation"
+description = "Restore a deleted conversation."
+commands.allow = ["chat_restore_conversation"]
+
+[[permission]]
+identifier = "allow-chat-delete-forever"
+description = "Delete conversations from the trash for good."
+commands.allow = ["chat_delete_forever"]
+
+[[permission]]
+identifier = "allow-chat-storage-health"
+description = "Read how the stored data is doing."
+commands.allow = ["chat_storage_health"]
+
+[[permission]]
+identifier = "allow-chat-recover-conversation"
+description = "Replace a damaged conversation with its backup."
+commands.allow = ["chat_recover_conversation"]
+
+[[permission]]
+identifier = "allow-chat-context-breakdown"
+description = "Read what fills a conversation's context window."
+commands.allow = ["chat_context_breakdown"]
+
+[[permission]]
+identifier = "allow-chat-fork-conversation"
+description = "Branch a conversation into a new one."
+commands.allow = ["chat_fork_conversation"]

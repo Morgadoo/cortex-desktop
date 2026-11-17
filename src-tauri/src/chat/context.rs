@@ -128,6 +128,83 @@ pub fn request_messages(messages: &[Message], summary: Option<&Summary>) -> Vec<
     out
 }
 
+/// One slice of the context window.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Slice {
+    pub label: String,
+    pub tokens: u64,
+}
+
+/// What fills the model's window, for the context view.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Breakdown {
+    pub window: u64,
+    /// What the latest request carried, as the provider measured it; 0 before the first reply.
+    pub measured: u64,
+    /// Estimates (four characters a token), largest first.
+    pub slices: Vec<Slice>,
+    /// Messages replaced by the summary, and tool results shortened to save room.
+    pub summarized_messages: usize,
+    pub cleared_results: usize,
+}
+
+/// Splits what the next request carries into what it is made of.
+pub fn breakdown(messages: &[Message], summary: Option<&Summary>, measured: u64, window: u64) -> Breakdown {
+    use rig_core::completion::message::AssistantContent;
+    let size = |text: &str| text.len() as u64 / 4;
+    let (mut you, mut files, mut answers, mut thinking, mut calls, mut results) = (0u64, 0u64, 0u64, 0u64, 0u64, 0u64);
+    let request = request_messages(messages, summary);
+    for message in &request {
+        match message {
+            Message::User { content } => {
+                for item in content.iter() {
+                    match item {
+                        UserContent::Text(t) => you += size(&t.text),
+                        UserContent::ToolResult(r) => results += size(&serde_json::to_string(r).unwrap_or_default()),
+                        // An image costs by its size in pixels, not its bytes; a typical one is about this.
+                        UserContent::Image(_) => files += 1_000,
+                        other => files += size(&serde_json::to_string(other).unwrap_or_default()),
+                    }
+                }
+            }
+            Message::Assistant(a) => {
+                for item in a.content.iter() {
+                    match item {
+                        AssistantContent::Text(t) => answers += size(&t.text),
+                        AssistantContent::ToolCall(c) => calls += size(&serde_json::to_string(c).unwrap_or_default()),
+                        other => thinking += size(&serde_json::to_string(other).unwrap_or_default()),
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    let note = summary.map_or(0, |s| s.text.len() as u64 / 4);
+    let counted = you + files + answers + thinking + calls + results + note;
+    let cleared_results = {
+        let total = request.iter().filter_map(|m| match m { Message::User { content } => Some(content.iter().filter(|c| matches!(c, UserContent::ToolResult(_))).count()), _ => None }).sum::<usize>();
+        total.saturating_sub(KEEP_FULL_RESULTS)
+    };
+    let mut slices: Vec<Slice> = [
+        ("Instructions, knowledge, skills and tool definitions", measured.saturating_sub(counted)),
+        ("Your messages", you),
+        ("Answers", answers),
+        ("Tool results", results),
+        ("Tool calls", calls),
+        ("Thinking", thinking),
+        ("Images and files", files),
+        ("Summary of earlier messages", note),
+    ]
+    .into_iter()
+    .filter(|(_, tokens)| *tokens > 0)
+    .map(|(label, tokens)| Slice { label: label.into(), tokens })
+    .collect();
+    slices.sort_by(|a, b| b.tokens.cmp(&a.tokens));
+    Breakdown { window, measured, slices, summarized_messages: summary.map_or(0, |s| s.upto.min(messages.len())), cleared_results }
+}
+
 /// The instruction that turns old turns into a note the conversation can continue from.
 pub fn summary_prompt(previous: Option<&str>, transcript: &str) -> String {
     let previous = previous.map_or(String::new(), |p| format!("The earlier summary, to fold in:\n{p}\n\n"));
@@ -261,6 +338,11 @@ mod tests {
         assert!(context_window("openai/gpt-5.5") >= 100_000);
         assert_eq!(context_window("nobody/nothing"), DEFAULT_WINDOW);
         assert!(estimate_tokens(&messages) > 0);
+        // The context view: what is counted is named, and the rest is the instructions and tools.
+        let view = breakdown(&messages, None, 50_000, 128_000);
+        assert_eq!(view.slices[0].label, "Instructions, knowledge, skills and tool definitions");
+        assert!(view.slices.iter().any(|s| s.label == "Your messages"));
+        assert_eq!((view.window, view.measured, view.summarized_messages), (128_000, 50_000, 0));
     }
 }
 

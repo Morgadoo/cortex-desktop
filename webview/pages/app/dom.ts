@@ -91,6 +91,7 @@ const ICONS: Record<string, string> = {
   thumbDown: 'M7 13V4H4v9zM7 13l4 8a2 2 0 0 0 3-2l-1-5h5a2 2 0 0 0 2-2.3l-1.2-6A2 2 0 0 0 16.8 4H7',
   retry: 'M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5',
   copy: 'M8 8h11v11H8zM5 16V5h11',
+  branch: 'M6 4v10M6 14a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM18 4a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM18 10c0 4-6 3-11 6',
   check: 'M5 12l5 5L20 7',
   checkCircle: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM8 12l3 3 5-6',
   tool: 'M14 6a4 4 0 0 0 5 5l-9 9a2 2 0 0 1-3-3l9-9a4 4 0 0 0-2-2z',
@@ -113,6 +114,10 @@ const ICONS: Record<string, string> = {
   arrowDown: 'M12 5v14M6 13l6 6 6-6',
   sparkle: 'M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z',
   wait: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5h4',
+  code: 'M9 7l-5 5 5 5M15 7l5 5-5 5',
+  eye: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
+  expand: 'M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7',
+  react: 'M12 10.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM12 7c5 0 9 2.2 9 5s-4 5-9 5-9-2.2-9-5 4-5 9-5zM7.7 9.5c2.5-4.3 6.3-6.8 8.7-5.4s2 6-.4 10.4-6.3 6.8-8.7 5.4-2-6 .4-10.4zM16.3 9.5c2.5 4.4 2.9 9 .4 10.4s-6.2-1.1-8.7-5.4-2.9-9-.4-10.4 6.2 1.1 8.7 5.4z',
 };
 
 export function icon(name: keyof typeof ICONS | string, size = 18): SVGSVGElement {

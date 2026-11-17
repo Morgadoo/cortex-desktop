@@ -45,7 +45,43 @@ export interface ConversationSummary {
   pinned: boolean;
   archived: boolean;
   tags: string[];
+  createdAt: string;
   updatedAt: string;
+}
+
+export interface SearchHit {
+  id: string;
+  title: string;
+  snippet: string;
+  inTitle: boolean;
+  archived: boolean;
+  tags: string[];
+  updatedAt: string;
+}
+
+export interface TrashItem {
+  id: string;
+  title: string;
+  deletedAt: string;
+  daysLeft: number;
+}
+
+export interface StorageHealth {
+  conversations: number;
+  damaged: { id: string; backup: string | null }[];
+  trash: number;
+  backupDays: number;
+  newestBackup: string | null;
+  bytes: number;
+  keepDays: number;
+}
+
+export interface ContextBreakdown {
+  window: number;
+  measured: number;
+  slices: { label: string; tokens: number }[];
+  summarizedMessages: number;
+  clearedResults: number;
 }
 
 export type Part =
@@ -257,6 +293,14 @@ export const api = {
   commitChanges: (conversationId: string, message: string) => call<string>('chat_code_commit', { conversationId, message }),
   importConversations: () => call<{ imported: number; skipped: number; source: string } | null>('chat_import_conversations'),
   deleteConversation: (id: string) => call<void>('chat_delete_conversation', { id }),
+  search: (query: string) => call<SearchHit[]>('chat_search', { query }),
+  trash: () => call<TrashItem[]>('chat_trash'),
+  restoreConversation: (id: string) => call<void>('chat_restore_conversation', { id }),
+  deleteForever: (id: string | null) => call<void>('chat_delete_forever', { id }),
+  storageHealth: () => call<StorageHealth>('chat_storage_health'),
+  recoverConversation: (id: string) => call<string>('chat_recover_conversation', { id }),
+  contextBreakdown: (id: string) => call<ContextBreakdown>('chat_context_breakdown', { id }),
+  forkConversation: (id: string) => call<string>('chat_fork_conversation', { id }),
   keepConversation: (id: string) => call<void>('chat_keep_conversation', { id }),
   exportConversation: (id: string) => call<boolean>('chat_export_conversation', { id }),
 
