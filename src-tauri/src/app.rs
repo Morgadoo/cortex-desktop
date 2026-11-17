@@ -121,6 +121,7 @@ pub fn run() {
                 chat::commands::chat_project_library,
                 chat::commands::chat_export_all,
                 chat::commands::chat_list_apps,
+                chat::commands::chat_keep_conversation,
             ];
             commands(invoke)
         })

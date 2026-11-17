@@ -737,3 +737,18 @@ select.input { cursor: pointer; }
 .run-images img { max-width: 100%; max-height: 420px; border-radius: 10px; background: #fff; }
 .run-files { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--border); }
 .run-file { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 8px; background: var(--bg-hover); font-size: 13px; }
+
+/* ------------------------------------------------------------------ model comparison */
+
+.chat-title-static { font-weight: 600; font-size: 16px; }
+.compare-column-wrap { max-width: 1400px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; padding: 0 8px 40px; }
+.compare-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: start; }
+.compare-col { border: 1px solid var(--border-strong); border-radius: 16px; padding: 14px 16px; background: var(--bg-elevated); min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.compare-col .turn { gap: 12px; }
+.compare-head { display: flex; align-items: center; gap: 8px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.compare-head .btn { padding: 5px 12px; font-size: 13px; }
+.compare-pick { display: flex; flex-direction: column; gap: 2px; max-height: 340px; overflow: auto; margin: 4px 0 8px; }
+.compare-option { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; cursor: pointer; }
+.compare-option:hover { background: var(--bg-hover); }
+.compare-option .muted { margin-left: auto; font-size: 12px; }
+.model-item .tag { flex: none; }

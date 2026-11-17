@@ -5,7 +5,7 @@
  */
 import { api, listen, type ApprovalRequest, type ChatEvent } from './api';
 import { tauriInvoke } from '../../shared/tauri';
-import { ChatView, HomeView, composer, conversationMenu, recordStepTimes, refreshConversations, viewCache } from './chat';
+import { ChatView, CompareView, HomeView, composer, conversationMenu, recordStepTimes, refreshConversations, viewCache } from './chat';
 import { clear, h, icon, modal, popover, promptText, confirmDialog, toast } from './dom';
 import { ConnectorsPage, PlaceholderPage, openInstructions } from './pages';
 import { KnowledgePage, SkillsPage } from './context';
@@ -30,6 +30,7 @@ let view: View | null = null;
 function viewKey(): string {
   const v = state.view;
   if (v.kind === 'chat') return `chat:${v.id}`;
+  if (v.kind === 'compare') return `compare:${v.columns.map((c) => c.id).join(',')}`;
   if (v.kind === 'page') return v.page === 'scheduled' ? 'page:scheduled:' : `page:${v.page}`;
   if (v.kind === 'agent') return `agent:${v.id}`;
   return `home:${v.projectId ?? ''}:${v.agentId ?? ''}:${state.mode}`;
@@ -66,6 +67,8 @@ function renderMain() {
           : v.page === 'knowledge'
             ? new KnowledgePage()
             : new PlaceholderPage(v.page);
+  } else if (v.kind === 'compare') {
+    view = new CompareView(v.prompt, v.columns);
   } else if (v.kind === 'agent') {
     view = new AgentPage(v.id, (agentId) => navigate({ kind: 'home', agentId }));
   } else {

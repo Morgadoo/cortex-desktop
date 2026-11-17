@@ -252,3 +252,8 @@ commands.allow = ["chat_export_all"]
 identifier = "allow-chat-list-apps"
 description = "List the mini apps the assistant built."
 commands.allow = ["chat_list_apps"]
+
+[[permission]]
+identifier = "allow-chat-keep-conversation"
+description = "Keep a temporary conversation, such as a chosen comparison answer."
+commands.allow = ["chat_keep_conversation"]

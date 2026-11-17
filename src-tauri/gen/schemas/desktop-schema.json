@@ -315,6 +315,12 @@
           "markdownDescription": "Import a SKILL.md the user picks."
         },
         {
+          "description": "Keep a temporary conversation, such as a chosen comparison answer.",
+          "type": "string",
+          "const": "allow-chat-keep-conversation",
+          "markdownDescription": "Keep a temporary conversation, such as a chosen comparison answer."
+        },
+        {
           "description": "List agents.",
           "type": "string",
           "const": "allow-chat-list-agents",

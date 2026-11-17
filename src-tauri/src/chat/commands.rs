@@ -224,6 +224,15 @@ pub fn chat_delete_conversation(app: AppHandle, state: State<'_, ChatState>, id:
     store::delete_conversation(&config_dir(&app)?, &id)
 }
 
+/// Keeps a temporary conversation, such as the answer chosen in a model comparison.
+#[tauri::command]
+pub fn chat_keep_conversation(app: AppHandle, id: String) -> Result<(), String> {
+    let dir = config_dir(&app)?;
+    let mut conversation = store::load_conversation(&dir, &id)?;
+    conversation.temporary = false;
+    store::save_conversation(&dir, &conversation)
+}
+
 #[tauri::command]
 pub fn chat_list_projects(app: AppHandle) -> Result<Vec<Project>, String> {
     Ok(store::load_projects(&config_dir(&app)?))

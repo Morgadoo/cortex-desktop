@@ -20,6 +20,7 @@ export type View =
   | { kind: 'home'; projectId?: string | null; agentId?: string | null }
   | { kind: 'agent'; id: string }
   | { kind: 'chat'; id: string }
+  | { kind: 'compare'; prompt: string; columns: { id: string; model: string }[] }
   | { kind: 'page'; page: Page };
 
 export type Mode = 'work' | 'code' | 'agents';

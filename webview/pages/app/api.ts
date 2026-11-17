@@ -235,6 +235,7 @@ export const api = {
     rating?: [number, number];
   }) => call<void>('chat_update_conversation', { update }),
   deleteConversation: (id: string) => call<void>('chat_delete_conversation', { id }),
+  keepConversation: (id: string) => call<void>('chat_keep_conversation', { id }),
   exportConversation: (id: string) => call<boolean>('chat_export_conversation', { id }),
 
   projects: () => call<Project[]>('chat_list_projects'),

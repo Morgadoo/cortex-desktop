@@ -57,6 +57,7 @@
     "allow-chat-set-privacy",
     "allow-chat-project-library",
     "allow-chat-export-all",
-    "allow-chat-list-apps"
+    "allow-chat-list-apps",
+    "allow-chat-keep-conversation"
   ]
 }

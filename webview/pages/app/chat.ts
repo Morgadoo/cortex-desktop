@@ -782,6 +782,7 @@ async function send(text: string, conversationId: string | null, images: { media
     void openSettings('providers');
     return false;
   }
+  if (!conversationId && compareModels.length > 1) return sendComparison(text, images);
   const id = conversationId ?? newId();
   const projectId = state.view.kind === 'home' ? state.view.projectId ?? null : null;
   const agentId = !conversationId && state.view.kind === 'home' ? state.view.agentId ?? null : null;
@@ -815,6 +816,64 @@ async function send(text: string, conversationId: string | null, images: { media
     return false;
   }
   return true;
+}
+
+/** Models a new chat is sent to side by side; comparing when there are two or more. */
+let compareModels: string[] = [];
+
+/** Sends one prompt to every compared model, each in a temporary conversation of its own. */
+async function sendComparison(text: string, images: { mediaType: string; data: string }[]) {
+  const projectId = state.view.kind === 'home' ? state.view.projectId ?? null : null;
+  const columns = compareModels.map((model) => ({ id: newId(), model }));
+  navigate({ kind: 'compare', prompt: text, columns });
+  const results = await Promise.allSettled(
+    columns.map((c) =>
+      api.send({ conversationId: c.id, text, model: c.model, speed: state.speed, approval: state.approval, projectId, temporary: true, images })
+    )
+  );
+  const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+  if (failed) toast(String(failed.reason), 'error');
+  return results.some((r) => r.status === 'fulfilled');
+}
+
+function modelName(reference: string): string {
+  return state.models.find((m) => m.reference === reference)?.name ?? reference.split('/').pop() ?? reference;
+}
+
+/** Picks the two or three models a new chat is compared across. */
+function openCompareDialog(onDone: () => void) {
+  void modal((close) => {
+    const chosen = new Set(compareModels.length ? compareModels : state.model ? [state.model] : []);
+    const list = h('div', { class: 'compare-pick' });
+    const render = () =>
+      clear(
+        list,
+        state.models.map((m) => {
+          const box = h('input', { type: 'checkbox', checked: chosen.has(m.reference), disabled: !chosen.has(m.reference) && chosen.size >= 3 });
+          box.addEventListener('change', () => {
+            if (box.checked) chosen.add(m.reference);
+            else chosen.delete(m.reference);
+            render();
+          });
+          return h('label', { class: 'compare-option' }, box, h('span', { class: 'model-name' }, m.name), h('span', { class: 'muted' }, m.providerLabel));
+        })
+      );
+    render();
+    const start = () => {
+      if (chosen.size < 2) return void toast('Choose at least two models.', 'error');
+      compareModels = [...chosen];
+      close();
+      onDone();
+    };
+    return h(
+      'div',
+      { class: 'dialog-small' },
+      h('div', { class: 'modal-head flush' }, h('h2', {}, 'Compare models'), h('button', { class: 'icon-btn', on: { click: close } }, icon('close', 18))),
+      h('p', { class: 'muted' }, 'Your next message goes to each model side by side. Keep the answer you like best and carry on with that model.'),
+      list,
+      h('div', { class: 'dialog-actions' }, h('button', { class: 'btn btn-ghost', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: start } }, 'Compare'))
+    );
+  });
 }
 
 /** The next new conversation is temporary: kept out of the history and deleted on restart. */
@@ -960,6 +1019,7 @@ class Composer {
     this.conversationId = conversationId;
     this.placeholder = placeholder;
     this.textarea.placeholder = placeholder;
+    this.renderChips();
     this.renderBar();
     // Measured while detached the box collapses; size it once it is on screen again.
     requestAnimationFrame(() => this.autosize());
@@ -1020,7 +1080,7 @@ class Composer {
     this.focus();
   }
 
-  private renderChips() {
+  renderChips() {
     const extra: HTMLElement[] = [];
     if (this.quote) {
       extra.push(
@@ -1030,6 +1090,17 @@ class Composer {
           icon('forward', 15),
           h('span', {}, this.quote),
           h('button', { class: 'chip-x', title: 'Remove', on: { click: () => { this.quote = null; this.renderChips(); } } }, icon('close', 13))
+        )
+      );
+    }
+    if (!this.conversationId && compareModels.length > 1) {
+      extra.push(
+        h(
+          'span',
+          { class: 'chip tool-chip' },
+          icon('apps', 14),
+          `Compare · ${compareModels.map(modelName).join(' vs ')}`,
+          h('button', { class: 'chip-x', title: 'Stop comparing', on: { click: () => { compareModels = []; this.renderChips(); } } }, icon('close', 12))
         )
       );
     }
@@ -1242,7 +1313,17 @@ function openModelPicker(anchor: HTMLElement, onPick: () => void) {
   render();
   const close = popover(
     anchor,
-    h('div', { class: 'menu model-menu' }, search, list, h('div', { class: 'menu-sep' }), h('button', { class: 'menu-item', on: { click: () => { close(); void openSettings('providers'); } } }, icon('settings', 16), 'Manage providers')),
+    h(
+      'div',
+      { class: 'menu model-menu' },
+      search,
+      list,
+      h('div', { class: 'menu-sep' }),
+      state.view.kind === 'home' && state.models.length > 1
+        ? h('button', { class: 'menu-item', on: { click: () => { close(); openCompareDialog(() => { onPick(); composer.renderChips(); }); } } }, icon('apps', 16), 'Compare models…')
+        : null,
+      h('button', { class: 'menu-item', on: { click: () => { close(); void openSettings('providers'); } } }, icon('settings', 16), 'Manage providers')
+    ),
     'above'
   );
   setTimeout(() => search.focus());
@@ -1406,6 +1487,89 @@ async function pickWorkdir() {
     /* per-device convenience only */
   }
   viewCache.home?.build();
+}
+
+/** One prompt answered by several models side by side; the user keeps the answer they prefer. */
+export class CompareView {
+  readonly el = h('div', { class: 'chat compare' });
+  readonly key: string;
+  private grid = h('div', { class: 'compare-grid' });
+  private top = h('div', {});
+  private saved = new Map<string, Turn | null>();
+
+  constructor(
+    private prompt: string,
+    private columns: { id: string; model: string }[]
+  ) {
+    this.key = `compare:${columns.map((c) => c.id).join(',')}`;
+    const discard = h('button', { class: 'btn btn-ghost' }, icon('trash', 15), 'Discard all');
+    discard.addEventListener('click', async () => {
+      await Promise.allSettled(this.columns.map((c) => api.deleteConversation(c.id)));
+      navigate({ kind: 'home' });
+    });
+    this.el.append(
+      h('header', { class: 'chat-header' }, h('span', { class: 'chat-title-static' }, `Comparing ${columns.length} models`), h('span', { class: 'spacer' }), discard),
+      h('div', { class: 'chat-scroll' }, h('div', { class: 'compare-column-wrap' }, h('div', { class: 'turn turn-user' }, h('div', { class: 'bubble' }, prompt)), this.top, this.grid))
+    );
+    this.update();
+  }
+
+  private async load(id: string) {
+    try {
+      const conversation = await api.conversation(id);
+      const last = [...conversation.turns].reverse().find((t) => t.role === 'assistant') ?? null;
+      this.saved.set(id, last);
+    } catch {
+      this.saved.set(id, null);
+    }
+    this.render();
+  }
+
+  private async keep(id: string) {
+    await api.keepConversation(id);
+    await Promise.allSettled(this.columns.filter((c) => c.id !== id).map((c) => api.deleteConversation(c.id)));
+    compareModels = [];
+    await refreshConversations();
+    navigate({ kind: 'chat', id });
+  }
+
+  private render() {
+    clear(this.top, renderApprovals());
+    clear(
+      this.grid,
+      this.columns.map((c) => {
+        const live = state.live.get(c.id);
+        const turn = this.saved.get(c.id);
+        let body: HTMLElement;
+        if (live) {
+          body = renderLiveTurn(c.id, live);
+          if (live.question) body.append(renderQuestion(c.id, live.question));
+        } else if (turn) {
+          body = h('div', { class: 'turn turn-assistant' }, ...renderParts(turn.parts, false, `${c.id}:${turn.index}`));
+        } else {
+          if (!this.saved.has(c.id)) void this.load(c.id);
+          body = h('div', { class: 'status-line' }, h('span', { class: 'dots' }), 'Waiting');
+        }
+        const done = !live && !!turn;
+        const keep = h('button', { class: 'btn btn-primary', disabled: !done }, icon('check', 15), 'Keep this answer');
+        keep.addEventListener('click', () => void this.keep(c.id));
+        return h(
+          'section',
+          { class: 'compare-col' },
+          h('div', { class: 'compare-head' }, h('strong', {}, modelName(c.model)), h('span', { class: 'spacer' }), keep),
+          body
+        );
+      })
+    );
+  }
+
+  update() {
+    // A finished column reloads what was saved, so its final answer replaces the stream.
+    for (const c of this.columns) {
+      if (state.live.has(c.id)) this.saved.delete(c.id);
+    }
+    this.render();
+  }
 }
 
 export class ChatView {
