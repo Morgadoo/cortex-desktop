@@ -778,6 +778,8 @@ function sourcesOf(parts: Part[]): Source[] {
   }
   const add = (url: string, title: string) => {
     if (!/^https?:/.test(url)) return;
+    // A search engine's results page is how a source was found, not a source.
+    if (/(^|\.)(duckduckgo\.com|bing\.com|search\.brave\.com)$/.test(hostOf(url)) || /google\.[a-z.]+\/search/.test(url)) return;
     const key = url.replace(/\/$/, '');
     const known = snippets.get(key);
     if (!found.has(key)) found.set(key, { url, title: known?.title || title || host(url), snippet: known?.snippet ?? '' });
@@ -2556,7 +2558,8 @@ function openSourcesPanel(sources: Source[]) {
           );
         })
       )
-    )
+    ),
+    'Sources'
   );
 }
 

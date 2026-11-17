@@ -1263,3 +1263,15 @@ button.usage-meter:hover { background: var(--hover); }
 .tool-group-head { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: var(--fs-sm); }
 .tool-group-all { display: inline-flex; align-items: center; gap: 8px; color: var(--text-secondary); }
 .tool-list-foot { display: flex; justify-content: flex-end; margin-top: 10px; }
+
+/* ------------------------------------------------------------------ side panel tabs */
+
+.panel-shell { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.panel-shell > .panel-inner { flex: 1; min-height: 0; }
+.panel-tabs { display: flex; gap: 2px; margin: 0 0 8px 10px; overflow-x: auto; }
+.panel-tab { display: inline-flex; align-items: center; gap: 6px; max-width: 200px; padding: 5px 8px 5px 12px; border-radius: var(--radius-sm); font-size: var(--fs-sm); color: var(--text-secondary); }
+.panel-tab:hover { background: var(--bg-hover); }
+.panel-tab.active { background: var(--bg-elevated); color: var(--text); border: 1px solid var(--border); }
+.panel-tab-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.panel-tab-close { display: inline-flex; padding: 2px; border-radius: 4px; color: var(--text-muted); }
+.panel-tab-close:hover { background: var(--bg-active); color: var(--text); }

@@ -51,28 +51,69 @@ export function appFrame(id: string, version = 0): HTMLIFrameElement {
 type PanelHost = (content: HTMLElement | null) => void;
 let panelHost: PanelHost | null = null;
 let panelId: string | null = null;
+/** What is open in the side panel, as tabs (Vibe opens several canvases as tabs). */
+let tabs: { id: string; title: string; content: HTMLElement }[] = [];
 
 export function setPanelHost(host: PanelHost | null) {
   panelHost = host;
   panelId = null;
+  tabs = [];
 }
 
 function markOpen() {
   document.querySelectorAll<HTMLElement>('.app-card[data-canvas]').forEach((card) => card.classList.toggle('compact', card.dataset.canvas === panelId));
 }
 
-/** Shows `content` in the side panel; `id` marks what is open there. */
-export function openSidePanel(id: string, content: HTMLElement) {
+/** Draws the active tab, with the tab strip when more than one thing is open. */
+function showPanel() {
   if (!panelHost) return;
-  panelId = id;
-  panelHost(content);
+  const active = tabs.find((t) => t.id === panelId);
+  if (!active) {
+    panelHost(null);
+    markOpen();
+    return;
+  }
+  const strip =
+    tabs.length > 1
+      ? h(
+          'div',
+          { class: 'panel-tabs' },
+          tabs.map((t) => {
+            const close = h('span', { class: 'panel-tab-close', title: 'Close tab' }, icon('close', 12));
+            close.addEventListener('click', (e) => {
+              e.stopPropagation();
+              closeTab(t.id);
+            });
+            return h('button', { class: `panel-tab${t.id === panelId ? ' active' : ''}`, title: t.title, on: { click: () => { panelId = t.id; showPanel(); } } }, h('span', { class: 'panel-tab-title' }, t.title), close);
+          })
+        )
+      : null;
+  panelHost(h('div', { class: 'panel-shell' }, strip, active.content));
   markOpen();
 }
 
+function closeTab(id: string) {
+  const i = tabs.findIndex((t) => t.id === id);
+  if (i < 0) return;
+  tabs.splice(i, 1);
+  if (panelId === id) panelId = tabs[Math.min(i, tabs.length - 1)]?.id ?? null;
+  showPanel();
+}
+
+/** Shows `content` in the side panel as a tab; `id` marks what is open there. */
+export function openSidePanel(id: string, content: HTMLElement, title = 'Panel') {
+  if (!panelHost) return;
+  const existing = tabs.find((t) => t.id === id);
+  if (existing) existing.content = content;
+  else tabs.push({ id, title, content });
+  panelId = id;
+  showPanel();
+}
+
+/** Closes the tab in front; the panel closes with the last one. */
 export function closePanel() {
-  panelId = null;
-  panelHost?.(null);
-  markOpen();
+  if (panelId) closeTab(panelId);
+  else showPanel();
 }
 
 interface AppInfo {
@@ -114,8 +155,8 @@ export function openAppPanel(app: AppInfo) {
   full.addEventListener('click', () => void modal((done) => h('div', { class: 'app-modal' }, modalHeader(app.title, done), appFrame(app.id, app.version)), true));
   const save = iconButton({ icon: 'download', title: 'Download as a web page', size: 'sm' });
   save.addEventListener('click', () => download(app.id));
-  panelId = app.id;
-  panelHost(
+  openSidePanel(
+    app.id,
     h(
       'div',
       { class: 'panel-inner' },
@@ -128,9 +169,9 @@ export function openAppPanel(app: AppInfo) {
         h('div', { class: 'panel-tools' }, copy, full, save)
       ),
       body
-    )
+    ),
+    app.title
   );
-  markOpen();
 }
 
 /** A mini app the model built: a preview in the reply that opens in the side panel. */
