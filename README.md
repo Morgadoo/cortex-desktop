@@ -132,6 +132,25 @@ model call happens in Rust (`src-tauri/src/chat/`):
 | `chat/engine.rs` | One turn: stream the reply as `chat://event`s, run the tools it calls, repeat |
 | `chat/tools.rs` | The connector registry (files, terminal, web, MCP) as model tools, plus `ask_user`, under the composer's approval mode |
 | `chat/store.rs` | Conversations (rig's own message history as JSON), projects and instructions under `<config>/chat/` |
+| `chat/context.rs` | Context budget: clears old tool results, compacts old turns into a summary near the window, tracks tokens and cost |
+| `chat/subagents.rs` | `delegate`: parallel workers with clean contexts and read-only tools that return condensed reports |
+| `chat/builtins.rs` | Built-in tools: web search, plans, canvas, scheduling, knowledge, skills, library search |
+| `chat/agents.rs`, `chat/tasks.rs` | The agent workforce and the scheduler that runs tasks unattended |
+| `chat/libraries.rs`, `chat/search.rs` | Local BM25 retrieval over your documents, and keyless web search |
+| `chat/memory.rs`, `chat/skills.rs`, `chat/canvas.rs`, `chat/privacy.rs` | Knowledge, `SKILL.md` skills, versioned canvases, and the personal-data filter |
+
+What the app does, following Mistral Vibe's design:
+
+- **Work, Code and Agents modes.** Chat; coding sessions bound to a folder; and a workforce of agents with
+  their own persona, model, tools and scheduled tasks.
+- **Activity you can follow.** Reasoning, tool calls (merged into tables when repeated), live sub-agents and a
+  pinned plan, all folded under one line once the answer arrives.
+- **Grounded answers.** Web search with citation pills and a Sources chip; library passages cited by document.
+- **Context.** Skills (with `/name`), Knowledge (memories the model saves and you edit), Connectors (a catalog
+  of MCP servers), Libraries, Instructions with a live preview, and Projects.
+- **Work products.** Canvases you and the model both edit, with versions and export.
+- **Control.** Ask or Accept-edits approvals, unattended runs that cannot change anything unless allowed,
+  edit and resend, temporary chats, retries and Continue after failures, and an optional privacy filter.
 
 Any provider rig supports works: OpenAI, Anthropic, Gemini, Mistral, xAI, DeepSeek, OpenRouter, Groq,
 Together, Perplexity, Cohere, Moonshot, Z.ai, and local Ollama or llama.cpp. Keys are stored in the
