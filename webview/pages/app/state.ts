@@ -14,7 +14,7 @@ import type {
   Speed,
 } from './api';
 
-export type Page = 'connectors' | 'skills' | 'scheduled' | 'apps' | 'agents' | 'knowledge' | 'libraries';
+export type Page = 'connectors' | 'skills' | 'scheduled' | 'apps' | 'agents' | 'knowledge' | 'libraries' | 'workflows';
 
 export type View =
   | { kind: 'home'; projectId?: string | null; agentId?: string | null }

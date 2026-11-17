@@ -29,6 +29,7 @@ pub mod store;
 pub mod subagents;
 pub mod tasks;
 pub mod tools;
+pub mod workflows;
 
 use std::collections::HashMap;
 use std::sync::Mutex;

@@ -219,6 +219,12 @@
           "markdownDescription": "Show the working tree changes of a coding session."
         },
         {
+          "description": "Read whether code runs without asking.",
+          "type": "string",
+          "const": "allow-chat-code-runs-allowed",
+          "markdownDescription": "Read whether code runs without asking."
+        },
+        {
           "description": "Create a document library.",
           "type": "string",
           "const": "allow-chat-create-library",
@@ -265,6 +271,12 @@
           "type": "string",
           "const": "allow-chat-delete-task",
           "markdownDescription": "Delete a scheduled task."
+        },
+        {
+          "description": "Delete a workflow.",
+          "type": "string",
+          "const": "allow-chat-delete-workflow",
+          "markdownDescription": "Delete a workflow."
         },
         {
           "description": "Export all conversations and data to a folder the user picks.",
@@ -453,6 +465,12 @@
           "markdownDescription": "Create or update a scheduled task."
         },
         {
+          "description": "Save a workflow.",
+          "type": "string",
+          "const": "allow-chat-save-workflow",
+          "markdownDescription": "Save a workflow."
+        },
+        {
           "description": "Search document libraries.",
           "type": "string",
           "const": "allow-chat-search-libraries",
@@ -463,6 +481,12 @@
           "type": "string",
           "const": "allow-chat-send",
           "markdownDescription": "Send a message and stream the reply."
+        },
+        {
+          "description": "Set whether code runs without asking.",
+          "type": "string",
+          "const": "allow-chat-set-code-runs-allowed",
+          "markdownDescription": "Set whether code runs without asking."
         },
         {
           "description": "Remember the model new conversations start with.",
@@ -517,6 +541,12 @@
           "type": "string",
           "const": "allow-chat-update-memory",
           "markdownDescription": "Edit a memory."
+        },
+        {
+          "description": "List workflows.",
+          "type": "string",
+          "const": "allow-chat-workflows",
+          "markdownDescription": "List workflows."
         },
         {
           "description": "Report that the web app is signed out.",

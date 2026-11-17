@@ -277,3 +277,28 @@ commands.allow = ["chat_transcribe"]
 identifier = "allow-chat-code-changes"
 description = "Show the working tree changes of a coding session."
 commands.allow = ["chat_code_changes"]
+
+[[permission]]
+identifier = "allow-chat-workflows"
+description = "List workflows."
+commands.allow = ["chat_workflows"]
+
+[[permission]]
+identifier = "allow-chat-save-workflow"
+description = "Save a workflow."
+commands.allow = ["chat_save_workflow"]
+
+[[permission]]
+identifier = "allow-chat-delete-workflow"
+description = "Delete a workflow."
+commands.allow = ["chat_delete_workflow"]
+
+[[permission]]
+identifier = "allow-chat-code-runs-allowed"
+description = "Read whether code runs without asking."
+commands.allow = ["chat_code_runs_allowed"]
+
+[[permission]]
+identifier = "allow-chat-set-code-runs-allowed"
+description = "Set whether code runs without asking."
+commands.allow = ["chat_set_code_runs_allowed"]

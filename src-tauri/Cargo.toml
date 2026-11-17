@@ -25,6 +25,7 @@ tauri-build = { version = "^2.6.3", features = [] }
 [dependencies]
 semver = "1"
 regex = "1"
+similar = "2"
 rig-core = { version = "0.46", default-features = false, features = ["derive", "reqwest", "rustls", "pdf", "image"] }
 tauri = { version = "^2.11.4", features = ["tray-icon", "macos-private-api", "unstable", "image-png"] }
 serde = { version = "1.0.218", features = ["derive"] }

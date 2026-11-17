@@ -62,6 +62,7 @@ const ICONS: Record<string, string> = {
   clock: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2',
   folder: 'M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18z',
   chat: 'M5 5h14v10H9l-4 4z',
+  chatDashed: 'M5 8V5h3M11 5h2M16 5h3v3M19 11v1M19 15h-3M13 15h-2M9 15l-4 4v-3M5 12v-1',
   more: 'M6 12h.01M12 12h.01M18 12h.01',
   close: 'M6 6l12 12M18 6L6 18',
   chevron: 'M6 9l6 6 6-6',

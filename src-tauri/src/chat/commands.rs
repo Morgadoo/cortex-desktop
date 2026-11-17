@@ -224,6 +224,32 @@ pub fn chat_delete_conversation(app: AppHandle, state: State<'_, ChatState>, id:
     store::delete_conversation(&config_dir(&app)?, &id)
 }
 
+#[tauri::command]
+pub fn chat_workflows(app: AppHandle) -> Result<Vec<super::workflows::Workflow>, String> {
+    Ok(super::workflows::load(&config_dir(&app)?))
+}
+
+#[tauri::command]
+pub fn chat_save_workflow(app: AppHandle, workflow: super::workflows::Workflow) -> Result<Vec<super::workflows::Workflow>, String> {
+    super::workflows::save(&config_dir(&app)?, workflow)
+}
+
+#[tauri::command]
+pub fn chat_delete_workflow(app: AppHandle, id: String) -> Result<Vec<super::workflows::Workflow>, String> {
+    super::workflows::delete(&config_dir(&app)?, &id)
+}
+
+/// Whether code runs without asking each time.
+#[tauri::command]
+pub fn chat_code_runs_allowed(app: AppHandle) -> Result<bool, String> {
+    Ok(super::sandbox::always_allowed(&config_dir(&app)?))
+}
+
+#[tauri::command]
+pub fn chat_set_code_runs_allowed(app: AppHandle, allowed: bool) -> Result<(), String> {
+    super::sandbox::set_always_allowed(&config_dir(&app)?, allowed)
+}
+
 /// The working tree's changes in a coding session's folder.
 #[tauri::command]
 pub async fn chat_code_changes(app: AppHandle, conversation_id: String) -> Result<super::code::Changes, String> {

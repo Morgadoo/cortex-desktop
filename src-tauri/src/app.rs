@@ -124,6 +124,11 @@ pub fn run() {
                 chat::commands::chat_keep_conversation,
                 chat::commands::chat_media_models,
                 chat::commands::chat_code_changes,
+                chat::commands::chat_workflows,
+                chat::commands::chat_save_workflow,
+                chat::commands::chat_delete_workflow,
+                chat::commands::chat_code_runs_allowed,
+                chat::commands::chat_set_code_runs_allowed,
                 chat::commands::chat_set_media_models,
                 chat::commands::chat_transcribe,
             ];

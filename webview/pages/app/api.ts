@@ -182,6 +182,14 @@ export interface ApprovalRequest {
 }
 
 /** A connector as `get_tool_registry` reports it; only the fields the page reads. */
+export interface Workflow {
+  id: string;
+  name: string;
+  description: string;
+  steps: string[];
+  builtin: boolean;
+}
+
 export interface ConnectorManifest {
   id: string;
   display_name: string;
@@ -223,6 +231,7 @@ export const api = {
     editIndex?: number;
     temporary?: boolean;
     images?: { mediaType: string; data: string }[];
+    connectors?: string[] | null;
   }) => call<void>('chat_send', { request }),
   cancel: (conversationId: string) => call<boolean>('chat_cancel', { conversationId }),
   answer: (callId: string, answer: string) => call<boolean>('chat_answer', { callId, answer }),

@@ -7,6 +7,8 @@ import { openSettings } from './settings';
 import { openInstructions } from './pages';
 import { enableAskAboutSelection, renderCanvasCard } from './canvas';
 import { renderCodeRun, renderImage } from './coderun';
+import { editWorkflow, workflowPrompt, workflowsApi } from './workflows';
+import type { Workflow } from './api';
 import { diffLines, loadChanges, openChanges } from './changes';
 
 // ---------------------------------------------------------------------------------------------
@@ -408,6 +410,22 @@ function renderToolStep(part: Extract<Part, { kind: 'tool' }>, live: boolean, du
   if (part.name === 'filesystem__fs_edit' && typeof before === 'string' && typeof after === 'string') {
     const lines = [...before.split('\n').map((l) => `-${l}`), ...after.split('\n').map((l) => `+${l}`)];
     step.append(h('div', { class: 'step-content' }, diffLines(lines.length > 80 ? [...lines.slice(0, 80), ` … ${lines.length - 80} more lines`] : lines)));
+  }
+  // A whole-file write shows what it changed (the tool reports the diff), or a new file's lines.
+  if (part.name === 'filesystem__fs_write' && part.output && !part.isError) {
+    let written: { diff?: string; created?: boolean } = {};
+    try {
+      written = JSON.parse(part.output) as typeof written;
+    } catch {
+      written = {};
+    }
+    const content = typeof part.arguments.content === 'string' ? part.arguments.content : '';
+    const lines = written.diff && written.diff !== 'unchanged'
+      ? written.diff.split('\n').filter((l) => !l.startsWith('---') && !l.startsWith('+++'))
+      : written.created
+        ? content.split('\n').map((l) => `+${l}`)
+        : [];
+    if (lines.length) step.append(h('div', { class: 'step-content' }, diffLines(lines.length > 80 ? [...lines.slice(0, 80), ` … ${lines.length - 80} more lines`] : lines)));
   }
   // The raw call, for anyone who wants to see exactly what ran.
   const raw = h('details', { class: 'step-raw' });
@@ -822,6 +840,7 @@ async function send(text: string, conversationId: string | null, images: { media
       agentId,
       temporary,
       images,
+      connectors: connectorChoice(),
     });
     if (temporary) temporaryChats.add(id);
     temporaryNext = false;
@@ -831,6 +850,15 @@ async function send(text: string, conversationId: string | null, images: { media
     return false;
   }
   return true;
+}
+
+/** Connectors switched off from the + menu; every ready one is on unless listed here. */
+const connectorsOff = new Set<string>();
+let knownConnectors: string[] = [];
+
+/** The connectors a turn may use, or null for all of them. */
+function connectorChoice(): string[] | null {
+  return connectorsOff.size ? knownConnectors.filter((c) => !connectorsOff.has(c)) : null;
 }
 
 /** Models a new chat is sent to side by side; comparing when there are two or more. */
@@ -1062,12 +1090,15 @@ class Composer {
   async submit() {
     if (this.running()) return;
     let text = this.textarea.value.trim();
-    if (!text && this.attachments.length === 0 && !this.quote) return;
+    if (!text && this.attachments.length === 0 && !this.quote && !this.workflow) return;
     if (this.quote) {
       const quoted = this.quote.split('\n').map((l) => `> ${l}`).join('\n');
       text = `${quoted}\n\n${text || 'Tell me more about this.'}`;
     }
     if (this.useCanvas) text = `Use a canvas for this.\n\n${text}`;
+    if (this.folder) text = `Work with the files in the folder \`${this.folder}\`.\n\n${text}`;
+    if (this.library) text = `Search the "${this.library}" library (search_library) for this, and cite what you use.\n\n${text}`;
+    if (this.workflow) text = workflowPrompt(this.workflow, text);
     // `/skill-name rest` asks for that skill explicitly.
     const slash = text.match(/^\/([a-z0-9-]+)\s*([\s\S]*)$/);
     if (slash && state.skills.some((s) => s.name === slash[1])) {
@@ -1083,6 +1114,9 @@ class Composer {
       this.attachments = [];
       this.quote = null;
       this.useCanvas = false;
+      this.folder = null;
+      this.library = null;
+      this.workflow = null;
       this.autosize();
       this.renderChips();
       this.renderBar();
@@ -1119,6 +1153,11 @@ class Composer {
         )
       );
     }
+    const chip = (ic: string, label: string, clearIt: () => void) =>
+      h('span', { class: 'chip tool-chip' }, icon(ic, 14), label, h('button', { class: 'chip-x', title: 'Remove', on: { click: () => { clearIt(); this.renderChips(); this.renderBar(); } } }, icon('close', 12)));
+    if (this.workflow) extra.push(chip('workflow', `Workflow · ${this.workflow.name}`, () => (this.workflow = null)));
+    if (this.library) extra.push(chip('library', `Library · ${this.library}`, () => (this.library = null)));
+    if (this.folder) extra.push(chip('folder', this.folder.split(/[\\/]/).pop() || this.folder, () => (this.folder = null)));
     if (this.useCanvas) {
       extra.push(h('span', { class: 'chip tool-chip' }, icon('file', 14), 'Canvas', h('button', { class: 'chip-x', title: 'Remove', on: { click: () => { this.useCanvas = false; this.renderChips(); } } }, icon('close', 12))));
     }
@@ -1221,15 +1260,18 @@ class Composer {
     const modelBtn = h('button', { class: 'pill-btn model-btn', title: 'Model' }, model ? model.name : state.models.length ? 'Choose model' : 'Add a provider', icon('chevron', 14));
     modelBtn.addEventListener('click', () => (state.models.length ? openModelPicker(modelBtn, () => this.renderBar()) : void openSettings('providers')));
 
-    const hasText = this.textarea.value.trim().length > 0 || this.attachments.length > 0;
+    const hasText = this.textarea.value.trim().length > 0 || this.attachments.length > 0 || Boolean(this.workflow);
     const action = running
       ? h('button', { class: 'send-btn stop', title: 'Stop', on: { click: () => this.conversationId && void api.cancel(this.conversationId) } }, icon('stop', 16))
-      : h('button', { class: 'send-btn', title: 'Send', disabled: !hasText, on: { click: () => void this.submit() } }, icon('send', 18));
+      : hasText || this.recorder || this.transcribing
+        ? h('button', { class: 'send-btn', title: 'Send', disabled: !hasText, on: { click: () => void this.submit() } }, icon('send', 18))
+        : h('button', { class: 'send-btn mic', title: 'Dictate', on: { click: () => void this.toggleDictation() } }, icon('mic', 18));
 
     const mic = h('button', { class: `icon-btn${this.recorder ? ' recording' : ''}`, title: this.recorder ? 'Stop and transcribe' : 'Dictate' }, icon(this.recorder ? 'stop' : 'mic', 17));
     mic.addEventListener('click', () => void this.toggleDictation());
 
-    clear(this.bar, h('div', { class: 'bar-left' }, plus, approval), h('div', { class: 'bar-right' }, speed, modelBtn, this.transcribing ? h('span', { class: 'dots' }) : mic, action));
+    const dictation = this.transcribing ? h('span', { class: 'dots' }) : this.recorder ? mic : null;
+    clear(this.bar, h('div', { class: 'bar-left' }, plus, approval), h('div', { class: 'bar-right' }, speed, modelBtn, dictation, action));
   }
 
   private recorder: MediaRecorder | null = null;
@@ -1281,26 +1323,136 @@ class Composer {
     this.renderBar();
   }
 
+  folder: string | null = null;
+  library: string | null = null;
+  workflow: Workflow | null = null;
+
+  /** Vibe's + menu: upload, then a flyout for each kind of context. */
   private openPlusMenu(anchor: HTMLElement) {
-    const item = (ic: string, label: string, onClick: () => void, sub = false) =>
-      h('button', { class: 'menu-item', on: { click: () => { close(); onClick(); } } }, icon(ic, 17), h('span', {}, label), sub ? icon('chevronRight', 15) : null);
-    const close = popover(
-      anchor,
-      h(
-        'div',
-        { class: 'menu' },
-        item('upload', 'Attach files or images', () => this.pickFiles()),
-        item('file', 'Canvas', () => { this.useCanvas = true; this.renderChips(); this.focus(); }),
-        item('folder', 'Give access to a folder', () => void grantFolder()),
-        item('plug', 'Connectors', () => navigate({ kind: 'page', page: 'connectors' }), true),
-        item('book', 'Instructions', () => void openInstructions(), true),
-        item('folder', 'Move to project', () => void moveToProject(this.conversationId), true),
-        h('div', { class: 'menu-sep' }),
-        item('reset', 'Clear input', () => { this.setText(''); this.attachments = []; this.renderChips(); })
-      ),
-      'below'
+    const flyout = h('div', { class: 'flyout' });
+    const menu = h('div', { class: 'menu plus-menu' });
+    let close: () => void = () => {};
+    const done = (f: () => void) => () => { close(); f(); };
+    const item = (ic: string, label: string, onClick: () => void) =>
+      h('button', { class: 'menu-item', on: { click: done(onClick), mouseenter: () => flyout.classList.remove('open') } }, icon(ic, 17), h('span', {}, label));
+    const sub = (ic: string, label: string, fill: () => Promise<(HTMLElement | null)[]>) => {
+      const row = h('button', { class: 'menu-item has-sub' }, icon(ic, 17), h('span', { class: 'grow' }, label), icon('chevronRight', 15));
+      const show = async () => {
+        menu.querySelectorAll('.has-sub.active').forEach((el) => el.classList.remove('active'));
+        row.classList.add('active');
+        flyout.style.top = `${row.offsetTop - 6}px`;
+        clear(flyout, h('div', { class: 'status-line' }, h('span', { class: 'dots' })));
+        flyout.classList.add('open');
+        const content = await fill().catch((e) => [h('div', { class: 'empty-small' }, String(e))]);
+        if (row.classList.contains('active')) clear(flyout, content);
+      };
+      row.addEventListener('mouseenter', () => void show());
+      row.addEventListener('click', () => void show());
+      return row;
+    };
+    const entry = (ic: string, label: string, hint: string | null, onClick: () => void, selected = false) =>
+      h('button', { class: `menu-item${selected ? ' selected' : ''}`, on: { click: done(onClick) } }, icon(ic, 16), h('span', { class: 'grow ellipsis' }, label), hint ? h('small', { class: 'muted' }, hint) : null, selected ? icon('check', 14) : null);
+    const heading = (text: string) => h('div', { class: 'menu-heading' }, text);
+    const empty = (text: string) => h('div', { class: 'empty-small' }, text);
+    const sep = () => h('div', { class: 'menu-sep' });
+
+    const folders = async () => {
+      const settings = await api.appSettings();
+      const roots = settings.filesystem_allowed_roots;
+      return [
+        heading('Folders the assistant can read'),
+        ...(roots.length ? roots.map((r: string) => entry('folder', r.split(/[\\/]/).pop() || r, null, () => { this.folder = r; this.renderChips(); this.renderBar(); }, this.folder === r)) : [empty('No folders yet.')]),
+        sep(),
+        entry('plus', 'Add a folder…', null, () => void grantFolder()),
+      ];
+    };
+    const skills = async () => {
+      const all = state.skills.length ? state.skills : await api.skills();
+      const search = h('input', { class: 'input small', placeholder: 'Search' });
+      const list = h('div', { class: 'flyout-list' });
+      let tab: 'all' | 'user' | 'builtin' = 'all';
+      const tabs = h('div', { class: 'mini-tabs' });
+      const render = () => {
+        clear(tabs, (['all', 'user', 'builtin'] as const).map((t) => h('button', { class: `mini-tab${tab === t ? ' active' : ''}`, on: { click: () => { tab = t; render(); } } }, t === 'all' ? 'All' : t === 'user' ? 'Mine' : 'Built-in')));
+        const q = search.value.toLowerCase();
+        const shown = all.filter((sk) => sk.enabled && (tab === 'all' || sk.origin === tab) && (!q || `${sk.name} ${sk.description}`.toLowerCase().includes(q)));
+        clear(list, shown.length ? shown.map((sk) => entry('skill', sk.name, null, () => { this.setText(`/${sk.name} ${this.textarea.value.replace(/^\/[a-z0-9-]+\s*/, '')}`); this.focus(); })) : empty('No skill matches.'));
+      };
+      search.addEventListener('input', render);
+      render();
+      const create = h('button', { class: 'link-btn', on: { click: done(() => navigate({ kind: 'page', page: 'skills' })) } }, icon('plus', 14), 'New skill');
+      setTimeout(() => search.focus());
+      return [h('div', { class: 'flyout-head' }, search, create), tabs, list];
+    };
+    const knowledge = async () => {
+      const memories = await api.memories();
+      const toggle = h('input', { type: 'checkbox', class: 'switch', checked: memories.enabled });
+      toggle.addEventListener('change', () => void api.setMemoryEnabled(toggle.checked).then(() => toast(toggle.checked ? 'Knowledge is on.' : 'Knowledge is off for every chat.')));
+      return [
+        h('label', { class: 'menu-item static' }, icon('book', 16), h('span', { class: 'grow' }, 'Use knowledge'), toggle),
+        h('div', { class: 'muted small flyout-note' }, `${memories.items.length} things remembered`),
+        sep(),
+        entry('settings', 'Open Knowledge', null, () => navigate({ kind: 'page', page: 'knowledge' })),
+      ];
+    };
+    const connectors = async () => {
+      const manifests = (await api.connectors()).filter((m) => m.enabled && m.readiness.state === 'ready');
+      knownConnectors = manifests.map((m) => m.id);
+      const rows = manifests.map((m) => {
+        const on = h('input', { type: 'checkbox', class: 'switch', checked: !connectorsOff.has(m.id) });
+        on.addEventListener('change', () => (on.checked ? connectorsOff.delete(m.id) : connectorsOff.add(m.id)));
+        return h('label', { class: 'menu-item static' }, icon(CONNECTOR_ICONS[m.id] ?? 'plug', 16), h('span', { class: 'grow ellipsis' }, m.display_name), on);
+      });
+      return [heading('Use in this chat'), ...(rows.length ? rows : [empty('No connectors are ready.')]), sep(), entry('plug', 'Manage connectors', null, () => navigate({ kind: 'page', page: 'connectors' }))];
+    };
+    const projects = async () => {
+      const current = this.conversationId ? state.conversations.find((c) => c.id === this.conversationId)?.projectId : state.view.kind === 'home' ? state.view.projectId : null;
+      const pick = (id: string | null) => () => {
+        if (this.conversationId) void api.updateConversation({ id: this.conversationId, projectId: id }).then(() => refreshConversations());
+        else navigate({ kind: 'home', projectId: id });
+      };
+      return [
+        heading(this.conversationId ? 'Move this chat to' : 'Start this chat in'),
+        ...(state.projects.length ? state.projects.map((pr) => entry('folder', `${pr.icon ? `${pr.icon} ` : ''}${pr.name}`, null, pick(pr.id), current === pr.id)) : [empty('No projects yet.')]),
+        current ? entry('close', 'No project', null, pick(null)) : null,
+      ];
+    };
+    const libraries = async () => {
+      const libs = await tauriInvoke<{ id: string; name: string; documents: unknown[] }[]>('chat_list_libraries');
+      return [
+        heading('Search a library'),
+        ...(libs.length ? libs.map((l) => entry('library', l.name, `${l.documents.length} docs`, () => { this.library = l.name; this.renderChips(); this.renderBar(); }, this.library === l.name)) : [empty('No libraries yet.')]),
+        sep(),
+        entry('settings', 'Manage libraries', null, () => navigate({ kind: 'page', page: 'libraries' })),
+      ];
+    };
+    const workflows = async () => {
+      const all = await workflowsApi.list();
+      return [
+        heading('Run a workflow'),
+        ...all.map((w) => entry('workflow', w.name, `${w.steps.length} steps`, () => { this.workflow = w; this.renderChips(); this.renderBar(); this.focus(); }, this.workflow?.id === w.id)),
+        sep(),
+        entry('plus', 'New workflow', null, () => editWorkflow(null, () => toast('Workflow saved.'))),
+        entry('settings', 'Manage workflows', null, () => navigate({ kind: 'page', page: 'workflows' })),
+      ];
+    };
+
+    menu.append(
+      item('upload', 'Upload files', () => this.pickFiles()),
+      sub('folder', 'Folders', folders),
+      sub('skill', 'Skills', skills),
+      sub('book', 'Knowledge', knowledge),
+      sub('plug', 'Connectors', connectors),
+      sub('folder', 'Projects', projects),
+      sub('library', 'Libraries', libraries),
+      sub('workflow', 'Workflows', workflows),
+      item('file', 'Canvas', () => { this.useCanvas = true; this.renderChips(); this.focus(); }),
+      sep(),
+      item('reset', 'Reset input', () => { this.setText(''); this.attachments = []; this.folder = null; this.library = null; this.workflow = null; this.quote = null; this.useCanvas = false; this.renderChips(); this.renderBar(); })
     );
+    close = popover(anchor, h('div', { class: 'plus-wrap' }, menu, flyout), 'below');
   }
+
 }
 
 export const composer = new Composer();
@@ -1464,12 +1616,27 @@ function renderApprovals(): HTMLElement | null {
 // ---------------------------------------------------------------------------------------------
 // Views
 
-const SUGGESTIONS = [
-  { icon: 'sparkle', text: 'Explain a concept like I am new to it' },
-  { icon: 'globe', text: 'Summarize this web page for me: ' },
-  { icon: 'file', text: 'Look through my documents folder and tell me what is there' },
+const SUGGESTIONS: { icon: string; text: string; page?: boolean; more?: boolean }[] = [
+  { icon: 'skill', text: 'Set up and discover what this assistant can do' },
+  { icon: 'globe', text: 'What is the current state of the AI industry?' },
   { icon: 'plug', text: 'Connect your apps for better answers', page: true },
+  { icon: 'sparkle', text: 'Explain a concept like I am new to it', more: true },
+  { icon: 'file', text: 'Look through my documents folder and tell me what is there', more: true },
+  { icon: 'terminal', text: 'Analyze a CSV file and chart what matters', more: true },
+  { icon: 'apps', text: 'Build me a small app: a pomodoro timer', more: true },
+  { icon: 'clock', text: 'Every weekday at 9:00, brief me on AI news', more: true },
 ];
+
+/** Connectors the banner above the composer suggests, shown in turn. */
+const BANNER_APPS = ['M', 'S', 'G', 'N'];
+let bannerDismissed = (() => {
+  try {
+    return localStorage.getItem('connectBannerDismissed') === '1';
+  } catch {
+    return false;
+  }
+})();
+let showMoreSuggestions = false;
 
 export class HomeView {
   readonly el = h('div', { class: 'home' });
@@ -1496,16 +1663,35 @@ export class HomeView {
         ? h('h1', { class: 'greeting' }, `What should ${agent.name} do?`)
         : h('h1', { class: 'greeting' }, project ? `${project.icon ? `${project.icon} ` : ''}New chat in ${project.name}` : greeting(state.instructions.name));
     composer.attach(null, code ? 'What do you want to build?' : 'Ask anything. Type / for quick actions');
+    const dismiss = h('button', { class: 'icon-btn small', title: 'Dismiss' }, icon('close', 16));
+    dismiss.addEventListener('click', () => {
+      bannerDismissed = true;
+      try {
+        localStorage.setItem('connectBannerDismissed', '1');
+      } catch {
+        /* per-viewer convenience only */
+      }
+      this.build();
+    });
     const banner =
       state.models.length === 0
         ? h('div', { class: 'composer-banner' }, icon('key', 16), h('span', {}, 'Add an API key or a local server to start chatting'), h('button', { class: 'link-btn', on: { click: () => void openSettings('providers') } }, 'Add provider'))
-        : null;
+        : !code && !agent && !bannerDismissed
+          ? h(
+              'div',
+              { class: 'composer-banner connect' },
+              h('span', { class: 'banner-app' }, BANNER_APPS[new Date().getMinutes() % BANNER_APPS.length]),
+              h('span', { class: 'grow' }, 'Work mode is better with your apps connected'),
+              h('button', { class: 'link-btn strong', on: { click: () => navigate({ kind: 'page', page: 'connectors' }) } }, 'Connect'),
+              dismiss
+            )
+          : null;
     const suggestions = code || agent
       ? null
       : h(
           'div',
           { class: 'suggestions' },
-          SUGGESTIONS.map((s) =>
+          SUGGESTIONS.filter((s) => showMoreSuggestions || !s.more).map((s) =>
             h(
               'button',
               {
@@ -1515,9 +1701,12 @@ export class HomeView {
               icon(s.icon, 17),
               s.text.replace(/: $/, '')
             )
-          )
+          ),
+          showMoreSuggestions
+            ? null
+            : h('button', { class: 'suggestion', on: { click: () => { showMoreSuggestions = true; this.build(); } } }, icon('more', 17), 'Discover more')
         );
-    const ghost = h('button', { class: `temp-toggle${temporaryNext ? ' on' : ''}`, title: 'Temporary chat: not saved to history' }, icon('wait', 16), temporaryNext ? 'Temporary chat' : 'Temporary');
+    const ghost = h('button', { class: `temp-toggle icon-only${temporaryNext ? ' on' : ''}`, title: temporaryNext ? 'Temporary chat: on (not saved to history)' : 'Temporary chat' }, icon('chatDashed', 20), temporaryNext ? h('span', {}, 'Temporary') : null);
     ghost.addEventListener('click', () => {
       temporaryNext = !temporaryNext;
       this.build();

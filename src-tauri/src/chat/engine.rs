@@ -761,7 +761,7 @@ impl Runner<'_> {
                 }
             }
             ApprovalMode::Autonomous => {}
-            ApprovalMode::Ask | ApprovalMode::AcceptEdits if sandbox::always_allowed() => {}
+            ApprovalMode::Ask | ApprovalMode::AcceptEdits if sandbox::always_allowed(self.config_dir) => {}
             ApprovalMode::Ask | ApprovalMode::AcceptEdits => {
                 let Some(tool) = self.offered.iter().find(|t| t.name == sandbox::RUN_CODE) else {
                     return tools::Outcome { text: "Running code is not available.".into(), is_error: true };
@@ -774,7 +774,11 @@ impl Runner<'_> {
                             is_error: true,
                         }
                     }
-                    ApprovalDecision::Always => sandbox::allow_always(),
+                    ApprovalDecision::Always => {
+                        if let Err(e) = sandbox::set_always_allowed(self.config_dir, true) {
+                            warn!("could not save the code-run permission: {e}");
+                        }
+                    }
                     ApprovalDecision::Once => {}
                 }
             }

@@ -336,6 +336,13 @@ const PLACEHOLDERS: Record<Page, { title: string; subtitle: string; icon: string
     empty: 'Nothing scheduled',
     body: 'Scheduled prompts are coming to the native app. The scheduling engine is in place; prompts and runs are next.',
   },
+  workflows: {
+    title: 'Workflows',
+    subtitle: 'Step-by-step recipes for work you repeat.',
+    icon: 'workflow',
+    empty: 'No workflows yet',
+    body: 'Create one from the + menu.',
+  },
   apps: {
     title: 'Apps',
     subtitle: 'Small apps the assistant builds for you.',

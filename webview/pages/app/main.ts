@@ -13,6 +13,7 @@ import { AgentPage, AgentsPage, avatar, editAgent, reloadAgents } from './agents
 import { TasksPage } from './tasks';
 import { LibrariesPage } from './libraries';
 import { AppsPage } from './apps';
+import { WorkflowsPage } from './workflows';
 import { applyTheme, openSettings, reloadModels, setTheme, storedTheme } from './settings';
 import { applyEvent, back, changed, forward, navigate, state, subscribe, type Page } from './state';
 
@@ -62,6 +63,8 @@ function renderMain() {
               ? new LibrariesPage()
             : v.page === 'apps'
               ? new AppsPage()
+            : v.page === 'workflows'
+              ? new WorkflowsPage()
             : v.page === 'scheduled'
               ? new TasksPage()
           : v.page === 'knowledge'
@@ -92,6 +95,7 @@ const CONTEXT_PAGES: { page: Page; label: string; preview?: boolean }[] = [
   { page: 'knowledge', label: 'Knowledge' },
   { page: 'connectors', label: 'Connectors' },
   { page: 'libraries', label: 'Libraries' },
+  { page: 'workflows', label: 'Workflows' },
 ];
 
 function renderSidebar() {

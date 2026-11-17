@@ -29,15 +29,31 @@ const OUTPUT_CHARS: usize = 12_000;
 /// Files listed back to the model after a run.
 const MAX_FILES: usize = 40;
 
-/// Set when the user chose "Always allow" for code runs; lasts until the app quits.
+/// Whether code runs without asking: "Always allow" on a run, or the switch in Settings.
+/// Saved in `chat/sandbox.json`, and cached once read.
 static ALWAYS: AtomicBool = AtomicBool::new(false);
+static LOADED: AtomicBool = AtomicBool::new(false);
 
-pub fn always_allowed() -> bool {
+fn settings_path(config_dir: &Path) -> PathBuf {
+    chat_dir(config_dir).join("sandbox.json")
+}
+
+pub fn always_allowed(config_dir: &Path) -> bool {
+    if !LOADED.swap(true, Ordering::Relaxed) {
+        let saved = std::fs::read_to_string(settings_path(config_dir))
+            .ok()
+            .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+            .and_then(|v| v.get("alwaysAllow").and_then(Value::as_bool))
+            .unwrap_or(false);
+        ALWAYS.store(saved, Ordering::Relaxed);
+    }
     ALWAYS.load(Ordering::Relaxed)
 }
 
-pub fn allow_always() {
-    ALWAYS.store(true, Ordering::Relaxed);
+pub fn set_always_allowed(config_dir: &Path, allowed: bool) -> Result<(), String> {
+    LOADED.store(true, Ordering::Relaxed);
+    ALWAYS.store(allowed, Ordering::Relaxed);
+    super::store::write_json(&settings_path(config_dir), &json!({ "alwaysAllow": allowed }))
 }
 
 struct Language {
@@ -408,5 +424,21 @@ mod tests {
     fn decodes_file_names() {
         assert_eq!(percent_decode("my%20chart.png"), "my chart.png");
         assert_eq!(percent_decode("100%"), "100%");
+    }
+}
+
+#[cfg(test)]
+mod permission_tests {
+    use super::*;
+
+    #[test]
+    fn always_allow_is_saved() {
+        let dir = tempfile::tempdir().unwrap();
+        set_always_allowed(dir.path(), true).unwrap();
+        let saved = std::fs::read_to_string(settings_path(dir.path())).unwrap();
+        assert!(saved.contains("\"alwaysAllow\": true") || saved.contains("\"alwaysAllow\":true"));
+        assert!(always_allowed(dir.path()));
+        set_always_allowed(dir.path(), false).unwrap();
+        assert!(!always_allowed(dir.path()));
     }
 }

@@ -61,6 +61,11 @@
     "allow-chat-keep-conversation",
     "allow-chat-media-models",
     "allow-chat-code-changes",
+    "allow-chat-workflows",
+    "allow-chat-save-workflow",
+    "allow-chat-delete-workflow",
+    "allow-chat-code-runs-allowed",
+    "allow-chat-set-code-runs-allowed",
     "allow-chat-set-media-models",
     "allow-chat-transcribe"
   ]

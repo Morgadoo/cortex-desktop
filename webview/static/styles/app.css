@@ -799,3 +799,29 @@ select.input { cursor: pointer; }
 .diff-line.hunk { color: #5b9cff; background: rgba(91, 156, 255, 0.08); }
 .diff-line.ctx { color: var(--text-secondary); }
 .step-content .diff { border: 1px solid var(--border); border-radius: 10px; max-height: 320px; overflow: auto; }
+
+/* ------------------------------------------------------------------ Vibe composer and + menu */
+
+.send-btn.mic { background: #fff; color: #111; }
+.send-btn.mic:hover { background: #e9e9ee; }
+.plus-wrap { position: relative; display: flex; }
+.plus-menu { min-width: 260px; }
+.menu-item.has-sub.active, .menu-item.has-sub:hover { background: var(--bg-hover); }
+.flyout { display: none; position: absolute; left: calc(100% + 6px); width: 300px; max-height: 420px; overflow-y: auto; background: var(--bg-elevated); border: 1px solid var(--border-strong); border-radius: 14px; padding: 6px; box-shadow: var(--shadow); }
+.flyout.open { display: block; }
+.flyout-head { display: flex; align-items: center; gap: 8px; padding: 4px 4px 6px; }
+.flyout-head .input { flex: 1; }
+.flyout-list { display: flex; flex-direction: column; }
+.flyout-note { padding: 0 12px 6px 38px; }
+.mini-tabs { display: flex; gap: 4px; padding: 2px 4px 6px; }
+.mini-tab { padding: 4px 10px; border-radius: 8px; font-size: 13px; color: var(--text-secondary); }
+.mini-tab.active { background: var(--bg-hover); color: var(--text); font-weight: 600; }
+.menu-item.static { cursor: default; }
+.menu-item .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.link-btn.strong { font-weight: 700; color: var(--text); }
+.composer-banner.connect { gap: 10px; }
+.banner-app { width: 20px; height: 20px; border-radius: 5px; display: inline-grid; place-items: center; font: 800 12px/1 var(--font-sans, inherit); color: #fff; background: linear-gradient(135deg, #ea4335, #fbbc05); }
+.temp-toggle.icon-only { padding: 8px; border-radius: 10px; gap: 6px; }
+.workflow-steps { margin: 6px 0 0; padding-left: 18px; color: var(--text-secondary); font-size: 13px; }
+.workflow-steps li { margin: 2px 0; }
+.composer-banner .banner-app { flex: none; width: 20px; }
