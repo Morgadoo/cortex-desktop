@@ -18,6 +18,7 @@ pub const DELEGATE: &str = "delegate";
 pub const CANVAS: &str = "canvas";
 pub const SCHEDULE_TASK: &str = "schedule_task";
 pub const SEARCH_LIBRARY: &str = "search_library";
+pub const SAVE_SKILL: &str = "save_skill";
 
 fn tool(name: &str, description: &str, parameters: Value) -> ChatTool {
     ChatTool {
@@ -186,13 +187,28 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             }),
         ));
     }
+    out.push(tool(
+        SAVE_SKILL,
+        "Save a reusable skill the user asked for and approved: instructions you will follow \
+         whenever a request matches its description. Overwrites a skill of your own with the \
+         same name.",
+        json!({
+            "type": "object",
+            "properties": {
+                "name": { "type": "string", "description": "Lowercase letters, digits and hyphens, like weekly-report." },
+                "description": { "type": "string", "description": "When to use the skill, starting with \"Use when\"." },
+                "instructions": { "type": "string", "description": "Numbered steps in Markdown." }
+            },
+            "required": ["name", "description", "instructions"]
+        }),
+    ));
     out.extend(super::sandbox::definition());
     out.extend(super::media::definition(config_dir));
     out
 }
 
 pub fn is_builtin(name: &str) -> bool {
-    matches!(name, WEB_SEARCH | REMEMBER | FORGET | USE_SKILL | UPDATE_PLAN | SCHEDULE_TASK | SEARCH_LIBRARY)
+    matches!(name, WEB_SEARCH | REMEMBER | FORGET | USE_SKILL | UPDATE_PLAN | SCHEDULE_TASK | SEARCH_LIBRARY | SAVE_SKILL)
 }
 
 fn ok(text: impl Into<String>) -> Outcome {
@@ -239,6 +255,10 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
             }
         }
         SCHEDULE_TASK => schedule(config_dir, args),
+        SAVE_SKILL => match skills::save(config_dir, &str_arg("name"), &str_arg("description"), &str_arg("instructions")) {
+            Ok(()) => ok(format!("Saved the skill `{}`. The user can call it with /{}.", str_arg("name"), str_arg("name"))),
+            Err(e) => err(e),
+        },
         SEARCH_LIBRARY => {
             let query = str_arg("query");
             if query.is_empty() {
@@ -373,10 +393,10 @@ mod tests {
     #[test]
     fn definitions_follow_settings() {
         let dir = tempfile::tempdir().unwrap();
-        let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).filter(|n| n != super::super::sandbox::RUN_CODE && n != super::super::media::GENERATE_IMAGE).collect();
+        let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).filter(|n| n != super::super::sandbox::RUN_CODE && n != super::super::media::GENERATE_IMAGE && n != SAVE_SKILL).collect();
         assert_eq!(names, [WEB_SEARCH, UPDATE_PLAN, DELEGATE, CANVAS, SCHEDULE_TASK, REMEMBER, FORGET, USE_SKILL]);
         memory::save(dir.path(), &memory::Memories { enabled: false, items: vec![] }).unwrap();
-        let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).filter(|n| n != super::super::sandbox::RUN_CODE && n != super::super::media::GENERATE_IMAGE).collect();
+        let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).filter(|n| n != super::super::sandbox::RUN_CODE && n != super::super::media::GENERATE_IMAGE && n != SAVE_SKILL).collect();
         assert_eq!(names, [WEB_SEARCH, UPDATE_PLAN, DELEGATE, CANVAS, SCHEDULE_TASK, USE_SKILL]);
     }
 }

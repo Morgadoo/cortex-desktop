@@ -3,7 +3,8 @@ import { tauriInvoke } from '../../shared/tauri';
 import { api, type AppSettings, type Provider } from './api';
 import { clear, h, icon, modal, toast } from './dom';
 import { changed, state } from './state';
-import { card, modalHeader, switchInput } from './ui';
+import { button, card, modalHeader, switchInput } from './ui';
+import { ACCENTS, BACKGROUNDS, accentHex, applyAppearance, setAccent, setBackground, storedAccent, storedBackground } from './appearance';
 
 export type Section = 'profile' | 'providers' | 'permissions' | 'general' | 'appearance';
 
@@ -20,6 +21,8 @@ export type Theme = 'light' | 'dark' | 'system';
 export function applyTheme(theme: Theme) {
   const dark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  // The accent and background are tuned per theme, so they follow it.
+  applyAppearance();
 }
 
 export function storedTheme(): Theme {
@@ -437,4 +440,81 @@ function renderAppearance(content: HTMLElement) {
       label
     );
   content.append(card(h('h3', {}, 'Theme'), h('div', { class: 'theme-options' }, option('light', 'Light', 'sun'), option('dark', 'Dark', 'moon'), option('system', 'System', 'monitor'))));
+
+  const rerender = () => {
+    content.replaceChildren();
+    renderAppearance(content);
+  };
+  const dark = document.documentElement.dataset.theme !== 'light';
+
+  // Accent: a row of swatches, then a custom colour.
+  const accent = storedAccent();
+  const custom = accent.startsWith('#');
+  const swatches = ACCENTS.map((a) =>
+    h(
+      'button',
+      {
+        type: 'button',
+        class: `swatch${accent === a.id ? ' active' : ''}`,
+        title: a.label,
+        'aria-label': `${a.label} accent`,
+        'aria-pressed': String(accent === a.id),
+        style: { '--swatch': dark ? a.dark : a.light },
+        on: { click: () => { setAccent(a.id); rerender(); } },
+      },
+      accent === a.id ? icon('check', 14) : null
+    )
+  );
+  const picker = h('input', { type: 'color', class: 'color-input', value: custom ? accent : accentHex(false), title: 'Custom colour', 'aria-label': 'Custom accent colour' });
+  picker.addEventListener('input', () => setAccent(picker.value));
+  picker.addEventListener('change', rerender);
+  const customSwatch = h('label', { class: `swatch custom${custom ? ' active' : ''}`, title: 'Custom colour', style: custom ? { '--swatch': accentHex(dark) } : {} }, custom ? icon('check', 14) : icon('palette', 15), picker);
+  const preview = h(
+    'div',
+    { class: 'accent-preview' },
+    button({ variant: 'primary', size: 'sm', label: 'Primary' }),
+    h('span', { class: 'chip chip-accent' }, icon('workflow', 14), h('span', { class: 'chip-label' }, 'Workflow')),
+    h('span', { class: 'status-badge tone-accent' }, 'Preview'),
+    h('a', { href: '#', on: { click: (e: Event) => e.preventDefault() } }, 'A link'),
+    switchInput(true, () => {}, 'Example switch')
+  );
+  content.append(
+    card(
+      h('h3', {}, 'Accent colour'),
+      h('p', { class: 'muted' }, 'Used for links, selections, focus rings, badges and highlights.'),
+      h('div', { class: 'swatches' }, swatches, customSwatch),
+      preview
+    )
+  );
+
+  // Background: tiles that preview the palette in the current theme.
+  const background = storedBackground();
+  const tiles = BACKGROUNDS.map((b) => {
+    const surface = dark ? b.dark : b.light;
+    return h(
+      'button',
+      {
+        type: 'button',
+        class: `bg-tile${background === b.id ? ' active' : ''}`,
+        'aria-pressed': String(background === b.id),
+        on: { click: () => { setBackground(b.id); rerender(); } },
+      },
+      h(
+        'span',
+        { class: 'bg-thumb', style: { background: surface.bg } },
+        h('span', { class: 'bg-thumb-side', style: { background: surface.sidebar } }),
+        h('span', { class: 'bg-thumb-card', style: { background: surface.elevated } }, h('span', { class: 'bg-thumb-dot', style: { background: accentHex(dark) } })),
+        h('span', { class: 'bg-thumb-bubble', style: { background: surface.bubble } })
+      ),
+      h('span', { class: 'bg-label' }, b.label, background === b.id ? icon('check', 14) : null)
+    );
+  });
+  content.append(
+    card(
+      h('h3', {}, 'Background'),
+      h('p', { class: 'muted' }, `The palette for the window, sidebar and cards. Each one has a ${dark ? 'light' : 'dark'} version that follows the theme.`),
+      h('div', { class: 'bg-tiles' }, tiles),
+      h('div', { class: 'card-actions start' }, button({ variant: 'subtle', size: 'sm', icon: 'reset', label: 'Reset appearance', onClick: () => { setAccent('violet'); setBackground('default'); rerender(); } }))
+    )
+  );
 }

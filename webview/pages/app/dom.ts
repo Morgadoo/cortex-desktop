@@ -23,6 +23,9 @@ export function h<K extends keyof HTMLElementTagNameMap>(
       }
     } else if (key === 'class') {
       el.className = String(value);
+    } else if (key === 'style' && typeof value === 'object') {
+      // Through CSSOM: the page's CSP forbids inline style attributes.
+      for (const [prop, v] of Object.entries(value as Record<string, string>)) el.style.setProperty(prop, v);
     } else if (key === 'dataset') {
       Object.assign(el.dataset, value);
     } else if (key in el && typeof value !== 'string') {

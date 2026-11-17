@@ -35,6 +35,26 @@ pub struct Skill {
 
 const BUILTIN: &[(&str, &str)] = &[
     (
+        "set-up-my-knowledge",
+        "---\nname: set-up-my-knowledge\ndescription: Use when the user wants to set up their knowledge, or says \"get to know me\" or \"set up my profile\".\n---\n1. Explain in one sentence that knowledge is what you remember about them across chats, and that they can see and edit it under Context, then Knowledge.\n2. Ask, with ask_user, which areas to cover: work and role, current projects, tools they use, writing style, and personal preferences. Let them pick several.\n3. For each area chosen, ask one or two short questions at a time; do not interrogate.\n4. Save each durable fact with remember, as one short sentence in the third person (\"Works as a product designer at a fintech\").\n5. End with a list of what you saved and how to change it.",
+    ),
+    (
+        "discover-knowledge",
+        "---\nname: discover-knowledge\ndescription: Use when the user asks what you know or remember about them, or wants to review their knowledge.\n---\n1. List what you remember about the user, grouped by topic (work, projects, preferences, people, other).\n2. Point out anything that looks outdated, duplicated or contradictory.\n3. Suggest two or three things worth adding that would make answers better.\n4. Ask whether to update or remove anything, and use remember and forget for the changes they confirm.",
+    ),
+    (
+        "sanitize-my-knowledge",
+        "---\nname: sanitize-my-knowledge\ndescription: Use when the user wants to clean up, tidy or audit their knowledge, or remove sensitive information from it.\n---\n1. Review every remembered fact.\n2. Flag sensitive items (health, finances, credentials, government ids, other people's private details), duplicates, contradictions and stale facts.\n3. Show a table: fact, problem, proposed action (keep, rewrite, merge, forget).\n4. Ask for confirmation with ask_user before changing anything, then apply the approved actions with remember and forget.\n5. Report what changed.",
+    ),
+    (
+        "build-knowledge-from-connectors",
+        "---\nname: build-knowledge-from-connectors\ndescription: Use when the user asks to learn about them from their connected apps, files or mail, or to build their knowledge from connectors.\n---\n1. Check which connectors are available in this conversation. If none can read their data, say how to connect one (Context, then Connectors) and stop.\n2. Read a small, recent sample from each: documents in their folders, recent mail subjects, calendar or project names. Read only; change nothing.\n3. Extract durable, useful facts: role, projects, recurring collaborators, tools and preferences. Skip one-off details and anything sensitive.\n4. Show the proposed facts and ask with ask_user which to keep.\n5. Save the approved ones with remember.",
+    ),
+    (
+        "create-skill-from-knowledge",
+        "---\nname: create-skill-from-knowledge\ndescription: Use when the user wants to turn what you know about them, or a way of working they repeat, into a reusable skill.\n---\n1. Ask what the skill should do and when it should be used, unless that is already clear.\n2. Draft it from their knowledge and this conversation: a lowercase hyphenated name, a description that says when to use it, and numbered instructions.\n3. Show the draft and ask for changes.\n4. Save it with save_skill once they approve, and tell them they can call it with /name or find it under Context, then Skills.",
+    ),
+    (
         "challenge-my-thinking",
         "---\nname: challenge-my-thinking\ndescription: Use when the user wants to pressure-test an idea, plan or argument (\"challenge this\", \"poke holes\", \"what am I missing\").\n---\n\
 1. Restate the idea in its strongest form, in two sentences, so the user knows you understood it.\n\

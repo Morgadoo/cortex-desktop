@@ -2001,7 +2001,7 @@ function usageMeter(live: { usage: UsageTotals; window: number } | undefined, st
   return h(
     'span',
     { class: 'usage-meter', title: lines.join('. ') },
-    pct !== null ? h('span', { class: 'ring', style: `--pct:${pct}` }) : null,
+    pct !== null ? h('span', { class: 'ring', style: { '--pct': String(pct) } }) : null,
     h('span', {}, `${total}k tokens${usage.cost > 0 ? ' · ' + money(usage.cost) : ''}`)
   );
 }
