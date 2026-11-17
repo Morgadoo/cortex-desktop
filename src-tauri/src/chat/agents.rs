@@ -36,6 +36,12 @@ pub struct Agent {
     /// Think longer by default.
     #[serde(default)]
     pub think: bool,
+    /// The model to switch to when the main one fails (a provider down, out of credit).
+    #[serde(default)]
+    pub fallback_model: Option<String>,
+    /// US dollars this agent may spend in a calendar month; no limit when `None`.
+    #[serde(default)]
+    pub monthly_budget: Option<f64>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -86,6 +92,166 @@ pub fn allows(agent: &Agent, name: &str) -> bool {
     agent.tools.iter().any(|t| t == name || t == connector)
 }
 
+/// The tool an agent uses to keep its notebook.
+pub const NOTEBOOK_TOOL: &str = "update_notebook";
+/// Characters a notebook may hold; it goes into every prompt of the agent.
+pub const NOTEBOOK_CHARS: usize = 12_000;
+
+fn notebook_path(config_dir: &Path, id: &str) -> Result<PathBuf, String> {
+    if !valid_id(id) {
+        return Err("invalid agent id".into());
+    }
+    Ok(chat_dir(config_dir).join("agents").join(id).join("notebook.md"))
+}
+
+/// The agent's notebook: what it keeps across conversations and runs, in Markdown.
+pub fn notebook(config_dir: &Path, id: &str) -> String {
+    notebook_path(config_dir, id).ok().and_then(|p| std::fs::read_to_string(p).ok()).unwrap_or_default()
+}
+
+pub fn save_notebook(config_dir: &Path, id: &str, text: &str) -> Result<(), String> {
+    let text = text.trim();
+    if text.chars().count() > NOTEBOOK_CHARS {
+        return Err(format!("The notebook holds at most {NOTEBOOK_CHARS} characters; condense it."));
+    }
+    let path = notebook_path(config_dir, id)?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(path, text).map_err(|e| e.to_string())
+}
+
+pub fn notebook_tool() -> super::tools::ChatTool {
+    super::tools::ChatTool {
+        name: NOTEBOOK_TOOL.into(),
+        description: format!(
+            "Rewrite your notebook: the working memory you keep across all your conversations and \
+             scheduled runs. Keep it current and short (at most {NOTEBOOK_CHARS} characters): what \
+             you learned about the work, decisions, preferences, open threads, and what to do \
+             differently next time. Send the whole notebook, not a diff."
+        ),
+        parameters: serde_json::json!({ "type": "object", "properties": { "content": { "type": "string", "description": "The full notebook, in Markdown." } }, "required": ["content"] }),
+        connector_id: None,
+        tool_name: NOTEBOOK_TOOL.into(),
+        read_only: true,
+    }
+}
+
+/// The part of the agent's prompt about its notebook.
+pub fn notebook_prompt(text: &str) -> String {
+    let body = if text.trim().is_empty() { "(empty: start it when you learn something worth keeping)" } else { text.trim() };
+    format!(
+        "\n\n## Your notebook\nYou keep this across every conversation and run; the user can read and \
+         edit it. Update it with `{NOTEBOOK_TOOL}` when you learn something that will matter next \
+         time, before you finish.\n<notebook>\n{body}\n</notebook>"
+    )
+}
+
+/// The agents another agent (or the assistant) can hand tasks to.
+pub fn team_prompt(agents: &[Agent], except: Option<&str>) -> Option<String> {
+    let team: Vec<String> = agents
+        .iter()
+        .filter(|a| Some(a.id.as_str()) != except)
+        .map(|a| format!("- **{}**: {}", a.name, if a.description.trim().is_empty() { "no description" } else { a.description.trim() }))
+        .collect();
+    if team.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "\n\n## Your team\nThese agents can take tasks through `delegate`: set a task's `agent` to the \
+         agent's name and it works on it with its own instructions and model, then reports back.\n{}",
+        team.join("\n")
+    ))
+}
+
+/// Finds an agent by name (any case) or id.
+pub fn by_name<'a>(agents: &'a [Agent], name: &str) -> Option<&'a Agent> {
+    let name = name.trim();
+    agents.iter().find(|a| a.id == name || a.name.eq_ignore_ascii_case(name))
+}
+
+/// What an agent's conversations cost this calendar month.
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Spend {
+    pub runs: usize,
+    pub tokens: u64,
+    pub cost: f64,
+}
+
+pub fn spend_this_month(config_dir: &Path) -> std::collections::HashMap<String, Spend> {
+    use chrono::Datelike;
+    let now = Utc::now();
+    let mut out: std::collections::HashMap<String, Spend> = Default::default();
+    for c in super::store::list_conversations(config_dir) {
+        let Some(agent) = c.agent_id.clone() else { continue };
+        if c.updated_at.year() != now.year() || c.updated_at.month() != now.month() {
+            continue;
+        }
+        let entry = out.entry(agent).or_default();
+        entry.runs += 1;
+        entry.tokens += c.tokens;
+        entry.cost += c.cost;
+    }
+    out
+}
+
+/// Refuses a turn when the agent's monthly budget is used up.
+pub fn check_budget(config_dir: &Path, agent: &Agent) -> Result<(), String> {
+    let Some(budget) = agent.monthly_budget.filter(|b| *b > 0.0) else { return Ok(()) };
+    let spent = spend_this_month(config_dir).get(&agent.id).map_or(0.0, |s| s.cost);
+    if spent >= budget {
+        return Err(format!(
+            "{} has used its monthly budget (${spent:.2} of ${budget:.2}). Raise the budget on its page to continue.",
+            agent.name
+        ));
+    }
+    Ok(())
+}
+
+/// The instruction that turns a one-line description into an agent.
+pub fn draft_prompt(description: &str, tools: &[&str], skills: &[String]) -> String {
+    format!(
+        "Design an AI agent from this description:\n\n{description}\n\nReply with only a JSON object, \
+         no prose and no code fence, with these fields:\n\
+         - name: 1 to 3 words\n\
+         - avatar: one emoji\n\
+         - description: one line saying what it is for\n\
+         - instructions: 120 to 250 words, in the second person: who it is, how it works step by \
+           step, what good output looks like, and what it must never do\n\
+         - tools: the subset of {tools:?} it needs (fewest that do the job)\n\
+         - skills: the subset of {skills:?} it should use, or []\n\
+         - think: true only for analysis-heavy work"
+    )
+}
+
+/// Reads the model's draft. Unknown tools and skills are dropped.
+pub fn parse_draft(text: &str, tools: &[&str], skills: &[String]) -> Result<Agent, String> {
+    let start = text.find('{').ok_or("The model did not return an agent.")?;
+    let end = text.rfind('}').ok_or("The model did not return an agent.")?;
+    let value: serde_json::Value = serde_json::from_str(&text[start..=end]).map_err(|_| "The model's draft was not valid JSON; try again.".to_string())?;
+    let field = |k: &str| value.get(k).and_then(|v| v.as_str()).unwrap_or_default().trim().to_string();
+    let list = |k: &str| -> Vec<String> { value.get(k).and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default() };
+    let name = field("name");
+    if name.is_empty() {
+        return Err("The draft had no name; try again.".into());
+    }
+    Ok(Agent {
+        id: uuid::Uuid::new_v4().to_string(),
+        avatar: field("avatar").chars().take(4).collect(),
+        description: field("description"),
+        instructions: field("instructions"),
+        model: None,
+        tools: list("tools").into_iter().filter(|t| tools.contains(&t.as_str())).collect(),
+        skills: list("skills").into_iter().filter(|s| skills.contains(s)).collect(),
+        think: value.get("think").and_then(|v| v.as_bool()).unwrap_or(false),
+        fallback_model: None,
+        monthly_budget: None,
+        created_at: Utc::now(),
+        name,
+    })
+}
+
 /// Ready-made agents a user can add with one click.
 pub fn templates() -> Vec<Agent> {
     let make = |id: &str, name: &str, avatar: &str, description: &str, instructions: &str, tools: &[&str]| Agent {
@@ -98,6 +264,8 @@ pub fn templates() -> Vec<Agent> {
         tools: tools.iter().map(|s| s.to_string()).collect(),
         skills: Vec::new(),
         think: false,
+        fallback_model: None,
+        monthly_budget: None,
         created_at: Utc::now(),
     };
     vec![
@@ -154,6 +322,52 @@ mod tests {
         assert!(allows(&agent, "bash__run"));
         assert!(save(dir.path(), Agent { name: " ".into(), ..agent.clone() }).is_err());
         assert!(delete(dir.path(), "a1").unwrap().is_empty());
+    }
+
+    #[test]
+    fn notebooks_drafts_and_teams() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(notebook(dir.path(), "a1"), "");
+        save_notebook(dir.path(), "a1", "  ## Learned\n- Prefers tables  ").unwrap();
+        assert_eq!(notebook(dir.path(), "a1"), "## Learned\n- Prefers tables");
+        assert!(notebook_prompt("x").contains(NOTEBOOK_TOOL));
+        assert!(save_notebook(dir.path(), "a1", &"x".repeat(NOTEBOOK_CHARS + 1)).is_err());
+        assert!(save_notebook(dir.path(), "../evil", "x").is_err());
+
+        let tools = ["web_search", "canvas"];
+        let skills = vec!["deep-research".to_string()];
+        let draft = parse_draft(
+            "Sure:\n{\"name\": \"Market Watcher\", \"avatar\": \"📈\", \"description\": \"Tracks competitors\", \"instructions\": \"You watch.\", \"tools\": [\"web_search\", \"bash\"], \"skills\": [\"deep-research\", \"nope\"], \"think\": true}",
+            &tools,
+            &skills,
+        )
+        .unwrap();
+        assert_eq!((draft.name.as_str(), draft.tools.clone(), draft.skills.clone(), draft.think), ("Market Watcher", vec!["web_search".to_string()], skills.clone(), true));
+        assert!(parse_draft("no json here", &tools, &skills).is_err());
+
+        let team = templates();
+        assert!(by_name(&team, "researcher").is_some());
+        let prompt = team_prompt(&team, Some("researcher")).unwrap();
+        assert!(prompt.contains("Writer") && !prompt.contains("**Researcher**"));
+        assert!(team_prompt(&team[..1], Some("researcher")).is_none());
+    }
+
+    #[test]
+    fn budgets_stop_an_agent() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut agent = templates().remove(0);
+        let mut c = crate::chat::store::Conversation::new("11111111-1111-4111-8111-111111111111".into(), None, None);
+        c.agent_id = Some(agent.id.clone());
+        c.usage.cost = 1.5;
+        c.usage.input_tokens = 1000;
+        crate::chat::store::save_conversation(dir.path(), &c).unwrap();
+        let spend = spend_this_month(dir.path());
+        assert_eq!(spend[&agent.id], Spend { runs: 1, tokens: 1000, cost: 1.5 });
+        assert!(check_budget(dir.path(), &agent).is_ok());
+        agent.monthly_budget = Some(1.0);
+        assert!(check_budget(dir.path(), &agent).unwrap_err().contains("monthly budget"));
+        agent.monthly_budget = Some(2.0);
+        assert!(check_budget(dir.path(), &agent).is_ok());
     }
 
     #[test]

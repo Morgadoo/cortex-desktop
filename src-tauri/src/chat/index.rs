@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use super::store::{chat_dir, write_json, Conversation, ConversationSummary};
 
 /// Bumped when the index's own shape changes; an older index is rebuilt.
-const INDEX_VERSION: u32 = 1;
+const INDEX_VERSION: u32 = 2;
 /// Characters of text kept per conversation for search.
 const MAX_TEXT: usize = 400_000;
 
@@ -68,6 +68,8 @@ fn summarize(c: &Conversation) -> ConversationSummary {
         pinned: c.pinned,
         created_at: c.created_at,
         updated_at: c.updated_at,
+        tokens: c.usage.input_tokens + c.usage.output_tokens,
+        cost: c.usage.cost,
     }
 }
 

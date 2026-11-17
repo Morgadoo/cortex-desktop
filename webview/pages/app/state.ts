@@ -162,6 +162,8 @@ export function applyEvent(event: ChatEvent): boolean {
     case 'steered':
       ensure().steers.push(event.text);
       return false;
+    case 'notice':
+      return false;
     case 'text': {
       const turn = ensure();
       const last = turn.parts[turn.parts.length - 1];

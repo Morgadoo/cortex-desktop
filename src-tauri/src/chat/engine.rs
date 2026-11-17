@@ -67,6 +67,9 @@ pub enum ChatEvent {
     Compacted { conversation_id: String, upto: usize },
     #[serde(rename_all = "camelCase")]
     Done { conversation_id: String, cancelled: bool },
+    /// Something the user should know, such as a switch to the backup model.
+    #[serde(rename_all = "camelCase")]
+    Notice { conversation_id: String, text: String },
     #[serde(rename_all = "camelCase")]
     Error { conversation_id: String, message: String },
 }
@@ -409,9 +412,14 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
     conversation.updated_at = Utc::now();
     store::save_conversation(&config_dir, &conversation)?;
 
-    let model = connect_model(&config_dir, &request.model).await?;
+    let mut model = connect_model(&config_dir, &request.model).await?;
     let registry = app.state::<ToolRegistry>();
     let agent = conversation.agent_id.as_deref().and_then(|a| agents::find(&config_dir, a));
+    if let Some(agent) = &agent {
+        agents::check_budget(&config_dir, agent)?;
+    }
+    // The backup model, tried once when the main one fails before anything streamed.
+    let mut fallback = agent.as_ref().and_then(|a| a.fallback_model.clone()).filter(|f| f != &request.model);
     let mut offered = tools::available(&registry, request.connectors.as_deref());
     offered.splice(1..1, builtins::definitions(&config_dir));
     if let Some(agent) = &agent {
@@ -420,6 +428,10 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
     if request.approval.unattended() {
         // Nobody can answer a question during a scheduled run.
         offered.retain(|t| t.name != ASK_USER);
+    }
+    if agent.is_some() {
+        // An agent keeps a notebook across its conversations and runs.
+        offered.push(agents::notebook_tool());
     }
     if conversation.workdir.is_some() {
         // Coding sessions get a terminal for long-running commands.
@@ -459,6 +471,15 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         },
         &offered,
     );
+    let mut system = system;
+    if let Some(agent) = &agent {
+        system.push_str(&agents::notebook_prompt(&agents::notebook(&config_dir, &agent.id)));
+    }
+    if offered.iter().any(|t| t.name == builtins::DELEGATE) {
+        if let Some(team) = agents::team_prompt(&agents::load(&config_dir), agent.as_ref().map(|a| a.id.as_str())) {
+            system.push_str(&team);
+        }
+    }
     // Knowledge pages that matter for this message come in full; the rest by title.
     let system = if memories.enabled {
         let query = store::last_prompt(&conversation)
@@ -584,6 +605,23 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
                     tokio::select! {
                         _ = cancelled(&mut cancel) => return Ok(true),
                         _ = tokio::time::sleep(wait) => {}
+                    }
+                }
+                Err(e) if !streamed_anything && fallback.is_some() => {
+                    // Fail over to the agent's backup model, once, and say so.
+                    let backup = fallback.take().unwrap_or_default();
+                    warn!("model call failed ({e}); switching to {backup}");
+                    match connect_model(&config_dir, &backup).await {
+                        Ok(next) => {
+                            model = next;
+                            attempt = 0;
+                            let label = backup.rsplit('/').next().unwrap_or(&backup).to_string();
+                            emit(app, ChatEvent::Notice { conversation_id: id.into(), text: format!("The model failed ({}); continuing with {label}.", super::context::short_error(&e.to_string())) });
+                        }
+                        Err(_) => {
+                            store::save_conversation(&config_dir, &conversation)?;
+                            return Err(e.to_string());
+                        }
                     }
                 }
                 Err(e) => {
@@ -757,6 +795,16 @@ impl Runner<'_> {
                     .await;
                     tools::Outcome { text: subagents::render(&reports), is_error: reports.iter().all(|r| r.status != "done") }
                 }
+                Err(e) => tools::Outcome { text: e, is_error: true },
+            };
+        }
+        if name == agents::NOTEBOOK_TOOL {
+            let Some(agent_id) = store::load_conversation(self.config_dir, self.id).ok().and_then(|c| c.agent_id) else {
+                return tools::Outcome { text: "Only agents keep a notebook.".into(), is_error: true };
+            };
+            let content = arguments.get("content").and_then(Value::as_str).unwrap_or_default();
+            return match agents::save_notebook(self.config_dir, &agent_id, content) {
+                Ok(()) => tools::Outcome { text: "Notebook saved.".into(), is_error: false },
                 Err(e) => tools::Outcome { text: e, is_error: true },
             };
         }

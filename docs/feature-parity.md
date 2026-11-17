@@ -151,6 +151,11 @@ against the 5 that survived), and Mistral's documentation: docs.mistral.ai/vibe,
 | MCP tools | LibreChat, lobehub, osaurus | MCP connectors and catalog | Done |
 | Agents / presets | LibreChat, lobehub, openbot | Agents with persona, model, tools, skills and schedules | Done |
 | Autonomous scheduled agents | openbot, grok-bot | Scheduled tasks with unattended / autonomous runs | Done |
+| Create an agent from one prompt | openbot.run | "New agent" asks for a description; the default model drafts name, avatar, description, instructions, tools, skills and thinking, reviewed before saving | Done |
+| Persistent agent workspace that learns from work | openbot.run, open.bot | Each agent keeps a notebook (`update_notebook`), read at the start of every conversation and run, editable on its page | Done |
+| Agents hand tasks to each other | openbot.run, open.bot (orchestrator → specialists) | `delegate` tasks can name a teammate; it works with its own instructions, model and allowed tools, and reports back. The assistant's prompt lists the team | Done |
+| Failover to a backup model | openbot.run | Per-agent backup model, used when the main one fails before anything streamed, with a notice | Done |
+| Cost per bot and usage limits | open.bot | Spend per agent this month (conversations, tokens, dollars) on its card and page; optional monthly budget that stops further turns | Done |
 | Memory | open-webui, LibreChat | Knowledge | Done |
 | Prompt library | open-webui, LibreChat | Skills (`/name`) and Workflows | Done |
 | Response versions and branching | LibreChat, lobehub | A branch tree: regenerate and edit branch at any message; ‹ 1 / n › switches; branch points inside a branch come back with it | Done |

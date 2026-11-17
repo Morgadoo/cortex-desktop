@@ -195,6 +195,18 @@
           "markdownDescription": "Add a memory."
         },
         {
+          "description": "Read an agent's notebook.",
+          "type": "string",
+          "const": "allow-chat-agent-notebook",
+          "markdownDescription": "Read an agent's notebook."
+        },
+        {
+          "description": "Read what agents spent this month.",
+          "type": "string",
+          "const": "allow-chat-agent-spend",
+          "markdownDescription": "Read what agents spent this month."
+        },
+        {
           "description": "List ready-made agents.",
           "type": "string",
           "const": "allow-chat-agent-templates",
@@ -319,6 +331,12 @@
           "type": "string",
           "const": "allow-chat-delete-workflow",
           "markdownDescription": "Delete a workflow."
+        },
+        {
+          "description": "Draft an agent from a description.",
+          "type": "string",
+          "const": "allow-chat-draft-agent",
+          "markdownDescription": "Draft an agent from a description."
         },
         {
           "description": "Export all conversations and data to a folder the user picks.",
@@ -505,6 +523,12 @@
           "type": "string",
           "const": "allow-chat-save-agent",
           "markdownDescription": "Create or update an agent."
+        },
+        {
+          "description": "Save an agent's notebook.",
+          "type": "string",
+          "const": "allow-chat-save-agent-notebook",
+          "markdownDescription": "Save an agent's notebook."
         },
         {
           "description": "Save the audio settings and keys.",

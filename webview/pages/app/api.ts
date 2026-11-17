@@ -168,7 +168,15 @@ export interface Agent {
   tools: string[];
   skills: string[];
   think: boolean;
+  fallbackModel: string | null;
+  monthlyBudget: number | null;
   createdAt: string;
+}
+
+export interface AgentSpend {
+  runs: number;
+  tokens: number;
+  cost: number;
 }
 
 export type Frequency =
@@ -214,6 +222,7 @@ export type ChatEvent =
   | { type: 'compacting'; conversationId: string }
   | { type: 'compacted'; conversationId: string; upto: number }
   | { type: 'done'; conversationId: string; cancelled: boolean }
+  | { type: 'notice'; conversationId: string; text: string }
   | { type: 'error'; conversationId: string; message: string };
 
 export interface ApprovalRequest {
@@ -327,6 +336,10 @@ export const api = {
 
   agents: () => call<Agent[]>('chat_list_agents'),
   agentTemplates: () => call<Agent[]>('chat_agent_templates'),
+  agentNotebook: (id: string) => call<string>('chat_agent_notebook', { id }),
+  saveAgentNotebook: (id: string, text: string) => call<void>('chat_save_agent_notebook', { id, text }),
+  agentSpend: () => call<Record<string, AgentSpend>>('chat_agent_spend'),
+  draftAgent: (description: string) => call<Agent>('chat_draft_agent', { description }),
   saveAgent: (agent: Agent) => call<Agent[]>('chat_save_agent', { agent }),
   deleteAgent: (id: string) => call<Agent[]>('chat_delete_agent', { id }),
 

@@ -90,7 +90,8 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
                         "type": "object",
                         "properties": {
                             "title": { "type": "string", "description": "A few words." },
-                            "instructions": { "type": "string", "description": "What to find or check, and what to report." }
+                            "instructions": { "type": "string", "description": "What to find or check, and what to report." },
+                            "agent": { "type": "string", "description": "Optional: the name of an agent from your team to do this task." }
                         },
                         "required": ["title", "instructions"]
                     }

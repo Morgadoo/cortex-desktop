@@ -427,3 +427,23 @@ commands.allow = ["chat_context_breakdown"]
 identifier = "allow-chat-fork-conversation"
 description = "Branch a conversation into a new one."
 commands.allow = ["chat_fork_conversation"]
+
+[[permission]]
+identifier = "allow-chat-agent-notebook"
+description = "Read an agent's notebook."
+commands.allow = ["chat_agent_notebook"]
+
+[[permission]]
+identifier = "allow-chat-save-agent-notebook"
+description = "Save an agent's notebook."
+commands.allow = ["chat_save_agent_notebook"]
+
+[[permission]]
+identifier = "allow-chat-agent-spend"
+description = "Read what agents spent this month."
+commands.allow = ["chat_agent_spend"]
+
+[[permission]]
+identifier = "allow-chat-draft-agent"
+description = "Draft an agent from a description."
+commands.allow = ["chat_draft_agent"]

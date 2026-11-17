@@ -44,6 +44,9 @@ const WORKER_TOOLS: &[&str] = &[
 pub struct Task {
     pub title: String,
     pub instructions: String,
+    /// The agent to hand the task to, by name; a generic worker when absent.
+    #[serde(default)]
+    pub agent: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -71,8 +74,11 @@ pub fn parse_tasks(args: &Value) -> Result<Vec<Task>, String> {
     Ok(tasks)
 }
 
-fn worker_preamble(task: &Task) -> String {
-    format!(
+fn worker_preamble(task: &Task, agent: Option<&super::agents::Agent>) -> String {
+    let persona = agent.map_or(String::new(), |a| {
+        format!("You are {}, an agent with this role: {}\n\n{}\n\n", a.name, a.description.trim(), a.instructions.trim())
+    });
+    persona + &format!(
         "You are a research worker helping another assistant. Complete exactly this task, then \
          stop:\n\n## {}\n{}\n\nUse the tools to find what the task needs; prefer primary and \
          official sources and open the most promising results. You cannot ask questions, so \
@@ -82,6 +88,12 @@ fn worker_preamble(task: &Task) -> String {
         task.instructions,
         chrono::Utc::now().format("%B %-d, %Y")
     )
+}
+
+/// Whether a worker's last message is a report, not nothing or a tool call written as text.
+fn is_report(text: &str) -> bool {
+    let text = text.trim();
+    !text.is_empty() && !text.starts_with("[called tool") && !text.starts_with("<tool_call") && text.split_whitespace().count() >= 8
 }
 
 fn short(text: &str, max: usize) -> String {
@@ -117,6 +129,7 @@ async fn run_one(
     call_id: &str,
     index: usize,
     task: Task,
+    agent: Option<&super::agents::Agent>,
 ) -> Report {
     let progress = |status: &str, activity: String| {
         emit(
@@ -134,7 +147,7 @@ async fn run_one(
     progress("running", "Starting".into());
     let registry = app.state::<ToolRegistry>();
     let definitions: Vec<_> = tools.iter().filter_map(ChatTool::definition).collect();
-    let system = worker_preamble(&task);
+    let system = worker_preamble(&task, agent);
     let mut messages = vec![Message::user(format!("Begin: {}", task.title))];
 
     for step in 0..=MAX_WORKER_STEPS {
@@ -159,7 +172,24 @@ async fn run_one(
             messages.push(message);
         }
         if calls.is_empty() {
-            let report = short(&response.text(), MAX_REPORT_CHARS);
+            let mut text = response.text();
+            if !is_report(&text) {
+                // Out of tool calls, some models write one out as text instead of reporting.
+                // Ask once more, plainly, for the report.
+                messages.push(Message::user("Stop researching. Write your report now from what you have already found, as plain text. Do not call or mention tools."));
+                let request_messages = context::request_messages(&messages, None);
+                if let Some((prompt, history)) = request_messages.split_last() {
+                    let request = CompletionRequest::new(prompt.clone()).messages(history.iter().cloned()).preamble(system.clone());
+                    if let Ok(retry) = model.call(request).await {
+                        text = retry.text();
+                    }
+                }
+            }
+            if !is_report(&text) {
+                progress("failed", "No report".into());
+                return Report { title: task.title.clone(), status: "failed", report: "The worker did not write a report.".into(), steps: step };
+            }
+            let report = short(&text, MAX_REPORT_CHARS);
             progress("done", format!("Done after {step} tool steps"));
             return Report { title: task.title.clone(), status: "done", report, steps: step };
         }
@@ -194,7 +224,8 @@ async fn run_one(
     Report { title: task.title, status: "failed", report: "The worker ran out of steps without a report.".into(), steps: MAX_WORKER_STEPS }
 }
 
-/// Runs every task at once; reports come back in task order.
+/// Runs every task at once; reports come back in task order. A task for a named agent runs
+/// with that agent's instructions, its model, and only the reading tools it is allowed.
 pub async fn run_all(
     app: &AppHandle,
     config_dir: &Path,
@@ -205,12 +236,23 @@ pub async fn run_all(
     tasks: Vec<Task>,
 ) -> Vec<Report> {
     let tools = worker_tools(offered);
-    join_all(
-        tasks
-            .into_iter()
-            .enumerate()
-            .map(|(i, task)| run_one(app, config_dir, model, &tools, conversation_id, call_id, i, task)),
-    )
+    let team = super::agents::load(config_dir);
+    let mut prepared = Vec::new();
+    for mut task in tasks {
+        let agent = task.agent.as_deref().and_then(|n| super::agents::by_name(&team, n)).cloned();
+        let own = match agent.as_ref().and_then(|a| a.model.clone()) {
+            Some(reference) => super::engine::connect_model(config_dir, &reference).await.ok(),
+            None => None,
+        };
+        let allowed: Vec<ChatTool> = tools.iter().filter(|t| agent.as_ref().is_none_or(|a| super::agents::allows(a, &t.name))).cloned().collect();
+        if let Some(a) = &agent {
+            task.title = format!("{}: {}", a.name, task.title);
+        }
+        prepared.push((task, agent, own, allowed));
+    }
+    join_all(prepared.iter().enumerate().map(|(i, (task, agent, own, allowed))| {
+        run_one(app, config_dir, own.as_ref().unwrap_or(model), allowed, conversation_id, call_id, i, task.clone(), agent.as_ref())
+    }))
     .await
 }
 
@@ -247,6 +289,14 @@ mod tests {
         let offered = vec![tool("ask_user"), tool("web_search"), tool("bash__run"), tool("browser__navigate"), tool("delegate"), tool("remember")];
         let names: Vec<String> = worker_tools(&offered).into_iter().map(|t| t.name).collect();
         assert_eq!(names, ["web_search", "browser__navigate"]);
+    }
+
+    #[test]
+    fn tool_calls_written_as_text_are_not_reports() {
+        assert!(!is_report(""));
+        assert!(!is_report("[called tool browser__fetch with {\"url\":\"https://x\"}]"));
+        assert!(!is_report("Done."));
+        assert!(is_report("The AI Act's obligations for high-risk systems apply from 2 August 2026, per Article 113."));
     }
 
     #[test]

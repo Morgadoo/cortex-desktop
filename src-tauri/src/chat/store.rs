@@ -201,6 +201,11 @@ pub struct ConversationSummary {
     pub pinned: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Tokens used (in and out) and their cost, for budgets and the agent pages.
+    #[serde(default)]
+    pub tokens: u64,
+    #[serde(default)]
+    pub cost: f64,
 }
 
 /// The sidebar rows, from the index (see [`super::index`]), so a long history stays fast.

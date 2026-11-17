@@ -1141,3 +1141,10 @@ button.usage-meter:hover { background: var(--hover); }
 .crumb-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .chat.with-panel .usage-meter > span:last-child { display: none; }
 .app-frame { background: transparent; }
+
+/* ------------------------------------------------------------------ agent stats and notebook */
+
+.agent-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: var(--space-4); }
+.agent-stat { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.agent-stat strong { font-size: var(--fs-lg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.notebook-area { width: 100%; margin-top: var(--space-2); }

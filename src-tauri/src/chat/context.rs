@@ -128,6 +128,12 @@ pub fn request_messages(messages: &[Message], summary: Option<&Summary>) -> Vec<
     out
 }
 
+/// The first line of an error, short enough for a notice.
+pub fn short_error(text: &str) -> String {
+    let line = text.lines().next().unwrap_or_default();
+    if line.chars().count() > 120 { format!("{}…", line.chars().take(120).collect::<String>()) } else { line.to_string() }
+}
+
 /// One slice of the context window.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]

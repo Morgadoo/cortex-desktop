@@ -989,6 +989,43 @@ pub fn chat_list_apps(app: AppHandle) -> Result<Vec<super::canvas::Canvas>, Stri
 }
 
 
+/// An agent's notebook.
+#[tauri::command]
+pub fn chat_agent_notebook(app: AppHandle, id: String) -> Result<String, String> {
+    Ok(super::agents::notebook(&config_dir(&app)?, &id))
+}
+
+#[tauri::command]
+pub fn chat_save_agent_notebook(app: AppHandle, id: String, text: String) -> Result<(), String> {
+    super::agents::save_notebook(&config_dir(&app)?, &id, &text)
+}
+
+/// What each agent's conversations cost this month, by agent id.
+#[tauri::command]
+pub fn chat_agent_spend(app: AppHandle) -> Result<std::collections::HashMap<String, super::agents::Spend>, String> {
+    Ok(super::agents::spend_this_month(&config_dir(&app)?))
+}
+
+/// Drafts an agent from a description, with the default model.
+#[tauri::command]
+pub async fn chat_draft_agent(app: AppHandle, description: String) -> Result<super::agents::Agent, String> {
+    use rig_core::completion::CompletionRequest;
+    let dir = config_dir(&app)?;
+    if description.trim().len() < 8 {
+        return Err("Describe the agent in a sentence or two.".into());
+    }
+    let reference = providers::load(&dir).default_model.ok_or("Choose a default model under Providers & models first.")?;
+    let model = engine::connect_model(&dir, &reference).await?;
+    let tools: Vec<&str> = TOOL_CHOICES.to_vec();
+    let skills: Vec<String> = super::skills::list(&dir).into_iter().filter(|s| s.enabled).map(|s| s.name).collect();
+    let request = CompletionRequest::new(rig_core::completion::Message::user(super::agents::draft_prompt(description.trim(), &tools, &skills)));
+    let response = model.call(request).await.map_err(|e| e.to_string())?;
+    super::agents::parse_draft(&response.text(), &tools, &skills)
+}
+
+/// The tool names an agent can be given, matching the editor's choices.
+const TOOL_CHOICES: &[&str] = &["web_search", "browser", "filesystem", "bash", "delegate", "update_plan", "canvas", "schedule_task", "use_skill", "remember"];
+
 /// Full-text search over every conversation's title and messages.
 #[tauri::command]
 pub async fn chat_search(app: AppHandle, query: String) -> Result<Vec<super::index::Hit>, String> {

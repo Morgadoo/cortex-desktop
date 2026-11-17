@@ -9,7 +9,7 @@ import { ChatView, CompareView, HomeView, composer, conversationMenu, recordStep
 import { clear, h, icon, modal, popover, promptText, confirmDialog, toast } from './dom';
 import { ConnectorsPage, PlaceholderPage, openInstructions } from './pages';
 import { KnowledgePage, SkillsPage } from './context';
-import { AgentPage, AgentsPage, avatar, editAgent, reloadAgents } from './agents';
+import { AgentPage, AgentsPage, avatar, editAgent, newAgent, reloadAgents } from './agents';
 import { TasksPage } from './tasks';
 import { LibrariesPage } from './libraries';
 import { AppsPage } from './apps';
@@ -133,7 +133,7 @@ function renderSidebar() {
   const nav = h('div', { class: 'nav' });
   if (state.mode === 'agents') {
     nav.append(
-      navItem('plus', 'New agent', false, () => void editAgent(null)),
+      navItem('plus', 'New agent', false, () => void newAgent()),
       navItem('apps', 'All agents', isPage('agents'), () => navigate({ kind: 'page', page: 'agents' })),
       navItem('clock', 'Scheduled', isPage('scheduled'), () => navigate({ kind: 'page', page: 'scheduled' }))
     );
@@ -466,6 +466,7 @@ async function start() {
 
   void listen<ChatEvent>('chat://event', (event) => {
     const id = event.conversationId;
+    if (event.type === 'notice') toast(event.text);
     // A scheduled run starts a conversation the page has not seen yet.
     if (event.type === 'started' && !state.conversations.some((c) => c.id === id)) void refreshConversations();
     if (applyEvent(event)) {
