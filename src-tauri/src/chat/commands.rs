@@ -1080,6 +1080,23 @@ pub async fn chat_link_preview(app: AppHandle, url: String) -> Result<super::pre
     super::preview::get(&config_dir(&app)?, &url).await
 }
 
+/// What a session holds, for the Debug panel: model, folder, usage, summary and the raw history.
+#[tauri::command]
+pub fn chat_debug(app: AppHandle, id: String) -> Result<serde_json::Value, String> {
+    let c = store::load_conversation(&config_dir(&app)?, &id)?;
+    Ok(serde_json::json!({
+        "id": c.id,
+        "model": c.model,
+        "workdir": c.workdir,
+        "agentId": c.agent_id,
+        "createdAt": c.created_at,
+        "updatedAt": c.updated_at,
+        "usage": c.usage,
+        "summary": c.summary,
+        "messages": c.messages,
+    }))
+}
+
 /// Full-text search over every conversation's title and messages.
 #[tauri::command]
 pub async fn chat_search(app: AppHandle, query: String) -> Result<Vec<super::index::Hit>, String> {

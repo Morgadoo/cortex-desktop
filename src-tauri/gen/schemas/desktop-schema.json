@@ -285,6 +285,12 @@
           "markdownDescription": "Create a document library."
         },
         {
+          "description": "Read a session's raw history for the Debug panel.",
+          "type": "string",
+          "const": "allow-chat-debug",
+          "markdownDescription": "Read a session's raw history for the Debug panel."
+        },
+        {
           "description": "Delete an agent.",
           "type": "string",
           "const": "allow-chat-delete-agent",

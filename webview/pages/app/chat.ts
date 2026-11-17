@@ -12,7 +12,7 @@ import { startRecording, toBase64, type Recording } from './dictation';
 import { audioSettings, speakText, type Playback } from './audio';
 import { editWorkflow, workflowPrompt, workflowsApi } from './workflows';
 import type { Workflow } from './api';
-import { diffLines, loadChanges, openChanges, openFiles } from './changes';
+import { diffLines, loadChanges, openChanges, openFiles, openDebug } from './changes';
 import { openTerminal } from './terminal';
 import { button, chip, iconButton, modalHeader, trigger } from './ui';
 
@@ -2255,6 +2255,7 @@ export class ChatView {
     let changesBtn: HTMLElement | null = null;
     let terminalBtn: HTMLElement | null = null;
     let filesBtn: HTMLElement | null = null;
+    let debugBtn: HTMLElement | null = null;
     if (workdir) {
       if (this.changeCount === undefined) {
         this.changeCount = null;
@@ -2263,6 +2264,7 @@ export class ChatView {
           .catch(() => (this.changeCount = -1))
           .then(() => this.renderHeader());
       }
+      debugBtn = trigger({ icon: 'tool', label: 'Debug', title: 'The session\'s raw history and usage', chevron: false, onClick: () => openDebug(this.id) });
       filesBtn = trigger({ icon: 'folder', label: 'Files', title: 'Browse the files in this folder', chevron: false, onClick: () => openFiles(this.id, workdir.split(/[\\/]/).pop() ?? workdir) });
       if (this.changeCount !== -1) {
         terminalBtn = trigger({ icon: 'terminal', label: 'Terminal', title: 'Background commands in this folder', chevron: false, onClick: () => openTerminal(this.id, workdir.split(/[\\/]/).pop() ?? workdir) });
@@ -2282,7 +2284,7 @@ export class ChatView {
         project || workdir ? h('span', { class: 'crumb-sep' }, '/') : null,
         titleBtn
       ),
-      h('div', { class: 'header-actions' }, filesBtn, terminalBtn, changesBtn, meter, pin, exportBtn)
+      h('div', { class: 'header-actions' }, filesBtn, terminalBtn, changesBtn, debugBtn, meter, pin, exportBtn)
     );
   }
 

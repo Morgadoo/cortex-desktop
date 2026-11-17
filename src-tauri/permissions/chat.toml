@@ -477,3 +477,8 @@ commands.allow = ["chat_favicon"]
 identifier = "allow-chat-link-preview"
 description = "Read a web page's preview for a citation."
 commands.allow = ["chat_link_preview"]
+
+[[permission]]
+identifier = "allow-chat-debug"
+description = "Read a session's raw history for the Debug panel."
+commands.allow = ["chat_debug"]

@@ -257,3 +257,60 @@ export function openFiles(conversationId: string, folder: string) {
     );
   }, true);
 }
+
+/** The Debug panel of a coding session: what the model is working from, message by message. */
+export function openDebug(conversationId: string) {
+  void modal((close) => {
+    const body = h('div', { class: 'debug-body' }, h('div', { class: 'status-line' }, h('span', { class: 'dots' }), 'Reading the session'));
+    void tauriInvoke<{
+      id: string;
+      model: string | null;
+      workdir: string | null;
+      agentId: string | null;
+      usage: { inputTokens: number; outputTokens: number; cost: number; contextTokens: number };
+      summary: { text: string; upto: number } | null;
+      messages: Record<string, unknown>[];
+    }>('chat_debug', { id: conversationId })
+      .then((d) => {
+        const kindOf = (m: Record<string, unknown>): string => {
+          const content = (m.content as Record<string, unknown>[] | undefined) ?? [];
+          const kinds = [...new Set(content.map((c) => String(c.type ?? 'text')))];
+          return kinds.join(', ') || 'text';
+        };
+        const raw = JSON.stringify(d.messages, null, 2);
+        const copy = h('button', { class: 'btn btn-secondary btn-sm' }, icon('copy', 14), 'Copy history as JSON');
+        copy.addEventListener('click', () => { void navigator.clipboard.writeText(raw); toast('History copied.'); });
+        const fact = (k: string, v: string) => h('div', { class: 'debug-fact' }, h('span', { class: 'muted' }, k), h('code', {}, v));
+        clear(
+          body,
+          h(
+            'div',
+            { class: 'debug-facts' },
+            fact('Session', d.id),
+            fact('Model', d.model ?? 'the composer\'s'),
+            fact('Folder', d.workdir ?? 'none'),
+            fact('Agent', d.agentId ?? 'none'),
+            fact('Tokens', `${d.usage.inputTokens.toLocaleString()} in · ${d.usage.outputTokens.toLocaleString()} out · ${d.usage.contextTokens.toLocaleString()} in the last request`),
+            fact('Messages', `${d.messages.length} (${(raw.length / 1024).toFixed(0)} KB)`)
+          ),
+          d.summary ? h('details', { class: 'debug-msg' }, h('summary', {}, h('strong', {}, 'Summary'), h('span', { class: 'muted' }, ` replaces messages 1–${d.summary.upto}`)), h('pre', { class: 'step-pre' }, d.summary.text)) : null,
+          h(
+            'div',
+            { class: 'debug-list' },
+            d.messages.map((m, i) => {
+              const json = JSON.stringify(m, null, 2);
+              return h(
+                'details',
+                { class: 'debug-msg' },
+                h('summary', {}, h('span', { class: 'muted' }, `${i + 1}.`), h('strong', {}, String(m.role ?? '?')), h('span', { class: 'muted' }, kindOf(m)), h('span', { class: 'spacer' }), h('span', { class: 'muted' }, `${(json.length / 1024).toFixed(1)} KB`)),
+                h('pre', { class: 'step-pre' }, json.length > 20000 ? `${json.slice(0, 20000)}\n…` : json)
+              );
+            })
+          ),
+          h('div', { class: 'card-actions' }, copy)
+        );
+      })
+      .catch((e) => clear(body, h('p', { class: 'muted' }, String(e))));
+    return h('div', { class: 'changes-modal debug-modal' }, modalHeader(h('div', { class: 'modal-title' }, h('h2', {}, 'Debug'), h('span', { class: 'muted' }, 'what the model works from')), close), body);
+  }, true);
+}

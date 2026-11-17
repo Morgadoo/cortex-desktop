@@ -89,6 +89,7 @@
     "allow-chat-code-read-file",
     "allow-chat-favicon",
     "allow-chat-link-preview",
+    "allow-chat-debug",
     "allow-chat-read-spreadsheet",
     "allow-chat-terminal-list",
     "allow-chat-terminal-start",
