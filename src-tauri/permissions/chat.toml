@@ -347,3 +347,8 @@ commands.allow = ["chat_save_knowledge_page"]
 identifier = "allow-chat-delete-knowledge-page"
 description = "Delete a knowledge page."
 commands.allow = ["chat_delete_knowledge_page"]
+
+[[permission]]
+identifier = "allow-chat-read-spreadsheet"
+description = "Read an uploaded workbook."
+commands.allow = ["chat_read_spreadsheet"]

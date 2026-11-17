@@ -441,6 +441,12 @@
           "markdownDescription": "Get or create a project's file library."
         },
         {
+          "description": "Read an uploaded workbook.",
+          "type": "string",
+          "const": "allow-chat-read-spreadsheet",
+          "markdownDescription": "Read an uploaded workbook."
+        },
+        {
           "description": "Remove a document from a library.",
           "type": "string",
           "const": "allow-chat-remove-document",

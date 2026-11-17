@@ -112,8 +112,8 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
                 "id": { "type": "string", "description": "The canvas to update; omit to create one." },
                 "kind": {
                     "type": "string",
-                    "enum": ["document", "app"],
-                    "description": "document: Markdown. app: an interactive mini app, as one complete self-contained HTML document with inline CSS and JS (libraries only from cdn.jsdelivr.net, unpkg.com or cdnjs.cloudflare.com); it runs sandboxed with a live preview."
+                    "enum": ["document", "app", "sheet"],
+                    "description": "document: Markdown. sheet: a spreadsheet table as CSV (first row is the header), which the user edits as a grid and downloads as Excel. app: an interactive mini app, as one complete self-contained HTML document with inline CSS and JS (libraries only from cdn.jsdelivr.net, unpkg.com or cdnjs.cloudflare.com); it runs sandboxed with a live preview."
                 },
                 "title": { "type": "string" },
                 "content": { "type": "string", "description": "The full document, in Markdown." }

@@ -3,6 +3,7 @@ import { tauriInvoke } from '../../shared/tauri';
 import type { Part } from './api';
 import { clear, h, icon, markdown, modal, toast } from './dom';
 import { button, iconButton, modalHeader } from './ui';
+import { renderSheetCard } from './sheet';
 
 interface Canvas {
   id: string;
@@ -80,6 +81,7 @@ function renderAppCard(part: Extract<Part, { kind: 'tool' }>, live: boolean): HT
 /** A canvas the model created or updated, shown as a document card in the reply. */
 export function renderCanvasCard(part: Extract<Part, { kind: 'tool' }>, live: boolean): HTMLElement {
   if (part.arguments.kind === 'app') return renderAppCard(part, live);
+  if (part.arguments.kind === 'sheet') return renderSheetCard(part, live);
   const created = typeof part.arguments.id !== 'string' || !part.arguments.id;
   let title = typeof part.arguments.title === 'string' && part.arguments.title ? part.arguments.title : 'Untitled';
   let content = typeof part.arguments.content === 'string' ? part.arguments.content : '';

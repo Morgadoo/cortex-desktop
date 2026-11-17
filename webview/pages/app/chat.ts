@@ -1285,6 +1285,20 @@ class Composer {
           this.attachments.push({ name: file.name, text: '', image: await readImage(file) });
           continue;
         }
+        // Workbooks are read into CSV, one block per sheet.
+        if (/\.(xlsx|xlsm|xls|ods)$/i.test(file.name)) {
+          try {
+            const bytes = new Uint8Array(await file.arrayBuffer());
+            let binary = '';
+            for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+            const sheets = await tauriInvoke<[string, string][]>('chat_read_spreadsheet', { data: btoa(binary) });
+            const text = sheets.map(([name, csv]) => `Sheet "${name}" (CSV):\n${csv}`).join('\n\n');
+            this.attachments.push({ name: file.name, text: text.length > 400_000 ? `${text.slice(0, 400_000)}\n… (cut; analyse the full file with run_code)` : text });
+          } catch (e) {
+            toast(String(e), 'error');
+          }
+          continue;
+        }
         if (file.size > 512 * 1024) {
           toast(`${file.name} is larger than 512 KB.`, 'error');
           continue;

@@ -67,6 +67,8 @@ tauri-plugin-log = "^2.7.0"
 tauri-plugin-notification = "2"
 tauri-plugin-single-instance = { version = "^2", features = ["deep-link"] }
 tauri-plugin-updater = "^2.10.1"
+rust_xlsxwriter = "0.102.0"
+calamine = "0.38.0"
 
 [features]
 test-utils = []

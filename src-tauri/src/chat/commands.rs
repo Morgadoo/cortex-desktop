@@ -336,6 +336,17 @@ pub fn chat_delete_knowledge_page(app: AppHandle, id: String) -> Result<Vec<supe
     super::knowledge::delete(&config_dir(&app)?, &id)
 }
 
+/// Reads an uploaded workbook (base64) into CSV text per sheet.
+#[tauri::command]
+pub fn chat_read_spreadsheet(data: String) -> Result<Vec<(String, String)>, String> {
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(data.as_bytes()).map_err(|e| e.to_string())?;
+    if bytes.len() > 30 * 1024 * 1024 {
+        return Err("That workbook is too large.".into());
+    }
+    super::sheets::read_workbook(&bytes)
+}
+
 /// Adds guidance to a running turn; it joins the conversation at the turn's next step.
 #[tauri::command]
 pub fn chat_steer(state: State<'_, ChatState>, conversation_id: String, text: String) -> Result<bool, String> {
@@ -623,18 +634,34 @@ pub fn chat_save_canvas(app: AppHandle, id: String, title: Option<String>, conte
 pub async fn chat_export_canvas(app: AppHandle, id: String) -> Result<bool, String> {
     use tauri_plugin_dialog::DialogExt;
     let canvas = super::canvas::load(&config_dir(&app)?, &id)?;
+    let sheet = canvas.kind == "sheet";
     let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog()
-        .file()
-        .set_file_name(format!("{}.md", sanitize_file_name(&canvas.title)))
-        .add_filter("Markdown", &["md"])
-        .save_file(move |path| {
-            let _ = tx.send(path);
-        });
+    let dialog = app.dialog().file();
+    let dialog = if sheet {
+        dialog
+            .set_file_name(format!("{}.xlsx", sanitize_file_name(&canvas.title)))
+            .add_filter("Excel workbook", &["xlsx"])
+            .add_filter("CSV", &["csv"])
+    } else {
+        dialog.set_file_name(format!("{}.md", sanitize_file_name(&canvas.title))).add_filter("Markdown", &["md"])
+    };
+    dialog.save_file(move |path| {
+        let _ = tx.send(path);
+    });
     let Some(path) = rx.await.map_err(|e| e.to_string())? else {
         return Ok(false);
     };
-    std::fs::write(path.into_path().map_err(|e| e.to_string())?, canvas.content()).map_err(|e| e.to_string())?;
+    let path = path.into_path().map_err(|e| e.to_string())?;
+    if sheet {
+        let csv = super::sheets::sheet_csv(canvas.content());
+        if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("csv")) {
+            std::fs::write(&path, csv).map_err(|e| e.to_string())?;
+        } else {
+            super::sheets::write_xlsx(&path.with_extension("xlsx"), &canvas.title, &super::sheets::parse_csv(&csv))?;
+        }
+        return Ok(true);
+    }
+    std::fs::write(path, canvas.content()).map_err(|e| e.to_string())?;
     Ok(true)
 }
 

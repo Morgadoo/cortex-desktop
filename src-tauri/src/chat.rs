@@ -26,6 +26,7 @@ pub mod privacy;
 pub mod providers;
 pub mod sandbox;
 pub mod search;
+pub mod sheets;
 pub mod skills;
 pub mod store;
 pub mod subagents;

@@ -68,6 +68,7 @@
     "allow-chat-set-code-runs-allowed",
     "allow-chat-speak",
     "allow-chat-steer",
+    "allow-chat-read-spreadsheet",
     "allow-chat-knowledge-pages",
     "allow-chat-save-knowledge-page",
     "allow-chat-delete-knowledge-page",

@@ -27,7 +27,8 @@ pub struct Canvas {
     pub id: String,
     pub conversation_id: String,
     pub title: String,
-    /// `document` (Markdown) or `app` (a self-contained HTML page run in a sandbox).
+    /// `document` (Markdown), `app` (a self-contained HTML page run in a sandbox) or `sheet`
+    /// (a table, as CSV).
     #[serde(default = "document_kind")]
     pub kind: String,
     pub versions: Vec<Version>,
@@ -156,7 +157,11 @@ pub fn write_kind(
             id: uuid::Uuid::new_v4().to_string(),
             conversation_id: conversation_id.to_string(),
             title: String::new(),
-            kind: if kind == Some("app") { "app".into() } else { "document".into() },
+            kind: match kind {
+                Some("app") => "app".into(),
+                Some("sheet") => "sheet".into(),
+                _ => "document".into(),
+            },
             versions: Vec::new(),
         },
     };

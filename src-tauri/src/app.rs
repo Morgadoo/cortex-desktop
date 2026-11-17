@@ -131,6 +131,7 @@ pub fn run() {
                 chat::commands::chat_set_code_runs_allowed,
                 chat::commands::chat_speak,
                 chat::commands::chat_steer,
+                chat::commands::chat_read_spreadsheet,
                 chat::commands::chat_knowledge_pages,
                 chat::commands::chat_save_knowledge_page,
                 chat::commands::chat_delete_knowledge_page,

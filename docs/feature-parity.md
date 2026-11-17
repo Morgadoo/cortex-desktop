@@ -117,6 +117,7 @@ against the 5 that survived), and Mistral's documentation: docs.mistral.ai/vibe,
 | Vibe | Here | Status |
 |---|---|---|
 | Apps (Preview) | Mini apps the model builds, run in a sandboxed frame with their own CSP; Preview / Code; Apps page | Done |
+| Spreadsheets (release notes, Sept 2026): analyse, clean and create Excel/CSV, edit in Canvas, download .xlsx | Sheet canvases (CSV) edited as a grid with rows/columns, saved as versions; download as .xlsx (rust_xlsxwriter) or CSV; uploaded .xlsx/.xls/.ods read into CSV (calamine); heavy analysis via run_code | Done |
 
 ### 11. Settings and appearance
 
