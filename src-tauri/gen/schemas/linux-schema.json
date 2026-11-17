@@ -249,10 +249,22 @@
           "markdownDescription": "Commit a coding session's changes."
         },
         {
+          "description": "List the files of a coding session's folder.",
+          "type": "string",
+          "const": "allow-chat-code-files",
+          "markdownDescription": "List the files of a coding session's folder."
+        },
+        {
           "description": "Push a coding session's branch and open a pull request.",
           "type": "string",
           "const": "allow-chat-code-pull-request",
           "markdownDescription": "Push a coding session's branch and open a pull request."
+        },
+        {
+          "description": "Read a file of a coding session's folder.",
+          "type": "string",
+          "const": "allow-chat-code-read-file",
+          "markdownDescription": "Read a file of a coding session's folder."
         },
         {
           "description": "Read whether code runs without asking.",

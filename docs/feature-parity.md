@@ -191,8 +191,8 @@ items most likely to differ:
 | Scheduled tasks: Once / Daily / Weekly (several days) / Monthly / Yearly, plain-words confirmation ("Every Monday at 9:00"), pause and resume, unread run in the sidebar | Same | Done |
 | Knowledge: inline read / write pills; edit by asking; a "Sensitive data" toggle | Citation pills for pages read; saves show as steps; facts and pages editable directly; personal-data filter in Settings | Adapted |
 | Connector detail: Interactive / Read-only functions, each with `Always allow`, `Refresh tools` | Connector page lists tools; approvals per call with Always allow | Partial |
-| Canvas: versions with arrows, change view, restore; `Ask Work` on a selection | Versions; "Ask about this" on a selection; no change-tracking view | Partial |
-| Canvas preview of HTML, React, Mermaid, Marp; several canvases as tabs | Apps (HTML, JS) in the side panel; Markdown canvases; no Mermaid / Marp preview, no tabs | Partial |
+| Canvas: versions with arrows, change view, restore; `Ask Work` on a selection | History: ‹ › through versions (who and when), a Changes view (added and struck-through lines), Restore as a new version; "Ask about this" on a selection; line breaks kept | Done |
+| Canvas preview of HTML, React, Mermaid, Marp; several canvases as tabs | Apps (HTML, JS) in the side panel; Markdown canvases. Not built: Mermaid / Marp preview (about 3 MB more in the binary, and the page's CSP forbids the inline styles Mermaid needs), tabs | Partial |
 | Mini apps: file list in code view, ZIP download | Single-file apps, downloaded as one HTML file | Adapted |
 | Public share link for apps and spreadsheets | Nothing leaves the device | N/A |
 | Spreadsheets: sheet tabs, `Open in Google Sheets` | One sheet per canvas; .xlsx / CSV download | Partial |
@@ -200,7 +200,7 @@ items most likely to differ:
 | Workflows: tag in the input and above the sent message, `Workflow started: {name}` | Chip in the input and the message; the plan panel follows the steps | Done |
 | Custom MCP connector: name, Server URL, description; auth detected (none, Bearer/Basic, OAuth 2.1 with dynamic registration) | Same | Done |
 | Work Desktop: `+` → Folders → Add a folder, Remove all | Folders in the + menu | Done |
-| Code Desktop right panel: Files, Git Changes, Terminal, Debug, Background processes; diff Unified / Split | Changes view and Terminal panel; unified diff only; no Files or Debug panel | Partial |
+| Code Desktop right panel: Files, Git Changes, Terminal, Debug, Background processes; diff Unified / Split | Files (filter, read with line numbers), Changes with Unified / Split, Terminal with background processes; no Debug panel | Partial |
 | Integrated browser with "Open in external browser?" | Links open in the system browser | Adapted |
 
 ## The inspiration apps

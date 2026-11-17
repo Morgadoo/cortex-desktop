@@ -688,6 +688,7 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         let waits_on_user = |call: &ToolCall| {
             let name = call.function.name.as_str();
             name == ASK_USER
+                || (agent.as_ref().is_some_and(|a| agents::asks_first(a, name)) && !session_allowed(id, name))
                 || offered.iter().find(|t| t.name == name).is_some_and(|tool| {
                     tool.connector_id.is_some()
                         && tools::needs_approval(tool, &Value::Object(call.function.arguments.clone()), agents::mode_for(agent.as_ref(), name, request.approval))
@@ -776,6 +777,22 @@ fn cancelled_outcome() -> tools::Outcome {
     tools::Outcome { text: "Cancelled by the user.".into(), is_error: true }
 }
 
+/// Tools the user chose "Always allow" for under an agent's ask-first policy, by conversation.
+fn session_allowances() -> &'static std::sync::Mutex<std::collections::HashSet<(String, String)>> {
+    static SET: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<(String, String)>>> = std::sync::OnceLock::new();
+    SET.get_or_init(Default::default)
+}
+
+fn session_allowed(conversation: &str, tool: &str) -> bool {
+    session_allowances().lock().is_ok_and(|s| s.contains(&(conversation.to_string(), tool.to_string())))
+}
+
+fn allow_for_session(conversation: &str, tool: &str) {
+    if let Ok(mut s) = session_allowances().lock() {
+        s.insert((conversation.to_string(), tool.to_string()));
+    }
+}
+
 /// What one tool call needs to run, shared by the calls of a step.
 struct Runner<'a> {
     app: &'a AppHandle,
@@ -794,6 +811,23 @@ impl Runner<'_> {
         let arguments = Value::Object(call.function.arguments.clone());
         if let Some(raw) = &call.function.invalid_arguments {
             return tools::Outcome { text: format!("The arguments were not a JSON object: {raw}"), is_error: true };
+        }
+        // The agent's "ask first" policy covers every tool, built-in and reading ones included.
+        let mut asked = false;
+        if self.agent.is_some_and(|a| agents::asks_first(a, name)) && !session_allowed(self.id, name) {
+            if self.request.approval.unattended() {
+                return tools::Outcome { text: format!("{name} asks first under this agent's policy, and nobody is watching this scheduled run to approve it."), is_error: true };
+            }
+            let gate = ChatTool { name: name.into(), description: String::new(), parameters: Value::Null, connector_id: Some(self.agent.map_or_else(|| "agent".to_string(), |a| a.name.clone())), tool_name: name.into(), read_only: false };
+            match tools::request_approval(self.app, &gate, &arguments).await {
+                ApprovalDecision::Deny => {
+                    return tools::Outcome { text: "The user declined this tool call. Do not retry it; ask what they would like instead.".into(), is_error: true };
+                }
+                // "Always allow" lasts for this conversation, as in Vibe.
+                ApprovalDecision::Always => allow_for_session(self.id, name),
+                ApprovalDecision::Once => {}
+            }
+            asked = true;
         }
         if name == builtins::DELEGATE {
             return match subagents::parse_tasks(&arguments) {
@@ -851,7 +885,8 @@ impl Runner<'_> {
             return builtins::run(self.config_dir, name, &arguments).await;
         }
         match self.offered.iter().find(|t| t.name == name) {
-            Some(tool) => tools::execute(self.app, self.registry, tool, arguments, agents::mode_for(self.agent, name, self.request.approval), self.id).await,
+            // Approved just now under the agent's policy: do not ask a second time.
+            Some(tool) => tools::execute(self.app, self.registry, tool, arguments, if asked { ApprovalMode::Auto } else { agents::mode_for(self.agent, name, self.request.approval) }, self.id).await,
             None => tools::Outcome { text: format!("There is no tool named {name}."), is_error: true },
         }
     }

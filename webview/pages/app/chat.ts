@@ -11,7 +11,7 @@ import { startRecording, toBase64, type Recording } from './dictation';
 import { audioSettings, speakText, type Playback } from './audio';
 import { editWorkflow, workflowPrompt, workflowsApi } from './workflows';
 import type { Workflow } from './api';
-import { diffLines, loadChanges, openChanges } from './changes';
+import { diffLines, loadChanges, openChanges, openFiles } from './changes';
 import { openTerminal } from './terminal';
 import { button, chip, iconButton, modalHeader, trigger } from './ui';
 
@@ -396,7 +396,7 @@ function renderDelegate(part: Extract<Part, { kind: 'tool' }>, live: boolean, du
       'div',
       { class: 'step-row' },
       h('span', { class: `step-icon${running ? ' spin' : ''}` }, icon(running ? 'wait' : 'workflow', 16)),
-      h('span', { class: 'step-title' }, running ? `Running ${tasks.length} sub-agents in parallel` : `Ran ${tasks.length} sub-agents · ${doneCount} reported`),
+      h('span', { class: 'step-title' }, running ? (tasks.length === 1 ? 'Running a sub-agent' : `Running ${tasks.length} sub-agents in parallel`) : `Ran ${tasks.length === 1 ? 'a sub-agent' : `${tasks.length} sub-agents`} · ${doneCount} reported`),
       seconds(duration) ? h('span', { class: 'step-time' }, seconds(duration)) : null
     ),
     h('div', { class: 'step-content' }, h('div', { class: 'workers' }, rows))
@@ -2184,6 +2184,7 @@ export class ChatView {
     const exportBtn = h('button', { class: 'icon-btn', title: 'Export as Markdown' }, icon('share', 18));
     let changesBtn: HTMLElement | null = null;
     let terminalBtn: HTMLElement | null = null;
+    let filesBtn: HTMLElement | null = null;
     if (workdir) {
       if (this.changeCount === undefined) {
         this.changeCount = null;
@@ -2192,6 +2193,7 @@ export class ChatView {
           .catch(() => (this.changeCount = -1))
           .then(() => this.renderHeader());
       }
+      filesBtn = trigger({ icon: 'folder', label: 'Files', title: 'Browse the files in this folder', chevron: false, onClick: () => openFiles(this.id, workdir.split(/[\\/]/).pop() ?? workdir) });
       if (this.changeCount !== -1) {
         terminalBtn = trigger({ icon: 'terminal', label: 'Terminal', title: 'Background commands in this folder', chevron: false, onClick: () => openTerminal(this.id, workdir.split(/[\\/]/).pop() ?? workdir) });
         changesBtn = trigger({ icon: 'file', label: 'Changes', title: 'Uncommitted changes in this folder', chevron: false, class: 'changes-btn', trailing: this.changeCount ? h('span', { class: 'count-badge' }, String(this.changeCount)) : null });
@@ -2210,7 +2212,7 @@ export class ChatView {
         project || workdir ? h('span', { class: 'crumb-sep' }, '/') : null,
         titleBtn
       ),
-      h('div', { class: 'header-actions' }, terminalBtn, changesBtn, meter, pin, exportBtn)
+      h('div', { class: 'header-actions' }, filesBtn, terminalBtn, changesBtn, meter, pin, exportBtn)
     );
   }
 

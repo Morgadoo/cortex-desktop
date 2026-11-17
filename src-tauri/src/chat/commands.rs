@@ -1048,6 +1048,22 @@ pub fn chat_subagent_transcript(app: AppHandle, call_id: String, index: usize) -
     Ok(super::subagents::transcript(&config_dir(&app)?, &call_id, index))
 }
 
+/// The files of a coding session's folder.
+#[tauri::command]
+pub async fn chat_code_files(app: AppHandle, conversation_id: String) -> Result<(Vec<String>, bool), String> {
+    let conversation = store::load_conversation(&config_dir(&app)?, &conversation_id)?;
+    let dir = conversation.workdir.ok_or("This conversation has no folder.")?;
+    tokio::task::spawn_blocking(move || super::code::files(&dir)).await.map_err(|e| e.to_string())
+}
+
+/// One file of a coding session's folder, as text.
+#[tauri::command]
+pub fn chat_code_read_file(app: AppHandle, conversation_id: String, path: String) -> Result<String, String> {
+    let conversation = store::load_conversation(&config_dir(&app)?, &conversation_id)?;
+    let dir = conversation.workdir.ok_or("This conversation has no folder.")?;
+    super::code::read_file(&dir, &path)
+}
+
 /// Full-text search over every conversation's title and messages.
 #[tauri::command]
 pub async fn chat_search(app: AppHandle, query: String) -> Result<Vec<super::index::Hit>, String> {

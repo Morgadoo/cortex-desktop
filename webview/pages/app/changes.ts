@@ -32,6 +32,36 @@ export function diffLines(lines: string[]): HTMLElement {
   );
 }
 
+/**
+ * Side by side: the old file on the left, the new on the right, removals paired with the
+ * additions that replace them (Vibe's "Split" view).
+ */
+export function splitDiffLines(lines: string[]): HTMLElement {
+  const rows: [string | null, string | null, string][] = [];
+  let removed: string[] = [];
+  let added: string[] = [];
+  const flush = () => {
+    for (let i = 0; i < Math.max(removed.length, added.length); i++) rows.push([removed[i] ?? null, added[i] ?? null, 'change']);
+    removed = [];
+    added = [];
+  };
+  for (const line of lines) {
+    if (line.startsWith('@@')) {
+      flush();
+      rows.push([line, line, 'hunk']);
+    } else if (line.startsWith('-')) removed.push(line.slice(1));
+    else if (line.startsWith('+')) added.push(line.slice(1));
+    else {
+      flush();
+      rows.push([line.slice(1), line.slice(1), 'ctx']);
+    }
+  }
+  flush();
+  const cell = (text: string | null, kind: string, side: 'del' | 'add') =>
+    h('div', { class: `split-cell ${text === null ? 'empty' : kind === 'change' ? side : kind}` }, text ?? '');
+  return h('div', { class: 'diff split' }, rows.map(([left, right, kind]) => h('div', { class: 'split-row' }, cell(left, kind, 'del'), cell(right, kind, 'add'))));
+}
+
 /** The diff of each file, keyed by its path, from `git diff` output. */
 function splitDiff(diff: string): Map<string, string[]> {
   const out = new Map<string, string[]>();
@@ -57,6 +87,21 @@ export function openChanges(conversationId: string, folder: string) {
     const view = h('div', { class: 'changes-diff' }, h('div', { class: 'status-line' }, h('span', { class: 'dots' }), 'Reading changes'));
     const title = h('span', { class: 'muted' }, folder);
     const refresh = iconButton({ icon: 'retry', title: 'Refresh' });
+    // Unified or Split, as in Vibe's diff viewer; remembered for next time.
+    let layout: 'unified' | 'split' = (() => { try { return localStorage.getItem('lumo.diffLayout') === 'split' ? 'split' : 'unified'; } catch { return 'unified'; } })();
+    let rerender = () => {};
+    const unified = h('button', { class: `seg${layout === 'unified' ? ' active' : ''}` }, 'Unified');
+    const split = h('button', { class: `seg${layout === 'split' ? ' active' : ''}` }, 'Split');
+    const setLayout = (next: 'unified' | 'split') => {
+      layout = next;
+      unified.classList.toggle('active', next === 'unified');
+      split.classList.toggle('active', next === 'split');
+      try { localStorage.setItem('lumo.diffLayout', next); } catch { /* a convenience */ }
+      rerender();
+    };
+    unified.addEventListener('click', () => setLayout('unified'));
+    split.addEventListener('click', () => setLayout('split'));
+    const layoutSwitch = h('div', { class: 'segmented' }, unified, split);
     const load = async () => {
       const changes = await loadChanges(conversationId).catch((e) => ({ git: false, branch: null, files: [], diff: String(e), truncated: false }) as Changes);
       title.textContent = changes.branch ? `${folder} · ${changes.branch}` : folder;
@@ -71,7 +116,9 @@ export function openChanges(conversationId: string, folder: string) {
         return;
       }
       const diffs = splitDiff(changes.diff);
+      let current: { file: ChangedFile | null; row: HTMLElement | null } = { file: null, row: null };
       const show = (file: ChangedFile | null, row: HTMLElement | null) => {
+        current = { file, row };
         list.querySelectorAll('.active').forEach((el) => el.classList.remove('active'));
         row?.classList.add('active');
         const files = file ? [file] : changes.files;
@@ -85,13 +132,14 @@ export function openChanges(conversationId: string, folder: string) {
               f.status === 'untracked'
                 ? h('p', { class: 'muted diff-note' }, `New file, ${f.additions} lines, not yet tracked by git.`)
                 : diffs.get(f.path)
-                  ? diffLines(diffs.get(f.path)!)
+                  ? (layout === 'split' ? splitDiffLines : diffLines)(diffs.get(f.path)!)
                   : h('p', { class: 'muted diff-note' }, 'Binary file or no textual changes.')
             )
           ),
           changes.truncated && !file ? h('p', { class: 'muted diff-note' }, 'The diff is long; showing the beginning.') : null
         );
       };
+      rerender = () => show(current.file, current.row);
       const message = h('input', { class: 'input small', placeholder: 'Commit message' });
       const commit = h('button', { class: 'btn btn-primary btn-sm' }, 'Commit all');
       commit.addEventListener('click', async () => {
@@ -146,7 +194,7 @@ export function openChanges(conversationId: string, folder: string) {
     return h(
       'div',
       { class: 'changes-modal' },
-      modalHeader(h('div', { class: 'modal-title' }, h('h2', {}, 'Changes'), title), close, { actions: [pullRequest, refresh] }),
+      modalHeader(h('div', { class: 'modal-title' }, h('h2', {}, 'Changes'), title), close, { actions: [layoutSwitch, pullRequest, refresh] }),
       h('div', { class: 'changes-body' }, list, view)
     );
   }, true);
@@ -154,4 +202,58 @@ export function openChanges(conversationId: string, folder: string) {
 
 function stat(additions: number, deletions: number): HTMLElement {
   return h('span', { class: 'chg-stat' }, h('span', { class: 'plus' }, `+${additions}`), h('span', { class: 'minus' }, `−${deletions}`));
+}
+
+/** The session folder's files: filter by name, read one with line numbers (Vibe's Files panel). */
+export function openFiles(conversationId: string, folder: string) {
+  void modal((close) => {
+    const filter = h('input', { class: 'input small', placeholder: 'Filter files' });
+    const list = h('div', { class: 'changes-files' }, h('div', { class: 'status-line' }, h('span', { class: 'dots' }), 'Listing files'));
+    const view = h('div', { class: 'changes-diff' }, h('div', { class: 'empty-state' }, h('p', { class: 'muted' }, 'Choose a file.')));
+    let all: string[] = [];
+    const open = async (path: string, row: HTMLElement) => {
+      list.querySelectorAll('.active').forEach((el) => el.classList.remove('active'));
+      row.classList.add('active');
+      try {
+        const text = await tauriInvoke<string>('chat_code_read_file', { conversationId, path });
+        const lines = text.split('\n');
+        clear(
+          view,
+          h('div', { class: 'diff-file-head' }, icon('file', 14), h('strong', {}, path), h('span', { class: 'muted' }, `${lines.length} lines`)),
+          h('div', { class: 'file-view' }, lines.map((line, i) => h('div', { class: 'file-line' }, h('span', { class: 'line-no' }, String(i + 1)), h('span', {}, line || ' '))))
+        );
+      } catch (e) {
+        clear(view, h('p', { class: 'muted diff-note' }, String(e)));
+      }
+    };
+    const render = () => {
+      const q = filter.value.toLowerCase().trim();
+      const shown = all.filter((f) => !q || f.toLowerCase().includes(q)).slice(0, 500);
+      clear(
+        list,
+        shown.map((path) => {
+          const slash = path.lastIndexOf('/');
+          const row = h('button', { class: 'chg-row', title: path }, icon('file', 14), h('span', { class: 'chg-path' }, h('strong', {}, path.slice(slash + 1)), slash > 0 ? h('small', { class: 'muted' }, path.slice(0, slash)) : null));
+          row.addEventListener('click', () => void open(path, row));
+          return row;
+        }),
+        shown.length ? null : h('p', { class: 'muted diff-note' }, 'No files match.')
+      );
+    };
+    filter.addEventListener('input', render);
+    void tauriInvoke<[string[], boolean]>('chat_code_files', { conversationId })
+      .then(([files, truncated]) => {
+        all = files;
+        render();
+        if (truncated) list.append(h('p', { class: 'muted diff-note' }, 'Showing the first 5,000 files.'));
+      })
+      .catch((e) => clear(list, h('p', { class: 'muted diff-note' }, String(e))));
+    setTimeout(() => filter.focus());
+    return h(
+      'div',
+      { class: 'changes-modal' },
+      modalHeader(h('div', { class: 'modal-title' }, h('h2', {}, 'Files'), h('span', { class: 'muted' }, folder)), close, { actions: [filter] }),
+      h('div', { class: 'changes-body' }, list, view)
+    );
+  }, true);
 }

@@ -457,3 +457,13 @@ commands.allow = ["chat_usage_month"]
 identifier = "allow-chat-subagent-transcript"
 description = "Read what a sub-agent did."
 commands.allow = ["chat_subagent_transcript"]
+
+[[permission]]
+identifier = "allow-chat-code-files"
+description = "List the files of a coding session's folder."
+commands.allow = ["chat_code_files"]
+
+[[permission]]
+identifier = "allow-chat-code-read-file"
+description = "Read a file of a coding session's folder."
+commands.allow = ["chat_code_read_file"]

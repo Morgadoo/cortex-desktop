@@ -93,6 +93,51 @@ pub struct Changes {
 }
 
 /// The working tree's changes against HEAD, untracked files included.
+/// Files listed at most, and bytes of one file shown.
+const MAX_FILES: usize = 5_000;
+const MAX_FILE_BYTES: u64 = 512 * 1024;
+/// Folders that are noise to browse.
+const SKIP_DIRS: &[&str] = &[".git", "node_modules", "target", "dist", "build", ".venv", "venv", "__pycache__", ".next", ".cache"];
+
+/// The folder's files, relative and sorted; git's own list when it is a repository, so ignored
+/// files stay out.
+pub fn files(dir: &str) -> (Vec<String>, bool) {
+    let git = std::process::Command::new("git").args(["ls-files", "--cached", "--others", "--exclude-standard"]).current_dir(dir).output();
+    let mut out: Vec<String> = match git {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).lines().map(str::to_string).collect(),
+        _ => walkdir::WalkDir::new(dir)
+            .into_iter()
+            .filter_entry(|e| !(e.file_type().is_dir() && SKIP_DIRS.contains(&e.file_name().to_string_lossy().as_ref())))
+            .filter_map(Result::ok)
+            .filter(|e| e.file_type().is_file())
+            .filter_map(|e| e.path().strip_prefix(dir).ok().map(|p| p.to_string_lossy().replace('\\', "/")))
+            .take(MAX_FILES + 1)
+            .collect(),
+    };
+    out.sort();
+    let truncated = out.len() > MAX_FILES;
+    out.truncate(MAX_FILES);
+    (out, truncated)
+}
+
+/// One file of the folder as text; refuses paths that leave it.
+pub fn read_file(dir: &str, path: &str) -> Result<String, String> {
+    let root = std::fs::canonicalize(dir).map_err(|e| e.to_string())?;
+    let full = std::fs::canonicalize(root.join(path)).map_err(|_| "No such file.".to_string())?;
+    if !full.starts_with(&root) {
+        return Err("That file is outside the session's folder.".into());
+    }
+    let meta = std::fs::metadata(&full).map_err(|e| e.to_string())?;
+    if meta.len() > MAX_FILE_BYTES {
+        return Err(format!("The file is {} KB; only files up to {} KB are shown here.", meta.len() / 1024, MAX_FILE_BYTES / 1024));
+    }
+    let bytes = std::fs::read(&full).map_err(|e| e.to_string())?;
+    if bytes.iter().take(8000).any(|b| *b == 0) {
+        return Err("Binary file.".into());
+    }
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
 pub fn changes(dir: &str) -> Changes {
     let path = Path::new(dir);
     let Some(branch) = git(path, &["rev-parse", "--abbrev-ref", "HEAD"]) else {
@@ -267,6 +312,21 @@ fn parse(numstat: &str, names: &str) -> Vec<ChangedFile> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lists_and_reads_files_inside_the_folder_only() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("src")).unwrap();
+        std::fs::create_dir_all(dir.path().join("node_modules/x")).unwrap();
+        std::fs::write(dir.path().join("src/main.rs"), "fn main() {}").unwrap();
+        std::fs::write(dir.path().join("node_modules/x/i.js"), "x").unwrap();
+        let root = dir.path().to_str().unwrap();
+        let (list, truncated) = files(root);
+        assert!(list.contains(&"src/main.rs".to_string()) && !truncated);
+        assert!(!list.iter().any(|f| f.starts_with("node_modules")));
+        assert_eq!(read_file(root, "src/main.rs").unwrap(), "fn main() {}");
+        assert!(read_file(root, "../../etc/passwd").is_err());
+    }
 
     fn sh(dir: &Path, args: &[&str]) {
         let ok = Command::new("git").arg("-C").arg(dir).args(args).env("GIT_AUTHOR_NAME", "t").env("GIT_AUTHOR_EMAIL", "t@t").env("GIT_COMMITTER_NAME", "t").env("GIT_COMMITTER_EMAIL", "t@t").status().unwrap();

@@ -169,7 +169,7 @@ export function renderCanvasCard(part: Extract<Part, { kind: 'tool' }>, live: bo
   let content = typeof part.arguments.content === 'string' ? part.arguments.content : '';
   const writing = live && part.output === null;
   const body = h('div', { class: 'markdown canvas-body' });
-  body.append(markdown(content));
+  body.append(markdown(content, { breaks: true }));
   const titleEl = h('span', { class: 'canvas-title' }, title);
   const card = h('div', { class: 'canvas-card' });
 
@@ -195,9 +195,65 @@ export function renderCanvasCard(part: Extract<Part, { kind: 'tool' }>, live: bo
       title = saved.title;
       content = newContent;
       titleEl.textContent = title;
-      body.replaceChildren(markdown(content));
+      body.replaceChildren(markdown(content, { breaks: true }));
       toast('Saved. The assistant sees your edit on its next reply.');
     });
+  });
+  // History: step through versions, see what changed, restore one (Vibe's canvas versions).
+  const historyBar = h('div', { class: 'canvas-history' });
+  const history = button({ variant: 'subtle', size: 'sm', icon: 'clock', label: 'History', title: 'Versions and changes' });
+  history.addEventListener('click', async () => {
+    if (historyBar.childElementCount) {
+      clear(historyBar);
+      body.replaceChildren(markdown(content, { breaks: true }));
+      return;
+    }
+    const id = idOf(part);
+    const canvas = id ? await api.get(id).catch(() => null) : null;
+    if (!id || !canvas || !canvas.versions.length) return toast('No earlier versions yet.');
+    let at = canvas.versions.length - 1;
+    let showChanges = false;
+    const render = () => {
+      const version = canvas.versions[at]!;
+      const previous = canvas.versions[at - 1];
+      const prev = iconButton({ icon: 'back', title: 'Older version', size: 'sm', onClick: () => { at -= 1; render(); } });
+      const next = iconButton({ icon: 'forward', title: 'Newer version', size: 'sm', onClick: () => { at += 1; render(); } });
+      prev.disabled = at === 0;
+      next.disabled = at === canvas.versions.length - 1;
+      const changes = button({ variant: showChanges ? 'secondary' : 'subtle', size: 'sm', label: 'Changes', onClick: () => { showChanges = !showChanges; render(); } });
+      changes.disabled = !previous;
+      const restore = at < canvas.versions.length - 1
+        ? button({
+            variant: 'secondary',
+            size: 'sm',
+            icon: 'reset',
+            label: 'Restore',
+            onClick: async () => {
+              const saved = await api.save(id, canvas.title, version.content);
+              canvas.versions = saved.versions;
+              content = version.content;
+              at = canvas.versions.length - 1;
+              showChanges = false;
+              render();
+              toast('Restored as a new version. The assistant sees it on its next reply.');
+            },
+          })
+        : null;
+      const who = version.author === 'user' ? 'you' : 'the assistant';
+      clear(
+        historyBar,
+        prev,
+        h('span', { class: 'history-label' }, `Version ${at + 1} of ${canvas.versions.length}`, h('small', { class: 'muted' }, ` · by ${who}, ${new Date(version.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`)),
+        next,
+        h('span', { class: 'spacer' }),
+        changes,
+        restore
+      );
+      body.replaceChildren(showChanges && previous ? diffView(previous.content, version.content) : markdown(version.content, { breaks: true }));
+      card.classList.add('expanded');
+      expand.textContent = 'Collapse';
+    };
+    render();
   });
   const expand = h('button', { class: 'canvas-expand' }, 'Expand');
   expand.addEventListener('click', () => {
@@ -206,7 +262,8 @@ export function renderCanvasCard(part: Extract<Part, { kind: 'tool' }>, live: bo
   });
 
   card.append(
-    h('div', { class: 'canvas-head' }, icon('file', 16), titleEl, h('span', { class: 'spacer' }), writing ? h('span', { class: 'dots' }) : null, edit, copy, download),
+    h('div', { class: 'canvas-head' }, icon('file', 16), titleEl, h('span', { class: 'spacer' }), writing ? h('span', { class: 'dots' }) : null, history, edit, copy, download),
+    historyBar,
     body,
     expand
   );
@@ -282,4 +339,60 @@ export function enableAskAboutSelection(scope: HTMLElement, onAsk: (quote: strin
   document.addEventListener('mousedown', (e) => {
     if (button && e.target !== button && !button.contains(e.target as Node)) hide();
   });
+}
+
+/** Lines removed and added between two versions, in order (a longest-common-subsequence diff). */
+export function lineDiff(before: string, after: string): { kind: ' ' | '-' | '+'; text: string }[] {
+  const a = before.split('\n');
+  const b = after.split('\n');
+  // Too large to compare line by line: show the whole change as replace.
+  if (a.length * b.length > 4_000_000) return [...a.map((t) => ({ kind: '-' as const, text: t })), ...b.map((t) => ({ kind: '+' as const, text: t }))];
+  const n = a.length;
+  const m = b.length;
+  const lcs: Uint32Array[] = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) lcs[i]![j] = a[i] === b[j] ? lcs[i + 1]![j + 1]! + 1 : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!);
+  }
+  const out: { kind: ' ' | '-' | '+'; text: string }[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) {
+      out.push({ kind: ' ', text: a[i]! });
+      i++;
+      j++;
+    } else if (lcs[i + 1]![j]! >= lcs[i]![j + 1]!) out.push({ kind: '-', text: a[i++]! });
+    else out.push({ kind: '+', text: b[j++]! });
+  }
+  while (i < n) out.push({ kind: '-', text: a[i++]! });
+  while (j < m) out.push({ kind: '+', text: b[j++]! });
+  return out;
+}
+
+/** The change view: added lines green, removed lines struck through, unchanged runs folded. */
+function diffView(before: string, after: string): HTMLElement {
+  const lines = lineDiff(before, after);
+  const el = h('div', { class: 'canvas-diff' });
+  let same: string[] = [];
+  const flushSame = () => {
+    if (same.length > 6) {
+      same.slice(0, 2).forEach((t) => el.append(h('div', { class: 'diff-line same' }, t || ' ')));
+      el.append(h('div', { class: 'diff-fold muted' }, `… ${same.length - 4} unchanged lines`));
+      same.slice(-2).forEach((t) => el.append(h('div', { class: 'diff-line same' }, t || ' ')));
+    } else same.forEach((t) => el.append(h('div', { class: 'diff-line same' }, t || ' ')));
+    same = [];
+  };
+  for (const line of lines) {
+    if (line.kind === ' ') {
+      same.push(line.text);
+      continue;
+    }
+    flushSame();
+    el.append(h('div', { class: `diff-line ${line.kind === '+' ? 'added' : 'removed'}` }, line.text || ' '));
+  }
+  flushSame();
+  const added = lines.filter((l) => l.kind === '+').length;
+  const removed = lines.filter((l) => l.kind === '-').length;
+  const count = (n: number) => `${n} ${n === 1 ? 'line' : 'lines'}`;
+  return h('div', {}, h('p', { class: 'muted small' }, `${count(added)} added, ${count(removed)} removed`), el);
 }

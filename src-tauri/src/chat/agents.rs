@@ -257,12 +257,17 @@ pub fn parse_draft(text: &str, tools: &[&str], skills: &[String]) -> Result<Agen
     })
 }
 
+/// Whether the agent's policy says to ask before every use of `tool`.
+pub fn asks_first(agent: &Agent, tool: &str) -> bool {
+    let connector = tool.split_once("__").map_or(tool, |(c, _)| c);
+    agent.ask_tools.iter().any(|t| t == tool || t == connector)
+}
+
 /// The approval mode for one call: an agent's "ask" tools ask even when the mode would not.
 pub fn mode_for(agent: Option<&Agent>, tool: &str, mode: super::tools::ApprovalMode) -> super::tools::ApprovalMode {
     use super::tools::ApprovalMode;
     let Some(agent) = agent else { return mode };
-    let connector = tool.split_once("__").map_or(tool, |(c, _)| c);
-    let ask = agent.ask_tools.iter().any(|t| t == tool || t == connector);
+    let ask = asks_first(agent, tool);
     match mode {
         ApprovalMode::Auto | ApprovalMode::AcceptEdits if ask => ApprovalMode::Ask,
         // Nobody can answer during a scheduled run: an "ask" tool is refused.
