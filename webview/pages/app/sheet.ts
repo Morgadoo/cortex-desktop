@@ -61,7 +61,11 @@ function idOf(part: Extract<Part, { kind: 'tool' }>): string | null {
 /** A sheet the model created or edited: an editable grid with save, copy and download. */
 export function renderSheetCard(part: Extract<Part, { kind: 'tool' }>, live: boolean): HTMLElement {
   const title = typeof part.arguments.title === 'string' && part.arguments.title ? part.arguments.title : 'Sheet';
-  let rows = parseCsv(unfence(typeof part.arguments.content === 'string' ? part.arguments.content : ''));
+  // Several sheets, as tabs at the bottom (Vibe); content without `## Sheet:` lines is one.
+  const sheets = splitSheets(unfence(typeof part.arguments.content === 'string' ? part.arguments.content : ''));
+  let current = 0;
+  let rows = sheets[0]!.rows;
+  const tabs = h('div', { class: 'sheet-tabs' });
   const width = () => Math.max(1, ...rows.map((r) => r.length));
   const grid = h('div', { class: 'sheet-grid' });
   let dirty = false;
@@ -98,6 +102,22 @@ export function renderSheetCard(part: Extract<Part, { kind: 'tool' }>, live: boo
     });
     table.append(body);
     clear(grid, table);
+    renderTabs();
+  };
+  const renderTabs = () => {
+    if (sheets.length < 2 && !multi) return void clear(tabs);
+    clear(
+      tabs,
+      sheets.map((s, i) =>
+        h('button', { class: `sheet-tab${i === current ? ' active' : ''}`, on: { click: () => { sheets[current]!.rows = rows; current = i; rows = sheets[i]!.rows; render(); } } }, s.name)
+      ),
+      h('button', { class: 'sheet-tab add', title: 'Add a sheet', on: { click: () => { sheets[current]!.rows = rows; sheets.push({ name: `Sheet${sheets.length + 1}`, rows: [['Column 1']] }); current = sheets.length - 1; rows = sheets[current]!.rows; markDirty(); render(); } } }, icon('plus', 13))
+    );
+  };
+  const multi = sheets.length > 1;
+  const contentOf = () => {
+    sheets[current]!.rows = rows;
+    return sheets.length > 1 ? sheets.map((s) => `## Sheet: ${s.name}\n${toCsv(s.rows)}`).join('\n\n') : toCsv(rows);
   };
   render();
   const addRow = button({ variant: 'subtle', size: 'sm', icon: 'plus', label: 'Row', onClick: () => { rows.push(Array.from({ length: width() }, () => '')); markDirty(); render(); } });
@@ -106,7 +126,7 @@ export function renderSheetCard(part: Extract<Part, { kind: 'tool' }>, live: boo
     const id = idOf(part);
     if (!id || !dirty) return;
     try {
-      await tauriInvoke('chat_save_canvas', { id, title, content: toCsv(rows) });
+      await tauriInvoke('chat_save_canvas', { id, title, content: contentOf() });
       dirty = false;
       save.disabled = true;
       toast('Saved. The assistant sees your edits on its next reply.');
@@ -136,8 +156,21 @@ export function renderSheetCard(part: Extract<Part, { kind: 'tool' }>, live: boo
     h(
       'div',
       { class: 'canvas-card sheet-card' },
-      h('div', { class: 'canvas-head' }, icon('apps', 16), h('span', { class: 'canvas-title' }, title), h('span', { class: 'muted sheet-size' }, `${Math.max(0, rows.length - 1)} rows × ${width()} columns`), h('span', { class: 'spacer' }), addRow, addCol, save, copy, download),
-      grid
+      h('div', { class: 'canvas-head' }, icon('apps', 16), h('span', { class: 'canvas-title' }, title), h('span', { class: 'muted sheet-size' }, sheets.length > 1 ? `${sheets.length} sheets` : `${Math.max(0, rows.length - 1)} rows × ${width()} columns`), h('span', { class: 'spacer' }), addRow, addCol, save, copy, download),
+      grid,
+      tabs
     )
   );
+}
+
+/** The sheets of a sheet canvas: `## Sheet: Name` starts each; without one it is a single sheet. */
+export function splitSheets(content: string): { name: string; rows: string[][] }[] {
+  if (!/^\s*## Sheet:/m.test(content)) return [{ name: 'Sheet1', rows: parseCsv(content) }];
+  const out: { name: string; lines: string[] }[] = [];
+  for (const line of content.split('\n')) {
+    const m = line.match(/^\s*## Sheet:\s*(.*)$/);
+    if (m) out.push({ name: m[1]!.trim() || `Sheet${out.length + 1}`, lines: [] });
+    else out[out.length - 1]?.lines.push(line);
+  }
+  return out.map((s) => ({ name: s.name, rows: parseCsv(s.lines.join('\n').trim()) }));
 }

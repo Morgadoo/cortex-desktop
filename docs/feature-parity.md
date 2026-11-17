@@ -200,7 +200,7 @@ items most likely to differ:
 | Canvas preview of HTML, React, Mermaid, Marp; several canvases as tabs | Apps (HTML, JS) in the side panel; Markdown canvases. Not built: Mermaid / Marp preview (about 3 MB more in the binary, and the page's CSP forbids the inline styles Mermaid needs), tabs | Partial |
 | Mini apps: file list in code view, ZIP download | Single-file apps, downloaded as one HTML file | Adapted |
 | Public share link for apps and spreadsheets | Nothing leaves the device | N/A |
-| Spreadsheets: sheet tabs, `Open in Google Sheets` | One sheet per canvas; .xlsx / CSV download | Partial |
+| Spreadsheets: sheet tabs, `Open in Google Sheets` | Several sheets per canvas with tabs at the bottom (add one with +); .xlsx download holds every sheet, CSV the first. Google Sheets: no Google account integration | Done (Google Sheets N/A) |
 | Libraries: numbered footnotes jumping to the passage, roles, org sharing | Numbered markers; the passages used are listed under the answer and a marker jumps to its passage. Roles and sharing: single user | Done (sharing N/A) |
 | Workflows: tag in the input and above the sent message, `Workflow started: {name}` | Chip in the input and the message; the plan panel follows the steps | Done |
 | Custom MCP connector: name, Server URL, description; auth detected (none, Bearer/Basic, OAuth 2.1 with dynamic registration) | Same | Done |

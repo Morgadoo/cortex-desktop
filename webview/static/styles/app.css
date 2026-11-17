@@ -1252,3 +1252,9 @@ button.usage-meter:hover { background: var(--hover); }
 .footnote-head { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); }
 .footnote-n { color: var(--accent); font-weight: 700; min-width: 16px; }
 .footnote-text { margin: 4px 0 0 22px; color: var(--text-muted); font-size: var(--fs-sm); line-height: 1.5; }
+
+.sheet-tabs:not(:empty) { display: flex; gap: 2px; padding: 4px 8px; border-top: 1px solid var(--border); background: var(--bg-hover); overflow-x: auto; }
+.sheet-tab { padding: 4px 12px; border-radius: var(--radius-sm); font-size: var(--fs-sm); color: var(--text-secondary); white-space: nowrap; }
+.sheet-tab:hover { background: var(--bg-active); }
+.sheet-tab.active { background: var(--bg-elevated); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+.sheet-tab.add { display: inline-flex; align-items: center; padding: 4px 8px; }

@@ -68,32 +68,60 @@ pub fn sheet_csv(content: &str) -> String {
         .to_string()
 }
 
-/// Writes rows as an Excel workbook: numbers stay numbers, the first row is a bold header.
-pub fn write_xlsx(path: &Path, sheet_name: &str, rows: &[Vec<String>]) -> Result<(), String> {
-    use rust_xlsxwriter::{Format, Workbook};
-    let mut workbook = Workbook::new();
-    let sheet = workbook.add_worksheet();
-    let name: String = sheet_name.chars().filter(|c| !"[]:*?/\\".contains(*c)).take(31).collect();
-    if !name.trim().is_empty() {
-        sheet.set_name(name.trim()).map_err(|e| e.to_string())?;
+/// The sheets of a sheet canvas: `## Sheet: Name` starts each; content without one is one sheet.
+pub fn split_sheets(content: &str, fallback_name: &str) -> Vec<(String, String)> {
+    let text = sheet_csv(content);
+    if !text.lines().any(|l| l.trim_start().starts_with("## Sheet:")) {
+        return vec![(fallback_name.to_string(), text)];
     }
-    let bold = Format::new().set_bold();
-    for (r, row) in rows.iter().enumerate() {
-        for (c, value) in row.iter().enumerate() {
-            let (r, c) = (r as u32, c as u16);
-            let number = value.trim().replace(' ', "").parse::<f64>().ok().filter(|n| n.is_finite());
-            match (r, number) {
-                (0, _) => sheet.write_string_with_format(r, c, value, &bold).map(|_| ()),
-                (_, Some(n)) => sheet.write_number(r, c, n).map(|_| ()),
-                _ => sheet.write_string(r, c, value).map(|_| ()),
-            }
-            .map_err(|e| e.to_string())?;
+    let mut out: Vec<(String, String)> = Vec::new();
+    for line in text.lines() {
+        if let Some(name) = line.trim_start().strip_prefix("## Sheet:") {
+            out.push((name.trim().to_string(), String::new()));
+        } else if let Some((_, csv)) = out.last_mut() {
+            csv.push_str(line);
+            csv.push('\n');
         }
     }
-    if let Some(width) = rows.first().map(Vec::len) {
-        for c in 0..width {
-            let longest = rows.iter().filter_map(|r| r.get(c)).map(|v| v.chars().count()).max().unwrap_or(8);
-            sheet.set_column_width(c as u16, (longest.clamp(6, 50) + 2) as f64).map_err(|e| e.to_string())?;
+    out.into_iter().map(|(n, c)| (n, c.trim().to_string())).collect()
+}
+
+/// Writes rows as an Excel workbook: numbers stay numbers, the first row is a bold header.
+pub fn write_xlsx(path: &Path, sheet_name: &str, rows: &[Vec<String>]) -> Result<(), String> {
+    write_workbook(path, &[(sheet_name.to_string(), rows.to_vec())])
+}
+
+/// Writes several sheets into one workbook, in order.
+pub fn write_workbook(path: &Path, sheets: &[(String, Vec<Vec<String>>)]) -> Result<(), String> {
+    use rust_xlsxwriter::{Format, Workbook};
+    let mut workbook = Workbook::new();
+    let mut used: Vec<String> = Vec::new();
+    for (i, (sheet_name, rows)) in sheets.iter().enumerate() {
+        let sheet = workbook.add_worksheet();
+        let mut name: String = sheet_name.chars().filter(|c| !"[]:*?/\\".contains(*c)).take(31).collect::<String>().trim().to_string();
+        if name.is_empty() || used.iter().any(|u| u.eq_ignore_ascii_case(&name)) {
+            name = format!("Sheet{}", i + 1);
+        }
+        used.push(name.clone());
+        sheet.set_name(&name).map_err(|e| e.to_string())?;
+        let bold = Format::new().set_bold();
+        for (r, row) in rows.iter().enumerate() {
+            for (c, value) in row.iter().enumerate() {
+                let (r, c) = (r as u32, c as u16);
+                let number = value.trim().replace(' ', "").parse::<f64>().ok().filter(|n| n.is_finite());
+                match (r, number) {
+                    (0, _) => sheet.write_string_with_format(r, c, value, &bold).map(|_| ()),
+                    (_, Some(n)) => sheet.write_number(r, c, n).map(|_| ()),
+                    _ => sheet.write_string(r, c, value).map(|_| ()),
+                }
+                .map_err(|e| e.to_string())?;
+            }
+        }
+        if let Some(width) = rows.first().map(Vec::len) {
+            for c in 0..width {
+                let longest = rows.iter().filter_map(|r| r.get(c)).map(|v| v.chars().count()).max().unwrap_or(8);
+                sheet.set_column_width(c as u16, (longest.clamp(6, 50) + 2) as f64).map_err(|e| e.to_string())?;
+            }
         }
     }
     workbook.save(path).map_err(|e| e.to_string())
@@ -144,6 +172,21 @@ mod tests {
         ]);
         assert_eq!(parse_csv(&to_csv(&rows)), rows);
         assert_eq!(sheet_csv("```csv\na,b\n1,2\n```"), "a,b\n1,2");
+    }
+
+    #[test]
+    fn several_sheets_split_and_save_together() {
+        let content = "```csv\n## Sheet: Budget\nItem,Cost\nRent,1200\n\n## Sheet: Notes\nNote\nPay by the 5th\n```";
+        let sheets = split_sheets(content, "Plan");
+        assert_eq!(sheets, vec![("Budget".to_string(), "Item,Cost\nRent,1200".to_string()), ("Notes".to_string(), "Note\nPay by the 5th".to_string())]);
+        assert_eq!(split_sheets("a,b\n1,2", "Plan"), vec![("Plan".to_string(), "a,b\n1,2".to_string())]);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("plan.xlsx");
+        let rows: Vec<(String, Vec<Vec<String>>)> = sheets.iter().map(|(n, c)| (n.clone(), parse_csv(c))).collect();
+        write_workbook(&path, &rows).unwrap();
+        let back = read_workbook(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(back.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(), ["Budget", "Notes"]);
+        assert_eq!(back[1].1, "Note\nPay by the 5th");
     }
 
     #[test]

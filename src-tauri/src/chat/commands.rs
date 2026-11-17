@@ -759,11 +759,14 @@ pub async fn chat_export_canvas(app: AppHandle, id: String) -> Result<bool, Stri
     };
     let path = path.into_path().map_err(|e| e.to_string())?;
     if sheet {
-        let csv = super::sheets::sheet_csv(canvas.content());
+        let sheets = super::sheets::split_sheets(canvas.content(), &canvas.title);
+        let csv = sheets.first().map(|(_, c)| c.clone()).unwrap_or_default();
         if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("csv")) {
             std::fs::write(&path, csv).map_err(|e| e.to_string())?;
         } else {
-            super::sheets::write_xlsx(&path.with_extension("xlsx"), &canvas.title, &super::sheets::parse_csv(&csv))?;
+            // Every sheet into one workbook; CSV holds the first only.
+            let rows: Vec<(String, Vec<Vec<String>>)> = sheets.iter().map(|(n, c)| (n.clone(), super::sheets::parse_csv(c))).collect();
+            super::sheets::write_workbook(&path.with_extension("xlsx"), &rows)?;
         }
         return Ok(true);
     }
