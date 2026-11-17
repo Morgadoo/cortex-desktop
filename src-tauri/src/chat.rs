@@ -18,6 +18,7 @@ pub mod context;
 pub mod engine;
 pub mod libraries;
 pub mod memory;
+pub mod privacy;
 pub mod providers;
 pub mod search;
 pub mod skills;

@@ -590,6 +590,16 @@ pub fn chat_search_libraries(app: AppHandle, query: String, library_id: Option<S
     Ok(super::libraries::search(&config_dir(&app)?, &only, &query, 8))
 }
 
+#[tauri::command]
+pub fn chat_get_privacy(app: AppHandle) -> Result<super::privacy::PrivacySettings, String> {
+    Ok(super::privacy::load(&config_dir(&app)?))
+}
+
+#[tauri::command]
+pub fn chat_set_privacy(app: AppHandle, settings: super::privacy::PrivacySettings) -> Result<(), String> {
+    super::privacy::save(&config_dir(&app)?, &settings)
+}
+
 /// Manages chat state at startup.
 pub fn setup(app: &tauri::App) {
     app.manage(ChatState::default());

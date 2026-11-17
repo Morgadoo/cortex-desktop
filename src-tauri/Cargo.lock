@@ -3099,6 +3099,7 @@ dependencies = [
  "open",
  "process-wrap",
  "rand 0.9.5",
+ "regex",
  "reqwest",
  "rig-core",
  "rmcp",

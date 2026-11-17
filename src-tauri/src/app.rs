@@ -116,6 +116,8 @@ pub fn run() {
                 chat::commands::chat_add_documents,
                 chat::commands::chat_remove_document,
                 chat::commands::chat_search_libraries,
+                chat::commands::chat_get_privacy,
+                chat::commands::chat_set_privacy,
             ];
             commands(invoke)
         })

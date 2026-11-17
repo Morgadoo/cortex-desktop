@@ -15,7 +15,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::watch;
 
-use super::{agents, builtins, canvas, context, libraries, memory, providers, skills, subagents, tasks};
+use super::{agents, builtins, canvas, context, libraries, memory, privacy, providers, skills, subagents, tasks};
 use super::store::{self, Conversation, Instructions, Project};
 use super::tools::{self, ApprovalMode, ChatTool, ASK_USER};
 use super::{ChatState, EVENT, LOCAL_ACCOUNT};
@@ -398,10 +398,17 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
     );
     let reasoning = providers::supports_reasoning(&request.model);
     let window = context::context_window(&request.model);
+    // Personal data in what the user typed is swapped for placeholders before a cloud request.
+    let filter = privacy::load(&config_dir).enabled
+        && providers::split_reference(&request.model).is_some_and(|(vendor, _)| privacy::is_cloud(vendor));
+    let mut redactions = privacy::Redactions::default();
     compact_if_needed(app, &model, &mut conversation, window, &config_dir).await;
 
     for step in 0..MAX_STEPS {
-        let carried = context::request_messages(&conversation.messages, conversation.summary.as_ref());
+        let mut carried = context::request_messages(&conversation.messages, conversation.summary.as_ref());
+        if filter {
+            carried = privacy::redact_messages(&carried, &mut redactions);
+        }
         let Some((prompt, history)) = carried.split_last() else {
             return Err("empty conversation".into());
         };
@@ -413,6 +420,9 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
             ),
             None => system.clone(),
         };
+        if filter {
+            step_system = redactions.redact(&step_system);
+        }
         if last_step {
             step_system.push_str("\n\nYou have used every tool step available for this request. Answer now from what you have found, and say what you could not finish.");
         }
@@ -434,6 +444,7 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
             let mut stream = model.stream(call.clone()).map_err(|e| e.to_string())?;
             let mut streamed_text = String::new();
             let mut streamed_anything = false;
+            let mut held = String::new();
             let was_cancelled = loop {
                 tokio::select! {
                     _ = cancelled(&mut cancel) => break true,
@@ -444,8 +455,11 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
                         Some(Ok(Item::Event(event))) => match event {
                             StreamEvent::Text { text, .. } => {
                                 streamed_anything = true;
+                                let text = if filter { restore_streamed(&redactions, &mut held, &text) } else { text };
                                 streamed_text.push_str(&text);
-                                emit(app, ChatEvent::Text { conversation_id: id.into(), text });
+                                if !text.is_empty() {
+                                    emit(app, ChatEvent::Text { conversation_id: id.into(), text });
+                                }
                             }
                             StreamEvent::Reasoning { text, .. } => {
                                 streamed_anything = true;
@@ -489,8 +503,19 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         };
         conversation.usage.add(&response.usage);
         emit(app, ChatEvent::Usage { conversation_id: id.into(), usage: conversation.usage.clone(), context_window: window });
-        let calls: Vec<ToolCall> = response.tool_calls().cloned().collect();
-        if let Some(message) = response.message() {
+        let message = response.message().map(|m| if filter { privacy::restore_message(m, &redactions) } else { m });
+        let calls: Vec<ToolCall> = match &message {
+            Some(Message::Assistant(a)) => a
+                .content
+                .iter()
+                .filter_map(|c| match c {
+                    rig_core::completion::message::AssistantContent::ToolCall(call) => Some(call.clone()),
+                    _ => None,
+                })
+                .collect(),
+            _ => response.tool_calls().cloned().collect(),
+        };
+        if let Some(message) = message {
             conversation.messages.push(message);
         }
         conversation.updated_at = Utc::now();
@@ -586,6 +611,18 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         tauri::async_runtime::spawn(async move { name_conversation(app, reference, conversation).await });
     }
     Ok(false)
+}
+
+/// Restores placeholders in streamed text. A placeholder can arrive split across chunks, so an
+/// unclosed `[` is held back until its `]` arrives (or it is clearly not a placeholder).
+fn restore_streamed(redactions: &privacy::Redactions, held: &mut String, chunk: &str) -> String {
+    held.push_str(chunk);
+    let cut = match held.rfind('[') {
+        Some(open) if !held[open..].contains(']') && held.len() - open < 24 => open,
+        _ => held.len(),
+    };
+    let ready: String = held.drain(..cut).collect();
+    redactions.restore(&ready)
 }
 
 fn cancelled_outcome() -> tools::Outcome {
@@ -887,6 +924,19 @@ mod tests {
         assert!(rewind_to_last_prompt(&mut c));
         assert_eq!(c.messages.len(), 3);
         assert!(c.ratings.is_empty());
+    }
+
+    #[test]
+    fn streamed_placeholders_are_restored_across_chunks() {
+        let mut r = privacy::Redactions::default();
+        r.redact("mail ana@x.pt");
+        let mut held = String::new();
+        let mut out = String::new();
+        for chunk in ["Writing to [EM", "AIL_1", "] now, [see] notes"] {
+            out.push_str(&restore_streamed(&r, &mut held, chunk));
+        }
+        out.push_str(&r.restore(&held));
+        assert_eq!(out, "Writing to ana@x.pt now, [see] notes");
     }
 
     #[test]

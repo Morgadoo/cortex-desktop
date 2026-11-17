@@ -297,6 +297,12 @@
           "markdownDescription": "Read what the assistant remembers about the user."
         },
         {
+          "description": "Read the privacy filter setting.",
+          "type": "string",
+          "const": "allow-chat-get-privacy",
+          "markdownDescription": "Read the privacy filter setting."
+        },
+        {
           "description": "Import a SKILL.md the user picks.",
           "type": "string",
           "const": "allow-chat-import-skill",
@@ -433,6 +439,12 @@
           "type": "string",
           "const": "allow-chat-set-memory-enabled",
           "markdownDescription": "Turn memory on or off."
+        },
+        {
+          "description": "Turn the privacy filter on or off.",
+          "type": "string",
+          "const": "allow-chat-set-privacy",
+          "markdownDescription": "Turn the privacy filter on or off."
         },
         {
           "description": "Turn a skill on or off.",

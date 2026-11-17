@@ -276,11 +276,25 @@ async function renderPermissions(content: HTMLElement) {
       h('div', { class: 'card-actions start' }, add),
       row('Allow editing files', 'Lets the assistant create and change files in these folders. Each change still follows the composer’s approval mode.', switchInput(settings.filesystem_write_enabled, (v) => { settings.filesystem_write_enabled = v; void persist(settings); }))
     ),
+    privacyCard(),
     card(
       h('h3', {}, 'Terminal'),
       row('Allow shell commands', 'Lets the assistant run commands on this computer. Every command asks first unless you allow it.', switchInput(settings.bash_enabled, (v) => { settings.bash_enabled = v; void persist(settings); }))
     ),
     mcpCard()
+  );
+}
+
+function privacyCard(): HTMLElement {
+  const toggle = switchInput(false, (v) => void tauriInvoke('chat_set_privacy', { settings: { enabled: v } }).then(() => toast(v ? 'Privacy filter on.' : 'Privacy filter off.')));
+  void tauriInvoke<{ enabled: boolean }>('chat_get_privacy').then((s) => (toggle.checked = s.enabled));
+  return card(
+    h('h3', {}, 'Privacy filter'),
+    row(
+      'Hide personal data from cloud models',
+      'Emails, phone numbers, IBANs and card numbers you type are replaced with placeholders before a request leaves this device, and put back in the reply. Local models (Ollama, llama.cpp) are never filtered.',
+      toggle
+    )
   );
 }
 

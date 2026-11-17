@@ -227,3 +227,13 @@ commands.allow = ["chat_remove_document"]
 identifier = "allow-chat-search-libraries"
 description = "Search document libraries."
 commands.allow = ["chat_search_libraries"]
+
+[[permission]]
+identifier = "allow-chat-get-privacy"
+description = "Read the privacy filter setting."
+commands.allow = ["chat_get_privacy"]
+
+[[permission]]
+identifier = "allow-chat-set-privacy"
+description = "Turn the privacy filter on or off."
+commands.allow = ["chat_set_privacy"]
