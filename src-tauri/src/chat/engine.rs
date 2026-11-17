@@ -68,6 +68,41 @@ pub enum ChatEvent {
     Error { conversation_id: String, message: String },
 }
 
+/// An image the user attached, as the page read it.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageInput {
+    /// `image/png`, `image/jpeg`, `image/webp` or `image/gif`.
+    pub media_type: String,
+    /// Base64, without a `data:` prefix.
+    pub data: String,
+}
+
+/// Images per message, and the size of each once decoded.
+const MAX_IMAGES: usize = 6;
+const MAX_IMAGE_BYTES: usize = 8 * 1024 * 1024;
+
+/// The user's message with its images, checked for type and size.
+pub fn user_message(text: &str, images: &[ImageInput]) -> Result<Message, String> {
+    use rig_core::completion::message::{ImageMediaType, MimeType, UserContent};
+    if images.is_empty() {
+        return Ok(Message::user(text));
+    }
+    if images.len() > MAX_IMAGES {
+        return Err(format!("Attach at most {MAX_IMAGES} images."));
+    }
+    let mut content = vec![UserContent::text(if text.is_empty() { "What is in this image?" } else { text })];
+    for image in images {
+        let media = ImageMediaType::from_mime_type(&image.media_type)
+            .ok_or_else(|| format!("{} images are not supported.", image.media_type))?;
+        if image.data.len() / 4 * 3 > MAX_IMAGE_BYTES {
+            return Err("Each image can be at most 8 MB.".into());
+        }
+        content.push(UserContent::image_base64(image.data.clone(), Some(media), None));
+    }
+    Ok(Message::User { content })
+}
+
 /// The composer's speed setting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -91,6 +126,9 @@ pub struct TurnRequest {
     pub approval: ApprovalMode,
     #[serde(default)]
     pub project_id: Option<String>,
+    /// Images sent with the message, for models that can see.
+    #[serde(default)]
+    pub images: Vec<ImageInput>,
     /// Replace the prompt at this message index with `text` and answer again from there.
     #[serde(default)]
     pub edit_index: Option<usize>,
@@ -352,7 +390,7 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
             return Err("There is nothing to regenerate yet.".into());
         }
     } else {
-        conversation.messages.push(Message::user(request.text.trim()));
+        conversation.messages.push(user_message(request.text.trim(), &request.images)?);
         conversation.times.push((conversation.messages.len() - 1, Utc::now()));
     }
     conversation.updated_at = Utc::now();
@@ -790,6 +828,7 @@ pub async fn run_task(app: AppHandle, task: tasks::Task) {
         approval: if task.allow_changes { ApprovalMode::Autonomous } else { ApprovalMode::Unattended },
         project_id: None,
         agent_id: task.agent_id.clone(),
+        images: Vec::new(),
         edit_index: None,
         temporary: false,
         resume: false,
@@ -924,6 +963,17 @@ mod tests {
         assert!(rewind_to_last_prompt(&mut c));
         assert_eq!(c.messages.len(), 3);
         assert!(c.ratings.is_empty());
+    }
+
+    #[test]
+    fn images_ride_with_the_message() {
+        let png = ImageInput { media_type: "image/png".into(), data: "iVBORw0KGgo=".into() };
+        let m = user_message("look", &[png.clone()]).unwrap();
+        let Message::User { content } = m else { panic!() };
+        assert_eq!(content.len(), 2);
+        assert!(user_message("x", &[ImageInput { media_type: "image/tiff".into(), data: "AA==".into() }]).is_err());
+        assert!(user_message("x", &vec![png; 7]).is_err());
+        assert_eq!(user_message("plain", &[]).unwrap(), Message::user("plain"));
     }
 
     #[test]

@@ -245,6 +245,8 @@ pub enum Part {
     Text { text: String },
     Reasoning { text: String },
     #[serde(rename_all = "camelCase")]
+    Image { media_type: String, data: String },
+    #[serde(rename_all = "camelCase")]
     Tool {
         call_id: String,
         name: String,
@@ -314,6 +316,15 @@ pub fn turns(conversation: &Conversation) -> Vec<Turn> {
                 for item in content {
                     match item {
                         UserContent::Text(t) => texts.push(Part::Text { text: t.text.clone() }),
+                        UserContent::Image(image) => {
+                            if let rig_core::completion::message::DocumentSourceKind::Base64(data) = &image.data {
+                                use rig_core::completion::message::MimeType;
+                                texts.push(Part::Image {
+                                    media_type: image.media_type.as_ref().map_or("image/png", |m| m.to_mime_type()).to_string(),
+                                    data: data.clone(),
+                                });
+                            }
+                        }
                         UserContent::ToolResult(result) => {
                             let call = result.call.to_string();
                             let tool = out.last_mut().filter(|t| t.role == "assistant").and_then(|turn| {

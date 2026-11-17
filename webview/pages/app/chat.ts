@@ -560,7 +560,11 @@ function renderUserTurn(turn: Turn, conversationId: string): HTMLElement {
     quoteEl = h('div', { class: 'bubble-quote' }, icon('forward', 13), quote[1]!.replace(/^> /gm, '').trim());
     rest = rest.slice(quote[0].length);
   }
-  const bubble = h('div', { class: 'bubble' }, quoteEl, chips, rest);
+  const images = turn.parts.filter((p): p is Extract<Part, { kind: 'image' }> => p.kind === 'image');
+  const gallery = images.length
+    ? h('div', { class: 'bubble-images' }, images.map((i) => h('img', { src: `data:${i.mediaType};base64,${i.data}`, alt: 'Attached image' })))
+    : null;
+  const bubble = h('div', { class: 'bubble' }, gallery, quoteEl, chips, rest);
   return h(
     'div',
     { class: 'turn turn-user' },
@@ -761,7 +765,7 @@ async function regenerate(conversationId: string) {
   }
 }
 
-async function send(text: string, conversationId: string | null) {
+async function send(text: string, conversationId: string | null, images: { mediaType: string; data: string }[] = []) {
   const model = state.model;
   if (!model) {
     toast('Add a provider and choose a model first.', 'error');
@@ -775,10 +779,10 @@ async function send(text: string, conversationId: string | null) {
   const workdir = !conversationId && state.mode === 'code' ? state.workdir : null;
   const temporary = !conversationId && temporaryNext;
   if (!conversationId) {
-    pendingUser.set(id, text);
+    pendingUser.set(id, { text, images });
     navigate({ kind: 'chat', id });
   } else {
-    viewCache.chat?.addOptimistic(text);
+    viewCache.chat?.addOptimistic(text, images);
   }
   try {
     await api.send({
@@ -791,6 +795,7 @@ async function send(text: string, conversationId: string | null) {
       workdir,
       agentId,
       temporary,
+      images,
     });
     if (temporary) temporaryChats.add(id);
     temporaryNext = false;
@@ -807,7 +812,7 @@ let temporaryNext = false;
 const temporaryChats = new Set<string>();
 
 /** Messages typed on the home screen, shown before the new conversation is on disk. */
-const pendingUser = new Map<string, string>();
+const pendingUser = new Map<string, { text: string; images: { mediaType: string; data: string }[] }>();
 
 export async function refreshConversations() {
   state.conversations = await api.conversations();
@@ -820,6 +825,24 @@ export async function refreshConversations() {
 interface Attachment {
   name: string;
   text: string;
+  /** Set for images, which travel as image content rather than text. */
+  image?: { mediaType: string; data: string };
+}
+
+function userParts(text: string, images: { mediaType: string; data: string }[]): Part[] {
+  return [...images.map((i) => ({ kind: 'image' as const, mediaType: i.mediaType, data: i.data })), { kind: 'text' as const, text }];
+}
+
+const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+
+/** Reads an image file as base64, without the `data:` prefix. */
+function readImage(file: File): Promise<{ mediaType: string; data: string }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({ mediaType: file.type, data: String(reader.result).split(',')[1] ?? '' });
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
 }
 
 class Composer {
@@ -852,6 +875,19 @@ class Composer {
         e.preventDefault();
         void this.submit();
       }
+    });
+    this.textarea.addEventListener('paste', async (e) => {
+      // WebKitGTK exposes pasted images through `items` only; other engines through `files` too.
+      const fromItems = Array.from(e.clipboardData?.items ?? [])
+        .filter((i) => i.kind === 'file' && IMAGE_TYPES.includes(i.type))
+        .map((i) => i.getAsFile())
+        .filter((f): f is File => f !== null);
+      const files = fromItems.length ? fromItems : Array.from(e.clipboardData?.files ?? []).filter((f) => IMAGE_TYPES.includes(f.type));
+      if (!files.length) return;
+      e.preventDefault();
+      for (const file of files) this.attachments.push({ name: file.name || 'pasted image', text: '', image: await readImage(file) });
+      this.renderChips();
+      this.renderBar();
     });
     this.chips = h('div', { class: 'chips' });
     this.bar = h('div', { class: 'composer-bar' });
@@ -952,10 +988,11 @@ class Composer {
     if (slash && state.skills.some((s) => s.name === slash[1])) {
       text = `Use the "${slash[1]}" skill.${slash[2] ? `\n\n${slash[2]}` : ''}`;
     }
-    for (const file of this.attachments) {
+    for (const file of this.attachments.filter((a) => !a.image)) {
       text += `\n\n<attachment name="${file.name}">\n${file.text}\n</attachment>`;
     }
-    const ok = await send(text.trim(), this.conversationId);
+    const images = this.attachments.flatMap((a) => (a.image ? [a.image] : []));
+    const ok = await send(text.trim(), this.conversationId, images);
     if (ok) {
       this.textarea.value = '';
       this.attachments = [];
@@ -996,7 +1033,7 @@ class Composer {
         h(
           'span',
           { class: 'chip' },
-          icon('file', 14),
+          file.image ? h('img', { class: 'chip-thumb', src: `data:${file.image.mediaType};base64,${file.image.data}`, alt: '' }) : icon('file', 14),
           file.name,
           h('button', { class: 'chip-x', title: 'Remove', on: { click: () => { this.attachments.splice(i, 1); this.renderChips(); this.renderBar(); } } }, icon('close', 12))
         )
@@ -1005,9 +1042,20 @@ class Composer {
   }
 
   private pickFiles() {
-    const input = h('input', { type: 'file', multiple: true });
+    const input = h('input', { type: 'file', multiple: true, class: 'hidden' });
+    // WebKitGTK only reports the choice for an input that is in the document.
+    document.body.append(input);
     input.addEventListener('change', async () => {
+      input.remove();
       for (const file of Array.from(input.files ?? [])) {
+        if (IMAGE_TYPES.includes(file.type)) {
+          if (file.size > 8 * 1024 * 1024) {
+            toast(`${file.name} is larger than 8 MB.`, 'error');
+            continue;
+          }
+          this.attachments.push({ name: file.name, text: '', image: await readImage(file) });
+          continue;
+        }
         if (file.size > 512 * 1024) {
           toast(`${file.name} is larger than 512 KB.`, 'error');
           continue;
@@ -1093,7 +1141,7 @@ class Composer {
       h(
         'div',
         { class: 'menu' },
-        item('upload', 'Attach files', () => this.pickFiles()),
+        item('upload', 'Attach files or images', () => this.pickFiles()),
         item('file', 'Canvas', () => { this.useCanvas = true; this.renderChips(); this.focus(); }),
         item('folder', 'Give access to a folder', () => void grantFolder()),
         item('plug', 'Connectors', () => navigate({ kind: 'page', page: 'connectors' }), true),
@@ -1405,15 +1453,15 @@ export class ChatView {
     }
     const optimistic = pendingUser.get(this.id);
     if (optimistic && this.conversation.turns.length === 0) {
-      this.conversation.turns.push({ role: 'user', parts: [{ kind: 'text', text: optimistic }], index: -1, time: new Date().toISOString(), rating: 0 });
+      this.conversation.turns.push({ role: 'user', parts: userParts(optimistic.text, optimistic.images), index: -1, time: new Date().toISOString(), rating: 0 });
     }
     this.renderTranscript();
     this.update();
     if (scroll) this.scrollToBottom(false);
   }
 
-  addOptimistic(text: string) {
-    this.conversation?.turns.push({ role: 'user', parts: [{ kind: 'text', text }], index: -1, time: new Date().toISOString(), rating: 0 });
+  addOptimistic(text: string, images: { mediaType: string; data: string }[] = []) {
+    this.conversation?.turns.push({ role: 'user', parts: userParts(text, images), index: -1, time: new Date().toISOString(), rating: 0 });
     this.renderTranscript();
     this.scrollToBottom(true);
   }

@@ -49,6 +49,7 @@ export interface ConversationSummary {
 export type Part =
   | { kind: 'text'; text: string }
   | { kind: 'reasoning'; text: string }
+  | { kind: 'image'; mediaType: string; data: string }
   | { kind: 'tool'; callId: string; name: string; arguments: Record<string, unknown>; output: string | null; isError: boolean };
 
 export interface Turn {
@@ -217,6 +218,7 @@ export const api = {
     agentId?: string | null;
     editIndex?: number;
     temporary?: boolean;
+    images?: { mediaType: string; data: string }[];
   }) => call<void>('chat_send', { request }),
   cancel: (conversationId: string) => call<boolean>('chat_cancel', { conversationId }),
   answer: (callId: string, answer: string) => call<boolean>('chat_answer', { callId, answer }),

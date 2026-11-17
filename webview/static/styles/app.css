@@ -695,3 +695,6 @@ select.input { cursor: pointer; }
 .catalog-text small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .small-btn { padding: 5px 10px; font-size: 13px; }
 .small-note { font-size: 12px; white-space: nowrap; }
+.chip-thumb { width: 22px; height: 22px; object-fit: cover; border-radius: 5px; }
+.bubble-images { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; justify-content: flex-end; }
+.bubble-images img { max-width: 260px; max-height: 200px; border-radius: 12px; object-fit: contain; background: var(--bg-hover); }

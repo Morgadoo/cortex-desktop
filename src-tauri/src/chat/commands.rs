@@ -312,6 +312,7 @@ pub async fn chat_export_conversation(app: AppHandle, id: String) -> Result<bool
                 store::Part::Text { text: t } => text.push_str(&format!("{t}\n\n")),
                 store::Part::Tool { name, .. } => text.push_str(&format!("_Used {name}_\n\n")),
                 store::Part::Reasoning { .. } => {}
+                store::Part::Image { .. } => text.push_str("_[image]_\n\n"),
             }
         }
     }
