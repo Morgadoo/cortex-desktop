@@ -120,6 +120,28 @@ named `{connector_id}__{tool_name}`.
 Each tool also carries an approval policy (auto-approve, ask, or disable). An `ask` tool suspends execution,
 emits a request to the webview, and resolves on the user's answer or a timeout.
 
+## Native chat (this fork)
+
+This fork replaces the hosted Lumo web app with a native, provider-independent chat built on
+[rig](https://rig.rs). The main window opens the bundled page in `webview/pages/app/`, and every
+model call happens in Rust (`src-tauri/src/chat/`):
+
+| Module | Role |
+|---|---|
+| `chat/providers.rs` | Which providers are set up, their base URLs, and their models (rig's catalog, or a local server's own listing) |
+| `chat/engine.rs` | One turn: stream the reply as `chat://event`s, run the tools it calls, repeat |
+| `chat/tools.rs` | The connector registry (files, terminal, web, MCP) as model tools, plus `ask_user`, under the composer's approval mode |
+| `chat/store.rs` | Conversations (rig's own message history as JSON), projects and instructions under `<config>/chat/` |
+
+Any provider rig supports works: OpenAI, Anthropic, Gemini, Mistral, xAI, DeepSeek, OpenRouter, Groq,
+Together, Perplexity, Cohere, Moonshot, Z.ai, and local Ollama or llama.cpp. Keys are stored in the
+OS keychain from Settings → Providers & models, or read from the provider's usual environment
+variable (`OPENAI_API_KEY`, `XAI_API_KEY`, …). A base URL points a provider at a proxy or compatible
+gateway.
+
+There is no Proton sign-in: everything runs under one local profile. Build with `LUMO_HOSTED=1` to
+get the original hosted web app back.
+
 ## Developing
 
 ### Prerequisites

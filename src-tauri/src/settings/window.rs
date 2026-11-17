@@ -67,6 +67,16 @@ pub fn show(app_handle: &AppHandle) -> Result<(), String> {
     }
     main_window::show(app_handle)?;
 
+    // The native chat page has its own settings dialog; the overlay belongs to the hosted app.
+    if !crate::HOSTED_WEB_APP && !crate::e2e_testing_enabled() {
+        use tauri::Emitter;
+        return app_handle
+            .get_webview(main_window::LABEL)
+            .ok_or_else(|| "Lumo window is not open".to_string())?
+            .emit("chat://open-settings", ())
+            .map_err(|e| e.to_string());
+    }
+
     ensure_overlay(app_handle)?;
 
     if let Some(main_webview) = app_handle.get_webview(main_window::LABEL) {

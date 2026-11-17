@@ -329,6 +329,10 @@ async function start() {
     state.approvals = state.approvals.filter((a) => a.request_id !== request_id);
     changed();
   });
+  // The app menu's Settings item (Ctrl+,) and the tray route here.
+  void listen('chat://open-settings', () => {
+    if (!document.querySelector('.modal .settings')) void openSettings();
+  });
   void listen<string>('chat://quick-ask', (query) => {
     navigate({ kind: 'home' });
     composer.setText(query);
@@ -339,7 +343,7 @@ async function start() {
     const mod = e.ctrlKey || e.metaKey;
     if (mod && e.key === ',') {
       e.preventDefault();
-      void openSettings();
+      if (!document.querySelector('.modal .settings')) void openSettings();
     } else if (mod && e.key.toLowerCase() === 'k') {
       e.preventDefault();
       openSearch();

@@ -188,7 +188,12 @@ function providerCard(provider: Provider): HTMLElement {
 
   const test = h('button', { class: 'btn btn-ghost' }, 'Test');
   test.addEventListener('click', async () => {
-    const model = state.models.find((m) => m.vendor === provider.vendor);
+    // The model in use, else one the user added, else the first the catalog lists.
+    const ofProvider = state.models.filter((m) => m.vendor === provider.vendor);
+    const model =
+      ofProvider.find((m) => m.reference === state.model) ??
+      ofProvider.find((m) => provider.settings.customModels.includes(m.id)) ??
+      ofProvider[0];
     if (!model) {
       result.textContent = 'Save the provider first; no model of it is available yet.';
       return;
