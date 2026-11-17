@@ -4,6 +4,7 @@ import type { Part } from './api';
 import { clear, h, icon, markdown, modal, toast } from './dom';
 import { button, iconButton, modalHeader } from './ui';
 import { renderSheetCard } from './sheet';
+import { diagramFrame, isMarp } from './diagrams';
 
 interface Canvas {
   id: string;
@@ -218,7 +219,7 @@ export function renderCanvasCard(part: Extract<Part, { kind: 'tool' }>, live: bo
   let content = typeof part.arguments.content === 'string' ? part.arguments.content : '';
   const writing = live && part.output === null;
   const body = h('div', { class: 'markdown canvas-body' });
-  body.append(markdown(content, { breaks: true }));
+  body.append(canvasView(content));
   const titleEl = h('span', { class: 'canvas-title' }, title);
   const card = h('div', { class: 'canvas-card' });
 
@@ -244,7 +245,7 @@ export function renderCanvasCard(part: Extract<Part, { kind: 'tool' }>, live: bo
       title = saved.title;
       content = newContent;
       titleEl.textContent = title;
-      body.replaceChildren(markdown(content, { breaks: true }));
+      body.replaceChildren(canvasView(content));
       toast('Saved. The assistant sees your edit on its next reply.');
     });
   });
@@ -254,7 +255,7 @@ export function renderCanvasCard(part: Extract<Part, { kind: 'tool' }>, live: bo
   history.addEventListener('click', async () => {
     if (historyBar.childElementCount) {
       clear(historyBar);
-      body.replaceChildren(markdown(content, { breaks: true }));
+      body.replaceChildren(canvasView(content));
       return;
     }
     const id = idOf(part);
@@ -298,7 +299,7 @@ export function renderCanvasCard(part: Extract<Part, { kind: 'tool' }>, live: bo
         changes,
         restore
       );
-      body.replaceChildren(showChanges && previous ? diffView(previous.content, version.content) : markdown(version.content, { breaks: true }));
+      body.replaceChildren(showChanges && previous ? diffView(previous.content, version.content) : canvasView(version.content));
       card.classList.add('expanded');
       expand.textContent = 'Collapse';
     };
@@ -444,4 +445,9 @@ function diffView(before: string, after: string): HTMLElement {
   const removed = lines.filter((l) => l.kind === '-').length;
   const count = (n: number) => `${n} ${n === 1 ? 'line' : 'lines'}`;
   return h('div', {}, h('p', { class: 'muted small' }, `${count(added)} added, ${count(removed)} removed`), el);
+}
+
+/** A document canvas as shown: Marp decks as slides, everything else as Markdown. */
+function canvasView(content: string): Node {
+  return isMarp(content) ? diagramFrame(content, 'marp') : markdown(content, { breaks: true });
 }

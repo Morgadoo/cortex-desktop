@@ -55,7 +55,7 @@ pub const APP_CSP: &str = "default-src 'none'; \
 /// The address, under the app protocol, of the page that draws Mermaid diagrams.
 pub const DIAGRAM_PAGE: &str = "_diagram";
 
-/// Draws the Mermaid code in its URL's fragment with Mermaid from the CDN mini apps may use, and
+/// Draws the Mermaid code (or Marp slides) in its URL's fragment with Mermaid from the CDN mini apps may use, and
 /// tells the conversation its height. Runs sandboxed, with no access to the app.
 const DIAGRAM_HTML: &str = r#"<!doctype html><html><head><meta charset="utf-8">
 <style>html,body{margin:0;background:transparent;font-family:system-ui,sans-serif}#out{display:flex;justify-content:center;padding:8px}#out svg{max-width:100%;height:auto}.err{color:#e5866d;font:12px ui-monospace,monospace;white-space:pre-wrap;padding:8px}</style>
@@ -70,10 +70,21 @@ document.documentElement.style.colorScheme = params.get('theme') === 'light' ? '
 const out = document.getElementById('out');
 const report = () => parent.postMessage({ diagramKey: key, height: Math.ceil(document.documentElement.scrollHeight) }, '*');
 try {
-  const { default: mermaid } = await import('https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs');
-  mermaid.initialize({ startOnLoad: false, theme: params.get('theme') === 'light' ? 'default' : 'dark', securityLevel: 'strict' });
-  const { svg } = await mermaid.render('diagram', params.get('code') || '');
-  out.innerHTML = svg;
+  if (params.get('kind') === 'marp') {
+    // A Marp deck: every slide, scaled to the card's width, one under the other.
+    const { Marp } = await import('https://cdn.jsdelivr.net/npm/@marp-team/marp-core@4.0.0/+esm');
+    const { html, css } = new Marp({ html: false, math: false }).render(params.get('code') || '');
+    const style = document.createElement('style');
+    style.textContent = css + ' .marpit{width:100%} .marpit > svg{display:block;width:100%;height:auto;margin:0 0 10px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.35)}';
+    document.head.append(style);
+    out.style.display = 'block';
+    out.innerHTML = html;
+  } else {
+    const { default: mermaid } = await import('https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs');
+    mermaid.initialize({ startOnLoad: false, theme: params.get('theme') === 'light' ? 'default' : 'dark', securityLevel: 'strict' });
+    const { svg } = await mermaid.render('diagram', params.get('code') || '');
+    out.innerHTML = svg;
+  }
 } catch (e) {
   const div = document.createElement('div');
   div.className = 'err';
