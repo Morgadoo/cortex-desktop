@@ -450,6 +450,19 @@ function renderAppearance(content: HTMLElement) {
   // Accent: a row of swatches, then a custom colour.
   const accent = storedAccent();
   const custom = accent.startsWith('#');
+  const themeSwatch = h(
+    'button',
+    {
+      type: 'button',
+      class: `swatch theme${accent === 'theme' ? ' active' : ''}`,
+      title: 'Match the background palette',
+      'aria-label': 'Accent from the palette',
+      'aria-pressed': String(accent === 'theme'),
+      style: { '--swatch': accentHex(dark, 'theme') },
+      on: { click: () => { setAccent('theme'); rerender(); } },
+    },
+    accent === 'theme' ? icon('check', 14) : icon('sparkle', 14)
+  );
   const swatches = ACCENTS.map((a) =>
     h(
       'button',
@@ -481,8 +494,8 @@ function renderAppearance(content: HTMLElement) {
   content.append(
     card(
       h('h3', {}, 'Accent colour'),
-      h('p', { class: 'muted' }, 'Used for links, selections, focus rings, badges and highlights.'),
-      h('div', { class: 'swatches' }, swatches, customSwatch),
+      h('p', { class: 'muted' }, 'The first swatch follows the background palette. Used for primary buttons, links, selections, focus rings and highlights.'),
+      h('div', { class: 'swatches' }, themeSwatch, swatches, customSwatch),
       preview
     )
   );
@@ -503,7 +516,7 @@ function renderAppearance(content: HTMLElement) {
         'span',
         { class: 'bg-thumb', style: { background: surface.bg } },
         h('span', { class: 'bg-thumb-side', style: { background: surface.sidebar } }),
-        h('span', { class: 'bg-thumb-card', style: { background: surface.elevated } }, h('span', { class: 'bg-thumb-dot', style: { background: accentHex(dark) } })),
+        h('span', { class: 'bg-thumb-card', style: { background: surface.elevated } }, h('span', { class: 'bg-thumb-dot', style: { background: accent === 'theme' ? (dark ? b.accent.dark : b.accent.light) : accentHex(dark) } })),
         h('span', { class: 'bg-thumb-bubble', style: { background: surface.bubble } })
       ),
       h('span', { class: 'bg-label' }, b.label, background === b.id ? icon('check', 14) : null)
@@ -511,10 +524,10 @@ function renderAppearance(content: HTMLElement) {
   });
   content.append(
     card(
-      h('h3', {}, 'Background'),
+      h('h3', {}, 'Background and palette'),
       h('p', { class: 'muted' }, `The palette for the window, sidebar and cards. Each one has a ${dark ? 'light' : 'dark'} version that follows the theme.`),
       h('div', { class: 'bg-tiles' }, tiles),
-      h('div', { class: 'card-actions start' }, button({ variant: 'subtle', size: 'sm', icon: 'reset', label: 'Reset appearance', onClick: () => { setAccent('violet'); setBackground('default'); rerender(); } }))
+      h('div', { class: 'card-actions start' }, button({ variant: 'subtle', size: 'sm', icon: 'reset', label: 'Reset appearance', onClick: () => { setAccent('theme'); setBackground('default'); rerender(); } }))
     )
   );
 }

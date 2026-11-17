@@ -23,51 +23,66 @@ export const ACCENTS: AccentPreset[] = [
   { id: 'graphite', label: 'Graphite', dark: '#a1a1aa', light: '#52525b' },
 ];
 
-type Surface = { bg: string; sidebar: string; elevated: string; input: string; bubble: string; code: string };
+type Surface = { bg: string; sidebar: string; elevated: string; input: string; bubble: string; code: string; border: string; borderStrong: string };
 
 export interface BackgroundPreset {
   id: string;
   label: string;
+  /** The palette's own accent, used while the accent is set to "Theme". */
+  accent: { dark: string; light: string };
   dark: Surface;
   light: Surface;
 }
 
+/** A dark palette tinted toward `hue`, matching a light palette from T3 Code's themes. */
+function tintedDark(hue: number, chroma = 0.012): Surface {
+  const c = (l: number, k = 1) => `oklch(${l} ${(chroma * k).toFixed(4)} ${hue})`;
+  return { bg: c(0.155), sidebar: c(0.13), elevated: c(0.19, 1.2), input: c(0.19, 1.2), bubble: c(0.235, 1.4), code: c(0.14), border: c(0.235, 1.2), borderStrong: c(0.29, 1.4) };
+}
+
+/** Palettes from T3 Code (MIT, pingdotgg/t3code): its default, T3 Chat, Grove, Ocean, Ember and Iris. */
 export const BACKGROUNDS: BackgroundPreset[] = [
   {
     id: 'default',
-    label: 'Default',
-    dark: { bg: '#1d1d20', sidebar: '#171719', elevated: '#26262a', input: '#2a2a2e', bubble: '#2c2c31', code: '#141416' },
-    light: { bg: '#fbfaf7', sidebar: '#f3f1ec', elevated: '#ffffff', input: '#ffffff', bubble: '#efede7', code: '#f4f2ed' },
+    label: 'T3 Code',
+    accent: { dark: '#346bf1', light: '#1b4ed8' },
+    dark: { bg: '#0a0a0a', sidebar: '#000000', elevated: '#111111', input: '#111111', bubble: '#1a1a1a', code: '#0d0d0d', border: '#191919', borderStrong: '#262626' },
+    light: { bg: '#fcfcfc', sidebar: '#fafafa', elevated: '#ffffff', input: '#ffffff', bubble: '#f4f4f5', code: '#fafafa', border: '#e4e4e7', borderStrong: '#d4d4d8' },
   },
   {
-    id: 'neutral',
-    label: 'Neutral',
-    dark: { bg: '#1c1c1c', sidebar: '#151515', elevated: '#252525', input: '#292929', bubble: '#2b2b2b', code: '#131313' },
-    light: { bg: '#fafafa', sidebar: '#f2f2f2', elevated: '#ffffff', input: '#ffffff', bubble: '#ededed', code: '#f3f3f3' },
+    id: 't3-chat',
+    label: 'T3 Chat',
+    accent: { dark: 'oklch(0.68 0.2 0.58)', light: 'oklch(0.591646 0.217985 0.584)' },
+    dark: tintedDark(325, 0.02),
+    light: { bg: 'oklch(0.982446 0.010114 325.653)', sidebar: 'oklch(0.971835 0.012884 321.894)', elevated: 'oklch(0.988235 0.005049 325.615)', input: 'oklch(1 0 0)', bubble: 'oklch(0.939552 0.024286 321.664)', code: 'oklch(0.971835 0.012884 321.894)', border: 'oklch(0.923531 0.021247 328.096)', borderStrong: 'oklch(0.851713 0.055822 336.6)' },
   },
   {
-    id: 'cool',
-    label: 'Cool',
-    dark: { bg: '#161b26', sidebar: '#11151e', elevated: '#1f2533', input: '#232a39', bubble: '#252d3d', code: '#0f131b' },
-    light: { bg: '#f6f8fc', sidebar: '#ecf0f7', elevated: '#ffffff', input: '#ffffff', bubble: '#e6ebf4', code: '#eef2f8' },
+    id: 'grove',
+    label: 'Grove',
+    accent: { dark: 'oklch(0.7 0.13 158)', light: 'oklch(0.523295 0.112292 158.089)' },
+    dark: tintedDark(160),
+    light: { bg: 'oklch(0.972369 0.005497 157.15)', sidebar: 'oklch(0.949276 0.004496 159.002)', elevated: 'oklch(0.985 0.004 157)', input: 'oklch(0.99 0.003 157)', bubble: 'oklch(0.936464 0.014601 163.554)', code: 'oklch(0.949276 0.004496 159.002)', border: 'oklch(0.909438 0.021521 164.612)', borderStrong: 'oklch(0.864831 0.01312 167.255)' },
   },
   {
-    id: 'warm',
-    label: 'Warm',
-    dark: { bg: '#201c19', sidebar: '#1a1714', elevated: '#2a2521', input: '#2e2824', bubble: '#312b26', code: '#161310' },
-    light: { bg: '#fcf8f2', sidebar: '#f5eee4', elevated: '#fffdf9', input: '#fffdf9', bubble: '#f0e7da', code: '#f6efe5' },
+    id: 'ocean',
+    label: 'Ocean',
+    accent: { dark: 'oklch(0.7 0.13 247)', light: 'oklch(0.536684 0.120219 247.01)' },
+    dark: tintedDark(245, 0.016),
+    light: { bg: 'oklch(0.974199 0.002856 241.597)', sidebar: 'oklch(0.951058 0.002962 258.339)', elevated: 'oklch(0.987 0.002 241)', input: 'oklch(0.992 0.002 241)', bubble: 'oklch(0.939254 0.01193 241.729)', code: 'oklch(0.951058 0.002962 258.339)', border: 'oklch(0.91295 0.018827 241.836)', borderStrong: 'oklch(0.867646 0.013482 252.362)' },
   },
   {
-    id: 'forest',
-    label: 'Forest',
-    dark: { bg: '#171d1a', sidebar: '#121714', elevated: '#202823', input: '#232c27', bubble: '#25302a', code: '#0f1411' },
-    light: { bg: '#f7faf7', sidebar: '#edf3ee', elevated: '#ffffff', input: '#ffffff', bubble: '#e5eee7', code: '#eef4ef' },
+    id: 'ember',
+    label: 'Ember',
+    accent: { dark: 'oklch(0.72 0.15 45)', light: 'oklch(0.552831 0.129438 44.656)' },
+    dark: tintedDark(50, 0.014),
+    light: { bg: 'oklch(0.976527 0.002685 60.725)', sidebar: 'oklch(0.953321 0.002701 42.266)', elevated: 'oklch(0.988 0.002 60)', input: 'oklch(0.993 0.002 60)', bubble: 'oklch(0.942267 0.01151 50.785)', code: 'oklch(0.953321 0.002701 42.266)', border: 'oklch(0.916502 0.01832 49.597)', borderStrong: 'oklch(0.870631 0.013204 39.431)' },
   },
   {
-    id: 'black',
-    label: 'Black',
-    dark: { bg: '#000000', sidebar: '#0a0a0a', elevated: '#141414', input: '#161616', bubble: '#1b1b1b', code: '#0b0b0b' },
-    light: { bg: '#ffffff', sidebar: '#f7f7f7', elevated: '#ffffff', input: '#ffffff', bubble: '#f1f1f1', code: '#f6f6f6' },
+    id: 'iris',
+    label: 'Iris',
+    accent: { dark: 'oklch(0.72 0.15 295)', light: 'oklch(0.55 0.16 295)' },
+    dark: tintedDark(300, 0.018),
+    light: { bg: 'oklch(0.976531 0.003855 303.226)', sidebar: 'oklch(0.955 0.005 300)', elevated: 'oklch(0.988 0.003 303)', input: 'oklch(0.993 0.002 303)', bubble: 'oklch(0.941387 0.014687 300.474)', code: 'oklch(0.955 0.005 300)', border: 'oklch(0.914882 0.022965 299.986)', borderStrong: 'oklch(0.87 0.02 300)' },
   },
 ];
 
@@ -90,10 +105,10 @@ function write(key: string, value: string) {
   }
 }
 
-/** The saved accent: a preset id, or a custom `#rrggbb`. */
+/** The saved accent: `theme` (the palette's own), a preset id, or a custom `#rrggbb`. */
 export function storedAccent(): string {
   const v = read(ACCENT_KEY);
-  return v && (ACCENTS.some((a) => a.id === v) || /^#[0-9a-f]{6}$/i.test(v)) ? v : 'violet';
+  return v && (v === 'theme' || ACCENTS.some((a) => a.id === v) || /^#[0-9a-f]{6}$/i.test(v)) ? v : 'theme';
 }
 
 export function storedBackground(): string {
@@ -106,13 +121,7 @@ function rgb(hex: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-function mix(hex: string, toward: [number, number, number], amount: number): string {
-  const [r, g, b] = rgb(hex);
-  const c = [r, g, b].map((v, i) => Math.round(v + (toward[i]! - v) * amount));
-  return `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
-}
-
-/** Relative luminance, to pick readable text on the accent. */
+/** Relative luminance of a hex colour, to pick readable text on it. */
 function luminance(hex: string): number {
   const [r, g, b] = rgb(hex).map((v) => {
     const s = v / 255;
@@ -121,32 +130,40 @@ function luminance(hex: string): number {
   return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
 }
 
-/** The accent colour for the current theme. */
+function palette(): BackgroundPreset {
+  return BACKGROUNDS.find((x) => x.id === storedBackground()) ?? BACKGROUNDS[0]!;
+}
+
+/** The accent colour for the current theme: any CSS colour (hex or oklch). */
 export function accentHex(dark: boolean, choice = storedAccent()): string {
-  if (choice.startsWith('#')) return dark ? mix(choice, [255, 255, 255], 0.12) : choice;
+  if (choice === 'theme') return dark ? palette().accent.dark : palette().accent.light;
+  if (choice.startsWith('#')) return choice;
   const preset = ACCENTS.find((a) => a.id === choice) ?? ACCENTS[0]!;
   return dark ? preset.dark : preset.light;
 }
 
-/** Applies the saved accent and background to the tokens, for whichever theme is showing. */
+/** Applies the saved accent and palette to the tokens, for whichever theme is showing. */
 export function applyAppearance() {
   const root = document.documentElement;
   const dark = root.dataset.theme !== 'light';
   const accent = accentHex(dark);
-  const [r, g, b] = rgb(accent);
   root.style.setProperty('--accent', accent);
-  root.style.setProperty('--accent-strong', dark ? mix(accent, [255, 255, 255], 0.2) : mix(accent, [0, 0, 0], 0.15));
-  root.style.setProperty('--accent-soft', `rgba(${r}, ${g}, ${b}, ${dark ? 0.16 : 0.1})`);
-  root.style.setProperty('--accent-contrast', luminance(accent) > 0.45 ? '#111111' : '#ffffff');
+  root.style.setProperty('--accent-strong', `color-mix(in oklab, ${accent} ${dark ? '78%, white' : '85%, black'})`);
+  root.style.setProperty('--accent-soft', `color-mix(in srgb, ${accent} ${dark ? 16 : 10}%, transparent)`);
+  root.style.setProperty('--accent-contrast', accent.startsWith('#') && luminance(accent) > 0.45 ? '#111111' : '#ffffff');
 
-  const background = BACKGROUNDS.find((x) => x.id === storedBackground()) ?? BACKGROUNDS[0]!;
-  const surface = dark ? background.dark : background.light;
-  root.style.setProperty('--bg', surface.bg);
-  root.style.setProperty('--bg-sidebar', surface.sidebar);
-  root.style.setProperty('--bg-elevated', surface.elevated);
-  root.style.setProperty('--bg-input', surface.input);
-  root.style.setProperty('--bg-bubble', surface.bubble);
-  root.style.setProperty('--bg-code', surface.code);
+  const surface = dark ? palette().dark : palette().light;
+  const set: [string, string][] = [
+    ['--bg', surface.bg],
+    ['--bg-sidebar', surface.sidebar],
+    ['--bg-elevated', surface.elevated],
+    ['--bg-input', surface.input],
+    ['--bg-bubble', surface.bubble],
+    ['--bg-code', surface.code],
+    ['--border', surface.border],
+    ['--border-strong', surface.borderStrong],
+  ];
+  for (const [name, value] of set) root.style.setProperty(name, value);
 }
 
 export function setAccent(choice: string) {
