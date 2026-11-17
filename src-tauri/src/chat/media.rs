@@ -6,6 +6,7 @@
 
 use std::path::Path;
 
+use rig_core::audio_generation::AudioGenerationRequestBuilder;
 use rig_core::image_generation::ImageGenerationRequestBuilder;
 use rig_core::providers::openai::wire::{self as dialects, Dialect};
 use rig_core::providers::openai::{OpenAI, OpenAIConfig};
@@ -21,6 +22,9 @@ pub const GENERATE_IMAGE: &str = "generate_image";
 
 /// Providers whose image endpoint rig speaks, with the model used when none is chosen.
 const IMAGE_DEFAULTS: &[(&str, &str)] = &[("openai", "gpt-image-1"), ("xai", "grok-imagine-image"), ("together", "black-forest-labs/FLUX.1-schnell")];
+/// Providers that read text aloud, with the model used when none is chosen.
+const VOICE_DEFAULTS: &[(&str, &str)] = &[("openai", "gpt-4o-mini-tts"), ("xai", "grok-tts")];
+
 /// Providers with a speech-to-text endpoint, with the model used when none is chosen.
 const SPEECH_DEFAULTS: &[(&str, &str)] = &[("openai", "gpt-4o-mini-transcribe"), ("groq", "whisper-large-v3-turbo")];
 
@@ -30,8 +34,10 @@ const SPEECH_DEFAULTS: &[(&str, &str)] = &[("openai", "gpt-4o-mini-transcribe"),
 pub struct MediaModels {
     pub image_model: Option<String>,
     pub speech_model: Option<String>,
+    pub voice_model: Option<String>,
     pub image_vendors: Vec<String>,
     pub speech_vendors: Vec<String>,
+    pub voice_vendors: Vec<String>,
 }
 
 fn dialect(vendor: &str) -> Option<&'static Dialect> {
@@ -70,14 +76,20 @@ pub fn speech_model(file: &ProvidersFile) -> Option<String> {
     pick(file, file.speech_model.as_ref(), SPEECH_DEFAULTS)
 }
 
+pub fn voice_model(file: &ProvidersFile) -> Option<String> {
+    pick(file, file.voice_model.as_ref(), VOICE_DEFAULTS)
+}
+
 pub fn models(config_dir: &Path) -> MediaModels {
     let file = providers::load(config_dir);
     let vendors = |defaults: &[(&str, &str)]| defaults.iter().filter(|(v, _)| usable(&file, v)).map(|(v, _)| v.to_string()).collect();
     MediaModels {
         image_model: image_model(&file),
         speech_model: speech_model(&file),
+        voice_model: voice_model(&file),
         image_vendors: vendors(IMAGE_DEFAULTS),
         speech_vendors: vendors(SPEECH_DEFAULTS),
+        voice_vendors: vendors(VOICE_DEFAULTS),
     }
 }
 
@@ -178,6 +190,64 @@ pub async fn generate(config_dir: &Path, conversation_id: &str, args: &Value) ->
     }
 }
 
+/// Characters read aloud at most; long answers are cut at a sentence.
+const SPEAK_CHARS: usize = 4_000;
+
+/// The prose of a Markdown answer, as it should sound: no code, links read as their text.
+pub fn speakable(markdown: &str) -> String {
+    let mut out = String::new();
+    let mut in_code = false;
+    for line in markdown.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("```") {
+            in_code = !in_code;
+            if in_code {
+                out.push_str("(code omitted)\n");
+            }
+            continue;
+        }
+        if in_code || trimmed.starts_with('|') && trimmed.matches('|').count() > 2 && trimmed.contains("---") {
+            continue;
+        }
+        let line = trimmed.trim_start_matches(['#', '>', '-', '*', '+']).trim_start();
+        out.push_str(line);
+        out.push('\n');
+    }
+    // [text](url) → text; drop emphasis marks and inline code ticks.
+    let links = regex::Regex::new(r"\[([^\]]*)\]\([^)]*\)").expect("valid regex");
+    let mut text = links.replace_all(&out, "$1").replace(['*', '_', '`'], "");
+    if text.chars().count() > SPEAK_CHARS {
+        let cut: String = text.chars().take(SPEAK_CHARS).collect();
+        let end = cut.rfind(['.', '!', '?']).map_or(cut.len(), |i| i + 1);
+        text = cut[..end].to_string();
+    }
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Reads `text` aloud with the chosen voice model; returns the audio and its media type.
+pub async fn speak(config_dir: &Path, text: &str) -> Result<(Vec<u8>, String), String> {
+    let reference = voice_model(&providers::load(config_dir))
+        .ok_or("Read aloud needs a provider with text-to-speech (OpenAI or xAI) in Settings → Providers.")?;
+    let (vendor, _) = providers::split_reference(&reference).unwrap_or_default();
+    let (client, model) = connect(config_dir, &reference).await?;
+    let text = speakable(text);
+    if text.is_empty() {
+        return Err("There is nothing to read.".into());
+    }
+    let voice = if vendor == "xai" { "eve" } else { "alloy" };
+    let request = AudioGenerationRequestBuilder::new(text, voice).build();
+    let response = tokio::time::timeout(std::time::Duration::from_secs(120), client.audio_generation(model).call(request))
+        .await
+        .map_err(|_| "Reading aloud took too long.".to_string())?
+        .map_err(|e| e.to_string())?;
+    let mime = match response.audio.as_slice() {
+        [b'R', b'I', b'F', b'F', ..] => "audio/wav",
+        [b'O', b'g', b'g', b'S', ..] => "audio/ogg",
+        _ => "audio/mpeg",
+    };
+    Ok((response.audio, mime.into()))
+}
+
 /// Turns recorded speech into text with the chosen speech model.
 pub async fn transcribe(config_dir: &Path, audio: Vec<u8>, file_name: &str) -> Result<String, String> {
     let reference = speech_model(&providers::load(config_dir))
@@ -259,6 +329,12 @@ mod tests {
         assert!(asked.starts_with("POST /v1/audio/transcriptions"), "{asked}");
         assert!(asked.contains("Bearer test-key"));
         assert!(asked.contains("whisper-1"));
+    }
+
+    #[test]
+    fn reads_prose_not_markup() {
+        let text = speakable("# Title\n\nSee **[the docs](https://x.y)** for `code`.\n\n```rust\nfn main() {}\n```\n- one\n- two");
+        assert_eq!(text, "Title See the docs for code. (code omitted) one two");
     }
 
     #[test]

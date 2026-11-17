@@ -73,6 +73,8 @@ pub struct ProvidersFile {
     pub image_model: Option<String>,
     /// `vendor/model` for voice input; a default for the providers set up when unset.
     pub speech_model: Option<String>,
+    /// `vendor/model` for reading answers aloud; a default for the providers set up when unset.
+    pub voice_model: Option<String>,
 }
 
 pub fn file_path(config_dir: &Path) -> PathBuf {

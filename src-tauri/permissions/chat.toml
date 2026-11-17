@@ -302,3 +302,18 @@ commands.allow = ["chat_code_runs_allowed"]
 identifier = "allow-chat-set-code-runs-allowed"
 description = "Set whether code runs without asking."
 commands.allow = ["chat_set_code_runs_allowed"]
+
+[[permission]]
+identifier = "allow-chat-speak"
+description = "Read an answer aloud."
+commands.allow = ["chat_speak"]
+
+[[permission]]
+identifier = "allow-chat-select-version"
+description = "Switch between answers to the last prompt."
+commands.allow = ["chat_select_version"]
+
+[[permission]]
+identifier = "allow-chat-import-conversations"
+description = "Import a ChatGPT or Claude export."
+commands.allow = ["chat_import_conversations"]

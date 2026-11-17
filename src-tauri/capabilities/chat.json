@@ -66,6 +66,9 @@
     "allow-chat-delete-workflow",
     "allow-chat-code-runs-allowed",
     "allow-chat-set-code-runs-allowed",
+    "allow-chat-speak",
+    "allow-chat-select-version",
+    "allow-chat-import-conversations",
     "allow-chat-set-media-models",
     "allow-chat-transcribe"
   ]

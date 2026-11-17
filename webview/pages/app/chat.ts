@@ -589,6 +589,21 @@ function renderUserTurn(turn: Turn, conversationId: string): HTMLElement {
   // A skill invoked with /name reads as a chip ahead of the message.
   let rest = text;
   const chips: HTMLElement[] = [];
+  const workflow = rest.match(/^Run the "(.+?)" workflow\. Go through these steps[\s\S]*?\n\n/);
+  if (workflow) {
+    chips.push(h('span', { class: 'skill-chip' }, icon('workflow', 14), workflow[1]!));
+    rest = rest.slice(workflow[0].length);
+  }
+  const library = rest.match(/^Search the "(.+?)" library \(search_library\) for this, and cite what you use\.\s*/);
+  if (library) {
+    chips.push(h('span', { class: 'skill-chip' }, icon('library', 14), library[1]!));
+    rest = rest.slice(library[0].length);
+  }
+  const folder = rest.match(/^Work with the files in the folder `(.+?)`\.\s*/);
+  if (folder) {
+    chips.push(h('span', { class: 'skill-chip' }, icon('folder', 14), folder[1]!.split(/[\\/]/).pop() || folder[1]!));
+    rest = rest.slice(folder[0].length);
+  }
   const canvasAsk = rest.match(/^Use a canvas for this\.\s*/);
   if (canvasAsk) {
     chips.push(h('span', { class: 'skill-chip' }, icon('file', 14), 'Canvas'));
@@ -748,17 +763,77 @@ function renderActions(conversation: Conversation, turn: Turn, isLast: boolean):
     copy.replaceChildren(icon('check', 16));
     setTimeout(() => copy.replaceChildren(icon('copy', 16)), 1200);
   });
+  const versions = isLast && conversation.versions ? versionSwitcher(conversation.id, conversation.versions) : null;
   const actions = h(
     'div',
     { class: 'turn-actions' },
+    versions,
     h('button', { class: `icon-btn small${turn.rating > 0 ? ' active-good' : ''}`, title: 'Good reply', on: { click: rate(1) } }, icon('thumbUp', 16)),
     h('button', { class: `icon-btn small${turn.rating < 0 ? ' active-bad' : ''}`, title: 'Bad reply', on: { click: rate(-1) } }, icon('thumbDown', 16)),
     isLast ? h('button', { class: 'icon-btn small', title: 'Regenerate', on: { click: () => void regenerate(conversation.id) } }, icon('retry', 16)) : null,
     copy,
+    readAloudButton(textOf(turn.parts)),
     h('span', { class: 'spacer' }),
     h('span', { class: 'turn-time' }, timeLabel(turn.time))
   );
   return actions;
+}
+
+/** ‹ 2 / 3 ›: earlier answers to the last prompt, kept when it was regenerated. */
+function versionSwitcher(conversationId: string, versions: { current: number; total: number }): HTMLElement {
+  const go = (index: number) => async () => {
+    try {
+      await api.selectVersion(conversationId, index);
+      await viewCache.chat?.refresh(false);
+    } catch (e) {
+      toast(String(e), 'error');
+    }
+  };
+  const prev = iconButton({ icon: 'back', title: 'Previous answer', size: 'xs', onClick: go(versions.current - 1) });
+  const next = iconButton({ icon: 'forward', title: 'Next answer', size: 'xs', onClick: go(versions.current + 1) });
+  prev.disabled = versions.current === 0;
+  next.disabled = versions.current >= versions.total - 1;
+  return h('span', { class: 'versions', title: 'Answers to this message' }, prev, h('span', { class: 'versions-label' }, `${versions.current + 1} / ${versions.total}`), next);
+}
+
+/** The audio that is playing, so starting another stops it. */
+let speaking: { audio: HTMLAudioElement; button: HTMLButtonElement } | null = null;
+
+function stopSpeaking() {
+  if (!speaking) return;
+  speaking.audio.pause();
+  speaking.button.classList.remove('active');
+  speaking.button.replaceChildren(icon('speaker', 16));
+  speaking = null;
+}
+
+/** Reads an answer aloud with the voice model; a second click stops it. */
+function readAloudButton(text: string): HTMLButtonElement {
+  const button = iconButton({ icon: 'speaker', title: 'Read aloud', size: 'sm' });
+  let cached: string | null = null;
+  button.addEventListener('click', async () => {
+    if (speaking?.button === button) return stopSpeaking();
+    stopSpeaking();
+    button.classList.add('active');
+    button.replaceChildren(h('span', { class: 'dots' }));
+    try {
+      if (!cached) {
+        const [audio, mime] = await api.speak(text);
+        cached = `data:${mime};base64,${audio}`;
+      }
+      const audio = new Audio(cached);
+      speaking = { audio, button };
+      button.replaceChildren(icon('stop', 14));
+      audio.addEventListener('ended', stopSpeaking);
+      await audio.play();
+    } catch (e) {
+      stopSpeaking();
+      button.classList.remove('active');
+      button.replaceChildren(icon('speaker', 16));
+      toast(String(e), 'error');
+    }
+  });
+  return button;
 }
 
 function renderLiveTurn(conversationId: string, live: LiveTurn): HTMLElement {
@@ -1871,6 +1946,8 @@ export class ChatView {
         usage: { inputTokens: 0, outputTokens: 0, cost: 0, contextTokens: 0 },
         compactedBefore: null,
         agentId: null,
+        archived: false,
+        versions: null,
       };
     }
     const optimistic = pendingUser.get(this.id);
@@ -2024,6 +2101,13 @@ export function conversationMenu(anchor: HTMLElement, id: string, title: string,
       }),
       item('folder', 'Move to project', () => void moveToProject(id)),
       item('download', 'Export as Markdown', () => void api.exportConversation(id).then((saved) => saved && toast('Conversation exported.'))),
+      item('archive', state.conversations.find((c) => c.id === id)?.archived ? 'Unarchive' : 'Archive', async () => {
+        const archived = !state.conversations.find((c) => c.id === id)?.archived;
+        await api.updateConversation({ id, archived });
+        if (archived && state.view.kind === 'chat' && state.view.id === id) navigate({ kind: 'home' });
+        await refreshConversations();
+        toast(archived ? 'Archived. Find it under Archived at the end of the list.' : 'Back in your conversations.');
+      }),
       h('div', { class: 'menu-sep' }),
       item('trash', 'Delete', async () => {
         if (await confirmDialog('Delete conversation?', `“${title}” will be deleted from this device.`)) {

@@ -327,6 +327,12 @@
           "markdownDescription": "Read the privacy filter setting."
         },
         {
+          "description": "Import a ChatGPT or Claude export.",
+          "type": "string",
+          "const": "allow-chat-import-conversations",
+          "markdownDescription": "Import a ChatGPT or Claude export."
+        },
+        {
           "description": "Import a SKILL.md the user picks.",
           "type": "string",
           "const": "allow-chat-import-skill",
@@ -477,6 +483,12 @@
           "markdownDescription": "Search document libraries."
         },
         {
+          "description": "Switch between answers to the last prompt.",
+          "type": "string",
+          "const": "allow-chat-select-version",
+          "markdownDescription": "Switch between answers to the last prompt."
+        },
+        {
           "description": "Send a message and stream the reply.",
           "type": "string",
           "const": "allow-chat-send",
@@ -517,6 +529,12 @@
           "type": "string",
           "const": "allow-chat-set-skill-enabled",
           "markdownDescription": "Turn a skill on or off."
+        },
+        {
+          "description": "Read an answer aloud.",
+          "type": "string",
+          "const": "allow-chat-speak",
+          "markdownDescription": "Read an answer aloud."
         },
         {
           "description": "Send a one-word request to check a provider's key and address.",

@@ -43,6 +43,7 @@ export interface ConversationSummary {
   taskId: string | null;
   unread: boolean;
   pinned: boolean;
+  archived: boolean;
   updatedAt: string;
 }
 
@@ -77,8 +78,11 @@ export interface Conversation {
   agentId: string | null;
   model: string | null;
   pinned: boolean;
+  archived: boolean;
   turns: Turn[];
   running: boolean;
+  /** Which answer to the last prompt shows, when it was answered more than once. */
+  versions: { current: number; total: number } | null;
 }
 
 export interface Project {
@@ -242,7 +246,11 @@ export const api = {
     unread?: boolean;
     projectId?: string | null;
     rating?: [number, number];
+    archived?: boolean;
   }) => call<void>('chat_update_conversation', { update }),
+  selectVersion: (id: string, index: number) => call<void>('chat_select_version', { id, index }),
+  speak: (text: string) => call<[string, string]>('chat_speak', { text }),
+  importConversations: () => call<{ imported: number; skipped: number; source: string } | null>('chat_import_conversations'),
   deleteConversation: (id: string) => call<void>('chat_delete_conversation', { id }),
   keepConversation: (id: string) => call<void>('chat_keep_conversation', { id }),
   exportConversation: (id: string) => call<boolean>('chat_export_conversation', { id }),

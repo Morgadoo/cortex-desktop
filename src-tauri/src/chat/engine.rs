@@ -302,14 +302,10 @@ fn config_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
 
 /// Drops everything after the last message the user typed, so the reply is written again.
 fn rewind_to_last_prompt(conversation: &mut Conversation) -> bool {
-    let last_prompt = conversation.messages.iter().rposition(|m| match m {
-        Message::User { content } => content
-            .iter()
-            .any(|c| matches!(c, rig_core::completion::message::UserContent::Text(_))),
-        _ => false,
-    });
-    match last_prompt {
+    match store::last_prompt(conversation) {
         Some(index) => {
+            // The answer being replaced stays available as an earlier version.
+            store::keep_answer(conversation, index);
             conversation.messages.truncate(index + 1);
             conversation.times.retain(|(i, _)| *i <= index);
             conversation.ratings.retain(|(i, _)| *i <= index);
@@ -382,6 +378,7 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
             return Err("That message cannot be edited.".into());
         }
         conversation.messages.truncate(index);
+        conversation.versions = None;
         conversation.times.retain(|(i, _)| *i < index);
         conversation.ratings.retain(|(i, _)| *i < index);
         if conversation.summary.as_ref().is_some_and(|s| s.upto > index) {
@@ -404,6 +401,7 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
     } else {
         conversation.messages.push(user_message(request.text.trim(), &request.images)?);
         conversation.times.push((conversation.messages.len() - 1, Utc::now()));
+        conversation.versions = None;
     }
     conversation.updated_at = Utc::now();
     store::save_conversation(&config_dir, &conversation)?;

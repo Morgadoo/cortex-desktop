@@ -146,7 +146,23 @@ function renderProfile(content: HTMLElement) {
           },
           icon('download', 15),
           'Export all data'
-        )
+        ),
+        button({
+          variant: 'secondary',
+          icon: 'upload',
+          label: 'Import from ChatGPT or Claude',
+          title: 'Choose the data export zip, or its conversations.json',
+          onClick: async () => {
+            try {
+              const report = await tauriInvoke<{ imported: number; skipped: number; source: string } | null>('chat_import_conversations');
+              if (!report) return;
+              toast(`Imported ${report.imported} ${report.source} conversation${report.imported === 1 ? '' : 's'}${report.skipped ? ` (${report.skipped} empty skipped)` : ''}.`);
+              window.dispatchEvent(new Event('chat:conversations-changed'));
+            } catch (e) {
+              toast(String(e), 'error');
+            }
+          },
+        })
       )
     )
   );
@@ -167,6 +183,8 @@ async function renderProviders(content: HTMLElement) {
 interface MediaModels {
   imageModel: string | null;
   speechModel: string | null;
+  voiceModel: string | null;
+  voiceVendors: string[];
   imageVendors: string[];
   speechVendors: string[];
 }
@@ -176,12 +194,14 @@ async function mediaCard(): Promise<HTMLElement> {
   const media = await tauriInvoke<MediaModels>('chat_media_models');
   const image = h('input', { class: 'input', value: media.imageModel ?? '', placeholder: 'xai/grok-imagine-image, openai/gpt-image-1' });
   const speech = h('input', { class: 'input', value: media.speechModel ?? '', placeholder: 'openai/gpt-4o-mini-transcribe, groq/whisper-large-v3-turbo' });
+  const voice = h('input', { class: 'input', value: media.voiceModel ?? '', placeholder: 'xai/grok-tts, openai/gpt-4o-mini-tts' });
   const save = h('button', { class: 'btn btn-primary' }, 'Save');
   save.addEventListener('click', async () => {
     try {
-      const saved = await tauriInvoke<MediaModels>('chat_set_media_models', { imageModel: image.value.trim() || null, speechModel: speech.value.trim() || null });
+      const saved = await tauriInvoke<MediaModels>('chat_set_media_models', { imageModel: image.value.trim() || null, speechModel: speech.value.trim() || null, voiceModel: voice.value.trim() || null });
       image.value = saved.imageModel ?? '';
       speech.value = saved.speechModel ?? '';
+      voice.value = saved.voiceModel ?? '';
       toast(saved.imageModel || saved.speechModel ? 'Saved.' : 'Saved. No provider set up can serve these yet.');
     } catch (e) {
       toast(String(e), 'error');
@@ -191,13 +211,16 @@ async function mediaCard(): Promise<HTMLElement> {
     h('small', { class: 'muted' }, vendors.length ? `Available from: ${vendors.join(', ')}. Leave empty for the default.` : `Set up a provider that offers ${what} to use this.`);
   return card(
     h('h3', {}, 'Images and voice'),
-    h('p', { class: 'muted' }, 'The assistant creates images with the image model, and the microphone button in the composer transcribes with the speech model.'),
+    h('p', { class: 'muted' }, 'The assistant creates images with the image model; the microphone in the composer transcribes with the speech model; the speaker under an answer reads it with the read-aloud model.'),
     h('label', { class: 'field-label' }, 'Image model'),
     image,
     note(media.imageVendors, 'image generation (OpenAI, xAI or Together)'),
     h('label', { class: 'field-label' }, 'Speech-to-text model'),
     speech,
     note(media.speechVendors, 'speech-to-text (OpenAI or Groq)'),
+    h('label', { class: 'field-label' }, 'Read-aloud model'),
+    voice,
+    note(media.voiceVendors, 'text-to-speech (OpenAI or xAI)'),
     h('div', { class: 'card-actions' }, save)
   );
 }

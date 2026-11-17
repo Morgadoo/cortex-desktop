@@ -85,6 +85,12 @@ pub struct Conversation {
     /// Kept out of the history and deleted on the next start.
     #[serde(default)]
     pub temporary: bool,
+    /// Hidden from the main list; still searchable and openable.
+    #[serde(default)]
+    pub archived: bool,
+    /// Earlier answers to the last prompt, kept when it was answered again.
+    #[serde(default)]
+    pub versions: Option<Versions>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     #[serde(default)]
@@ -117,6 +123,8 @@ impl Conversation {
             task_id: None,
             unread: false,
             temporary: false,
+            archived: false,
+            versions: None,
             created_at: now,
             updated_at: now,
             messages: Vec::new(),
@@ -158,6 +166,7 @@ pub fn delete_conversation(config_dir: &Path, id: &str) -> Result<(), String> {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConversationSummary {
+    pub archived: bool,
     pub id: String,
     pub title: String,
     pub project_id: Option<String>,
@@ -179,6 +188,7 @@ pub fn list_conversations(config_dir: &Path) -> Vec<ConversationSummary> {
         .filter_map(|e| read_json::<Conversation>(&e.path()))
         .filter(|c| !c.temporary)
         .map(|c| ConversationSummary {
+            archived: c.archived,
             title: if c.title.is_empty() { "New chat".into() } else { c.title },
             id: c.id,
             project_id: c.project_id,
@@ -293,7 +303,81 @@ pub struct ConversationView {
     pub agent_id: Option<String>,
     pub model: Option<String>,
     pub pinned: bool,
+    pub archived: bool,
     pub turns: Vec<Turn>,
+    /// Which answer to the last prompt is showing, when there are several.
+    pub versions: Option<VersionsView>,
+}
+
+/// Every answer the last prompt received: the one showing, and the others in order around it.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Versions {
+    /// Index of the prompt they answer.
+    pub prompt: usize,
+    /// The answers not showing, in order, with the showing one at `current` between them.
+    pub others: Vec<Vec<Message>>,
+    pub current: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VersionsView {
+    /// 0-based position of the showing answer.
+    pub current: usize,
+    pub total: usize,
+}
+
+/// Index of the last message the user typed.
+pub fn last_prompt(conversation: &Conversation) -> Option<usize> {
+    conversation.messages.iter().rposition(|m| match m {
+        Message::User { content } => content.iter().any(|c| matches!(c, UserContent::Text(_))),
+        _ => false,
+    })
+}
+
+/// Keeps the current answer to `prompt` before it is answered again; the new one goes last.
+pub fn keep_answer(conversation: &mut Conversation, prompt: usize) {
+    let answer: Vec<Message> = conversation.messages.get(prompt + 1..).map(<[Message]>::to_vec).unwrap_or_default();
+    if answer.is_empty() {
+        return;
+    }
+    let mut all = match conversation.versions.take().filter(|v| v.prompt == prompt) {
+        Some(v) => {
+            let mut all = v.others;
+            all.insert(v.current.min(all.len()), answer);
+            all
+        }
+        None => vec![answer],
+    };
+    all.truncate(20);
+    let current = all.len();
+    conversation.versions = Some(Versions { prompt, others: all, current });
+}
+
+/// Shows answer `target` (0-based) to the last prompt.
+pub fn select_version(conversation: &mut Conversation, target: usize) -> Result<(), String> {
+    let prompt = last_prompt(conversation).ok_or("There is nothing to switch.")?;
+    let versions = conversation.versions.take().filter(|v| v.prompt == prompt).ok_or("This answer has no other versions.")?;
+    let live = conversation.messages.split_off(prompt + 1);
+    let mut all = versions.others;
+    all.insert(versions.current.min(all.len()), live);
+    if target >= all.len() {
+        // Put things back as they were.
+        let live = all.remove(versions.current.min(all.len() - 1));
+        conversation.messages.extend(live);
+        conversation.versions = Some(Versions { prompt, others: all, current: versions.current });
+        return Err("There is no such version.".into());
+    }
+    let chosen = all.remove(target);
+    conversation.messages.extend(chosen);
+    conversation.times.retain(|(i, _)| *i <= prompt);
+    conversation.ratings.retain(|(i, _)| *i <= prompt);
+    if conversation.summary.as_ref().is_some_and(|s| s.upto > prompt) {
+        conversation.summary = None;
+    }
+    conversation.versions = Some(Versions { prompt, others: all, current: target });
+    Ok(())
 }
 
 fn result_text(content: &[ToolResultContent]) -> String {
@@ -435,12 +519,52 @@ pub fn view(conversation: &Conversation) -> ConversationView {
         agent_id: conversation.agent_id.clone(),
         model: conversation.model.clone(),
         pinned: conversation.pinned,
+        archived: conversation.archived,
         turns: turns(conversation),
+        versions: conversation
+            .versions
+            .as_ref()
+            .filter(|v| Some(v.prompt) == last_prompt(conversation) && !v.others.is_empty())
+            .map(|v| VersionsView { current: v.current, total: v.others.len() + 1 }),
     }
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn regenerated_answers_are_kept_as_versions() {
+        let mut c = Conversation::new("v".into(), None, None);
+        c.messages.push(Message::user("Q"));
+        c.messages.push(Message::assistant("A1"));
+        let text = |c: &Conversation| match c.messages.last() {
+            Some(Message::Assistant(a)) => match a.content.first() {
+                Some(rig_core::completion::message::AssistantContent::Text(t)) => t.text.clone(),
+                _ => String::new(),
+            },
+            _ => String::new(),
+        };
+        // Regenerate twice: keep the answer, then a new one is written.
+        keep_answer(&mut c, 0);
+        c.messages.truncate(1);
+        c.messages.push(Message::assistant("A2"));
+        keep_answer(&mut c, 0);
+        c.messages.truncate(1);
+        c.messages.push(Message::assistant("A3"));
+        let v = view(&c).versions.unwrap();
+        assert_eq!((v.current, v.total), (2, 3));
+        select_version(&mut c, 0).unwrap();
+        assert_eq!(text(&c), "A1");
+        select_version(&mut c, 1).unwrap();
+        assert_eq!(text(&c), "A2");
+        assert!(select_version(&mut c, 7).is_err());
+        assert_eq!(text(&c), "A2", "a bad index leaves the answer as it was");
+        select_version(&mut c, 2).unwrap();
+        assert_eq!(text(&c), "A3");
+        // A new prompt starts fresh: no versions to show.
+        c.messages.push(Message::user("Next"));
+        assert!(view(&c).versions.is_none());
+    }
+
     use super::*;
     use rig_core::completion::message::{AssistantMessage, CallId, ToolName};
 

@@ -16,7 +16,7 @@ import { AppsPage } from './apps';
 import { WorkflowsPage } from './workflows';
 import { applyTheme, openSettings, reloadModels, setTheme, storedTheme } from './settings';
 import { applyEvent, back, changed, forward, navigate, state, subscribe, type Page } from './state';
-import { modalHeader } from './ui';
+import { button, emptyState, iconButton, modalHeader } from './ui';
 
 interface View {
   readonly el: HTMLElement;
@@ -229,7 +229,7 @@ function renderProjects(): HTMLElement {
     section.append(
       h('div', { class: `conv-link project${active ? ' active' : ''}`, on: { click: () => navigate({ kind: 'home', projectId: project.id }) } }, project.icon ? h('span', { class: 'project-icon' }, project.icon) : icon('folder', 16), h('span', { class: 'conv-title' }, project.name), more)
     );
-    for (const c of state.conversations.filter((c) => c.projectId === project.id)) {
+    for (const c of state.conversations.filter((c) => !c.archived && c.projectId === project.id)) {
       section.append(conversationLink(c.id, c.title, c.pinned, true));
     }
   }
@@ -320,10 +320,40 @@ function editProject(id: string) {
 function renderConversations(): HTMLElement {
   const code = state.mode === 'code';
   const section = h('div', { class: 'sidebar-section' }, sectionHeading(code ? 'Sessions' : 'Conversations'));
-  const loose = state.conversations.filter((c) => !c.projectId && !c.agentId && Boolean(c.workdir) === code);
+  const loose = state.conversations.filter((c) => !c.archived && !c.projectId && !c.agentId && Boolean(c.workdir) === code);
   if (!loose.length) section.append(h('p', { class: 'sidebar-empty' }, code ? 'No sessions yet' : 'No conversations yet'));
   for (const c of loose) section.append(conversationLink(c.id, c.title, c.pinned));
+  const archived = state.conversations.filter((c) => c.archived);
+  if (archived.length) {
+    section.append(h('button', { class: 'nav-link sub archived-link', on: { click: openArchived } }, icon('archive', 15), h('span', { class: 'nav-label' }, `Archived (${archived.length})`)));
+  }
   return section;
+}
+
+/** Archived conversations: open, restore or delete them. */
+function openArchived() {
+  void modal((close) => {
+    const list = h('div', { class: 'archived-list' });
+    const render = () => {
+      const archived = state.conversations.filter((c) => c.archived);
+      clear(
+        list,
+        archived.length
+          ? archived.map((c) =>
+              h(
+                'div',
+                { class: 'archived-row' },
+                h('button', { class: 'grow archived-title', on: { click: () => { close(); navigate({ kind: 'chat', id: c.id }); } } }, c.title),
+                button({ variant: 'subtle', size: 'sm', icon: 'reset', label: 'Restore', onClick: async () => { await api.updateConversation({ id: c.id, archived: false }); await refreshConversations(); render(); } }),
+                iconButton({ icon: 'trash', title: 'Delete', size: 'sm', onClick: async () => { await api.deleteConversation(c.id); await refreshConversations(); render(); } })
+              )
+            )
+          : emptyState('archive', 'Nothing archived', 'Archive a conversation from its menu to tidy the sidebar without deleting it.')
+      );
+    };
+    render();
+    return h('div', { class: 'dialog-small wide' }, modalHeader('Archived', close, { flush: true }), list);
+  });
 }
 
 function renderFooter(): HTMLElement {
@@ -435,6 +465,7 @@ async function start() {
     }
     changed();
   });
+  window.addEventListener('chat:conversations-changed', () => void refreshConversations());
   void listen<ApprovalRequest>('tool:approval_request', (request) => {
     state.approvals.push(request);
     changed();

@@ -176,6 +176,8 @@ pub struct UpdateConversation {
     pub project_id: Option<Option<String>>,
     #[serde(default)]
     pub unread: Option<bool>,
+    #[serde(default)]
+    pub archived: Option<bool>,
     /// `(turn index, -1 | 0 | 1)`.
     #[serde(default)]
     pub rating: Option<(usize, i8)>,
@@ -205,6 +207,12 @@ pub fn chat_update_conversation(app: AppHandle, update: UpdateConversation) -> R
     }
     if let Some(unread) = update.unread {
         conversation.unread = unread;
+    }
+    if let Some(archived) = update.archived {
+        conversation.archived = archived;
+        if archived {
+            conversation.pinned = false;
+        }
     }
     if let Some(project_id) = update.project_id {
         conversation.project_id = project_id;
@@ -263,13 +271,19 @@ pub fn chat_media_models(app: AppHandle) -> Result<super::media::MediaModels, St
     Ok(super::media::models(&config_dir(&app)?))
 }
 
-/// Chooses the image and speech models; an empty value goes back to the default.
+/// Chooses the image, speech and voice models; an empty value goes back to the default.
 #[tauri::command]
-pub fn chat_set_media_models(app: AppHandle, image_model: Option<String>, speech_model: Option<String>) -> Result<super::media::MediaModels, String> {
+pub fn chat_set_media_models(
+    app: AppHandle,
+    image_model: Option<String>,
+    speech_model: Option<String>,
+    voice_model: Option<String>,
+) -> Result<super::media::MediaModels, String> {
     let dir = config_dir(&app)?;
     let mut file = super::providers::load(&dir);
     file.image_model = image_model.filter(|m| !m.trim().is_empty());
     file.speech_model = speech_model.filter(|m| !m.trim().is_empty());
+    file.voice_model = voice_model.filter(|m| !m.trim().is_empty());
     super::providers::save(&dir, &file)?;
     Ok(super::media::models(&dir))
 }
@@ -290,6 +304,46 @@ pub async fn chat_transcribe(app: AppHandle, audio: String, mime: String) -> Res
         _ => "webm",
     };
     super::media::transcribe(&config_dir(&app)?, bytes, &format!("speech.{ext}")).await
+}
+
+/// Reads text aloud; returns base64 audio and its media type.
+#[tauri::command]
+pub async fn chat_speak(app: AppHandle, text: String) -> Result<(String, String), String> {
+    use base64::Engine as _;
+    let (audio, mime) = super::media::speak(&config_dir(&app)?, &text).await?;
+    Ok((base64::engine::general_purpose::STANDARD.encode(audio), mime))
+}
+
+/// Shows another answer to the last prompt.
+#[tauri::command]
+pub fn chat_select_version(app: AppHandle, state: State<'_, ChatState>, id: String, index: usize) -> Result<(), String> {
+    if state.is_running(&id) {
+        return Err("Wait for the reply to finish.".into());
+    }
+    let dir = config_dir(&app)?;
+    let mut conversation = store::load_conversation(&dir, &id)?;
+    store::select_version(&mut conversation, index)?;
+    store::save_conversation(&dir, &conversation)
+}
+
+/// Imports a ChatGPT or Claude data export (the zip, or its conversations.json).
+#[tauri::command]
+pub async fn chat_import_conversations(app: AppHandle) -> Result<Option<super::import::ImportReport>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title("Import a ChatGPT or Claude export")
+        .add_filter("Export", &["zip", "json"])
+        .pick_file(move |path| {
+            let _ = tx.send(path);
+        });
+    let Some(path) = rx.await.map_err(|e| e.to_string())? else {
+        return Ok(None);
+    };
+    let path = path.into_path().map_err(|e| e.to_string())?;
+    let dir = config_dir(&app)?;
+    tokio::task::spawn_blocking(move || super::import::import(&dir, &path)).await.map_err(|e| e.to_string())?.map(Some)
 }
 
 /// Keeps a temporary conversation, such as the answer chosen in a model comparison.

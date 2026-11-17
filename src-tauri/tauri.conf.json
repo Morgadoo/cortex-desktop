@@ -17,6 +17,7 @@
         "script-src": "'self'",
         "style-src": "'self'",
         "img-src": "'self' data: lumoapp: http://lumoapp.localhost",
+        "media-src": "'self' data: blob:",
         "connect-src": "ipc: http://ipc.localhost",
         "object-src": "'none'",
         "base-uri": "'none'",

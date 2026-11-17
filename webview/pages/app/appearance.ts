@@ -37,13 +37,21 @@ export interface BackgroundPreset {
 /** A dark palette tinted toward `hue`, matching a light palette from T3 Code's themes. */
 function tintedDark(hue: number, chroma = 0.012): Surface {
   const c = (l: number, k = 1) => `oklch(${l} ${(chroma * k).toFixed(4)} ${hue})`;
-  return { bg: c(0.155), sidebar: c(0.13), elevated: c(0.19, 1.2), input: c(0.19, 1.2), bubble: c(0.235, 1.4), code: c(0.14), border: c(0.235, 1.2), borderStrong: c(0.29, 1.4) };
+  // As light as the Graphite default, so a tinted palette is never darker than it.
+  return { bg: c(0.225), sidebar: c(0.2), elevated: c(0.26, 1.2), input: c(0.275, 1.2), bubble: c(0.29, 1.4), code: c(0.18), border: c(0.31, 1.2), borderStrong: c(0.37, 1.4) };
 }
 
-/** Palettes from T3 Code (MIT, pingdotgg/t3code): its default, T3 Chat, Grove, Ocean, Ember and Iris. */
+/** Graphite, the app's own default, then palettes from T3 Code (MIT, pingdotgg/t3code): its default, T3 Chat, Grove, Ocean, Ember and Iris. */
 export const BACKGROUNDS: BackgroundPreset[] = [
   {
     id: 'default',
+    label: 'Graphite',
+    accent: { dark: '#8b6dff', light: '#6d4aff' },
+    dark: { bg: '#1d1d20', sidebar: '#171719', elevated: '#26262a', input: '#2a2a2e', bubble: '#2c2c31', code: '#141416', border: 'rgba(255, 255, 255, 0.08)', borderStrong: 'rgba(255, 255, 255, 0.14)' },
+    light: { bg: '#fbfaf7', sidebar: '#f3f1ec', elevated: '#ffffff', input: '#ffffff', bubble: '#efede7', code: '#f4f2ed', border: 'rgba(0, 0, 0, 0.08)', borderStrong: 'rgba(0, 0, 0, 0.14)' },
+  },
+  {
+    id: 't3-code',
     label: 'T3 Code',
     accent: { dark: '#346bf1', light: '#1b4ed8' },
     dark: { bg: '#0a0a0a', sidebar: '#000000', elevated: '#111111', input: '#111111', bubble: '#1a1a1a', code: '#0d0d0d', border: '#191919', borderStrong: '#262626' },
