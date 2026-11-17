@@ -54,6 +54,9 @@
     "allow-chat-remove-document",
     "allow-chat-search-libraries",
     "allow-chat-get-privacy",
-    "allow-chat-set-privacy"
+    "allow-chat-set-privacy",
+    "allow-chat-project-library",
+    "allow-chat-export-all",
+    "allow-chat-list-apps"
   ]
 }

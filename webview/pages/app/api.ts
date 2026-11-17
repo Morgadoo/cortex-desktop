@@ -85,6 +85,10 @@ export interface Project {
   id: string;
   name: string;
   instructions: string;
+  tone: string;
+  icon: string;
+  libraryId: string | null;
+  shareChats: boolean;
 }
 
 export interface Instructions {

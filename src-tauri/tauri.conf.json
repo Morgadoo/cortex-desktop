@@ -21,7 +21,8 @@
         "object-src": "'none'",
         "base-uri": "'none'",
         "form-action": "'none'",
-        "frame-ancestors": "'none'"
+        "frame-ancestors": "'none'",
+        "frame-src": "lumoapp: http://lumoapp.localhost"
       }
     }
   },

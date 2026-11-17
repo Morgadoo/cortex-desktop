@@ -202,6 +202,18 @@ pub struct Project {
     /// Instructions added to every conversation in the project.
     #[serde(default)]
     pub instructions: String,
+    /// A tone preset for the project's conversations; the user's own when empty.
+    #[serde(default)]
+    pub tone: String,
+    /// An emoji shown beside the name.
+    #[serde(default)]
+    pub icon: String,
+    /// The library holding the project's files.
+    #[serde(default)]
+    pub library_id: Option<String>,
+    /// New conversations see short summaries of the project's other conversations.
+    #[serde(default)]
+    pub share_chats: bool,
 }
 
 fn projects_path(config_dir: &Path) -> PathBuf {
@@ -391,6 +403,25 @@ pub fn turns(conversation: &Conversation) -> Vec<Turn> {
         turn.rating = rating_of(turn.index);
     }
     out
+}
+
+/// What the project's other conversations were about: titles and how each ended, for a new
+/// conversation that may build on them.
+pub fn project_digest(config_dir: &Path, project_id: &str, except: &str) -> Option<String> {
+    let mut lines = Vec::new();
+    for summary in list_conversations(config_dir).into_iter().filter(|c| c.project_id.as_deref() == Some(project_id) && c.id != except).take(8) {
+        let Ok(c) = load_conversation(config_dir, &summary.id) else { continue };
+        let last = c.messages.iter().rev().find_map(|m| match m {
+            Message::Assistant(a) => a.content.iter().find_map(|x| match x {
+                AssistantContent::Text(t) if !t.text.trim().is_empty() => Some(t.text.clone()),
+                _ => None,
+            }),
+            _ => None,
+        });
+        let excerpt: String = last.unwrap_or_default().split_whitespace().collect::<Vec<_>>().join(" ").chars().take(400).collect();
+        lines.push(format!("- \"{}\" ({}): {}", summary.title, summary.updated_at.format("%Y-%m-%d"), excerpt));
+    }
+    (!lines.is_empty()).then(|| lines.join("\n"))
 }
 
 pub fn view(conversation: &Conversation) -> ConversationView {

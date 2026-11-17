@@ -118,6 +118,9 @@ pub fn run() {
                 chat::commands::chat_search_libraries,
                 chat::commands::chat_get_privacy,
                 chat::commands::chat_set_privacy,
+                chat::commands::chat_project_library,
+                chat::commands::chat_export_all,
+                chat::commands::chat_list_apps,
             ];
             commands(invoke)
         })
@@ -143,6 +146,13 @@ pub fn run() {
                 .level_for("selectors", log::LevelFilter::Warn)
                 .build(),
         )
+        // Mini apps the assistant builds run from here, in a sandboxed frame with their own CSP.
+        .register_uri_scheme_protocol("lumoapp", |ctx, request| {
+            match crate::settings::get_config_dir(ctx.app_handle()) {
+                Ok(dir) => chat::canvas::serve(&dir, request.uri().path()),
+                Err(_) => tauri::http::Response::builder().status(500).body(Vec::new()).unwrap_or_default(),
+            }
+        })
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())

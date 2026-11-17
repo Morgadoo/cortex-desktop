@@ -98,13 +98,19 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
     out.push(tool(
         CANVAS,
         "Write a document the user will keep, read at length or edit: a report, letter, plan, \
-         article, README or code file. Creates a canvas, or with `id` replaces an existing one's \
+         article, README or code file, or an interactive mini app (calculator, game, chart, \
+         form, dashboard). Creates a canvas, or with `id` replaces an existing one's \
          text with a new version. Send the complete text each time, in Markdown (code in fenced \
          blocks). Keep your chat reply to a sentence or two about what you wrote.",
         json!({
             "type": "object",
             "properties": {
                 "id": { "type": "string", "description": "The canvas to update; omit to create one." },
+                "kind": {
+                    "type": "string",
+                    "enum": ["document", "app"],
+                    "description": "document: Markdown. app: an interactive mini app, as one complete self-contained HTML document with inline CSS and JS (libraries only from cdn.jsdelivr.net, unpkg.com or cdnjs.cloudflare.com); it runs sandboxed with a live preview."
+                },
                 "title": { "type": "string" },
                 "content": { "type": "string", "description": "The full document, in Markdown." }
             },

@@ -1,7 +1,7 @@
 /** Canvas cards in the conversation, their editor, and quoting a selection into the composer. */
 import { tauriInvoke } from '../../shared/tauri';
 import type { Part } from './api';
-import { h, icon, markdown, modal, toast } from './dom';
+import { clear, h, icon, markdown, modal, toast } from './dom';
 
 interface Canvas {
   id: string;
@@ -26,8 +26,59 @@ function idOf(part: Extract<Part, { kind: 'tool' }>): string | null {
   }
 }
 
+/** Where a mini app is served: the `lumoapp` protocol, spelled per platform. */
+export function appUrl(id: string, version = 0): string {
+  const windows = navigator.userAgent.includes('Windows');
+  return `${windows ? 'http://lumoapp.localhost' : 'lumoapp://localhost'}/${id}?v=${version}`;
+}
+
+/** A sandboxed frame running a mini app: scripts run, but it has its own origin and no IPC. */
+export function appFrame(id: string, version = 0): HTMLIFrameElement {
+  return h('iframe', {
+    class: 'app-frame',
+    src: appUrl(id, version),
+    sandbox: 'allow-scripts allow-forms allow-modals allow-popups',
+    title: 'Mini app',
+  });
+}
+
+/** A mini app the model built: a live preview, its code, and a way to open it larger. */
+function renderAppCard(part: Extract<Part, { kind: 'tool' }>, live: boolean): HTMLElement {
+  const title = typeof part.arguments.title === 'string' && part.arguments.title ? part.arguments.title : 'App';
+  const code = typeof part.arguments.content === 'string' ? part.arguments.content : '';
+  const id = idOf(part);
+  let version = 0;
+  try {
+    version = part.output ? ((JSON.parse(part.output) as { version?: number }).version ?? 0) : 0;
+  } catch {
+    version = 0;
+  }
+  const body = h('div', { class: 'app-body' });
+  const showPreview = () => clear(body, id && part.output ? appFrame(id, version) : h('div', { class: 'status-line app-wait' }, h('span', { class: 'dots' }), 'Building the app…'));
+  const showCode = () => {
+    const pre = h('pre', { class: 'step-pre app-code' }, code);
+    clear(body, pre);
+  };
+  const preview = h('button', { class: 'seg active' }, 'Preview');
+  const source = h('button', { class: 'seg' }, 'Code');
+  preview.addEventListener('click', () => { preview.classList.add('active'); source.classList.remove('active'); showPreview(); });
+  source.addEventListener('click', () => { source.classList.add('active'); preview.classList.remove('active'); showCode(); });
+  const copy = h('button', { class: 'canvas-btn', title: 'Copy code' }, icon('copy', 15), 'Copy');
+  copy.addEventListener('click', () => { void navigator.clipboard.writeText(code); toast('Code copied.'); });
+  const full = h('button', { class: 'canvas-btn icon-only', title: 'Open larger' }, icon('share', 16));
+  full.addEventListener('click', () => {
+    if (!id) return;
+    void modal((close) => h('div', { class: 'app-modal' }, h('div', { class: 'modal-head' }, h('h2', {}, title), h('button', { class: 'icon-btn', on: { click: close } }, icon('close', 18))), appFrame(id, version)), true);
+  });
+  showPreview();
+  const card = h('div', { class: 'canvas-card app-card' }, h('div', { class: 'canvas-head' }, icon('apps', 16), h('span', { class: 'canvas-title' }, title), h('div', { class: 'segmented' }, preview, source), h('span', { class: 'spacer' }), copy, full), body);
+  const created = typeof part.arguments.id !== 'string' || !part.arguments.id;
+  return h('div', { class: 'canvas-step' }, h('div', { class: 'canvas-label' }, live && part.output === null ? 'Building an app…' : created ? 'Built an app' : 'Updated an app'), card);
+}
+
 /** A canvas the model created or updated, shown as a document card in the reply. */
 export function renderCanvasCard(part: Extract<Part, { kind: 'tool' }>, live: boolean): HTMLElement {
+  if (part.arguments.kind === 'app') return renderAppCard(part, live);
   const created = typeof part.arguments.id !== 'string' || !part.arguments.id;
   let title = typeof part.arguments.title === 'string' && part.arguments.title ? part.arguments.title : 'Untitled';
   let content = typeof part.arguments.content === 'string' ? part.arguments.content : '';

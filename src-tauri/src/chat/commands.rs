@@ -301,21 +301,7 @@ pub async fn chat_preview_instructions(
 pub async fn chat_export_conversation(app: AppHandle, id: String) -> Result<bool, String> {
     use tauri_plugin_dialog::DialogExt;
     let conversation = store::load_conversation(&config_dir(&app)?, &id)?;
-    let mut text = format!("# {}\n\n", engine::fallback_title(&conversation));
-    if !conversation.title.is_empty() {
-        text = format!("# {}\n\n", conversation.title);
-    }
-    for turn in store::turns(&conversation) {
-        text.push_str(if turn.role == "user" { "## You\n\n" } else { "## Assistant\n\n" });
-        for part in turn.parts {
-            match part {
-                store::Part::Text { text: t } => text.push_str(&format!("{t}\n\n")),
-                store::Part::Tool { name, .. } => text.push_str(&format!("_Used {name}_\n\n")),
-                store::Part::Reasoning { .. } => {}
-                store::Part::Image { .. } => text.push_str("_[image]_\n\n"),
-            }
-        }
-    }
+    let text = conversation_markdown(&conversation);
     let (tx, rx) = tokio::sync::oneshot::channel();
     app.dialog()
         .file()
@@ -599,6 +585,88 @@ pub fn chat_get_privacy(app: AppHandle) -> Result<super::privacy::PrivacySetting
 #[tauri::command]
 pub fn chat_set_privacy(app: AppHandle, settings: super::privacy::PrivacySettings) -> Result<(), String> {
     super::privacy::save(&config_dir(&app)?, &settings)
+}
+
+/// The project's file library, created on first use.
+#[tauri::command]
+pub fn chat_project_library(app: AppHandle, project_id: String) -> Result<super::libraries::Library, String> {
+    let dir = config_dir(&app)?;
+    let mut projects = store::load_projects(&dir);
+    let project = projects.iter_mut().find(|p| p.id == project_id).ok_or("No such project.")?;
+    if let Some(id) = &project.library_id {
+        if let Ok(library) = super::libraries::load(&dir, id) {
+            return Ok(library);
+        }
+    }
+    let library = super::libraries::create(&dir, &format!("{} files", project.name), "Files of the project")?;
+    project.library_id = Some(library.id.clone());
+    store::save_projects(&dir, &projects)?;
+    Ok(library)
+}
+
+/// Exports everything to a folder the user picks: each conversation as Markdown, and a copy of
+/// the app's data (conversations, projects, agents, tasks, knowledge, skills, libraries).
+#[tauri::command]
+pub async fn chat_export_all(app: AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog().file().set_title("Export to folder").pick_folder(move |path| {
+        let _ = tx.send(path);
+    });
+    let Some(target) = rx.await.map_err(|e| e.to_string())? else { return Ok(None) };
+    let target = target.into_path().map_err(|e| e.to_string())?;
+    let dir = config_dir(&app)?;
+    let out = target.join(format!("lumo-export-{}", chrono::Local::now().format("%Y-%m-%d-%H%M")));
+    let markdown = out.join("conversations");
+    std::fs::create_dir_all(&markdown).map_err(|e| e.to_string())?;
+    let mut count = 0;
+    for summary in store::list_conversations(&dir) {
+        let Ok(conversation) = store::load_conversation(&dir, &summary.id) else { continue };
+        let name = format!("{} {}.md", summary.updated_at.format("%Y-%m-%d"), sanitize_file_name(&summary.title));
+        std::fs::write(markdown.join(name), conversation_markdown(&conversation)).map_err(|e| e.to_string())?;
+        count += 1;
+    }
+    copy_dir(&store::chat_dir(&dir), &out.join("data/chat"))?;
+    copy_dir(&super::skills::skills_dir(&dir), &out.join("data/skills"))?;
+    Ok(Some(format!("Exported {count} conversations to {}", out.display())))
+}
+
+fn copy_dir(from: &std::path::Path, to: &std::path::Path) -> Result<(), String> {
+    if !from.exists() {
+        return Ok(());
+    }
+    for entry in walkdir::WalkDir::new(from).into_iter().filter_map(Result::ok) {
+        let rel = entry.path().strip_prefix(from).map_err(|e| e.to_string())?;
+        let dest = to.join(rel);
+        if entry.file_type().is_dir() {
+            std::fs::create_dir_all(&dest).map_err(|e| e.to_string())?;
+        } else if entry.file_type().is_file() {
+            std::fs::copy(entry.path(), &dest).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+fn conversation_markdown(conversation: &store::Conversation) -> String {
+    let title = if conversation.title.is_empty() { engine::fallback_title(conversation) } else { conversation.title.clone() };
+    let mut text = format!("# {title}\n\n");
+    for turn in store::turns(conversation) {
+        text.push_str(if turn.role == "user" { "## You\n\n" } else { "## Assistant\n\n" });
+        for part in turn.parts {
+            match part {
+                store::Part::Text { text: t } => text.push_str(&format!("{t}\n\n")),
+                store::Part::Tool { name, .. } => text.push_str(&format!("_Used {name}_\n\n")),
+                store::Part::Image { .. } => text.push_str("_[image]_\n\n"),
+                store::Part::Reasoning { .. } => {}
+            }
+        }
+    }
+    text
+}
+
+#[tauri::command]
+pub fn chat_list_apps(app: AppHandle) -> Result<Vec<super::canvas::Canvas>, String> {
+    Ok(super::canvas::list_apps(&config_dir(&app)?))
 }
 
 /// Manages chat state at startup.

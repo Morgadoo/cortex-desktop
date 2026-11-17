@@ -237,3 +237,18 @@ commands.allow = ["chat_get_privacy"]
 identifier = "allow-chat-set-privacy"
 description = "Turn the privacy filter on or off."
 commands.allow = ["chat_set_privacy"]
+
+[[permission]]
+identifier = "allow-chat-project-library"
+description = "Get or create a project's file library."
+commands.allow = ["chat_project_library"]
+
+[[permission]]
+identifier = "allow-chat-export-all"
+description = "Export all conversations and data to a folder the user picks."
+commands.allow = ["chat_export_all"]
+
+[[permission]]
+identifier = "allow-chat-list-apps"
+description = "List the mini apps the assistant built."
+commands.allow = ["chat_list_apps"]

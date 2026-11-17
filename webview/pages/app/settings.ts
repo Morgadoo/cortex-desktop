@@ -126,6 +126,32 @@ function renderProfile(content: HTMLElement) {
       name,
       h('p', { class: 'hint' }, 'Used in the greeting and shared with the model so it can address you.'),
       h('div', { class: 'card-actions' }, save)
+    ),
+    card(
+      h('h3', {}, 'Your data'),
+      h('p', { class: 'muted' }, 'Export every conversation as Markdown, plus a copy of your projects, agents, tasks, knowledge, skills and libraries.'),
+      h(
+        'div',
+        { class: 'card-actions start' },
+        h(
+          'button',
+          {
+            class: 'btn btn-ghost',
+            on: {
+              click: async () => {
+                try {
+                  const done = await tauriInvoke<string | null>('chat_export_all');
+                  if (done) toast(done);
+                } catch (e) {
+                  toast(String(e), 'error');
+                }
+              },
+            },
+          },
+          icon('download', 15),
+          'Export all data'
+        )
+      )
     )
   );
 }

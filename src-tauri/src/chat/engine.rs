@@ -178,6 +178,8 @@ pub struct Context<'a> {
     pub canvases: &'a [canvas::Canvas],
     pub agent: Option<&'a agents::Agent>,
     pub libraries: &'a [libraries::Library],
+    /// Summaries of the project's other conversations, when the project shares them.
+    pub project_digest: Option<String>,
 }
 
 pub fn preamble(context: &Context<'_>, tools: &[ChatTool]) -> String {
@@ -206,7 +208,8 @@ pub fn preamble(context: &Context<'_>, tools: &[ChatTool]) -> String {
     if !instructions.name.trim().is_empty() {
         out.push_str(&format!(" The user's name is {}.", instructions.name.trim()));
     }
-    if let Some((_, tone)) = TONES.iter().find(|(id, _)| *id == instructions.tone) {
+    let tone_id = project.map(|p| p.tone.as_str()).filter(|t| !t.is_empty()).unwrap_or(&instructions.tone);
+    if let Some((_, tone)) = TONES.iter().find(|(id, _)| *id == tone_id) {
         out.push_str("\n\n");
         out.push_str(tone);
     }
@@ -219,6 +222,19 @@ pub fn preamble(context: &Context<'_>, tools: &[ChatTool]) -> String {
         if !project.instructions.trim().is_empty() {
             out.push_str(" Project instructions:\n");
             out.push_str(project.instructions.trim());
+        }
+        if let Some(library) = project.library_id.as_ref().and_then(|id| context.libraries.iter().find(|l| &l.id == id)) {
+            if !library.documents.is_empty() {
+                out.push_str(&format!(
+                    "\nThe project's files are in the library \"{}\" ({} documents); search it with `search_library` before answering questions they may cover.",
+                    library.name,
+                    library.documents.len()
+                ));
+            }
+        }
+        if let Some(digest) = &context.project_digest {
+            out.push_str("\nOther conversations in this project, most recent first (build on them when relevant):\n");
+            out.push_str(digest);
         }
     }
     if let Some(dir) = workdir {
@@ -431,6 +447,10 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
             canvases: &canvases,
             agent: agent.as_ref(),
             libraries: &library_list,
+            project_digest: project
+                .as_ref()
+                .filter(|p| p.share_chats)
+                .and_then(|p| store::project_digest(&config_dir, &p.id, id)),
         },
         &offered,
     );
@@ -709,9 +729,10 @@ impl Runner<'_> {
                 return tools::Outcome { text: "Give the canvas content.".into(), is_error: true };
             };
             let id = text("id").filter(|i| !i.trim().is_empty());
-            return match canvas::write(self.config_dir, self.id, id.as_deref(), text("title").as_deref(), &content, "assistant") {
+            let kind = text("kind");
+            return match canvas::write_kind(self.config_dir, self.id, id.as_deref(), text("title").as_deref(), &content, "assistant", kind.as_deref()) {
                 Ok(c) => tools::Outcome {
-                    text: serde_json::json!({ "id": c.id, "title": c.title, "version": c.versions.len() }).to_string(),
+                    text: serde_json::json!({ "id": c.id, "title": c.title, "kind": c.kind, "version": c.versions.len() }).to_string(),
                     is_error: false,
                 },
                 Err(e) => tools::Outcome { text: e, is_error: true },
@@ -938,7 +959,15 @@ mod tests {
             custom: "Use metric units.".into(),
             name: "Ana".into(),
         };
-        let project = Project { id: "p".into(), name: "Garden".into(), instructions: "Plants only.".into() };
+        let project = Project {
+            id: "p".into(),
+            name: "Garden".into(),
+            instructions: "Plants only.".into(),
+            tone: String::new(),
+            icon: String::new(),
+            library_id: None,
+            share_chats: false,
+        };
         let text = preamble(
             &Context { instructions: Some(&instructions), project: Some(&project), workdir: Some("/src/app"), ..Default::default() },
             &[],

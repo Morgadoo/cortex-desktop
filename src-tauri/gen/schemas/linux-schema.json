@@ -261,6 +261,12 @@
           "markdownDescription": "Delete a scheduled task."
         },
         {
+          "description": "Export all conversations and data to a folder the user picks.",
+          "type": "string",
+          "const": "allow-chat-export-all",
+          "markdownDescription": "Export all conversations and data to a folder the user picks."
+        },
+        {
           "description": "Save a canvas as Markdown to a file the user picks.",
           "type": "string",
           "const": "allow-chat-export-canvas",
@@ -315,6 +321,12 @@
           "markdownDescription": "List agents."
         },
         {
+          "description": "List the mini apps the assistant built.",
+          "type": "string",
+          "const": "allow-chat-list-apps",
+          "markdownDescription": "List the mini apps the assistant built."
+        },
+        {
           "description": "List saved conversations.",
           "type": "string",
           "const": "allow-chat-list-conversations",
@@ -361,6 +373,12 @@
           "type": "string",
           "const": "allow-chat-preview-instructions",
           "markdownDescription": "Generate a sample reply under draft instructions."
+        },
+        {
+          "description": "Get or create a project's file library.",
+          "type": "string",
+          "const": "allow-chat-project-library",
+          "markdownDescription": "Get or create a project's file library."
         },
         {
           "description": "Remove a document from a library.",

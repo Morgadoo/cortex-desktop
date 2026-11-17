@@ -1334,7 +1334,7 @@ export class HomeView {
         )
       : agent
         ? h('h1', { class: 'greeting' }, `What should ${agent.name} do?`)
-        : h('h1', { class: 'greeting' }, project ? `New chat in ${project.name}` : greeting(state.instructions.name));
+        : h('h1', { class: 'greeting' }, project ? `${project.icon ? `${project.icon} ` : ''}New chat in ${project.name}` : greeting(state.instructions.name));
     composer.attach(null, code ? 'What do you want to build?' : 'Ask anything. Type / for quick actions');
     const banner =
       state.models.length === 0
