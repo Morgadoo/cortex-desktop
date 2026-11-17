@@ -597,6 +597,12 @@
           "markdownDescription": "Save a provider's settings and store its API key in the OS keychain."
         },
         {
+          "description": "Save a conversation as a web page to share.",
+          "type": "string",
+          "const": "allow-chat-save-shared-page",
+          "markdownDescription": "Save a conversation as a web page to share."
+        },
+        {
           "description": "Create or update a skill.",
           "type": "string",
           "const": "allow-chat-save-skill",

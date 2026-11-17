@@ -482,3 +482,8 @@ commands.allow = ["chat_link_preview"]
 identifier = "allow-chat-debug"
 description = "Read a session's raw history for the Debug panel."
 commands.allow = ["chat_debug"]
+
+[[permission]]
+identifier = "allow-chat-save-shared-page"
+description = "Save a conversation as a web page to share."
+commands.allow = ["chat_save_shared_page"]

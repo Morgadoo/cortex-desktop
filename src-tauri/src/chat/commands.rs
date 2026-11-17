@@ -1097,6 +1097,29 @@ pub fn chat_debug(app: AppHandle, id: String) -> Result<serde_json::Value, Strin
     }))
 }
 
+/// Saves a conversation the page rendered as one self-contained web page, to share.
+#[tauri::command]
+pub async fn chat_save_shared_page(app: AppHandle, title: String, html: String) -> Result<bool, String> {
+    use tauri_plugin_dialog::DialogExt;
+    if html.len() > 64 * 1024 * 1024 {
+        return Err("The conversation is too large to save as one page.".into());
+    }
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_file_name(format!("{}.html", sanitize_file_name(&title)))
+        .add_filter("Web page", &["html"])
+        .save_file(move |path| {
+            let _ = tx.send(path);
+        });
+    let Some(path) = rx.await.map_err(|e| e.to_string())? else {
+        return Ok(false);
+    };
+    let path = path.into_path().map_err(|e| e.to_string())?;
+    std::fs::write(path.with_extension("html"), html).map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
 /// Full-text search over every conversation's title and messages.
 #[tauri::command]
 pub async fn chat_search(app: AppHandle, query: String) -> Result<Vec<super::index::Hit>, String> {

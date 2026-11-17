@@ -2261,7 +2261,7 @@ export class ChatView {
       await refreshConversations();
     });
     const meter = usageMeter(this.id, state.usage.get(this.id), c?.usage);
-    const exportBtn = h('button', { class: 'icon-btn', title: 'Export as Markdown' }, icon('share', 18));
+    const exportBtn = h('button', { class: 'icon-btn', title: 'Share or export' }, icon('share', 18));
     let changesBtn: HTMLElement | null = null;
     let terminalBtn: HTMLElement | null = null;
     let filesBtn: HTMLElement | null = null;
@@ -2282,7 +2282,19 @@ export class ChatView {
         changesBtn.addEventListener('click', () => openChanges(this.id, workdir.split(/[\\/]/).pop() ?? workdir));
       }
     }
-    exportBtn.addEventListener('click', () => void api.exportConversation(this.id).then((saved) => saved && toast('Conversation exported.')));
+    exportBtn.addEventListener('click', () => {
+      const item = (ic: string, label: string, hint: string, run: () => void) =>
+        h('button', { class: 'menu-item rich', on: { click: () => { close(); run(); } } }, icon(ic, 17), h('span', {}, h('strong', {}, label), h('small', {}, hint)));
+      const close = popover(
+        exportBtn,
+        h(
+          'div',
+          { class: 'menu' },
+          item('globe', 'Share as web page', 'One file anyone can open in a browser', () => void this.shareAsPage()),
+          item('download', 'Export as Markdown', 'The text, for notes and documents', () => void api.exportConversation(this.id).then((saved) => saved && toast('Conversation exported.')))
+        )
+      );
+    });
     clear(
       this.header,
       h(
@@ -2330,6 +2342,65 @@ export class ChatView {
       this.stickyTarget = current;
       const text = current!.querySelector('.bubble')?.textContent?.trim() ?? '';
       clear(this.sticky, h('span', {}, text.length > 160 ? `${text.slice(0, 160)}…` : text));
+    }
+  }
+
+  /**
+   * The conversation as one self-contained web page: what was asked and answered, rendered,
+   * with code, citations and sources, readable in light or dark, loading nothing from elsewhere.
+   */
+  private async shareAsPage() {
+    const c = this.conversation;
+    if (!c) return;
+    const title = this.header.querySelector('.crumb-title')?.textContent?.trim() || 'Conversation';
+    const body = document.createElement('div');
+    for (const turn of c.turns) {
+      if (turn.role === 'user') {
+        body.append(h('section', { class: 'you' }, h('div', { class: 'who' }, 'You'), h('div', { class: 'bubble' }, textOf(turn.parts))));
+        continue;
+      }
+      const answer = h('div', { class: 'markdown' });
+      for (const part of turn.parts) if (part.kind === 'text') answer.append(markdown(part.text));
+      // Frames, buttons and hover-only bits do not travel; links and text do.
+      answer.querySelectorAll('iframe, button, .code-head, .preview-head, script, .cite-icon, .site-icon').forEach((el) => el.remove());
+      const sources = sourcesOf(turn.parts);
+      body.append(
+        h(
+          'section',
+          { class: 'assistant' },
+          h('div', { class: 'who' }, 'Assistant'),
+          answer,
+          sources.length ? h('div', { class: 'sources' }, h('strong', {}, 'Sources'), h('ol', {}, sources.map((s) => h('li', {}, h('a', { href: s.url }, s.title), ` · ${hostOf(s.url)}`)))) : null
+        )
+      );
+    }
+    const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const page = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'">
+<title>${esc(title)}</title>
+<style>
+:root { --bg: #fff; --fg: #1d1d1f; --muted: #6b6b70; --card: #f3f3f5; --border: #e3e3e6; --accent: #6d4aff; color-scheme: light dark; }
+@media (prefers-color-scheme: dark) { :root { --bg: #1e1e20; --fg: #ececee; --muted: #9a9aa0; --card: #2a2a2d; --border: #38383c; --accent: #9b84ff; } }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 780px; margin: 0 auto; padding: 32px 16px 64px; }
+h1.title { font-size: 1.5rem; margin: 0 0 4px; } .meta { color: var(--muted); font-size: .85rem; margin-bottom: 28px; }
+section { margin: 0 0 28px; } .who { font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 6px; }
+.you .bubble { background: var(--card); border-radius: 14px; padding: 10px 14px; white-space: pre-wrap; }
+a { color: var(--accent); } pre { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px; overflow-x: auto; font-size: .85rem; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; } :not(pre) > code { background: var(--card); border-radius: 4px; padding: 1px 4px; }
+table { border-collapse: collapse; } th, td { border: 1px solid var(--border); padding: 4px 8px; } img { max-width: 100%; border-radius: 8px; }
+.sources { font-size: .85rem; color: var(--muted); border-top: 1px solid var(--border); margin-top: 12px; padding-top: 8px; } .sources ol { margin: 4px 0 0; padding-left: 20px; }
+details > summary { display: none; } .footer { color: var(--muted); font-size: .8rem; margin-top: 40px; }
+</style></head><body><main>
+<h1 class="title">${esc(title)}</h1><div class="meta">Shared from Lumo · ${new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}</div>
+${body.innerHTML}
+<div class="footer">AI answers can contain mistakes. Check important information.</div>
+</main></body></html>`;
+    try {
+      if (await tauriInvoke<boolean>('chat_save_shared_page', { title, html: page })) toast('Saved as a web page. Send the file to share the conversation.');
+    } catch (e) {
+      toast(String(e), 'error');
     }
   }
 
