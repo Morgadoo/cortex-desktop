@@ -2,6 +2,7 @@
 import { tauriInvoke } from '../../shared/tauri';
 import { api, newId, type ApprovalMode, type ChatParams, type Conversation, type Part, type Turn, type UsageTotals } from './api';
 import { fillVariables } from './variables';
+import { startVoiceConversation, voiceActive, voiceTurnEnded } from './voice';
 import { clear, confirmDialog, greeting, h, icon, markdown, modal, popover, promptText, timeLabel, toast } from './dom';
 import { changed, currentModel, followUpsOn, navigate, setMode, state, type LiveTurn } from './state';
 import { openSettings } from './settings';
@@ -906,7 +907,7 @@ function stopSpeaking() {
 
 /** Reads a finished answer aloud when auto-play is on. */
 export function autoPlay(text: string) {
-  if (!audioSettings?.tts.autoPlay || audioSettings.tts.engine === 'off' || !text.trim()) return;
+  if (!audioSettings?.tts.autoPlay || audioSettings.tts.engine === 'off' || !text.trim() || voiceActive()) return;
   stopSpeaking();
   void speakText(text)
     .then((playback) => {
@@ -1614,7 +1615,11 @@ class Composer {
       this.renderBar();
     });
     const dictation = this.transcribing ? h('span', { class: 'dots' }) : this.recorder ? h('span', { class: 'dictation' }, discard, mic) : null;
-    clear(this.bar, h('div', { class: 'bar-left' }, plus, approval), h('div', { class: 'bar-right' }, speed, modelBtn, dictation, action));
+    // Hands-free: talk, it answers aloud, and listens again.
+    const voice = !running && !hasText && !this.recorder && !this.transcribing
+      ? h('button', { class: 'icon-btn', title: 'Voice conversation: talk hands-free', on: { click: () => this.startVoice() } }, icon('wave', 17))
+      : null;
+    clear(this.bar, h('div', { class: 'bar-left' }, plus, approval), h('div', { class: 'bar-right' }, speed, modelBtn, dictation, voice, action));
   }
 
   private recorder: Recording | null = null;
@@ -1622,6 +1627,25 @@ class Composer {
   private startingDictation = false;
 
   /** Records from the microphone; stopping sends the audio to the speech model. */
+  private startVoice() {
+    if (audioSettings?.stt.engine === 'off') {
+      toast('Voice input is off. Choose a speech-to-text engine in Settings → Audio.', 'error');
+      return void openSettings('audio');
+    }
+    startVoiceConversation({
+      send: (text) => send(text, this.conversationId),
+      answer: async (id) => {
+        try {
+          const c = await api.conversation(id);
+          const last = c.turns[c.turns.length - 1];
+          return last?.role === 'assistant' ? textOf(last.parts) : null;
+        } catch {
+          return null;
+        }
+      },
+    });
+  }
+
   private async toggleDictation() {
     if (this.recorder) return void this.finishDictation();
     if (this.startingDictation) return;
@@ -2574,6 +2598,7 @@ const followUps = new Map<string, string[]>();
 
 /** After a turn ends: the next queued message goes, or else follow-ups are suggested. */
 export function turnEnded(id: string, ok: boolean) {
+  voiceTurnEnded(id, ok);
   const list = queued.get(id);
   if (ok && list?.length) {
     const next = list.shift()!;

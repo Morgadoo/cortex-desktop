@@ -218,6 +218,7 @@ items most likely to differ:
 | Artifacts / runnable apps | LibreChat, lobehub | Mini apps and canvases | Done |
 | Image generation | open-webui, LibreChat, lobehub | `generate_image` via rig (OpenAI, xAI, Together) | Done |
 | Voice input | open-webui, lobehub | Dictation via rig transcription (OpenAI, Groq) | Done |
+| Hands-free voice conversation | open-webui (call mode), onyx, osaurus, openbot.run | The wave button beside the model opens a call: it listens, sends when you pause (short sounds and lone blips are ignored), shows what it heard, reads the answer aloud and listens again; tap the orb to interrupt or pause, Esc or End to hang up. The microphone stays open for the call and never plays back through the speakers; auto-play stays quiet while a call reads answers itself. The first turn was verified live (tone in, transcription, send, spoken answer, listening again); later turns could not be confirmed in the headless test audio setup | Done |
 | Read aloud (TTS) | open-webui, lobehub | Speaker under each answer, via rig speech models (xAI, OpenAI); verified live | Done |
 | Audio provider setup | open-webui (Admin → Audio) | Settings → Audio, as Open WebUI sets it up. Speech to text: chat providers, any OpenAI-compatible server (base URL, key, model, language) or ElevenLabs. Text to speech: chat providers, OpenAI-compatible (Kokoro, LocalAI, Speaches…), xAI, ElevenLabs (account voices listed) or the system voice. Each has its voice, speed and keychain-stored key. Auto-send after dictation, auto-play of answers. OpenAI-compatible TTS and auto-play verified live | Done |
 | RAG over documents | open-webui, onyx | Libraries and project files, cited | Done |
@@ -281,5 +282,8 @@ items most likely to differ:
   endpoint (404), so it has not run against a real speech-to-text model yet. The same applies to
   the OpenAI-compatible and ElevenLabs speech-to-text engines and to ElevenLabs voices, which
   need keys this setup does not have.
+- **Voice conversation beyond the first turn:** in the headless test setup (PulseAudio null sinks,
+  no audio clock), WebKit's capture delivers microphone audio late and in fragments after the
+  first take, so second and later turns could not be confirmed there. The first full turn was.
 - **Pull requests to non-GitHub remotes:** the branch is pushed, and the pull request is opened on that host by hand.
 - **Branding:** the app still carries the Lumo name and logo; a new name is the owner's decision.

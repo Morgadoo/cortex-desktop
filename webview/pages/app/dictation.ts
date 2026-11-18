@@ -15,12 +15,56 @@ export interface Recording {
 
 const WAV_RATE = 16_000;
 
-export async function startRecording(): Promise<Recording> {
+/** For hands-free use: how loud the input is, and a call once the speaker pauses. */
+export interface Listening {
+  /** Input level, 0–1, a few times a second. */
+  onLevel?: (level: number) => void;
+  /** Called once, after speech and then this long a pause. */
+  onPause?: () => void;
+  pauseMs?: number;
+}
+
+/** RMS above this counts as sound. */
+const SPEECH_LEVEL = 0.02;
+/** Sound shorter than this in total (a click, a cough) is not speech. */
+const MIN_SPEECH_MS = 400;
+
+/** Feeds sample blocks; reports the level, and calls `onPause` once after speech and a pause. */
+function pauseDetector(listening: Listening, sampleRate: number): (samples: Float32Array) => void {
+  let speechMs = 0;
+  let quietSince = 0;
+  let paused = false;
+  return (samples) => {
+    let sum = 0;
+    for (const v of samples) sum += v * v;
+    const level = Math.sqrt(sum / samples.length);
+    listening.onLevel?.(Math.min(1, level * 8));
+    const now = performance.now();
+    const pauseMs = listening.pauseMs ?? 1300;
+    if (level > SPEECH_LEVEL) {
+      speechMs += (samples.length / sampleRate) * 1000;
+      quietSince = 0;
+    } else if (!paused) {
+      quietSince ||= now;
+      if (now - quietSince > pauseMs) {
+        if (speechMs >= MIN_SPEECH_MS) {
+          paused = true;
+          listening.onPause?.();
+        } else {
+          // A lone blip followed by quiet was not speech.
+          speechMs = 0;
+        }
+      }
+    }
+  };
+}
+
+export async function startRecording(listening: Listening = {}): Promise<Recording> {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
   const release = () => stream.getTracks().forEach((t) => t.stop());
   // WAV first: every speech-to-text endpoint takes it and it needs no codec support.
   try {
-    return wavRecorder(stream, release);
+    return wavRecorder(stream, release, listening);
   } catch {
     try {
       return mediaRecorder(stream, release);
@@ -56,7 +100,7 @@ function mediaRecorder(stream: MediaStream, release: () => void): Recording {
   };
 }
 
-function wavRecorder(stream: MediaStream, release: () => void): Recording {
+function wavRecorder(stream: MediaStream, release: () => void, listening: Listening = {}): Recording {
   const Context = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
   const context = new Context();
   const source = context.createMediaStreamSource(stream);
@@ -64,11 +108,23 @@ function wavRecorder(stream: MediaStream, release: () => void): Recording {
   // (which the page's CSP would have to allow).
   const processor = context.createScriptProcessor(4096, 1, 1);
   const parts: Float32Array[] = [];
-  processor.onaudioprocess = (e) => parts.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+  const detect = listening.onLevel || listening.onPause ? pauseDetector(listening, context.sampleRate) : null;
+  processor.onaudioprocess = (e) => {
+    const samples = new Float32Array(e.inputBuffer.getChannelData(0));
+    parts.push(samples);
+    e.outputBuffer.getChannelData(0).fill(0);
+    detect?.(samples);
+  };
   source.connect(processor);
-  processor.connect(context.destination);
+  // The processor only runs while connected to the output, but the microphone must never be
+  // heard there (WebKit passes the input through): a muted gain node keeps the output silent.
+  const mute = context.createGain();
+  mute.gain.value = 0;
+  processor.connect(mute);
+  mute.connect(context.destination);
   const finish = () => {
     processor.disconnect();
+    mute.disconnect();
     source.disconnect();
     release();
     void context.close();
@@ -135,4 +191,67 @@ export async function toBase64(blob: Blob): Promise<string> {
   let binary = '';
   for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(binary);
+}
+
+/**
+ * A microphone kept open for a whole voice conversation, recording one take per turn. Reopening
+ * the device for every turn is slow, and some engines hand a new stream stale audio; one
+ * continuous stream avoids both. Between takes the samples are dropped.
+ */
+export interface Microphone {
+  /** Starts a new take, with level and pause callbacks. */
+  listen(listening: Listening): void;
+  /** Ends the take and returns it as WAV; the microphone stays open. */
+  take(): Blob;
+  /** Drops the current take without returning it. */
+  idle(): void;
+  close(): void;
+}
+
+export async function openMicrophone(): Promise<Microphone> {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+  const Context = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  const context = new Context();
+  const source = context.createMediaStreamSource(stream);
+  const processor = context.createScriptProcessor(4096, 1, 1);
+  const mute = context.createGain();
+  mute.gain.value = 0;
+  let parts: Float32Array[] = [];
+  let detect: ((samples: Float32Array) => void) | null = null;
+  processor.onaudioprocess = (e) => {
+    e.outputBuffer.getChannelData(0).fill(0);
+    if (!detect) return;
+    const samples = new Float32Array(e.inputBuffer.getChannelData(0));
+    parts.push(samples);
+    detect(samples);
+  };
+  source.connect(processor);
+  processor.connect(mute);
+  mute.connect(context.destination);
+  return {
+    listen(listening) {
+      parts = [];
+      detect = pauseDetector(listening, context.sampleRate);
+      // Playing the answer can suspend or interrupt the context; listening needs it running.
+      if (context.state !== 'running') void context.resume();
+    },
+    take() {
+      detect = null;
+      const wav = encodeWav(downsample(concat(parts), context.sampleRate, WAV_RATE), WAV_RATE);
+      parts = [];
+      return wav;
+    },
+    idle() {
+      detect = null;
+      parts = [];
+    },
+    close() {
+      detect = null;
+      processor.disconnect();
+      mute.disconnect();
+      source.disconnect();
+      stream.getTracks().forEach((t) => t.stop());
+      void context.close();
+    },
+  };
 }

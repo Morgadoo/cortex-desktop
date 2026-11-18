@@ -76,6 +76,7 @@ const ICONS: Record<string, string> = {
   send: 'M12 19V5M6 11l6-6 6 6',
   stop: 'M7 7h10v10H7z',
   mic: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3',
+  wave: 'M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4',
   bolt: 'M13 3L5 14h6l-1 7 8-11h-6z',
   brain: 'M9 4a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 6 0V5a2 2 0 0 0-3-1zM15 4a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-6 0',
   pencil: 'M4 20l4-1L19 8l-3-3L5 16zM14 7l3 3',

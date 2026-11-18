@@ -1324,3 +1324,18 @@ button.usage-meter:hover { background: var(--hover); }
 .preset-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .chip-btn { padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px; font-size: var(--fs-sm); color: var(--text-secondary); }
 .chip-btn:hover { background: var(--bg-hover); color: var(--text); }
+
+/* ------------------------------------------------------------------ voice conversation */
+
+.voice-overlay { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(6px); }
+.voice-card { display: flex; flex-direction: column; align-items: center; gap: 18px; max-width: 520px; padding: 32px; text-align: center; }
+.voice-orb { --level: 0; width: 148px; height: 148px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--accent) 55%, white), var(--accent)); box-shadow: 0 0 calc(24px + var(--level) * 70px) color-mix(in srgb, var(--accent) 60%, transparent); transform: scale(calc(1 + var(--level) * 0.18)); transition: transform 90ms linear, box-shadow 90ms linear; }
+.voice-overlay[data-phase="thinking"] .voice-orb, .voice-overlay[data-phase="transcribing"] .voice-orb { animation: voice-breathe 1.4s ease-in-out infinite; }
+.voice-overlay[data-phase="speaking"] .voice-orb { animation: voice-speak 0.9s ease-in-out infinite; }
+.voice-overlay[data-phase="paused"] .voice-orb { filter: grayscale(0.8) brightness(0.7); }
+@keyframes voice-breathe { 50% { transform: scale(0.92); opacity: 0.8; } }
+@keyframes voice-speak { 50% { transform: scale(1.08); } }
+.voice-status { font-size: var(--fs-lg); font-weight: 600; }
+.voice-heard { color: var(--text-secondary); min-height: 1.4em; }
+.voice-end { margin-top: 8px; }
+@media (prefers-reduced-motion: reduce) { .voice-orb { animation: none !important; transition: none; } }
