@@ -772,6 +772,22 @@ pub fn chat_update_memory(app: AppHandle, id: String, text: String) -> Result<su
     Ok(memories)
 }
 
+/// Files a memory: its category, importance (1–3) and whether the user confirmed it.
+#[tauri::command]
+pub fn chat_file_memory(app: AppHandle, id: String, category: String, importance: u8, confirmed: bool) -> Result<super::memory::Memories, String> {
+    let dir = config_dir(&app)?;
+    let mut memories = super::memory::load(&dir);
+    let memory = memories.items.iter_mut().find(|m| m.id == id).ok_or("No such memory.")?;
+    let category = category.trim().to_lowercase();
+    memory.category = if super::memory::CATEGORIES.contains(&category.as_str()) { category } else { String::new() };
+    memory.importance = importance.clamp(1, 3);
+    if confirmed {
+        memory.confidence = "stated".into();
+    }
+    super::memory::save(&dir, &memories)?;
+    Ok(memories)
+}
+
 #[tauri::command]
 pub fn chat_delete_memory(app: AppHandle, id: Option<String>) -> Result<super::memory::Memories, String> {
     let dir = config_dir(&app)?;

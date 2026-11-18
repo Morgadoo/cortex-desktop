@@ -16,7 +16,7 @@ import { LibrariesPage } from './libraries';
 import { AppsPage } from './apps';
 import { WorkflowsPage } from './workflows';
 import { applyTheme, openSettings, reloadModels, setTheme, storedTheme } from './settings';
-import { stepZoom } from './appearance';
+import { stepZoom, applyBackdrop } from './appearance';
 import { applyEvent, back, changed, finishNotificationsOn, finishSoundOn, forward, navigate, playChime, state, subscribe, type Page } from './state';
 import { button, emptyState, iconButton, modalHeader } from './ui';
 import { refreshAudioSettings } from './audio';
@@ -780,6 +780,7 @@ async function start() {
   }
 
   document.body.append(h('div', { class: 'app' }, sidebar, main));
+  applyBackdrop();
   subscribe(() => {
     renderSidebar();
     renderMain();

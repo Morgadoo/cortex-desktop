@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 123 |
+| DONE | 58 | 126 |
 | PARTIAL | 86 | 54 |
-| MISSING | 48 | 15 |
+| MISSING | 48 | 12 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 36 / 8 / 1 / 9 · LibreChat 33 / 8 / 1 / 4 · LobeHub 17 / 11 / 1 / 5 · Onyx 12 / 6 / 3 / 5 · Osaurus 9 / 12 / 5 / 4 · OpenBot 16 / 9 / 4 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 36 / 8 / 1 / 9 · LibreChat 33 / 8 / 1 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 12 / 6 / 3 / 5 · Osaurus 9 / 12 / 5 / 4 · OpenBot 18 / 9 / 2 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -148,7 +148,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 36 / 8 / 1 / 9
 | LobeHub | Duplicate, move, forward to another agent | MISSING | DONE | Branch (duplicate), move to project, Continue with an agent (parity: Continue a chat with an agent) |
 | LobeHub | Export as screenshot, text, PDF, JSON | PARTIAL | PARTIAL | Markdown, JSON and PDF (print) export. Missing: export as a screenshot image |
 | LobeHub | Share link | MISSING | OUT OF SCOPE | Server-only (parity L202) |
-| LobeHub | Memory categories, weight, confidence, links | MISSING | MISSING | A memory has text, date, source only (api.ts `Memory`) |
+| LobeHub | Memory categories, weight, confidence, links | MISSING | DONE | parity: Memory categories, importance, confidence, links (memory.rs `Filing`) |
 | LobeHub | Filter memories | PARTIAL | DONE | Find, by source and by date (parity: Filter saved facts) |
 | LobeHub | Memory agent | PARTIAL | PARTIAL | `sanitize-my-knowledge` skill (parity L60). Missing: an automatic reviewer |
 | LobeHub | Multi-user, SSO, PWA, IM channels | MISSING | OUT OF SCOPE | parity L256–257 |
@@ -211,8 +211,8 @@ Per app now (done / partial / missing / out of scope): Open WebUI 36 / 8 / 1 / 9
 | OpenBot | FIFO queue: pause, resume, cancel, survives a crash | PARTIAL | DONE | Queue kept across restarts, paused and resumed, cleared |
 | OpenBot | Pinned messages | MISSING | DONE | Bookmarked messages, listed per chat and in search (parity: Bookmark messages) |
 | OpenBot | Audio, video, ZIP attachments | PARTIAL | PARTIAL | Audio transcribed, ZIP read file by file, PDFs and Office read (parity: Audio and ZIP attachments). Missing: video |
-| OpenBot | Bubble colours from the avatar | MISSING | MISSING | Cosmetic |
-| OpenBot | Backdrop | MISSING | MISSING | Cosmetic |
+| OpenBot | Bubble colours from the avatar | MISSING | DONE | parity: Agent colours from the avatar (chat.ts `avatarHue`) |
+| OpenBot | Backdrop | MISSING | DONE | parity: Backdrop (appearance.ts `applyBackdrop`) |
 | OpenBot | Copy an error's details | PARTIAL | DONE | Copy details on a failed reply (parity: Copy error details) |
 | OpenBot | Codex, Claude Code, Gemini CLIs as providers | MISSING | DONE | parity: Coding agent programs as models |
 | OpenBot | ACP agents as providers | PARTIAL | PARTIAL | OpenAI-compatible and Ollama. Missing: ACP |

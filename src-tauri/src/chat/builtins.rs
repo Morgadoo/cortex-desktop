@@ -235,7 +235,12 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             "Save one lasting fact about the user for future conversations.",
             json!({
                 "type": "object",
-                "properties": { "fact": { "type": "string", "description": "A short, self-contained fact." } },
+                "properties": {
+                    "fact": { "type": "string", "description": "A short, self-contained fact." },
+                    "category": { "type": "string", "enum": ["preference", "work", "person", "project", "habit", "fact"], "description": "What it is about." },
+                    "importance": { "type": "string", "enum": ["low", "normal", "high"], "description": "high: keep it in mind always (a strong preference, a constraint); low: a passing detail." },
+                    "inferred": { "type": "boolean", "description": "true when you concluded it rather than the user saying it." }
+                },
                 "required": ["fact"]
             }),
         ));
@@ -325,7 +330,17 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
         }
         REMEMBER => {
             let mut memories = memory::load(config_dir);
-            match memory::add(&mut memories, &str_arg("fact"), "assistant") {
+            let filing = memory::Filing {
+                category: str_arg("category"),
+                importance: match str_arg("importance").as_str() {
+                    "low" => Some(1),
+                    "high" => Some(3),
+                    _ => Some(2),
+                },
+                inferred: args.get("inferred").and_then(Value::as_bool).unwrap_or(false),
+                conversation: Some(str_arg("conversation")).filter(|c| !c.is_empty()),
+            };
+            match memory::add_filed(&mut memories, &str_arg("fact"), "assistant", filing) {
                 Ok(m) => match memory::save(config_dir, &memories) {
                     Ok(()) => ok(format!("Saved as {}.", &m.id[..8])),
                     Err(e) => err(e),

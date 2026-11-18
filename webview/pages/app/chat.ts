@@ -3120,6 +3120,21 @@ export class HomeView {
   private noModels = state.models.length === 0;
 }
 
+/**
+ * A hue for an avatar: emoji with a colour of their own get it (🍊 orange, 🌿 green…), anything
+ * else a steady hue from its characters, so each agent keeps its colour.
+ */
+export function avatarHue(avatar: string): number {
+  const known: [RegExp, number][] = [
+    [/[🍎🍓🍒🌹❤️🔥🚒🐞🦀]/u, 4], [/[🍊🧡🦊🎃🏀🥕]/u, 28], [/[🍋🌻⭐💛🐝🌟☀️]/u, 48], [/[🌿🍀🌱💚🐸🥝🌲🌵]/u, 135],
+    [/[🐳💧🌊💙🧊🦋🫐]/u, 205], [/[🍇🔮💜🦄☂️]/u, 275], [/[🌸🎀🩷🐷🌷]/u, 330],
+  ];
+  for (const [re, hue] of known) if (re.test(avatar)) return hue;
+  let hash = 0;
+  for (const ch of avatar) hash = (hash * 31 + ch.codePointAt(0)!) >>> 0;
+  return hash % 360;
+}
+
 /** Whether the next Code session starts in a new git worktree. */
 function worktreeNext(): boolean {
   try {
@@ -3311,6 +3326,14 @@ export class ChatView {
     void this.refresh(true);
   }
 
+  /** An agent's chat takes a colour from its avatar (OpenBot's bubble colours). */
+  private tintForAgent() {
+    const agent = this.conversation?.agentId ? state.agents.find((a) => a.id === this.conversation!.agentId) : undefined;
+    this.el.classList.toggle('agent-tinted', Boolean(agent));
+    if (agent) this.el.style.setProperty('--agent-hue', String(avatarHue(agent.avatar || agent.name)));
+    else this.el.style.removeProperty('--agent-hue');
+  }
+
   async refresh(scroll: boolean) {
     try {
       this.conversation = await api.conversation(this.id);
@@ -3345,6 +3368,7 @@ export class ChatView {
     if (optimistic && this.conversation.turns.length === 0) {
       this.conversation.turns.push({ role: 'user', parts: userParts(optimistic.text, optimistic.images), index: -1, time: new Date().toISOString(), rating: 0 });
     }
+    this.tintForAgent();
     this.renderTranscript();
     this.update();
     if (scroll) this.scrollToBottom(false);

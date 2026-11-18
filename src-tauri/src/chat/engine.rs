@@ -1072,6 +1072,12 @@ impl Runner<'_> {
                     map.insert("reply_in".into(), Value::String(self.id.to_string()));
                 }
             }
+            // A saved fact keeps a link to the chat it was learned in.
+            if name == builtins::REMEMBER {
+                if let Some(map) = arguments.as_object_mut() {
+                    map.insert("conversation".into(), Value::String(self.id.to_string()));
+                }
+            }
             return builtins::run(self.config_dir, name, &arguments).await;
         }
         match self.offered.iter().find(|t| t.name == name) {

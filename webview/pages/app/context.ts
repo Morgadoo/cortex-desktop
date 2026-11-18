@@ -3,7 +3,7 @@ import { tauriInvoke } from '../../shared/tauri';
 import { api, type Memories, type Skill } from './api';
 import { clear, confirmDialog, h, icon, markdown, modal, popover, promptText, toast } from './dom';
 import { improveButton } from './improve';
-import { state } from './state';
+import { navigate, state } from './state';
 import { button, emptyState, iconButton, modalHeader, pageHeader, switchInput, tabs } from './ui';
 
 
@@ -353,6 +353,15 @@ const knowledgeApi = {
   remove: (id: string) => tauriInvoke<KnowledgePageData[]>('chat_delete_knowledge_page', { id }),
 };
 
+const MEMORY_CATEGORIES: [string, string][] = [
+  ['preference', 'Preference'],
+  ['work', 'Work'],
+  ['person', 'Person'],
+  ['project', 'Project'],
+  ['habit', 'Habit'],
+  ['fact', 'Fact'],
+];
+
 /** A knowledge page's editor: title and Markdown, with a live preview. */
 function editKnowledgePage(page: KnowledgePageData | null, onSaved: (pages: KnowledgePageData[]) => void) {
   void modal((close) => {
@@ -389,6 +398,7 @@ export class KnowledgePage {
   private memories: Memories = { enabled: true, items: [] };
   private memoryQuery = '';
   private memorySource: 'all' | 'you' | 'assistant' = 'all';
+  private memoryCategory = '';
   private memoryDays = 0;
   private pages: KnowledgePageData[] = [];
   private tab: 'pages' | 'facts' = 'pages';
@@ -476,7 +486,21 @@ export class KnowledgePage {
     const sinceChip = (days: number, label: string) =>
       h('button', { class: `chip-btn${this.memoryDays === days ? ' active' : ''}`, on: { click: () => { this.memoryDays = days; this.render(); } } }, label);
     const filters = m.items.length > 3
-      ? h('div', { class: 'memory-filters' }, query, chip('all', 'All'), chip('you', 'Added by you'), chip('assistant', 'Saved by the assistant'), sinceChip(0, 'Any time'), sinceChip(30, 'Last 30 days'))
+      ? h(
+          'div',
+          { class: 'memory-filters' },
+          query,
+          chip('all', 'All'),
+          chip('you', 'Added by you'),
+          chip('assistant', 'Saved by the assistant'),
+          sinceChip(0, 'Any time'),
+          sinceChip(30, 'Last 30 days'),
+          (() => {
+            const pick = h('select', { class: 'memory-category' }, h('option', { value: '' }, 'Every subject'), MEMORY_CATEGORIES.map(([v, l]) => h('option', { value: v, selected: this.memoryCategory === v }, l)));
+            pick.addEventListener('change', () => { this.memoryCategory = pick.value; this.render(); });
+            return pick;
+          })()
+        )
       : null;
     const since = this.memoryDays ? Date.now() - this.memoryDays * 86_400_000 : 0;
     const words = this.memoryQuery.toLowerCase().split(/\s+/).filter(Boolean);
@@ -484,6 +508,7 @@ export class KnowledgePage {
       (i) =>
         (this.memorySource === 'all' || (this.memorySource === 'assistant') === (i.source === 'assistant')) &&
         (!since || Date.parse(i.createdAt) >= since) &&
+        (!this.memoryCategory || i.category === this.memoryCategory) &&
         words.every((w) => i.text.toLowerCase().includes(w))
     );
     const list = m.items.length
@@ -512,12 +537,30 @@ export class KnowledgePage {
               text.replaceWith(field);
               field.focus();
             });
+            // Filing (LobeHub's memory categories, weight and confidence).
+            const file = (category: string, importance: number, confirmed = false) =>
+              void tauriInvoke<Memories>('chat_file_memory', { id: item.id, category, importance, confirmed }).then((m) => this.set(m)).catch((e) => toast(String(e), 'error'));
+            const category = h('select', { class: 'memory-category', title: 'What it is about' }, h('option', { value: '' }, 'Other'), MEMORY_CATEGORIES.map(([v, l]) => h('option', { value: v, selected: item.category === v }, l)));
+            category.addEventListener('change', () => file(category.value, item.importance ?? 2));
+            const weight = item.importance ?? 2;
+            const importance = h('button', { class: `memory-weight w${weight}`, title: `Importance: ${['', 'a detail', 'normal', 'always keep in mind'][weight]} (click to change)` }, '●'.repeat(weight) + '○'.repeat(3 - weight));
+            importance.addEventListener('click', () => file(item.category ?? '', (weight % 3) + 1));
+            const inferred = item.confidence === 'inferred'
+              ? h('button', { class: 'memory-inferred', title: 'The assistant concluded this. Click to confirm it is right.', on: { click: () => file(item.category ?? '', weight, true) } }, 'inferred')
+              : null;
+            const source = item.conversation && state.conversations.some((c) => c.id === item.conversation)
+              ? h('button', { class: 'icon-btn small', title: 'Open the chat it came from', on: { click: () => navigate({ kind: 'chat', id: item.conversation! }) } }, icon('chat', 15))
+              : null;
             return h(
               'div',
               { class: 'memory-row' },
               icon(item.source === 'assistant' ? 'sparkle' : 'user', 16),
               text,
+              inferred,
+              category,
+              importance,
               h('span', { class: 'muted memory-date' }, new Date(item.createdAt).toLocaleDateString()),
+              source,
               edit,
               h('button', { class: 'icon-btn small', title: 'Delete', on: { click: async () => this.set(await api.deleteMemory(item.id)) } }, icon('trash', 15))
             );

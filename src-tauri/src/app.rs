@@ -182,6 +182,7 @@ pub fn run() {
             chat::commands::chat_get_hooks,
             chat::commands::chat_save_hooks,
             chat::commands::chat_create_worktree,
+            chat::commands::chat_file_memory,
             chat::commands::chat_import_archive,
             chat::commands::chat_open_app_window,
             chat::commands::chat_set_defaults,

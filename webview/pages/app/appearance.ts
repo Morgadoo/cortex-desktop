@@ -259,3 +259,81 @@ export function setBackground(id: string) {
   write(BACKGROUND_KEY, id);
   applyAppearance();
 }
+
+// ---------------------------------------------------------------------------------------------
+// Backdrop (OpenBot): a picture behind the conversation, under a veil that keeps text readable.
+
+export const BACKDROPS: { id: string; label: string; css: string }[] = [
+  { id: 'none', label: 'None', css: '' },
+  { id: 'dusk', label: 'Dusk', css: 'radial-gradient(1200px 700px at 15% 10%, rgba(139,109,255,.35), transparent 60%), radial-gradient(900px 600px at 90% 90%, rgba(255,120,90,.28), transparent 60%)' },
+  { id: 'aurora', label: 'Aurora', css: 'radial-gradient(1000px 600px at 80% 0%, rgba(52,211,153,.30), transparent 60%), radial-gradient(900px 700px at 0% 100%, rgba(56,132,255,.30), transparent 60%)' },
+  { id: 'paper', label: 'Paper', css: 'repeating-linear-gradient(0deg, rgba(127,127,127,.06) 0 1px, transparent 1px 28px), repeating-linear-gradient(90deg, rgba(127,127,127,.06) 0 1px, transparent 1px 28px)' },
+  { id: 'custom', label: 'Your picture', css: '' },
+];
+
+const BACKDROP_KEY = 'lumo.backdrop';
+const BACKDROP_IMAGE_KEY = 'lumo.backdropImage';
+const BACKDROP_VEIL_KEY = 'lumo.backdropVeil';
+
+export function storedBackdrop(): string {
+  const v = read(BACKDROP_KEY);
+  return v && BACKDROPS.some((b) => b.id === v) ? v : 'none';
+}
+
+/** How strongly the page colour covers the picture, 0–0.95. */
+export function backdropVeil(): number {
+  const v = Number(read(BACKDROP_VEIL_KEY));
+  return Number.isFinite(v) && v >= 0 && v <= 0.95 && read(BACKDROP_VEIL_KEY) !== null ? v : 0.72;
+}
+
+export function applyBackdrop() {
+  const main = document.querySelector<HTMLElement>('main.main');
+  if (!main) return;
+  const id = storedBackdrop();
+  const image = id === 'custom' ? read(BACKDROP_IMAGE_KEY) : null;
+  const layer = id === 'custom' ? (image ? `url("${image}") center / cover no-repeat` : '') : (BACKDROPS.find((b) => b.id === id)?.css ?? '');
+  main.classList.toggle('has-backdrop', Boolean(layer));
+  main.style.setProperty('--backdrop', layer || 'none');
+  main.style.setProperty('--backdrop-veil', String(id === 'custom' ? backdropVeil() : 0));
+}
+
+export function setBackdrop(id: string) {
+  write(BACKDROP_KEY, id);
+  applyBackdrop();
+}
+
+export function setBackdropVeil(v: number) {
+  write(BACKDROP_VEIL_KEY, String(v));
+  applyBackdrop();
+}
+
+/** Keeps a picture as the backdrop, scaled to at most 1920 px wide as a JPEG so it stays small. */
+export async function setBackdropImage(file: File): Promise<void> {
+  // Read as a data: URL; the page's policy does not load blob: images.
+  const url = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error('That picture could not be read.'));
+    reader.readAsDataURL(file);
+  });
+  {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = () => reject(new Error('That picture could not be read.'));
+      i.src = url;
+    });
+    const scale = Math.min(1, 1920 / img.naturalWidth);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(img.naturalWidth * scale);
+    canvas.height = Math.round(img.naturalHeight * scale);
+    canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const data = canvas.toDataURL('image/jpeg', 0.82);
+    try {
+      localStorage.setItem(BACKDROP_IMAGE_KEY, data);
+    } catch {
+      throw new Error('That picture is too large to keep; try a smaller one.');
+    }
+    setBackdrop('custom');
+  }
+}

@@ -1549,3 +1549,17 @@ button.usage-meter:hover { background: var(--hover); }
 .hook-add{display:grid;grid-template-columns:180px 1fr 1.4fr auto;gap:8px;align-items:center}
 .worktree-toggle{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;color:var(--text-secondary);cursor:pointer;align-self:flex-start}
 .worktree-toggle input{accent-color:var(--accent)}
+/* Backdrop: the picture sits under the page, the veil over it, the content above both. */
+.main.has-backdrop::before{content:"";position:absolute;inset:0;background:var(--backdrop);z-index:0;pointer-events:none}
+.main.has-backdrop::after{content:"";position:absolute;inset:0;background:var(--bg);opacity:var(--backdrop-veil,0);z-index:0;pointer-events:none}
+.main.has-backdrop > *{position:relative;z-index:1}
+.main.has-backdrop .chat, .main.has-backdrop .home, .main.has-backdrop .chat-scroll{background:transparent}
+.backdrop-thumb{display:flex;align-items:center;justify-content:center;color:var(--text-muted)}
+/* An agent's chat in its avatar's colour (OpenBot): the bubbles and the answer edge. */
+.chat.agent-tinted .turn-user .bubble{background:hsl(var(--agent-hue) 55% 50% / .22);border:1px solid hsl(var(--agent-hue) 60% 55% / .35)}
+.chat.agent-tinted .turn-assistant{border-left:2px solid hsl(var(--agent-hue) 60% 55% / .45);padding-left:14px}
+.agent-avatar{background:hsl(var(--agent-hue, 260) 55% 50% / .2)}
+.memory-category{background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text-secondary);font:inherit;font-size:12px;padding:2px 4px}
+.memory-weight{background:none;border:0;color:var(--accent);font-size:11px;letter-spacing:1px;cursor:pointer;padding:2px 4px}
+.memory-weight.w1{color:var(--text-muted)}
+.memory-inferred{background:var(--accent-soft);color:var(--accent-strong);border:0;border-radius:999px;font-size:11px;padding:1px 8px;cursor:pointer}

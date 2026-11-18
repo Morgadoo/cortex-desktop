@@ -160,6 +160,14 @@ export interface Memory {
   text: string;
   createdAt: string;
   source: string;
+  /** preference, work, person, project, habit, fact, or empty. */
+  category: string;
+  /** 1 (a detail) to 3 (always keep in mind). */
+  importance: number;
+  /** `stated` by the user or `inferred` by the assistant. */
+  confidence: string;
+  /** The chat it was learned in. */
+  conversation?: string;
 }
 
 export interface Memories {

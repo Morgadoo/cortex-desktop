@@ -7,7 +7,7 @@ import { changed, finishNotificationsOn, finishSoundOn, followStreamOn, followUp
 import { button, card, modalHeader, switchInput } from './ui';
 import { audioApi, refreshAudioSettings, speakText, type AudioView } from './audio';
 import { SHORTCUTS, bindingFor, comboOf, display, setBinding } from './shortcuts';
-import { ACCENTS, BACKGROUNDS, TEXT_SIZES, ZOOMS, accentHex, applyAppearance, readability, setAccent, setBackground, setReadability, storedAccent, storedBackground, type TextSize } from './appearance';
+import { ACCENTS, BACKDROPS, BACKGROUNDS, backdropVeil, setBackdrop, setBackdropImage, setBackdropVeil, storedBackdrop, TEXT_SIZES, ZOOMS, accentHex, applyAppearance, readability, setAccent, setBackground, setReadability, storedAccent, storedBackground, type TextSize } from './appearance';
 import { setVoicePauseMs, voicePauseMs } from './dictation';
 
 export type Section = 'profile' | 'providers' | 'audio' | 'permissions' | 'general' | 'appearance';
@@ -1358,7 +1358,42 @@ function renderAppearance(content: HTMLElement) {
       h('h3', {}, 'Background and palette'),
       h('p', { class: 'muted' }, `The palette for the window, sidebar and cards. Each one has a ${dark ? 'light' : 'dark'} version that follows the theme.`),
       h('div', { class: 'bg-tiles' }, tiles),
-      h('div', { class: 'card-actions start' }, button({ variant: 'subtle', size: 'sm', icon: 'reset', label: 'Reset appearance', onClick: () => { setAccent('theme'); setBackground('default'); rerender(); } }))
+      h('div', { class: 'card-actions start' }, button({ variant: 'subtle', size: 'sm', icon: 'reset', label: 'Reset appearance', onClick: () => { setAccent('theme'); setBackground('default'); setBackdrop('none'); rerender(); } }))
+    )
+  );
+
+  // Backdrop: a picture behind the conversation.
+  const backdrop = storedBackdrop();
+  const pick = () => {
+    const input = h('input', { type: 'file', accept: 'image/*', class: 'hidden' });
+    document.body.append(input);
+    input.addEventListener('change', () => {
+      const file = input.files?.[0];
+      input.remove();
+      if (file) void setBackdropImage(file).then(rerender).catch((e) => toast(String(e instanceof Error ? e.message : e), 'error'));
+    });
+    input.click();
+  };
+  const backdropTiles = BACKDROPS.map((b) =>
+    h(
+      'button',
+      {
+        type: 'button',
+        class: `bg-tile${backdrop === b.id ? ' active' : ''}`,
+        on: { click: () => { if (b.id === 'custom') pick(); else { setBackdrop(b.id); rerender(); } } },
+      },
+      h('span', { class: 'bg-thumb backdrop-thumb', style: { background: b.id === 'custom' ? 'var(--bg-input)' : `${b.css ? `${b.css}, ` : ''}var(--bg)` } }, b.id === 'custom' ? icon('upload', 18) : null),
+      h('span', { class: 'bg-label' }, b.label, backdrop === b.id ? icon('check', 14) : null)
+    )
+  );
+  const veil = h('input', { type: 'range', min: '0', max: '0.95', step: '0.05', value: String(backdropVeil()) });
+  veil.addEventListener('input', () => setBackdropVeil(Number(veil.value)));
+  content.append(
+    card(
+      h('h3', {}, 'Backdrop'),
+      h('p', { class: 'muted' }, 'A picture behind your conversations. Your own picture stays on this device; the veil keeps the text readable on it.'),
+      h('div', { class: 'bg-tiles' }, backdropTiles),
+      backdrop === 'custom' ? row('Veil', 'How much the page colour covers your picture.', veil) : null
     )
   );
 }
