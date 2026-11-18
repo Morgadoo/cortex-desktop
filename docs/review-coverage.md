@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 207 |
+| DONE | 58 | 208 |
 | PARTIAL | 86 | 3 |
 | MISSING | 48 | 1 |
-| OUT OF SCOPE | 31 | 12 |
+| OUT OF SCOPE | 31 | 11 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 49 / 0 / 0 / 5 · LibreChat 45 / 0 / 0 / 1 · LobeHub 33 / 0 / 0 / 1 · Onyx 23 / 1 / 0 / 2 · Osaurus 26 / 1 / 1 / 2 · OpenBot 31 / 1 / 0 / 1.
+Per app now (done / partial / missing / out of scope): Open WebUI 50 / 0 / 0 / 4 · LibreChat 45 / 0 / 0 / 1 · LobeHub 33 / 0 / 0 / 1 · Onyx 23 / 1 / 0 / 2 · Osaurus 26 / 1 / 1 / 2 · OpenBot 31 / 1 / 0 / 1.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -50,7 +50,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 49 / 0 / 0 / 5
 | Open WebUI | Webhooks on completion; `notify` tool | MISSING | DONE | `notify` tool and task webhooks with Slack/Discord-friendly fields (parity: Webhooks when a task finishes) |
 | Open WebUI | Save web search results to knowledge | MISSING | DONE | Each web source has Save to a library; Libraries has Add a web page (parity: Save web pages to a library) |
 | Open WebUI | Hybrid search with reranking | PARTIAL | DONE | BM25 + embeddings fused, then an optional Cohere/Jina-style reranker (parity: Reranking) |
-| Open WebUI | Choice of vector databases | MISSING | OUT OF SCOPE | Left out: "A choice of vector database" (parity L219) |
+| Open WebUI | Choice of vector databases | MISSING | DONE | Settings → Semantic search → Vector store: this computer or Qdrant (local or Cloud), with a built-in MiniLM embedder; tested against a Qdrant REST stand-in, real server not run here |
 | Open WebUI | Extraction engines (Tika, Docling, OCR…) | MISSING | DONE | Settings → Providers → Document extraction: built-in readers, Apache Tika (PUT /tika, OCR when the server has Tesseract) or Docling (Markdown with tables), for library documents and chat attachments; falls back to the built-in reader when the server fails. Client tested against stand-in servers; verified live with a Tika stand-in |
 | Open WebUI | Always use full text | MISSING | DONE | parity L241 (`read_document`) |
 | Open WebUI | Knowledge file browser with preview | PARTIAL | DONE | Click a document to read its indexed text with find-in-text (parity: Library document preview) |

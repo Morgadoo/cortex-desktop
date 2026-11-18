@@ -212,6 +212,7 @@ pub fn run() {
             chat::commands::chat_usage_breakdown,
             chat::commands::chat_task_comment,
             chat::commands::chat_open_preview,
+            chat::commands::chat_check_vector_store,
             chat::commands::chat_export_skill_catalog,
             chat::commands::chat_skill_catalog,
             chat::commands::chat_add_skill_catalog,

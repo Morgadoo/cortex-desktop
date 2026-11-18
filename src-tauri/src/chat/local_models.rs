@@ -24,6 +24,8 @@ pub const VENDOR: &str = "local";
 pub enum Kind {
     Chat,
     Speech,
+    /// Turns text into vectors, for semantic library search.
+    Embedding,
 }
 
 /// A model that can be downloaded: its files on Hugging Face (`repo`, path) saved as names here.
@@ -43,6 +45,7 @@ pub const CATALOG: &[Entry] = &[
     Entry { id: "qwen2.5-7b", name: "Qwen 2.5 7B", kind: Kind::Chat, size_mb: 4_700, note: "The strongest here; 16 GB of memory, slower on a laptop.", files: &[("bartowski/Qwen2.5-7B-Instruct-GGUF", "Qwen2.5-7B-Instruct-Q4_K_M.gguf", "model.gguf"), ("Qwen/Qwen2.5-7B-Instruct", "tokenizer.json", "tokenizer.json")] },
     Entry { id: "llama-3.2-1b", name: "Llama 3.2 1B", kind: Kind::Chat, size_mb: 810, note: "Meta's small model; quick, English first.", files: &[("bartowski/Llama-3.2-1B-Instruct-GGUF", "Llama-3.2-1B-Instruct-Q4_K_M.gguf", "model.gguf"), ("unsloth/Llama-3.2-1B-Instruct", "tokenizer.json", "tokenizer.json")] },
     Entry { id: "llama-3.2-3b", name: "Llama 3.2 3B", kind: Kind::Chat, size_mb: 2_000, note: "Meta's mid-size model; 8 GB of memory or more.", files: &[("bartowski/Llama-3.2-3B-Instruct-GGUF", "Llama-3.2-3B-Instruct-Q4_K_M.gguf", "model.gguf"), ("unsloth/Llama-3.2-3B-Instruct", "tokenizer.json", "tokenizer.json")] },
+    Entry { id: "minilm-l6", name: "MiniLM L6 (embeddings)", kind: Kind::Embedding, size_mb: 90, note: "Semantic search for your libraries, on this computer (English first).", files: &[("sentence-transformers/all-MiniLM-L6-v2", "model.safetensors", "model.safetensors"), ("sentence-transformers/all-MiniLM-L6-v2", "config.json", "config.json"), ("sentence-transformers/all-MiniLM-L6-v2", "tokenizer.json", "tokenizer.json")] },
     Entry { id: "whisper-tiny", name: "Whisper tiny", kind: Kind::Speech, size_mb: 150, note: "Fast dictation; fine for clear speech.", files: &[("openai/whisper-tiny", "model.safetensors", "model.safetensors"), ("openai/whisper-tiny", "config.json", "config.json"), ("openai/whisper-tiny", "tokenizer.json", "tokenizer.json")] },
     Entry { id: "whisper-base", name: "Whisper base", kind: Kind::Speech, size_mb: 290, note: "A good balance for dictation.", files: &[("openai/whisper-base", "model.safetensors", "model.safetensors"), ("openai/whisper-base", "config.json", "config.json"), ("openai/whisper-base", "tokenizer.json", "tokenizer.json")] },
     Entry { id: "whisper-small", name: "Whisper small", kind: Kind::Speech, size_mb: 970, note: "More accurate, other languages too; slower.", files: &[("openai/whisper-small", "model.safetensors", "model.safetensors"), ("openai/whisper-small", "config.json", "config.json"), ("openai/whisper-small", "tokenizer.json", "tokenizer.json")] },
@@ -820,6 +823,65 @@ pub fn transcribe(root: &Path, id: &str, samples: &[f32], language: &str) -> Res
     Ok(text)
 }
 
+// ---------------------------------------------------------------------------------------------
+// Embeddings: a sentence-transformer (BERT) for semantic library search
+
+struct Embedder {
+    id: String,
+    model: candle_transformers::models::bert::BertModel,
+    tokenizer: tokenizers::Tokenizer,
+}
+
+fn embedder() -> &'static Mutex<Option<Embedder>> {
+    static E: OnceLock<Mutex<Option<Embedder>>> = OnceLock::new();
+    E.get_or_init(|| Mutex::new(None))
+}
+
+/// Passages embedded per forward pass.
+const EMBED_BATCH: usize = 16;
+
+/// Unit-length vectors for `texts`, in order: the mean of the token vectors (as
+/// sentence-transformers does), normalized so a dot product is the cosine.
+pub fn embed_texts(root: &Path, id: &str, texts: &[String]) -> Result<Vec<Vec<f32>>, String> {
+    use candle_transformers::models::bert;
+    if !installed(root, id) || entry(id).is_none_or(|e| e.kind != Kind::Embedding) {
+        return Err(format!("Download {} first (Settings → Providers → Built-in models).", entry(id).map_or(id, |e| e.name)));
+    }
+    let mut guard = embedder().lock().map_err(|e| e.to_string())?;
+    if guard.as_ref().is_none_or(|e| e.id != id) {
+        *guard = None;
+        let dir = model_dir(root, id)?;
+        let config: bert::Config = serde_json::from_str(&std::fs::read_to_string(dir.join("config.json")).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+        // SAFETY: the file is ours, downloaded and not changed while it is mapped.
+        let vb = unsafe { candle_nn::VarBuilder::from_mmaped_safetensors(&[dir.join("model.safetensors")], bert::DTYPE, &Device::Cpu) }.map_err(|e| e.to_string())?;
+        let model = bert::BertModel::load(vb, &config).map_err(|e| e.to_string())?;
+        let mut tokenizer = tokenizers::Tokenizer::from_file(dir.join("tokenizer.json")).map_err(|e| e.to_string())?;
+        tokenizer.with_padding(Some(tokenizers::PaddingParams { strategy: tokenizers::PaddingStrategy::BatchLongest, ..Default::default() }));
+        tokenizer.with_truncation(Some(tokenizers::TruncationParams { max_length: 256, ..Default::default() })).map_err(|e| e.to_string())?;
+        *guard = Some(Embedder { id: id.to_string(), model, tokenizer });
+    }
+    let e = guard.as_ref().ok_or("The embedding model is not loaded.")?;
+    let mut out = Vec::with_capacity(texts.len());
+    for chunk in texts.chunks(EMBED_BATCH) {
+        let encodings = e.tokenizer.encode_batch(chunk.to_vec(), true).map_err(|err| err.to_string())?;
+        let ids: Vec<Tensor> = encodings.iter().map(|enc| Tensor::new(enc.get_ids(), &Device::Cpu)).collect::<Result<_, _>>().map_err(|err| err.to_string())?;
+        let masks: Vec<Tensor> = encodings.iter().map(|enc| Tensor::new(enc.get_attention_mask(), &Device::Cpu)).collect::<Result<_, _>>().map_err(|err| err.to_string())?;
+        let ids = Tensor::stack(&ids, 0).map_err(|err| err.to_string())?;
+        let mask = Tensor::stack(&masks, 0).map_err(|err| err.to_string())?;
+        let types = ids.zeros_like().map_err(|err| err.to_string())?;
+        let hidden = e.model.forward(&ids, &types, Some(&mask)).map_err(|err| err.to_string())?;
+        // Mean over the real tokens only.
+        let mask_f = mask.to_dtype(candle_core::DType::F32).and_then(|m| m.unsqueeze(2)).map_err(|err| err.to_string())?;
+        let summed = hidden.broadcast_mul(&mask_f).and_then(|h| h.sum(1)).map_err(|err| err.to_string())?;
+        let counts = mask_f.sum(1).map_err(|err| err.to_string())?;
+        let mean = summed.broadcast_div(&counts).map_err(|err| err.to_string())?;
+        let norm = mean.sqr().and_then(|s| s.sum_keepdim(1)).and_then(|s| s.sqrt()).map_err(|err| err.to_string())?;
+        let unit = mean.broadcast_div(&norm).map_err(|err| err.to_string())?;
+        out.extend(unit.to_vec2::<f32>().map_err(|err| err.to_string())?);
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -923,13 +985,27 @@ mod tests {
         assert!(Place::take().is_some());
     }
 
+    /// With MiniLM downloaded (`LUMO_TEST_MODELS`): similar sentences land close together.
+    #[test]
+    #[ignore]
+    fn a_downloaded_embedder_groups_meanings() {
+        let Ok(dir) = std::env::var("LUMO_TEST_MODELS") else { return };
+        let root = Path::new(&dir).join("models");
+        let v = embed_texts(&root, "minilm-l6", &["How do I cancel the contract?".into(), "Termination clause: either party may end the agreement with 30 days notice.".into(), "The bakery sells sourdough on Saturdays.".into()]).unwrap();
+        assert_eq!(v.len(), 3);
+        assert_eq!(v[0].len(), 384);
+        let dot = |a: &[f32], b: &[f32]| a.iter().zip(b).map(|(x, y)| x * y).sum::<f32>();
+        eprintln!("contract~termination {:.3}, contract~bakery {:.3}", dot(&v[0], &v[1]), dot(&v[0], &v[2]));
+        assert!(dot(&v[0], &v[1]) > dot(&v[0], &v[2]) + 0.1);
+    }
+
     #[test]
     fn the_catalog_is_well_formed() {
         for e in CATALOG {
             assert!(e.files.iter().any(|f| f.2 == "tokenizer.json"), "{}", e.id);
             match e.kind {
                 Kind::Chat => assert!(e.files.iter().any(|f| f.2 == "model.gguf")),
-                Kind::Speech => assert!(e.files.iter().any(|f| f.2 == "model.safetensors") && e.files.iter().any(|f| f.2 == "config.json")),
+                Kind::Speech | Kind::Embedding => assert!(e.files.iter().any(|f| f.2 == "model.safetensors") && e.files.iter().any(|f| f.2 == "config.json")),
             }
         }
         let dir = tempfile::tempdir().unwrap();

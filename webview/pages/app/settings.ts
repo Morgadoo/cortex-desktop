@@ -42,7 +42,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Backup model', 'providers', 'fallback failover failure credit down'],
   ['Providers and API keys', 'providers', 'key openai anthropic mistral xai ollama llama.cpp lm studio model default base url'],
   ['Web search', 'providers', 'searxng brave tavily engine internet'],
-  ['Semantic search', 'providers', 'embeddings libraries vector rag rerank reranker reranking'],
+  ['Semantic search', 'providers', 'embeddings libraries vector rag rerank reranker reranking vector database store qdrant minilm built-in'],
   ['ACP agents', 'providers', 'acp agent client protocol zed claude code codex gemini goose coding agents'],
   ['Activity log', 'profile', 'audit log export tool calls approvals history csv'],
   ['Built-in models', 'providers', 'local offline download qwen llama whisper on device runtime'],
@@ -525,18 +525,22 @@ interface EmbeddingSettings {
   rerankUrl: string;
   rerankModel: string;
   hasRerankKey: boolean;
+  vectorStore: string;
+  qdrantUrl: string;
+  hasQdrantKey: boolean;
 }
 
 /** Semantic search for libraries: an OpenAI-compatible embedding model, fused with keyword search. */
 async function embeddingCard(): Promise<HTMLElement> {
   let current = await tauriInvoke<EmbeddingSettings>('chat_embedding_settings');
   const PRESETS: [string, string, string][] = [
+    ['Built-in (MiniLM)', 'builtin', 'minilm-l6'],
     ['Ollama (this computer)', 'http://localhost:11434/v1', 'nomic-embed-text'],
     ['LM Studio (this computer)', 'http://localhost:1234/v1', 'text-embedding-nomic-embed-text-v1.5'],
     ['OpenAI', 'https://api.openai.com/v1', 'text-embedding-3-small'],
     ['Mistral', 'https://api.mistral.ai/v1', 'mistral-embed'],
   ];
-  const baseUrl = h('input', { class: 'input', value: current.baseUrl, placeholder: 'http://localhost:11434/v1' });
+  const baseUrl = h('input', { class: 'input', value: current.baseUrl, placeholder: 'http://localhost:11434/v1, or builtin' });
   const model = h('input', { class: 'input', value: current.model, placeholder: 'nomic-embed-text' });
   const key = h('input', { class: 'input', type: 'password', placeholder: current.hasKey ? 'Saved in the keychain' : 'Not needed for local servers' });
   const presets = h(
@@ -559,19 +563,33 @@ async function embeddingCard(): Promise<HTMLElement> {
     { class: 'preset-row' },
     RERANKERS.map(([label, url, m]) => h('button', { class: 'chip-btn', on: { click: () => { rerankUrl.value = url; rerankModel.value = m; } } }, label))
   );
+  // Where vectors are searched: here, or a Qdrant server.
+  const store = h('select', { class: 'input' }, h('option', { value: 'local' }, 'This computer (no setup)'), h('option', { value: 'qdrant' }, 'Qdrant'));
+  store.value = current.vectorStore === 'qdrant' ? 'qdrant' : 'local';
+  const qdrantUrl = h('input', { class: 'input', value: current.qdrantUrl ?? '', placeholder: 'http://localhost:6333' });
+  const qdrantKey = h('input', { class: 'input', type: 'password', placeholder: current.hasQdrantKey ? 'Saved in the keychain' : 'Only for Qdrant Cloud or a server with a key' });
+  const qdrantStatus = h('small', { class: 'muted' });
+  const checkQdrant = h('button', { class: 'btn btn-secondary' }, 'Check server');
+  const qdrantFields = h('div', { class: 'qdrant-fields' }, h('label', { class: 'field-label' }, 'Qdrant server'), qdrantUrl, h('label', { class: 'field-label' }, 'Qdrant API key'), qdrantKey, h('div', { class: 'card-actions' }, qdrantStatus, checkQdrant));
+  const showStore = () => { qdrantFields.hidden = store.value !== 'qdrant'; };
+  store.addEventListener('change', showStore);
+  showStore();
   let enabled = current.enabled;
   const status = h('small', { class: 'muted' });
   const save = h('button', { class: 'btn btn-primary' }, 'Save');
   const indexNow = h('button', { class: 'btn btn-secondary' }, 'Embed documents now');
   const persist = async () => {
     current = await tauriInvoke<EmbeddingSettings>('chat_save_embedding_settings', {
-      settings: { enabled, baseUrl: baseUrl.value, model: model.value, hasKey: current.hasKey, rerankUrl: rerankUrl.value, rerankModel: rerankModel.value, hasRerankKey: current.hasRerankKey },
+      settings: { enabled, baseUrl: baseUrl.value, model: model.value, hasKey: current.hasKey, rerankUrl: rerankUrl.value, rerankModel: rerankModel.value, hasRerankKey: current.hasRerankKey, vectorStore: store.value, qdrantUrl: qdrantUrl.value, hasQdrantKey: current.hasQdrantKey },
       key: key.value.trim() || null,
       clearKey: false,
       rerankKey: rerankKey.value.trim() || null,
+      qdrantKey: qdrantKey.value.trim() || null,
     });
     key.value = '';
     rerankKey.value = '';
+    qdrantKey.value = '';
+    qdrantKey.placeholder = current.hasQdrantKey ? 'Saved in the keychain' : 'Only for Qdrant Cloud or a server with a key';
     rerankKey.placeholder = current.hasRerankKey ? 'Saved in the keychain' : 'Not needed for local servers';
     key.placeholder = current.hasKey ? 'Saved in the keychain' : 'Not needed for local servers';
   };
@@ -581,6 +599,15 @@ async function embeddingCard(): Promise<HTMLElement> {
       toast('Saved.');
     } catch (e) {
       toast(String(e), 'error');
+    }
+  });
+  checkQdrant.addEventListener('click', async () => {
+    qdrantStatus.textContent = 'Checking…';
+    try {
+      await persist();
+      qdrantStatus.textContent = `Connected: ${await tauriInvoke<string>('chat_check_vector_store')}.`;
+    } catch (e) {
+      qdrantStatus.textContent = String(e);
     }
   });
   indexNow.addEventListener('click', async () => {
@@ -598,7 +625,7 @@ async function embeddingCard(): Promise<HTMLElement> {
   });
   return card(
     h('h3', {}, 'Semantic search'),
-    h('p', { class: 'muted' }, 'Library searches always match words. With an embedding model they also match meaning ("cancel the contract" finds the termination clause), and both rankings are merged. Any OpenAI-compatible embeddings server works, including Ollama on this computer.'),
+    h('p', { class: 'muted' }, 'Library searches always match words. With an embedding model they also match meaning ("cancel the contract" finds the termination clause), and both rankings are merged. Use the built-in model (download it under Built-in models) or any OpenAI-compatible embeddings server, including Ollama on this computer.'),
     row('Use semantic search', 'Documents are embedded once and kept with the library.', switchInput(enabled, (v) => { enabled = v; })),
     presets,
     h('label', { class: 'field-label' }, 'Server base URL'),
@@ -607,6 +634,10 @@ async function embeddingCard(): Promise<HTMLElement> {
     model,
     h('label', { class: 'field-label' }, 'API key'),
     key,
+    h('h4', { class: 'subhead' }, 'Vector store'),
+    h('p', { class: 'muted' }, 'Where passage vectors are searched. This computer needs nothing more; Qdrant (on your machine or Qdrant Cloud) suits very large libraries. Vectors stay cached here either way, so switching never embeds again.'),
+    store,
+    qdrantFields,
     h('h4', { class: 'subhead' }, 'Reranking (optional)'),
     h('p', { class: 'muted' }, 'A reranking model reads the question beside each passage found and puts the ones that answer it first. Any server with the Cohere or Jina rerank API works (llama.cpp, vLLM, Infinity, TEI, Jina, Cohere); it works with or without semantic search.'),
     rerankPresets,
@@ -712,7 +743,7 @@ async function extractionCard(): Promise<HTMLElement> {
 interface LocalModel {
   id: string;
   name: string;
-  kind: 'chat' | 'speech';
+  kind: 'chat' | 'speech' | 'embedding';
   sizeMb: number;
   note: string;
   installed: boolean;
@@ -746,7 +777,7 @@ async function localModelsCard(): Promise<HTMLElement> {
               void draw();
               try {
                 await tauriInvoke('chat_download_local_model', { id: m.id });
-                toast(`${m.name} is ready. ${m.kind === 'chat' ? 'Pick it in the model menu, under Built-in.' : 'Choose Built-in under Settings → Audio → Speech-to-text.'}`);
+                toast(`${m.name} is ready. ${m.kind === 'chat' ? 'Pick it in the model menu, under Built-in.' : m.kind === 'embedding' ? 'Choose Built-in under Semantic search.' : 'Choose Built-in under Settings → Audio → Speech-to-text.'}`);
               } catch (e) {
                 toast(String(e), 'error');
               }
@@ -767,7 +798,9 @@ async function localModelsCard(): Promise<HTMLElement> {
       h('h4', {}, 'Chat'),
       list.filter((m) => m.kind === 'chat').map(row),
       h('h4', {}, 'Speech-to-text (Whisper)'),
-      list.filter((m) => m.kind === 'speech').map(row)
+      list.filter((m) => m.kind === 'speech').map(row),
+      h('h4', {}, 'Embeddings (semantic search)'),
+      list.filter((m) => m.kind === 'embedding').map(row)
     );
   };
   void listen<{ id: string; done: number; total: number }>('local-model-progress', (p) => {

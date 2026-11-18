@@ -2888,12 +2888,18 @@ pub async fn chat_save_embedding_settings(
     key: Option<String>,
     clear_key: bool,
     rerank_key: Option<String>,
+    qdrant_key: Option<String>,
 ) -> Result<super::embeddings::EmbeddingSettings, String> {
     let dir = config_dir(&app)?;
     let mut settings = settings;
     let saved = super::embeddings::load(&dir);
     settings.has_key = saved.has_key;
     settings.has_rerank_key = saved.has_rerank_key;
+    settings.has_qdrant_key = saved.has_qdrant_key;
+    if let Some(key) = qdrant_key.map(|k| k.trim().to_string()).filter(|k| !k.is_empty()) {
+        secrets()?.store(super::embeddings::QDRANT_SECRET, &key).await?;
+        settings.has_qdrant_key = true;
+    }
     if let Some(key) = rerank_key.map(|k| k.trim().to_string()).filter(|k| !k.is_empty()) {
         secrets()?.store(super::embeddings::RERANK_SECRET, &key).await?;
         settings.has_rerank_key = true;
@@ -2916,9 +2922,19 @@ pub async fn chat_index_libraries(app: AppHandle) -> Result<usize, String> {
     let dir = config_dir(&app)?;
     let settings = super::embeddings::load(&dir);
     if !super::embeddings::ready(&settings) {
-        return Err("Turn on semantic search and set its server and model first.".into());
+        return Err("Turn on semantic search and choose its model first.".into());
     }
     super::embeddings::index(&dir, &settings, &[]).await
+}
+
+/// Checks the Qdrant server in the saved settings; returns its version.
+#[tauri::command]
+pub async fn chat_check_vector_store(app: AppHandle) -> Result<String, String> {
+    let settings = super::embeddings::load(&config_dir(&app)?);
+    if settings.qdrant_url.is_empty() {
+        return Err("Enter the Qdrant server's address first.".into());
+    }
+    super::embeddings::qdrant::check(&settings).await
 }
 
 #[tauri::command]

@@ -13,6 +13,15 @@
 //! how well they answer it (Open WebUI's and Onyx's reranking step). Any server with the Cohere
 //! and Jina `/rerank` API works: Cohere, Jina, Voyage, llama.cpp's server, vLLM, Infinity, and
 //! Hugging Face TEI. Its key is `rerank` in the keychain.
+//!
+//! The model can also be built in (`base_url` = `builtin`, model = a built-in embedding model's
+//! id): a sentence-transformer that runs inside Lumo, so semantic search works offline with
+//! nothing to install.
+//!
+//! Where the vectors are searched (Open WebUI's choice of vector database): on this computer,
+//! from the per-document cache (the default; nothing to run), or in a Qdrant server, local or
+//! Qdrant Cloud, for large libraries. With Qdrant, vectors are still cached here, so changing
+//! stores never embeds again; Qdrant holds a copy of each passage and answers the searches.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -26,6 +35,9 @@ use super::store::write_json;
 
 pub const SECRET: &str = "embeddings";
 pub const RERANK_SECRET: &str = "rerank";
+pub const QDRANT_SECRET: &str = "qdrant";
+/// `base_url` for the embedding models built into Lumo.
+pub const BUILTIN: &str = "builtin";
 /// Passages sent per request.
 const BATCH: usize = 64;
 /// Reciprocal rank fusion's damping constant; 60 is the usual choice.
@@ -44,6 +56,17 @@ pub struct EmbeddingSettings {
     pub rerank_url: String,
     pub rerank_model: String,
     pub has_rerank_key: bool,
+    /// Where vectors are searched: `local` (this computer) or `qdrant`.
+    pub vector_store: String,
+    /// The Qdrant server, e.g. `http://localhost:6333`.
+    pub qdrant_url: String,
+    pub has_qdrant_key: bool,
+}
+
+impl EmbeddingSettings {
+    pub fn uses_qdrant(&self) -> bool {
+        self.vector_store == "qdrant" && !self.qdrant_url.is_empty()
+    }
 }
 
 fn settings_path(config_dir: &Path) -> PathBuf {
@@ -60,6 +83,10 @@ pub fn save(config_dir: &Path, settings: &EmbeddingSettings) -> Result<(), Strin
     s.model = s.model.trim().to_string();
     s.rerank_url = s.rerank_url.trim().trim_end_matches('/').to_string();
     s.rerank_model = s.rerank_model.trim().to_string();
+    s.qdrant_url = s.qdrant_url.trim().trim_end_matches('/').to_string();
+    if s.vector_store != "qdrant" {
+        s.vector_store = "local".into();
+    }
     write_json(&settings_path(config_dir), &s)
 }
 
@@ -75,6 +102,11 @@ async fn key() -> Result<String, String> {
 
 /// Vectors for `texts`, in order, from the configured model.
 pub async fn embed(settings: &EmbeddingSettings, texts: Vec<String>) -> Result<Vec<Vec<f32>>, String> {
+    if settings.base_url == BUILTIN {
+        let root = super::local_models::root()?;
+        let model = settings.model.clone();
+        return tokio::task::spawn_blocking(move || super::local_models::embed_texts(&root, &model, &texts)).await.map_err(|e| e.to_string())?;
+    }
     let config = OpenAIConfig::with_key(&dialects::OPENAI, key().await?).with_base_url(settings.base_url.clone());
     let model = config.client().embedding(settings.model.clone(), None);
     let mut out = Vec::with_capacity(texts.len());
@@ -163,6 +195,9 @@ pub async fn index(config_dir: &Path, settings: &EmbeddingSettings, only: &[Stri
             write_cache(&doc_dir, &document.id, &settings.model, vectors)?;
         }
     }
+    if settings.uses_qdrant() {
+        qdrant::sync(config_dir, settings).await?;
+    }
     Ok(done)
 }
 
@@ -170,6 +205,9 @@ pub async fn index(config_dir: &Path, settings: &EmbeddingSettings, only: &[Stri
 async fn semantic(config_dir: &Path, settings: &EmbeddingSettings, only: &[String], query: &str, k: usize) -> Result<Vec<Passage>, String> {
     index(config_dir, settings, only).await?;
     let question = embed(settings, vec![query.to_string()]).await?.pop().unwrap_or_default();
+    if settings.uses_qdrant() {
+        return qdrant::search(config_dir, settings, only, &question, k).await;
+    }
     let mut scored: Vec<(f32, Passage)> = Vec::new();
     for library in libraries::list(config_dir).into_iter().filter(|l| only.is_empty() || only.contains(&l.id)) {
         let doc_dir = libraries::docs_dir(config_dir, &library.id)?;
@@ -271,6 +309,227 @@ fn parse_rerank(body: &serde_json::Value, n: usize, k: usize) -> Result<Vec<(usi
     Ok(out)
 }
 
+/// Qdrant as the vector store, over its REST API.
+pub mod qdrant {
+    use std::collections::{BTreeMap, BTreeSet};
+    use std::path::Path;
+
+    use serde_json::{json, Value};
+
+    use super::{libraries, read_cache, EmbeddingSettings, Passage};
+
+    /// Points sent per upsert.
+    const UPSERT_BATCH: usize = 128;
+
+    async fn key() -> String {
+        let Ok(account) = crate::account::AccountId::parse(crate::chat::LOCAL_ACCOUNT) else { return String::new() };
+        crate::tools::auth::keychain_secrets(account).load(super::QDRANT_SECRET).await.ok().flatten().unwrap_or_default()
+    }
+
+    /// One collection per embedding model, since each has its own width and meaning.
+    pub fn collection(model: &str) -> String {
+        let tag: String = model.chars().map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '_' }).take(60).collect();
+        format!("lumo_{tag}")
+    }
+
+    /// A stable point id for a passage (FNV-1a, below 2^63 so every JSON reader keeps it exact).
+    pub fn point_id(library: &str, document: &str, passage: usize) -> u64 {
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        for b in format!("{library}/{document}/{passage}").bytes() {
+            h ^= u64::from(b);
+            h = h.wrapping_mul(0x0100_0000_01b3);
+        }
+        h & (u64::MAX >> 1)
+    }
+
+    async fn call(settings: &EmbeddingSettings, method: reqwest::Method, path: &str, body: Option<Value>) -> Result<(u16, Value), String> {
+        let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(60)).build().map_err(|e| e.to_string())?;
+        let mut request = client.request(method, format!("{}{path}", settings.qdrant_url));
+        let key = key().await;
+        if !key.is_empty() {
+            request = request.header("api-key", key);
+        }
+        if let Some(body) = body {
+            request = request.json(&body);
+        }
+        let response = request.send().await.map_err(|e| format!("Qdrant did not answer at {}: {e}", settings.qdrant_url))?;
+        let status = response.status().as_u16();
+        let body: Value = response.json().await.unwrap_or(Value::Null);
+        Ok((status, body))
+    }
+
+    fn failed(what: &str, status: u16, body: &Value) -> String {
+        let detail = body.pointer("/status/error").and_then(Value::as_str).map_or_else(|| body.to_string(), str::to_string);
+        format!("Qdrant could not {what} ({status}): {}", detail.chars().take(200).collect::<String>())
+    }
+
+    /// Creates the collection for `width`-wide vectors unless it is there; a collection made for
+    /// another width is an error (the model changed under the same name).
+    async fn ensure(settings: &EmbeddingSettings, name: &str, width: usize) -> Result<(), String> {
+        let (status, body) = call(settings, reqwest::Method::GET, &format!("/collections/{name}"), None).await?;
+        if status == 200 {
+            let size = body.pointer("/result/config/params/vectors/size").and_then(Value::as_u64).unwrap_or(0) as usize;
+            if size != 0 && size != width {
+                return Err(format!("Qdrant's collection {name} holds {size}-wide vectors, but the model makes {width}-wide ones. Delete the collection in Qdrant to start over."));
+            }
+            return Ok(());
+        }
+        if status != 404 {
+            return Err(failed("read the collection", status, &body));
+        }
+        let (status, body) = call(settings, reqwest::Method::PUT, &format!("/collections/{name}"), Some(json!({ "vectors": { "size": width, "distance": "Cosine" } }))).await?;
+        if status != 200 {
+            return Err(failed("create the collection", status, &body));
+        }
+        // Filters on library and document ids are fast with keyword indexes.
+        for field in ["library_id", "document_id"] {
+            let _ = call(settings, reqwest::Method::PUT, &format!("/collections/{name}/index?wait=true"), Some(json!({ "field_name": field, "field_schema": "keyword" }))).await;
+        }
+        Ok(())
+    }
+
+    /// What is in Qdrant, as Lumo last left it: per collection, `library/document/passages`.
+    fn marker_path(config_dir: &Path) -> std::path::PathBuf {
+        crate::chat::store::chat_dir(config_dir).join("qdrant-sync.json")
+    }
+
+    type Marker = BTreeMap<String, BTreeSet<String>>;
+
+    fn read_marker(config_dir: &Path) -> Marker {
+        crate::chat::store::read_json(&marker_path(config_dir)).unwrap_or_default()
+    }
+
+    /// Brings the collection in line with the libraries: new and changed documents are added,
+    /// removed ones (and removed libraries) are deleted. Only documents already embedded are
+    /// sent; the vectors come from the local cache.
+    pub async fn sync(config_dir: &Path, settings: &EmbeddingSettings) -> Result<(), String> {
+        let name = collection(&settings.model);
+        let mut marker = read_marker(config_dir);
+        let known = marker.get(&format!("{}|{name}", settings.qdrant_url)).cloned().unwrap_or_default();
+        let mut now: BTreeSet<String> = BTreeSet::new();
+        let mut library_ids = Vec::new();
+        let mut pending: Vec<Value> = Vec::new();
+        let mut width = 0;
+        let mut changed_docs: Vec<(String, String)> = Vec::new();
+        for library in libraries::list(config_dir) {
+            library_ids.push(library.id.clone());
+            let doc_dir = libraries::docs_dir(config_dir, &library.id)?;
+            for document in &library.documents {
+                let Ok(text) = crate::chat::at_rest::read_to_string(doc_dir.join(format!("{}.txt", document.id))) else { continue };
+                let passages = libraries::passages(&text);
+                let Some(vectors) = read_cache(&doc_dir, &document.id, &settings.model, passages.len()) else { continue };
+                let stamp = format!("{}/{}/{}", library.id, document.id, passages.len());
+                now.insert(stamp.clone());
+                if known.contains(&stamp) {
+                    continue;
+                }
+                changed_docs.push((library.id.clone(), document.id.clone()));
+                for (i, (passage, vector)) in passages.into_iter().zip(vectors).enumerate() {
+                    width = vector.len();
+                    pending.push(json!({
+                        "id": point_id(&library.id, &document.id, i),
+                        "vector": vector,
+                        "payload": { "library_id": library.id, "document_id": document.id, "passage": i, "text": passage },
+                    }));
+                }
+            }
+        }
+        if now == known {
+            return Ok(());
+        }
+        if width > 0 {
+            ensure(settings, &name, width).await?;
+        } else {
+            // Nothing to add: only deletions, which need the collection to exist.
+            let (status, _) = call(settings, reqwest::Method::GET, &format!("/collections/{name}"), None).await?;
+            if status == 404 {
+                marker.insert(format!("{}|{name}", settings.qdrant_url), now);
+                return crate::chat::store::write_json(&marker_path(config_dir), &marker);
+            }
+        }
+        // A changed document's old passages go first (it may now have fewer).
+        for (library, document) in &changed_docs {
+            let filter = json!({ "must": [{ "key": "library_id", "match": { "value": library } }, { "key": "document_id", "match": { "value": document } }] });
+            let (status, body) = call(settings, reqwest::Method::POST, &format!("/collections/{name}/points/delete?wait=true"), Some(json!({ "filter": filter }))).await?;
+            if status != 200 {
+                return Err(failed("remove a document's old passages", status, &body));
+            }
+        }
+        for batch in pending.chunks(UPSERT_BATCH) {
+            let (status, body) = call(settings, reqwest::Method::PUT, &format!("/collections/{name}/points?wait=true"), Some(json!({ "points": batch }))).await?;
+            if status != 200 {
+                return Err(failed("store passages", status, &body));
+            }
+        }
+        // Documents and libraries that are gone.
+        let gone: BTreeSet<(String, String)> = known.difference(&now).filter_map(|s| { let mut parts = s.splitn(3, '/'); Some((parts.next()?.to_string(), parts.next()?.to_string())) }).collect();
+        let still: BTreeSet<(String, String)> = now.iter().filter_map(|s| { let mut parts = s.splitn(3, '/'); Some((parts.next()?.to_string(), parts.next()?.to_string())) }).collect();
+        for (library, document) in gone.difference(&still) {
+            let filter = json!({ "must": [{ "key": "library_id", "match": { "value": library } }, { "key": "document_id", "match": { "value": document } }] });
+            let (status, body) = call(settings, reqwest::Method::POST, &format!("/collections/{name}/points/delete?wait=true"), Some(json!({ "filter": filter }))).await?;
+            if status != 200 {
+                return Err(failed("remove a deleted document", status, &body));
+            }
+        }
+        marker.insert(format!("{}|{name}", settings.qdrant_url), now);
+        crate::chat::store::write_json(&marker_path(config_dir), &marker)
+    }
+
+    /// The `k` passages nearest to `vector`, in the given libraries (all when empty).
+    pub async fn search(config_dir: &Path, settings: &EmbeddingSettings, only: &[String], vector: &[f32], k: usize) -> Result<Vec<Passage>, String> {
+        let name = collection(&settings.model);
+        let libraries: Vec<_> = libraries::list(config_dir).into_iter().filter(|l| only.is_empty() || only.contains(&l.id)).collect();
+        if libraries.is_empty() {
+            return Ok(Vec::new());
+        }
+        let ids: Vec<&str> = libraries.iter().map(|l| l.id.as_str()).collect();
+        let body = json!({ "vector": vector, "limit": k, "with_payload": true, "filter": { "must": [{ "key": "library_id", "match": { "any": ids } }] } });
+        let (status, answer) = call(settings, reqwest::Method::POST, &format!("/collections/{name}/points/search"), Some(body)).await?;
+        if status == 404 {
+            return Ok(Vec::new());
+        }
+        if status != 200 {
+            return Err(failed("search", status, &answer));
+        }
+        Ok(read_hits(&answer, &libraries))
+    }
+
+    /// Hits as passages, named by the libraries' and documents' current names.
+    pub fn read_hits(answer: &Value, libraries: &[libraries::Library]) -> Vec<Passage> {
+        answer
+            .get("result")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|hit| {
+                let payload = hit.get("payload")?;
+                let library = libraries.iter().find(|l| Some(l.id.as_str()) == payload.get("library_id").and_then(Value::as_str))?;
+                let document = library.documents.iter().find(|d| Some(d.id.as_str()) == payload.get("document_id").and_then(Value::as_str))?;
+                Some(Passage {
+                    library: library.name.clone(),
+                    document: document.name.clone(),
+                    passage: payload.get("passage").and_then(Value::as_u64).unwrap_or(0) as usize,
+                    text: payload.get("text").and_then(Value::as_str).unwrap_or_default().to_string(),
+                    score: hit.get("score").and_then(Value::as_f64).unwrap_or(0.0),
+                })
+            })
+            .collect()
+    }
+
+    /// Checks the server: its version, or why it cannot be used.
+    pub async fn check(settings: &EmbeddingSettings) -> Result<String, String> {
+        let (status, body) = call(settings, reqwest::Method::GET, "/collections", None).await?;
+        if status == 401 || status == 403 {
+            return Err("Qdrant refused the API key.".into());
+        }
+        if status != 200 {
+            return Err(failed("list collections", status, &body));
+        }
+        let (_, root) = call(settings, reqwest::Method::GET, "/", None).await.unwrap_or((0, Value::Null));
+        Ok(root.get("version").and_then(Value::as_str).map_or_else(|| "Qdrant".to_string(), |v| format!("Qdrant {v}")))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -333,6 +592,65 @@ mod tests {
         assert_eq!(read_cache(dir.path(), "doc", "nomic-embed-text:v1.5", 2).unwrap().len(), 2);
         assert!(read_cache(dir.path(), "doc", "nomic-embed-text:v1.5", 3).is_none(), "a changed document is embedded again");
         assert!(read_cache(dir.path(), "doc", "other-model", 2).is_none(), "each model has its own vectors");
+    }
+
+    #[test]
+    fn qdrant_ids_and_hits() {
+        assert_eq!(qdrant::collection("minilm-l6"), "lumo_minilm_l6");
+        let a = qdrant::point_id("lib", "doc", 0);
+        assert_eq!(a, qdrant::point_id("lib", "doc", 0), "stable");
+        assert_ne!(a, qdrant::point_id("lib", "doc", 1));
+        assert!(a < 1 << 63);
+        let library: libraries::Library = serde_json::from_value(serde_json::json!({ "id": "L1", "name": "Contracts", "documents": [{ "id": "D1", "name": "lease.pdf", "chars": 10, "addedAt": "2026-01-01T00:00:00Z" }], "createdAt": "2026-01-01T00:00:00Z" })).unwrap();
+        let answer = serde_json::json!({ "result": [
+            { "id": 1, "score": 0.81, "payload": { "library_id": "L1", "document_id": "D1", "passage": 3, "text": "Termination clause" } },
+            { "id": 2, "score": 0.5, "payload": { "library_id": "L1", "document_id": "gone", "passage": 0, "text": "x" } },
+        ] });
+        let hits = qdrant::read_hits(&answer, &[library]);
+        assert_eq!(hits.len(), 1, "passages of removed documents are dropped");
+        assert_eq!((hits[0].library.as_str(), hits[0].document.as_str(), hits[0].passage), ("Contracts", "lease.pdf", 3));
+    }
+
+    /// With a Qdrant server at `LUMO_TEST_QDRANT` (e.g. http://localhost:6333) and the built-in
+    /// MiniLM downloaded under `LUMO_TEST_MODELS`: libraries are embedded on this computer,
+    /// stored in Qdrant, found by meaning, and removed documents leave Qdrant too.
+    #[tokio::test]
+    #[ignore]
+    async fn a_qdrant_server_stores_and_finds_passages() {
+        let (Ok(url), Ok(models)) = (std::env::var("LUMO_TEST_QDRANT"), std::env::var("LUMO_TEST_MODELS")) else { return };
+        super::super::local_models::init(Path::new(&models));
+        let dir = tempfile::tempdir().unwrap();
+        let settings = EmbeddingSettings { enabled: true, base_url: BUILTIN.into(), model: "minilm-l6".into(), qdrant_url: url, vector_store: "qdrant".into(), ..Default::default() };
+        save(dir.path(), &settings).unwrap();
+        assert!(qdrant::check(&settings).await.unwrap().starts_with("Qdrant"));
+        let lib = libraries::create(dir.path(), "Contracts", "").unwrap();
+        libraries::add_text(dir.path(), &lib.id, "lease.txt", "Either party may end this agreement by giving thirty days written notice to the other party.").unwrap();
+        libraries::add_text(dir.path(), &lib.id, "bakery.txt", "Fresh sourdough loaves are baked every Saturday morning and sold until noon.").unwrap();
+        let other = libraries::create(dir.path(), "Recipes", "").unwrap();
+        libraries::add_text(dir.path(), &other.id, "soup.txt", "Simmer the lentils with cumin and garlic for forty minutes.").unwrap();
+        assert_eq!(index(dir.path(), &settings, &[]).await.unwrap(), 3);
+        let question = embed(&settings, vec!["How can I cancel the contract?".into()]).await.unwrap().pop().unwrap();
+        let hits = qdrant::search(dir.path(), &settings, &[], &question, 3).await.unwrap();
+        eprintln!("{hits:?}");
+        assert_eq!(hits.len(), 3);
+        assert_eq!(hits[0].document, "lease.txt", "found by meaning: no word in common");
+        let only = qdrant::search(dir.path(), &settings, std::slice::from_ref(&other.id), &question, 3).await.unwrap();
+        assert!(only.iter().all(|p| p.library == "Recipes"), "limited to the libraries asked");
+        // Through the app's search: semantic and keyword fused.
+        let (fused, note) = search(dir.path(), &[], "How can I cancel the contract?", 2).await;
+        assert!(note.is_none(), "{note:?}");
+        assert_eq!(fused[0].document, "lease.txt");
+        // Removing a document removes its passages from Qdrant.
+        let lease = libraries::load(dir.path(), &lib.id).unwrap().documents.into_iter().find(|d| d.name == "lease.txt").unwrap();
+        libraries::remove(dir.path(), &lib.id, &lease.id).unwrap();
+        index(dir.path(), &settings, &[]).await.unwrap();
+        let after = qdrant::search(dir.path(), &settings, &[], &question, 3).await.unwrap();
+        assert_eq!(after.len(), 2);
+        assert!(after.iter().all(|p| p.document != "lease.txt"));
+        libraries::delete(dir.path(), &other.id).unwrap();
+        index(dir.path(), &settings, &[]).await.unwrap();
+        let (_, raw) = (0, reqwest::Client::new().post(format!("{}/collections/{}/points/count", settings.qdrant_url, qdrant::collection("minilm-l6"))).json(&serde_json::json!({"exact": true, "filter": { "must": [{ "key": "library_id", "match": { "any": [lib.id, other.id] } }] }})).send().await.unwrap().json::<serde_json::Value>().await.unwrap());
+        assert_eq!(raw.pointer("/result/count").and_then(serde_json::Value::as_u64), Some(1), "a deleted library's passages are gone too: {raw}");
     }
 
     #[test]
