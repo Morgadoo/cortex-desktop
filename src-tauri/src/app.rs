@@ -212,6 +212,10 @@ pub fn run() {
             chat::commands::chat_usage_breakdown,
             chat::commands::chat_task_comment,
             chat::commands::chat_open_preview,
+            chat::commands::chat_local_models,
+            chat::commands::chat_download_local_model,
+            chat::commands::chat_cancel_local_model,
+            chat::commands::chat_remove_local_model,
             chat::commands::chat_workspace_text,
             chat::commands::chat_library_connectors,
             chat::commands::chat_set_library_connector,
@@ -386,6 +390,9 @@ pub fn run() {
             app.manage(downloads::Downloads::default());
             app.manage(crate::dictation::Dictation::default());
             app.manage(chat::recorder::Recorder::default());
+            if let Ok(dir) = app.path().app_local_data_dir() {
+                chat::local_models::init(&dir);
+            }
             // First line of every launch: the log appends across sessions, and a bug report is
             // only useful with the version and platform it came from.
             info!(

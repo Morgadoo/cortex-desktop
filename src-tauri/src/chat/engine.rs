@@ -351,6 +351,9 @@ pub async fn connect_model(config_dir: &std::path::Path, reference: &str) -> Res
     } else {
         reference
     };
+    if reference.starts_with("local/") {
+        return super::local_models::connect(reference).await;
+    }
     let (vendor, _) = providers::split_reference(reference)
         .ok_or_else(|| format!("`{reference}` is not a model reference"))?;
     let file = providers::load(config_dir);
@@ -884,6 +887,12 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         &offered,
     );
     let mut system = system;
+    // A built-in model runs on this computer's processor: it gets a short brief and no tools, so
+    // it starts answering in seconds rather than reading thousands of tokens of tool manuals.
+    if request.model.starts_with("local/") {
+        offered.clear();
+        system = super::local_models::brief(&instructions, project.as_ref().map(|p| p.instructions.as_str()), agent.as_ref().map(|a| (a.name.as_str(), a.instructions.as_str())));
+    }
     if let Some(secrets) = super::vault::prompt(&super::vault::granted(&super::vault::list(&config_dir), agent.as_ref())) {
         system.push_str(&secrets);
     }

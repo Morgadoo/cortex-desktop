@@ -400,10 +400,6 @@ fn content_type(name: &str) -> &'static str {
 
 /// Serves `lumoapp://localhost/sandbox/<conversation>/<file>` so the chat can show a run's
 /// charts. Only files inside that conversation's workspace are served.
-pub fn serve(config_dir: &Path, rest: &str) -> tauri::http::Response<Vec<u8>> {
-    serve_range(config_dir, rest, None)
-}
-
 /// The bytes a `Range: bytes=a-b` header asks for, within a file of `len` bytes.
 pub fn byte_range(header: &str, len: usize) -> Option<(usize, usize)> {
     let spec = header.trim().strip_prefix("bytes=")?.split(',').next()?.trim();
@@ -502,11 +498,11 @@ mod tests {
         // The program file itself is not left behind.
         assert!(!workspace(dir.path(), "conv").unwrap().join(".cell.py").exists());
 
-        let served = serve(dir.path(), "conv/out.csv");
+        let served = serve_range(dir.path(), "conv/out.csv", None);
         assert_eq!(served.status(), 200);
         assert_eq!(served.body(), b"a,b\n1,2\n");
-        assert_eq!(serve(dir.path(), "conv/../conv/out.csv").status(), 404);
-        assert_eq!(serve(dir.path(), "../x/out.csv").status(), 404);
+        assert_eq!(serve_range(dir.path(), "conv/../conv/out.csv", None).status(), 404);
+        assert_eq!(serve_range(dir.path(), "../x/out.csv", None).status(), 404);
 
         let failed = run(dir.path(), "conv", &json!({ "language": "python", "code": "raise SystemExit(3)" })).await;
         assert!(failed.is_error);

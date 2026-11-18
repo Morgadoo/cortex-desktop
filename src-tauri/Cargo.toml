@@ -35,6 +35,11 @@ reqwest = { version = "0.13.4", features = ["json", "query", "form", "multipart"
 tokio = { version = "1.43.0", features = ["rt-multi-thread", "macros", "sync", "io-util", "process", "net", "time"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"] }
+# The built-in model runtime: chat models (GGUF) and Whisper run in-process, in pure Rust.
+candle-core = "0.11"
+candle-nn = "0.11"
+candle-transformers = "0.11"
+tokenizers = { version = "0.22", default-features = false, features = ["fancy-regex"] }
 anyhow = "1.0.96"
 async-trait = "0.1.88"
 thiserror = "2.0.12"
@@ -110,6 +115,63 @@ windows = { version = "0.62.2", features = ["UI_Notifications", "Win32_Foundatio
 [dev-dependencies]
 tempfile = "3.18.0"
 tokio = { version = "1.43.0", features = ["test-util"] }
+
+# The built-in model runtime does heavy maths: optimized even in debug builds, at full speed in
+# release builds (which are otherwise optimized for size).
+[profile.dev.package.candle-core]
+opt-level = 3
+[profile.dev.package.candle-nn]
+opt-level = 3
+[profile.dev.package.candle-transformers]
+opt-level = 3
+[profile.dev.package.gemm]
+opt-level = 3
+[profile.dev.package.gemm-common]
+opt-level = 3
+[profile.dev.package.gemm-f32]
+opt-level = 3
+[profile.dev.package.gemm-f16]
+opt-level = 3
+[profile.dev.package.tokenizers]
+opt-level = 3
+[profile.dev.package.half]
+opt-level = 3
+[profile.dev.package.float8]
+opt-level = 3
+[profile.dev.package.rayon]
+opt-level = 3
+[profile.dev.package.rayon-core]
+opt-level = 3
+[profile.dev.package.num-traits]
+opt-level = 3
+[profile.dev.package.libm]
+opt-level = 3
+[profile.dev.package.byteorder]
+opt-level = 3
+[profile.dev.package.zerocopy]
+opt-level = 3
+[profile.dev.package.gemm-f64]
+opt-level = 3
+[profile.dev.package.gemm-c32]
+opt-level = 3
+[profile.dev.package.gemm-c64]
+opt-level = 3
+[profile.dev.package.rand]
+opt-level = 3
+[profile.dev.package.rand_distr]
+opt-level = 3
+[profile.dev.package.safetensors]
+opt-level = 3
+[profile.release.package.candle-core]
+opt-level = 3
+[profile.release.package.candle-nn]
+opt-level = 3
+[profile.release.package.candle-transformers]
+opt-level = 3
+[profile.release.package.gemm-common]
+opt-level = 3
+[profile.release.package.gemm-f32]
+opt-level = 3
 
 [profile.release]
 panic = "abort"

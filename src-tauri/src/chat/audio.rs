@@ -93,7 +93,7 @@ pub fn save(config_dir: &Path, settings: &AudioSettings) -> Result<(), String> {
 
 /// Settings cleaned before saving: known engines, a speed in range, trimmed fields.
 pub fn normalize(mut s: AudioSettings) -> AudioSettings {
-    if !["provider", "openai", "elevenlabs", "off"].contains(&s.stt.engine.as_str()) {
+    if !["provider", "builtin", "openai", "elevenlabs", "off"].contains(&s.stt.engine.as_str()) {
         s.stt.engine = "provider".into();
     }
     if !["provider", "openai", "xai", "elevenlabs", "browser", "off"].contains(&s.tts.engine.as_str()) {
@@ -202,6 +202,21 @@ pub async fn transcribe(config_dir: &Path, audio: Vec<u8>, file_name: &str, sett
     match settings.engine.as_str() {
         "off" => Err("Voice input is off in Settings → Audio.".into()),
         "provider" => super::media::transcribe(config_dir, audio, file_name).await,
+        "builtin" => {
+            let root = super::local_models::root()?;
+            // The model chosen, else the first Whisper downloaded.
+            let speech = |id: &str| super::local_models::entry(id).is_some_and(|e| e.kind == super::local_models::Kind::Speech) && super::local_models::installed(&root, id);
+            let id = Some(settings.model.clone()).filter(|m| speech(m)).or_else(|| {
+                super::local_models::list(&root).into_iter().find(|m| m.installed && m.kind == super::local_models::Kind::Speech).map(|m| m.id)
+            }).ok_or("Download a Whisper model first (Settings → Providers → Built-in models).")?;
+            let language = settings.language.clone();
+            tokio::task::spawn_blocking(move || {
+                let samples = super::local_models::audio_samples(&audio)?;
+                super::local_models::transcribe(&root, &id, &samples, &language)
+            })
+            .await
+            .map_err(|e| e.to_string())?
+        }
         "openai" => {
             if settings.base_url.is_empty() {
                 return Err("Set the speech-to-text server's base URL in Settings → Audio.".into());

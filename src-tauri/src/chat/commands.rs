@@ -87,6 +87,9 @@ pub async fn chat_list_models(app: AppHandle) -> Result<ModelList, String> {
     let mut models = providers::models(&file).await;
     // ACP agents (Agent Client Protocol), installed or added by the user.
     models.extend(super::acp::models(&dir));
+    if let Ok(root) = super::local_models::root() {
+        models.extend(super::local_models::models(&root));
+    }
     let default_model = file
         .default_model
         .clone()
@@ -627,6 +630,35 @@ pub fn chat_workspace_text(app: AppHandle, conversation_id: String, path: String
         return Err("This file is not text; save it to open it in another app.".into());
     }
     Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+/// The built-in models: which can be downloaded, and which are.
+#[tauri::command]
+pub fn chat_local_models() -> Result<Vec<super::local_models::View>, String> {
+    Ok(super::local_models::list(&super::local_models::root()?))
+}
+
+/// Downloads a built-in model, reporting progress as `local-model-progress` events.
+#[tauri::command]
+pub async fn chat_download_local_model(app: AppHandle, id: String) -> Result<(), String> {
+    use tauri::Emitter as _;
+    let root = super::local_models::root()?;
+    let emitter = app.clone();
+    let model = id.clone();
+    super::local_models::download(&root, &id, move |done, total| {
+        let _ = emitter.emit("local-model-progress", serde_json::json!({ "id": model, "done": done, "total": total }));
+    })
+    .await
+}
+
+#[tauri::command]
+pub fn chat_cancel_local_model(id: String) {
+    super::local_models::cancel(&id);
+}
+
+#[tauri::command]
+pub fn chat_remove_local_model(id: String) -> Result<(), String> {
+    super::local_models::remove(&super::local_models::root()?, &id)
 }
 
 #[tauri::command]

@@ -222,7 +222,7 @@ items most likely to differ:
 Reviewed in November 2026 feature by feature against the docs of Open WebUI, LibreChat, LobeHub,
 Onyx, Osaurus and OpenBot (about 220 features). Every item of the review's shortlist is in the table
 below; every feature the review found missing or partial is tracked row by row, with evidence, in
-[review-coverage.md](review-coverage.md) (now 188 done, 3 partial, 1 missing, 31 out of scope).
+[review-coverage.md](review-coverage.md) (now 191 done, 0 partial, 1 missing, 31 out of scope).
 What was deliberately left out, and why:
 
 - **Team and enterprise features** (channels, comments, SSO, SCIM, tenants, admin plane, shared
@@ -412,6 +412,7 @@ What was deliberately left out, and why:
 | Video generation as a tool | openbot.run (image and video steps), Grok | `generate_video`: a 1–15 second clip from a description, or an image brought to life (`reference`), through xAI Grok Imagine (Settings → Providers → Images, video and voice → Video model). The job is started and polled; the clip is saved in the workspace, plays in the chat and shows under Outputs → Videos. Tools menu → Video generation; agents can have it; the built-in "Image to video" workflow chains both tools. Verified live against a stand-in service | Done |
 | Connectors indexed into a library | onyx (connectors), open-webui | Libraries → Mirror a connector: an MCP connector's resources (pages, files, tickets) become library documents, searched and cited like any other, and kept in step every 10 minutes or on Sync now (added, re-read when changed, removed when gone; kept while the connector is unreachable). Verified live with an MCP wiki server: indexed, then a page changed, one removed and one added on the next sync | Done |
 | Chats and files as tabs, split panes | open-webui | The side panel holds tabs for apps, canvases, sources, Outputs, workspace files (Markdown, CSV as a table, text, images) and other chats (chat menu → Open beside this chat, kept up to date while it runs, with Swap). The split button shows two tabs side by side. Verified live | Done |
+| Built-in models (no install, offline) | osaurus, LM Studio, openbot.run | Settings → Providers → Built-in models: Qwen 2.5 (0.5B–7B) and Llama 3.2 (1B, 3B) chat models and Whisper (tiny to large-v3-turbo) run inside Lumo with candle, Hugging Face's pure-Rust runtime. Downloaded once from Hugging Face with progress and cancel, then offline. Chat models show in the model menu under Built-in (through an OpenAI-compatible endpoint on 127.0.0.1, so streaming works as for any provider; they get a short brief and no tools). Whisper is the Built-in speech-to-text engine for the microphone, audio attachments and dictation anywhere. Verified live: Qwen 0.5B answered in chat, Whisper tiny transcribed a recording word for word | Done |
 
 ## Built for years of use
 
@@ -453,4 +454,5 @@ What is not here, and why. Everything else in the Vibe tables is built and was r
   and have not been reviewed by native speakers.
 - **Pull requests on unknown hosts:** a host that is not recognised and prints no link during the
   push gets the branch pushed, and the pull request is opened there by hand.
+- **Built-in model speed:** built-in models run on the processor (no GPU or Metal yet). On this 4-core test machine the 0.5B chat model read about 7 prompt tokens and wrote about 8 tokens a second, and Whisper tiny transcribed 11 seconds of speech in 3 seconds; a recent laptop is faster, and larger models are slower.
 - **Branding:** the app keeps the Lumo name and logo, as the owner chose.

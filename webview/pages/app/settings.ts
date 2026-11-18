@@ -1,6 +1,6 @@
 /** The settings dialog: profile, providers, permissions, general and appearance. */
 import { tauriInvoke } from '../../shared/tauri';
-import { api, type AppSettings, type Provider } from './api';
+import { api, listen, type AppSettings, type Provider } from './api';
 import { clear, confirmDialog, h, icon, modal, toast, clockHour12, setClock } from './dom';
 import { historyButton } from './versions';
 import { autocompleteOn, changed, finishNotificationsOn, setAutocomplete, finishSoundOn, followStreamOn, followUpsOn, setFinishNotifications, setFinishSound, setFollowStream, setFollowUps, setTemporaryByDefault, state, temporaryByDefault } from './state';
@@ -43,6 +43,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Web search', 'providers', 'searxng brave tavily engine internet'],
   ['Semantic search', 'providers', 'embeddings libraries vector rag rerank reranker reranking'],
   ['ACP agents', 'providers', 'acp agent client protocol zed claude code codex gemini goose coding agents'],
+  ['Built-in models', 'providers', 'local offline download qwen llama whisper on device runtime'],
   ['Document extraction', 'providers', 'tika docling extraction ocr pdf documents parser engine'],
   ['Images and voice', 'providers', 'image generation dall-e text to speech voice model local image server stable diffusion automatic1111 forge draw things'],
   ['Speech to text', 'audio', 'dictation microphone whisper transcription stt'],
@@ -449,6 +450,7 @@ async function renderProviders(content: HTMLElement) {
   for (const provider of sorted) list.append(providerCard(provider));
   content.append(await backupModelCard());
   content.append(await autoModelCard());
+  content.append(await localModelsCard());
   content.append(await mediaCard());
   content.append(await extractionCard());
   content.append(await acpCard());
@@ -697,6 +699,85 @@ async function extractionCard(): Promise<HTMLElement> {
     h('p', { class: 'muted' }, 'How text is taken from files you add to libraries or attach in chat. Tika (with OCR) and Docling (layouts and tables, as Markdown) run as servers on your machine; if one fails, the built-in readers take over.'),
     h('div', { class: 'row-inline' }, engine, url),
     h('div', { class: 'card-actions' }, save)
+  );
+}
+
+interface LocalModel {
+  id: string;
+  name: string;
+  kind: 'chat' | 'speech';
+  sizeMb: number;
+  note: string;
+  installed: boolean;
+  downloading: boolean;
+}
+
+/**
+ * Built-in models (Osaurus's and LM Studio's local models): chat and speech models that run in
+ * Lumo itself, downloaded once from Hugging Face, then offline.
+ */
+async function localModelsCard(): Promise<HTMLElement> {
+  const body = h('div', { class: 'local-models' });
+  const progress = new Map<string, { done: number; total: number }>();
+  const size = (mb: number) => (mb >= 1000 ? `${(mb / 1000).toFixed(1)} GB` : `${mb} MB`);
+  const draw = async () => {
+    const list = await tauriInvoke<LocalModel[]>('chat_local_models').catch(() => []);
+    const row = (m: LocalModel) => {
+      const p = progress.get(m.id);
+      const pct = p && p.total ? Math.floor((p.done / p.total) * 100) : 0;
+      const action = m.installed
+        ? button({ variant: 'secondary', label: 'Delete', onClick: async () => {
+            if (!(await confirmDialog(`Delete ${m.name}?`, `${size(m.sizeMb)} are freed. You can download it again.`, 'Delete'))) return;
+            await tauriInvoke('chat_remove_local_model', { id: m.id }).catch((e) => toast(String(e), 'error'));
+            void draw();
+            void reloadModels().catch(() => undefined);
+          } })
+        : m.downloading || p
+          ? button({ variant: 'secondary', label: 'Cancel', onClick: () => void tauriInvoke('chat_cancel_local_model', { id: m.id }) })
+          : button({ variant: 'primary', label: 'Download', onClick: async () => {
+              progress.set(m.id, { done: 0, total: m.sizeMb * 1_000_000 });
+              void draw();
+              try {
+                await tauriInvoke('chat_download_local_model', { id: m.id });
+                toast(`${m.name} is ready. ${m.kind === 'chat' ? 'Pick it in the model menu, under Built-in.' : 'Choose Built-in under Settings → Audio → Speech-to-text.'}`);
+              } catch (e) {
+                toast(String(e), 'error');
+              }
+              progress.delete(m.id);
+              void draw();
+              void reloadModels().catch(() => undefined);
+            } });
+      return h(
+        'div',
+        { class: 'local-model', dataset: { model: m.id } },
+        h('div', { class: 'local-model-text' }, h('strong', {}, m.name), h('small', { class: 'muted' }, `${size(m.sizeMb)} · ${m.note}`), p ? h('div', { class: 'local-progress' }, h('div', { class: 'local-progress-bar', style: { width: `${pct}%` } }), h('span', { class: 'muted small' }, `${pct}%`)) : null),
+        m.installed ? h('span', { class: 'chip-ok' }, icon('check', 13), 'Ready') : null,
+        action
+      );
+    };
+    clear(
+      body,
+      h('h4', {}, 'Chat'),
+      list.filter((m) => m.kind === 'chat').map(row),
+      h('h4', {}, 'Speech-to-text (Whisper)'),
+      list.filter((m) => m.kind === 'speech').map(row)
+    );
+  };
+  void listen<{ id: string; done: number; total: number }>('local-model-progress', (p) => {
+    progress.set(p.id, { done: p.done, total: p.total });
+    const bar = body.querySelector<HTMLElement>(`[data-model="${p.id}"] .local-progress-bar`);
+    const label = body.querySelector<HTMLElement>(`[data-model="${p.id}"] .local-progress span`);
+    const pct = p.total ? Math.floor((p.done / p.total) * 100) : 0;
+    if (bar && label) {
+      bar.style.width = `${pct}%`;
+      label.textContent = `${pct}%`;
+    } else void draw();
+  });
+  await draw();
+  return card(
+    h('h3', {}, 'Built-in models'),
+    h('p', { class: 'muted' }, 'Models that run inside Lumo, on this computer: nothing to install, no account, and they work offline once downloaded (from Hugging Face). Chat models appear in the model menu under Built-in; Whisper models transcribe the microphone and dictation when Settings → Audio uses Built-in.'),
+    body
   );
 }
 
@@ -1953,8 +2034,19 @@ function renderAppearance(content: HTMLElement) {
 }
 
 
+/** The Whisper models downloaded, to choose one for voice input. */
+function builtinSpeechSelect(current: string, onChange: (v: string) => void): HTMLSelectElement {
+  const sel = h('select', { class: 'input' }, h('option', { value: '' }, 'The first one downloaded'));
+  sel.addEventListener('change', () => onChange(sel.value));
+  void tauriInvoke<LocalModel[]>('chat_local_models').then((list) => {
+    for (const m of list.filter((x) => x.kind === 'speech')) sel.append(h('option', { value: m.id, selected: m.id === current, disabled: !m.installed }, m.installed ? m.name : `${m.name} (not downloaded)`));
+  }).catch(() => undefined);
+  return sel;
+}
+
 const STT_ENGINES: [string, string][] = [
   ['provider', 'Your chat providers'],
+  ['builtin', 'Built-in (on this computer)'],
   ['openai', 'OpenAI-compatible server'],
   ['elevenlabs', 'ElevenLabs'],
   ['off', 'Off'],
@@ -1996,7 +2088,10 @@ async function renderAudio(content: HTMLElement) {
   const renderStt = () =>
     clear(
       sttBody,
-      field('Engine', select(STT_ENGINES, s.stt.engine, (v) => { s.stt.engine = v as typeof s.stt.engine; renderStt(); })),
+      field('Engine', select(STT_ENGINES, s.stt.engine, (v) => { s.stt.engine = v as typeof s.stt.engine; if (v === 'builtin' && !s.stt.model.startsWith('whisper-')) s.stt.model = ''; renderStt(); })),
+      s.stt.engine === 'builtin'
+        ? field('Model', builtinSpeechSelect(s.stt.model, (v) => (s.stt.model = v)), 'Whisper runs on this computer; download models under Providers → Built-in models.')
+        : null,
       s.stt.engine === 'provider'
         ? h('p', { class: 'muted small' }, view.providerSpeechModel ? `Uses ${view.providerSpeechModel}. Change it under Providers & models.` : 'None of your providers offers speech-to-text (OpenAI or Groq). Choose another engine.')
         : null,
@@ -2098,11 +2193,11 @@ function wakeWordCard(): HTMLElement {
     changed({ phrase: phrase.value.trim() || 'Hey Lumo' });
     toast('Saved.');
   });
-  const local = audioSettings?.stt.engine === 'openai' && /localhost|127\.0\.0\.1|\[::1\]/.test(audioSettings.stt.baseUrl ?? '');
+  const local = audioSettings?.stt.engine === 'builtin' || (audioSettings?.stt.engine === 'openai' && /localhost|127\.0\.0\.1|\[::1\]/.test(audioSettings.stt.baseUrl ?? ''));
   return card(
     h('h3', {}, 'Wake word'),
     h('p', { class: 'muted' }, 'Say the wake word and a question (“Hey Lumo, what’s on my calendar today?”) and Lumo comes forward and asks it in a new chat; say it alone to start a voice conversation. Works while Lumo is open or in the tray.'),
-    row('Listen for the wake word', local ? 'Short phrases go to your local speech-to-text, so nothing leaves this computer.' : 'Every short phrase said near the microphone goes to the speech-to-text above to be checked. Use a local engine (a Whisper server) to keep it on this computer.', switchInput(prefs.enabled, (v) => {
+    row('Listen for the wake word', local ? 'Short phrases go to your local speech-to-text, so nothing leaves this computer.' : 'Every short phrase said near the microphone goes to the speech-to-text above to be checked. Use the Built-in engine (or a Whisper server of your own) to keep it on this computer.', switchInput(prefs.enabled, (v) => {
       changed({ enabled: v });
       toast(v ? `Listening for “${prefs.phrase}”.` : 'Wake word off.');
     })),

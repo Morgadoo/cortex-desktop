@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 188 |
-| PARTIAL | 86 | 3 |
+| DONE | 58 | 191 |
+| PARTIAL | 86 | 0 |
 | MISSING | 48 | 1 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 45 / 0 / 0 / 9 · LibreChat 42 / 0 / 0 / 4 · LobeHub 29 / 0 / 0 / 5 · Onyx 21 / 0 / 0 / 5 · Osaurus 23 / 2 / 1 / 4 · OpenBot 28 / 1 / 0 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 45 / 0 / 0 / 9 · LibreChat 42 / 0 / 0 / 4 · LobeHub 29 / 0 / 0 / 5 · Onyx 21 / 0 / 0 / 5 · Osaurus 25 / 0 / 1 / 4 · OpenBot 29 / 0 / 0 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -180,7 +180,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 45 / 0 / 0 / 9
 | Onyx | Extension, widget, Slack/Discord bots, CLI | MISSING | OUT OF SCOPE | Channels N/A (parity L256); scripts can use the local API (L292) |
 | Osaurus | Global hotkey | MISSING | DONE | parity L293 |
 | Osaurus | App Intents (Shortcuts, Spotlight, Siri) | MISSING | MISSING |  |
-| Osaurus | Built-in local runtime, model downloads | PARTIAL | PARTIAL | Ollama, llama.cpp (parity L228). Missing: built-in runtime, downloads |
+| Osaurus | Built-in local runtime, model downloads | PARTIAL | DONE | Settings → Providers → Built-in models: Qwen 2.5 (0.5B–7B) and Llama 3.2 (1B, 3B) run inside Lumo with candle (pure Rust, 4-bit GGUF), downloaded from Hugging Face with progress and cancel, then offline. They appear in the model menu as Built-in; the engine reaches them through an OpenAI-compatible endpoint on 127.0.0.1 started on first use, with a short brief and no tools so a processor answers in seconds. Verified live: downloaded, chatted (title and follow-ups made locally too) |
 | Osaurus | Local API: OpenAI, Responses, Anthropic, Ollama | MISSING | DONE | `/v1/chat/completions`, `/v1/responses` (plain and streamed events), `/v1/messages`, and Ollama's `/api/tags`, `/api/chat` (NDJSON stream), `/api/generate`, `/api/version`; verified live with curl against claude-haiku-5-5 (streamed chat counted 1–5, generate answered Lisbon, Responses answered Paris and streamed created/delta/done/completed events; no token → refused) |
 | Osaurus | Inference runtime (scheduler, batching) | MISSING | OUT OF SCOPE | An inference server; the app uses Ollama or llama.cpp for that |
 | Osaurus | Orchestrator | PARTIAL | DONE | Route new chats to agents (Agents page): a new chat that clearly fits an agent goes to it, decided by the fast model from the agents' descriptions, and the chat says so; general questions stay with the assistant (engine.rs route_to_agent). Groups orchestrate their members. Verified live both ways |
@@ -199,7 +199,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 45 / 0 / 0 / 9
 | Osaurus | Agent run endpoint | MISSING | DONE | `POST /v1/tasks/{id}/run` and agents as models |
 | Osaurus | Bundles: agents, skills, MCP servers | MISSING | DONE | Agent files carry the agent, notebook, its skills and the MCP servers it uses, without secrets |
 | Osaurus | Developer tools, request log | PARTIAL | DONE | Recent requests log for the local API |
-| Osaurus | On-device transcription | PARTIAL | PARTIAL | Any OpenAI-compatible server (parity L238). Missing: a built-in model |
+| Osaurus | On-device transcription | PARTIAL | DONE | Whisper (tiny, base, small, large-v3-turbo) runs in Lumo with candle: Settings → Audio → Speech-to-text → Built-in. WAV read directly (other formats through ffmpeg when installed), language detected or set. Verified live: a recording attached in chat was transcribed word for word on this computer |
 | Osaurus | Wake word | MISSING | DONE | parity: Wake word (`wakeword.ts`, `wakematch.ts`; Settings → Audio). Verified live with a virtual microphone: an unrelated phrase was transcribed and ignored; "Hey Lumo, what is two plus two? …" opened a new chat that asked it (answer: 4); with the window hidden, "Hey Lumo" alone brought Lumo forward into a voice conversation |
 | Osaurus | System-wide dictation hotkey | MISSING | DONE | parity: Dictation anywhere (`dictation.rs`, `dictate.ts`; Settings → Audio). Verified live: Ctrl+Alt+D over an xterm opened the Listening pill, speech played into a virtual microphone was recorded (7.4 s WAV) and transcribed, and the text was typed into the xterm; changing the shortcut released the old one; auto-finish on pause and paste mode also ran |
 | Osaurus | On-device images | PARTIAL | DONE | Images made on the user's own machine through a local image server (Draw Things on a Mac, Stable Diffusion WebUI or Forge elsewhere), used by generate_image with no key (media.rs). Verified live against a local AUTOMATIC1111-compatible server |
@@ -230,7 +230,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 45 / 0 / 0 / 9
 | OpenBot | Add skills from a GitHub link | MISSING | DONE | Skills → Import → From a link (parity: Skills from a link) |
 | OpenBot | Vault access per agent | MISSING | DONE | parity: Vault (`vault.rs`; Settings → Permissions → Vault; agent editor → Secrets from the vault). Verified live: DEMO_TOKEN saved through Settings (value only in the keychain), granted to one agent; that agent's run_code saw it (length 20) while a plain chat's did not (False); a user tool that printed the key had it masked as [secret DEMO_TOKEN] everywhere in the saved chat |
 | OpenBot | Library views, favourites | PARTIAL | DONE | Libraries: favourite libraries (★, listed first) and documents (★), a document filter and sorting by favourites, newest, name or size, remembered on this device. Verified live |
-| OpenBot | Local dictation (Parakeet, Whisper) | PARTIAL | PARTIAL | Missing: a built-in model |
+| OpenBot | Local dictation (Parakeet, Whisper) | PARTIAL | DONE | Dictation anywhere and the composer's microphone use the Built-in Whisper engine when chosen: recorded as WAV and transcribed on this computer, nothing sent out. The transcription path was verified live with a recording; this test machine has no microphone |
 | OpenBot | Pause length before sending; keeps listening | PARTIAL | DONE | Pause length 0.8–4.5 s in Settings → Audio; the mic stays open for the next turn |
 | OpenBot | Image and video workflow steps | PARTIAL | DONE | generate_image and a new generate_video tool (xAI Grok Imagine: start, poll, download; text or an image brought to life) as tools any chat, agent or workflow step can use, with the built-in "Image to video" workflow; clips are saved in the workspace, play inline and in Outputs (Videos). Client unit-tested; verified live against a stand-in video service |
 | OpenBot | Sort by latest activity | MISSING | DONE | parity L284 |
