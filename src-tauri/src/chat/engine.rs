@@ -15,9 +15,12 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::watch;
 
-use super::{agents, builtins, deferred, canvas, context, knowledge, libraries, media, memory, terminal, privacy, providers, sandbox, skills, subagents, tasks};
 use super::store::{self, Conversation, Instructions, Project};
 use super::tools::{self, ApprovalMode, ChatTool, ASK_USER};
+use super::{
+    agents, builtins, canvas, context, deferred, knowledge, libraries, media, memory, privacy,
+    providers, sandbox, skills, subagents, tasks, terminal,
+};
 use super::{ChatState, EVENT, LOCAL_ACCOUNT};
 use crate::account::AccountId;
 use crate::tools::auth::keychain_secrets;
@@ -37,41 +40,94 @@ pub enum ChatEvent {
     Started { conversation_id: String },
     /// The user's guidance, sent while the turn ran, has joined the conversation.
     #[serde(rename_all = "camelCase")]
-    Steered { conversation_id: String, text: String },
+    Steered {
+        conversation_id: String,
+        text: String,
+    },
     #[serde(rename_all = "camelCase")]
-    Text { conversation_id: String, text: String },
+    Text {
+        conversation_id: String,
+        text: String,
+    },
     #[serde(rename_all = "camelCase")]
-    Reasoning { conversation_id: String, text: String },
+    Reasoning {
+        conversation_id: String,
+        text: String,
+    },
     /// The model began writing a call to `name`; its arguments are still arriving.
     #[serde(rename_all = "camelCase")]
-    ToolPending { conversation_id: String, name: String },
+    ToolPending {
+        conversation_id: String,
+        name: String,
+    },
     #[serde(rename_all = "camelCase")]
-    ToolStart { conversation_id: String, call_id: String, name: String, arguments: Value },
+    ToolStart {
+        conversation_id: String,
+        call_id: String,
+        name: String,
+        arguments: Value,
+    },
     #[serde(rename_all = "camelCase")]
-    ToolEnd { conversation_id: String, call_id: String, output: String, is_error: bool },
+    ToolEnd {
+        conversation_id: String,
+        call_id: String,
+        output: String,
+        is_error: bool,
+    },
     /// The model asked the user something; answer with `chat_answer`.
     #[serde(rename_all = "camelCase")]
-    Question { conversation_id: String, call_id: String, question: String, options: Vec<String> },
+    Question {
+        conversation_id: String,
+        call_id: String,
+        question: String,
+        options: Vec<String>,
+    },
     #[serde(rename_all = "camelCase")]
-    Title { conversation_id: String, title: String },
+    Title {
+        conversation_id: String,
+        title: String,
+    },
     /// A sub-agent of a `delegate` call started, moved on, or finished.
     #[serde(rename_all = "camelCase")]
-    Subagent { conversation_id: String, call_id: String, index: usize, title: String, status: String, activity: String },
+    Subagent {
+        conversation_id: String,
+        call_id: String,
+        index: usize,
+        title: String,
+        status: String,
+        activity: String,
+    },
     /// Tokens and cost so far, and how full the model's window is.
     #[serde(rename_all = "camelCase")]
-    Usage { conversation_id: String, usage: context::UsageTotals, context_window: u64 },
+    Usage {
+        conversation_id: String,
+        usage: context::UsageTotals,
+        context_window: u64,
+    },
     /// Earlier turns are being summarized to make room.
     #[serde(rename_all = "camelCase")]
     Compacting { conversation_id: String },
     #[serde(rename_all = "camelCase")]
-    Compacted { conversation_id: String, upto: usize },
+    Compacted {
+        conversation_id: String,
+        upto: usize,
+    },
     #[serde(rename_all = "camelCase")]
-    Done { conversation_id: String, cancelled: bool },
+    Done {
+        conversation_id: String,
+        cancelled: bool,
+    },
     /// Something the user should know, such as a switch to the backup model.
     #[serde(rename_all = "camelCase")]
-    Notice { conversation_id: String, text: String },
+    Notice {
+        conversation_id: String,
+        text: String,
+    },
     #[serde(rename_all = "camelCase")]
-    Error { conversation_id: String, message: String },
+    Error {
+        conversation_id: String,
+        message: String,
+    },
 }
 
 /// An image the user attached, as the page read it.
@@ -97,14 +153,22 @@ pub fn user_message(text: &str, images: &[ImageInput]) -> Result<Message, String
     if images.len() > MAX_IMAGES {
         return Err(format!("Attach at most {MAX_IMAGES} images."));
     }
-    let mut content = vec![UserContent::text(if text.is_empty() { "What is in this image?" } else { text })];
+    let mut content = vec![UserContent::text(if text.is_empty() {
+        "What is in this image?"
+    } else {
+        text
+    })];
     for image in images {
         let media = ImageMediaType::from_mime_type(&image.media_type)
             .ok_or_else(|| format!("{} images are not supported.", image.media_type))?;
         if image.data.len() / 4 * 3 > MAX_IMAGE_BYTES {
             return Err("Each image can be at most 8 MB.".into());
         }
-        content.push(UserContent::image_base64(image.data.clone(), Some(media), None));
+        content.push(UserContent::image_base64(
+            image.data.clone(),
+            Some(media),
+            None,
+        ));
     }
     Ok(Message::User { content })
 }
@@ -192,12 +256,21 @@ pub(super) fn emit(app: &AppHandle, event: ChatEvent) {
 const TONES: &[(&str, &str)] = &[
     ("formal", "Write in a polite, professional register."),
     ("casual", "Write casually, like a friendly colleague."),
-    ("empathetic", "Be warm and empathetic; acknowledge feelings before advising."),
-    ("objective", "Be objective and neutral; stick to facts and trade-offs."),
+    (
+        "empathetic",
+        "Be warm and empathetic; acknowledge feelings before advising.",
+    ),
+    (
+        "objective",
+        "Be objective and neutral; stick to facts and trade-offs.",
+    ),
     ("concise", "Be brief: lead with the answer and skip filler."),
     ("witty", "Keep a light, good-humoured tone where it fits."),
     ("motivational", "Be encouraging and energising."),
-    ("reflective", "Be thoughtful; surface assumptions and second-order effects."),
+    (
+        "reflective",
+        "Be thoughtful; surface assumptions and second-order effects.",
+    ),
 ];
 
 /// The user's date and time zone, so "today" and deadlines mean what they mean to the user
@@ -207,10 +280,20 @@ pub fn local_time_line<Tz: chrono::TimeZone>(now: chrono::DateTime<Tz>) -> Strin
 where
     Tz::Offset: std::fmt::Display,
 {
-    let zone = iana_time_zone::get_timezone().ok().filter(|z| !z.is_empty());
+    let zone = iana_time_zone::get_timezone()
+        .ok()
+        .filter(|z| !z.is_empty());
     let offset = now.format("%:z").to_string();
-    let offset = if offset == "+00:00" { "UTC".to_string() } else { format!("UTC{offset}") };
-    format!("Today is {} in the user's time zone ({}).", now.format("%A, %B %-d, %Y"), zone.map_or(offset.clone(), |z| format!("{z}, {offset}")))
+    let offset = if offset == "+00:00" {
+        "UTC".to_string()
+    } else {
+        format!("UTC{offset}")
+    };
+    format!(
+        "Today is {} in the user's time zone ({}).",
+        now.format("%A, %B %-d, %Y"),
+        zone.map_or(offset.clone(), |z| format!("{z}, {offset}"))
+    )
 }
 
 /// The system prompt: who the assistant is, today's date, and the user's standing instructions.
@@ -245,9 +328,17 @@ pub fn preamble(context: &Context<'_>, tools: &[ChatTool]) -> String {
             out.push_str(agent.instructions.trim());
             out.push_str("\n\n");
         }
-        let own: Vec<&libraries::Library> = agent.libraries.iter().filter_map(|id| context.libraries.iter().find(|l| &l.id == id)).filter(|l| !l.documents.is_empty()).collect();
+        let own: Vec<&libraries::Library> = agent
+            .libraries
+            .iter()
+            .filter_map(|id| context.libraries.iter().find(|l| &l.id == id))
+            .filter(|l| !l.documents.is_empty())
+            .collect();
         if !own.is_empty() {
-            let names: Vec<String> = own.iter().map(|l| format!("\"{}\" ({} documents)", l.name, l.documents.len())).collect();
+            let names: Vec<String> = own
+                .iter()
+                .map(|l| format!("\"{}\" ({} documents)", l.name, l.documents.len()))
+                .collect();
             out.push_str(&format!(
                 "Your reference material is in the {} {}; search it with `search_library` before answering questions it may cover, and cite what you use.\n\n",
                 if own.len() == 1 { "library" } else { "libraries" },
@@ -264,9 +355,15 @@ pub fn preamble(context: &Context<'_>, tools: &[ChatTool]) -> String {
     );
     out.push_str(&format!("\n\n{}", local_time_line(chrono::Local::now())));
     if !instructions.name.trim().is_empty() {
-        out.push_str(&format!(" The user's name is {}.", instructions.name.trim()));
+        out.push_str(&format!(
+            " The user's name is {}.",
+            instructions.name.trim()
+        ));
     }
-    let tone_id = project.map(|p| p.tone.as_str()).filter(|t| !t.is_empty()).unwrap_or(&instructions.tone);
+    let tone_id = project
+        .map(|p| p.tone.as_str())
+        .filter(|t| !t.is_empty())
+        .unwrap_or(&instructions.tone);
     if let Some((_, tone)) = TONES.iter().find(|(id, _)| *id == tone_id) {
         out.push_str("\n\n");
         out.push_str(tone);
@@ -276,12 +373,19 @@ pub fn preamble(context: &Context<'_>, tools: &[ChatTool]) -> String {
         out.push_str(instructions.custom.trim());
     }
     if let Some(project) = project {
-        out.push_str(&format!("\n\nThis conversation belongs to the project \"{}\".", project.name));
+        out.push_str(&format!(
+            "\n\nThis conversation belongs to the project \"{}\".",
+            project.name
+        ));
         if !project.instructions.trim().is_empty() {
             out.push_str(" Project instructions:\n");
             out.push_str(project.instructions.trim());
         }
-        if let Some(library) = project.library_id.as_ref().and_then(|id| context.libraries.iter().find(|l| &l.id == id)) {
+        if let Some(library) = project
+            .library_id
+            .as_ref()
+            .and_then(|id| context.libraries.iter().find(|l| &l.id == id))
+        {
             if !library.documents.is_empty() {
                 out.push_str(&format!(
                     "\nThe project's files are in the library \"{}\" ({} documents); search it with `search_library` before answering questions they may cover.",
@@ -345,11 +449,16 @@ pub(crate) async fn api_key(vendor: &str) -> Result<Option<String>, String> {
         .await
 }
 
-pub async fn connect_model(config_dir: &std::path::Path, reference: &str) -> Result<DynModel<Completion>, String> {
+pub async fn connect_model(
+    config_dir: &std::path::Path,
+    reference: &str,
+) -> Result<DynModel<Completion>, String> {
     // The app's own errands on Auto use its fast model.
     let routed;
     let reference = if reference == super::router::AUTO {
-        routed = super::router::models(&providers::load(config_dir)).map(|(fast, _)| fast).ok_or("Choose Auto's fast and strong models first.")?;
+        routed = super::router::models(&providers::load(config_dir))
+            .map(|(fast, _)| fast)
+            .ok_or("Choose Auto's fast and strong models first.")?;
         routed.as_str()
     } else {
         reference
@@ -361,20 +470,30 @@ pub async fn connect_model(config_dir: &std::path::Path, reference: &str) -> Res
         .ok_or_else(|| format!("`{reference}` is not a model reference"))?;
     let file = providers::load(config_dir);
     let settings = file.providers.get(vendor).cloned().unwrap_or_default();
-    let key = if settings.has_key { api_key(vendor).await? } else { None };
+    let key = if settings.has_key {
+        api_key(vendor).await?
+    } else {
+        None
+    };
     providers::connect(reference, &settings, key)
 }
 
 /// One request for a text, for the app's own errands (titles, follow-ups, translations,
 /// rewrites): when the model fails or does not answer in time, the backup model set under
 /// Providers is tried once, as chats do. The error is the first model's, in plain words.
-pub async fn ask_text(config_dir: &std::path::Path, reference: &str, request: CompletionRequest, secs: u64) -> Result<String, String> {
+pub async fn ask_text(
+    config_dir: &std::path::Path,
+    reference: &str,
+    request: CompletionRequest,
+    secs: u64,
+) -> Result<String, String> {
     let attempt = |reference: String, request: CompletionRequest| async move {
         let model = connect_model(config_dir, &reference).await?;
-        let response = tokio::time::timeout(std::time::Duration::from_secs(secs), model.call(request))
-            .await
-            .map_err(|_| "The provider did not answer in time.".to_string())?
-            .map_err(|e| super::context::short_error(&e.to_string()))?;
+        let response =
+            tokio::time::timeout(std::time::Duration::from_secs(secs), model.call(request))
+                .await
+                .map_err(|_| "The provider did not answer in time.".to_string())?
+                .map_err(|e| super::context::short_error(&e.to_string()))?;
         let text = response.text();
         // A thinking model can spend a small budget on thought and say nothing.
         if text.trim().is_empty() {
@@ -384,7 +503,10 @@ pub async fn ask_text(config_dir: &std::path::Path, reference: &str, request: Co
     };
     match attempt(reference.to_string(), request.clone()).await {
         Ok(text) => Ok(text),
-        Err(first) => match providers::load(config_dir).backup_model.filter(|b| b != reference) {
+        Err(first) => match providers::load(config_dir)
+            .backup_model
+            .filter(|b| b != reference)
+        {
             Some(backup) => {
                 log::warn!("{reference} failed ({first}); trying the backup model {backup}");
                 attempt(backup, request).await.map_err(|_| first)
@@ -416,12 +538,23 @@ fn rewind_to_last_prompt(conversation: &mut Conversation) -> bool {
 /// Runs a turn to its end. Always emits `Done` or `Error` last.
 pub async fn run_turn(app: AppHandle, request: TurnRequest, cancel: watch::Receiver<bool>) {
     let id = request.conversation_id.clone();
-    emit(&app, ChatEvent::Started { conversation_id: id.clone() });
+    emit(
+        &app,
+        ChatEvent::Started {
+            conversation_id: id.clone(),
+        },
+    );
     let request = match auto_route(&app, request) {
         Ok(r) => r,
         Err(message) => {
             app.state::<ChatState>().finish(&id);
-            emit(&app, ChatEvent::Error { conversation_id: id, message });
+            emit(
+                &app,
+                ChatEvent::Error {
+                    conversation_id: id,
+                    message,
+                },
+            );
             return;
         }
     };
@@ -435,17 +568,41 @@ pub async fn run_turn(app: AppHandle, request: TurnRequest, cancel: watch::Recei
     if let Ok(cancelled) = outcome {
         // The user's turn_end hooks, without holding up the next message.
         if let Ok(dir) = config_dir(&app) {
-            if super::hooks::load(&dir).iter().any(|h| h.enabled && h.event == "turn_end") {
+            if super::hooks::load(&dir)
+                .iter()
+                .any(|h| h.enabled && h.event == "turn_end")
+            {
                 let id = id.clone();
                 tauri::async_runtime::spawn(async move {
-                    let Ok(c) = store::load_conversation(&dir, &id) else { return };
+                    let Ok(c) = store::load_conversation(&dir, &id) else {
+                        return;
+                    };
                     let answer = store::turns(&c)
                         .iter()
                         .rev()
                         .find(|t| t.role == "assistant")
-                        .map(|t| t.parts.iter().filter_map(|p| if let store::Part::Text { text } = p { Some(text.as_str()) } else { None }).collect::<Vec<_>>().join("\n"))
+                        .map(|t| {
+                            t.parts
+                                .iter()
+                                .filter_map(|p| {
+                                    if let store::Part::Text { text } = p {
+                                        Some(text.as_str())
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        })
                         .unwrap_or_default();
-                    super::hooks::turn_end(&dir, &id, &answer, cancelled, c.workdir.as_deref().map(std::path::Path::new)).await;
+                    super::hooks::turn_end(
+                        &dir,
+                        &id,
+                        &answer,
+                        cancelled,
+                        c.workdir.as_deref().map(std::path::Path::new),
+                    )
+                    .await;
                 });
             }
         }
@@ -459,7 +616,13 @@ pub async fn run_turn(app: AppHandle, request: TurnRequest, cancel: watch::Recei
         }
     }
     match outcome {
-        Ok(cancelled) => emit(&app, ChatEvent::Done { conversation_id: id, cancelled }),
+        Ok(cancelled) => emit(
+            &app,
+            ChatEvent::Done {
+                conversation_id: id,
+                cancelled,
+            },
+        ),
         Err(message) => {
             warn!("chat turn failed: {message}");
             // A conversation whose first reply failed still gets a name in the sidebar.
@@ -469,24 +632,51 @@ pub async fn run_turn(app: AppHandle, request: TurnRequest, cancel: watch::Recei
                         c.title = fallback_title(&c);
                         let title = c.title.clone();
                         if store::save_conversation(&dir, &c).is_ok() {
-                            emit(&app, ChatEvent::Title { conversation_id: id.clone(), title });
+                            emit(
+                                &app,
+                                ChatEvent::Title {
+                                    conversation_id: id.clone(),
+                                    title,
+                                },
+                            );
                         }
                     }
                 }
             }
             // A provider's raw error (status, JSON) becomes what it means; the log keeps it all.
-            let message = if message.contains("ProviderResponseError") || message.contains("status ") { super::context::short_error(&message) } else { message };
-            emit(&app, ChatEvent::Error { conversation_id: id, message });
+            let message =
+                if message.contains("ProviderResponseError") || message.contains("status ") {
+                    super::context::short_error(&message)
+                } else {
+                    message
+                };
+            emit(
+                &app,
+                ChatEvent::Error {
+                    conversation_id: id,
+                    message,
+                },
+            );
         }
     }
 }
 
-type QueuedTurn = (AppHandle, TurnRequest, watch::Receiver<bool>, tokio::sync::oneshot::Sender<()>);
+type QueuedTurn = (
+    AppHandle,
+    TurnRequest,
+    watch::Receiver<bool>,
+    tokio::sync::oneshot::Sender<()>,
+);
 
 /// Runs a turn from inside another one (an agent messaging an agent). The turn goes through a
 /// queue to a task of its own, since a turn cannot spawn its own kind directly.
-fn queue_turn(app: &AppHandle, request: TurnRequest, cancel: watch::Receiver<bool>) -> tokio::sync::oneshot::Receiver<()> {
-    static QUEUE: std::sync::OnceLock<tokio::sync::mpsc::UnboundedSender<QueuedTurn>> = std::sync::OnceLock::new();
+fn queue_turn(
+    app: &AppHandle,
+    request: TurnRequest,
+    cancel: watch::Receiver<bool>,
+) -> tokio::sync::oneshot::Receiver<()> {
+    static QUEUE: std::sync::OnceLock<tokio::sync::mpsc::UnboundedSender<QueuedTurn>> =
+        std::sync::OnceLock::new();
     let queue = QUEUE.get_or_init(|| {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<QueuedTurn>();
         tauri::async_runtime::spawn(async move {
@@ -508,14 +698,34 @@ static MESSAGE_DEPTH: std::sync::atomic::AtomicUsize = std::sync::atomic::Atomic
 
 /// `message_agent`: the receiving agent answers in a new chat of its own (unread, so the user
 /// sees it), and its reply comes back as the tool's result.
-async fn message_agent(app: &AppHandle, config_dir: &std::path::Path, from_chat: &str, from: Option<&agents::Agent>, arguments: &Value, workdir: Option<&str>) -> tools::Outcome {
+async fn message_agent(
+    app: &AppHandle,
+    config_dir: &std::path::Path,
+    from_chat: &str,
+    from: Option<&agents::Agent>,
+    arguments: &Value,
+    workdir: Option<&str>,
+) -> tools::Outcome {
     use std::sync::atomic::Ordering;
-    let fail = |text: String| tools::Outcome { text, is_error: true };
-    let s = |k: &str| arguments.get(k).and_then(Value::as_str).unwrap_or_default().trim().to_string();
+    let fail = |text: String| tools::Outcome {
+        text,
+        is_error: true,
+    };
+    let s = |k: &str| {
+        arguments
+            .get(k)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    };
     let team = agents::load(config_dir);
     let Some(target) = agents::by_name(&team, &s("agent")).cloned() else {
         let names: Vec<&str> = team.iter().map(|a| a.name.as_str()).collect();
-        return fail(format!("There is no agent by that name. The agents are: {}.", names.join(", ")));
+        return fail(format!(
+            "There is no agent by that name. The agents are: {}.",
+            names.join(", ")
+        ));
     };
     if from.is_some_and(|f| f.id == target.id) {
         return fail("An agent cannot message itself.".into());
@@ -523,31 +733,60 @@ async fn message_agent(app: &AppHandle, config_dir: &std::path::Path, from_chat:
     if s("message").is_empty() {
         return fail("Write the message.".into());
     }
-    let paths: Vec<String> = arguments.get("files").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default();
+    let paths: Vec<String> = arguments
+        .get("files")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
     let files = match agents::read_shared(&paths, workdir.map(std::path::Path::new)) {
         Ok(f) => f,
         Err(e) => return fail(e),
     };
     if MESSAGE_DEPTH.fetch_add(1, Ordering::SeqCst) >= agents::MAX_MESSAGE_DEPTH {
         MESSAGE_DEPTH.fetch_sub(1, Ordering::SeqCst);
-        return fail("Messages are already going back and forth; answer with what you have.".into());
+        return fail(
+            "Messages are already going back and forth; answer with what you have.".into(),
+        );
     }
     let sender = from.map_or_else(|| "the assistant".to_string(), |a| a.name.clone());
-    let model = target.model.clone().or_else(|| store::load_conversation(config_dir, from_chat).ok().and_then(|c| c.model)).or(providers::load(config_dir).default_model);
+    let model = target
+        .model
+        .clone()
+        .or_else(|| {
+            store::load_conversation(config_dir, from_chat)
+                .ok()
+                .and_then(|c| c.model)
+        })
+        .or(providers::load(config_dir).default_model);
     let result = async {
         let model = model.ok_or("No model to run the other agent on.")?;
         let id = uuid::Uuid::new_v4().to_string();
         let mut c = Conversation::new(id.clone(), None, Some(model.clone()));
-        c.title = format!("From {sender}: {}", s("message").chars().take(50).collect::<String>());
+        c.title = format!(
+            "From {sender}: {}",
+            s("message").chars().take(50).collect::<String>()
+        );
         c.agent_id = Some(target.id.clone());
         c.unread = true;
         store::save_conversation(config_dir, &c)?;
-        let cancel = app.state::<ChatState>().begin(&id).ok_or("That chat is busy.")?;
+        let cancel = app
+            .state::<ChatState>()
+            .begin(&id)
+            .ok_or("That chat is busy.")?;
         let request = TurnRequest {
             conversation_id: id.clone(),
             text: agents::message_text(&sender, &s("message"), &files),
             model,
-            speed: if target.think { Speed::Think } else { Speed::Fast },
+            speed: if target.think {
+                Speed::Think
+            } else {
+                Speed::Fast
+            },
             approval: ApprovalMode::Unattended,
             project_id: None,
             agent_id: Some(target.id.clone()),
@@ -561,18 +800,31 @@ async fn message_agent(app: &AppHandle, config_dir: &std::path::Path, from_chat:
             tools_off: Vec::new(),
         };
         // A turn of its own, so the other agent's events stream to its chat as usual.
-        queue_turn(app, request, cancel).await.map_err(|_| "The other agent's turn stopped.".to_string())?;
+        queue_turn(app, request, cancel)
+            .await
+            .map_err(|_| "The other agent's turn stopped.".to_string())?;
         let done = store::load_conversation(config_dir, &id)?;
-        let reply = done.messages.last().filter(|m| matches!(m, Message::Assistant(_))).map(super::context::message_text).unwrap_or_default();
+        let reply = done
+            .messages
+            .last()
+            .filter(|m| matches!(m, Message::Assistant(_)))
+            .map(super::context::message_text)
+            .unwrap_or_default();
         if reply.trim().is_empty() {
             return Err(format!("{} could not answer.", target.name));
         }
-        Ok::<String, String>(format!("{} replied:\n\n{reply}\n\n(The exchange is kept in a chat under {} in the sidebar.)", target.name, target.name))
+        Ok::<String, String>(format!(
+            "{} replied:\n\n{reply}\n\n(The exchange is kept in a chat under {} in the sidebar.)",
+            target.name, target.name
+        ))
     }
     .await;
     MESSAGE_DEPTH.fetch_sub(1, Ordering::SeqCst);
     match result {
-        Ok(text) => tools::Outcome { text, is_error: false },
+        Ok(text) => tools::Outcome {
+            text,
+            is_error: false,
+        },
         Err(e) => fail(e),
     }
 }
@@ -584,54 +836,124 @@ async fn learn_from_turn(app: &AppHandle, id: &str) {
     if !super::learning::load(&dir).skills_from_work {
         return;
     }
-    let Ok(c) = store::load_conversation(&dir, id) else { return };
-    let Some(agent) = c.agent_id.as_deref().and_then(|a| agents::find(&dir, a)) else { return };
+    let Ok(c) = store::load_conversation(&dir, id) else {
+        return;
+    };
+    let Some(agent) = c.agent_id.as_deref().and_then(|a| agents::find(&dir, a)) else {
+        return;
+    };
     let turns = store::turns(&c);
-    let Some(last) = turns.iter().rev().find(|t| t.role == "assistant") else { return };
+    let Some(last) = turns.iter().rev().find(|t| t.role == "assistant") else {
+        return;
+    };
     let steps: Vec<String> = last
         .parts
         .iter()
         .filter_map(|p| match p {
-            store::Part::Tool { name, arguments, .. } => Some(format!("{name}: {}", arguments.to_string().chars().take(160).collect::<String>())),
+            store::Part::Tool {
+                name, arguments, ..
+            } => Some(format!(
+                "{name}: {}",
+                arguments.to_string().chars().take(160).collect::<String>()
+            )),
             _ => None,
         })
         .collect();
     if steps.len() < super::learning::MIN_STEPS {
         return;
     }
-    let request = turns.iter().rev().find(|t| t.role == "user").map(|t| t.parts.iter().filter_map(|p| if let store::Part::Text { text } = p { Some(text.as_str()) } else { None }).collect::<Vec<_>>().join("\n")).unwrap_or_default();
-    let answer: String = last.parts.iter().filter_map(|p| if let store::Part::Text { text } = p { Some(text.as_str()) } else { None }).collect::<Vec<_>>().join("\n");
-    let existing: Vec<String> = super::skills::list(&dir).into_iter().map(|s| s.name).collect();
-    let reference = super::router::models(&providers::load(&dir)).map(|(fast, _)| fast).or_else(|| c.model.clone()).or(providers::load(&dir).default_model);
+    let request = turns
+        .iter()
+        .rev()
+        .find(|t| t.role == "user")
+        .map(|t| {
+            t.parts
+                .iter()
+                .filter_map(|p| {
+                    if let store::Part::Text { text } = p {
+                        Some(text.as_str())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .unwrap_or_default();
+    let answer: String = last
+        .parts
+        .iter()
+        .filter_map(|p| {
+            if let store::Part::Text { text } = p {
+                Some(text.as_str())
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let existing: Vec<String> = super::skills::list(&dir)
+        .into_iter()
+        .map(|s| s.name)
+        .collect();
+    let reference = super::router::models(&providers::load(&dir))
+        .map(|(fast, _)| fast)
+        .or_else(|| c.model.clone())
+        .or(providers::load(&dir).default_model);
     let Some(reference) = reference else { return };
     let prompt = super::learning::reflect_prompt(&agent.name, &request, &steps, &answer, &existing);
-    let reply = match ask_text(&dir, &reference, CompletionRequest::new(Message::user(prompt)), 60).await {
+    let reply = match ask_text(
+        &dir,
+        &reference,
+        CompletionRequest::new(Message::user(prompt)),
+        60,
+    )
+    .await
+    {
         Ok(r) => r,
         Err(e) => {
             warn!("could not reflect on {}'s work: {e}", agent.name);
             return;
         }
     };
-    let Some(skill) = super::learning::parse_reflection(&reply, &existing) else { return };
+    let Some(skill) = super::learning::parse_reflection(&reply, &existing) else {
+        return;
+    };
     if let Err(e) = super::learning::keep(&dir, &agent.name, &skill) {
         warn!("could not keep a learned skill: {e}");
         return;
     }
     info!("{} learned the skill {}", agent.name, skill.name);
-    let note = format!("{} learned a skill from this work: /{}, turned off until you review it under Skills.", agent.name, skill.name);
+    let note = format!(
+        "{} learned a skill from this work: /{}, turned off until you review it under Skills.",
+        agent.name, skill.name
+    );
     if let Ok(mut c) = store::load_conversation(&dir, id) {
         c.notices.push((c.messages.len(), note.clone()));
         let _ = store::save_conversation(&dir, &c);
     }
-    emit(app, ChatEvent::Notice { conversation_id: id.into(), text: note });
+    emit(
+        app,
+        ChatEvent::Notice {
+            conversation_id: id.into(),
+            text: note,
+        },
+    );
 }
 
 /// The orchestrator: a new Work chat goes to the agent that fits it best, when that is turned on
 /// and one clearly fits; the chat says so. Any failure leaves the chat as it was.
 async fn route_to_agent(app: &AppHandle, mut request: TurnRequest) -> TurnRequest {
-    let Ok(dir) = config_dir(app) else { return request };
+    let Ok(dir) = config_dir(app) else {
+        return request;
+    };
     let fresh = store::load_conversation(&dir, &request.conversation_id).is_err();
-    if !fresh || request.agent_id.is_some() || request.workdir.is_some() || request.text.trim().is_empty() || !agents::routing_enabled(&dir) {
+    if !fresh
+        || request.agent_id.is_some()
+        || request.workdir.is_some()
+        || request.text.trim().is_empty()
+        || !agents::routing_enabled(&dir)
+    {
         return request;
     }
     let team = agents::load(&dir);
@@ -639,7 +961,8 @@ async fn route_to_agent(app: &AppHandle, mut request: TurnRequest) -> TurnReques
         return request;
     }
     // The fast model decides when Auto has one; otherwise the chat's own.
-    let reference = super::router::models(&providers::load(&dir)).map_or_else(|| request.model.clone(), |(fast, _)| fast);
+    let reference = super::router::models(&providers::load(&dir))
+        .map_or_else(|| request.model.clone(), |(fast, _)| fast);
     let ask = CompletionRequest::new(Message::user(agents::route_prompt(&team, &request.text)));
     let reply = match ask_text(&dir, &reference, ask, 30).await {
         Ok(r) => r,
@@ -666,14 +989,25 @@ fn auto_route(app: &AppHandle, mut request: TurnRequest) -> Result<TurnRequest, 
         return Ok(request);
     }
     let dir = config_dir(app)?;
-    let (fast, strong) = super::router::models(&providers::load(&dir)).ok_or("Choose Auto's fast and strong models under Settings → Providers & models first.")?;
+    let (fast, strong) = super::router::models(&providers::load(&dir))
+        .ok_or("Choose Auto's fast and strong models under Settings → Providers & models first.")?;
     // Regenerating: the message being answered again decides.
     let text = if request.text.trim().is_empty() {
         store::load_conversation(&dir, &request.conversation_id)
             .ok()
             .and_then(|c| store::last_prompt(&c).and_then(|i| c.messages.get(i).cloned()))
             .map(|m| match m {
-                Message::User { content } => content.iter().filter_map(|c| if let rig_core::completion::message::UserContent::Text(t) = c { Some(t.text.clone()) } else { None }).collect::<Vec<_>>().join("\n"),
+                Message::User { content } => content
+                    .iter()
+                    .filter_map(|c| {
+                        if let rig_core::completion::message::UserContent::Text(t) = c {
+                            Some(t.text.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n"),
                 _ => String::new(),
             })
             .unwrap_or_default()
@@ -682,33 +1016,70 @@ fn auto_route(app: &AppHandle, mut request: TurnRequest) -> Result<TurnRequest, 
     };
     let route = super::router::route(&text, request.images.len());
     request.model = if route.strong { strong } else { fast };
-    let name = providers::split_reference(&request.model).map_or(request.model.as_str(), |(_, m)| m).to_string();
+    let name = providers::split_reference(&request.model)
+        .map_or(request.model.as_str(), |(_, m)| m)
+        .to_string();
     request.route_note = Some(format!("Auto chose {name}: {}.", route.reason));
     Ok(request)
 }
 
 pub const READ_TOOL_OUTPUT: &str = "read_tool_output";
 
-fn tool_output_path(config_dir: &std::path::Path, conversation: &str, call_id: &str) -> Option<std::path::PathBuf> {
-    let safe = |s: &str| !s.is_empty() && s.len() <= 120 && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.')) && !s.starts_with('.');
-    (safe(conversation) && safe(call_id)).then(|| store::chat_dir(config_dir).join("tool-outputs").join(conversation).join(format!("{call_id}.txt")))
+fn tool_output_path(
+    config_dir: &std::path::Path,
+    conversation: &str,
+    call_id: &str,
+) -> Option<std::path::PathBuf> {
+    let safe = |s: &str| {
+        !s.is_empty()
+            && s.len() <= 120
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+            && !s.starts_with('.')
+    };
+    (safe(conversation) && safe(call_id)).then(|| {
+        store::chat_dir(config_dir)
+            .join("tool-outputs")
+            .join(conversation)
+            .join(format!("{call_id}.txt"))
+    })
 }
 
 /// Keeps a long tool output in `chat/tool-outputs/<conversation>/<call>.txt` (Vibe 3.0.1).
-fn save_tool_output(config_dir: &std::path::Path, conversation: &str, call_id: &str, text: &str) -> Result<(), String> {
+fn save_tool_output(
+    config_dir: &std::path::Path,
+    conversation: &str,
+    call_id: &str,
+    text: &str,
+) -> Result<(), String> {
     let path = tool_output_path(config_dir, conversation, call_id).ok_or("unusable call id")?;
     std::fs::create_dir_all(path.parent().ok_or("no folder")?).map_err(|e| e.to_string())?;
     crate::chat::at_rest::write(path, text).map_err(|e| e.to_string())
 }
 
 /// A part of a saved long output, from `offset` characters, at most 20,000.
-pub fn read_tool_output(config_dir: &std::path::Path, conversation: &str, call_id: &str, offset: usize) -> Result<String, String> {
-    let path = tool_output_path(config_dir, conversation, call_id).ok_or("There is no saved output with that call id.")?;
-    let text = crate::chat::at_rest::read_to_string(path).map_err(|_| "There is no saved output with that call id in this conversation.".to_string())?;
+pub fn read_tool_output(
+    config_dir: &std::path::Path,
+    conversation: &str,
+    call_id: &str,
+    offset: usize,
+) -> Result<String, String> {
+    let path = tool_output_path(config_dir, conversation, call_id)
+        .ok_or("There is no saved output with that call id.")?;
+    let text = crate::chat::at_rest::read_to_string(path).map_err(|_| {
+        "There is no saved output with that call id in this conversation.".to_string()
+    })?;
     let total = text.chars().count();
     let part: String = text.chars().skip(offset).take(20_000).collect();
     let end = (offset + part.chars().count()).min(total);
-    Ok(format!("[characters {offset}–{end} of {total}]\n{part}{}", if end < total { format!("\n[… continue with offset={end}]") } else { String::new() }))
+    Ok(format!(
+        "[characters {offset}–{end} of {total}]\n{part}{}",
+        if end < total {
+            format!("\n[… continue with offset={end}]")
+        } else {
+            String::new()
+        }
+    ))
 }
 
 fn read_tool_output_tool() -> ChatTool {
@@ -744,12 +1115,31 @@ async fn cancelled(cancel: &mut watch::Receiver<bool>) {
 /// Runs the outlet filters over the last answer; a changed answer replaces it.
 async fn filter_answer(config_dir: &std::path::Path, id: &str) {
     use rig_core::completion::message::AssistantContent;
-    let Ok(mut c) = store::load_conversation(config_dir, id) else { return };
-    let Some(Message::Assistant(last)) = c.messages.last() else { return };
-    if last.content.iter().any(|p| matches!(p, AssistantContent::ToolCall(_))) {
+    let Ok(mut c) = store::load_conversation(config_dir, id) else {
+        return;
+    };
+    let Some(Message::Assistant(last)) = c.messages.last() else {
+        return;
+    };
+    if last
+        .content
+        .iter()
+        .any(|p| matches!(p, AssistantContent::ToolCall(_)))
+    {
         return;
     }
-    let text = last.content.iter().filter_map(|p| if let AssistantContent::Text(t) = p { Some(t.text.as_str()) } else { None }).collect::<Vec<_>>().join("");
+    let text = last
+        .content
+        .iter()
+        .filter_map(|p| {
+            if let AssistantContent::Text(t) = p {
+                Some(t.text.as_str())
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("");
     if text.trim().is_empty() {
         return;
     }
@@ -772,7 +1162,11 @@ async fn filter_answer(config_dir: &std::path::Path, id: &str) {
 }
 
 /// Returns whether the turn was cancelled.
-async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receiver<bool>) -> Result<bool, String> {
+async fn turn(
+    app: &AppHandle,
+    request: &TurnRequest,
+    mut cancel: watch::Receiver<bool>,
+) -> Result<bool, String> {
     let config_dir = config_dir(app)?;
     let id = request.conversation_id.as_str();
     let mut conversation = match store::load_conversation(&config_dir, id) {
@@ -789,7 +1183,9 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
     // Filters see the message first: they can rewrite it or refuse it.
     let mut text = request.text.trim().to_string();
     if !text.is_empty() && super::functions::has_filters(&config_dir) {
-        text = super::functions::apply(&config_dir, id, "inlet", &request.model, &text).await.map_err(|reason| format!("Not sent. {reason}"))?;
+        text = super::functions::apply(&config_dir, id, "inlet", &request.model, &text)
+            .await
+            .map_err(|reason| format!("Not sent. {reason}"))?;
     }
 
     if let Some(index) = request.edit_index {
@@ -804,11 +1200,17 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         conversation.messages.truncate(index);
         conversation.times.retain(|(i, _)| *i < index);
         conversation.ratings.retain(|(i, _)| *i < index);
-        if conversation.summary.as_ref().is_some_and(|s| s.upto > index) {
+        if conversation
+            .summary
+            .as_ref()
+            .is_some_and(|s| s.upto > index)
+        {
             conversation.summary = None;
         }
         conversation.messages.push(Message::user(text.as_str()));
-        conversation.times.push((conversation.messages.len() - 1, Utc::now()));
+        conversation
+            .times
+            .push((conversation.messages.len() - 1, Utc::now()));
     } else if request.resume {
         if conversation.messages.is_empty() {
             return Err("There is nothing to continue.".into());
@@ -822,13 +1224,25 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
             return Err("There is nothing to regenerate yet.".into());
         }
     } else {
-        conversation.messages.push(user_message(&text, &request.images)?);
-        conversation.times.push((conversation.messages.len() - 1, Utc::now()));
+        conversation
+            .messages
+            .push(user_message(&text, &request.images)?);
+        conversation
+            .times
+            .push((conversation.messages.len() - 1, Utc::now()));
     }
     conversation.updated_at = Utc::now();
     if let Some(note) = &request.route_note {
-        conversation.notices.push((conversation.messages.len(), note.clone()));
-        emit(app, ChatEvent::Notice { conversation_id: id.into(), text: note.clone() });
+        conversation
+            .notices
+            .push((conversation.messages.len(), note.clone()));
+        emit(
+            app,
+            ChatEvent::Notice {
+                conversation_id: id.into(),
+                text: note.clone(),
+            },
+        );
     }
     store::save_conversation(&config_dir, &conversation)?;
 
@@ -840,48 +1254,69 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
             out = super::functions::run(&config_dir, id, &pipe, &args) => Some(out?),
             _ = cancelled(&mut cancel) => None,
         };
-        let Some(answer) = answer else { return Ok(true) };
+        let Some(answer) = answer else {
+            return Ok(true);
+        };
         if answer.trim().is_empty() {
             return Err(format!("{} printed nothing.", pipe.name));
         }
-        emit(app, ChatEvent::Text { conversation_id: id.into(), text: answer.clone() });
+        emit(
+            app,
+            ChatEvent::Text {
+                conversation_id: id.into(),
+                text: answer.clone(),
+            },
+        );
         conversation.messages.push(Message::assistant(answer));
-        conversation.times.push((conversation.messages.len() - 1, Utc::now()));
+        conversation
+            .times
+            .push((conversation.messages.len() - 1, Utc::now()));
         conversation.updated_at = Utc::now();
         store::save_conversation(&config_dir, &conversation)?;
         if !named {
             let app = app.clone();
             let reference = request.model.clone();
-            tauri::async_runtime::spawn(async move { name_conversation(app, reference, conversation).await });
+            tauri::async_runtime::spawn(async move {
+                name_conversation(app, reference, conversation).await
+            });
         }
         return Ok(false);
     }
     // An ACP agent answers over the Agent Client Protocol, with its own tools.
     if let Some(acp_agent) = super::acp::find(&config_dir, &request.model) {
         let named = !conversation.title.is_empty();
-        let cancelled = super::acp::run(app, &config_dir, conversation.clone(), &acp_agent, cancel).await?;
+        let cancelled =
+            super::acp::run(app, &config_dir, conversation.clone(), &acp_agent, cancel).await?;
         if !named {
             let app = app.clone();
             let reference = request.model.clone();
-            tauri::async_runtime::spawn(async move { name_conversation(app, reference, conversation).await });
+            tauri::async_runtime::spawn(async move {
+                name_conversation(app, reference, conversation).await
+            });
         }
         return Ok(cancelled);
     }
     // A coding agent program (Claude Code, Codex, Gemini CLI) answers with its own tools.
     if let Some(cli) = super::agent_cli::find(&request.model) {
         let named = !conversation.title.is_empty();
-        let cancelled = super::agent_cli::run(app, &config_dir, conversation.clone(), cli, cancel).await?;
+        let cancelled =
+            super::agent_cli::run(app, &config_dir, conversation.clone(), cli, cancel).await?;
         if !named {
             let app = app.clone();
             let reference = request.model.clone();
-            tauri::async_runtime::spawn(async move { name_conversation(app, reference, conversation).await });
+            tauri::async_runtime::spawn(async move {
+                name_conversation(app, reference, conversation).await
+            });
         }
         return Ok(cancelled);
     }
 
     let mut model = connect_model(&config_dir, &request.model).await?;
     let registry = app.state::<ToolRegistry>();
-    let agent = conversation.agent_id.as_deref().and_then(|a| agents::find(&config_dir, a));
+    let agent = conversation
+        .agent_id
+        .as_deref()
+        .and_then(|a| agents::find(&config_dir, a));
     if let Some(agent) = &agent {
         agents::check_budget(&config_dir, agent)?;
     }
@@ -904,7 +1339,12 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
     }
     // The composer's Tools menu: what the user turned off for this chat.
     if !request.tools_off.is_empty() {
-        offered.retain(|t| !request.tools_off.iter().any(|off| off == &t.name || t.name.starts_with(&format!("{off}__"))));
+        offered.retain(|t| {
+            !request
+                .tools_off
+                .iter()
+                .any(|off| off == &t.name || t.name.starts_with(&format!("{off}__")))
+        });
     }
     if request.approval.unattended() {
         // Nobody can answer a question during a scheduled run.
@@ -920,17 +1360,22 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
     }
     if conversation.temporary {
         // A temporary chat leaves no trace: it does not add to or change knowledge.
-        offered.retain(|t| t.name != builtins::REMEMBER && t.name != builtins::FORGET && t.name != builtins::KNOWLEDGE_WRITE);
+        offered.retain(|t| {
+            t.name != builtins::REMEMBER
+                && t.name != builtins::FORGET
+                && t.name != builtins::KNOWLEDGE_WRITE
+        });
     }
     // Past a few dozen connector tools, the rest load on demand (Vibe's "Found tools").
     let defer = deferred::should_defer(&offered);
     if defer {
         offered.push(deferred::find_tools_tool());
     }
-    let project = conversation
-        .project_id
-        .as_ref()
-        .and_then(|pid| store::load_projects(&config_dir).into_iter().find(|p| &p.id == pid));
+    let project = conversation.project_id.as_ref().and_then(|pid| {
+        store::load_projects(&config_dir)
+            .into_iter()
+            .find(|p| &p.id == pid)
+    });
     let instructions = store::load_instructions(&config_dir);
     let memories = memory::load(&config_dir);
     let mut skill_list = skills::list(&config_dir);
@@ -961,19 +1406,34 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
     // it starts answering in seconds rather than reading thousands of tokens of tool manuals.
     if request.model.starts_with("local/") {
         offered.clear();
-        system = super::local_models::brief(&instructions, project.as_ref().map(|p| p.instructions.as_str()), agent.as_ref().map(|a| (a.name.as_str(), a.instructions.as_str())));
+        system = super::local_models::brief(
+            &instructions,
+            project.as_ref().map(|p| p.instructions.as_str()),
+            agent
+                .as_ref()
+                .map(|a| (a.name.as_str(), a.instructions.as_str())),
+        );
     }
-    if let Some(secrets) = super::vault::prompt(&super::vault::granted(&super::vault::list(&config_dir), agent.as_ref())) {
+    if let Some(secrets) = super::vault::prompt(&super::vault::granted(
+        &super::vault::list(&config_dir),
+        agent.as_ref(),
+    )) {
         system.push_str(&secrets);
     }
     if !conversation.params.instructions.is_empty() {
-        system.push_str(&format!("\n\n## Instructions for this conversation\n{}", conversation.params.instructions));
+        system.push_str(&format!(
+            "\n\n## Instructions for this conversation\n{}",
+            conversation.params.instructions
+        ));
     }
     if defer {
         system.push_str(&deferred::prompt(&offered, &conversation.loaded_tools));
     }
     if let Some(agent) = &agent {
-        system.push_str(&agents::notebook_prompt(&agents::notebook(&config_dir, &agent.id)));
+        system.push_str(&agents::notebook_prompt(&agents::notebook(
+            &config_dir,
+            &agent.id,
+        )));
     }
     if offered.iter().any(|t| t.name == builtins::DELEGATE) {
         let all = agents::load(&config_dir);
@@ -981,7 +1441,8 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         match agent.as_ref().and_then(|a| agents::group_prompt(&all, a)) {
             Some(group) => system.push_str(&group),
             None => {
-                if let Some(team) = agents::team_prompt(&all, agent.as_ref().map(|a| a.id.as_str())) {
+                if let Some(team) = agents::team_prompt(&all, agent.as_ref().map(|a| a.id.as_str()))
+                {
                     system.push_str(&team);
                 }
             }
@@ -1013,18 +1474,30 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
     let window = context::context_window(&request.model);
     // Personal data in what the user typed is swapped for placeholders before a cloud request.
     let filter = privacy::load(&config_dir).enabled
-        && providers::split_reference(&request.model).is_some_and(|(vendor, _)| privacy::is_cloud(vendor));
+        && providers::split_reference(&request.model)
+            .is_some_and(|(vendor, _)| privacy::is_cloud(vendor));
     let mut redactions = privacy::Redactions::default();
     compact_if_needed(app, &model, &mut conversation, window, &config_dir).await;
 
     for step in 0..MAX_STEPS {
         // Guidance the user sent while this turn was running joins the conversation here.
         for text in app.state::<ChatState>().take_steering(id) {
-            conversation.messages.push(Message::user(format!("(Sent while you were working) {text}")));
-            conversation.times.push((conversation.messages.len() - 1, Utc::now()));
-            emit(app, ChatEvent::Steered { conversation_id: id.into(), text });
+            conversation.messages.push(Message::user(format!(
+                "(Sent while you were working) {text}"
+            )));
+            conversation
+                .times
+                .push((conversation.messages.len() - 1, Utc::now()));
+            emit(
+                app,
+                ChatEvent::Steered {
+                    conversation_id: id.into(),
+                    text,
+                },
+            );
         }
-        let mut carried = context::request_messages(&conversation.messages, conversation.summary.as_ref());
+        let mut carried =
+            context::request_messages(&conversation.messages, conversation.summary.as_ref());
         if filter {
             carried = privacy::redact_messages(&carried, &mut redactions);
         }
@@ -1048,9 +1521,16 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         // An agent's reminder rides on the newest message the user typed, every request; it is
         // not saved with the conversation.
         let mut prompt = prompt.clone();
-        if let Some(reminder) = agent.as_ref().map(|a| a.reminder.trim()).filter(|r| !r.is_empty()) {
+        if let Some(reminder) = agent
+            .as_ref()
+            .map(|a| a.reminder.trim())
+            .filter(|r| !r.is_empty())
+        {
             if let Message::User { content } = &mut prompt {
-                if let Some(rig_core::completion::message::UserContent::Text(t)) = content.iter_mut().find(|c| matches!(c, rig_core::completion::message::UserContent::Text(_))) {
+                if let Some(rig_core::completion::message::UserContent::Text(t)) = content
+                    .iter_mut()
+                    .find(|c| matches!(c, rig_core::completion::message::UserContent::Text(_)))
+                {
                     t.text = format!("{}\n\n(Reminder: {reminder})", t.text);
                 }
             }
@@ -1062,12 +1542,18 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
             // Deferred tools go out once they are loaded; the rest every time.
             let definitions = offered
                 .iter()
-                .filter(|t| !defer || !deferred::deferrable(t) || conversation.loaded_tools.contains(&t.name))
+                .filter(|t| {
+                    !defer
+                        || !deferred::deferrable(t)
+                        || conversation.loaded_tools.contains(&t.name)
+                })
                 .filter_map(ChatTool::definition);
             call = call.tools(definitions);
         }
         // This conversation's own model settings, then the app-wide defaults.
-        let params = conversation.params.or_defaults(&store::chat_defaults(&config_dir));
+        let params = conversation
+            .params
+            .or_defaults(&store::chat_defaults(&config_dir));
         if let Some(t) = params.temperature {
             call = call.temperature(t);
         }
@@ -1132,15 +1618,24 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
 
             if was_cancelled {
                 if !streamed_text.trim().is_empty() {
-                    conversation.messages.push(Message::assistant(streamed_text));
-                    conversation.times.push((conversation.messages.len() - 1, Utc::now()));
+                    conversation
+                        .messages
+                        .push(Message::assistant(streamed_text));
+                    conversation
+                        .times
+                        .push((conversation.messages.len() - 1, Utc::now()));
                 }
                 conversation.updated_at = Utc::now();
                 store::save_conversation(&config_dir, &conversation)?;
                 return Ok(true);
             }
 
-            thought_ms = thinking.map(|(start, end)| end.unwrap_or_else(std::time::Instant::now).duration_since(start).as_millis().min(u32::MAX as u128) as u32);
+            thought_ms = thinking.map(|(start, end)| {
+                end.unwrap_or_else(std::time::Instant::now)
+                    .duration_since(start)
+                    .as_millis()
+                    .min(u32::MAX as u128) as u32
+            });
             match stream.finish().await {
                 Ok(response) => break response,
                 Err(e) if e.is_retryable() && !streamed_anything && attempt < MAX_ATTEMPTS => {
@@ -1160,9 +1655,20 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
                             model = next;
                             attempt = 0;
                             let label = backup.rsplit('/').next().unwrap_or(&backup).to_string();
-                            let text = format!("{}; continuing with {label}.", super::context::brief_error(&e.to_string()));
-                            conversation.notices.push((conversation.messages.len(), text.clone()));
-                            emit(app, ChatEvent::Notice { conversation_id: id.into(), text });
+                            let text = format!(
+                                "{}; continuing with {label}.",
+                                super::context::brief_error(&e.to_string())
+                            );
+                            conversation
+                                .notices
+                                .push((conversation.messages.len(), text.clone()));
+                            emit(
+                                app,
+                                ChatEvent::Notice {
+                                    conversation_id: id.into(),
+                                    text,
+                                },
+                            );
                         }
                         Err(_) => {
                             store::save_conversation(&config_dir, &conversation)?;
@@ -1177,14 +1683,29 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
             }
         };
         conversation.usage.add(&response.usage);
-        emit(app, ChatEvent::Usage { conversation_id: id.into(), usage: conversation.usage.clone(), context_window: window });
-        let message = response.message().map(|m| if filter { privacy::restore_message(m, &redactions) } else { m });
+        emit(
+            app,
+            ChatEvent::Usage {
+                conversation_id: id.into(),
+                usage: conversation.usage.clone(),
+                context_window: window,
+            },
+        );
+        let message = response.message().map(|m| {
+            if filter {
+                privacy::restore_message(m, &redactions)
+            } else {
+                m
+            }
+        });
         let calls: Vec<ToolCall> = match &message {
             Some(Message::Assistant(a)) => a
                 .content
                 .iter()
                 .filter_map(|c| match c {
-                    rig_core::completion::message::AssistantContent::ToolCall(call) => Some(call.clone()),
+                    rig_core::completion::message::AssistantContent::ToolCall(call) => {
+                        Some(call.clone())
+                    }
                     _ => None,
                 })
                 .collect(),
@@ -1193,13 +1714,17 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         if let Some(message) = message {
             conversation.messages.push(message);
             if let Some(ms) = thought_ms {
-                conversation.thought.push((conversation.messages.len() - 1, ms));
+                conversation
+                    .thought
+                    .push((conversation.messages.len() - 1, ms));
             }
         }
         conversation.updated_at = Utc::now();
 
         if calls.is_empty() {
-            conversation.times.push((conversation.messages.len() - 1, Utc::now()));
+            conversation
+                .times
+                .push((conversation.messages.len() - 1, Utc::now()));
             store::save_conversation(&config_dir, &conversation)?;
             // The user added guidance while the answer streamed: answer that too.
             if app.state::<ChatState>().has_steering(id) && step + 1 < MAX_STEPS {
@@ -1211,34 +1736,56 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         info!("chat step {step}: {} tool call(s)", calls.len());
 
         for call in &calls {
-            emit(app, ChatEvent::ToolStart {
-                conversation_id: id.into(),
-                call_id: call.id.to_string(),
-                name: call.function.name.to_string(),
-                arguments: Value::Object(call.function.arguments.clone()),
-            });
+            emit(
+                app,
+                ChatEvent::ToolStart {
+                    conversation_id: id.into(),
+                    call_id: call.id.to_string(),
+                    name: call.function.name.to_string(),
+                    arguments: Value::Object(call.function.arguments.clone()),
+                },
+            );
         }
 
         // Calls that wait on the user run one at a time; everything else runs at once.
         let waits_on_user = |call: &ToolCall| {
             let name = call.function.name.as_str();
             name == ASK_USER
-                || (agent.as_ref().is_some_and(|a| agents::asks_first(a, name)) && !session_allowed(id, name))
+                || (agent.as_ref().is_some_and(|a| agents::asks_first(a, name))
+                    && !session_allowed(id, name))
                 || offered.iter().find(|t| t.name == name).is_some_and(|tool| {
                     tool.connector_id.is_some()
-                        && tools::needs_approval(tool, &Value::Object(call.function.arguments.clone()), agents::mode_for(agent.as_ref(), name, request.approval))
+                        && tools::needs_approval(
+                            tool,
+                            &Value::Object(call.function.arguments.clone()),
+                            agents::mode_for(agent.as_ref(), name, request.approval),
+                        )
                 })
         };
         // Decided once: an approval given during the step ("Always allow") must not move a call
         // out of the sequential queue after it was kept out of the concurrent batch.
         let sequential: Vec<bool> = calls.iter().map(waits_on_user).collect();
         let mut outcomes: Vec<Option<tools::Outcome>> = (0..calls.len()).map(|_| None).collect();
-        let runner = Runner { app, config_dir: &config_dir, registry: &registry, offered: &offered, model: &model, request, id, agent: agent.as_ref(), workdir: conversation.workdir.clone() };
+        let runner = Runner {
+            app,
+            config_dir: &config_dir,
+            registry: &registry,
+            offered: &offered,
+            model: &model,
+            request,
+            id,
+            agent: agent.as_ref(),
+            workdir: conversation.workdir.clone(),
+        };
         let concurrent = futures::future::join_all(
-            calls.iter().enumerate().filter(|(i, _)| !sequential[*i]).map(|(i, c)| {
-                let runner = &runner;
-                async move { (i, runner.run(c).await) }
-            }),
+            calls
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| !sequential[*i])
+                .map(|(i, c)| {
+                    let runner = &runner;
+                    async move { (i, runner.run(c).await) }
+                }),
         );
         let finished = tokio::select! {
             _ = cancelled(&mut cancel) => None,
@@ -1253,7 +1800,9 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
             if outcomes[i].is_some() || !sequential[i] || *cancel.borrow() {
                 continue;
             }
-            let outcome = if call.function.name.as_str() == ASK_USER && request.approval.unattended() {
+            let outcome = if call.function.name.as_str() == ASK_USER
+                && request.approval.unattended()
+            {
                 tools::Outcome { text: "Nobody is available to answer during this scheduled run; continue with your best judgement and state your assumptions.".into(), is_error: false }
             } else if call.function.name.as_str() == ASK_USER {
                 ask_user(app, id, call, &mut cancel).await
@@ -1269,16 +1818,24 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         let mut results = Vec::with_capacity(calls.len());
         for (call, outcome) in calls.iter().zip(outcomes) {
             let outcome = outcome.unwrap_or_else(cancelled_outcome);
-            emit(app, ChatEvent::ToolEnd {
-                conversation_id: id.into(),
-                call_id: call.id.to_string(),
-                output: outcome.text.clone(),
-                is_error: outcome.is_error,
-            });
+            emit(
+                app,
+                ChatEvent::ToolEnd {
+                    conversation_id: id.into(),
+                    call_id: call.id.to_string(),
+                    output: outcome.text.clone(),
+                    is_error: outcome.is_error,
+                },
+            );
             if call.function.name.as_str() == deferred::FIND_TOOLS && !outcome.is_error {
                 // What it found is loaded for the next step and the rest of the conversation.
                 if let Ok(found) = serde_json::from_str::<Value>(&outcome.text) {
-                    for name in found["matches"].as_array().into_iter().flatten().filter_map(|m| m["name"].as_str()) {
+                    for name in found["matches"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|m| m["name"].as_str())
+                    {
                         if !conversation.loaded_tools.iter().any(|t| t == name) {
                             conversation.loaded_tools.push(name.to_string());
                         }
@@ -1299,7 +1856,11 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
             if call.function.name.as_str() == super::computer::TOOL {
                 if let Some(data) = super::computer::take_image(id) {
                     drop_old_screenshots(&mut conversation.messages);
-                    content.push(ToolResultContent::image_base64(data, Some(rig_core::completion::message::ImageMediaType::JPEG), None));
+                    content.push(ToolResultContent::image_base64(
+                        data,
+                        Some(rig_core::completion::message::ImageMediaType::JPEG),
+                        None,
+                    ));
                 }
             }
             let mut result = call.result(content);
@@ -1318,7 +1879,9 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
     if conversation.title.is_empty() {
         let app = app.clone();
         let reference = request.model.clone();
-        tauri::async_runtime::spawn(async move { name_conversation(app, reference, conversation).await });
+        tauri::async_runtime::spawn(async move {
+            name_conversation(app, reference, conversation).await
+        });
     }
     Ok(false)
 }
@@ -1336,17 +1899,23 @@ fn restore_streamed(redactions: &privacy::Redactions, held: &mut String, chunk: 
 }
 
 fn cancelled_outcome() -> tools::Outcome {
-    tools::Outcome { text: "Cancelled by the user.".into(), is_error: true }
+    tools::Outcome {
+        text: "Cancelled by the user.".into(),
+        is_error: true,
+    }
 }
 
 /// Tools the user chose "Always allow" for under an agent's ask-first policy, by conversation.
 fn session_allowances() -> &'static std::sync::Mutex<std::collections::HashSet<(String, String)>> {
-    static SET: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<(String, String)>>> = std::sync::OnceLock::new();
+    static SET: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<(String, String)>>> =
+        std::sync::OnceLock::new();
     SET.get_or_init(Default::default)
 }
 
 fn session_allowed(conversation: &str, tool: &str) -> bool {
-    session_allowances().lock().is_ok_and(|s| s.contains(&(conversation.to_string(), tool.to_string())))
+    session_allowances()
+        .lock()
+        .is_ok_and(|s| s.contains(&(conversation.to_string(), tool.to_string())))
 }
 
 fn allow_for_session(conversation: &str, tool: &str) {
@@ -1375,8 +1944,13 @@ impl Runner<'_> {
         let name = call.function.name.as_str();
         let arguments = Value::Object(call.function.arguments.clone());
         let workdir = self.workdir.as_deref().map(std::path::Path::new);
-        if let Some(reason) = super::hooks::before_tool(self.config_dir, self.id, name, &arguments, workdir).await {
-            return tools::Outcome { text: format!("A hook blocked this call: {reason}"), is_error: true };
+        if let Some(reason) =
+            super::hooks::before_tool(self.config_dir, self.id, name, &arguments, workdir).await
+        {
+            return tools::Outcome {
+                text: format!("A hook blocked this call: {reason}"),
+                is_error: true,
+            };
         }
         // The agent's vault secrets reach the processes this call starts, and never the model.
         let secrets = super::vault::env_for(self.config_dir, self.agent).await;
@@ -1385,7 +1959,11 @@ impl Runner<'_> {
         if !secrets.is_empty() {
             outcome.text = super::vault::mask(&outcome.text, &secrets);
         }
-        let shown_args = if secrets.is_empty() { arguments.to_string() } else { super::vault::mask(&arguments.to_string(), &secrets) };
+        let shown_args = if secrets.is_empty() {
+            arguments.to_string()
+        } else {
+            super::vault::mask(&arguments.to_string(), &secrets)
+        };
         super::audit::record(
             self.config_dir,
             super::audit::Entry {
@@ -1400,9 +1978,21 @@ impl Runner<'_> {
                 millis: started.elapsed().as_millis() as u64,
             },
         );
-        let notes = super::hooks::after_tool(self.config_dir, self.id, name, &arguments, &outcome.text, outcome.is_error, workdir).await;
+        let notes = super::hooks::after_tool(
+            self.config_dir,
+            self.id,
+            name,
+            &arguments,
+            &outcome.text,
+            outcome.is_error,
+            workdir,
+        )
+        .await;
         if !notes.is_empty() {
-            outcome.text.push_str(&format!("\n\n[From the user's hooks]\n{}", notes.join("\n")));
+            outcome.text.push_str(&format!(
+                "\n\n[From the user's hooks]\n{}",
+                notes.join("\n")
+            ));
         }
         outcome
     }
@@ -1411,15 +2001,30 @@ impl Runner<'_> {
         let name = call.function.name.as_str();
         let arguments = Value::Object(call.function.arguments.clone());
         if let Some(raw) = &call.function.invalid_arguments {
-            return tools::Outcome { text: format!("The arguments were not a JSON object: {raw}"), is_error: true };
+            return tools::Outcome {
+                text: format!("The arguments were not a JSON object: {raw}"),
+                is_error: true,
+            };
         }
         // The agent's "ask first" policy covers every tool, built-in and reading ones included.
         let mut asked = false;
-        if self.agent.is_some_and(|a| agents::asks_first(a, name)) && !session_allowed(self.id, name) {
+        if self.agent.is_some_and(|a| agents::asks_first(a, name))
+            && !session_allowed(self.id, name)
+        {
             if self.request.approval.unattended() {
                 return tools::Outcome { text: format!("{name} asks first under this agent's policy, and nobody is watching this scheduled run to approve it."), is_error: true };
             }
-            let gate = ChatTool { name: name.into(), description: String::new(), parameters: Value::Null, connector_id: Some(self.agent.map_or_else(|| "agent".to_string(), |a| a.name.clone())), tool_name: name.into(), read_only: false };
+            let gate = ChatTool {
+                name: name.into(),
+                description: String::new(),
+                parameters: Value::Null,
+                connector_id: Some(
+                    self.agent
+                        .map_or_else(|| "agent".to_string(), |a| a.name.clone()),
+                ),
+                tool_name: name.into(),
+                read_only: false,
+            };
             match tools::request_approval(self.app, &gate, &arguments).await {
                 ApprovalDecision::Deny => {
                     return tools::Outcome { text: "The user declined this tool call. Do not retry it; ask what they would like instead.".into(), is_error: true };
@@ -1444,43 +2049,90 @@ impl Runner<'_> {
                         subagents::Mode::parse(&arguments),
                     )
                     .await;
-                    tools::Outcome { text: subagents::render(&reports), is_error: reports.iter().all(|r| r.status != "done") }
+                    tools::Outcome {
+                        text: subagents::render(&reports),
+                        is_error: reports.iter().all(|r| r.status != "done"),
+                    }
                 }
-                Err(e) => tools::Outcome { text: e, is_error: true },
+                Err(e) => tools::Outcome {
+                    text: e,
+                    is_error: true,
+                },
             };
         }
         if name == agents::MESSAGE_AGENT {
-            return message_agent(self.app, self.config_dir, self.id, self.agent, &arguments, self.workdir.as_deref()).await;
+            return message_agent(
+                self.app,
+                self.config_dir,
+                self.id,
+                self.agent,
+                &arguments,
+                self.workdir.as_deref(),
+            )
+            .await;
         }
         if name == deferred::FIND_TOOLS {
-            return tools::Outcome { text: deferred::find(self.offered, &arguments).0, is_error: false };
+            return tools::Outcome {
+                text: deferred::find(self.offered, &arguments).0,
+                is_error: false,
+            };
         }
         if name == agents::NOTEBOOK_TOOL {
-            let Some(agent_id) = store::load_conversation(self.config_dir, self.id).ok().and_then(|c| c.agent_id) else {
-                return tools::Outcome { text: "Only agents keep a notebook.".into(), is_error: true };
+            let Some(agent_id) = store::load_conversation(self.config_dir, self.id)
+                .ok()
+                .and_then(|c| c.agent_id)
+            else {
+                return tools::Outcome {
+                    text: "Only agents keep a notebook.".into(),
+                    is_error: true,
+                };
             };
-            let content = arguments.get("content").and_then(Value::as_str).unwrap_or_default();
+            let content = arguments
+                .get("content")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             return match agents::save_notebook(self.config_dir, &agent_id, content) {
-                Ok(()) => tools::Outcome { text: "Notebook saved.".into(), is_error: false },
-                Err(e) => tools::Outcome { text: e, is_error: true },
+                Ok(()) => tools::Outcome {
+                    text: "Notebook saved.".into(),
+                    is_error: false,
+                },
+                Err(e) => tools::Outcome {
+                    text: e,
+                    is_error: true,
+                },
             };
         }
         if name == builtins::CANVAS {
             let text = |k: &str| arguments.get(k).and_then(Value::as_str).map(str::to_string);
             // A bigger app comes as several files.
-            let files: Option<Vec<canvas::AppFile>> = arguments.get("files").and_then(|f| serde_json::from_value(f.clone()).ok()).filter(|f: &Vec<canvas::AppFile>| !f.is_empty());
+            let files: Option<Vec<canvas::AppFile>> = arguments
+                .get("files")
+                .and_then(|f| serde_json::from_value(f.clone()).ok())
+                .filter(|f: &Vec<canvas::AppFile>| !f.is_empty());
             let content = match files {
                 Some(files) => match canvas::bundle(&files) {
                     Ok(c) => Some(c),
-                    Err(e) => return tools::Outcome { text: e, is_error: true },
+                    Err(e) => {
+                        return tools::Outcome {
+                            text: e,
+                            is_error: true,
+                        }
+                    }
                 },
                 None => text("content").filter(|c| !c.trim().is_empty()),
             };
             let Some(content) = content else {
-                return tools::Outcome { text: "Give the canvas content.".into(), is_error: true };
+                return tools::Outcome {
+                    text: "Give the canvas content.".into(),
+                    is_error: true,
+                };
             };
             let id = text("id").filter(|i| !i.trim().is_empty());
-            let kind = if arguments.get("files").is_some() { Some("app".to_string()) } else { text("kind") };
+            let kind = if arguments.get("files").is_some() {
+                Some("app".to_string())
+            } else {
+                text("kind")
+            };
             return match canvas::write_kind(self.config_dir, self.id, id.as_deref(), text("title").as_deref(), &content, "assistant", kind.as_deref()) {
                 Ok(c) => tools::Outcome {
                     text: serde_json::json!({ "id": c.id, "title": c.title, "kind": c.kind, "version": c.versions.len() }).to_string(),
@@ -1498,19 +2150,46 @@ impl Runner<'_> {
         if name == super::webpage::BROWSER_ACT {
             // Using a page can change things (submit, sign up, post), so it asks unless the
             // chat runs on its own by choice.
-            if !asked && !matches!(self.request.approval, ApprovalMode::Auto | ApprovalMode::Autonomous) {
+            if !asked
+                && !matches!(
+                    self.request.approval,
+                    ApprovalMode::Auto | ApprovalMode::Autonomous
+                )
+            {
                 if self.request.approval.unattended() {
                     return tools::Outcome { text: "Using web pages needs the user's approval, and nobody is watching this run.".into(), is_error: true };
                 }
-                let gate = ChatTool { name: name.into(), description: String::new(), parameters: Value::Null, connector_id: Some("browser".into()), tool_name: name.into(), read_only: false };
-                if matches!(tools::request_approval(self.app, &gate, &arguments).await, ApprovalDecision::Deny) {
+                let gate = ChatTool {
+                    name: name.into(),
+                    description: String::new(),
+                    parameters: Value::Null,
+                    connector_id: Some("browser".into()),
+                    tool_name: name.into(),
+                    read_only: false,
+                };
+                if matches!(
+                    tools::request_approval(self.app, &gate, &arguments).await,
+                    ApprovalDecision::Deny
+                ) {
                     return tools::Outcome { text: "The user declined this. Do not retry it; ask what they would like instead.".into(), is_error: true };
                 }
             }
-            return super::webpage::act(self.config_dir, self.id, self.agent.map(|a| a.id.as_str()), &arguments).await;
+            return super::webpage::act(
+                self.config_dir,
+                self.id,
+                self.agent.map(|a| a.id.as_str()),
+                &arguments,
+            )
+            .await;
         }
         if name == super::webpage::BROWSER_VIEW {
-            return super::webpage::view(self.config_dir, self.id, self.agent.map(|a| a.id.as_str()), &arguments).await;
+            return super::webpage::view(
+                self.config_dir,
+                self.id,
+                self.agent.map(|a| a.id.as_str()),
+                &arguments,
+            )
+            .await;
         }
         if name == media::GENERATE_IMAGE {
             return media::generate(self.config_dir, self.id, &arguments).await;
@@ -1522,20 +2201,43 @@ impl Runner<'_> {
             return super::videogen::generate(self.config_dir, self.id, &arguments).await;
         }
         if name == builtins::NOTIFY {
-            let text = |k: &str| arguments.get(k).and_then(Value::as_str).unwrap_or_default().chars().take(240).collect::<String>();
+            let text = |k: &str| {
+                arguments
+                    .get(k)
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .chars()
+                    .take(240)
+                    .collect::<String>()
+            };
             let title = text("title");
             if title.trim().is_empty() {
-                return tools::Outcome { text: "Give the notification a title.".into(), is_error: true };
+                return tools::Outcome {
+                    text: "Give the notification a title.".into(),
+                    is_error: true,
+                };
             }
             notify(self.app, &title, &text("body"));
-            return tools::Outcome { text: "Notification shown.".into(), is_error: false };
+            return tools::Outcome {
+                text: "Notification shown.".into(),
+                is_error: false,
+            };
         }
         if name == READ_TOOL_OUTPUT {
-            let call_id = arguments.get("call_id").and_then(Value::as_str).unwrap_or_default();
+            let call_id = arguments
+                .get("call_id")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             let offset = arguments.get("offset").and_then(Value::as_u64).unwrap_or(0) as usize;
             return match read_tool_output(self.config_dir, self.id, call_id, offset) {
-                Ok(text) => tools::Outcome { text, is_error: false },
-                Err(text) => tools::Outcome { text, is_error: true },
+                Ok(text) => tools::Outcome {
+                    text,
+                    is_error: false,
+                },
+                Err(text) => tools::Outcome {
+                    text,
+                    is_error: true,
+                },
             };
         }
         if builtins::is_builtin(name) {
@@ -1556,20 +2258,44 @@ impl Runner<'_> {
         }
         match self.offered.iter().find(|t| t.name == name) {
             // Approved just now under the agent's policy: do not ask a second time.
-            Some(tool) if asked => tools::execute(self.app, self.registry, tool, arguments, ApprovalMode::Auto, self.id).await,
+            Some(tool) if asked => {
+                tools::execute(
+                    self.app,
+                    self.registry,
+                    tool,
+                    arguments,
+                    ApprovalMode::Auto,
+                    self.id,
+                )
+                .await
+            }
             Some(tool) => {
                 let mode = agents::mode_for(self.agent, name, self.request.approval);
                 // Auto: what Ask mode would confirm gets a quick check against the request.
-                if mode == ApprovalMode::Auto && tools::risk(tool, &arguments).is_none() && tools::needs_approval(tool, &arguments, ApprovalMode::Ask) {
+                if mode == ApprovalMode::Auto
+                    && tools::risk(tool, &arguments).is_none()
+                    && tools::needs_approval(tool, &arguments, ApprovalMode::Ask)
+                {
                     if let Some(reason) = self.auto_check(name, &arguments).await {
-                        if tools::request_approval_because(self.app, tool, &arguments, Some(&reason)).await == ApprovalDecision::Deny {
+                        if tools::request_approval_because(
+                            self.app,
+                            tool,
+                            &arguments,
+                            Some(&reason),
+                        )
+                        .await
+                            == ApprovalDecision::Deny
+                        {
                             return tools::Outcome { text: "The user declined this tool call. Do not retry it; ask what they would like instead.".into(), is_error: true };
                         }
                     }
                 }
                 tools::execute(self.app, self.registry, tool, arguments, mode, self.id).await
             }
-            None => tools::Outcome { text: format!("There is no tool named {name}."), is_error: true },
+            None => tools::Outcome {
+                text: format!("There is no tool named {name}."),
+                is_error: true,
+            },
         }
     }
 }
@@ -1577,14 +2303,35 @@ impl Runner<'_> {
 impl Runner<'_> {
     /// Background commands in the session's folder; starting one asks like any shell command.
     async fn terminal(&self, name: &str, arguments: &Value) -> tools::Outcome {
-        let fail = |text: &str| tools::Outcome { text: text.into(), is_error: true };
-        let arg = |k: &str| arguments.get(k).and_then(Value::as_str).unwrap_or_default().trim().to_string();
+        let fail = |text: &str| tools::Outcome {
+            text: text.into(),
+            is_error: true,
+        };
+        let arg = |k: &str| {
+            arguments
+                .get(k)
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .trim()
+                .to_string()
+        };
         match name {
             terminal::READ => match terminal::get(&arg("id")) {
                 Some(view) if view.conversation_id == self.id => {
-                    let chars = arguments.get("chars").and_then(Value::as_u64).unwrap_or(4000).clamp(200, 20_000) as usize;
+                    let chars = arguments
+                        .get("chars")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(4000)
+                        .clamp(200, 20_000) as usize;
                     tools::Outcome {
-                        text: format!("Status: {}{}\n\n{}", view.status, view.exit_code.map(|c| format!(" (exit {c})")).unwrap_or_default(), terminal::tail(&view, chars)),
+                        text: format!(
+                            "Status: {}{}\n\n{}",
+                            view.status,
+                            view.exit_code
+                                .map(|c| format!(" (exit {c})"))
+                                .unwrap_or_default(),
+                            terminal::tail(&view, chars)
+                        ),
                         is_error: false,
                     }
                 }
@@ -1592,13 +2339,19 @@ impl Runner<'_> {
             },
             terminal::STOP => match terminal::get(&arg("id")) {
                 Some(view) if view.conversation_id == self.id => match terminal::stop(&view.id) {
-                    Ok(()) => tools::Outcome { text: "Stopped.".into(), is_error: false },
+                    Ok(()) => tools::Outcome {
+                        text: "Stopped.".into(),
+                        is_error: false,
+                    },
                     Err(e) => fail(&e),
                 },
                 _ => fail("There is no background command with that id here."),
             },
             _ => {
-                let Some(dir) = store::load_conversation(self.config_dir, self.id).ok().and_then(|c| c.workdir) else {
+                let Some(dir) = store::load_conversation(self.config_dir, self.id)
+                    .ok()
+                    .and_then(|c| c.workdir)
+                else {
                     return fail("Background commands need a coding session with a folder.");
                 };
                 let gate = ChatTool {
@@ -1641,7 +2394,9 @@ impl Runner<'_> {
                             text: format!(
                                 "Started in the background with id {id}. Status: {}.\n{}",
                                 view.as_ref().map_or("running", |v| v.status.as_str()),
-                                view.as_ref().map(|v| terminal::tail(v, 2000)).unwrap_or_default()
+                                view.as_ref()
+                                    .map(|v| terminal::tail(v, 2000))
+                                    .unwrap_or_default()
                             ),
                             is_error: false,
                         }
@@ -1664,32 +2419,43 @@ impl Runner<'_> {
         match self.model.call(call).await {
             Ok(response) => tools::auto_check_verdict(&response.text()),
             // No answer: asking is the safe side.
-            Err(e) => Some(format!("the safety check could not run ({})", super::context::short_error(&e.to_string()))),
+            Err(e) => Some(format!(
+                "the safety check could not run ({})",
+                super::context::short_error(&e.to_string())
+            )),
         }
     }
 
     /// Runs code once the user allows it: every run in "ask" modes, unless they allowed all.
     async fn run_code(&self, arguments: &Value) -> tools::Outcome {
         match self.request.approval {
-            ApprovalMode::Unattended => {
-                return tools::Outcome {
-                    text: "This scheduled run may not run code; the user can allow changes for this task.".into(),
-                    is_error: true,
-                }
-            }
+            ApprovalMode::Unattended => return tools::Outcome {
+                text:
+                    "This scheduled run may not run code; the user can allow changes for this task."
+                        .into(),
+                is_error: true,
+            },
             ApprovalMode::Plan => {
                 return tools::Outcome {
-                    text: "Plan mode: code is not run yet. Put this step in your plan instead.".into(),
+                    text: "Plan mode: code is not run yet. Put this step in your plan instead."
+                        .into(),
                     is_error: true,
                 }
             }
             ApprovalMode::Autonomous | ApprovalMode::Auto => {}
-            ApprovalMode::Ask | ApprovalMode::AcceptEdits if sandbox::always_allowed(self.config_dir) => {}
+            ApprovalMode::Ask | ApprovalMode::AcceptEdits
+                if sandbox::always_allowed(self.config_dir) => {}
             ApprovalMode::Ask | ApprovalMode::AcceptEdits => {
                 let Some(tool) = self.offered.iter().find(|t| t.name == sandbox::RUN_CODE) else {
-                    return tools::Outcome { text: "Running code is not available.".into(), is_error: true };
+                    return tools::Outcome {
+                        text: "Running code is not available.".into(),
+                        is_error: true,
+                    };
                 };
-                let gate = ChatTool { connector_id: Some("sandbox".into()), ..tool.clone() };
+                let gate = ChatTool {
+                    connector_id: Some("sandbox".into()),
+                    ..tool.clone()
+                };
                 match tools::request_approval(self.app, &gate, arguments).await {
                     ApprovalDecision::Deny => {
                         return tools::Outcome {
@@ -1707,24 +2473,48 @@ impl Runner<'_> {
             }
         }
         // An agent's code runs in its own environment (home, packages), kept across its chats.
-        let env = self.agent.and_then(|a| sandbox::agent_env(self.config_dir, &a.id, a.code_network).ok());
+        let env = self
+            .agent
+            .and_then(|a| sandbox::agent_env(self.config_dir, &a.id, a.code_network).ok());
         sandbox::run_in(self.config_dir, self.id, arguments, env.as_ref()).await
     }
 }
 
 /// Puts the model's question to the user and waits for the answer.
-async fn ask_user(app: &AppHandle, id: &str, call: &ToolCall, cancel: &mut watch::Receiver<bool>) -> tools::Outcome {
+async fn ask_user(
+    app: &AppHandle,
+    id: &str,
+    call: &ToolCall,
+    cancel: &mut watch::Receiver<bool>,
+) -> tools::Outcome {
     let arguments = Value::Object(call.function.arguments.clone());
     let call_id = call.id.to_string();
-    let question = arguments.get("question").and_then(Value::as_str).unwrap_or_default().to_string();
+    let question = arguments
+        .get("question")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
     let options = arguments
         .get("options")
         .and_then(Value::as_array)
-        .map(|a| a.iter().filter_map(Value::as_str).map(String::from).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .map(String::from)
+                .collect()
+        })
         .unwrap_or_default();
     let state = app.state::<ChatState>();
     let answer = state.ask(&call_id);
-    emit(app, ChatEvent::Question { conversation_id: id.into(), call_id: call_id.clone(), question, options });
+    emit(
+        app,
+        ChatEvent::Question {
+            conversation_id: id.into(),
+            call_id: call_id.clone(),
+            question,
+            options,
+        },
+    );
     tokio::select! {
         _ = cancelled(cancel) => {
             state.forget_question(&call_id);
@@ -1748,41 +2538,75 @@ async fn compact_if_needed(
     let measured = if conversation.usage.context_tokens > 0 {
         conversation.usage.context_tokens
     } else {
-        context::estimate_tokens(&context::request_messages(&conversation.messages, conversation.summary.as_ref()))
+        context::estimate_tokens(&context::request_messages(
+            &conversation.messages,
+            conversation.summary.as_ref(),
+        ))
     };
     if !context::should_compact(measured, window) {
         return;
     }
     let covered = conversation.summary.as_ref().map_or(0, |s| s.upto);
-    let Some(point) = context::compaction_point(&conversation.messages, covered) else { return };
+    let Some(point) = context::compaction_point(&conversation.messages, covered) else {
+        return;
+    };
     let id = conversation.id.clone();
-    emit(app, ChatEvent::Compacting { conversation_id: id.clone() });
+    emit(
+        app,
+        ChatEvent::Compacting {
+            conversation_id: id.clone(),
+        },
+    );
     let transcript = context::transcript(&conversation.messages[covered..point]);
-    let prompt = context::summary_prompt(conversation.summary.as_ref().map(|s| s.text.as_str()), &transcript);
+    let prompt = context::summary_prompt(
+        conversation.summary.as_ref().map(|s| s.text.as_str()),
+        &transcript,
+    );
     let request = CompletionRequest::new(Message::user(prompt)).max_tokens(1500u64);
     match tokio::time::timeout(std::time::Duration::from_secs(120), model.call(request)).await {
         Ok(Ok(response)) if !response.text().trim().is_empty() => {
             info!("compacted conversation {id} up to message {point}");
             conversation.usage.add(&response.usage);
-            conversation.summary = Some(context::Summary { text: response.text().trim().to_string(), upto: point, created_at: Utc::now() });
+            conversation.summary = Some(context::Summary {
+                text: response.text().trim().to_string(),
+                upto: point,
+                created_at: Utc::now(),
+            });
             // The next reply measures the smaller context afresh.
             conversation.usage.context_tokens = 0;
             if let Err(e) = store::save_conversation(config_dir, conversation) {
                 warn!("could not save compacted conversation: {e}");
             }
-            emit(app, ChatEvent::Compacted { conversation_id: id, upto: point });
+            emit(
+                app,
+                ChatEvent::Compacted {
+                    conversation_id: id,
+                    upto: point,
+                },
+            );
         }
         Ok(Ok(_)) | Ok(Err(_)) | Err(_) => {
             warn!("compaction failed; continuing with tool-result clearing only");
-            emit(app, ChatEvent::Compacted { conversation_id: id, upto: covered });
+            emit(
+                app,
+                ChatEvent::Compacted {
+                    conversation_id: id,
+                    upto: covered,
+                },
+            );
         }
     }
 }
 
 /// Runs a scheduled task: a new unread conversation with the task's prompt, under its agent.
 pub async fn run_task(app: AppHandle, task: tasks::Task) {
-    let Ok(config_dir) = config_dir(&app) else { return };
-    let agent = task.agent_id.as_deref().and_then(|a| agents::find(&config_dir, a));
+    let Ok(config_dir) = config_dir(&app) else {
+        return;
+    };
+    let agent = task
+        .agent_id
+        .as_deref()
+        .and_then(|a| agents::find(&config_dir, a));
     let providers_file = providers::load(&config_dir);
     let model = task
         .model
@@ -1795,7 +2619,11 @@ pub async fn run_task(app: AppHandle, task: tasks::Task) {
         return;
     };
     // A follow-up continues the chat it was asked in, while that chat still exists.
-    let follow_up = task.reply_in.as_ref().and_then(|id| store::load_conversation(&config_dir, id).ok()).filter(|c| !c.archived);
+    let follow_up = task
+        .reply_in
+        .as_ref()
+        .and_then(|id| store::load_conversation(&config_dir, id).ok())
+        .filter(|c| !c.archived);
     let id = match follow_up {
         Some(mut conversation) => {
             conversation.unread = true;
@@ -1820,14 +2648,28 @@ pub async fn run_task(app: AppHandle, task: tasks::Task) {
         }
     };
     let prompt = tasks::run_prompt(&task);
-    let text = if task.reply_in.as_deref() == Some(id.as_str()) { format!("(Scheduled follow-up: {}) {}", task.title, prompt) } else { prompt };
-    let Some(cancel) = app.state::<ChatState>().begin(&id) else { return };
+    let text = if task.reply_in.as_deref() == Some(id.as_str()) {
+        format!("(Scheduled follow-up: {}) {}", task.title, prompt)
+    } else {
+        prompt
+    };
+    let Some(cancel) = app.state::<ChatState>().begin(&id) else {
+        return;
+    };
     let request = TurnRequest {
         conversation_id: id.clone(),
         text,
         model,
-        speed: if agent.as_ref().is_some_and(|a| a.think) { Speed::Think } else { Speed::Fast },
-        approval: if task.allow_changes { ApprovalMode::Autonomous } else { ApprovalMode::Unattended },
+        speed: if agent.as_ref().is_some_and(|a| a.think) {
+            Speed::Think
+        } else {
+            Speed::Fast
+        },
+        approval: if task.allow_changes {
+            ApprovalMode::Autonomous
+        } else {
+            ApprovalMode::Unattended
+        },
         project_id: None,
         agent_id: task.agent_id.clone(),
         images: Vec::new(),
@@ -1845,10 +2687,27 @@ pub async fn run_task(app: AppHandle, task: tasks::Task) {
         .as_ref()
         .and_then(|c| c.messages.last())
         .is_some_and(|m| matches!(m, Message::Assistant(_)));
-    tasks::record(&config_dir, &task.id, &id, if answered { "ok" } else { "failed" });
-    let answer = finished.as_ref().and_then(|c| c.messages.last()).map(super::context::message_text).unwrap_or_default();
+    tasks::record(
+        &config_dir,
+        &task.id,
+        &id,
+        if answered { "ok" } else { "failed" },
+    );
+    let answer = finished
+        .as_ref()
+        .and_then(|c| c.messages.last())
+        .map(super::context::message_text)
+        .unwrap_or_default();
     tasks::notify_webhook(&task, &id, if answered { "ok" } else { "failed" }, &answer).await;
-    notify(&app, &task.title, if answered { "Your scheduled task finished." } else { "Your scheduled task could not finish." });
+    notify(
+        &app,
+        &task.title,
+        if answered {
+            "Your scheduled task finished."
+        } else {
+            "Your scheduled task could not finish."
+        },
+    );
 }
 
 pub fn notify(app: &AppHandle, title: &str, body: &str) {
@@ -1865,9 +2724,16 @@ pub fn strip_directives(text: &str) -> String {
     loop {
         if let Some(r) = rest.strip_prefix("Use a canvas for this.") {
             rest = r.trim_start();
-        } else if let Some(r) = rest.strip_prefix("Use the \"").and_then(|r| r.split_once("\" skill.")).map(|(_, r)| r) {
+        } else if let Some(r) = rest
+            .strip_prefix("Use the \"")
+            .and_then(|r| r.split_once("\" skill."))
+            .map(|(_, r)| r)
+        {
             rest = r.trim_start();
-        } else if rest.starts_with("Create ") && rest.contains(" with generate_image (") && rest.contains("\n\n") {
+        } else if rest.starts_with("Create ")
+            && rest.contains(" with generate_image (")
+            && rest.contains("\n\n")
+        {
             rest = rest.split_once("\n\n").map_or("", |(_, r)| r).trim_start();
         } else if rest.starts_with("> ") {
             rest = rest.split_once("\n\n").map_or("", |(_, r)| r).trim_start();
@@ -1891,7 +2757,12 @@ pub fn fallback_title(conversation: &Conversation) -> String {
             _ => None,
         })
         .unwrap_or_default();
-    let line = strip_directives(&first).lines().next().unwrap_or_default().trim().to_string();
+    let line = strip_directives(&first)
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_string();
     if line.chars().count() > 48 {
         format!("{}…", line.chars().take(47).collect::<String>().trim_end())
     } else if line.is_empty() {
@@ -1903,7 +2774,9 @@ pub fn fallback_title(conversation: &Conversation) -> String {
 
 /// Asks the same model for a short title, falling back to the first message.
 async fn name_conversation(app: AppHandle, reference: String, mut conversation: Conversation) {
-    let Ok(config_dir) = config_dir(&app) else { return };
+    let Ok(config_dir) = config_dir(&app) else {
+        return;
+    };
     let mut title = fallback_title(&conversation);
     let prompt = format!(
         "Write a title of at most 6 words for a conversation that starts with the message \
@@ -1926,7 +2799,13 @@ async fn name_conversation(app: AppHandle, reference: String, mut conversation: 
     if latest.title.is_empty() {
         latest.title.clone_from(&title);
         if store::save_conversation(&config_dir, &latest).is_ok() {
-            emit(&app, ChatEvent::Title { conversation_id: latest.id, title });
+            emit(
+                &app,
+                ChatEvent::Title {
+                    conversation_id: latest.id,
+                    title,
+                },
+            );
         }
     }
 }
@@ -1936,12 +2815,25 @@ async fn name_conversation(app: AppHandle, reference: String, mut conversation: 
 fn drop_old_screenshots(messages: &mut [Message]) {
     use rig_core::completion::message::UserContent;
     for message in messages.iter_mut() {
-        let Message::User { content } = message else { continue };
+        let Message::User { content } = message else {
+            continue;
+        };
         for item in content.iter_mut() {
             if let UserContent::ToolResult(result) = item {
-                let has_image = result.content.iter().any(|c| matches!(c, ToolResultContent::Image(_)));
+                let has_image = result
+                    .content
+                    .iter()
+                    .any(|c| matches!(c, ToolResultContent::Image(_)));
                 if has_image {
-                    let kept: Vec<ToolResultContent> = result.content.iter().filter(|c| !matches!(c, ToolResultContent::Image(_))).cloned().chain(std::iter::once(ToolResultContent::text("[earlier screenshot removed]"))).collect();
+                    let kept: Vec<ToolResultContent> = result
+                        .content
+                        .iter()
+                        .filter(|c| !matches!(c, ToolResultContent::Image(_)))
+                        .cloned()
+                        .chain(std::iter::once(ToolResultContent::text(
+                            "[earlier screenshot removed]",
+                        )))
+                        .collect();
                     result.content = kept;
                 }
             }
@@ -1956,10 +2848,16 @@ mod tests {
     #[test]
     fn the_prompt_uses_the_users_local_time() {
         use chrono::TimeZone as _;
-        let lisbon_summer = chrono::FixedOffset::east_opt(3600).unwrap().with_ymd_and_hms(2026, 7, 1, 0, 30, 0).unwrap();
+        let lisbon_summer = chrono::FixedOffset::east_opt(3600)
+            .unwrap()
+            .with_ymd_and_hms(2026, 7, 1, 0, 30, 0)
+            .unwrap();
         let line = local_time_line(lisbon_summer);
         // 00:30 at UTC+1 is July 1 for the user but still June 30 in UTC.
-        assert!(line.starts_with("Today is Wednesday, July 1, 2026 in the user's time zone ("), "{line}");
+        assert!(
+            line.starts_with("Today is Wednesday, July 1, 2026 in the user's time zone ("),
+            "{line}"
+        );
         assert!(line.contains("UTC+01:00"), "{line}");
     }
 
@@ -1980,7 +2878,12 @@ mod tests {
             share_chats: false,
         };
         let text = preamble(
-            &Context { instructions: Some(&instructions), project: Some(&project), workdir: Some("/src/app"), ..Default::default() },
+            &Context {
+                instructions: Some(&instructions),
+                project: Some(&project),
+                workdir: Some("/src/app"),
+                ..Default::default()
+            },
             &[],
         );
         assert!(text.contains("Ana"));
@@ -2007,11 +2910,23 @@ mod tests {
 
     #[test]
     fn images_ride_with_the_message() {
-        let png = ImageInput { media_type: "image/png".into(), data: "iVBORw0KGgo=".into() };
+        let png = ImageInput {
+            media_type: "image/png".into(),
+            data: "iVBORw0KGgo=".into(),
+        };
         let m = user_message("look", std::slice::from_ref(&png)).unwrap();
-        let Message::User { content } = m else { panic!() };
+        let Message::User { content } = m else {
+            panic!()
+        };
         assert_eq!(content.len(), 2);
-        assert!(user_message("x", &[ImageInput { media_type: "image/tiff".into(), data: "AA==".into() }]).is_err());
+        assert!(user_message(
+            "x",
+            &[ImageInput {
+                media_type: "image/tiff".into(),
+                data: "AA==".into()
+            }]
+        )
+        .is_err());
         assert!(user_message("x", &vec![png; 7]).is_err());
         assert_eq!(user_message("plain", &[]).unwrap(), Message::user("plain"));
     }
@@ -2031,8 +2946,16 @@ mod tests {
 
     #[test]
     fn titles_ignore_composer_directives() {
-        assert_eq!(strip_directives("Use a canvas for this.\n\nUse the \"deep-research\" skill.\n\nAI in 2026?"), "AI in 2026?");
-        assert_eq!(strip_directives("> quoted line\n> more\n\nWhat does it mean?"), "What does it mean?");
+        assert_eq!(
+            strip_directives(
+                "Use a canvas for this.\n\nUse the \"deep-research\" skill.\n\nAI in 2026?"
+            ),
+            "AI in 2026?"
+        );
+        assert_eq!(
+            strip_directives("> quoted line\n> more\n\nWhat does it mean?"),
+            "What does it mean?"
+        );
         assert_eq!(strip_directives("Plain question"), "Plain question");
         assert_eq!(strip_directives("Create 2 images (variations) with generate_image (shape: square, count: 2). This is a mascot.\n\nmascot for ERSE"), "mascot for ERSE");
     }
@@ -2041,7 +2964,8 @@ mod tests {
     fn titles_fall_back_to_the_first_line() {
         let mut c = Conversation::new("c".into(), None, None);
         assert_eq!(fallback_title(&c), "New chat");
-        c.messages.push(Message::user("Plan a trip to Lisbon\nwith kids"));
+        c.messages
+            .push(Message::user("Plan a trip to Lisbon\nwith kids"));
         assert_eq!(fallback_title(&c), "Plan a trip to Lisbon");
         c.messages[0] = Message::user("x".repeat(100));
         assert_eq!(fallback_title(&c).chars().count(), 48);

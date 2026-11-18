@@ -19,25 +19,52 @@ const MAX_TEXT: usize = 20_000;
 
 /// The browser to drive: `LUMO_BROWSER`, else the first Chromium-family browser found.
 pub fn find_browser() -> Option<PathBuf> {
-    if let Some(p) = std::env::var_os("LUMO_BROWSER").map(PathBuf::from).filter(|p| p.is_file()) {
+    if let Some(p) = std::env::var_os("LUMO_BROWSER")
+        .map(PathBuf::from)
+        .filter(|p| p.is_file())
+    {
         return Some(p);
     }
     let mut candidates: Vec<PathBuf> = Vec::new();
     if cfg!(target_os = "macos") {
-        for app in ["Google Chrome", "Chromium", "Microsoft Edge", "Brave Browser"] {
-            candidates.push(PathBuf::from(format!("/Applications/{app}.app/Contents/MacOS/{app}")));
+        for app in [
+            "Google Chrome",
+            "Chromium",
+            "Microsoft Edge",
+            "Brave Browser",
+        ] {
+            candidates.push(PathBuf::from(format!(
+                "/Applications/{app}.app/Contents/MacOS/{app}"
+            )));
         }
     } else if cfg!(windows) {
-        for base in [std::env::var("ProgramFiles").unwrap_or_default(), std::env::var("ProgramFiles(x86)").unwrap_or_default(), std::env::var("LocalAppData").unwrap_or_default()] {
+        for base in [
+            std::env::var("ProgramFiles").unwrap_or_default(),
+            std::env::var("ProgramFiles(x86)").unwrap_or_default(),
+            std::env::var("LocalAppData").unwrap_or_default(),
+        ] {
             if base.is_empty() {
                 continue;
             }
-            for rel in [r"Google\Chrome\Application\chrome.exe", r"Microsoft\Edge\Application\msedge.exe", r"BraveSoftware\Brave-Browser\Application\brave.exe", r"Chromium\Application\chrome.exe"] {
+            for rel in [
+                r"Google\Chrome\Application\chrome.exe",
+                r"Microsoft\Edge\Application\msedge.exe",
+                r"BraveSoftware\Brave-Browser\Application\brave.exe",
+                r"Chromium\Application\chrome.exe",
+            ] {
                 candidates.push(Path::new(&base).join(rel));
             }
         }
     } else {
-        for name in ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "microsoft-edge", "microsoft-edge-stable", "brave-browser"] {
+        for name in [
+            "google-chrome",
+            "google-chrome-stable",
+            "chromium",
+            "chromium-browser",
+            "microsoft-edge",
+            "microsoft-edge-stable",
+            "brave-browser",
+        ] {
             for dir in std::env::var("PATH").unwrap_or_default().split(':') {
                 candidates.push(Path::new(dir).join(name));
             }
@@ -48,12 +75,29 @@ pub fn find_browser() -> Option<PathBuf> {
 
 /// The profile folder of an agent (or of the assistant when `agent` is `None`).
 pub fn profile_dir(config_dir: &Path, agent: Option<&str>) -> PathBuf {
-    let name: String = agent.unwrap_or("assistant").chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(64).collect();
-    super::store::chat_dir(config_dir).join("browser-profiles").join(if name.is_empty() { "assistant".to_string() } else { name })
+    let name: String = agent
+        .unwrap_or("assistant")
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+        .take(64)
+        .collect();
+    super::store::chat_dir(config_dir)
+        .join("browser-profiles")
+        .join(if name.is_empty() {
+            "assistant".to_string()
+        } else {
+            name
+        })
 }
 
 /// The arguments for one headless run.
-pub fn headless_args(profile: &Path, url: &str, width: u32, height: u32, screenshot: Option<&Path>) -> Vec<String> {
+pub fn headless_args(
+    profile: &Path,
+    url: &str,
+    width: u32,
+    height: u32,
+    screenshot: Option<&Path>,
+) -> Vec<String> {
     let mut args = vec![
         "--headless=new".to_string(),
         "--disable-gpu".into(),
@@ -103,9 +147,20 @@ unsafe fn libc_geteuid() -> u32 {
 
 async fn run(browser: &Path, args: Vec<String>) -> Result<Vec<u8>, String> {
     let mut cmd = tokio::process::Command::new(browser);
-    cmd.args(&args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
-    let child = cmd.spawn().map_err(|e| format!("The browser could not start: {e}"))?;
-    match tokio::time::timeout(std::time::Duration::from_secs(TIMEOUT_SECS), child.wait_with_output()).await {
+    cmd.args(&args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    let child = cmd
+        .spawn()
+        .map_err(|e| format!("The browser could not start: {e}"))?;
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(TIMEOUT_SECS),
+        child.wait_with_output(),
+    )
+    .await
+    {
         Ok(Ok(out)) => Ok(out.stdout),
         Ok(Err(e)) => Err(e.to_string()),
         Err(_) => Err(format!("The page took more than {TIMEOUT_SECS} seconds.")),
@@ -115,22 +170,51 @@ async fn run(browser: &Path, args: Vec<String>) -> Result<Vec<u8>, String> {
 /// The page's title and readable text from its rendered HTML.
 pub fn page_text(html: &str) -> (String, String) {
     let doc = scraper::Html::parse_document(html);
-    let title = scraper::Selector::parse("title").ok().and_then(|s| doc.select(&s).next()).map(|t| t.text().collect::<String>().trim().to_string()).unwrap_or_default();
-    let body = scraper::Selector::parse("body").ok().and_then(|s| doc.select(&s).next());
+    let title = scraper::Selector::parse("title")
+        .ok()
+        .and_then(|s| doc.select(&s).next())
+        .map(|t| t.text().collect::<String>().trim().to_string())
+        .unwrap_or_default();
+    let body = scraper::Selector::parse("body")
+        .ok()
+        .and_then(|s| doc.select(&s).next());
     let mut text = String::new();
     if let Some(body) = body {
         for node in body.descendants() {
             if let Some(el) = node.value().as_element() {
-                if matches!(el.name(), "p" | "div" | "li" | "h1" | "h2" | "h3" | "h4" | "tr" | "br" | "section" | "article") && !text.ends_with('\n') {
+                if matches!(
+                    el.name(),
+                    "p" | "div"
+                        | "li"
+                        | "h1"
+                        | "h2"
+                        | "h3"
+                        | "h4"
+                        | "tr"
+                        | "br"
+                        | "section"
+                        | "article"
+                ) && !text.ends_with('\n')
+                {
                     text.push('\n');
                 }
             } else if let Some(t) = node.value().as_text() {
-                let skip = node.ancestors().any(|a| a.value().as_element().is_some_and(|e| matches!(e.name(), "script" | "style" | "noscript" | "svg" | "template")));
+                let skip = node.ancestors().any(|a| {
+                    a.value().as_element().is_some_and(|e| {
+                        matches!(
+                            e.name(),
+                            "script" | "style" | "noscript" | "svg" | "template"
+                        )
+                    })
+                });
                 if !skip {
                     let raw: &str = t;
                     let words = raw.split_whitespace().collect::<Vec<_>>().join(" ");
                     // Space between pieces only where the page had some.
-                    if raw.starts_with(char::is_whitespace) && !text.is_empty() && !text.ends_with(['\n', ' ']) {
+                    if raw.starts_with(char::is_whitespace)
+                        && !text.is_empty()
+                        && !text.ends_with(['\n', ' '])
+                    {
                         text.push(' ');
                     }
                     text.push_str(&words);
@@ -141,7 +225,11 @@ pub fn page_text(html: &str) -> (String, String) {
             }
         }
     }
-    let lines: Vec<String> = text.lines().map(|l| l.split_whitespace().collect::<Vec<_>>().join(" ")).filter(|l| !l.is_empty()).collect();
+    let lines: Vec<String> = text
+        .lines()
+        .map(|l| l.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|l| !l.is_empty())
+        .collect();
     (title, lines.join("\n"))
 }
 
@@ -171,16 +259,46 @@ pub fn definition() -> Option<ChatTool> {
 }
 
 /// Runs `browser_view` for a chat (and its agent's profile).
-pub async fn view(config_dir: &Path, conversation_id: &str, agent: Option<&str>, args: &Value) -> Outcome {
-    let err = |text: String| Outcome { text, is_error: true };
-    let Some(browser) = find_browser() else { return err("No Chrome, Chromium, Edge or Brave is installed.".into()) };
-    let url = args.get("url").and_then(Value::as_str).unwrap_or_default().trim().to_string();
+pub async fn view(
+    config_dir: &Path,
+    conversation_id: &str,
+    agent: Option<&str>,
+    args: &Value,
+) -> Outcome {
+    let err = |text: String| Outcome {
+        text,
+        is_error: true,
+    };
+    let Some(browser) = find_browser() else {
+        return err("No Chrome, Chromium, Edge or Brave is installed.".into());
+    };
+    let url = args
+        .get("url")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
     if !(url.starts_with("http://") || url.starts_with("https://")) {
         return err("Give a full http(s) address.".into());
     }
-    let capture = args.get("capture").and_then(Value::as_str).unwrap_or("both");
-    let (width, height) = if args.get("mobile").and_then(Value::as_bool).unwrap_or(false) { (412, 915) } else { (1280, 900) };
-    let height = if args.get("full_page").and_then(Value::as_bool).unwrap_or(false) { height * 4 } else { height };
+    let capture = args
+        .get("capture")
+        .and_then(Value::as_str)
+        .unwrap_or("both");
+    let (width, height) = if args.get("mobile").and_then(Value::as_bool).unwrap_or(false) {
+        (412, 915)
+    } else {
+        (1280, 900)
+    };
+    let height = if args
+        .get("full_page")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        height * 4
+    } else {
+        height
+    };
     let profile = profile_dir(config_dir, agent);
     if let Err(e) = std::fs::create_dir_all(&profile) {
         return err(e.to_string());
@@ -192,13 +310,23 @@ pub async fn view(config_dir: &Path, conversation_id: &str, agent: Option<&str>,
             Err(e) => return err(e),
         };
         let _ = std::fs::create_dir_all(&dir);
-        let name = format!("page-{}.png", chrono::Local::now().format("%Y%m%d-%H%M%S-%3f"));
+        let name = format!(
+            "page-{}.png",
+            chrono::Local::now().format("%Y%m%d-%H%M%S-%3f")
+        );
         let path = dir.join(&name);
-        if let Err(e) = run(&browser, headless_args(&profile, &url, width, height, Some(&path))).await {
+        if let Err(e) = run(
+            &browser,
+            headless_args(&profile, &url, width, height, Some(&path)),
+        )
+        .await
+        {
             return err(e);
         }
         if !path.is_file() {
-            return err("The browser made no screenshot (the page may have refused to load).".into());
+            return err(
+                "The browser made no screenshot (the page may have refused to load).".into(),
+            );
         }
         out["file"] = json!(format!("images/{name}"));
     }
@@ -212,7 +340,10 @@ pub async fn view(config_dir: &Path, conversation_id: &str, agent: Option<&str>,
             Err(e) => return err(e),
         }
     }
-    Outcome { text: out.to_string(), is_error: false }
+    Outcome {
+        text: out.to_string(),
+        is_error: false,
+    }
 }
 
 /// Opens an agent's profile in a visible browser window, to sign in to sites for it.
@@ -221,13 +352,24 @@ pub fn open_profile(config_dir: &Path, agent: Option<&str>, url: &str) -> Result
     let profile = profile_dir(config_dir, agent);
     std::fs::create_dir_all(&profile).map_err(|e| e.to_string())?;
     let mut cmd = std::process::Command::new(browser);
-    cmd.arg(format!("--user-data-dir={}", profile.display())).arg("--no-first-run").arg("--no-default-browser-check");
+    cmd.arg(format!("--user-data-dir={}", profile.display()))
+        .arg("--no-first-run")
+        .arg("--no-default-browser-check");
     #[cfg(unix)]
     if unsafe { libc_geteuid() } == 0 {
         cmd.arg("--no-sandbox");
     }
-    cmd.arg(if url.starts_with("http") { url } else { "about:blank" });
-    cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map(|_| ()).map_err(|e| e.to_string())
+    cmd.arg(if url.starts_with("http") {
+        url
+    } else {
+        "about:blank"
+    });
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 /// Forgets an agent's browser session (its cookies and logins).
@@ -250,11 +392,25 @@ mod tests {
         assert_eq!(text, "Prices\nPi 5 4GB: 64 EUR\nOne\nTwo");
         let dir = Path::new("/cfg");
         assert_ne!(profile_dir(dir, Some("a1")), profile_dir(dir, Some("a2")));
-        assert!(profile_dir(dir, Some("../../etc")).ends_with("etc"), "no path tricks");
+        assert!(
+            profile_dir(dir, Some("../../etc")).ends_with("etc"),
+            "no path tricks"
+        );
         assert!(profile_dir(dir, None).ends_with("assistant"));
-        let args = headless_args(Path::new("/p"), "https://x.test", 1280, 900, Some(Path::new("/o.png")));
-        assert!(args.contains(&"--screenshot=/o.png".to_string()) && args.contains(&"--user-data-dir=/p".to_string()) && args.last().unwrap() == "https://x.test");
-        assert!(headless_args(Path::new("/p"), "https://x.test", 1, 1, None).contains(&"--dump-dom".to_string()));
+        let args = headless_args(
+            Path::new("/p"),
+            "https://x.test",
+            1280,
+            900,
+            Some(Path::new("/o.png")),
+        );
+        assert!(
+            args.contains(&"--screenshot=/o.png".to_string())
+                && args.contains(&"--user-data-dir=/p".to_string())
+                && args.last().unwrap() == "https://x.test"
+        );
+        assert!(headless_args(Path::new("/p"), "https://x.test", 1, 1, None)
+            .contains(&"--dump-dom".to_string()));
     }
 
     /// Runs only where a browser is installed.
@@ -271,11 +427,18 @@ mod tests {
         let profile = profile_dir(dir.path(), Some("a1"));
         std::fs::create_dir_all(&profile).unwrap();
         let url = format!("file://{}", page.display());
-        let html = run(&browser, headless_args(&profile, &url, 800, 600, None)).await.unwrap();
+        let html = run(&browser, headless_args(&profile, &url, 800, 600, None))
+            .await
+            .unwrap();
         let (_, text) = page_text(&String::from_utf8_lossy(&html));
         assert_eq!(text, "made by script", "scripts ran");
         let shot = dir.path().join("s.png");
-        run(&browser, headless_args(&profile, &url, 800, 600, Some(&shot))).await.unwrap();
+        run(
+            &browser,
+            headless_args(&profile, &url, 800, 600, Some(&shot)),
+        )
+        .await
+        .unwrap();
         assert!(std::fs::read(&shot).unwrap().starts_with(b"\x89PNG"));
     }
 }
@@ -352,7 +515,9 @@ pub fn step_js(step: &Value) -> Result<String, String> {
     }
     if let Some(key) = s("press") {
         if !matches!(key.as_str(), "Enter" | "Tab" | "Escape") {
-            return Err(format!("Only Enter, Tab and Escape can be pressed, not {key}."));
+            return Err(format!(
+                "Only Enter, Tab and Escape can be pressed, not {key}."
+            ));
         }
         // Enter on a field submits its form, as a person's would.
         return Ok(format!(
@@ -365,7 +530,9 @@ pub fn step_js(step: &Value) -> Result<String, String> {
 }
 
 struct Cdp {
-    ws: tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+    ws: tokio_tungstenite::WebSocketStream<
+        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+    >,
     next: u64,
     session: Option<String>,
 }
@@ -379,9 +546,16 @@ impl Cdp {
         if let Some(s) = &self.session {
             msg["sessionId"] = json!(s);
         }
-        self.ws.send(tokio_tungstenite::tungstenite::Message::Text(msg.to_string().into())).await.map_err(|e| e.to_string())?;
+        self.ws
+            .send(tokio_tungstenite::tungstenite::Message::Text(
+                msg.to_string().into(),
+            ))
+            .await
+            .map_err(|e| e.to_string())?;
         loop {
-            let frame = tokio::time::timeout(std::time::Duration::from_secs(30), self.ws.next()).await.map_err(|_| format!("The browser did not answer {method}."))?;
+            let frame = tokio::time::timeout(std::time::Duration::from_secs(30), self.ws.next())
+                .await
+                .map_err(|_| format!("The browser did not answer {method}."))?;
             let Some(Ok(tokio_tungstenite::tungstenite::Message::Text(text))) = frame else {
                 if frame.is_none() {
                     return Err("The browser closed.".into());
@@ -401,8 +575,16 @@ impl Cdp {
     async fn eval(&mut self, script: &str) -> Result<Value, String> {
         let r = self.call("Runtime.evaluate", json!({ "expression": script, "returnByValue": true, "awaitPromise": true, "userGesture": true })).await?;
         if let Some(ex) = r.get("exceptionDetails") {
-            let text = ex["exception"]["description"].as_str().or(ex["text"].as_str()).unwrap_or("the step failed");
-            return Err(text.lines().next().unwrap_or(text).trim_start_matches("Error: ").to_string());
+            let text = ex["exception"]["description"]
+                .as_str()
+                .or(ex["text"].as_str())
+                .unwrap_or("the step failed");
+            return Err(text
+                .lines()
+                .next()
+                .unwrap_or(text)
+                .trim_start_matches("Error: ")
+                .to_string());
         }
         Ok(r["result"]["value"].clone())
     }
@@ -410,7 +592,14 @@ impl Cdp {
     /// Waits until the page has loaded (or a few seconds pass), then a moment for scripts.
     async fn settle(&mut self) {
         for _ in 0..30 {
-            if self.eval("document.readyState").await.ok().and_then(|v| v.as_str().map(str::to_string)).as_deref() == Some("complete") {
+            if self
+                .eval("document.readyState")
+                .await
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_string))
+                .as_deref()
+                == Some("complete")
+            {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
@@ -423,7 +612,9 @@ impl Cdp {
 async fn launch(browser: &Path, profile: &Path) -> Result<(tokio::process::Child, String), String> {
     use tokio::io::AsyncBufReadExt as _;
     let mut args = headless_args(profile, "about:blank", 1280, 900, None);
-    args.retain(|a| a != "--dump-dom" && a != "about:blank" && !a.starts_with("--virtual-time-budget"));
+    args.retain(|a| {
+        a != "--dump-dom" && a != "about:blank" && !a.starts_with("--virtual-time-budget")
+    });
     args.push("--remote-debugging-port=0".into());
     args.push("about:blank".into());
     let mut child = tokio::process::Command::new(browser)
@@ -454,14 +645,33 @@ async fn launch(browser: &Path, profile: &Path) -> Result<(tokio::process::Child
 }
 
 /// Runs `browser_act`.
-pub async fn act(config_dir: &Path, conversation_id: &str, agent: Option<&str>, args: &Value) -> Outcome {
-    let err = |text: String| Outcome { text, is_error: true };
-    let Some(browser) = find_browser() else { return err("No Chrome, Chromium, Edge or Brave is installed.".into()) };
-    let url = args.get("url").and_then(Value::as_str).unwrap_or_default().trim().to_string();
+pub async fn act(
+    config_dir: &Path,
+    conversation_id: &str,
+    agent: Option<&str>,
+    args: &Value,
+) -> Outcome {
+    let err = |text: String| Outcome {
+        text,
+        is_error: true,
+    };
+    let Some(browser) = find_browser() else {
+        return err("No Chrome, Chromium, Edge or Brave is installed.".into());
+    };
+    let url = args
+        .get("url")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
     if !(url.starts_with("http://") || url.starts_with("https://") || url.starts_with("file://")) {
         return err("Give a full http(s) address.".into());
     }
-    let steps: Vec<Value> = args.get("steps").and_then(Value::as_array).cloned().unwrap_or_default();
+    let steps: Vec<Value> = args
+        .get("steps")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     if steps.len() > MAX_STEPS {
         return err(format!("At most {MAX_STEPS} steps at once."));
     }
@@ -525,11 +735,19 @@ pub async fn act(config_dir: &Path, conversation_id: &str, agent: Option<&str>, 
         Err(e) => return err(e),
     };
     let _ = std::fs::create_dir_all(&dir);
-    let name = format!("page-{}.png", chrono::Local::now().format("%Y%m%d-%H%M%S-%3f"));
+    let name = format!(
+        "page-{}.png",
+        chrono::Local::now().format("%Y%m%d-%H%M%S-%3f")
+    );
     if let Err(e) = std::fs::write(dir.join(&name), &png) {
         return err(e.to_string());
     }
-    let text: String = page["text"].as_str().unwrap_or_default().chars().take(MAX_TEXT).collect();
+    let text: String = page["text"]
+        .as_str()
+        .unwrap_or_default()
+        .chars()
+        .take(MAX_TEXT)
+        .collect();
     let failed = log.iter().any(|l| l.contains("failed:"));
     Outcome {
         text: json!({ "file": format!("images/{name}"), "url": page["url"], "title": page["title"], "steps": log, "text": text, "controls": page["controls"], "hint": if failed { "A step failed: pick a target from `controls` and try again." } else { "" } }).to_string(),
@@ -543,9 +761,15 @@ mod act_tests {
 
     #[test]
     fn steps_become_scripts() {
-        assert!(step_js(&json!({"click": "text=Sign in"})).unwrap().contains("\"text=Sign in\""));
-        assert!(step_js(&json!({"type": "hello \"world\"", "into": "#q"})).unwrap().contains("\"hello \\\"world\\\"\""));
-        assert!(step_js(&json!({"press": "Enter"})).unwrap().contains("requestSubmit"));
+        assert!(step_js(&json!({"click": "text=Sign in"}))
+            .unwrap()
+            .contains("\"text=Sign in\""));
+        assert!(step_js(&json!({"type": "hello \"world\"", "into": "#q"}))
+            .unwrap()
+            .contains("\"hello \\\"world\\\"\""));
+        assert!(step_js(&json!({"press": "Enter"}))
+            .unwrap()
+            .contains("requestSubmit"));
         assert!(step_js(&json!({"press": "Delete"})).is_err());
         assert!(step_js(&json!({"dance": 1})).is_err());
     }
@@ -559,15 +783,32 @@ mod act_tests {
         let dir = tempfile::tempdir().unwrap();
         let page = dir.path().join("form.html");
         std::fs::write(&page, "<title>Form</title><form onsubmit=\"event.preventDefault();document.getElementById('out').textContent='Hello, '+document.getElementById('name').value\"><input id=name><button>Greet</button></form><p id=out></p><a href='#' onclick=\"document.getElementById('out').textContent+=' (and clicked)'\">More</a>").unwrap();
-        std::fs::write(&page, std::fs::read_to_string(&page).unwrap().replace("<input id=name>", "<input id=name placeholder='Your name'>")).unwrap();
+        std::fs::write(
+            &page,
+            std::fs::read_to_string(&page)
+                .unwrap()
+                .replace("<input id=name>", "<input id=name placeholder='Your name'>"),
+        )
+        .unwrap();
         let out = act(dir.path(), "c1", Some("a1"), &json!({ "url": format!("file://{}", page.display()), "steps": [{"type": "Ana", "into": "text=Your name"}, {"press": "Enter"}, {"click": "text=More"}] })).await;
         assert!(!out.is_error, "{}", out.text);
         let v: Value = serde_json::from_str(&out.text).unwrap();
-        assert!(v["text"].as_str().unwrap().contains("Hello, Ana (and clicked)"), "{v}");
+        assert!(
+            v["text"]
+                .as_str()
+                .unwrap()
+                .contains("Hello, Ana (and clicked)"),
+            "{v}"
+        );
         assert_eq!(v["steps"].as_array().unwrap().len(), 3);
         let controls = v["controls"].to_string();
-        assert!(controls.contains("#name") && controls.contains("text=Greet"), "{controls}");
-        let shot = super::super::sandbox::workspace(dir.path(), "c1").unwrap().join(v["file"].as_str().unwrap());
+        assert!(
+            controls.contains("#name") && controls.contains("text=Greet"),
+            "{controls}"
+        );
+        let shot = super::super::sandbox::workspace(dir.path(), "c1")
+            .unwrap()
+            .join(v["file"].as_str().unwrap());
         assert!(std::fs::read(shot).unwrap().starts_with(b"\x89PNG"));
     }
 }

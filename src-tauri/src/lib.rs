@@ -6,6 +6,7 @@ mod dialog;
 mod dictation;
 mod downloads;
 mod feature_flags;
+pub mod inapp_browser;
 mod main_window;
 #[cfg(any(target_os = "macos", target_os = "linux", test))]
 mod microphone;
@@ -25,7 +26,6 @@ mod tray;
 #[cfg(target_os = "macos")]
 mod unhandled_keys;
 mod updater;
-pub mod inapp_browser;
 mod webview;
 
 #[doc(hidden)]

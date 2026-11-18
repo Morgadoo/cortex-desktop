@@ -28,7 +28,15 @@ const RENDER_LIMIT: Duration = Duration::from_secs(20 * 60);
 
 fn locate(program: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path).flat_map(|d| [d.join(program), d.join(format!("{program}.exe")), d.join(format!("{program}.cmd"))]).find(|p| p.is_file())
+    std::env::split_paths(&path)
+        .flat_map(|d| {
+            [
+                d.join(program),
+                d.join(format!("{program}.exe")),
+                d.join(format!("{program}.cmd")),
+            ]
+        })
+        .find(|p| p.is_file())
 }
 
 /// Which engines can run here.
@@ -48,7 +56,18 @@ pub fn definition() -> ChatTool {
     let note = if available.is_empty() {
         " Neither engine is installed yet: HyperFrames needs Node.js 22+, ManimGX needs `uv tool install manimgx`; the call says what to install.".to_string()
     } else {
-        format!(" Installed: {}.", available.iter().map(|e| if *e == "html" { "html (HyperFrames)" } else { "manim (ManimGX)" }).collect::<Vec<_>>().join(", "))
+        format!(
+            " Installed: {}.",
+            available
+                .iter()
+                .map(|e| if *e == "html" {
+                    "html (HyperFrames)"
+                } else {
+                    "manim (ManimGX)"
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
     };
     ChatTool {
         name: MAKE_ANIMATION.into(),
@@ -88,9 +107,22 @@ pub fn definition() -> ChatTool {
 
 /// A safe folder name from the model's.
 pub fn slug(name: &str) -> String {
-    let s: String = name.trim().to_lowercase().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
-    let s = s.split('-').filter(|p| !p.is_empty()).collect::<Vec<_>>().join("-");
-    if s.is_empty() { format!("animation-{}", chrono::Local::now().format("%Y%m%d-%H%M%S")) } else { s.chars().take(48).collect() }
+    let s: String = name
+        .trim()
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+    let s = s
+        .split('-')
+        .filter(|p| !p.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    if s.is_empty() {
+        format!("animation-{}", chrono::Local::now().format("%Y%m%d-%H%M%S"))
+    } else {
+        s.chars().take(48).collect()
+    }
 }
 
 /// Checks an HTML composition for what HyperFrames needs, so a mistake is told back to the model
@@ -110,7 +142,12 @@ pub fn check_html(source: &str) -> Result<(), String> {
 }
 
 /// The command that renders `dir` into `out`.
-fn command(engine: &str, dir: &Path, out: &Path, format: &str) -> Result<tokio::process::Command, String> {
+fn command(
+    engine: &str,
+    dir: &Path,
+    out: &Path,
+    format: &str,
+) -> Result<tokio::process::Command, String> {
     match engine {
         "html" => {
             let npx = locate("npx").ok_or("HyperFrames needs Node.js 22 or later (it brings npx): install it from nodejs.org, then ask again.")?;
@@ -135,19 +172,39 @@ fn command(engine: &str, dir: &Path, out: &Path, format: &str) -> Result<tokio::
 
 pub async fn make(config_dir: &Path, conversation_id: &str, args: &Value) -> Outcome {
     match run(config_dir, conversation_id, args).await {
-        Ok(text) => Outcome { text, is_error: false },
-        Err(e) => Outcome { text: e, is_error: true },
+        Ok(text) => Outcome {
+            text,
+            is_error: false,
+        },
+        Err(e) => Outcome {
+            text: e,
+            is_error: true,
+        },
     }
 }
 
 async fn run(config_dir: &Path, conversation_id: &str, args: &Value) -> Result<String, String> {
-    let s = |k: &str| args.get(k).and_then(Value::as_str).map(str::trim).unwrap_or_default().to_string();
+    let s = |k: &str| {
+        args.get(k)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .unwrap_or_default()
+            .to_string()
+    };
     let engine = s("engine");
-    let source = args.get("source").and_then(Value::as_str).unwrap_or_default().to_string();
+    let source = args
+        .get("source")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
     if source.trim().is_empty() {
         return Err("Give the whole composition or scene as `source`.".into());
     }
-    let format = if s("format") == "gif" && engine == "html" { "gif" } else { "mp4" };
+    let format = if s("format") == "gif" && engine == "html" {
+        "gif"
+    } else {
+        "mp4"
+    };
     let name = slug(&s("name"));
     let workspace = super::sandbox::workspace(config_dir, conversation_id)?;
     let dir = workspace.join("animations").join(&name);
@@ -158,7 +215,10 @@ async fn run(config_dir: &Path, conversation_id: &str, args: &Value) -> Result<S
             std::fs::write(dir.join("index.html"), &source).map_err(|e| e.to_string())?;
             // A project file, so the folder also opens in HyperFrames' own tools.
             if !dir.join("hyperframes.json").exists() {
-                let _ = std::fs::write(dir.join("hyperframes.json"), json!({ "name": name }).to_string());
+                let _ = std::fs::write(
+                    dir.join("hyperframes.json"),
+                    json!({ "name": name }).to_string(),
+                );
             }
         }
         "manim" => {
@@ -174,22 +234,39 @@ async fn run(config_dir: &Path, conversation_id: &str, args: &Value) -> Result<S
     let file = format!("{name}-{}.{format}", chrono::Local::now().format("%H%M%S"));
     let target = videos.join(&file);
     let started = std::time::Instant::now();
-    let output = tokio::time::timeout(RENDER_LIMIT, command(&engine, &dir, &target, format)?.output())
-        .await
-        .map_err(|_| "The render took longer than 20 minutes and was stopped; make it shorter or simpler.".to_string())?
-        .map_err(|e| format!("The renderer could not start: {e}"))?;
-    let log = format!("{}\n{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+    let output = tokio::time::timeout(
+        RENDER_LIMIT,
+        command(&engine, &dir, &target, format)?.output(),
+    )
+    .await
+    .map_err(|_| {
+        "The render took longer than 20 minutes and was stopped; make it shorter or simpler."
+            .to_string()
+    })?
+    .map_err(|e| format!("The renderer could not start: {e}"))?;
+    let log = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
     if engine == "manim" {
         // ManimGX writes <Scene>.mp4 beside the scene.
         let made = dir.join("Main.mp4");
         if made.exists() {
-            std::fs::rename(&made, &target).or_else(|_| std::fs::copy(&made, &target).map(|_| ())).map_err(|e| e.to_string())?;
+            std::fs::rename(&made, &target)
+                .or_else(|_| std::fs::copy(&made, &target).map(|_| ()))
+                .map_err(|e| e.to_string())?;
         }
     }
     if !output.status.success() || !target.exists() {
-        let tail: Vec<&str> = log.lines().filter(|l| !l.starts_with("@hf-") && !l.trim().is_empty()).collect();
+        let tail: Vec<&str> = log
+            .lines()
+            .filter(|l| !l.starts_with("@hf-") && !l.trim().is_empty())
+            .collect();
         let tail = tail[tail.len().saturating_sub(15)..].join("\n");
-        return Err(format!("The render failed. Fix the source and try again.\n{tail}"));
+        return Err(format!(
+            "The render failed. Fix the source and try again.\n{tail}"
+        ));
     }
     Ok(json!({
         "file": format!("videos/{file}"),
@@ -210,8 +287,14 @@ mod tests {
         assert_eq!(slug("Q3 Sales — chart!"), "q3-sales-chart");
         assert!(slug("  ").starts_with("animation-"));
         assert!(check_html("<div data-composition-id=\"main\" data-duration=\"5\"></div><script>window.__timelines['main']=tl</script>").is_ok());
-        assert!(check_html("<div data-duration=\"5\"></div>").unwrap_err().contains("data-composition-id"));
-        assert!(check_html("<div data-composition-id=\"main\" data-duration=\"5\"></div>").unwrap_err().contains("__timelines"));
+        assert!(check_html("<div data-duration=\"5\"></div>")
+            .unwrap_err()
+            .contains("data-composition-id"));
+        assert!(
+            check_html("<div data-composition-id=\"main\" data-duration=\"5\"></div>")
+                .unwrap_err()
+                .contains("__timelines")
+        );
     }
 
     /// With Node.js and network (`LUMO_TEST_ANIMATION=1`): a real HyperFrames render.
@@ -227,10 +310,22 @@ mod tests {
 <body><div id="root" data-composition-id="main" data-start="0" data-duration="2" data-width="640" data-height="360">
 <h1 id="t" class="clip" data-start="0" data-duration="2" data-track-index="0">Lumo</h1></div>
 <script>const tl=gsap.timeline({paused:true});tl.fromTo("#t",{opacity:0},{opacity:1,duration:1},0);window.__timelines["main"]=tl;tl.seek(0);</script></body></html>"##;
-        let out = make(dir.path(), "00000000-0000-4000-8000-000000000002", &json!({ "engine": "html", "source": html, "name": "test" })).await;
+        let out = make(
+            dir.path(),
+            "00000000-0000-4000-8000-000000000002",
+            &json!({ "engine": "html", "source": html, "name": "test" }),
+        )
+        .await;
         assert!(!out.is_error, "{}", out.text);
         let v: Value = serde_json::from_str(&out.text).unwrap();
-        let ws = super::super::sandbox::workspace(dir.path(), "00000000-0000-4000-8000-000000000002").unwrap();
-        assert!(std::fs::metadata(ws.join(v["file"].as_str().unwrap())).unwrap().len() > 1000);
+        let ws =
+            super::super::sandbox::workspace(dir.path(), "00000000-0000-4000-8000-000000000002")
+                .unwrap();
+        assert!(
+            std::fs::metadata(ws.join(v["file"].as_str().unwrap()))
+                .unwrap()
+                .len()
+                > 1000
+        );
     }
 }

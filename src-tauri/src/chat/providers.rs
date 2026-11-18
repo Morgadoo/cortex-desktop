@@ -26,21 +26,96 @@ pub struct ProviderInfo {
 }
 
 pub const PROVIDERS: &[ProviderInfo] = &[
-    ProviderInfo { vendor: "openai", label: "OpenAI", key_url: "https://platform.openai.com/api-keys", local: false },
-    ProviderInfo { vendor: "anthropic", label: "Anthropic", key_url: "https://console.anthropic.com/settings/keys", local: false },
-    ProviderInfo { vendor: "gcp.gemini", label: "Google Gemini", key_url: "https://aistudio.google.com/apikey", local: false },
-    ProviderInfo { vendor: "mistral", label: "Mistral", key_url: "https://console.mistral.ai/api-keys", local: false },
-    ProviderInfo { vendor: "xai", label: "xAI (Grok)", key_url: "https://console.x.ai", local: false },
-    ProviderInfo { vendor: "deepseek", label: "DeepSeek", key_url: "https://platform.deepseek.com/api_keys", local: false },
-    ProviderInfo { vendor: "openrouter", label: "OpenRouter", key_url: "https://openrouter.ai/keys", local: false },
-    ProviderInfo { vendor: "groq", label: "Groq", key_url: "https://console.groq.com/keys", local: false },
-    ProviderInfo { vendor: "together", label: "Together AI", key_url: "https://api.together.ai/settings/api-keys", local: false },
-    ProviderInfo { vendor: "perplexity", label: "Perplexity", key_url: "https://www.perplexity.ai/settings/api", local: false },
-    ProviderInfo { vendor: "cohere", label: "Cohere", key_url: "https://dashboard.cohere.com/api-keys", local: false },
-    ProviderInfo { vendor: "moonshot", label: "Moonshot (Kimi)", key_url: "https://platform.moonshot.ai/console/api-keys", local: false },
-    ProviderInfo { vendor: "zai", label: "Z.ai (GLM)", key_url: "https://z.ai/manage-apikey/apikey-list", local: false },
-    ProviderInfo { vendor: "ollama", label: "Ollama", key_url: "", local: true },
-    ProviderInfo { vendor: "llamacpp", label: "llama.cpp, LM Studio or vLLM", key_url: "", local: true },
+    ProviderInfo {
+        vendor: "openai",
+        label: "OpenAI",
+        key_url: "https://platform.openai.com/api-keys",
+        local: false,
+    },
+    ProviderInfo {
+        vendor: "anthropic",
+        label: "Anthropic",
+        key_url: "https://console.anthropic.com/settings/keys",
+        local: false,
+    },
+    ProviderInfo {
+        vendor: "gcp.gemini",
+        label: "Google Gemini",
+        key_url: "https://aistudio.google.com/apikey",
+        local: false,
+    },
+    ProviderInfo {
+        vendor: "mistral",
+        label: "Mistral",
+        key_url: "https://console.mistral.ai/api-keys",
+        local: false,
+    },
+    ProviderInfo {
+        vendor: "xai",
+        label: "xAI (Grok)",
+        key_url: "https://console.x.ai",
+        local: false,
+    },
+    ProviderInfo {
+        vendor: "deepseek",
+        label: "DeepSeek",
+        key_url: "https://platform.deepseek.com/api_keys",
+        local: false,
+    },
+    ProviderInfo {
+        vendor: "openrouter",
+        label: "OpenRouter",
+        key_url: "https://openrouter.ai/keys",
+        local: false,
+    },
+    ProviderInfo {
+        vendor: "groq",
+        label: "Groq",
+        key_url: "https://console.groq.com/keys",
+        local: false,
+    },
+    ProviderInfo {
+        vendor: "together",
+        label: "Together AI",
+        key_url: "https://api.together.ai/settings/api-keys",
+        local: false,
+    },
+    ProviderInfo {
+        vendor: "perplexity",
+        label: "Perplexity",
+        key_url: "https://www.perplexity.ai/settings/api",
+        local: false,
+    },
+    ProviderInfo {
+        vendor: "cohere",
+        label: "Cohere",
+        key_url: "https://dashboard.cohere.com/api-keys",
+        local: false,
+    },
+    ProviderInfo {
+        vendor: "moonshot",
+        label: "Moonshot (Kimi)",
+        key_url: "https://platform.moonshot.ai/console/api-keys",
+        local: false,
+    },
+    ProviderInfo {
+        vendor: "zai",
+        label: "Z.ai (GLM)",
+        key_url: "https://z.ai/manage-apikey/apikey-list",
+        local: false,
+    },
+    ProviderInfo {
+        vendor: "ollama",
+        label: "Ollama",
+        key_url: "",
+        local: true,
+    },
+    ProviderInfo {
+        vendor: "llamacpp",
+        label: "llama.cpp, LM Studio or vLLM",
+        key_url: "",
+        local: true,
+    },
 ];
 
 pub fn info(vendor: &str) -> Option<&'static ProviderInfo> {
@@ -137,8 +212,8 @@ pub fn default_base_url(vendor: &str) -> Option<String> {
 /// send to `/v1/v1/...`.
 pub fn normalize_base_url(vendor: &str, base_url: &str) -> String {
     let url = base_url.trim().trim_end_matches('/');
-    let default_has_v1 = default_base_url(vendor)
-        .is_none_or(|d| d.trim_end_matches('/').ends_with("/v1"));
+    let default_has_v1 =
+        default_base_url(vendor).is_none_or(|d| d.trim_end_matches('/').ends_with("/v1"));
     match url.strip_suffix("/v1") {
         Some(root) if !default_has_v1 => root.to_string(),
         _ => url.to_string(),
@@ -236,7 +311,9 @@ fn custom_model(vendor: &str, id: &str) -> ModelView {
         vendor: vendor.into(),
         provider_label: label.into(),
         id: id.into(),
-        name: spec.as_ref().map_or_else(|| id.to_string(), |s| s.display_name.clone()),
+        name: spec
+            .as_ref()
+            .map_or_else(|| id.to_string(), |s| s.display_name.clone()),
         reasoning: spec
             .as_ref()
             .is_some_and(|s| !matches!(s.reasoning, ReasoningSupport::None)),
@@ -259,7 +336,9 @@ async fn ollama_models(base_url: &str) -> Vec<String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(2))
         .build();
-    let Ok(client) = client else { return Vec::new() };
+    let Ok(client) = client else {
+        return Vec::new();
+    };
     match client.get(format!("{root}/api/tags")).send().await {
         Ok(response) => response
             .json::<Tags>()
@@ -282,9 +361,24 @@ async fn openai_compatible_models(base_url: &str) -> Vec<String> {
         id: String,
     }
     let root = base_url.trim_end_matches('/').trim_end_matches("/v1");
-    let Ok(client) = reqwest::Client::builder().timeout(Duration::from_secs(2)).build() else { return Vec::new() };
+    let Ok(client) = reqwest::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
+    else {
+        return Vec::new();
+    };
     match client.get(format!("{root}/v1/models")).send().await {
-        Ok(response) => response.json::<List>().await.map(|l| l.data.into_iter().map(|e| e.id).filter(|id| !id.is_empty()).collect()).unwrap_or_default(),
+        Ok(response) => response
+            .json::<List>()
+            .await
+            .map(|l| {
+                l.data
+                    .into_iter()
+                    .map(|e| e.id)
+                    .filter(|id| !id.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default(),
         Err(_) => Vec::new(),
     }
 }
@@ -312,8 +406,16 @@ pub async fn models(file: &ProvidersFile) -> Vec<ModelView> {
                 .map(|id| custom_model(provider.vendor, id))
                 .collect()
         } else if provider.local {
-            let base = settings.base_url.clone().or_else(|| default_base_url(provider.vendor)).unwrap_or_default();
-            openai_compatible_models(&base).await.iter().map(|id| custom_model(provider.vendor, id)).collect()
+            let base = settings
+                .base_url
+                .clone()
+                .or_else(|| default_base_url(provider.vendor))
+                .unwrap_or_default();
+            openai_compatible_models(&base)
+                .await
+                .iter()
+                .map(|id| custom_model(provider.vendor, id))
+                .collect()
         } else {
             catalog_models(provider.vendor)
         };
@@ -390,9 +492,22 @@ mod tests {
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         // With or without /v1 in the address the user typed.
-        assert_eq!(openai_compatible_models(&format!("http://{addr}/v1")).await, ["qwen3-8b-q4", "llama-3.2-3b"]);
-        assert_eq!(openai_compatible_models(&format!("http://{addr}")).await.len(), 2);
-        assert!(openai_compatible_models("http://127.0.0.1:9").await.is_empty(), "a server that is off lists nothing");
+        assert_eq!(
+            openai_compatible_models(&format!("http://{addr}/v1")).await,
+            ["qwen3-8b-q4", "llama-3.2-3b"]
+        );
+        assert_eq!(
+            openai_compatible_models(&format!("http://{addr}"))
+                .await
+                .len(),
+            2
+        );
+        assert!(
+            openai_compatible_models("http://127.0.0.1:9")
+                .await
+                .is_empty(),
+            "a server that is off lists nothing"
+        );
     }
 
     #[test]
@@ -417,16 +532,30 @@ mod tests {
     fn catalog_lists_chat_models() {
         let models = catalog_models("openai");
         assert!(!models.is_empty());
-        assert!(models.iter().all(|m| m.reference.starts_with("openai/") && m.tools));
+        assert!(models
+            .iter()
+            .all(|m| m.reference.starts_with("openai/") && m.tools));
     }
 
     #[test]
     fn base_urls_follow_the_dialect() {
         // xAI's paths carry /v1, so a pasted /v1 is dropped; OpenAI's base keeps it.
-        assert_eq!(normalize_base_url("xai", "https://gw.example/v1/"), "https://gw.example");
-        assert_eq!(normalize_base_url("openai", "https://gw.example/v1"), "https://gw.example/v1");
-        assert_eq!(normalize_base_url("ollama", "http://box:11434/v1"), "http://box:11434/v1");
-        assert_eq!(default_base_url("ollama").as_deref(), Some("http://localhost:11434/v1"));
+        assert_eq!(
+            normalize_base_url("xai", "https://gw.example/v1/"),
+            "https://gw.example"
+        );
+        assert_eq!(
+            normalize_base_url("openai", "https://gw.example/v1"),
+            "https://gw.example/v1"
+        );
+        assert_eq!(
+            normalize_base_url("ollama", "http://box:11434/v1"),
+            "http://box:11434/v1"
+        );
+        assert_eq!(
+            default_base_url("ollama").as_deref(),
+            Some("http://localhost:11434/v1")
+        );
     }
 
     #[test]
@@ -460,7 +589,10 @@ mod tests {
 
     #[test]
     fn readiness_needs_enabled_and_a_key_when_required() {
-        let mut settings = ProviderSettings { enabled: true, ..Default::default() };
+        let mut settings = ProviderSettings {
+            enabled: true,
+            ..Default::default()
+        };
         assert_eq!(is_ready("openai", &settings), env_key("openai").is_some());
         assert!(is_ready("ollama", &settings));
         settings.has_key = true;
@@ -469,4 +601,3 @@ mod tests {
         assert!(!is_ready("openai", &settings));
     }
 }
-

@@ -26,14 +26,21 @@ const VIDEO_EXTS: &[&str] = &["mp4", "webm", "mov"];
 const MAX_FILES: usize = 300;
 
 fn walk(base: &Path, dir: &Path, depth: usize, out: &mut Vec<(String, std::fs::Metadata)>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in entries.flatten() {
         if out.len() >= MAX_FILES {
             return;
         }
         let name = e.file_name().to_string_lossy().into_owned();
         // Hidden files, caches and environments are not outputs.
-        if name.starts_with('.') || matches!(name.as_str(), "__pycache__" | "node_modules" | "venv" | ".venv") {
+        if name.starts_with('.')
+            || matches!(
+                name.as_str(),
+                "__pycache__" | "node_modules" | "venv" | ".venv"
+            )
+        {
             continue;
         }
         let path = e.path();
@@ -50,7 +57,9 @@ fn walk(base: &Path, dir: &Path, depth: usize, out: &mut Vec<(String, std::fs::M
 
 /// The files in a chat's workspace.
 pub fn files(config_dir: &Path, conversation_id: &str) -> Vec<Output> {
-    let Ok(dir) = super::sandbox::workspace(config_dir, conversation_id) else { return Vec::new() };
+    let Ok(dir) = super::sandbox::workspace(config_dir, conversation_id) else {
+        return Vec::new();
+    };
     let mut found = Vec::new();
     walk(&dir, &dir, 0, &mut found);
     found
@@ -59,7 +68,14 @@ pub fn files(config_dir: &Path, conversation_id: &str) -> Vec<Output> {
             let ext = rel.rsplit('.').next().unwrap_or_default().to_lowercase();
             Output {
                 conversation_id: conversation_id.to_string(),
-                kind: if IMAGE_EXTS.contains(&ext.as_str()) { "image" } else if VIDEO_EXTS.contains(&ext.as_str()) { "video" } else { "file" }.into(),
+                kind: if IMAGE_EXTS.contains(&ext.as_str()) {
+                    "image"
+                } else if VIDEO_EXTS.contains(&ext.as_str()) {
+                    "video"
+                } else {
+                    "file"
+                }
+                .into(),
                 title: rel.rsplit('/').next().unwrap_or(&rel).to_string(),
                 id: rel,
                 bytes: meta.len(),
@@ -121,12 +137,26 @@ mod tests {
         std::fs::write(ws.join("report.csv"), b"a,b").unwrap();
         std::fs::write(ws.join(".hidden"), b"x").unwrap();
         std::fs::write(ws.join("__pycache__/x.pyc"), b"x").unwrap();
-        super::super::canvas::write(dir.path(), "c1", None, Some("Plan"), "# Plan", "assistant").unwrap();
+        super::super::canvas::write(dir.path(), "c1", None, Some("Plan"), "# Plan", "assistant")
+            .unwrap();
         let mine = for_conversation(dir.path(), "c1");
-        let mut kinds: Vec<(&str, &str)> = mine.iter().map(|o| (o.kind.as_str(), o.title.as_str())).collect();
+        let mut kinds: Vec<(&str, &str)> = mine
+            .iter()
+            .map(|o| (o.kind.as_str(), o.title.as_str()))
+            .collect();
         kinds.sort();
-        assert_eq!(kinds, [("document", "Plan"), ("file", "report.csv"), ("image", "cat.png")]);
-        assert_eq!(mine.iter().find(|o| o.kind == "image").unwrap().id, "images/cat.png");
+        assert_eq!(
+            kinds,
+            [
+                ("document", "Plan"),
+                ("file", "report.csv"),
+                ("image", "cat.png")
+            ]
+        );
+        assert_eq!(
+            mine.iter().find(|o| o.kind == "image").unwrap().id,
+            "images/cat.png"
+        );
         assert_eq!(all(dir.path()).len(), 3);
         assert!(for_conversation(dir.path(), "other").is_empty());
     }

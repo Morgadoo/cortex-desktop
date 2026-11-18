@@ -56,7 +56,11 @@ fn api_base() -> String {
 }
 
 pub async fn token() -> Option<String> {
-    super::engine::api_key(TOKEN).await.ok().flatten().filter(|t| !t.is_empty())
+    super::engine::api_key(TOKEN)
+        .await
+        .ok()
+        .flatten()
+        .filter(|t| !t.is_empty())
 }
 
 pub async fn set_token(token: &str) -> Result<(), String> {
@@ -65,24 +69,45 @@ pub async fn set_token(token: &str) -> Result<(), String> {
     if token.trim().is_empty() {
         secrets.delete(&super::providers::secret_name(TOKEN)).await
     } else {
-        secrets.store(&super::providers::secret_name(TOKEN), token.trim()).await
+        secrets
+            .store(&super::providers::secret_name(TOKEN), token.trim())
+            .await
     }
 }
 
-async fn call(token: &str, method: reqwest::Method, path: &str, body: Option<Value>) -> Result<Value, String> {
-    let client = reqwest::Client::builder().timeout(Duration::from_secs(30)).build().map_err(|e| e.to_string())?;
-    let mut request = client.request(method, format!("{}{path}", api_base())).header("Authorization", format!("Bot {token}")).header("User-Agent", "DiscordBot (https://proton.me, 1) Lumo");
+async fn call(
+    token: &str,
+    method: reqwest::Method,
+    path: &str,
+    body: Option<Value>,
+) -> Result<Value, String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let mut request = client
+        .request(method, format!("{}{path}", api_base()))
+        .header("Authorization", format!("Bot {token}"))
+        .header("User-Agent", "DiscordBot (https://proton.me, 1) Lumo");
     if let Some(body) = body {
         request = request.json(&body);
     }
-    let response = request.send().await.map_err(|e| format!("Discord did not answer: {e}"))?;
+    let response = request
+        .send()
+        .await
+        .map_err(|e| format!("Discord did not answer: {e}"))?;
     let status = response.status();
     let v: Value = response.json().await.unwrap_or(Value::Null);
     if status.as_u16() == 401 {
         return Err("Discord refused the token (Developer Portal → Bot → Reset Token).".into());
     }
     if !status.is_success() {
-        return Err(format!("Discord: {}", v.get("message").and_then(Value::as_str).unwrap_or(status.as_str())));
+        return Err(format!(
+            "Discord: {}",
+            v.get("message")
+                .and_then(Value::as_str)
+                .unwrap_or(status.as_str())
+        ));
     }
     Ok(v)
 }
@@ -93,12 +118,19 @@ pub async fn check(token: &str) -> Result<String, String> {
     if me.get("bot").and_then(Value::as_bool) != Some(true) {
         return Err("That is not a bot token (Developer Portal → your application → Bot).".into());
     }
-    Ok(me.get("username").and_then(Value::as_str).unwrap_or("bot").to_string())
+    Ok(me
+        .get("username")
+        .and_then(Value::as_str)
+        .unwrap_or("bot")
+        .to_string())
 }
 
 /// A message's text without mentions of the bot.
 pub fn clean(text: &str, bot_id: &str) -> String {
-    text.replace(&format!("<@{bot_id}>"), "").replace(&format!("<@!{bot_id}>"), "").trim().to_string()
+    text.replace(&format!("<@{bot_id}>"), "")
+        .replace(&format!("<@!{bot_id}>"), "")
+        .trim()
+        .to_string()
 }
 
 #[derive(Debug, PartialEq)]
@@ -114,16 +146,33 @@ pub enum Action {
 /// messages that mention the bot count.
 pub fn decide(settings: &Settings, message: &Value, bot_id: &str) -> Action {
     let author = message.get("author").cloned().unwrap_or(Value::Null);
-    let user = author.get("id").and_then(Value::as_str).unwrap_or_default().to_string();
-    if author.get("bot").and_then(Value::as_bool) == Some(true) || user.is_empty() || user == bot_id {
+    let user = author
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    if author.get("bot").and_then(Value::as_bool) == Some(true) || user.is_empty() || user == bot_id
+    {
         return Action::Ignore;
     }
     let in_server = message.get("guild_id").is_some_and(|g| !g.is_null());
-    let mentioned = message.get("mentions").and_then(Value::as_array).is_some_and(|m| m.iter().any(|u| u.get("id").and_then(Value::as_str) == Some(bot_id)));
+    let mentioned = message
+        .get("mentions")
+        .and_then(Value::as_array)
+        .is_some_and(|m| {
+            m.iter()
+                .any(|u| u.get("id").and_then(Value::as_str) == Some(bot_id))
+        });
     if in_server && !mentioned {
         return Action::Ignore;
     }
-    let text = clean(message.get("content").and_then(Value::as_str).unwrap_or_default(), bot_id);
+    let text = clean(
+        message
+            .get("content")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+        bot_id,
+    );
     if text.is_empty() {
         return Action::Ignore;
     }
@@ -170,8 +219,13 @@ pub fn start(app: &AppHandle) {
 async fn session(app: &AppHandle, config_dir: &Path, token: &str) -> Result<(), String> {
     use tokio_tungstenite::tungstenite::Message as Ws;
     let gateway = call(token, reqwest::Method::GET, "/gateway/bot", None).await?;
-    let url = gateway.get("url").and_then(Value::as_str).ok_or("Discord gave no Gateway address.")?;
-    let (ws, _) = tokio_tungstenite::connect_async(format!("{url}/?v=10&encoding=json")).await.map_err(|e| format!("could not connect: {e}"))?;
+    let url = gateway
+        .get("url")
+        .and_then(Value::as_str)
+        .ok_or("Discord gave no Gateway address.")?;
+    let (ws, _) = tokio_tungstenite::connect_async(format!("{url}/?v=10&encoding=json"))
+        .await
+        .map_err(|e| format!("could not connect: {e}"))?;
     let (mut tx, mut rx) = ws.split();
     let mut seq: Option<u64> = None;
     let mut bot_id = String::new();
@@ -201,7 +255,13 @@ async fn session(app: &AppHandle, config_dir: &Path, token: &str) -> Result<(), 
                 let _ = tx.send(Ws::Pong(p)).await;
                 continue;
             }
-            Ws::Close(c) => return Err(format!("Discord closed the connection{}", c.map(|c| format!(": {} {}", u16::from(c.code), c.reason)).unwrap_or_default())),
+            Ws::Close(c) => {
+                return Err(format!(
+                    "Discord closed the connection{}",
+                    c.map(|c| format!(": {} {}", u16::from(c.code), c.reason))
+                        .unwrap_or_default()
+                ))
+            }
             _ => continue,
         };
         let payload: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
@@ -211,26 +271,51 @@ async fn session(app: &AppHandle, config_dir: &Path, token: &str) -> Result<(), 
         match payload.get("op").and_then(Value::as_u64) {
             // Hello: start the heartbeat and identify.
             Some(10) => {
-                let every = payload.pointer("/d/heartbeat_interval").and_then(Value::as_u64).unwrap_or(41_250);
+                let every = payload
+                    .pointer("/d/heartbeat_interval")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(41_250);
                 beat = tokio::time::interval(Duration::from_millis(every));
                 beat.tick().await;
                 let identify = json!({ "op": 2, "d": { "token": token, "intents": INTENTS, "properties": { "os": std::env::consts::OS, "browser": "Lumo", "device": "Lumo" } } });
-                tx.send(Ws::Text(identify.to_string().into())).await.map_err(|e| e.to_string())?;
+                tx.send(Ws::Text(identify.to_string().into()))
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
             // Heartbeat asked for now.
-            Some(1) => tx.send(Ws::Text(json!({ "op": 1, "d": seq }).to_string().into())).await.map_err(|e| e.to_string())?,
+            Some(1) => tx
+                .send(Ws::Text(json!({ "op": 1, "d": seq }).to_string().into()))
+                .await
+                .map_err(|e| e.to_string())?,
             // Reconnect, or the session is no longer valid: start over.
             Some(7) | Some(9) => return Ok(()),
             Some(0) => match payload.get("t").and_then(Value::as_str) {
                 Some("READY") => {
-                    bot_id = payload.pointer("/d/user/id").and_then(Value::as_str).unwrap_or_default().to_string();
-                    log::info!("discord: connected as {}", payload.pointer("/d/user/username").and_then(Value::as_str).unwrap_or("the bot"));
+                    bot_id = payload
+                        .pointer("/d/user/id")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string();
+                    log::info!(
+                        "discord: connected as {}",
+                        payload
+                            .pointer("/d/user/username")
+                            .and_then(Value::as_str)
+                            .unwrap_or("the bot")
+                    );
                 }
                 Some("MESSAGE_CREATE") => {
                     let message = payload.get("d").cloned().unwrap_or(Value::Null);
                     // Answer on the side, so the heartbeat keeps going during a long turn.
-                    let (app, config_dir, token, bot_id) = (app.clone(), config_dir.to_path_buf(), token.to_string(), bot_id.clone());
-                    tauri::async_runtime::spawn(async move { handle(&app, &config_dir, &token, &bot_id, message).await });
+                    let (app, config_dir, token, bot_id) = (
+                        app.clone(),
+                        config_dir.to_path_buf(),
+                        token.to_string(),
+                        bot_id.clone(),
+                    );
+                    tauri::async_runtime::spawn(async move {
+                        handle(&app, &config_dir, &token, &bot_id, message).await
+                    });
                 }
                 _ => {}
             },
@@ -240,8 +325,16 @@ async fn session(app: &AppHandle, config_dir: &Path, token: &str) -> Result<(), 
 }
 
 async fn handle(app: &AppHandle, config_dir: &Path, token: &str, bot_id: &str, message: Value) {
-    let channel = message.get("channel_id").and_then(Value::as_str).unwrap_or_default().to_string();
-    let message_id = message.get("id").and_then(Value::as_str).unwrap_or_default().to_string();
+    let channel = message
+        .get("channel_id")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let message_id = message
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
     let mut settings = load(config_dir);
     let reply = match decide(&settings, &message, bot_id) {
         Action::Ignore => return,
@@ -260,9 +353,28 @@ async fn handle(app: &AppHandle, config_dir: &Path, token: &str, bot_id: &str, m
             "Started a fresh conversation.".into()
         }
         Action::Ask(question) => {
-            let _ = call(token, reqwest::Method::POST, &format!("/channels/{channel}/typing"), Some(json!({}))).await;
-            let existing = settings.chats.iter().find(|(c, _)| *c == channel).map(|(_, id)| id.clone());
-            let (id, answer) = super::telegram::run_message(app, config_dir, settings.agent_id.clone(), settings.allow_changes, existing, "Discord", &question).await;
+            let _ = call(
+                token,
+                reqwest::Method::POST,
+                &format!("/channels/{channel}/typing"),
+                Some(json!({})),
+            )
+            .await;
+            let existing = settings
+                .chats
+                .iter()
+                .find(|(c, _)| *c == channel)
+                .map(|(_, id)| id.clone());
+            let (id, answer) = super::telegram::run_message(
+                app,
+                config_dir,
+                settings.agent_id.clone(),
+                settings.allow_changes,
+                existing,
+                "Discord",
+                &question,
+            )
+            .await;
             if let Some(id) = id {
                 let mut s = load(config_dir);
                 s.chats.retain(|(c, _)| *c != channel);
@@ -272,12 +384,23 @@ async fn handle(app: &AppHandle, config_dir: &Path, token: &str, bot_id: &str, m
             answer.unwrap_or_else(|e| e)
         }
     };
-    for (i, piece) in super::telegram::chunks_of(&reply, MAX_MESSAGE).into_iter().enumerate() {
+    for (i, piece) in super::telegram::chunks_of(&reply, MAX_MESSAGE)
+        .into_iter()
+        .enumerate()
+    {
         let mut body = json!({ "content": piece, "allowed_mentions": { "parse": [] } });
         if i == 0 && !message_id.is_empty() {
-            body["message_reference"] = json!({ "message_id": message_id, "fail_if_not_exists": false });
+            body["message_reference"] =
+                json!({ "message_id": message_id, "fail_if_not_exists": false });
         }
-        if let Err(e) = call(token, reqwest::Method::POST, &format!("/channels/{channel}/messages"), Some(body)).await {
+        if let Err(e) = call(
+            token,
+            reqwest::Method::POST,
+            &format!("/channels/{channel}/messages"),
+            Some(body),
+        )
+        .await
+        {
             log::warn!("discord: could not reply: {e}");
             break;
         }
@@ -290,20 +413,59 @@ mod tests {
 
     #[test]
     fn messages_are_read_and_only_paired_users_answered() {
-        let mut s = Settings { pairing_code: Some("123456".into()), ..Default::default() };
+        let mut s = Settings {
+            pairing_code: Some("123456".into()),
+            ..Default::default()
+        };
         let dm = |user: &str, text: &str| json!({ "id": "m1", "channel_id": "D1", "author": { "id": user, "username": "ana" }, "content": text, "mentions": [] });
-        assert!(matches!(decide(&s, &dm("U1", "hi"), "B9"), Action::Reply(t) if t.contains("only my owner")));
-        assert_eq!(decide(&s, &dm("U1", "pair 123456"), "B9"), Action::Pair("U1".into()));
+        assert!(
+            matches!(decide(&s, &dm("U1", "hi"), "B9"), Action::Reply(t) if t.contains("only my owner"))
+        );
+        assert_eq!(
+            decide(&s, &dm("U1", "pair 123456"), "B9"),
+            Action::Pair("U1".into())
+        );
         s.paired.push("U1".into());
-        assert_eq!(decide(&s, &dm("U1", "What's next?"), "B9"), Action::Ask("What's next?".into()));
+        assert_eq!(
+            decide(&s, &dm("U1", "What's next?"), "B9"),
+            Action::Ask("What's next?".into())
+        );
         let mention = json!({ "id": "m2", "channel_id": "C1", "guild_id": "G1", "author": { "id": "U1" }, "content": "<@B9> summarize this", "mentions": [{ "id": "B9" }] });
-        assert_eq!(decide(&s, &mention, "B9"), Action::Ask("summarize this".into()));
+        assert_eq!(
+            decide(&s, &mention, "B9"),
+            Action::Ask("summarize this".into())
+        );
         // Server chatter without a mention, bots and its own messages are not for it.
-        assert_eq!(decide(&s, &json!({ "guild_id": "G1", "author": { "id": "U1" }, "content": "x", "mentions": [] }), "B9"), Action::Ignore);
-        assert_eq!(decide(&s, &json!({ "author": { "id": "U7", "bot": true }, "content": "x" }), "B9"), Action::Ignore);
-        assert_eq!(decide(&s, &json!({ "author": { "id": "B9" }, "content": "x" }), "B9"), Action::Ignore);
+        assert_eq!(
+            decide(
+                &s,
+                &json!({ "guild_id": "G1", "author": { "id": "U1" }, "content": "x", "mentions": [] }),
+                "B9"
+            ),
+            Action::Ignore
+        );
+        assert_eq!(
+            decide(
+                &s,
+                &json!({ "author": { "id": "U7", "bot": true }, "content": "x" }),
+                "B9"
+            ),
+            Action::Ignore
+        );
+        assert_eq!(
+            decide(
+                &s,
+                &json!({ "author": { "id": "B9" }, "content": "x" }),
+                "B9"
+            ),
+            Action::Ignore
+        );
         assert_eq!(decide(&s, &dm("U1", "new"), "B9"), Action::Reset);
         assert_eq!(clean("<@!B9> hello there ", "B9"), "hello there");
-        assert!(super::super::telegram::chunks_of(&"a".repeat(4500), MAX_MESSAGE).iter().all(|c| c.chars().count() <= MAX_MESSAGE));
+        assert!(
+            super::super::telegram::chunks_of(&"a".repeat(4500), MAX_MESSAGE)
+                .iter()
+                .all(|c| c.chars().count() <= MAX_MESSAGE)
+        );
     }
 }

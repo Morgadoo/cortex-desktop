@@ -21,7 +21,12 @@ use serde::{Deserialize, Serialize};
 pub const MAGIC: &[u8] = b"LUMOREST1\0";
 const KEY_NAME: &str = "at-rest-key";
 /// Under the settings folder, never sealed.
-const PLAIN: &[&str] = &["chat/sandbox", "chat/agent-runs", "chat/encryption.json", "skills"];
+const PLAIN: &[&str] = &[
+    "chat/sandbox",
+    "chat/agent-runs",
+    "chat/encryption.json",
+    "skills",
+];
 
 /// The settings folder and its key, while encryption is on and unlocked.
 static STATE: RwLock<Option<(PathBuf, [u8; 32])>> = RwLock::new(None);
@@ -50,7 +55,10 @@ fn marker_path(config_dir: &Path) -> PathBuf {
 }
 
 pub fn marker(config_dir: &Path) -> Marker {
-    std::fs::read_to_string(marker_path(config_dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    std::fs::read_to_string(marker_path(config_dir))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
 }
 
 /// Whether a file at `path` is sealed when written.
@@ -64,17 +72,29 @@ fn sealed_path(root: &Path, path: &Path) -> bool {
 fn seal(key: &[u8; 32], plain: &[u8]) -> io::Result<Vec<u8>> {
     let mut nonce = [0u8; 24];
     rand::fill(&mut nonce);
-    let sealed = XChaCha20Poly1305::new(key.into()).encrypt(XNonce::from_slice(&nonce), plain).map_err(|_| io::Error::other("could not encrypt"))?;
+    let sealed = XChaCha20Poly1305::new(key.into())
+        .encrypt(XNonce::from_slice(&nonce), plain)
+        .map_err(|_| io::Error::other("could not encrypt"))?;
     Ok([MAGIC, &nonce[..], &sealed].concat())
 }
 
 fn open(key: &[u8; 32], data: &[u8]) -> io::Result<Vec<u8>> {
     let rest = &data[MAGIC.len()..];
     if rest.len() < 24 {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "an encrypted file is cut short"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "an encrypted file is cut short",
+        ));
     }
     let (nonce, sealed) = rest.split_at(24);
-    XChaCha20Poly1305::new(key.into()).decrypt(XNonce::from_slice(nonce), sealed).map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "an encrypted file could not be opened (wrong key, or damaged)"))
+    XChaCha20Poly1305::new(key.into())
+        .decrypt(XNonce::from_slice(nonce), sealed)
+        .map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "an encrypted file could not be opened (wrong key, or damaged)",
+            )
+        })
 }
 
 /// Reads a file, opening it when it is sealed.
@@ -85,7 +105,10 @@ pub fn read<P: AsRef<Path>>(path: P) -> io::Result<Vec<u8>> {
     }
     match STATE.read().unwrap().as_ref() {
         Some((_, key)) => open(key, &data),
-        None => Err(io::Error::new(io::ErrorKind::PermissionDenied, "this file is encrypted and the key is not available")),
+        None => Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "this file is encrypted and the key is not available",
+        )),
     }
 }
 
@@ -96,7 +119,12 @@ pub fn read_to_string<P: AsRef<Path>>(path: P) -> io::Result<String> {
 /// Writes a file, sealing it when encryption is on and it is in the settings folder.
 pub fn write<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, contents: C) -> io::Result<()> {
     let path = path.as_ref();
-    if LOCKED.read().unwrap().as_ref().is_some_and(|root| path.starts_with(root)) {
+    if LOCKED
+        .read()
+        .unwrap()
+        .as_ref()
+        .is_some_and(|root| path.starts_with(root))
+    {
         return Err(io::Error::new(io::ErrorKind::PermissionDenied, "Lumo's data is encrypted and locked (the keychain did not give the key); nothing is saved until it is unlocked"));
     }
     let sealed = match STATE.read().unwrap().as_ref() {
@@ -117,7 +145,11 @@ fn covered(config_dir: &Path) -> Vec<PathBuf> {
         .filter_map(Result::ok)
         .filter(|e| e.file_type().is_file())
         // Only the chat data; the app's own settings and accounts stay where they are.
-        .filter(|e| e.path().strip_prefix(config_dir).is_ok_and(|r| r.starts_with("chat")))
+        .filter(|e| {
+            e.path()
+                .strip_prefix(config_dir)
+                .is_ok_and(|r| r.starts_with("chat"))
+        })
         .map(|e| e.into_path())
         .collect()
 }
@@ -125,7 +157,10 @@ fn covered(config_dir: &Path) -> Vec<PathBuf> {
 fn is_sealed(path: &Path) -> bool {
     use std::io::Read as _;
     let mut head = [0u8; 10];
-    std::fs::File::open(path).and_then(|mut f| f.read_exact(&mut head)).is_ok() && head == MAGIC
+    std::fs::File::open(path)
+        .and_then(|mut f| f.read_exact(&mut head))
+        .is_ok()
+        && head == MAGIC
 }
 
 pub fn status(config_dir: &Path) -> Status {
@@ -133,7 +168,12 @@ pub fn status(config_dir: &Path) -> Status {
     let locked = enabled && (STATE.read().unwrap().is_none() || LOCKED.read().unwrap().is_some());
     let files = covered(config_dir);
     let sealed = files.iter().filter(|p| is_sealed(p)).count();
-    Status { enabled, locked, sealed, plain: files.len() - sealed }
+    Status {
+        enabled,
+        locked,
+        sealed,
+        plain: files.len() - sealed,
+    }
 }
 
 /// Rewrites every covered file through [`write`] (sealing when on, opening when off).
@@ -154,7 +194,11 @@ fn save_marker(config_dir: &Path, enabled: bool) -> Result<(), String> {
     if let Some(dir) = p.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
-    std::fs::write(p, serde_json::to_string(&Marker { enabled }).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+    std::fs::write(
+        p,
+        serde_json::to_string(&Marker { enabled }).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())
 }
 
 /// Turns encryption on with `key` (a new one from [`enable`]); seals what is there.
@@ -174,7 +218,11 @@ pub fn disable_files(config_dir: &Path) -> Result<usize, String> {
         if !data.starts_with(MAGIC) {
             continue;
         }
-        let plain = open(&key.ok_or("The key is not available, so the files cannot be decrypted.")?, &data).map_err(|e| format!("{}: {e}", path.display()))?;
+        let plain = open(
+            &key.ok_or("The key is not available, so the files cannot be decrypted.")?,
+            &data,
+        )
+        .map_err(|e| format!("{}: {e}", path.display()))?;
         let tmp = path.with_extension("rest-tmp");
         std::fs::write(&tmp, plain).map_err(|e| e.to_string())?;
         std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
@@ -186,7 +234,9 @@ pub fn disable_files(config_dir: &Path) -> Result<usize, String> {
 }
 
 fn secrets() -> Result<crate::tools::auth::Secrets, String> {
-    Ok(crate::tools::auth::keychain_secrets(crate::account::AccountId::parse(super::LOCAL_ACCOUNT)?))
+    Ok(crate::tools::auth::keychain_secrets(
+        crate::account::AccountId::parse(super::LOCAL_ACCOUNT)?,
+    ))
 }
 
 /// A new key, kept in the keychain (read back to be sure it is there), then sealing.
@@ -203,19 +253,25 @@ pub async fn enable(config_dir: &Path) -> Result<usize, String> {
         return Err("The key could not be kept in the keychain, so nothing was encrypted.".into());
     }
     let dir = config_dir.to_path_buf();
-    tokio::task::spawn_blocking(move || enable_with(&dir, key)).await.map_err(|e| e.to_string())?
+    tokio::task::spawn_blocking(move || enable_with(&dir, key))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 pub async fn disable(config_dir: &Path) -> Result<usize, String> {
     let dir = config_dir.to_path_buf();
-    let n = tokio::task::spawn_blocking(move || disable_files(&dir)).await.map_err(|e| e.to_string())??;
+    let n = tokio::task::spawn_blocking(move || disable_files(&dir))
+        .await
+        .map_err(|e| e.to_string())??;
     secrets()?.delete(KEY_NAME).await?;
     Ok(n)
 }
 
 /// At start, before anything reads the folder: unlock with the keychain's key when on.
 pub fn unlock_at_start() {
-    let Some(config_dir) = crate::reporting::early_config_dir() else { return };
+    let Some(config_dir) = crate::reporting::early_config_dir() else {
+        return;
+    };
     if !marker(&config_dir).enabled {
         return;
     }
@@ -226,7 +282,15 @@ pub fn unlock_at_start() {
     if let Err(e) = &key {
         eprintln!("lumo: the encryption key could not be read from the keychain: {e}");
     }
-    let parsed = key.ok().flatten().and_then(|hex| (0..32).map(|i| u8::from_str_radix(hex.get(i * 2..i * 2 + 2)?, 16).ok()).collect::<Option<Vec<u8>>>()).and_then(|v| <[u8; 32]>::try_from(v).ok());
+    let parsed = key
+        .ok()
+        .flatten()
+        .and_then(|hex| {
+            (0..32)
+                .map(|i| u8::from_str_radix(hex.get(i * 2..i * 2 + 2)?, 16).ok())
+                .collect::<Option<Vec<u8>>>()
+        })
+        .and_then(|v| <[u8; 32]>::try_from(v).ok());
     match parsed {
         Some(key) => {
             *STATE.write().unwrap() = Some((config_dir.clone(), key));
@@ -260,11 +324,22 @@ mod tests {
         std::fs::write(&sandbox, "a,b").unwrap();
         let outside = tempfile::tempdir().unwrap();
 
-        assert_eq!(enable_with(&root, [7u8; 32]).unwrap(), 1, "only the conversation is covered");
+        assert_eq!(
+            enable_with(&root, [7u8; 32]).unwrap(),
+            1,
+            "only the conversation is covered"
+        );
         let raw = std::fs::read(&conv).unwrap();
         assert!(raw.starts_with(MAGIC) && !String::from_utf8_lossy(&raw).contains("secret"));
-        assert_eq!(read_to_string(&conv).unwrap(), r#"{"title":"My secret plan"}"#);
-        assert_eq!(std::fs::read_to_string(&sandbox).unwrap(), "a,b", "sandboxes stay plain");
+        assert_eq!(
+            read_to_string(&conv).unwrap(),
+            r#"{"title":"My secret plan"}"#
+        );
+        assert_eq!(
+            std::fs::read_to_string(&sandbox).unwrap(),
+            "a,b",
+            "sandboxes stay plain"
+        );
 
         // New writes in the folder are sealed; outside it, never.
         let page = root.join("chat/knowledge.json");
@@ -274,18 +349,30 @@ mod tests {
         write(&export, "plain").unwrap();
         assert_eq!(std::fs::read_to_string(&export).unwrap(), "plain");
         let s = status(&root);
-        assert!(s.enabled && !s.locked && s.sealed == 2 && s.plain == 0, "{s:?}");
+        assert!(
+            s.enabled && !s.locked && s.sealed == 2 && s.plain == 0,
+            "{s:?}"
+        );
 
         assert_eq!(disable_files(&root).unwrap(), 2);
-        assert_eq!(std::fs::read_to_string(&conv).unwrap(), r#"{"title":"My secret plan"}"#);
+        assert_eq!(
+            std::fs::read_to_string(&conv).unwrap(),
+            r#"{"title":"My secret plan"}"#
+        );
         assert!(!marker(&root).enabled);
         // Without the key, a sealed file is refused rather than read as garbage.
         std::fs::write(&page, [MAGIC, &[0u8; 40][..]].concat()).unwrap();
-        assert_eq!(read(&page).unwrap_err().kind(), io::ErrorKind::PermissionDenied);
+        assert_eq!(
+            read(&page).unwrap_err().kind(),
+            io::ErrorKind::PermissionDenied
+        );
 
         // Locked: writes into the folder are refused, so nothing replaces sealed data.
         *LOCKED.write().unwrap() = Some(root.clone());
-        assert_eq!(write(&page, "{}").unwrap_err().kind(), io::ErrorKind::PermissionDenied);
+        assert_eq!(
+            write(&page, "{}").unwrap_err().kind(),
+            io::ErrorKind::PermissionDenied
+        );
         write(&export, "still fine").unwrap();
         *LOCKED.write().unwrap() = None;
     }

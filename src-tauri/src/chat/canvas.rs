@@ -124,7 +124,10 @@ pub fn app_files(content: &str) -> Option<Vec<AppFile>> {
     if !trimmed.starts_with('{') {
         return None;
     }
-    serde_json::from_str::<Bundle>(trimmed).ok().map(|b| b.files).filter(|f| !f.is_empty())
+    serde_json::from_str::<Bundle>(trimmed)
+        .ok()
+        .map(|b| b.files)
+        .filter(|f| !f.is_empty())
 }
 
 /// Stores files as an app's content, checking their paths: relative, no `..`, at most 40 files.
@@ -134,23 +137,43 @@ pub fn bundle(files: &[AppFile]) -> Result<String, String> {
     }
     for f in files {
         let p = f.path.trim();
-        if p.is_empty() || p.starts_with('/') || p.contains('\\') || p.split('/').any(|s| s == ".." || s.is_empty() || s.starts_with('.')) {
-            return Err(format!("`{}` is not a usable file path; use relative paths like css/app.css.", f.path));
+        if p.is_empty()
+            || p.starts_with('/')
+            || p.contains('\\')
+            || p.split('/')
+                .any(|s| s == ".." || s.is_empty() || s.starts_with('.'))
+        {
+            return Err(format!(
+                "`{}` is not a usable file path; use relative paths like css/app.css.",
+                f.path
+            ));
         }
     }
     if !files.iter().any(|f| f.path.ends_with(".html")) {
         return Err("An app needs an HTML file, usually index.html.".into());
     }
-    serde_json::to_string(&Bundle { files: files.to_vec() }).map_err(|e| e.to_string())
+    serde_json::to_string(&Bundle {
+        files: files.to_vec(),
+    })
+    .map_err(|e| e.to_string())
 }
 
 /// The page an app opens on: `index.html`, else its first HTML file.
 fn entry(files: &[AppFile]) -> Option<&AppFile> {
-    files.iter().find(|f| f.path == "index.html").or_else(|| files.iter().find(|f| f.path.ends_with(".html")))
+    files
+        .iter()
+        .find(|f| f.path == "index.html")
+        .or_else(|| files.iter().find(|f| f.path.ends_with(".html")))
 }
 
 fn mime(path: &str) -> &'static str {
-    match path.rsplit('.').next().unwrap_or_default().to_ascii_lowercase().as_str() {
+    match path
+        .rsplit('.')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+        .as_str()
+    {
         "html" | "htm" => "text/html; charset=utf-8",
         "css" => "text/css; charset=utf-8",
         "js" | "mjs" => "text/javascript; charset=utf-8",
@@ -164,12 +187,18 @@ fn mime(path: &str) -> &'static str {
 
 /// An app's files as a ZIP archive, to download.
 pub fn app_zip(content: &str) -> Result<Vec<u8>, String> {
-    let files = app_files(content).unwrap_or_else(|| vec![AppFile { path: "index.html".into(), content: app_html(content) }]);
+    let files = app_files(content).unwrap_or_else(|| {
+        vec![AppFile {
+            path: "index.html".into(),
+            content: app_html(content),
+        }]
+    });
     let mut out = Vec::new();
     {
         let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut out));
         for f in &files {
-            zip.start_file(f.path.as_str(), zip::write::SimpleFileOptions::default()).map_err(|e| e.to_string())?;
+            zip.start_file(f.path.as_str(), zip::write::SimpleFileOptions::default())
+                .map_err(|e| e.to_string())?;
             std::io::Write::write_all(&mut zip, f.content.as_bytes()).map_err(|e| e.to_string())?;
         }
         zip.finish().map_err(|e| e.to_string())?;
@@ -185,7 +214,9 @@ pub fn app_html(content: &str) -> String {
         .or_else(|| trimmed.strip_prefix("```"))
         .and_then(|rest| rest.trim_end().strip_suffix("```"))
         .map_or(trimmed, str::trim);
-    if inner.to_ascii_lowercase().contains("<html") || inner.to_ascii_lowercase().starts_with("<!doctype") {
+    if inner.to_ascii_lowercase().contains("<html")
+        || inner.to_ascii_lowercase().starts_with("<!doctype")
+    {
         inner.to_string()
     } else {
         format!("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"></head><body>{inner}</body></html>")
@@ -195,8 +226,15 @@ pub fn app_html(content: &str) -> String {
 /// The page of an app's own window: the app in the same sandboxed frame as inside Lumo, so it
 /// gets no more access in a window than it has in a chat.
 pub fn window_html(id: &str, title: &str, windows: bool) -> String {
-    let base = if windows { "http://lumoapp.localhost" } else { "lumoapp://localhost" };
-    let title = title.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+    let base = if windows {
+        "http://lumoapp.localhost"
+    } else {
+        "lumoapp://localhost"
+    };
+    let title = title
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;");
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\"><title>{title}</title><style>html,body{{margin:0;height:100%;background:#fff}}iframe{{border:0;width:100%;height:100%;display:block}}</style></head>\
          <body><iframe sandbox=\"allow-scripts allow-forms allow-modals allow-popups\" src=\"{base}/{id}/\"></iframe></body></html>"
@@ -204,7 +242,8 @@ pub fn window_html(id: &str, title: &str, windows: bool) -> String {
 }
 
 /// The policy of an app window's page: only the app's frame.
-const WINDOW_CSP: &str = "default-src 'none'; style-src 'unsafe-inline'; frame-src lumoapp: http://lumoapp.localhost";
+const WINDOW_CSP: &str =
+    "default-src 'none'; style-src 'unsafe-inline'; frame-src lumoapp: http://lumoapp.localhost";
 
 /// Serves `lumoapp://localhost/<canvas id>` to the sandboxed preview frame, and
 /// `lumoapp://localhost/window/<canvas id>` to an app's own window.
@@ -220,10 +259,18 @@ pub fn serve(config_dir: &Path, path: &str) -> tauri::http::Response<Vec<u8>> {
                 .header("Cache-Control", "no-store")
                 .body(window_html(&canvas.id, &canvas.title, cfg!(windows)).into_bytes())
                 .unwrap_or_default(),
-            _ => builder.status(404).header("Content-Type", "text/plain").body(b"No such app".to_vec()).unwrap_or_default(),
+            _ => builder
+                .status(404)
+                .header("Content-Type", "text/plain")
+                .body(b"No such app".to_vec())
+                .unwrap_or_default(),
         };
     }
-    let id = path.trim_start_matches('/').split(['?', '/', '#']).next().unwrap_or_default();
+    let id = path
+        .trim_start_matches('/')
+        .split(['?', '/', '#'])
+        .next()
+        .unwrap_or_default();
     if id == DIAGRAM_PAGE {
         // Mermaid diagrams from answers, drawn in the same sandbox as mini apps.
         return builder
@@ -234,19 +281,42 @@ pub fn serve(config_dir: &Path, path: &str) -> tauri::http::Response<Vec<u8>> {
             .unwrap_or_default();
     }
     // `/<id>/` is the app's page; `/<id>/<file>` one of its files.
-    let file = path.trim_start_matches('/').split_once('/').map(|(_, rest)| rest.split(['?', '#']).next().unwrap_or_default()).unwrap_or_default();
+    let file = path
+        .trim_start_matches('/')
+        .split_once('/')
+        .map(|(_, rest)| rest.split(['?', '#']).next().unwrap_or_default())
+        .unwrap_or_default();
     match load(config_dir, id) {
         Ok(canvas) if canvas.kind == "app" => {
             let (body, kind) = match app_files(canvas.content()) {
                 Some(files) => {
-                    let found = if file.is_empty() { entry(&files) } else { files.iter().find(|f| f.path == file) };
+                    let found = if file.is_empty() {
+                        entry(&files)
+                    } else {
+                        files.iter().find(|f| f.path == file)
+                    };
                     match found {
                         Some(f) => (f.content.clone().into_bytes(), mime(&f.path)),
-                        None => return builder.status(404).header("Content-Type", "text/plain").body(b"No such file in this app".to_vec()).unwrap_or_default(),
+                        None => {
+                            return builder
+                                .status(404)
+                                .header("Content-Type", "text/plain")
+                                .body(b"No such file in this app".to_vec())
+                                .unwrap_or_default()
+                        }
                     }
                 }
-                None if file.is_empty() || file == "index.html" => (app_html(canvas.content()).into_bytes(), "text/html; charset=utf-8"),
-                None => return builder.status(404).header("Content-Type", "text/plain").body(b"No such file in this app".to_vec()).unwrap_or_default(),
+                None if file.is_empty() || file == "index.html" => (
+                    app_html(canvas.content()).into_bytes(),
+                    "text/html; charset=utf-8",
+                ),
+                None => {
+                    return builder
+                        .status(404)
+                        .header("Content-Type", "text/plain")
+                        .body(b"No such file in this app".to_vec())
+                        .unwrap_or_default()
+                }
             };
             builder
                 .status(200)
@@ -256,18 +326,27 @@ pub fn serve(config_dir: &Path, path: &str) -> tauri::http::Response<Vec<u8>> {
                 .body(body)
                 .unwrap_or_default()
         }
-        _ => builder.status(404).header("Content-Type", "text/plain").body(b"No such app".to_vec()).unwrap_or_default(),
+        _ => builder
+            .status(404)
+            .header("Content-Type", "text/plain")
+            .body(b"No such app".to_vec())
+            .unwrap_or_default(),
     }
 }
 
 /// Every app canvas, newest first.
 pub fn list_apps(config_dir: &Path) -> Vec<Canvas> {
-    list_all(config_dir).into_iter().filter(|c| c.kind == "app").collect()
+    list_all(config_dir)
+        .into_iter()
+        .filter(|c| c.kind == "app")
+        .collect()
 }
 
 /// Every canvas, newest change first.
 pub fn list_all(config_dir: &Path) -> Vec<Canvas> {
-    let Ok(entries) = std::fs::read_dir(dir(config_dir)) else { return Vec::new() };
+    let Ok(entries) = std::fs::read_dir(dir(config_dir)) else {
+        return Vec::new();
+    };
     let mut out: Vec<Canvas> = entries
         .filter_map(Result::ok)
         .filter_map(|e| crate::chat::at_rest::read_to_string(e.path()).ok())
@@ -294,12 +373,15 @@ fn path(config_dir: &Path, id: &str) -> Result<PathBuf, String> {
 }
 
 pub fn load(config_dir: &Path, id: &str) -> Result<Canvas, String> {
-    let text = crate::chat::at_rest::read_to_string(path(config_dir, id)?).map_err(|_| format!("no canvas `{id}`"))?;
+    let text = crate::chat::at_rest::read_to_string(path(config_dir, id)?)
+        .map_err(|_| format!("no canvas `{id}`"))?;
     serde_json::from_str(&text).map_err(|e| e.to_string())
 }
 
 pub fn list_for(config_dir: &Path, conversation_id: &str) -> Vec<Canvas> {
-    let Ok(entries) = std::fs::read_dir(dir(config_dir)) else { return Vec::new() };
+    let Ok(entries) = std::fs::read_dir(dir(config_dir)) else {
+        return Vec::new();
+    };
     let mut out: Vec<Canvas> = entries
         .filter_map(Result::ok)
         .filter_map(|e| crate::chat::at_rest::read_to_string(e.path()).ok())
@@ -319,7 +401,15 @@ pub fn write(
     content: &str,
     author: &str,
 ) -> Result<Canvas, String> {
-    write_kind(config_dir, conversation_id, id, title, content, author, None)
+    write_kind(
+        config_dir,
+        conversation_id,
+        id,
+        title,
+        content,
+        author,
+        None,
+    )
 }
 
 /// [`write`], setting the kind of a new canvas (an existing one keeps its own).
@@ -363,7 +453,11 @@ pub fn write_kind(
             .collect();
     }
     if canvas.content() != content {
-        canvas.versions.push(Version { content: content.to_string(), author: author.to_string(), at: Utc::now() });
+        canvas.versions.push(Version {
+            content: content.to_string(),
+            author: author.to_string(),
+            at: Utc::now(),
+        });
         if canvas.versions.len() > MAX_VERSIONS {
             canvas.versions.remove(0);
         }
@@ -383,7 +477,10 @@ pub fn prompt(canvases: &[Canvas]) -> Option<String> {
     );
     for c in canvases {
         let content: String = c.content().chars().take(PROMPT_CHARS).collect();
-        out.push_str(&format!("\n\n<canvas id=\"{}\" kind=\"{}\" title=\"{}\">\n{}\n</canvas>", c.id, c.kind, c.title, content));
+        out.push_str(&format!(
+            "\n\n<canvas id=\"{}\" kind=\"{}\" title=\"{}\">\n{}\n</canvas>",
+            c.id, c.kind, c.title, content
+        ));
     }
     Some(out)
 }
@@ -395,12 +492,24 @@ mod tests {
     #[test]
     fn apps_are_served_with_their_own_policy() {
         let dir = tempfile::tempdir().unwrap();
-        let app = write_kind(dir.path(), "c", None, Some("Timer"), "```html\n<!doctype html><html><body><script>1</script></body></html>\n```", "assistant", Some("app")).unwrap();
+        let app = write_kind(
+            dir.path(),
+            "c",
+            None,
+            Some("Timer"),
+            "```html\n<!doctype html><html><body><script>1</script></body></html>\n```",
+            "assistant",
+            Some("app"),
+        )
+        .unwrap();
         let doc = write(dir.path(), "c", None, None, "# Notes", "assistant").unwrap();
         let ok = serve(dir.path(), &format!("/{}", app.id));
         assert_eq!(ok.status(), 200);
         assert!(String::from_utf8_lossy(ok.body()).starts_with("<!doctype html>"));
-        assert!(ok.headers()["Content-Security-Policy"].to_str().unwrap().contains("default-src 'none'"));
+        assert!(ok.headers()["Content-Security-Policy"]
+            .to_str()
+            .unwrap()
+            .contains("default-src 'none'"));
         assert_eq!(serve(dir.path(), &format!("/{}", doc.id)).status(), 404);
         assert_eq!(serve(dir.path(), "/../x").status(), 404);
         assert_eq!(list_apps(dir.path()).len(), 1);
@@ -410,18 +519,44 @@ mod tests {
     #[test]
     fn canvases_keep_versions_and_titles() {
         let dir = tempfile::tempdir().unwrap();
-        let c = write(dir.path(), "conv", None, None, "# Plan\nStep one", "assistant").unwrap();
+        let c = write(
+            dir.path(),
+            "conv",
+            None,
+            None,
+            "# Plan\nStep one",
+            "assistant",
+        )
+        .unwrap();
         assert_eq!(c.title, "Plan");
-        let c2 = write(dir.path(), "conv", Some(&c.id), Some("Trip plan"), "# Plan\nStep two", "user").unwrap();
+        let c2 = write(
+            dir.path(),
+            "conv",
+            Some(&c.id),
+            Some("Trip plan"),
+            "# Plan\nStep two",
+            "user",
+        )
+        .unwrap();
         assert_eq!(c2.title, "Trip plan");
         assert_eq!(c2.versions.len(), 2);
         assert_eq!(c2.content(), "# Plan\nStep two");
         // Unchanged content adds no version.
-        let c3 = write(dir.path(), "conv", Some(&c.id), None, "# Plan\nStep two", "user").unwrap();
+        let c3 = write(
+            dir.path(),
+            "conv",
+            Some(&c.id),
+            None,
+            "# Plan\nStep two",
+            "user",
+        )
+        .unwrap();
         assert_eq!(c3.versions.len(), 2);
         assert!(write(dir.path(), "other", Some(&c.id), None, "x", "user").is_err());
         assert_eq!(list_for(dir.path(), "conv").len(), 1);
-        assert!(prompt(&list_for(dir.path(), "conv")).unwrap().contains("Step two"));
+        assert!(prompt(&list_for(dir.path(), "conv"))
+            .unwrap()
+            .contains("Step two"));
         assert!(prompt(&[]).is_none());
     }
 
@@ -435,28 +570,47 @@ mod tests {
         assert!(window_html("abc", "x", true).contains("http://lumoapp.localhost/abc/"));
     }
 
-
     #[test]
     fn apps_can_have_several_files() {
         let files = vec![
-            AppFile { path: "index.html".into(), content: "<link rel=stylesheet href=style.css><script src=js/app.js></script>".into() },
-            AppFile { path: "style.css".into(), content: "body{color:red}".into() },
-            AppFile { path: "js/app.js".into(), content: "console.log(1)".into() },
+            AppFile {
+                path: "index.html".into(),
+                content: "<link rel=stylesheet href=style.css><script src=js/app.js></script>"
+                    .into(),
+            },
+            AppFile {
+                path: "style.css".into(),
+                content: "body{color:red}".into(),
+            },
+            AppFile {
+                path: "js/app.js".into(),
+                content: "console.log(1)".into(),
+            },
         ];
         let content = bundle(&files).unwrap();
         assert_eq!(app_files(&content).unwrap(), files);
         assert_eq!(entry(&files).unwrap().path, "index.html");
         assert_eq!(mime("js/app.js"), "text/javascript; charset=utf-8");
         assert!(app_files("<!doctype html><p>one file</p>").is_none());
-        assert!(bundle(&[AppFile { path: "../x.html".into(), content: String::new() }]).is_err());
-        assert!(bundle(&[AppFile { path: "app.js".into(), content: String::new() }]).is_err());
+        assert!(bundle(&[AppFile {
+            path: "../x.html".into(),
+            content: String::new()
+        }])
+        .is_err());
+        assert!(bundle(&[AppFile {
+            path: "app.js".into(),
+            content: String::new()
+        }])
+        .is_err());
         // The ZIP holds every file; a one-file app downloads as index.html.
         let zip = app_zip(&content).unwrap();
         let mut archive = zip::ZipArchive::new(std::io::Cursor::new(zip)).unwrap();
         assert_eq!(archive.len(), 3);
         assert!(archive.by_name("js/app.js").is_ok());
         let single = app_zip("<p>hi</p>").unwrap();
-        assert!(zip::ZipArchive::new(std::io::Cursor::new(single)).unwrap().by_name("index.html").is_ok());
+        assert!(zip::ZipArchive::new(std::io::Cursor::new(single))
+            .unwrap()
+            .by_name("index.html")
+            .is_ok());
     }
-
 }

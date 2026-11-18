@@ -39,7 +39,12 @@ fn dir(config_dir: &Path) -> PathBuf {
 }
 
 fn valid_name(name: &str) -> bool {
-    !name.is_empty() && name.len() <= 40 && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') && !name.starts_with('_')
+    !name.is_empty()
+        && name.len() <= 40
+        && name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+        && !name.starts_with('_')
 }
 
 pub fn list(config_dir: &Path) -> Vec<CustomTool> {
@@ -47,7 +52,12 @@ pub fn list(config_dir: &Path) -> Vec<CustomTool> {
         .into_iter()
         .flatten()
         .flatten()
-        .filter_map(|e| serde_json::from_str(&crate::chat::at_rest::read_to_string(e.path().join("tool.json")).ok()?).ok())
+        .filter_map(|e| {
+            serde_json::from_str(
+                &crate::chat::at_rest::read_to_string(e.path().join("tool.json")).ok()?,
+            )
+            .ok()
+        })
         .collect();
     out.sort_by(|a, b| a.name.cmp(&b.name));
     out
@@ -55,10 +65,15 @@ pub fn list(config_dir: &Path) -> Vec<CustomTool> {
 
 pub fn save(config_dir: &Path, tool: &CustomTool) -> Result<Vec<CustomTool>, String> {
     if !valid_name(&tool.name) {
-        return Err("A tool name uses lowercase letters, digits and underscores, like `convert_units`.".into());
+        return Err(
+            "A tool name uses lowercase letters, digits and underscores, like `convert_units`."
+                .into(),
+        );
     }
     if tool.description.trim().is_empty() {
-        return Err("Describe what the tool does; the model reads it to decide when to call it.".into());
+        return Err(
+            "Describe what the tool does; the model reads it to decide when to call it.".into(),
+        );
     }
     if !["python", "javascript", "bash"].contains(&tool.language.as_str()) {
         return Err("Choose Python, JavaScript or Bash.".into());
@@ -107,24 +122,64 @@ pub fn program_for(language: &str, code: &str, args: &Value) -> String {
     let json = serde_json::to_string(args).unwrap_or_else(|_| "{}".into());
     match language {
         // A JSON string literal is a valid Python string literal for `json.loads`.
-        "python" => format!("import json as __json\nargs = __json.loads({})\n{}", serde_json::to_string(&json).unwrap_or_default(), code),
+        "python" => format!(
+            "import json as __json\nargs = __json.loads({})\n{}",
+            serde_json::to_string(&json).unwrap_or_default(),
+            code
+        ),
         "javascript" => format!("const args = {json};\n{code}"),
         _ => format!("ARGS='{}'\n{code}", json.replace('\'', "'\\''")),
     }
 }
 
 /// Runs a tool in the sandbox; returns what it printed, or why it failed.
-pub async fn run(config_dir: &Path, conversation_id: &str, name: &str, args: &Value) -> Result<String, String> {
-    let tool = list(config_dir).into_iter().find(|t| t.name == name).ok_or("That tool was removed.")?;
-    let outcome = super::sandbox::run(config_dir, conversation_id, &json!({ "language": tool.language, "code": program(&tool, args) })).await;
-    let report: Value = serde_json::from_str(&outcome.text).unwrap_or_else(|_| json!({ "stdout": outcome.text }));
-    let stdout = report.get("stdout").and_then(Value::as_str).unwrap_or_default().trim().to_string();
-    let stderr = report.get("stderr").and_then(Value::as_str).unwrap_or_default().trim().to_string();
-    let failed = outcome.is_error || report.get("exit_code").and_then(Value::as_i64).is_some_and(|c| c != 0);
+pub async fn run(
+    config_dir: &Path,
+    conversation_id: &str,
+    name: &str,
+    args: &Value,
+) -> Result<String, String> {
+    let tool = list(config_dir)
+        .into_iter()
+        .find(|t| t.name == name)
+        .ok_or("That tool was removed.")?;
+    let outcome = super::sandbox::run(
+        config_dir,
+        conversation_id,
+        &json!({ "language": tool.language, "code": program(&tool, args) }),
+    )
+    .await;
+    let report: Value =
+        serde_json::from_str(&outcome.text).unwrap_or_else(|_| json!({ "stdout": outcome.text }));
+    let stdout = report
+        .get("stdout")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let stderr = report
+        .get("stderr")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let failed = outcome.is_error
+        || report
+            .get("exit_code")
+            .and_then(Value::as_i64)
+            .is_some_and(|c| c != 0);
     if failed {
-        Err(if stderr.is_empty() { format!("The tool failed. {stdout}") } else { format!("The tool failed: {stderr}") })
+        Err(if stderr.is_empty() {
+            format!("The tool failed. {stdout}")
+        } else {
+            format!("The tool failed: {stderr}")
+        })
     } else {
-        Ok(if stdout.is_empty() { "(The tool printed nothing.)".into() } else { stdout })
+        Ok(if stdout.is_empty() {
+            "(The tool printed nothing.)".into()
+        } else {
+            stdout
+        })
     }
 }
 
@@ -146,12 +201,33 @@ mod tests {
     #[test]
     fn tools_are_saved_and_offered() {
         let dir = tempfile::tempdir().unwrap();
-        save(dir.path(), &sample("python", "print(args['km'] * 0.621371)")).unwrap();
-        assert!(save(dir.path(), &CustomTool { name: "Bad Name".into(), ..sample("python", "") }).is_err());
-        assert!(save(dir.path(), &CustomTool { parameters: json!({ "type": "string" }), ..sample("python", "") }).is_err());
+        save(
+            dir.path(),
+            &sample("python", "print(args['km'] * 0.621371)"),
+        )
+        .unwrap();
+        assert!(save(
+            dir.path(),
+            &CustomTool {
+                name: "Bad Name".into(),
+                ..sample("python", "")
+            }
+        )
+        .is_err());
+        assert!(save(
+            dir.path(),
+            &CustomTool {
+                parameters: json!({ "type": "string" }),
+                ..sample("python", "")
+            }
+        )
+        .is_err());
         let defs = definitions(dir.path());
         assert_eq!(defs.len(), 1);
-        assert_eq!((defs[0].name.as_str(), defs[0].connector_id.as_deref()), ("tool__convert_units", Some(CONNECTOR)));
+        assert_eq!(
+            (defs[0].name.as_str(), defs[0].connector_id.as_deref()),
+            ("tool__convert_units", Some(CONNECTOR))
+        );
         delete(dir.path(), "convert_units").unwrap();
         assert!(list(dir.path()).is_empty());
     }
@@ -163,18 +239,40 @@ mod tests {
         assert!(py.starts_with("import json as __json\nargs = __json.loads(\""));
         let sh = program(&sample("bash", "echo \"$ARGS\""), &args);
         assert!(sh.contains("it'\\''s"), "{sh}");
-        assert!(program(&sample("javascript", "console.log(args.km)"), &args).starts_with("const args = {"));
+        assert!(
+            program(&sample("javascript", "console.log(args.km)"), &args)
+                .starts_with("const args = {")
+        );
     }
 
     #[tokio::test]
     async fn a_python_tool_runs_in_the_sandbox() {
-        if super::super::sandbox::languages().iter().all(|l| *l != "python") {
+        if super::super::sandbox::languages()
+            .iter()
+            .all(|l| *l != "python")
+        {
             return;
         }
         let dir = tempfile::tempdir().unwrap();
-        save(dir.path(), &sample("python", "print(round(args['km'] * 0.621371, 2))")).unwrap();
-        assert_eq!(run(dir.path(), "c1", "convert_units", &json!({ "km": 10 })).await.unwrap(), "6.21");
-        save(dir.path(), &sample("python", "raise SystemExit('bad input')")).unwrap();
-        assert!(run(dir.path(), "c1", "convert_units", &json!({})).await.unwrap_err().contains("bad input"));
+        save(
+            dir.path(),
+            &sample("python", "print(round(args['km'] * 0.621371, 2))"),
+        )
+        .unwrap();
+        assert_eq!(
+            run(dir.path(), "c1", "convert_units", &json!({ "km": 10 }))
+                .await
+                .unwrap(),
+            "6.21"
+        );
+        save(
+            dir.path(),
+            &sample("python", "raise SystemExit('bad input')"),
+        )
+        .unwrap();
+        assert!(run(dir.path(), "c1", "convert_units", &json!({}))
+            .await
+            .unwrap_err()
+            .contains("bad input"));
     }
 }

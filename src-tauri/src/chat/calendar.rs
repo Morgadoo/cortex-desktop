@@ -30,7 +30,10 @@ fn path(config_dir: &Path) -> PathBuf {
 }
 
 pub fn load(config_dir: &Path) -> Settings {
-    crate::chat::at_rest::read_to_string(path(config_dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::chat::at_rest::read_to_string(path(config_dir))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
 }
 
 pub fn save(config_dir: &Path, settings: &Settings) -> Result<(), String> {
@@ -51,7 +54,10 @@ pub async fn fetch(location: &str) -> Result<String, String> {
 }
 
 async fn fetch_url(url: &str) -> Result<String, String> {
-    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(30)).build().map_err(|e| e.to_string())?;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
     let response = client.get(url).send().await.map_err(|e| e.to_string())?;
     if !response.status().is_success() {
         return Err(format!("the calendar link answered {}", response.status()));
@@ -80,11 +86,20 @@ fn properties(text: &str) -> Vec<(String, String)> {
 }
 
 fn unescape(value: &str) -> String {
-    value.replace("\\n", "\n").replace("\\N", "\n").replace("\\,", ",").replace("\\;", ";").replace("\\\\", "\\")
+    value
+        .replace("\\n", "\n")
+        .replace("\\N", "\n")
+        .replace("\\,", ",")
+        .replace("\\;", ";")
+        .replace("\\\\", "\\")
 }
 
 fn param<'a>(head: &'a str, key: &str) -> Option<&'a str> {
-    head.split(';').skip(1).find_map(|p| p.split_once('=').filter(|(k, _)| k.eq_ignore_ascii_case(key)).map(|(_, v)| v.trim_matches('"')))
+    head.split(';').skip(1).find_map(|p| {
+        p.split_once('=')
+            .filter(|(k, _)| k.eq_ignore_ascii_case(key))
+            .map(|(_, v)| v.trim_matches('"'))
+    })
 }
 
 /// When an event starts or ends.
@@ -98,7 +113,9 @@ impl When {
     fn instant(self) -> DateTime<Utc> {
         match self {
             When::At(t) => t,
-            When::Day(d) => d.and_hms_opt(0, 0, 0).map_or_else(Utc::now, |n| n.and_utc()),
+            When::Day(d) => d
+                .and_hms_opt(0, 0, 0)
+                .map_or_else(Utc::now, |n| n.and_utc()),
         }
     }
 }
@@ -106,7 +123,9 @@ impl When {
 fn parse_when(head: &str, value: &str) -> Option<When> {
     let value = value.trim();
     if value.len() == 8 || param(head, "VALUE").is_some_and(|v| v.eq_ignore_ascii_case("DATE")) {
-        return NaiveDate::parse_from_str(&value[..8.min(value.len())], "%Y%m%d").ok().map(When::Day);
+        return NaiveDate::parse_from_str(&value[..8.min(value.len())], "%Y%m%d")
+            .ok()
+            .map(When::Day);
     }
     let (stamp, utc) = match value.strip_suffix('Z') {
         Some(s) => (s, true),
@@ -117,10 +136,16 @@ fn parse_when(head: &str, value: &str) -> Option<When> {
         return Some(When::At(naive.and_utc()));
     }
     if let Some(tz) = param(head, "TZID").and_then(|t| t.parse::<chrono_tz::Tz>().ok()) {
-        return tz.from_local_datetime(&naive).earliest().map(|t| When::At(t.with_timezone(&Utc)));
+        return tz
+            .from_local_datetime(&naive)
+            .earliest()
+            .map(|t| When::At(t.with_timezone(&Utc)));
     }
     // A floating time: the computer's own zone.
-    chrono::Local.from_local_datetime(&naive).earliest().map(|t| When::At(t.with_timezone(&Utc)))
+    chrono::Local
+        .from_local_datetime(&naive)
+        .earliest()
+        .map(|t| When::At(t.with_timezone(&Utc)))
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -139,11 +164,28 @@ pub fn parse_ics(text: &str) -> Vec<Event> {
     let mut out = Vec::new();
     let mut current: Option<Event> = None;
     for (head, value) in properties(text) {
-        let name = head.split(';').next().unwrap_or_default().to_ascii_uppercase();
+        let name = head
+            .split(';')
+            .next()
+            .unwrap_or_default()
+            .to_ascii_uppercase();
         match (name.as_str(), value.trim()) {
-            ("BEGIN", "VEVENT") => current = Some(Event { title: String::new(), start: When::Day(NaiveDate::MIN), end: None, location: String::new(), description: String::new(), rrule: None, exdates: Vec::new() }),
+            ("BEGIN", "VEVENT") => {
+                current = Some(Event {
+                    title: String::new(),
+                    start: When::Day(NaiveDate::MIN),
+                    end: None,
+                    location: String::new(),
+                    description: String::new(),
+                    rrule: None,
+                    exdates: Vec::new(),
+                })
+            }
             ("END", "VEVENT") => {
-                if let Some(e) = current.take().filter(|e| e.start != When::Day(NaiveDate::MIN)) {
+                if let Some(e) = current
+                    .take()
+                    .filter(|e| e.start != When::Day(NaiveDate::MIN))
+                {
                     out.push(e);
                 }
             }
@@ -160,7 +202,12 @@ pub fn parse_ics(text: &str) -> Vec<Event> {
                     }
                     "DTEND" => e.end = parse_when(&head, &value),
                     "RRULE" => e.rrule = Some(value.trim().to_string()),
-                    "EXDATE" => e.exdates.extend(value.split(',').filter_map(|v| parse_when(&head, v)).map(When::instant)),
+                    "EXDATE" => e.exdates.extend(
+                        value
+                            .split(',')
+                            .filter_map(|v| parse_when(&head, v))
+                            .map(When::instant),
+                    ),
                     _ => {}
                 }
             }
@@ -209,17 +256,39 @@ fn weekday(code: &str) -> Option<Weekday> {
 
 /// The start times of an event from `from` to `to`, with its repeat rule (daily, weekly with
 /// days, monthly, yearly; interval, count, until; exceptions). At most `limit`.
-pub fn starts(event: &Event, from: DateTime<Utc>, to: DateTime<Utc>, limit: usize) -> Vec<DateTime<Utc>> {
+pub fn starts(
+    event: &Event,
+    from: DateTime<Utc>,
+    to: DateTime<Utc>,
+    limit: usize,
+) -> Vec<DateTime<Utc>> {
     let first = event.start.instant();
     let Some(rule) = &event.rrule else {
         let end = event.end.map_or(first, When::instant);
-        return if first <= to && end.max(first) >= from { vec![first] } else { Vec::new() };
+        return if first <= to && end.max(first) >= from {
+            vec![first]
+        } else {
+            Vec::new()
+        };
     };
-    let part = |key: &str| rule.split(';').find_map(|p| p.split_once('=').filter(|(k, _)| k.eq_ignore_ascii_case(key)).map(|(_, v)| v.to_string()));
-    let interval = part("INTERVAL").and_then(|v| v.parse::<i64>().ok()).unwrap_or(1).max(1);
+    let part = |key: &str| {
+        rule.split(';').find_map(|p| {
+            p.split_once('=')
+                .filter(|(k, _)| k.eq_ignore_ascii_case(key))
+                .map(|(_, v)| v.to_string())
+        })
+    };
+    let interval = part("INTERVAL")
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(1)
+        .max(1);
     let count = part("COUNT").and_then(|v| v.parse::<usize>().ok());
-    let until = part("UNTIL").and_then(|v| parse_when("", &v)).map(When::instant);
-    let by_day: Vec<Weekday> = part("BYDAY").map(|v| v.split(',').filter_map(weekday).collect()).unwrap_or_default();
+    let until = part("UNTIL")
+        .and_then(|v| parse_when("", &v))
+        .map(When::instant);
+    let by_day: Vec<Weekday> = part("BYDAY")
+        .map(|v| v.split(',').filter_map(weekday).collect())
+        .unwrap_or_default();
     let freq = part("FREQ").unwrap_or_default().to_ascii_uppercase();
     let mut out = Vec::new();
     let mut produced = 0usize;
@@ -234,7 +303,9 @@ pub fn starts(event: &Event, from: DateTime<Utc>, to: DateTime<Utc>, limit: usiz
             _ => None,
         };
         let Some(base) = base else {
-            if freq.is_empty() || !matches!(freq.as_str(), "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY") {
+            if freq.is_empty()
+                || !matches!(freq.as_str(), "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY")
+            {
                 break;
             }
             step += 1;
@@ -242,7 +313,11 @@ pub fn starts(event: &Event, from: DateTime<Utc>, to: DateTime<Utc>, limit: usiz
         };
         let candidates: Vec<DateTime<Utc>> = if freq == "WEEKLY" && !by_day.is_empty() {
             let monday = base - Duration::days(base.weekday().num_days_from_monday() as i64);
-            let mut days: Vec<DateTime<Utc>> = by_day.iter().map(|d| monday + Duration::days(d.num_days_from_monday() as i64)).filter(|t| *t >= first).collect();
+            let mut days: Vec<DateTime<Utc>> = by_day
+                .iter()
+                .map(|d| monday + Duration::days(d.num_days_from_monday() as i64))
+                .filter(|t| *t >= first)
+                .collect();
             days.sort();
             days
         } else {
@@ -266,24 +341,48 @@ pub fn starts(event: &Event, from: DateTime<Utc>, to: DateTime<Utc>, limit: usiz
 }
 
 /// The occurrences of every event between `from` and `to`, soonest first.
-pub fn occurrences(calendar: &str, events: &[Event], from: DateTime<Utc>, to: DateTime<Utc>, query: &str) -> Vec<Occurrence> {
+pub fn occurrences(
+    calendar: &str,
+    events: &[Event],
+    from: DateTime<Utc>,
+    to: DateTime<Utc>,
+    query: &str,
+) -> Vec<Occurrence> {
     let query = query.trim().to_lowercase();
     let mut out = Vec::new();
     for event in events {
-        if !query.is_empty() && !format!("{} {} {}", event.title, event.location, event.description).to_lowercase().contains(&query) {
+        if !query.is_empty()
+            && !format!("{} {} {}", event.title, event.location, event.description)
+                .to_lowercase()
+                .contains(&query)
+        {
             continue;
         }
-        let length = event.end.map_or(Duration::zero(), |e| e.instant() - event.start.instant());
+        let length = event
+            .end
+            .map_or(Duration::zero(), |e| e.instant() - event.start.instant());
         let all_day = matches!(event.start, When::Day(_));
         for start in starts(event, from, to, 200) {
             let end = start + length;
-            let fmt = |t: DateTime<Utc>| if all_day { t.date_naive().format("%Y-%m-%d").to_string() } else { t.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M").to_string() };
+            let fmt = |t: DateTime<Utc>| {
+                if all_day {
+                    t.date_naive().format("%Y-%m-%d").to_string()
+                } else {
+                    t.with_timezone(&chrono::Local)
+                        .format("%Y-%m-%d %H:%M")
+                        .to_string()
+                }
+            };
             out.push(Occurrence {
                 title: event.title.clone(),
                 calendar: calendar.to_string(),
                 start: fmt(start),
                 // A day-long event's end is the day after its last day.
-                end: if all_day { fmt(end - Duration::days(1)) } else { fmt(end) },
+                end: if all_day {
+                    fmt(end - Duration::days(1))
+                } else {
+                    fmt(end)
+                },
                 all_day,
                 location: event.location.clone(),
                 notes: event.description.chars().take(300).collect(),
@@ -319,12 +418,22 @@ pub fn parse_vcards(text: &str) -> Vec<Contact> {
     let mut current: Option<Contact> = None;
     for (head, value) in properties(text) {
         // `item1.EMAIL` (Apple) is an EMAIL.
-        let name = head.split(';').next().unwrap_or_default().rsplit('.').next().unwrap_or_default().to_ascii_uppercase();
+        let name = head
+            .split(';')
+            .next()
+            .unwrap_or_default()
+            .rsplit('.')
+            .next()
+            .unwrap_or_default()
+            .to_ascii_uppercase();
         let value = unescape(value.trim());
         match name.as_str() {
             "BEGIN" if value.eq_ignore_ascii_case("VCARD") => current = Some(Contact::default()),
             "END" if value.eq_ignore_ascii_case("VCARD") => {
-                if let Some(c) = current.take().filter(|c| !c.name.is_empty() || !c.emails.is_empty()) {
+                if let Some(c) = current
+                    .take()
+                    .filter(|c| !c.name.is_empty() || !c.emails.is_empty())
+                {
                     out.push(c);
                 }
             }
@@ -334,14 +443,31 @@ pub fn parse_vcards(text: &str) -> Vec<Contact> {
                     "FN" => c.name = value,
                     "N" if c.name.is_empty() => {
                         let parts: Vec<&str> = value.split(';').collect();
-                        c.name = format!("{} {}", parts.get(1).unwrap_or(&""), parts.first().unwrap_or(&"")).trim().to_string();
+                        c.name = format!(
+                            "{} {}",
+                            parts.get(1).unwrap_or(&""),
+                            parts.first().unwrap_or(&"")
+                        )
+                        .trim()
+                        .to_string();
                     }
                     "EMAIL" => c.emails.push(value),
                     "TEL" => c.phones.push(value),
-                    "ORG" => c.organization = value.replace(';', ", ").trim_matches([',', ' ']).to_string(),
+                    "ORG" => {
+                        c.organization = value
+                            .replace(';', ", ")
+                            .trim_matches([',', ' '])
+                            .to_string()
+                    }
                     "TITLE" | "ROLE" => c.role = value,
                     "BDAY" => c.birthday = value,
-                    "ADR" => c.address = value.split(';').filter(|p| !p.trim().is_empty()).collect::<Vec<_>>().join(", "),
+                    "ADR" => {
+                        c.address = value
+                            .split(';')
+                            .filter(|p| !p.trim().is_empty())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    }
                     "NOTE" => c.note = value.chars().take(300).collect(),
                     _ => {}
                 }
@@ -353,11 +479,24 @@ pub fn parse_vcards(text: &str) -> Vec<Contact> {
 
 /// Contacts whose details hold every word of the query.
 pub fn find(contacts: &[Contact], query: &str) -> Vec<Contact> {
-    let words: Vec<String> = query.to_lowercase().split_whitespace().map(str::to_string).collect();
+    let words: Vec<String> = query
+        .to_lowercase()
+        .split_whitespace()
+        .map(str::to_string)
+        .collect();
     contacts
         .iter()
         .filter(|c| {
-            let hay = format!("{} {} {} {} {} {}", c.name, c.emails.join(" "), c.phones.join(" "), c.organization, c.role, c.note).to_lowercase();
+            let hay = format!(
+                "{} {} {} {} {} {}",
+                c.name,
+                c.emails.join(" "),
+                c.phones.join(" "),
+                c.organization,
+                c.role,
+                c.note
+            )
+            .to_lowercase();
             words.iter().all(|w| hay.contains(w))
         })
         .take(10)
@@ -384,16 +523,38 @@ mod tests {
         // The week of 16 November: stand-up Monday, Wednesday, Friday (Friday excepted), the dentist on Friday.
         let week = occurrences("Work", &events, day(2026, 11, 16), day(2026, 11, 22), "");
         let titles: Vec<&str> = week.iter().map(|o| o.title.as_str()).collect();
-        assert_eq!(titles, ["Team stand-up", "Team stand-up", "Dentist, Dr. Lima"]);
+        assert_eq!(
+            titles,
+            ["Team stand-up", "Team stand-up", "Dentist, Dr. Lima"]
+        );
         // 09:30 in Lisbon is 09:30 UTC in winter.
-        assert_eq!(week[0].at, Utc.with_ymd_and_hms(2026, 11, 16, 9, 30, 0).unwrap());
+        assert_eq!(
+            week[0].at,
+            Utc.with_ymd_and_hms(2026, 11, 16, 9, 30, 0).unwrap()
+        );
         // A day-long event shows its own day as start and end.
-        let holiday = occurrences("Home", &events, day(2026, 12, 1), day(2026, 12, 31), "holiday");
-        assert_eq!((holiday[0].start.as_str(), holiday[0].end.as_str(), holiday[0].all_day), ("2026-12-08", "2026-12-08", true));
+        let holiday = occurrences(
+            "Home",
+            &events,
+            day(2026, 12, 1),
+            day(2026, 12, 31),
+            "holiday",
+        );
+        assert_eq!(
+            (
+                holiday[0].start.as_str(),
+                holiday[0].end.as_str(),
+                holiday[0].all_day
+            ),
+            ("2026-12-08", "2026-12-08", true)
+        );
         // COUNT stops the series.
         let rent = occurrences("Home", &events, day(2026, 1, 1), day(2026, 12, 31), "rent");
         assert_eq!(rent.len(), 3);
-        assert_eq!(rent[2].at, Utc.with_ymd_and_hms(2026, 3, 5, 9, 0, 0).unwrap());
+        assert_eq!(
+            rent[2].at,
+            Utc.with_ymd_and_hms(2026, 3, 5, 9, 0, 0).unwrap()
+        );
     }
 
     #[test]

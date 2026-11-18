@@ -24,13 +24,17 @@ pub fn valid_host(host: &str) -> bool {
     !host.is_empty()
         && host.len() <= 253
         && host.contains('.')
-        && host.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
+        && host
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
         && !host.starts_with('.')
         && !host.contains("..")
 }
 
 fn cache_path(config_dir: &Path, host: &str) -> PathBuf {
-    chat_dir(config_dir).join("favicons").join(format!("{host}.txt"))
+    chat_dir(config_dir)
+        .join("favicons")
+        .join(format!("{host}.txt"))
 }
 
 /// What kind of image the bytes are, by their first bytes or the server's word for it.
@@ -65,10 +69,20 @@ pub fn icon_link(html: &str) -> Option<String> {
     let mut best: Option<(u8, String)> = None;
     for m in tag.find_iter(html) {
         let t = m.as_str();
-        let Some(r) = rel.captures(t).map(|c| c[1].to_ascii_lowercase()) else { continue };
-        let Some(h) = href.captures(t).map(|c| c[1].trim().to_string()) else { continue };
+        let Some(r) = rel.captures(t).map(|c| c[1].to_ascii_lowercase()) else {
+            continue;
+        };
+        let Some(h) = href.captures(t).map(|c| c[1].trim().to_string()) else {
+            continue;
+        };
         // Prefer a plain icon, then the Apple touch icon (larger, but always an image).
-        let rank = if r.split_whitespace().any(|w| w == "icon") { 2 } else if r.contains("apple-touch-icon") { 1 } else { continue };
+        let rank = if r.split_whitespace().any(|w| w == "icon") {
+            2
+        } else if r.contains("apple-touch-icon") {
+            1
+        } else {
+            continue;
+        };
         if best.as_ref().is_none_or(|(b, _)| rank > *b) {
             best = Some((rank, h));
         }
@@ -81,13 +95,21 @@ async fn fetch_image(client: &reqwest::Client, url: &str) -> Option<String> {
     if !response.status().is_success() {
         return None;
     }
-    let content_type = response.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or_default().to_ascii_lowercase();
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
     let bytes = response.bytes().await.ok()?;
     if bytes.is_empty() || bytes.len() > MAX_ICON_BYTES {
         return None;
     }
     let mime = image_type(&bytes, &content_type)?;
-    Some(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(&bytes)))
+    Some(format!(
+        "data:{mime};base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(&bytes)
+    ))
 }
 
 async fn fetch(host: &str) -> Option<String> {
@@ -124,7 +146,11 @@ pub async fn get(config_dir: &Path, host: &str) -> Option<String> {
         if !cached.is_empty() {
             return Some(cached);
         }
-        let fresh = meta.modified().ok().and_then(|t| SystemTime::now().duration_since(t).ok()).is_some_and(|age| age < MISS_TTL);
+        let fresh = meta
+            .modified()
+            .ok()
+            .and_then(|t| SystemTime::now().duration_since(t).ok())
+            .is_some_and(|age| age < MISS_TTL);
         if fresh {
             return None;
         }
@@ -148,13 +174,24 @@ mod tests {
     #[test]
     fn hosts_links_and_types() {
         assert!(valid_host("apnews.com") && valid_host("www.aljazeera.com"));
-        assert!(!valid_host("localhost") && !valid_host("a/b.com") && !valid_host("../x.com") && !valid_host(""));
+        assert!(
+            !valid_host("localhost")
+                && !valid_host("a/b.com")
+                && !valid_host("../x.com")
+                && !valid_host("")
+        );
         let html = r#"<head><link rel="stylesheet" href="/a.css"><link rel="apple-touch-icon" href="/touch.png">
             <link href="/static/fav.svg?v=2&amp;x=1" rel="shortcut icon"></head>"#;
         assert_eq!(icon_link(html).as_deref(), Some("/static/fav.svg?v=2&x=1"));
-        assert_eq!(icon_link(r#"<link rel="apple-touch-icon" href="/t.png">"#).as_deref(), Some("/t.png"));
+        assert_eq!(
+            icon_link(r#"<link rel="apple-touch-icon" href="/t.png">"#).as_deref(),
+            Some("/t.png")
+        );
         assert!(icon_link("<p>no icon</p>").is_none());
-        assert_eq!(image_type(&[0x89, b'P', b'N', b'G', 1], ""), Some("image/png"));
+        assert_eq!(
+            image_type(&[0x89, b'P', b'N', b'G', 1], ""),
+            Some("image/png")
+        );
         assert_eq!(image_type(&[0, 0, 1, 0, 1], ""), Some("image/x-icon"));
         assert_eq!(image_type(b"<?xml?><svg xmlns=", ""), Some("image/svg+xml"));
         assert_eq!(image_type(b"<html>not found</html>", "text/html"), None);
@@ -166,10 +203,16 @@ mod tests {
         let path = cache_path(dir.path(), "example.com");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         crate::chat::at_rest::write(&path, "").unwrap();
-        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
         // A fresh miss answers from the cache without going to the network.
         assert_eq!(rt.block_on(get(dir.path(), "example.com")), None);
         crate::chat::at_rest::write(&path, "data:image/png;base64,AAAA").unwrap();
-        assert_eq!(rt.block_on(get(dir.path(), "www.EXAMPLE.com")).as_deref(), Some("data:image/png;base64,AAAA"));
+        assert_eq!(
+            rt.block_on(get(dir.path(), "www.EXAMPLE.com")).as_deref(),
+            Some("data:image/png;base64,AAAA")
+        );
     }
 }

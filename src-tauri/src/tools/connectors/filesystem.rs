@@ -820,7 +820,11 @@ impl FilesystemCore {
 
         let created = !path.exists();
         // The text it replaces, so the result can say what changed.
-        let previous = if created { None } else { std::fs::read_to_string(&path).ok() };
+        let previous = if created {
+            None
+        } else {
+            std::fs::read_to_string(&path).ok()
+        };
         std::fs::write(&path, content).map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
 
         let mut result = json!({
@@ -917,7 +921,6 @@ impl FilesystemCore {
         }))
     }
 }
-
 
 /// Characters of diff an overwrite reports.
 const DIFF_CHARS: usize = 6_000;

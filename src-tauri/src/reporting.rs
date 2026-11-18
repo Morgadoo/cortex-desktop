@@ -65,7 +65,10 @@ pub struct DiagnosticsPrefs {
 
 impl Default for DiagnosticsPrefs {
     fn default() -> Self {
-        Self { error_reports: false, update_checks: true }
+        Self {
+            error_reports: false,
+            update_checks: true,
+        }
     }
 }
 
@@ -76,17 +79,27 @@ pub fn early_config_dir() -> Option<std::path::PathBuf> {
     match std::env::consts::OS {
         "macos" => home.map(|h| h.join("Library/Application Support").join(ID)),
         "windows" => std::env::var_os("APPDATA").map(|a| std::path::PathBuf::from(a).join(ID)),
-        _ => std::env::var_os("XDG_CONFIG_HOME").map(std::path::PathBuf::from).or_else(|| home.map(|h| h.join(".config"))).map(|c| c.join(ID)),
+        _ => std::env::var_os("XDG_CONFIG_HOME")
+            .map(std::path::PathBuf::from)
+            .or_else(|| home.map(|h| h.join(".config")))
+            .map(|c| c.join(ID)),
     }
 }
 
 pub fn load_prefs(config_dir: &std::path::Path) -> DiagnosticsPrefs {
-    std::fs::read_to_string(config_dir.join("diagnostics.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    std::fs::read_to_string(config_dir.join("diagnostics.json"))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
 }
 
 pub fn save_prefs(config_dir: &std::path::Path, prefs: &DiagnosticsPrefs) -> Result<(), String> {
     std::fs::create_dir_all(config_dir).map_err(|e| e.to_string())?;
-    std::fs::write(config_dir.join("diagnostics.json"), serde_json::to_string_pretty(prefs).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+    std::fs::write(
+        config_dir.join("diagnostics.json"),
+        serde_json::to_string_pretty(prefs).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())
 }
 
 /// Whether this build was made with error reporting in it at all.

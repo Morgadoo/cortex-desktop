@@ -47,7 +47,11 @@ pub fn app_allowed(settings: &ComputerSettings, window: &str) -> Result<(), Stri
     if let Some(rule) = settings.blocked_apps.iter().find(|r| has(r)) {
         return Err(format!("Computer use is not allowed in “{window}” (it matches “{}” in Settings → Permissions → Computer use). Ask the user to do this step.", rule.trim()));
     }
-    let only: Vec<&String> = settings.only_apps.iter().filter(|r| !r.trim().is_empty()).collect();
+    let only: Vec<&String> = settings
+        .only_apps
+        .iter()
+        .filter(|r| !r.trim().is_empty())
+        .collect();
     if !only.is_empty() && !only.iter().any(|r| has(r)) {
         return Err(format!("Computer use is only allowed in {} (Settings → Permissions → Computer use), and “{window}” is in front. Ask the user to bring the right window forward.", only.iter().map(|r| format!("“{}”", r.trim())).collect::<Vec<_>>().join(", ")));
     }
@@ -59,7 +63,10 @@ fn settings_path(config_dir: &Path) -> std::path::PathBuf {
 }
 
 pub fn load(config_dir: &Path) -> ComputerSettings {
-    crate::chat::at_rest::read_to_string(settings_path(config_dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::chat::at_rest::read_to_string(settings_path(config_dir))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
 }
 
 pub fn save(config_dir: &Path, settings: &ComputerSettings) -> Result<(), String> {
@@ -69,11 +76,12 @@ pub fn save(config_dir: &Path, settings: &ComputerSettings) -> Result<(), String
 pub fn definition() -> ChatTool {
     ChatTool {
         name: TOOL.into(),
-        description: "See and use this computer's screen, mouse and keyboard. Start with a screenshot; \
+        description:
+            "See and use this computer's screen, mouse and keyboard. Start with a screenshot; \
             coordinates are pixels in the latest screenshot. After each action a new screenshot \
             comes back. Prefer keyboard shortcuts when they are reliable. Use it only for what \
             the user asked; other tools are better for files, commands and the web."
-            .into(),
+                .into(),
         parameters: json!({
             "type": "object",
             "properties": {
@@ -116,12 +124,21 @@ pub fn take_image(conversation_id: &str) -> Option<String> {
 }
 
 async fn output(program: &str, args: &[&str]) -> Result<Vec<u8>, String> {
-    let out = Command::new(program).args(args).output().await.map_err(|e| match e.kind() {
-        std::io::ErrorKind::NotFound => format!("`{program}` is not installed. {}", install_hint()),
-        _ => format!("{program}: {e}"),
-    })?;
+    let out = Command::new(program)
+        .args(args)
+        .output()
+        .await
+        .map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => {
+                format!("`{program}` is not installed. {}", install_hint())
+            }
+            _ => format!("{program}: {e}"),
+        })?;
     if !out.status.success() {
-        return Err(format!("{program} failed: {}", String::from_utf8_lossy(&out.stderr).trim()));
+        return Err(format!(
+            "{program} failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
     }
     Ok(out.stdout)
 }
@@ -138,20 +155,29 @@ fn install_hint() -> &'static str {
 
 /// A Wayland session without X11 (where xdotool cannot reach other windows).
 fn wayland() -> bool {
-    cfg!(target_os = "linux") && std::env::var_os("WAYLAND_DISPLAY").is_some() && std::env::var_os("DISPLAY").is_none()
+    cfg!(target_os = "linux")
+        && std::env::var_os("WAYLAND_DISPLAY").is_some()
+        && std::env::var_os("DISPLAY").is_none()
 }
 
 /// Linux input event codes (`linux/input-event-codes.h`) for the keys a model names, for ydotool.
 fn key_code(name: &str) -> Option<u16> {
     let n = name.trim().to_lowercase();
-    const LETTERS: [u16; 26] = [30, 48, 46, 32, 18, 33, 34, 35, 23, 36, 37, 38, 50, 49, 24, 25, 16, 19, 31, 20, 22, 47, 17, 45, 21, 44];
+    const LETTERS: [u16; 26] = [
+        30, 48, 46, 32, 18, 33, 34, 35, 23, 36, 37, 38, 50, 49, 24, 25, 16, 19, 31, 20, 22, 47, 17,
+        45, 21, 44,
+    ];
     if n.len() == 1 {
         let c = n.chars().next()?;
         if c.is_ascii_lowercase() {
             return Some(LETTERS[(c as u8 - b'a') as usize]);
         }
         if c.is_ascii_digit() {
-            return Some(if c == '0' { 11 } else { u16::from(c as u8 - b'0') + 1 });
+            return Some(if c == '0' {
+                11
+            } else {
+                u16::from(c as u8 - b'0') + 1
+            });
         }
     }
     if let Some(f) = n.strip_prefix('f').and_then(|d| d.parse::<u16>().ok()) {
@@ -192,7 +218,17 @@ fn key_code(name: &str) -> Option<u16> {
 
 /// ydotool's `key` arguments for a chord like `ctrl+shift+t`: every key down in order, then up in reverse.
 fn ydotool_keys(keys: &str) -> Result<Vec<String>, String> {
-    let codes = keys.split('+').map(|k| key_code(k).ok_or_else(|| format!("The key {} is not known; use names like ctrl, shift, Return, Tab, a, F5.", k.trim()))).collect::<Result<Vec<_>, _>>()?;
+    let codes = keys
+        .split('+')
+        .map(|k| {
+            key_code(k).ok_or_else(|| {
+                format!(
+                    "The key {} is not known; use names like ctrl, shift, Return, Tab, a, F5.",
+                    k.trim()
+                )
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     let mut out: Vec<String> = codes.iter().map(|c| format!("{c}:1")).collect();
     out.extend(codes.iter().rev().map(|c| format!("{c}:0")));
     Ok(out)
@@ -200,8 +236,14 @@ fn ydotool_keys(keys: &str) -> Result<Vec<String>, String> {
 
 /// wtype's arguments for a chord: modifiers held with -M, the key with -k, released with -m.
 fn wtype_keys(keys: &str) -> Vec<String> {
-    let parts: Vec<&str> = keys.split('+').map(str::trim).filter(|k| !k.is_empty()).collect();
-    let Some((key, mods)) = parts.split_last() else { return Vec::new() };
+    let parts: Vec<&str> = keys
+        .split('+')
+        .map(str::trim)
+        .filter(|k| !k.is_empty())
+        .collect();
+    let Some((key, mods)) = parts.split_last() else {
+        return Vec::new();
+    };
     let modifier = |m: &str| match m.to_lowercase().as_str() {
         "control" | "control_l" => "ctrl".to_string(),
         "super_l" | "meta" | "cmd" | "win" => "logo".to_string(),
@@ -220,27 +262,64 @@ fn wtype_keys(keys: &str) -> Vec<String> {
 }
 
 /// The commands for one action on Wayland: ydotool for the pointer and keys.
-fn wayland_plan(action: &str, at: Option<(i64, i64)>, input: &Value) -> Result<Vec<Vec<String>>, String> {
+fn wayland_plan(
+    action: &str,
+    at: Option<(i64, i64)>,
+    input: &Value,
+) -> Result<Vec<Vec<String>>, String> {
     let owned = |v: &[&str]| v.iter().map(|s| (*s).to_string()).collect::<Vec<String>>();
     let mut plan = Vec::new();
     if let Some((x, y)) = at {
-        plan.push(owned(&["ydotool", "mousemove", "--absolute", "-x", &x.to_string(), "-y", &y.to_string()]));
+        plan.push(owned(&[
+            "ydotool",
+            "mousemove",
+            "--absolute",
+            "-x",
+            &x.to_string(),
+            "-y",
+            &y.to_string(),
+        ]));
     }
     match action {
         "click" => plan.push(owned(&["ydotool", "click", "0xC0"])),
         "double_click" => plan.push(owned(&["ydotool", "click", "--repeat", "2", "0xC0"])),
         "right_click" => plan.push(owned(&["ydotool", "click", "0xC1"])),
         "move" => {}
-        "type" => plan.push(owned(&["ydotool", "type", "--", input.get("text").and_then(Value::as_str).unwrap_or_default()])),
+        "type" => plan.push(owned(&[
+            "ydotool",
+            "type",
+            "--",
+            input
+                .get("text")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+        ])),
         "key" => {
             let mut cmd = owned(&["ydotool", "key"]);
-            cmd.extend(ydotool_keys(input.get("keys").and_then(Value::as_str).unwrap_or_default())?);
+            cmd.extend(ydotool_keys(
+                input
+                    .get("keys")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default(),
+            )?);
             plan.push(cmd);
         }
         "scroll" => {
-            let amount = input.get("amount").and_then(Value::as_i64).unwrap_or(3).clamp(1, 20);
+            let amount = input
+                .get("amount")
+                .and_then(Value::as_i64)
+                .unwrap_or(3)
+                .clamp(1, 20);
             let down = input.get("direction").and_then(Value::as_str) != Some("up");
-            plan.push(owned(&["ydotool", "mousemove", "--wheel", "-x", "0", "-y", &(if down { -amount } else { amount }).to_string()]));
+            plan.push(owned(&[
+                "ydotool",
+                "mousemove",
+                "--wheel",
+                "-x",
+                "0",
+                "-y",
+                &(if down { -amount } else { amount }).to_string(),
+            ]));
         }
         other => return Err(format!("Unknown action {other}.")),
     }
@@ -253,13 +332,33 @@ async fn wayland_act(action: &str, at: Option<(i64, i64)>, input: &Value) -> Res
         let args: Vec<&str> = cmd[1..].iter().map(String::as_str).collect();
         match output(&cmd[0], &args).await {
             Ok(_) => {}
-            Err(e) if e.contains("is not installed") && matches!(action, "type" | "key") && at.is_none() => {
+            Err(e)
+                if e.contains("is not installed")
+                    && matches!(action, "type" | "key")
+                    && at.is_none() =>
+            {
                 let wtype: Vec<String> = if action == "type" {
-                    vec!["--".into(), input.get("text").and_then(Value::as_str).unwrap_or_default().to_string()]
+                    vec![
+                        "--".into(),
+                        input
+                            .get("text")
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                            .to_string(),
+                    ]
                 } else {
-                    wtype_keys(input.get("keys").and_then(Value::as_str).unwrap_or_default())
+                    wtype_keys(
+                        input
+                            .get("keys")
+                            .and_then(Value::as_str)
+                            .unwrap_or_default(),
+                    )
                 };
-                output("wtype", &wtype.iter().map(String::as_str).collect::<Vec<_>>()).await?;
+                output(
+                    "wtype",
+                    &wtype.iter().map(String::as_str).collect::<Vec<_>>(),
+                )
+                .await?;
             }
             Err(e) => return Err(e),
         }
@@ -270,7 +369,8 @@ async fn wayland_act(action: &str, at: Option<(i64, i64)>, input: &Value) -> Res
 /// The screen as PNG bytes.
 pub(crate) async fn capture() -> Result<Vec<u8>, String> {
     if cfg!(target_os = "macos") {
-        let path = std::env::temp_dir().join(format!("lumo-screen-{}.png", uuid::Uuid::new_v4().simple()));
+        let path =
+            std::env::temp_dir().join(format!("lumo-screen-{}.png", uuid::Uuid::new_v4().simple()));
         let p = path.to_string_lossy().into_owned();
         output("screencapture", &["-x", "-t", "png", &p]).await?;
         let bytes = crate::chat::at_rest::read(&path).map_err(|e| e.to_string());
@@ -288,13 +388,34 @@ pub(crate) async fn capture() -> Result<Vec<u8>, String> {
 
 /// Scales a PNG to at most `max_width` wide as JPEG; returns base64 and the scale back to screen.
 pub fn shrink(png: &[u8], max_width: u32) -> Result<(String, f64, u32, u32), String> {
-    let image = image::load_from_memory(png).map_err(|e| format!("The screenshot could not be read: {e}"))?;
+    let image = image::load_from_memory(png)
+        .map_err(|e| format!("The screenshot could not be read: {e}"))?;
     let (w, h) = (image.width(), image.height());
-    let scale = if w > max_width { f64::from(w) / f64::from(max_width) } else { 1.0 };
-    let small = if scale > 1.0 { image.resize(max_width, (f64::from(h) / scale).round() as u32, image::imageops::FilterType::Triangle) } else { image };
+    let scale = if w > max_width {
+        f64::from(w) / f64::from(max_width)
+    } else {
+        1.0
+    };
+    let small = if scale > 1.0 {
+        image.resize(
+            max_width,
+            (f64::from(h) / scale).round() as u32,
+            image::imageops::FilterType::Triangle,
+        )
+    } else {
+        image
+    };
     let mut jpeg = Vec::new();
-    small.to_rgb8().write_to(&mut Cursor::new(&mut jpeg), image::ImageFormat::Jpeg).map_err(|e| e.to_string())?;
-    Ok((base64::engine::general_purpose::STANDARD.encode(jpeg), scale, small.width(), small.height()))
+    small
+        .to_rgb8()
+        .write_to(&mut Cursor::new(&mut jpeg), image::ImageFormat::Jpeg)
+        .map_err(|e| e.to_string())?;
+    Ok((
+        base64::engine::general_purpose::STANDARD.encode(jpeg),
+        scale,
+        small.width(),
+        small.height(),
+    ))
 }
 
 async fn screenshot(conversation_id: &str) -> Result<String, String> {
@@ -306,23 +427,49 @@ async fn screenshot(conversation_id: &str) -> Result<String, String> {
     if let Ok(mut s) = scales().lock() {
         s.insert(conversation_id.to_string(), scale);
     }
-    Ok(format!("Screenshot attached ({w}×{h}). Coordinates are in this image's pixels."))
+    Ok(format!(
+        "Screenshot attached ({w}×{h}). Coordinates are in this image's pixels."
+    ))
 }
 
 /// Screen coordinates for a point in the latest screenshot.
 fn point(conversation_id: &str, input: &Value) -> Result<(i64, i64), String> {
-    let x = input.get("x").and_then(Value::as_i64).ok_or("Give x and y from the latest screenshot.")?;
-    let y = input.get("y").and_then(Value::as_i64).ok_or("Give x and y from the latest screenshot.")?;
-    let scale = scales().lock().ok().and_then(|s| s.get(conversation_id).copied()).unwrap_or(1.0);
-    Ok(((x as f64 * scale).round() as i64, (y as f64 * scale).round() as i64))
+    let x = input
+        .get("x")
+        .and_then(Value::as_i64)
+        .ok_or("Give x and y from the latest screenshot.")?;
+    let y = input
+        .get("y")
+        .and_then(Value::as_i64)
+        .ok_or("Give x and y from the latest screenshot.")?;
+    let scale = scales()
+        .lock()
+        .ok()
+        .and_then(|s| s.get(conversation_id).copied())
+        .unwrap_or(1.0);
+    Ok((
+        (x as f64 * scale).round() as i64,
+        (y as f64 * scale).round() as i64,
+    ))
 }
 
 async fn act(conversation_id: &str, action: &str, input: &Value) -> Result<String, String> {
     let mac = cfg!(target_os = "macos");
-    let text = |k: &str| input.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
+    let text = |k: &str| {
+        input
+            .get(k)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
     if wayland() {
-        let needs_point = matches!(action, "click" | "double_click" | "right_click" | "move") || (action == "scroll" && input.get("x").is_some());
-        let at = if needs_point { Some(point(conversation_id, input)?) } else { None };
+        let needs_point = matches!(action, "click" | "double_click" | "right_click" | "move")
+            || (action == "scroll" && input.get("x").is_some());
+        let at = if needs_point {
+            Some(point(conversation_id, input)?)
+        } else {
+            None
+        };
         if action == "type" && text("text").is_empty() {
             return Err("Give the text to type.".into());
         }
@@ -339,7 +486,12 @@ async fn act(conversation_id: &str, action: &str, input: &Value) -> Result<Strin
         "click" | "double_click" | "right_click" | "move" => {
             let (x, y) = point(conversation_id, input)?;
             if mac {
-                let verb = match action { "click" => "c", "double_click" => "dc", "right_click" => "rc", _ => "m" };
+                let verb = match action {
+                    "click" => "c",
+                    "double_click" => "dc",
+                    "right_click" => "rc",
+                    _ => "m",
+                };
                 output("cliclick", &[&format!("{verb}:{x},{y}")]).await?;
             } else {
                 let (xs, ys) = (x.to_string(), y.to_string());
@@ -379,19 +531,37 @@ async fn act(conversation_id: &str, action: &str, input: &Value) -> Result<Strin
             Ok(format!("Pressed {keys}."))
         }
         "scroll" => {
-            let amount = input.get("amount").and_then(Value::as_u64).unwrap_or(3).clamp(1, 20).to_string();
+            let amount = input
+                .get("amount")
+                .and_then(Value::as_u64)
+                .unwrap_or(3)
+                .clamp(1, 20)
+                .to_string();
             let down = text("direction") != "up";
             if input.get("x").is_some() {
                 let (x, y) = point(conversation_id, input)?;
                 if !mac {
-                    output("xdotool", &["mousemove", "--sync", &x.to_string(), &y.to_string()]).await?;
+                    output(
+                        "xdotool",
+                        &["mousemove", "--sync", &x.to_string(), &y.to_string()],
+                    )
+                    .await?;
                 }
             }
             if mac {
-                return Err("Scrolling is not available on macOS yet; use the arrow or Page keys.".into());
+                return Err(
+                    "Scrolling is not available on macOS yet; use the arrow or Page keys.".into(),
+                );
             }
-            output("xdotool", &["click", "--repeat", &amount, if down { "5" } else { "4" }]).await?;
-            Ok(format!("Scrolled {} {amount} steps.", if down { "down" } else { "up" }))
+            output(
+                "xdotool",
+                &["click", "--repeat", &amount, if down { "5" } else { "4" }],
+            )
+            .await?;
+            Ok(format!(
+                "Scrolled {} {amount} steps.",
+                if down { "down" } else { "up" }
+            ))
         }
         other => Err(format!("Unknown action {other}.")),
     }
@@ -399,7 +569,10 @@ async fn act(conversation_id: &str, action: &str, input: &Value) -> Result<Strin
 
 /// Runs one computer action; every action but a screenshot is followed by a fresh screenshot.
 pub async fn run(conversation_id: &str, input: &Value) -> Result<String, String> {
-    let action = input.get("action").and_then(Value::as_str).unwrap_or("screenshot");
+    let action = input
+        .get("action")
+        .and_then(Value::as_str)
+        .unwrap_or("screenshot");
     if action == "screenshot" {
         return screenshot(conversation_id).await;
     }
@@ -407,13 +580,17 @@ pub async fn run(conversation_id: &str, input: &Value) -> Result<String, String>
     if let Some(dir) = crate::reporting::early_config_dir() {
         let settings = load(&dir);
         if !settings.blocked_apps.is_empty() || !settings.only_apps.is_empty() {
-            let window = tokio::task::spawn_blocking(super::recorder::active_window).await.unwrap_or_default();
+            let window = tokio::task::spawn_blocking(super::recorder::active_window)
+                .await
+                .unwrap_or_default();
             app_allowed(&settings, &window)?;
         }
     }
     let done = act(conversation_id, action, input).await?;
     tokio::time::sleep(std::time::Duration::from_millis(700)).await;
-    let shot = screenshot(conversation_id).await.unwrap_or_else(|e| format!("(No new screenshot: {e})"));
+    let shot = screenshot(conversation_id)
+        .await
+        .unwrap_or_else(|e| format!("(No new screenshot: {e})"));
     Ok(format!("{done} {shot}"))
 }
 
@@ -423,12 +600,24 @@ mod tests {
 
     #[test]
     fn per_app_rules_block_or_limit_windows() {
-        let blocked = ComputerSettings { enabled: true, blocked_apps: vec!["Bank".into(), "  ".into()], only_apps: vec![] };
-        assert!(app_allowed(&blocked, "My Bank - Firefox").unwrap_err().contains("“Bank”"));
+        let blocked = ComputerSettings {
+            enabled: true,
+            blocked_apps: vec!["Bank".into(), "  ".into()],
+            only_apps: vec![],
+        };
+        assert!(app_allowed(&blocked, "My Bank - Firefox")
+            .unwrap_err()
+            .contains("“Bank”"));
         assert!(app_allowed(&blocked, "Terminal").is_ok());
-        let only = ComputerSettings { enabled: true, blocked_apps: vec![], only_apps: vec!["gimp".into(), "Terminal".into()] };
+        let only = ComputerSettings {
+            enabled: true,
+            blocked_apps: vec![],
+            only_apps: vec!["gimp".into(), "Terminal".into()],
+        };
         assert!(app_allowed(&only, "image.png - GIMP").is_ok());
-        assert!(app_allowed(&only, "Inbox - Mail").unwrap_err().contains("only allowed"));
+        assert!(app_allowed(&only, "Inbox - Mail")
+            .unwrap_err()
+            .contains("only allowed"));
         assert!(app_allowed(&ComputerSettings::default(), "anything").is_ok());
     }
 
@@ -436,32 +625,70 @@ mod tests {
     fn screenshots_shrink_and_map_back() {
         let big = image::RgbImage::from_pixel(2560, 1440, image::Rgb([30, 30, 30]));
         let mut png = Vec::new();
-        image::DynamicImage::ImageRgb8(big).write_to(&mut Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
+        image::DynamicImage::ImageRgb8(big)
+            .write_to(&mut Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
         let (data, scale, w, h) = shrink(&png, MAX_WIDTH).unwrap();
         assert_eq!((w, h), (1280, 720));
         assert!((scale - 2.0).abs() < 1e-9);
         assert!(!data.is_empty());
         scales().lock().unwrap().insert("c".into(), scale);
-        assert_eq!(point("c", &json!({ "x": 100, "y": 50 })).unwrap(), (200, 100));
+        assert_eq!(
+            point("c", &json!({ "x": 100, "y": 50 })).unwrap(),
+            (200, 100)
+        );
         assert!(point("c", &json!({ "x": 1 })).is_err());
-        assert!(is_screenshot(&json!({ "action": "screenshot" })) && !is_screenshot(&json!({ "action": "click" })));
+        assert!(
+            is_screenshot(&json!({ "action": "screenshot" }))
+                && !is_screenshot(&json!({ "action": "click" }))
+        );
     }
 
     #[test]
     fn wayland_actions_become_ydotool_and_wtype_commands() {
         let plan = wayland_plan("double_click", Some((200, 100)), &json!({})).unwrap();
-        assert_eq!(plan[0], ["ydotool", "mousemove", "--absolute", "-x", "200", "-y", "100"]);
+        assert_eq!(
+            plan[0],
+            [
+                "ydotool",
+                "mousemove",
+                "--absolute",
+                "-x",
+                "200",
+                "-y",
+                "100"
+            ]
+        );
         assert_eq!(plan[1], ["ydotool", "click", "--repeat", "2", "0xC0"]);
         let keys = wayland_plan("key", None, &json!({ "keys": "ctrl+shift+t" })).unwrap();
-        assert_eq!(keys[0], ["ydotool", "key", "29:1", "42:1", "20:1", "20:0", "42:0", "29:0"]);
+        assert_eq!(
+            keys[0],
+            ["ydotool", "key", "29:1", "42:1", "20:1", "20:0", "42:0", "29:0"]
+        );
         assert_eq!(ydotool_keys("Return").unwrap(), ["28:1", "28:0"]);
-        assert_eq!(ydotool_keys("alt+F4").unwrap(), ["56:1", "62:1", "62:0", "56:0"]);
-        assert_eq!(ydotool_keys("ctrl+1").unwrap(), ["29:1", "2:1", "2:0", "29:0"]);
+        assert_eq!(
+            ydotool_keys("alt+F4").unwrap(),
+            ["56:1", "62:1", "62:0", "56:0"]
+        );
+        assert_eq!(
+            ydotool_keys("ctrl+1").unwrap(),
+            ["29:1", "2:1", "2:0", "29:0"]
+        );
         assert!(ydotool_keys("ctrl+nosuchkey").is_err());
-        let scroll = wayland_plan("scroll", None, &json!({ "direction": "down", "amount": 5 })).unwrap();
-        assert_eq!(scroll[0], ["ydotool", "mousemove", "--wheel", "-x", "0", "-y", "-5"]);
-        assert_eq!(wayland_plan("type", None, &json!({ "text": "hi there" })).unwrap()[0], ["ydotool", "type", "--", "hi there"]);
-        assert_eq!(wtype_keys("ctrl+shift+t"), ["-M", "ctrl", "-M", "shift", "-k", "t", "-m", "shift", "-m", "ctrl"]);
+        let scroll =
+            wayland_plan("scroll", None, &json!({ "direction": "down", "amount": 5 })).unwrap();
+        assert_eq!(
+            scroll[0],
+            ["ydotool", "mousemove", "--wheel", "-x", "0", "-y", "-5"]
+        );
+        assert_eq!(
+            wayland_plan("type", None, &json!({ "text": "hi there" })).unwrap()[0],
+            ["ydotool", "type", "--", "hi there"]
+        );
+        assert_eq!(
+            wtype_keys("ctrl+shift+t"),
+            ["-M", "ctrl", "-M", "shift", "-k", "t", "-m", "shift", "-m", "ctrl"]
+        );
         assert_eq!(wtype_keys("Return"), ["-k", "Return"]);
     }
 }

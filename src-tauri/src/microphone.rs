@@ -17,7 +17,12 @@ pub fn is_allowed(url: &url::Url) -> bool {
 /// The app's own bundled page: `tauri://localhost` on macOS and Linux, `http://tauri.localhost`
 /// on Windows.
 fn is_app_page(url: &url::Url) -> bool {
-    let host = url.host_str() == Some(if url.scheme() == "tauri" { "localhost" } else { "tauri.localhost" });
+    let host = url.host_str()
+        == Some(if url.scheme() == "tauri" {
+            "localhost"
+        } else {
+            "tauri.localhost"
+        });
     host && matches!(url.scheme(), "tauri" | "http" | "https") && url.port().is_none()
 }
 
@@ -157,8 +162,14 @@ mod tests {
         assert!(!is_allowed(&url(&format!("{api}/lumo/v1/artifact-shell"))));
         assert!(!is_allowed(&url("https://evil.example/")));
         // The native app's own page may dictate; nothing else on a local scheme may.
-        assert_eq!(is_allowed(&url("tauri://localhost/index.html")), !crate::HOSTED_WEB_APP);
-        assert_eq!(is_allowed(&url("http://tauri.localhost/index.html")), !crate::HOSTED_WEB_APP);
+        assert_eq!(
+            is_allowed(&url("tauri://localhost/index.html")),
+            !crate::HOSTED_WEB_APP
+        );
+        assert_eq!(
+            is_allowed(&url("http://tauri.localhost/index.html")),
+            !crate::HOSTED_WEB_APP
+        );
         assert!(!is_allowed(&url("lumoapp://localhost/app-id")));
         assert!(!is_allowed(&url("http://lumoapp.localhost/app-id")));
         assert!(!is_allowed(&url("http://tauri.localhost:8080/")));

@@ -28,9 +28,21 @@ pub struct Cli {
 }
 
 pub const CLIS: &[Cli] = &[
-    Cli { id: "claude-code", name: "Claude Code", program: "claude" },
-    Cli { id: "codex", name: "Codex", program: "codex" },
-    Cli { id: "gemini", name: "Gemini CLI", program: "gemini" },
+    Cli {
+        id: "claude-code",
+        name: "Claude Code",
+        program: "claude",
+    },
+    Cli {
+        id: "codex",
+        name: "Codex",
+        program: "codex",
+    },
+    Cli {
+        id: "gemini",
+        name: "Gemini CLI",
+        program: "gemini",
+    },
 ];
 
 /// Characters of earlier conversation passed with each prompt.
@@ -46,13 +58,16 @@ pub fn find(reference: &str) -> Option<&'static Cli> {
 /// Where a program is on `PATH`, if it is installed.
 fn locate(program: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path).map(|dir| dir.join(program)).find(|p| is_executable(p))
+    std::env::split_paths(&path)
+        .map(|dir| dir.join(program))
+        .find(|p| is_executable(p))
 }
 
 #[cfg(unix)]
 fn is_executable(path: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt as _;
-    path.metadata().is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+    path.metadata()
+        .is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
 }
 
 #[cfg(not(unix))]
@@ -80,7 +95,12 @@ pub fn installed() -> Vec<ModelView> {
 /// The command line for one non-interactive run.
 pub fn args(cli: &Cli, prompt: &str) -> Vec<String> {
     match cli.id {
-        "claude-code" => vec!["-p".into(), prompt.into(), "--output-format".into(), "text".into()],
+        "claude-code" => vec![
+            "-p".into(),
+            prompt.into(),
+            "--output-format".into(),
+            "text".into(),
+        ],
         "codex" => vec!["exec".into(), "--skip-git-repo-check".into(), prompt.into()],
         _ => vec!["-p".into(), prompt.into()],
     }
@@ -88,7 +108,9 @@ pub fn args(cli: &Cli, prompt: &str) -> Vec<String> {
 
 /// The prompt: the conversation so far, then what the user says now.
 pub fn prompt(conversation: &Conversation) -> String {
-    let Some(last) = store::last_prompt(conversation) else { return String::new() };
+    let Some(last) = store::last_prompt(conversation) else {
+        return String::new();
+    };
     let now = match &conversation.messages[last] {
         Message::User { content } => content
             .iter()
@@ -112,19 +134,36 @@ pub fn prompt(conversation: &Conversation) -> String {
 
 /// The folder a run works in: the chat's own folder, or one kept for this conversation.
 fn workdir(config_dir: &Path, conversation: &Conversation) -> Result<PathBuf, String> {
-    if let Some(dir) = conversation.workdir.as_deref().filter(|d| Path::new(d).is_dir()) {
+    if let Some(dir) = conversation
+        .workdir
+        .as_deref()
+        .filter(|d| Path::new(d).is_dir())
+    {
         return Ok(PathBuf::from(dir));
     }
-    let dir = store::chat_dir(config_dir).join("agent-runs").join(&conversation.id);
+    let dir = store::chat_dir(config_dir)
+        .join("agent-runs")
+        .join(&conversation.id);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
 }
 
 /// Runs the turn with the program; returns whether it was cancelled. The user's message is
 /// already in the conversation.
-pub async fn run(app: &AppHandle, config_dir: &Path, mut conversation: Conversation, cli: &Cli, mut cancel: watch::Receiver<bool>) -> Result<bool, String> {
+pub async fn run(
+    app: &AppHandle,
+    config_dir: &Path,
+    mut conversation: Conversation,
+    cli: &Cli,
+    mut cancel: watch::Receiver<bool>,
+) -> Result<bool, String> {
     let id = conversation.id.clone();
-    let program = locate(cli.program).ok_or_else(|| format!("{} is not installed: `{}` was not found on PATH.", cli.name, cli.program))?;
+    let program = locate(cli.program).ok_or_else(|| {
+        format!(
+            "{} is not installed: `{}` was not found on PATH.",
+            cli.name, cli.program
+        )
+    })?;
     let prompt = prompt(&conversation);
     if prompt.trim().is_empty() {
         return Err("There is nothing to send.".into());
@@ -188,13 +227,29 @@ pub async fn run(app: &AppHandle, config_dir: &Path, mut conversation: Conversat
     let status = child.wait().await.ok();
     let stderr = errors.await.unwrap_or_default();
     if !cancelled && text.trim().is_empty() {
-        let detail: String = stderr.trim().chars().rev().take(600).collect::<Vec<_>>().into_iter().rev().collect();
+        let detail: String = stderr
+            .trim()
+            .chars()
+            .rev()
+            .take(600)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
         warn!("{} gave no answer ({status:?}): {detail}", cli.name);
-        return Err(if detail.is_empty() { format!("{} gave no answer.", cli.name) } else { format!("{} gave no answer: {detail}", cli.name) });
+        return Err(if detail.is_empty() {
+            format!("{} gave no answer.", cli.name)
+        } else {
+            format!("{} gave no answer: {detail}", cli.name)
+        });
     }
     if !text.trim().is_empty() {
-        conversation.messages.push(Message::assistant(text.trim_end().to_string()));
-        conversation.times.push((conversation.messages.len() - 1, Utc::now()));
+        conversation
+            .messages
+            .push(Message::assistant(text.trim_end().to_string()));
+        conversation
+            .times
+            .push((conversation.messages.len() - 1, Utc::now()));
         conversation.updated_at = Utc::now();
         store::save_conversation(config_dir, &conversation)?;
     }
@@ -224,7 +279,10 @@ mod tests {
         assert!(find("openai/codex").is_none());
         let claude = find("agentcli/claude-code").unwrap();
         assert_eq!(args(claude, "hi"), ["-p", "hi", "--output-format", "text"]);
-        assert_eq!(args(find("agentcli/codex").unwrap(), "hi"), ["exec", "--skip-git-repo-check", "hi"]);
+        assert_eq!(
+            args(find("agentcli/codex").unwrap(), "hi"),
+            ["exec", "--skip-git-repo-check", "hi"]
+        );
         assert_eq!(args(find("agentcli/gemini").unwrap(), "hi"), ["-p", "hi"]);
     }
 

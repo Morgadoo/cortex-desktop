@@ -22,13 +22,15 @@ pub struct PrivacySettings {
     pub enabled: bool,
 }
 
-
 fn path(config_dir: &Path) -> PathBuf {
     chat_dir(config_dir).join("privacy.json")
 }
 
 pub fn load(config_dir: &Path) -> PrivacySettings {
-    crate::chat::at_rest::read_to_string(path(config_dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::chat::at_rest::read_to_string(path(config_dir))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
 }
 
 pub fn save(config_dir: &Path, settings: &PrivacySettings) -> Result<(), String> {
@@ -44,10 +46,21 @@ fn patterns() -> &'static [(&'static str, Regex)] {
     static PATTERNS: OnceLock<Vec<(&'static str, Regex)>> = OnceLock::new();
     PATTERNS.get_or_init(|| {
         vec![
-            ("EMAIL", Regex::new(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}").expect("email")),
-            ("IBAN", Regex::new(r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){3,7}(?: ?[A-Z0-9]{1,4})?\b").expect("iban")),
+            (
+                "EMAIL",
+                Regex::new(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}").expect("email"),
+            ),
+            (
+                "IBAN",
+                Regex::new(r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){3,7}(?: ?[A-Z0-9]{1,4})?\b")
+                    .expect("iban"),
+            ),
             ("CARD", Regex::new(r"\b(?:\d[ -]?){13,19}\b").expect("card")),
-            ("PHONE", Regex::new(r"(?:\+\d{1,3}[ .-]?)?(?:\(?\d{2,4}\)?[ .-]?){2,4}\d{3,4}\b").expect("phone")),
+            (
+                "PHONE",
+                Regex::new(r"(?:\+\d{1,3}[ .-]?)?(?:\(?\d{2,4}\)?[ .-]?){2,4}\d{3,4}\b")
+                    .expect("phone"),
+            ),
         ]
     })
 }
@@ -67,7 +80,11 @@ pub fn sensitive_kinds(text: &str) -> Vec<&'static str> {
             _ => false,
         });
         if hit {
-            out.push(if *kind == "CARD" { "a card number" } else { "a bank account number" });
+            out.push(if *kind == "CARD" {
+                "a card number"
+            } else {
+                "a bank account number"
+            });
         }
     }
     // An IBAN's digits also read as a card number; it is one thing.
@@ -92,7 +109,12 @@ impl Redactions {
         if let Some((p, _)) = self.pairs.iter().find(|(_, o)| o == original) {
             return p.clone();
         }
-        let n = self.pairs.iter().filter(|(p, _)| p.starts_with(&format!("[{kind}_"))).count() + 1;
+        let n = self
+            .pairs
+            .iter()
+            .filter(|(p, _)| p.starts_with(&format!("[{kind}_")))
+            .count()
+            + 1;
         let p = format!("[{kind}_{n}]");
         self.pairs.push((p.clone(), original.to_string()));
         p
@@ -106,7 +128,10 @@ impl Redactions {
                 .find_iter(&out)
                 .map(|m| m.as_str().to_string())
                 // A phone or card needs enough digits to be one; years and prices are not.
-                .filter(|m| !matches!(*kind, "PHONE" | "CARD") || m.chars().filter(char::is_ascii_digit).count() >= 9)
+                .filter(|m| {
+                    !matches!(*kind, "PHONE" | "CARD")
+                        || m.chars().filter(char::is_ascii_digit).count() >= 9
+                })
                 .collect();
             for original in found {
                 let p = self.placeholder(kind, original.trim());
@@ -199,7 +224,10 @@ mod tests {
         assert!(redacted.contains("[IBAN_1]"), "{redacted}");
         assert!(redacted.contains("[CARD_1]"), "{redacted}");
         assert!(redacted.contains("[PHONE_1]"), "{redacted}");
-        assert!(redacted.contains("2026") && redacted.contains("900 EUR"), "{redacted}");
+        assert!(
+            redacted.contains("2026") && redacted.contains("900 EUR"),
+            "{redacted}"
+        );
         assert_eq!(r.restore(&redacted), text);
     }
 
@@ -224,12 +252,25 @@ mod tests {
 
     #[test]
     fn sensitive_data_is_recognised() {
-        assert_eq!(sensitive_kinds("My card is 4111 1111 1111 1111"), ["a card number"]);
-        assert_eq!(sensitive_kinds("Rent goes to PT50 0002 0123 1234 5678 9015 4"), ["a bank account number"]);
-        assert_eq!(sensitive_kinds("the wifi password is hunter22"), ["a password, key or token"]);
-        assert_eq!(sensitive_kinds("use key sk-abcdefghijklmnop1234 for the API"), ["a password, key or token"]);
-        assert!(sensitive_kinds("Rita's email is rita@acme.example, phone +351 912 345 678").is_empty());
+        assert_eq!(
+            sensitive_kinds("My card is 4111 1111 1111 1111"),
+            ["a card number"]
+        );
+        assert_eq!(
+            sensitive_kinds("Rent goes to PT50 0002 0123 1234 5678 9015 4"),
+            ["a bank account number"]
+        );
+        assert_eq!(
+            sensitive_kinds("the wifi password is hunter22"),
+            ["a password, key or token"]
+        );
+        assert_eq!(
+            sensitive_kinds("use key sk-abcdefghijklmnop1234 for the API"),
+            ["a password, key or token"]
+        );
+        assert!(
+            sensitive_kinds("Rita's email is rita@acme.example, phone +351 912 345 678").is_empty()
+        );
         assert!(sensitive_kinds("Prefers metric units; born in 1988").is_empty());
     }
-
 }

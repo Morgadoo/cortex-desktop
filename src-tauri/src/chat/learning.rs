@@ -27,7 +27,10 @@ fn path(config_dir: &Path) -> PathBuf {
 }
 
 pub fn load(config_dir: &Path) -> Learning {
-    crate::chat::at_rest::read_to_string(path(config_dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::chat::at_rest::read_to_string(path(config_dir))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
 }
 
 pub fn save(config_dir: &Path, learning: &Learning) -> Result<(), String> {
@@ -76,7 +79,13 @@ pub fn review_task() -> super::tasks::Task {
 pub const MIN_STEPS: usize = 3;
 
 /// The reflection on a finished agent turn.
-pub fn reflect_prompt(agent: &str, request: &str, steps: &[String], answer: &str, existing: &[String]) -> String {
+pub fn reflect_prompt(
+    agent: &str,
+    request: &str,
+    steps: &[String],
+    answer: &str,
+    existing: &[String],
+) -> String {
     format!(
         "The agent \"{agent}\" just did this for the user.\n\nRequest:\n{}\n\nSteps it took:\n{}\n\nResult (start):\n{}\n\n\
          Did it follow a procedure that would help next time a similar request comes, one that is not obvious and not \
@@ -106,15 +115,26 @@ pub fn parse_reflection(text: &str, existing: &[String]) -> Option<LearnedSkill>
     let end = text.rfind('}')?;
     let skill: LearnedSkill = serde_json::from_str(&text[start..=end]).ok()?;
     let name = skill.name.trim().to_lowercase();
-    if !super::skills::valid_name(&name) || existing.contains(&name) || skill.body.trim().len() < 40 || skill.description.trim().is_empty() {
+    if !super::skills::valid_name(&name)
+        || existing.contains(&name)
+        || skill.body.trim().len() < 40
+        || skill.description.trim().is_empty()
+    {
         return None;
     }
-    Some(LearnedSkill { name, description: skill.description.trim().to_string(), body: skill.body.trim().to_string() })
+    Some(LearnedSkill {
+        name,
+        description: skill.description.trim().to_string(),
+        body: skill.body.trim().to_string(),
+    })
 }
 
 /// Saves a learned skill, turned off, marked with the agent it came from.
 pub fn keep(config_dir: &Path, agent: &str, skill: &LearnedSkill) -> Result<(), String> {
-    let body = format!("{}\n\n(Learned by {agent} from its own work; review before relying on it.)", skill.body);
+    let body = format!(
+        "{}\n\n(Learned by {agent} from its own work; review before relying on it.)",
+        skill.body
+    );
     super::skills::save(config_dir, &skill.name, &skill.description, &body)?;
     super::skills::set_enabled(config_dir, &skill.name, false)
 }
@@ -128,7 +148,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let now = Utc::now();
         assert!(!take_review(dir.path(), now), "off by default");
-        save(dir.path(), &Learning { review_knowledge: true, ..Default::default() }).unwrap();
+        save(
+            dir.path(),
+            &Learning {
+                review_knowledge: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert!(take_review(dir.path(), now));
         assert!(!take_review(dir.path(), now + Duration::days(3)));
         assert!(take_review(dir.path(), now + Duration::days(7)));
@@ -143,12 +170,26 @@ mod tests {
         let good = r#"Here: {"name": "Vendor-Price-Check", "description": "Use when comparing vendor prices.", "body": "1. List the vendors. 2. Search each one's price page. 3. Normalize to price per unit. 4. Table them."}"#;
         let skill = parse_reflection(good, &existing).unwrap();
         assert_eq!(skill.name, "vendor-price-check");
-        assert!(parse_reflection(&good.replace("Vendor-Price-Check", "weekly-report"), &existing).is_none(), "an existing name is not reused");
+        assert!(
+            parse_reflection(
+                &good.replace("Vendor-Price-Check", "weekly-report"),
+                &existing
+            )
+            .is_none(),
+            "an existing name is not reused"
+        );
         assert!(parse_reflection(r#"{"name": "x y", "description": "d", "body": "long enough body text that passes the length check easily"}"#, &existing).is_none());
         let dir = tempfile::tempdir().unwrap();
         keep(dir.path(), "Researcher", &skill).unwrap();
         let saved = super::super::skills::find(dir.path(), "vendor-price-check").unwrap();
         assert!(!saved.enabled && saved.body.contains("Learned by Researcher"));
-        assert!(reflect_prompt("Researcher", "Compare", &["web_search: x".into()], "Done", &existing).contains("\"weekly-report\""));
+        assert!(reflect_prompt(
+            "Researcher",
+            "Compare",
+            &["web_search: x".into()],
+            "Done",
+            &existing
+        )
+        .contains("\"weekly-report\""));
     }
 }

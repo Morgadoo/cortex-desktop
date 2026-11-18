@@ -165,13 +165,18 @@ fn load_state(config_dir: &Path) -> SkillState {
 pub fn valid_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 64
-        && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        && name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
         && !name.starts_with('-')
 }
 
 /// `name`, `description` and the body of a `SKILL.md`.
 pub fn parse(text: &str) -> Option<(String, String, String)> {
-    let rest = text.trim_start_matches('\u{feff}').trim_start().strip_prefix("---")?;
+    let rest = text
+        .trim_start_matches('\u{feff}')
+        .trim_start()
+        .strip_prefix("---")?;
     let end = rest.find("\n---")?;
     let (front, body) = rest.split_at(end);
     let body = body.trim_start_matches("\n---").trim().to_string();
@@ -186,16 +191,29 @@ pub fn parse(text: &str) -> Option<(String, String, String)> {
         if line.starts_with([' ', '\t']) {
             continue;
         }
-        let Some((key, value)) = line.split_once(':') else { continue };
+        let Some((key, value)) = line.split_once(':') else {
+            continue;
+        };
         let raw = value.trim();
         // YAML block scalars (`>` folds lines, `|` keeps them): the indented lines that follow.
         let value = if raw.starts_with('>') || raw.starts_with('|') {
             let mut block = Vec::new();
-            while i < lines.len() && (lines[i].starts_with([' ', '\t']) || lines[i].trim().is_empty()) {
+            while i < lines.len()
+                && (lines[i].starts_with([' ', '\t']) || lines[i].trim().is_empty())
+            {
                 block.push(lines[i].trim());
                 i += 1;
             }
-            if raw.starts_with('>') { block.iter().filter(|l| !l.is_empty()).copied().collect::<Vec<_>>().join(" ") } else { block.join("\n").trim().to_string() }
+            if raw.starts_with('>') {
+                block
+                    .iter()
+                    .filter(|l| !l.is_empty())
+                    .copied()
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            } else {
+                block.join("\n").trim().to_string()
+            }
         } else {
             raw.trim_matches(['"', '\'']).to_string()
         };
@@ -210,7 +228,10 @@ pub fn parse(text: &str) -> Option<(String, String, String)> {
 
 pub fn render(name: &str, description: &str, body: &str) -> String {
     let description = description.replace('\n', " ");
-    format!("---\nname: {name}\ndescription: {description}\n---\n\n{}\n", body.trim())
+    format!(
+        "---\nname: {name}\ndescription: {description}\n---\n\n{}\n",
+        body.trim()
+    )
 }
 
 pub fn list(config_dir: &Path) -> Vec<Skill> {
@@ -219,13 +240,25 @@ pub fn list(config_dir: &Path) -> Vec<Skill> {
     let mut skills: Vec<Skill> = Vec::new();
     if let Ok(entries) = std::fs::read_dir(skills_dir(config_dir)) {
         for entry in entries.filter_map(Result::ok) {
-            let Ok(text) = crate::chat::at_rest::read_to_string(entry.path().join("SKILL.md")) else { continue };
-            let Some((name, description, body)) = parse(&text) else { continue };
+            let Ok(text) = crate::chat::at_rest::read_to_string(entry.path().join("SKILL.md"))
+            else {
+                continue;
+            };
+            let Some((name, description, body)) = parse(&text) else {
+                continue;
+            };
             if !valid_name(&name) {
                 continue;
             }
             let files = supporting_files(&entry.path());
-            skills.push(Skill { enabled: enabled(&name), name, description, body, origin: "user", files });
+            skills.push(Skill {
+                enabled: enabled(&name),
+                name,
+                description,
+                body,
+                origin: "user",
+                files,
+            });
         }
     }
     skills.sort_by(|a, b| a.name.cmp(&b.name));
@@ -233,7 +266,14 @@ pub fn list(config_dir: &Path) -> Vec<Skill> {
         if let Some((name, description, body)) = parse(text) {
             // A user skill of the same name replaces the built-in one.
             if !skills.iter().any(|s| s.name == name) {
-                skills.push(Skill { enabled: enabled(&name), name, description, body, origin: "builtin", files: Vec::new() });
+                skills.push(Skill {
+                    enabled: enabled(&name),
+                    name,
+                    description,
+                    body,
+                    origin: "builtin",
+                    files: Vec::new(),
+                });
             }
         }
     }
@@ -246,7 +286,9 @@ pub fn find(config_dir: &Path, name: &str) -> Option<Skill> {
 
 pub fn save(config_dir: &Path, name: &str, description: &str, body: &str) -> Result<(), String> {
     if !valid_name(name) {
-        return Err("A skill name uses lowercase letters, digits and hyphens, like `weekly-report`.".into());
+        return Err(
+            "A skill name uses lowercase letters, digits and hyphens, like `weekly-report`.".into(),
+        );
     }
     if description.trim().is_empty() {
         return Err("Describe when the assistant should use this skill.".into());
@@ -278,7 +320,12 @@ pub fn save(config_dir: &Path, name: &str, description: &str, body: &str) -> Res
 const KEEP_VERSIONS: usize = 30;
 
 fn prune_history(history: &Path) {
-    let mut files: Vec<_> = std::fs::read_dir(history).into_iter().flatten().flatten().map(|e| e.path()).collect();
+    let mut files: Vec<_> = std::fs::read_dir(history)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .collect();
     files.sort();
     let extra = files.len().saturating_sub(KEEP_VERSIONS);
     for old in files.into_iter().take(extra) {
@@ -308,8 +355,13 @@ pub fn history(config_dir: &Path, name: &str) -> Result<Vec<Version>, String> {
         .flatten()
         .filter_map(|e| {
             let id = e.path().file_stem()?.to_string_lossy().into_owned();
-            let (_, description, body) = parse(&crate::chat::at_rest::read_to_string(e.path()).ok()?)?;
-            Some(Version { id, description, body })
+            let (_, description, body) =
+                parse(&crate::chat::at_rest::read_to_string(e.path()).ok()?)?;
+            Some(Version {
+                id,
+                description,
+                body,
+            })
         })
         .collect();
     out.sort_by(|a, b| b.id.cmp(&a.id));
@@ -318,7 +370,10 @@ pub fn history(config_dir: &Path, name: &str) -> Result<Vec<Version>, String> {
 
 /// Brings an earlier version back (the current one joins the history).
 pub fn restore(config_dir: &Path, name: &str, version: &str) -> Result<(), String> {
-    let found = history(config_dir, name)?.into_iter().find(|v| v.id == version).ok_or("That version is gone.")?;
+    let found = history(config_dir, name)?
+        .into_iter()
+        .find(|v| v.id == version)
+        .ok_or("That version is gone.")?;
     save(config_dir, name, &found.description, &found.body)
 }
 
@@ -342,8 +397,13 @@ pub fn set_enabled(config_dir: &Path, name: &str, enabled: bool) -> Result<(), S
 
 /// Imports a `SKILL.md`, or a folder holding one with its supporting files.
 pub fn import(config_dir: &Path, source: &Path) -> Result<String, String> {
-    let file = if source.is_dir() { source.join("SKILL.md") } else { source.to_path_buf() };
-    let text = crate::chat::at_rest::read_to_string(&file).map_err(|e| format!("could not read {file:?}: {e}"))?;
+    let file = if source.is_dir() {
+        source.join("SKILL.md")
+    } else {
+        source.to_path_buf()
+    };
+    let text = crate::chat::at_rest::read_to_string(&file)
+        .map_err(|e| format!("could not read {file:?}: {e}"))?;
     let (name, description, body) =
         parse(&text).ok_or("That file has no `---` front matter with a name and description.")?;
     save(config_dir, &name, &description, &body)?;
@@ -370,7 +430,9 @@ fn file_path_ok(rel: &str) -> bool {
         && rel.len() <= 200
         && !rel.starts_with(['/', '\\'])
         && !rel.contains(':')
-        && parts.iter().all(|p| !p.is_empty() && *p != "." && *p != ".." && !p.starts_with('.'))
+        && parts
+            .iter()
+            .all(|p| !p.is_empty() && *p != "." && *p != ".." && !p.starts_with('.'))
         && rel != "SKILL.md"
         && parts[0] != "history"
 }
@@ -378,13 +440,17 @@ fn file_path_ok(rel: &str) -> bool {
 /// The supporting files in a skill's folder, sorted, as `/`-separated relative paths.
 pub fn supporting_files(dir: &Path) -> Vec<String> {
     fn walk(base: &Path, dir: &Path, depth: usize, out: &mut Vec<String>) {
-        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
         for entry in entries.flatten() {
             if out.len() >= MAX_FILES {
                 return;
             }
             let path = entry.path();
-            let Ok(rel) = path.strip_prefix(base) else { continue };
+            let Ok(rel) = path.strip_prefix(base) else {
+                continue;
+            };
             let rel = rel.to_string_lossy().replace('\\', "/");
             if !file_path_ok(&rel) {
                 continue;
@@ -423,7 +489,10 @@ pub fn add_file(config_dir: &Path, name: &str, rel: &str, bytes: &[u8]) -> Resul
         return Err(format!("{rel} cannot be a skill file's name."));
     }
     if bytes.len() > MAX_FILE_BYTES {
-        return Err(format!("{rel} is over {} MB.", MAX_FILE_BYTES / 1024 / 1024));
+        return Err(format!(
+            "{rel} is over {} MB.",
+            MAX_FILE_BYTES / 1024 / 1024
+        ));
     }
     let files = supporting_files(&dir);
     if files.len() >= MAX_FILES && !files.contains(&rel) {
@@ -465,11 +534,19 @@ pub fn read_file(config_dir: &Path, name: &str, rel: &str) -> Result<String, Str
         return Err("No such file in that skill.".into());
     }
     let path = skills_dir(config_dir).join(name).join(rel);
-    let bytes = crate::chat::at_rest::read(&path).map_err(|_| "No such file in that skill.".to_string())?;
+    let bytes =
+        crate::chat::at_rest::read(&path).map_err(|_| "No such file in that skill.".to_string())?;
     match String::from_utf8(bytes) {
-        Ok(text) if text.chars().count() > MAX_FILE_CHARS => Ok(format!("{}\n\n[cut at {MAX_FILE_CHARS} characters]", text.chars().take(MAX_FILE_CHARS).collect::<String>())),
+        Ok(text) if text.chars().count() > MAX_FILE_CHARS => Ok(format!(
+            "{}\n\n[cut at {MAX_FILE_CHARS} characters]",
+            text.chars().take(MAX_FILE_CHARS).collect::<String>()
+        )),
         Ok(text) => Ok(text),
-        Err(e) => Ok(format!("{rel} is a binary file ({} bytes) at {}.", e.as_bytes().len(), path.display())),
+        Err(e) => Ok(format!(
+            "{rel} is a binary file ({} bytes) at {}.",
+            e.as_bytes().len(),
+            path.display()
+        )),
     }
 }
 
@@ -493,12 +570,29 @@ pub fn skill_sources(link: &str) -> Result<Vec<String>, String> {
     if url.scheme() != "https" {
         return Err("Use an https link.".into());
     }
-    let parts: Vec<&str> = url.path().trim_matches('/').split('/').filter(|p| !p.is_empty()).collect();
-    let skill_md = |base: String| if base.to_lowercase().ends_with(".md") { base } else { format!("{base}/SKILL.md") };
+    let parts: Vec<&str> = url
+        .path()
+        .trim_matches('/')
+        .split('/')
+        .filter(|p| !p.is_empty())
+        .collect();
+    let skill_md = |base: String| {
+        if base.to_lowercase().ends_with(".md") {
+            base
+        } else {
+            format!("{base}/SKILL.md")
+        }
+    };
     match url.host_str() {
         Some("github.com") => match parts.as_slice() {
-            [owner, repo] => Ok(["HEAD", "main", "master"].iter().map(|r| format!("https://raw.githubusercontent.com/{owner}/{repo}/{r}/SKILL.md")).collect()),
-            [owner, repo, "tree" | "blob", reference, rest @ ..] => Ok(vec![skill_md(format!("https://raw.githubusercontent.com/{owner}/{repo}/{reference}/{}", rest.join("/")))]),
+            [owner, repo] => Ok(["HEAD", "main", "master"]
+                .iter()
+                .map(|r| format!("https://raw.githubusercontent.com/{owner}/{repo}/{r}/SKILL.md"))
+                .collect()),
+            [owner, repo, "tree" | "blob", reference, rest @ ..] => Ok(vec![skill_md(format!(
+                "https://raw.githubusercontent.com/{owner}/{repo}/{reference}/{}",
+                rest.join("/")
+            ))]),
             _ => Err("Link to the skill's folder or its SKILL.md on GitHub.".into()),
         },
         Some("raw.githubusercontent.com") => Ok(vec![skill_md(link.to_string())]),
@@ -510,7 +604,10 @@ pub fn skill_sources(link: &str) -> Result<Vec<String>, String> {
 /// Downloads a skill from a link and saves it; returns its name. Only the instructions come
 /// along: scripts and other files in the skill's folder are not downloaded.
 pub async fn import_from_link(config_dir: &Path, link: &str) -> Result<String, String> {
-    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(20)).build().map_err(|e| e.to_string())?;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|e| e.to_string())?;
     let mut last = String::from("No SKILL.md was found there.");
     for source in skill_sources(link)? {
         let response = match client.get(&source).send().await {
@@ -529,7 +626,8 @@ pub async fn import_from_link(config_dir: &Path, link: &str) -> Result<String, S
             return Err("That file is too large for a skill.".into());
         }
         let text = String::from_utf8_lossy(&bytes);
-        let (name, description, body) = parse(&text).ok_or("That file has no `---` front matter with a name and description.")?;
+        let (name, description, body) = parse(&text)
+            .ok_or("That file has no `---` front matter with a name and description.")?;
         save(config_dir, &name, &description, &body)?;
         return Ok(name);
     }
@@ -559,34 +657,87 @@ mod file_tests {
     #[test]
     fn skills_carry_supporting_files() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(add_file(dir.path(), "report", "template.md", b"x").is_err(), "the skill must exist first");
-        save(dir.path(), "report", "Use for the weekly report.", "Fill templates/week.md.").unwrap();
+        assert!(
+            add_file(dir.path(), "report", "template.md", b"x").is_err(),
+            "the skill must exist first"
+        );
+        save(
+            dir.path(),
+            "report",
+            "Use for the weekly report.",
+            "Fill templates/week.md.",
+        )
+        .unwrap();
         add_file(dir.path(), "report", "templates/week.md", b"# Week {{n}}").unwrap();
         add_file(dir.path(), "report", "scripts/count.py", b"print(1)").unwrap();
-        add_file(dir.path(), "report", "logo.png", &[0x89, b'P', b'N', b'G', 0xff, 0xfe]).unwrap();
-        for bad in ["../escape.md", "/etc/passwd", "SKILL.md", "history/x.md", ".hidden", "a//b", "C:/x"] {
+        add_file(
+            dir.path(),
+            "report",
+            "logo.png",
+            &[0x89, b'P', b'N', b'G', 0xff, 0xfe],
+        )
+        .unwrap();
+        for bad in [
+            "../escape.md",
+            "/etc/passwd",
+            "SKILL.md",
+            "history/x.md",
+            ".hidden",
+            "a//b",
+            "C:/x",
+        ] {
             assert!(add_file(dir.path(), "report", bad, b"x").is_err(), "{bad}");
         }
         let skill = find(dir.path(), "report").unwrap();
-        assert_eq!(skill.files, ["logo.png", "scripts/count.py", "templates/week.md"]);
+        assert_eq!(
+            skill.files,
+            ["logo.png", "scripts/count.py", "templates/week.md"]
+        );
         let text = loaded(&skill);
-        assert!(text.contains("## Supporting files") && text.contains("- templates/week.md"), "{text}");
-        assert_eq!(read_file(dir.path(), "report", "templates/week.md").unwrap(), "# Week {{n}}");
-        assert!(read_file(dir.path(), "report", "logo.png").unwrap().contains("binary file (6 bytes)"));
+        assert!(
+            text.contains("## Supporting files") && text.contains("- templates/week.md"),
+            "{text}"
+        );
+        assert_eq!(
+            read_file(dir.path(), "report", "templates/week.md").unwrap(),
+            "# Week {{n}}"
+        );
+        assert!(read_file(dir.path(), "report", "logo.png")
+            .unwrap()
+            .contains("binary file (6 bytes)"));
         assert!(read_file(dir.path(), "report", "../report/SKILL.md").is_err());
         // Saving the instructions again keeps the files, and the history stays out of the list.
-        save(dir.path(), "report", "Use for the weekly report.", "Fill it in.").unwrap();
+        save(
+            dir.path(),
+            "report",
+            "Use for the weekly report.",
+            "Fill it in.",
+        )
+        .unwrap();
         assert_eq!(find(dir.path(), "report").unwrap().files.len(), 3);
         remove_file(dir.path(), "report", "templates/week.md").unwrap();
-        assert!(!dir.path().join("skills/report/templates").exists(), "an emptied folder goes");
-        assert_eq!(find(dir.path(), "report").unwrap().files, ["logo.png", "scripts/count.py"]);
+        assert!(
+            !dir.path().join("skills/report/templates").exists(),
+            "an emptied folder goes"
+        );
+        assert_eq!(
+            find(dir.path(), "report").unwrap().files,
+            ["logo.png", "scripts/count.py"]
+        );
         // A folder imports with its files.
         let src = dir.path().join("src-skill");
         std::fs::create_dir_all(src.join("refs")).unwrap();
-        std::fs::write(src.join("SKILL.md"), "---\nname: brand-voice\ndescription: Use for copy.\n---\nSee refs/tone.md.").unwrap();
+        std::fs::write(
+            src.join("SKILL.md"),
+            "---\nname: brand-voice\ndescription: Use for copy.\n---\nSee refs/tone.md.",
+        )
+        .unwrap();
         std::fs::write(src.join("refs/tone.md"), "Warm, short.").unwrap();
         assert_eq!(import(dir.path(), &src).unwrap(), "brand-voice");
-        assert_eq!(read_file(dir.path(), "brand-voice", "refs/tone.md").unwrap(), "Warm, short.");
+        assert_eq!(
+            read_file(dir.path(), "brand-voice", "refs/tone.md").unwrap(),
+            "Warm, short."
+        );
     }
 }
 
@@ -604,8 +755,17 @@ mod link_tests {
             skill_sources("https://github.com/acme/tools/blob/v2/skills/report/SKILL.md").unwrap(),
             ["https://raw.githubusercontent.com/acme/tools/v2/skills/report/SKILL.md"]
         );
-        assert_eq!(skill_sources("https://github.com/acme/my-skill/").unwrap().len(), 3, "a repository is tried at HEAD, main and master");
-        assert_eq!(skill_sources("https://example.com/skills/x.md").unwrap(), ["https://example.com/skills/x.md"]);
+        assert_eq!(
+            skill_sources("https://github.com/acme/my-skill/")
+                .unwrap()
+                .len(),
+            3,
+            "a repository is tried at HEAD, main and master"
+        );
+        assert_eq!(
+            skill_sources("https://example.com/skills/x.md").unwrap(),
+            ["https://example.com/skills/x.md"]
+        );
         assert!(skill_sources("http://github.com/a/b").is_err());
         assert!(skill_sources("https://example.com/page").is_err());
         assert!(skill_sources("not a link").is_err());
@@ -618,33 +778,58 @@ mod tests {
     fn block_scalar_descriptions_are_read() {
         let text = "---\nname: guide\ndescription: >\n  Use this when\n  asked about courses.\nlicense: MIT\n---\nBody";
         let (name, description, body) = super::parse(text).unwrap();
-        assert_eq!((name.as_str(), description.as_str(), body.as_str()), ("guide", "Use this when asked about courses.", "Body"));
-        let kept = super::parse("---\nname: k\ndescription: |\n  line one\n  line two\n---\nB").unwrap();
+        assert_eq!(
+            (name.as_str(), description.as_str(), body.as_str()),
+            ("guide", "Use this when asked about courses.", "Body")
+        );
+        let kept =
+            super::parse("---\nname: k\ndescription: |\n  line one\n  line two\n---\nB").unwrap();
         assert_eq!(kept.1, "line one\nline two");
-        assert_eq!(super::parse("---\nname: plain\ndescription: \"quoted: yes\"\n---\nx").unwrap().1, "quoted: yes");
+        assert_eq!(
+            super::parse("---\nname: plain\ndescription: \"quoted: yes\"\n---\nx")
+                .unwrap()
+                .1,
+            "quoted: yes"
+        );
     }
-
 
     #[test]
     fn skills_keep_their_versions() {
         let dir = tempfile::tempdir().unwrap();
         save(dir.path(), "report", "Use when reporting.", "1. Draft.").unwrap();
         save(dir.path(), "report", "Use when reporting.", "1. Draft.").unwrap();
-        assert!(history(dir.path(), "report").unwrap().is_empty(), "saving the same text keeps no copy");
-        save(dir.path(), "report", "Use when reporting weekly.", "1. Draft.\n2. Send.").unwrap();
+        assert!(
+            history(dir.path(), "report").unwrap().is_empty(),
+            "saving the same text keeps no copy"
+        );
+        save(
+            dir.path(),
+            "report",
+            "Use when reporting weekly.",
+            "1. Draft.\n2. Send.",
+        )
+        .unwrap();
         let versions = history(dir.path(), "report").unwrap();
         assert_eq!(versions.len(), 1);
         assert_eq!(versions[0].body.trim(), "1. Draft.");
         restore(dir.path(), "report", &versions[0].id).unwrap();
         assert_eq!(find(dir.path(), "report").unwrap().body.trim(), "1. Draft.");
-        assert_eq!(history(dir.path(), "report").unwrap().len(), 2, "the replaced version is kept too");
+        assert_eq!(
+            history(dir.path(), "report").unwrap().len(),
+            2,
+            "the replaced version is kept too"
+        );
     }
 
     use super::*;
 
     #[test]
     fn skill_files_round_trip() {
-        let text = render("weekly-report", "Use for the Friday report.", "Collect wins.\nList risks.");
+        let text = render(
+            "weekly-report",
+            "Use for the Friday report.",
+            "Collect wins.\nList risks.",
+        );
         let (name, description, body) = parse(&text).unwrap();
         assert_eq!(name, "weekly-report");
         assert_eq!(description, "Use for the Friday report.");
@@ -657,7 +842,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let skills = list(dir.path());
         assert_eq!(skills.len(), BUILTIN.len());
-        assert!(skills.iter().all(|s| s.origin == "builtin" && s.enabled && valid_name(&s.name)));
+        assert!(skills
+            .iter()
+            .all(|s| s.origin == "builtin" && s.enabled && valid_name(&s.name)));
 
         save(dir.path(), "write-email", "Mine.", "My way.").unwrap();
         let skills = list(dir.path());
@@ -687,7 +874,11 @@ mod tests {
     fn importing_reads_a_folder_or_a_file() {
         let dir = tempfile::tempdir().unwrap();
         let source = tempfile::tempdir().unwrap();
-        crate::chat::at_rest::write(source.path().join("SKILL.md"), render("imported", "Use it.", "Body")).unwrap();
+        crate::chat::at_rest::write(
+            source.path().join("SKILL.md"),
+            render("imported", "Use it.", "Body"),
+        )
+        .unwrap();
         assert_eq!(import(dir.path(), source.path()).unwrap(), "imported");
         assert_eq!(find(dir.path(), "imported").unwrap().body, "Body");
     }

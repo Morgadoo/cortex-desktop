@@ -41,28 +41,40 @@ fn unwrap_bing(href: &str) -> Option<String> {
     let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
         .decode(encoded.trim_end_matches('='))
         .ok()?;
-    String::from_utf8(bytes).ok().filter(|u| u.starts_with("http"))
+    String::from_utf8(bytes)
+        .ok()
+        .filter(|u| u.starts_with("http"))
 }
 
 pub fn parse_bing(html: &str) -> Vec<Hit> {
     let doc = Html::parse_document(html);
     let item = Selector::parse("li.b_algo").expect("selector");
     let link = Selector::parse("h2 a").expect("selector");
-    let snippet = Selector::parse(".b_caption p, p.b_lineclamp2, p.b_lineclamp3, p.b_lineclamp4, p").expect("selector");
+    let snippet =
+        Selector::parse(".b_caption p, p.b_lineclamp2, p.b_lineclamp3, p.b_lineclamp4, p")
+            .expect("selector");
     doc.select(&item)
         .filter_map(|li| {
             let a = li.select(&link).next()?;
             let url = unwrap_bing(a.value().attr("href")?)?;
             let title = text_of(a);
             let snippet = li.select(&snippet).next().map(text_of).unwrap_or_default();
-            (!title.is_empty()).then_some(Hit { title, url, snippet })
+            (!title.is_empty()).then_some(Hit {
+                title,
+                url,
+                snippet,
+            })
         })
         .collect()
 }
 
 /// DuckDuckGo wraps result links as `//duckduckgo.com/l/?uddg=<percent-encoded target>`.
 fn unwrap_ddg(href: &str) -> Option<String> {
-    let absolute = if href.starts_with("//") { format!("https:{href}") } else { href.to_string() };
+    let absolute = if href.starts_with("//") {
+        format!("https:{href}")
+    } else {
+        href.to_string()
+    };
     let parsed = url::Url::parse(&absolute).ok()?;
     match parsed.query_pairs().find(|(k, _)| k == "uddg") {
         Some((_, target)) => Some(target.into_owned()),
@@ -81,7 +93,11 @@ pub fn parse_ddg(html: &str) -> Vec<Hit> {
             let url = unwrap_ddg(a.value().attr("href")?)?;
             let title = text_of(a);
             let snippet = r.select(&snippet).next().map(text_of).unwrap_or_default();
-            (!title.is_empty() && !url.contains("duckduckgo.com/y.js")).then_some(Hit { title, url, snippet })
+            (!title.is_empty() && !url.contains("duckduckgo.com/y.js")).then_some(Hit {
+                title,
+                url,
+                snippet,
+            })
         })
         .collect()
 }
@@ -110,7 +126,11 @@ pub struct SearchSettings {
 
 impl Default for SearchSettings {
     fn default() -> Self {
-        Self { engine: "auto".into(), base_url: String::new(), has_key: false }
+        Self {
+            engine: "auto".into(),
+            base_url: String::new(),
+            has_key: false,
+        }
     }
 }
 
@@ -119,10 +139,16 @@ fn settings_path(config_dir: &std::path::Path) -> std::path::PathBuf {
 }
 
 pub fn load_settings(config_dir: &std::path::Path) -> SearchSettings {
-    crate::chat::at_rest::read_to_string(settings_path(config_dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::chat::at_rest::read_to_string(settings_path(config_dir))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
 }
 
-pub fn save_settings(config_dir: &std::path::Path, settings: &SearchSettings) -> Result<(), String> {
+pub fn save_settings(
+    config_dir: &std::path::Path,
+    settings: &SearchSettings,
+) -> Result<(), String> {
     let mut s = settings.clone();
     if !ENGINES.contains(&s.engine.as_str()) {
         s.engine = "auto".into();
@@ -133,7 +159,9 @@ pub fn save_settings(config_dir: &std::path::Path, settings: &SearchSettings) ->
 
 async fn key() -> Result<Option<String>, String> {
     let account = crate::account::AccountId::parse(super::LOCAL_ACCOUNT)?;
-    crate::tools::auth::keychain_secrets(account).load(SECRET).await
+    crate::tools::auth::keychain_secrets(account)
+        .load(SECRET)
+        .await
 }
 
 /// SearXNG's JSON results (`format=json` must be enabled on the instance).
@@ -152,12 +180,21 @@ pub fn parse_tavily(body: &serde_json::Value) -> Vec<Hit> {
 }
 
 fn hits_from(list: Option<&serde_json::Value>, title: &str, url: &str, snippet: &str) -> Vec<Hit> {
-    let field = |v: &serde_json::Value, k: &str| v.get(k).and_then(serde_json::Value::as_str).unwrap_or_default().to_string();
+    let field = |v: &serde_json::Value, k: &str| {
+        v.get(k)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
     list.and_then(serde_json::Value::as_array)
         .map(|items| {
             items
                 .iter()
-                .map(|v| Hit { title: strip_tags(&field(v, title)), url: field(v, url), snippet: strip_tags(&field(v, snippet)) })
+                .map(|v| Hit {
+                    title: strip_tags(&field(v, title)),
+                    url: field(v, url),
+                    snippet: strip_tags(&field(v, snippet)),
+                })
                 .filter(|h| h.url.starts_with("http") && !h.title.is_empty())
                 .collect()
         })
@@ -250,8 +287,18 @@ pub fn clean_sites(values: &[String]) -> Vec<String> {
         let v = v.trim().to_lowercase();
         let v = v.trim_start_matches("site:");
         let v = v.split("://").last().unwrap_or_default();
-        let host = v.split(['/', '?', '#']).next().unwrap_or_default().trim_start_matches("www.").trim_end_matches('.');
-        if host.contains('.') && host.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-') && !out.iter().any(|h| h == host) {
+        let host = v
+            .split(['/', '?', '#'])
+            .next()
+            .unwrap_or_default()
+            .trim_start_matches("www.")
+            .trim_end_matches('.');
+        if host.contains('.')
+            && host
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
+            && !out.iter().any(|h| h == host)
+        {
             out.push(host.to_string());
         }
     }
@@ -264,19 +311,41 @@ pub fn with_sites(query: &str, sites: &[String]) -> String {
     match sites {
         [] => query.to_string(),
         [one] => format!("{query} site:{one}"),
-        many => format!("{query} ({})", many.iter().map(|s| format!("site:{s}")).collect::<Vec<_>>().join(" OR ")),
+        many => format!(
+            "{query} ({})",
+            many.iter()
+                .map(|s| format!("site:{s}"))
+                .collect::<Vec<_>>()
+                .join(" OR ")
+        ),
     }
 }
 
 /// Whether a URL is on one of the sites (the site itself or a subdomain of it).
 pub fn on_sites(url: &str, sites: &[String]) -> bool {
-    let host = url.split("://").nth(1).unwrap_or(url).split(['/', '?', '#', ':']).next().unwrap_or_default().to_lowercase();
-    sites.is_empty() || sites.iter().any(|s| host == *s || host.ends_with(&format!(".{s}")))
+    let host = url
+        .split("://")
+        .nth(1)
+        .unwrap_or(url)
+        .split(['/', '?', '#', ':'])
+        .next()
+        .unwrap_or_default()
+        .to_lowercase();
+    sites.is_empty()
+        || sites
+            .iter()
+            .any(|s| host == *s || host.ends_with(&format!(".{s}")))
 }
 
 /// Searches only the given sites. Results from other sites are dropped, so an engine that
 /// ignores `site:` gives fewer results, never wrong ones.
-pub async fn search_sites(config_dir: &std::path::Path, query: &str, max: usize, recency: Option<Recency>, sites: &[String]) -> Result<Vec<Hit>, String> {
+pub async fn search_sites(
+    config_dir: &std::path::Path,
+    query: &str,
+    max: usize,
+    recency: Option<Recency>,
+    sites: &[String],
+) -> Result<Vec<Hit>, String> {
     if sites.is_empty() {
         return search_with(config_dir, query, max, recency).await;
     }
@@ -290,12 +359,27 @@ pub async fn search_sites(config_dir: &std::path::Path, query: &str, max: usize,
             }
         }
     } else {
-        search_with(config_dir, &with_sites(query, sites), (max * 2).min(20), recency).await?
+        search_with(
+            config_dir,
+            &with_sites(query, sites),
+            (max * 2).min(20),
+            recency,
+        )
+        .await?
     };
-    Ok(hits.into_iter().filter(|h| on_sites(&h.url, sites)).take(max).collect())
+    Ok(hits
+        .into_iter()
+        .filter(|h| on_sites(&h.url, sites))
+        .take(max)
+        .collect())
 }
 
-pub async fn search_with(config_dir: &std::path::Path, query: &str, max: usize, recency: Option<Recency>) -> Result<Vec<Hit>, String> {
+pub async fn search_with(
+    config_dir: &std::path::Path,
+    query: &str,
+    max: usize,
+    recency: Option<Recency>,
+) -> Result<Vec<Hit>, String> {
     let settings = load_settings(config_dir);
     if settings.engine == "auto" {
         return search(query, max, recency).await;
@@ -304,20 +388,30 @@ pub async fn search_with(config_dir: &std::path::Path, query: &str, max: usize, 
         Ok(hits) if !hits.is_empty() => Ok(dedup(hits, max)),
         Ok(_) => search(query, max, recency).await,
         Err(e) => {
-            log::warn!("{} search failed, using the keyless search: {e}", settings.engine);
+            log::warn!(
+                "{} search failed, using the keyless search: {e}",
+                settings.engine
+            );
             search(query, max, recency).await
         }
     }
 }
 
-async fn engine_search(settings: &SearchSettings, query: &str, max: usize, recency: Option<Recency>) -> Result<Vec<Hit>, String> {
+async fn engine_search(
+    settings: &SearchSettings,
+    query: &str,
+    max: usize,
+    recency: Option<Recency>,
+) -> Result<Vec<Hit>, String> {
     let client = client()?;
     let json = |r: reqwest::Response| async move {
         let status = r.status();
         if !status.is_success() {
             return Err(format!("HTTP {status}"));
         }
-        r.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+        r.json::<serde_json::Value>()
+            .await
+            .map_err(|e| e.to_string())
     };
     match settings.engine.as_str() {
         "searxng" => {
@@ -328,7 +422,12 @@ async fn engine_search(settings: &SearchSettings, query: &str, max: usize, recen
             if let Some(r) = recency {
                 params.push(("time_range", r.word()));
             }
-            let r = client.get(format!("{}/search", settings.base_url)).query(&params).send().await.map_err(|e| e.to_string())?;
+            let r = client
+                .get(format!("{}/search", settings.base_url))
+                .query(&params)
+                .send()
+                .await
+                .map_err(|e| e.to_string())?;
             Ok(parse_searxng(&json(r).await?))
         }
         "brave" => {
@@ -336,7 +435,11 @@ async fn engine_search(settings: &SearchSettings, query: &str, max: usize, recen
             let r = client
                 .get("https://api.search.brave.com/res/v1/web/search")
                 .query(&[("q", query), ("count", &max.min(20).to_string())])
-                .query(&recency.map(|r| vec![("freshness", r.brave())]).unwrap_or_default())
+                .query(
+                    &recency
+                        .map(|r| vec![("freshness", r.brave())])
+                        .unwrap_or_default(),
+                )
                 .header("X-Subscription-Token", key)
                 .header("Accept", "application/json")
                 .send()
@@ -350,7 +453,12 @@ async fn engine_search(settings: &SearchSettings, query: &str, max: usize, recen
 }
 
 /// Tavily, which takes the sites as a list instead of `site:` operators.
-async fn tavily(query: &str, max: usize, recency: Option<Recency>, sites: &[String]) -> Result<Vec<Hit>, String> {
+async fn tavily(
+    query: &str,
+    max: usize,
+    recency: Option<Recency>,
+    sites: &[String],
+) -> Result<Vec<Hit>, String> {
     let key = key().await?.ok_or("no Tavily key")?;
     let mut body = serde_json::json!({ "query": query, "max_results": max.min(20) });
     if let Some(r) = recency {
@@ -359,12 +467,22 @@ async fn tavily(query: &str, max: usize, recency: Option<Recency>, sites: &[Stri
     if !sites.is_empty() {
         body["include_domains"] = sites.into();
     }
-    let r = client()?.post("https://api.tavily.com/search").bearer_auth(key).json(&body).send().await.map_err(|e| e.to_string())?;
+    let r = client()?
+        .post("https://api.tavily.com/search")
+        .bearer_auth(key)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
     let status = r.status();
     if !status.is_success() {
         return Err(format!("HTTP {status}"));
     }
-    Ok(parse_tavily(&r.json::<serde_json::Value>().await.map_err(|e| e.to_string())?))
+    Ok(parse_tavily(
+        &r.json::<serde_json::Value>()
+            .await
+            .map_err(|e| e.to_string())?,
+    ))
 }
 
 /// Up to `max` results for `query`, from the first engine that answers with any.
@@ -375,7 +493,12 @@ pub async fn search(query: &str, max: usize, recency: Option<Recency>) -> Result
     match client
         .get("https://www.bing.com/search")
         .query(&[("q", query), ("setlang", "en"), ("count", "15")])
-        .query(&recency.and_then(Recency::bing).map(|f| vec![("filters", f)]).unwrap_or_default())
+        .query(
+            &recency
+                .and_then(Recency::bing)
+                .map(|f| vec![("filters", f)])
+                .unwrap_or_default(),
+        )
         .send()
         .await
     {
@@ -425,7 +548,8 @@ mod tests {
 
     #[test]
     fn bing_results_are_parsed_and_unwrapped() {
-        let target = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode("https://www.rust-lang.org/");
+        let target =
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode("https://www.rust-lang.org/");
         let html = format!(
             r#"<ol id="b_results">
               <li class="b_algo"><h2><a href="https://www.bing.com/ck/a?!&amp;&amp;p=x&amp;u=a1{target}&amp;ntb=1">Rust <strong>Programming</strong> Language</a></h2>
@@ -445,7 +569,14 @@ mod tests {
     #[test]
     fn api_engines_are_parsed() {
         let searx = serde_json::json!({ "results": [{ "title": "Rig", "url": "https://rig.rs", "content": "Rust LLM library" }, { "title": "", "url": "https://x" }] });
-        assert_eq!(parse_searxng(&searx), vec![Hit { title: "Rig".into(), url: "https://rig.rs".into(), snippet: "Rust LLM library".into() }]);
+        assert_eq!(
+            parse_searxng(&searx),
+            vec![Hit {
+                title: "Rig".into(),
+                url: "https://rig.rs".into(),
+                snippet: "Rust LLM library".into()
+            }]
+        );
         let brave = serde_json::json!({ "web": { "results": [{ "title": "Tauri <strong>2</strong>", "url": "https://tauri.app", "description": "Build <strong>small</strong> apps" }] } });
         assert_eq!(parse_brave(&brave)[0].snippet, "Build small apps");
         assert_eq!(parse_brave(&brave)[0].title, "Tauri 2");
@@ -458,9 +589,20 @@ mod tests {
     fn search_settings_fall_back_to_keyless() {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(load_settings(dir.path()).engine, "auto");
-        save_settings(dir.path(), &SearchSettings { engine: "bogus".into(), base_url: "https://searx.example/ ".into(), has_key: false }).unwrap();
+        save_settings(
+            dir.path(),
+            &SearchSettings {
+                engine: "bogus".into(),
+                base_url: "https://searx.example/ ".into(),
+                has_key: false,
+            },
+        )
+        .unwrap();
         let s = load_settings(dir.path());
-        assert_eq!((s.engine.as_str(), s.base_url.as_str()), ("auto", "https://searx.example"));
+        assert_eq!(
+            (s.engine.as_str(), s.base_url.as_str()),
+            ("auto", "https://searx.example")
+        );
     }
 
     #[test]
@@ -468,15 +610,30 @@ mod tests {
         let html = r#"<div class="result"><a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Frig.rs%2Fdocs&amp;rut=1">Rig docs</a>
             <a class="result__snippet">Build LLM apps in Rust.</a></div>"#;
         let hits = parse_ddg(html);
-        assert_eq!(hits, vec![Hit { title: "Rig docs".into(), url: "https://rig.rs/docs".into(), snippet: "Build LLM apps in Rust.".into() }]);
+        assert_eq!(
+            hits,
+            vec![Hit {
+                title: "Rig docs".into(),
+                url: "https://rig.rs/docs".into(),
+                snippet: "Build LLM apps in Rust.".into()
+            }]
+        );
     }
 
     #[test]
     fn site_filters() {
-        let sites = clean_sites(&["https://www.Docs.rs/rig".into(), "site:github.com".into(), "docs.rs".into(), "not a site".into()]);
+        let sites = clean_sites(&[
+            "https://www.Docs.rs/rig".into(),
+            "site:github.com".into(),
+            "docs.rs".into(),
+            "not a site".into(),
+        ]);
         assert_eq!(sites, ["docs.rs", "github.com"]);
         assert_eq!(with_sites("rig", &sites[..1]), "rig site:docs.rs");
-        assert_eq!(with_sites("rig", &sites), "rig (site:docs.rs OR site:github.com)");
+        assert_eq!(
+            with_sites("rig", &sites),
+            "rig (site:docs.rs OR site:github.com)"
+        );
         assert!(on_sites("https://docs.rs/rig-core", &sites));
         assert!(on_sites("https://gist.github.com/x", &sites));
         assert!(!on_sites("https://notgithub.com/x", &sites));
@@ -487,16 +644,38 @@ mod tests {
     fn recency_maps_to_each_engine() {
         assert_eq!(Recency::parse("Week"), Some(Recency::Week));
         assert_eq!(Recency::parse("any"), None);
-        assert_eq!((Recency::Day.word(), Recency::Day.brave(), Recency::Day.ddg()), ("day", "pd", "d"));
+        assert_eq!(
+            (
+                Recency::Day.word(),
+                Recency::Day.brave(),
+                Recency::Day.ddg()
+            ),
+            ("day", "pd", "d")
+        );
         assert_eq!(Recency::Month.bing(), Some("ex1:\"ez3\""));
         assert_eq!(Recency::Year.bing(), None, "Bing has no past-year filter");
     }
 
     #[test]
     fn duplicates_and_extras_are_dropped() {
-        let hit = |u: &str| Hit { title: "t".into(), url: u.into(), snippet: String::new() };
-        let hits = dedup(vec![hit("https://a/"), hit("https://a"), hit("https://b"), hit("https://c")], 2);
-        assert_eq!(hits.iter().map(|h| h.url.as_str()).collect::<Vec<_>>(), ["https://a/", "https://b"]);
+        let hit = |u: &str| Hit {
+            title: "t".into(),
+            url: u.into(),
+            snippet: String::new(),
+        };
+        let hits = dedup(
+            vec![
+                hit("https://a/"),
+                hit("https://a"),
+                hit("https://b"),
+                hit("https://c"),
+            ],
+            2,
+        );
+        assert_eq!(
+            hits.iter().map(|h| h.url.as_str()).collect::<Vec<_>>(),
+            ["https://a/", "https://b"]
+        );
     }
 }
 
@@ -510,7 +689,12 @@ mod live {
         let hits = super::search(&query, 10, None).await.expect("search");
         assert!(!hits.is_empty());
         for h in &hits {
-            println!("HIT {} | {} | {}", h.title, h.url, h.snippet.chars().take(60).collect::<String>());
+            println!(
+                "HIT {} | {} | {}",
+                h.title,
+                h.url,
+                h.snippet.chars().take(60).collect::<String>()
+            );
         }
     }
 }

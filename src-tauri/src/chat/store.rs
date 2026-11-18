@@ -7,9 +7,7 @@
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
-use rig_core::completion::message::{
-    AssistantContent, Message, ToolResultContent, UserContent,
-};
+use rig_core::completion::message::{AssistantContent, Message, ToolResultContent, UserContent};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -204,9 +202,18 @@ impl ChatParams {
     /// Settings within what providers accept.
     pub fn clamped(self) -> Self {
         Self {
-            temperature: self.temperature.filter(|t| t.is_finite()).map(|t| t.clamp(0.0, 2.0)),
-            max_tokens: self.max_tokens.filter(|&n| n > 0).map(|n| n.clamp(16, 128_000)),
-            top_p: self.top_p.filter(|p| p.is_finite() && *p > 0.0).map(|p| p.min(1.0)),
+            temperature: self
+                .temperature
+                .filter(|t| t.is_finite())
+                .map(|t| t.clamp(0.0, 2.0)),
+            max_tokens: self
+                .max_tokens
+                .filter(|&n| n > 0)
+                .map(|n| n.clamp(16, 128_000)),
+            top_p: self
+                .top_p
+                .filter(|p| p.is_finite() && *p > 0.0)
+                .map(|p| p.min(1.0)),
             instructions: self.instructions.trim().chars().take(8_000).collect(),
         }
     }
@@ -232,7 +239,10 @@ pub fn chat_defaults(config_dir: &Path) -> ChatParams {
 }
 
 pub fn save_chat_defaults(config_dir: &Path, params: ChatParams) -> Result<ChatParams, String> {
-    let params = ChatParams { instructions: String::new(), ..params.clamped() };
+    let params = ChatParams {
+        instructions: String::new(),
+        ..params.clamped()
+    };
     write_json(&defaults_path(config_dir), &params)?;
     Ok(params)
 }
@@ -256,7 +266,9 @@ pub fn save_conversation(config_dir: &Path, conversation: &Conversation) -> Resu
 
 /// Deletes the temporary conversations a previous session left behind.
 pub fn purge_temporary(config_dir: &Path) {
-    let Ok(entries) = std::fs::read_dir(conversations_dir(config_dir)) else { return };
+    let Ok(entries) = std::fs::read_dir(conversations_dir(config_dir)) else {
+        return;
+    };
     for entry in entries.filter_map(Result::ok) {
         if read_json::<Conversation>(&entry.path()).is_some_and(|c| c.temporary) {
             let _ = std::fs::remove_file(entry.path());
@@ -366,10 +378,14 @@ pub fn save_instructions(config_dir: &Path, instructions: &Instructions) -> Resu
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Part {
-    Text { text: String },
+    Text {
+        text: String,
+    },
     /// Something the user should know about the reply, shown inline (Vibe 3.1.0): a backup
     /// model taking over, for example.
-    Notice { text: String },
+    Notice {
+        text: String,
+    },
     Reasoning {
         text: String,
         /// How long the model thought, in milliseconds, when measured.
@@ -377,7 +393,10 @@ pub enum Part {
         ms: Option<u32>,
     },
     #[serde(rename_all = "camelCase")]
-    Image { media_type: String, data: String },
+    Image {
+        media_type: String,
+        data: String,
+    },
     #[serde(rename_all = "camelCase")]
     Tool {
         call_id: String,
@@ -446,7 +465,11 @@ pub struct Versions {
 impl Versions {
     /// Index of the first message the branches replace.
     fn start(&self) -> usize {
-        if self.kind.is_empty() { self.from + 1 } else { self.from }
+        if self.kind.is_empty() {
+            self.from + 1
+        } else {
+            self.from
+        }
     }
 }
 
@@ -466,7 +489,14 @@ pub struct VersionsView {
 pub fn clean_tags(tags: &[String]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for tag in tags {
-        let tag: String = tag.trim().trim_start_matches('#').trim().to_lowercase().chars().take(32).collect();
+        let tag: String = tag
+            .trim()
+            .trim_start_matches('#')
+            .trim()
+            .to_lowercase()
+            .chars()
+            .take(32)
+            .collect();
         if !tag.is_empty() && !out.contains(&tag) {
             out.push(tag);
         }
@@ -491,13 +521,24 @@ pub fn delete_exchange(conversation: &mut Conversation, prompt: usize) -> Result
 /// Rewrites a message in place, without asking for a new reply: the text of a message the user
 /// sent (its images kept), or the final text of an answer (the turn's tool steps kept). The
 /// model reads the rewritten version from then on.
-pub fn rewrite_message(conversation: &mut Conversation, index: usize, text: &str) -> Result<(), String> {
+pub fn rewrite_message(
+    conversation: &mut Conversation,
+    index: usize,
+    text: &str,
+) -> Result<(), String> {
     migrate(conversation);
     if text.trim().is_empty() {
         return Err("The message cannot be empty.".into());
     }
-    if conversation.summary.as_ref().is_some_and(|s| s.upto > index) {
-        return Err("This part of the conversation is summarized for the model and cannot be changed.".into());
+    if conversation
+        .summary
+        .as_ref()
+        .is_some_and(|s| s.upto > index)
+    {
+        return Err(
+            "This part of the conversation is summarized for the model and cannot be changed."
+                .into(),
+        );
     }
     match conversation.messages.get(index) {
         Some(m) if is_prompt(m) => {
@@ -520,7 +561,10 @@ pub fn rewrite_message(conversation: &mut Conversation, index: usize, text: &str
         }
         Some(_) => {
             // An answer: its last message with text, after the prompt that asked for it.
-            let start = conversation.messages[..=index].iter().rposition(is_prompt).map_or(0, |i| i + 1);
+            let start = conversation.messages[..=index]
+                .iter()
+                .rposition(is_prompt)
+                .map_or(0, |i| i + 1);
             let at = (start..=index)
                 .rev()
                 .find(|i| matches!(&conversation.messages[*i], Message::Assistant(a) if a.content.iter().any(|c| matches!(c, AssistantContent::Text(t) if !t.text.trim().is_empty()))))
@@ -552,13 +596,44 @@ pub fn rewrite_message(conversation: &mut Conversation, index: usize, text: &str
 pub fn set_bookmark(conversation: &mut Conversation, index: usize, on: bool) -> Result<(), String> {
     conversation.bookmarks.retain(|(i, _)| *i != index);
     if on {
-        let turn = turns(conversation).into_iter().find(|t| t.index == index).ok_or("That message no longer exists.")?;
-        let text: String = turn.parts.iter().filter_map(|p| if let Part::Text { text } = p { Some(text.as_str()) } else { None }).collect::<Vec<_>>().join(" ");
+        let turn = turns(conversation)
+            .into_iter()
+            .find(|t| t.index == index)
+            .ok_or("That message no longer exists.")?;
+        let text: String = turn
+            .parts
+            .iter()
+            .filter_map(|p| {
+                if let Part::Text { text } = p {
+                    Some(text.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
         // Attached files and Markdown marks are noise in a list.
         let text = text.split("<attachment").next().unwrap_or_default();
-        let flat: String = text.chars().filter(|c| !matches!(c, '*' | '#' | '`' | '>' | '_')).collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ");
-        let snippet = if flat.chars().count() > 140 { format!("{}…", flat.chars().take(140).collect::<String>()) } else { flat };
-        conversation.bookmarks.push((index, if snippet.is_empty() { format!("{} message", turn.role) } else { snippet }));
+        let flat: String = text
+            .chars()
+            .filter(|c| !matches!(c, '*' | '#' | '`' | '>' | '_'))
+            .collect::<String>()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        let snippet = if flat.chars().count() > 140 {
+            format!("{}…", flat.chars().take(140).collect::<String>())
+        } else {
+            flat
+        };
+        conversation.bookmarks.push((
+            index,
+            if snippet.is_empty() {
+                format!("{} message", turn.role)
+            } else {
+                snippet
+            },
+        ));
         conversation.bookmarks.sort_by_key(|(i, _)| *i);
     }
     Ok(())
@@ -567,7 +642,11 @@ pub fn set_bookmark(conversation: &mut Conversation, index: usize, on: bool) -> 
 /// Keeps a branch of the conversation: the messages up to and including the turn ending at `upto`
 /// (all when `None`), optionally without attached files and images. Notes keyed to dropped
 /// messages go with them; other versions past the cut are not carried over.
-pub fn branch_copy(conversation: &mut Conversation, upto: Option<usize>, without_files: bool) -> Result<(), String> {
+pub fn branch_copy(
+    conversation: &mut Conversation,
+    upto: Option<usize>,
+    without_files: bool,
+) -> Result<(), String> {
     migrate(conversation);
     if let Some(upto) = upto {
         if upto >= conversation.messages.len() {
@@ -635,8 +714,16 @@ fn exchange_range(conversation: &Conversation, index: usize) -> Option<std::ops:
     if index >= conversation.messages.len() {
         return None;
     }
-    let start = conversation.messages[..=index].iter().rposition(is_prompt).unwrap_or(0);
-    let end = conversation.messages.iter().skip(start + 1).position(is_prompt).map_or(conversation.messages.len(), |p| start + 1 + p);
+    let start = conversation.messages[..=index]
+        .iter()
+        .rposition(is_prompt)
+        .unwrap_or(0);
+    let end = conversation
+        .messages
+        .iter()
+        .skip(start + 1)
+        .position(is_prompt)
+        .map_or(conversation.messages.len(), |p| start + 1 + p);
     Some(start..end)
 }
 
@@ -653,9 +740,15 @@ fn shift_branch(point: &mut Versions, by: usize) {
 /// ratings, bookmarks and branch points after them move back; branch points inside them, and
 /// the other versions they hold, go. Exchanges already summarized for the model stay.
 /// Returns how many exchanges went.
-pub fn delete_exchanges(conversation: &mut Conversation, indices: &[usize]) -> Result<usize, String> {
+pub fn delete_exchanges(
+    conversation: &mut Conversation,
+    indices: &[usize],
+) -> Result<usize, String> {
     migrate(conversation);
-    let mut ranges: Vec<std::ops::Range<usize>> = indices.iter().filter_map(|&i| exchange_range(conversation, i)).collect();
+    let mut ranges: Vec<std::ops::Range<usize>> = indices
+        .iter()
+        .filter_map(|&i| exchange_range(conversation, i))
+        .collect();
     if ranges.is_empty() {
         return Err("Those messages no longer exist.".into());
     }
@@ -663,8 +756,15 @@ pub fn delete_exchanges(conversation: &mut Conversation, indices: &[usize]) -> R
     ranges.dedup();
     let count = ranges.len();
     let first = ranges[0].start;
-    if conversation.summary.as_ref().is_some_and(|s| s.upto > first) {
-        return Err("This part of the conversation is summarized for the model and cannot be removed.".into());
+    if conversation
+        .summary
+        .as_ref()
+        .is_some_and(|s| s.upto > first)
+    {
+        return Err(
+            "This part of the conversation is summarized for the model and cannot be removed."
+                .into(),
+        );
     }
     for range in ranges.into_iter().rev() {
         let (start, end) = (range.start, range.end);
@@ -675,8 +775,14 @@ pub fn delete_exchanges(conversation: &mut Conversation, indices: &[usize]) -> R
         shift_all(&mut conversation.bookmarks, start, end);
         shift_all(&mut conversation.thought, start, end);
         shift_all(&mut conversation.notices, start, end);
-        conversation.branches.retain(|v| !(start..end).contains(&v.start()));
-        for point in conversation.branches.iter_mut().filter(|v| v.start() >= end) {
+        conversation
+            .branches
+            .retain(|v| !(start..end).contains(&v.start()));
+        for point in conversation
+            .branches
+            .iter_mut()
+            .filter(|v| v.start() >= end)
+        {
             shift_branch(point, end - start);
         }
     }
@@ -715,7 +821,9 @@ fn migrate(conversation: &mut Conversation) {
 
 /// Takes the branch points that sit inside the messages from `start` on.
 fn take_inner(conversation: &mut Conversation, start: usize) -> Vec<Versions> {
-    let (inner, outer): (Vec<_>, Vec<_>) = std::mem::take(&mut conversation.branches).into_iter().partition(|v| v.start() > start);
+    let (inner, outer): (Vec<_>, Vec<_>) = std::mem::take(&mut conversation.branches)
+        .into_iter()
+        .partition(|v| v.start() > start);
     conversation.branches = outer;
     inner
 }
@@ -724,14 +832,22 @@ fn take_inner(conversation: &mut Conversation, start: usize) -> Vec<Versions> {
 /// continuation shows last. Branch points further along go with the stored branch.
 pub fn keep_branch(conversation: &mut Conversation, from: usize, kind: &str) {
     migrate(conversation);
-    let tail: Vec<Message> = conversation.messages.get(from..).map(<[Message]>::to_vec).unwrap_or_default();
+    let tail: Vec<Message> = conversation
+        .messages
+        .get(from..)
+        .map(<[Message]>::to_vec)
+        .unwrap_or_default();
     if tail.is_empty() {
         return;
     }
     let inner = take_inner(conversation, from);
     let mut point = match conversation.branches.iter().position(|v| v.start() == from) {
         Some(i) => conversation.branches.remove(i),
-        None => Versions { from, kind: kind.to_string(), ..Default::default() },
+        None => Versions {
+            from,
+            kind: kind.to_string(),
+            ..Default::default()
+        },
     };
     point.nested.resize(point.others.len(), Vec::new());
     let at = point.current.min(point.others.len());
@@ -753,9 +869,17 @@ pub fn keep_branch(conversation: &mut Conversation, from: usize, kind: &str) {
 pub fn version_texts(conversation: &Conversation, from: usize) -> Result<Vec<String>, String> {
     let mut conversation = conversation.clone();
     migrate(&mut conversation);
-    let point = conversation.branches.iter().find(|v| v.start() == from).ok_or("There are no other versions here.")?;
+    let point = conversation
+        .branches
+        .iter()
+        .find(|v| v.start() == from)
+        .ok_or("There are no other versions here.")?;
     let start = point.start();
-    let live: Vec<Message> = conversation.messages.get(start..).map(<[Message]>::to_vec).unwrap_or_default();
+    let live: Vec<Message> = conversation
+        .messages
+        .get(start..)
+        .map(<[Message]>::to_vec)
+        .unwrap_or_default();
     let mut all: Vec<Vec<Message>> = point.others.clone();
     all.insert(point.current.min(all.len()), live);
     Ok(all
@@ -768,7 +892,19 @@ pub fn version_texts(conversation: &Conversation, from: usize) -> Result<Vec<Str
                 .skip(skip)
                 .take_while(|m| !is_prompt(m))
                 .filter_map(|m| match m {
-                    Message::Assistant(a) => Some(a.content.iter().filter_map(|c| if let AssistantContent::Text(t) = c { Some(t.text.as_str()) } else { None }).collect::<Vec<_>>().join("\n")),
+                    Message::Assistant(a) => Some(
+                        a.content
+                            .iter()
+                            .filter_map(|c| {
+                                if let AssistantContent::Text(t) = c {
+                                    Some(t.text.as_str())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n"),
+                    ),
                     _ => None,
                 })
                 .filter(|t| !t.trim().is_empty())
@@ -778,7 +914,11 @@ pub fn version_texts(conversation: &Conversation, from: usize) -> Result<Vec<Str
         .collect())
 }
 
-pub fn select_version(conversation: &mut Conversation, from: usize, target: usize) -> Result<(), String> {
+pub fn select_version(
+    conversation: &mut Conversation,
+    from: usize,
+    target: usize,
+) -> Result<(), String> {
     migrate(conversation);
     let index = conversation
         .branches
@@ -804,7 +944,11 @@ pub fn select_version(conversation: &mut Conversation, from: usize, target: usiz
     conversation.thought.retain(|(i, _)| *i < start);
     conversation.notices.retain(|(i, _)| *i < start);
     conversation.ratings.retain(|(i, _)| *i < start);
-    if conversation.summary.as_ref().is_some_and(|s| s.upto > start) {
+    if conversation
+        .summary
+        .as_ref()
+        .is_some_and(|s| s.upto > start)
+    {
         conversation.summary = None;
     }
     point.current = target;
@@ -829,7 +973,13 @@ fn result_text(content: &[ToolResultContent]) -> String {
 /// the assistant turn that made the call, so a turn reads: thought, tool, tool, answer.
 pub fn turns(conversation: &Conversation) -> Vec<Turn> {
     let mut out: Vec<Turn> = Vec::new();
-    let time_of = |i: usize| conversation.times.iter().find(|(k, _)| *k == i).map(|(_, t)| *t);
+    let time_of = |i: usize| {
+        conversation
+            .times
+            .iter()
+            .find(|(k, _)| *k == i)
+            .map(|(_, t)| *t)
+    };
     let rating_of = |i: usize| {
         conversation
             .ratings
@@ -844,24 +994,38 @@ pub fn turns(conversation: &Conversation) -> Vec<Turn> {
                 let mut texts = Vec::new();
                 for item in content {
                     match item {
-                        UserContent::Text(t) => texts.push(Part::Text { text: t.text.clone() }),
+                        UserContent::Text(t) => texts.push(Part::Text {
+                            text: t.text.clone(),
+                        }),
                         UserContent::Image(image) => {
-                            if let rig_core::completion::message::DocumentSourceKind::Base64(data) = &image.data {
+                            if let rig_core::completion::message::DocumentSourceKind::Base64(data) =
+                                &image.data
+                            {
                                 use rig_core::completion::message::MimeType;
                                 texts.push(Part::Image {
-                                    media_type: image.media_type.as_ref().map_or("image/png", |m| m.to_mime_type()).to_string(),
+                                    media_type: image
+                                        .media_type
+                                        .as_ref()
+                                        .map_or("image/png", |m| m.to_mime_type())
+                                        .to_string(),
                                     data: data.clone(),
                                 });
                             }
                         }
                         UserContent::ToolResult(result) => {
                             let call = result.call.to_string();
-                            let tool = out.last_mut().filter(|t| t.role == "assistant").and_then(|turn| {
-                                turn.parts.iter_mut().find(|p| {
+                            let tool =
+                                out.last_mut()
+                                    .filter(|t| t.role == "assistant")
+                                    .and_then(|turn| {
+                                        turn.parts.iter_mut().find(|p| {
                                     matches!(p, Part::Tool { call_id, .. } if *call_id == call)
                                 })
-                            });
-                            if let Some(Part::Tool { output, is_error, .. }) = tool {
+                                    });
+                            if let Some(Part::Tool {
+                                output, is_error, ..
+                            }) = tool
+                            {
                                 *output = Some(result_text(&result.content));
                                 *is_error = result.is_error;
                             }
@@ -884,12 +1048,17 @@ pub fn turns(conversation: &Conversation) -> Vec<Turn> {
             }
             Message::Assistant(assistant) => {
                 let parts = assistant.content.iter().filter_map(|c| match c {
-                    AssistantContent::Text(t) if !t.text.is_empty() => {
-                        Some(Part::Text { text: t.text.clone() })
-                    }
-                    AssistantContent::Reasoning(r) if !r.text.is_empty() => {
-                        Some(Part::Reasoning { text: r.text.clone(), ms: conversation.thought.iter().find(|(k, _)| *k == index).map(|(_, ms)| *ms) })
-                    }
+                    AssistantContent::Text(t) if !t.text.is_empty() => Some(Part::Text {
+                        text: t.text.clone(),
+                    }),
+                    AssistantContent::Reasoning(r) if !r.text.is_empty() => Some(Part::Reasoning {
+                        text: r.text.clone(),
+                        ms: conversation
+                            .thought
+                            .iter()
+                            .find(|(k, _)| *k == index)
+                            .map(|(_, ms)| *ms),
+                    }),
                     AssistantContent::ToolCall(call) => Some(Part::Tool {
                         call_id: call.id.to_string(),
                         name: call.function.name.to_string(),
@@ -899,7 +1068,11 @@ pub fn turns(conversation: &Conversation) -> Vec<Turn> {
                     }),
                     _ => None,
                 });
-                let notices = conversation.notices.iter().filter(|(k, _)| *k == index).map(|(_, text)| Part::Notice { text: text.clone() });
+                let notices = conversation
+                    .notices
+                    .iter()
+                    .filter(|(k, _)| *k == index)
+                    .map(|(_, text)| Part::Notice { text: text.clone() });
                 let parts: Vec<Part> = notices.chain(parts).collect();
                 match out.last_mut() {
                     Some(turn) if turn.role == "assistant" => {
@@ -928,8 +1101,14 @@ pub fn turns(conversation: &Conversation) -> Vec<Turn> {
 /// conversation that may build on them.
 pub fn project_digest(config_dir: &Path, project_id: &str, except: &str) -> Option<String> {
     let mut lines = Vec::new();
-    for summary in list_conversations(config_dir).into_iter().filter(|c| c.project_id.as_deref() == Some(project_id) && c.id != except).take(8) {
-        let Ok(c) = load_conversation(config_dir, &summary.id) else { continue };
+    for summary in list_conversations(config_dir)
+        .into_iter()
+        .filter(|c| c.project_id.as_deref() == Some(project_id) && c.id != except)
+        .take(8)
+    {
+        let Ok(c) = load_conversation(config_dir, &summary.id) else {
+            continue;
+        };
         let last = c.messages.iter().rev().find_map(|m| match m {
             Message::Assistant(a) => a.content.iter().find_map(|x| match x {
                 AssistantContent::Text(t) if !t.text.trim().is_empty() => Some(t.text.clone()),
@@ -937,8 +1116,20 @@ pub fn project_digest(config_dir: &Path, project_id: &str, except: &str) -> Opti
             }),
             _ => None,
         });
-        let excerpt: String = last.unwrap_or_default().split_whitespace().collect::<Vec<_>>().join(" ").chars().take(400).collect();
-        lines.push(format!("- \"{}\" ({}): {}", summary.title, summary.updated_at.format("%Y-%m-%d"), excerpt));
+        let excerpt: String = last
+            .unwrap_or_default()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .chars()
+            .take(400)
+            .collect();
+        lines.push(format!(
+            "- \"{}\" ({}): {}",
+            summary.title,
+            summary.updated_at.format("%Y-%m-%d"),
+            excerpt
+        ));
     }
     (!lines.is_empty()).then(|| lines.join("\n"))
 }
@@ -971,7 +1162,12 @@ pub fn view(conversation: &Conversation) -> ConversationView {
             })
             .chain(conversation.branches.iter().cloned())
             .filter(|v| v.start() <= conversation.messages.len() && !v.others.is_empty())
-            .map(|v| VersionsView { from: v.start(), kind: v.kind.clone(), current: v.current, total: v.others.len() + 1 })
+            .map(|v| VersionsView {
+                from: v.start(),
+                kind: v.kind.clone(),
+                current: v.current,
+                total: v.others.len() + 1,
+            })
             .collect(),
     }
 }
@@ -981,16 +1177,33 @@ mod tests {
     #[test]
     fn an_exchange_is_deleted_with_its_reply() {
         let mut c = Conversation::new("c".into(), None, None);
-        c.messages = vec![Message::user("one"), Message::assistant("1"), Message::user("two"), Message::assistant("2"), Message::user("three"), Message::assistant("3")];
+        c.messages = vec![
+            Message::user("one"),
+            Message::assistant("1"),
+            Message::user("two"),
+            Message::assistant("2"),
+            Message::user("three"),
+            Message::assistant("3"),
+        ];
         let now = Utc::now();
         c.times = vec![(0, now), (1, now), (2, now), (3, now), (4, now), (5, now)];
         c.ratings = vec![(3, 1), (5, -1)];
         delete_exchange(&mut c, 2).unwrap();
         assert_eq!(c.messages.len(), 4);
         assert_eq!(super::super::context::message_text(&c.messages[2]), "three");
-        assert_eq!(c.ratings, vec![(3, -1)], "the deleted reply's rating goes, later ones move back");
-        assert_eq!(c.times.iter().map(|(i, _)| *i).collect::<Vec<_>>(), vec![0, 1, 2, 3]);
-        assert!(delete_exchange(&mut c, 1).is_err(), "only typed messages start an exchange");
+        assert_eq!(
+            c.ratings,
+            vec![(3, -1)],
+            "the deleted reply's rating goes, later ones move back"
+        );
+        assert_eq!(
+            c.times.iter().map(|(i, _)| *i).collect::<Vec<_>>(),
+            vec![0, 1, 2, 3]
+        );
+        assert!(
+            delete_exchange(&mut c, 1).is_err(),
+            "only typed messages start an exchange"
+        );
         // The last exchange can go too.
         delete_exchange(&mut c, 2).unwrap();
         assert_eq!(c.messages.len(), 2);
@@ -1000,14 +1213,31 @@ mod tests {
     fn messages_are_rewritten_without_a_new_reply() {
         use rig_core::completion::message::AssistantContent;
         let mut c = Conversation::new("c".into(), None, None);
-        let tool_turn = Message::Assistant(rig_core::completion::message::AssistantMessage::new(vec![AssistantContent::tool_call("t1", rig_core::completion::message::ToolName::new("web_search").unwrap(), serde_json::json!({ "query": "x" }))]));
-        c.messages = vec![Message::user("what is 2+2?"), tool_turn, Message::assistant("five"), Message::user("thanks")];
+        let tool_turn =
+            Message::Assistant(rig_core::completion::message::AssistantMessage::new(vec![
+                AssistantContent::tool_call(
+                    "t1",
+                    rig_core::completion::message::ToolName::new("web_search").unwrap(),
+                    serde_json::json!({ "query": "x" }),
+                ),
+            ]));
+        c.messages = vec![
+            Message::user("what is 2+2?"),
+            tool_turn,
+            Message::assistant("five"),
+            Message::user("thanks"),
+        ];
         rewrite_message(&mut c, 0, "what is 2+3?").unwrap();
-        assert_eq!(super::super::context::message_text(&c.messages[0]), "what is 2+3?");
+        assert_eq!(
+            super::super::context::message_text(&c.messages[0]),
+            "what is 2+3?"
+        );
         // Editing an answer changes its final text and keeps the tool step before it.
         rewrite_message(&mut c, 2, "Four.").unwrap();
         assert_eq!(super::super::context::message_text(&c.messages[2]), "Four.");
-        assert!(matches!(&c.messages[1], Message::Assistant(a) if matches!(a.content[0], AssistantContent::ToolCall(_))));
+        assert!(
+            matches!(&c.messages[1], Message::Assistant(a) if matches!(a.content[0], AssistantContent::ToolCall(_)))
+        );
         assert_eq!(c.messages.len(), 4);
         assert!(rewrite_message(&mut c, 3, "  ").is_err());
         assert!(rewrite_message(&mut c, 9, "x").is_err());
@@ -1016,13 +1246,28 @@ mod tests {
     #[test]
     fn bookmarks_keep_a_snippet_and_follow_deletions() {
         let mut c = Conversation::new("c".into(), None, None);
-        c.messages = vec![Message::user("one"), Message::assistant("**First** answer"), Message::user("two"), Message::assistant("Second answer")];
+        c.messages = vec![
+            Message::user("one"),
+            Message::assistant("**First** answer"),
+            Message::user("two"),
+            Message::assistant("Second answer"),
+        ];
         set_bookmark(&mut c, 3, true).unwrap();
         set_bookmark(&mut c, 1, true).unwrap();
-        assert_eq!(c.bookmarks, vec![(1, "First answer".to_string()), (3, "Second answer".to_string())]);
+        assert_eq!(
+            c.bookmarks,
+            vec![
+                (1, "First answer".to_string()),
+                (3, "Second answer".to_string())
+            ]
+        );
         assert!(set_bookmark(&mut c, 7, true).is_err());
         delete_exchange(&mut c, 0).unwrap();
-        assert_eq!(c.bookmarks, vec![(1, "Second answer".to_string())], "the deleted answer's bookmark goes, the later one moves back");
+        assert_eq!(
+            c.bookmarks,
+            vec![(1, "Second answer".to_string())],
+            "the deleted answer's bookmark goes, the later one moves back"
+        );
         set_bookmark(&mut c, 1, false).unwrap();
         assert!(c.bookmarks.is_empty());
     }
@@ -1031,7 +1276,9 @@ mod tests {
     fn branches_keep_what_was_asked_for() {
         let mut c = Conversation::new("c".into(), None, None);
         c.messages = vec![
-            Message::user("Summarise this\n\n<attachment name=\"notes.txt\">\nsecret plans\n</attachment>"),
+            Message::user(
+                "Summarise this\n\n<attachment name=\"notes.txt\">\nsecret plans\n</attachment>",
+            ),
             Message::assistant("A summary."),
             Message::user("two"),
             Message::assistant("2"),
@@ -1041,12 +1288,19 @@ mod tests {
         let mut upto = c.clone();
         branch_copy(&mut upto, Some(1), false).unwrap();
         assert_eq!(upto.messages.len(), 2);
-        assert_eq!((upto.ratings.clone(), upto.bookmarks.len()), (vec![(1, 1)], 0), "notes on later messages go with them");
+        assert_eq!(
+            (upto.ratings.clone(), upto.bookmarks.len()),
+            (vec![(1, 1)], 0),
+            "notes on later messages go with them"
+        );
         assert!(super::super::context::message_text(&upto.messages[0]).contains("secret plans"));
         let mut bare = c.clone();
         branch_copy(&mut bare, None, true).unwrap();
         assert_eq!(bare.messages.len(), 4);
-        assert_eq!(super::super::context::message_text(&bare.messages[0]), "Summarise this");
+        assert_eq!(
+            super::super::context::message_text(&bare.messages[0]),
+            "Summarise this"
+        );
         assert!(branch_copy(&mut c.clone(), Some(9), false).is_err());
     }
 
@@ -1054,11 +1308,31 @@ mod tests {
     fn chat_settings_fall_back_to_the_defaults() {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(chat_defaults(dir.path()), ChatParams::default());
-        let saved = save_chat_defaults(dir.path(), ChatParams { temperature: Some(5.0), top_p: Some(0.9), instructions: "x".into(), ..Default::default() }).unwrap();
-        assert_eq!((saved.temperature, saved.top_p, saved.instructions.as_str()), (Some(2.0), Some(0.9), ""), "clamped, and no instructions in defaults");
-        let own = ChatParams { temperature: Some(0.2), ..Default::default() };
+        let saved = save_chat_defaults(
+            dir.path(),
+            ChatParams {
+                temperature: Some(5.0),
+                top_p: Some(0.9),
+                instructions: "x".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            (saved.temperature, saved.top_p, saved.instructions.as_str()),
+            (Some(2.0), Some(0.9), ""),
+            "clamped, and no instructions in defaults"
+        );
+        let own = ChatParams {
+            temperature: Some(0.2),
+            ..Default::default()
+        };
         let effective = own.or_defaults(&chat_defaults(dir.path()));
-        assert_eq!((effective.temperature, effective.top_p), (Some(0.2), Some(0.9)), "a chat's own value wins; unset ones come from the defaults");
+        assert_eq!(
+            (effective.temperature, effective.top_p),
+            (Some(0.2), Some(0.9)),
+            "a chat's own value wins; unset ones come from the defaults"
+        );
     }
 
     #[test]
@@ -1101,7 +1375,12 @@ mod tests {
         let mut old = c.clone();
         old.branches.clear();
         old.messages = vec![Message::user("Q"), Message::assistant("B2")];
-        old.versions = Some(Versions { from: 0, others: vec![vec![Message::assistant("B1")]], current: 1, ..Default::default() });
+        old.versions = Some(Versions {
+            from: 0,
+            others: vec![vec![Message::assistant("B1")]],
+            current: 1,
+            ..Default::default()
+        });
         let from = view(&old).versions[0].from;
         assert_eq!(version_texts(&old, from).unwrap(), ["B1", "B2"]);
         select_version(&mut c, 0, 2).unwrap();
@@ -1123,7 +1402,10 @@ mod tests {
         let views = view(&c).versions;
         assert_eq!(views.len(), 2);
         let v = &views[1];
-        assert_eq!((v.from, v.kind.as_str(), v.current, v.total), (2, "prompt", 1, 2));
+        assert_eq!(
+            (v.from, v.kind.as_str(), v.current, v.total),
+            (2, "prompt", 1, 2)
+        );
         select_version(&mut c, 2, 0).unwrap();
         assert_eq!(text(&c), "N1");
         select_version(&mut c, 2, 1).unwrap();
@@ -1133,7 +1415,11 @@ mod tests {
         // switching back brings both the follow-up and its own branch point back.
         select_version(&mut c, 0, 0).unwrap();
         assert_eq!(c.messages.len(), 2);
-        assert_eq!(view(&c).versions.len(), 1, "the inner branch point left with its branch");
+        assert_eq!(
+            view(&c).versions.len(),
+            1,
+            "the inner branch point left with its branch"
+        );
         select_version(&mut c, 0, 2).unwrap();
         assert_eq!(text(&c), "E1");
         let views = view(&c).versions;
@@ -1148,7 +1434,13 @@ mod tests {
         c.messages.push(Message::user("Q"));
         c.messages.push(Message::assistant("A2"));
         // Saved before branching: the branch held answers after prompt 0.
-        c.versions = Some(Versions { from: 0, kind: String::new(), others: vec![vec![Message::assistant("A1")]], nested: vec![], current: 1 });
+        c.versions = Some(Versions {
+            from: 0,
+            kind: String::new(),
+            others: vec![vec![Message::assistant("A1")]],
+            nested: vec![],
+            current: 1,
+        });
         let v = view(&c).versions;
         assert_eq!((v[0].from, v[0].total), (1, 2));
         select_version(&mut c, 1, 0).unwrap();
@@ -1187,7 +1479,10 @@ mod tests {
         save_conversation(dir.path(), &newer).unwrap();
 
         let list = list_conversations(dir.path());
-        assert_eq!(list.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["b", "a"]);
+        assert_eq!(
+            list.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(),
+            ["b", "a"]
+        );
         assert_eq!(list[1].title, "New chat");
         let loaded = load_conversation(dir.path(), "a").unwrap();
         assert_eq!(loaded.messages, older.messages);
@@ -1200,7 +1495,8 @@ mod tests {
     fn tool_results_fold_into_the_assistant_turn() {
         let mut c = Conversation::new("c".into(), None, None);
         c.messages.push(Message::user("list files"));
-        c.messages.push(tool_call_message("call_1", "filesystem__list"));
+        c.messages
+            .push(tool_call_message("call_1", "filesystem__list"));
         c.messages.push(Message::tool_result(
             CallId::from_wire("call_1"),
             ToolName::new("filesystem__list").unwrap(),
@@ -1220,7 +1516,12 @@ mod tests {
             }
             other => panic!("expected a tool part, got {other:?}"),
         }
-        assert_eq!(turns[1].parts[1], Part::Text { text: "There is one file.".into() });
+        assert_eq!(
+            turns[1].parts[1],
+            Part::Text {
+                text: "There is one file.".into()
+            }
+        );
     }
 
     #[test]
@@ -1240,7 +1541,13 @@ mod tests {
         c.messages.push(Message::assistant("A3b"));
         // Deleting the first exchange by its answer's index, and asking twice for it, deletes it once.
         assert_eq!(delete_exchanges(&mut c, &[1, 0]).unwrap(), 1);
-        let texts: Vec<String> = turns(&c).iter().map(|t| match &t.parts[0] { Part::Text { text } => text.clone(), _ => String::new() }).collect();
+        let texts: Vec<String> = turns(&c)
+            .iter()
+            .map(|t| match &t.parts[0] {
+                Part::Text { text } => text.clone(),
+                _ => String::new(),
+            })
+            .collect();
         assert_eq!(texts, ["Q2", "A2", "Q3", "A3b"]);
         assert_eq!(c.ratings, vec![(3, -1)]);
         assert_eq!(c.bookmarks[0].0, 3);
@@ -1249,12 +1556,13 @@ mod tests {
         let v = view(&c).versions[0].clone();
         assert_eq!(v.from, 2);
         select_version(&mut c, v.from, 0).unwrap();
-        assert!(matches!(&c.messages[3], Message::Assistant(a) if matches!(a.content.first(), Some(AssistantContent::Text(t)) if t.text == "A3")));
+        assert!(
+            matches!(&c.messages[3], Message::Assistant(a) if matches!(a.content.first(), Some(AssistantContent::Text(t)) if t.text == "A3"))
+        );
         // Deleting the exchange the branch point is in drops it.
         assert_eq!(delete_exchanges(&mut c, &[3]).unwrap(), 1);
         assert!(c.branches.is_empty());
         assert_eq!(c.messages.len(), 2);
         assert!(delete_exchanges(&mut c, &[9]).is_err());
     }
-
 }

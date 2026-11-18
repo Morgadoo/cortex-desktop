@@ -85,7 +85,12 @@ fn is_prompt(message: &Message) -> bool {
 /// Where a compaction would cut: the start of the `KEEP_RECENT_TURNS`-th last prompt, if that is
 /// past what the current summary covers. Cutting at a prompt keeps every tool call with its result.
 pub fn compaction_point(messages: &[Message], covered: usize) -> Option<usize> {
-    let prompts: Vec<usize> = messages.iter().enumerate().filter(|(_, m)| is_prompt(m)).map(|(i, _)| i).collect();
+    let prompts: Vec<usize> = messages
+        .iter()
+        .enumerate()
+        .filter(|(_, m)| is_prompt(m))
+        .map(|(i, _)| i)
+        .collect();
     let point = *prompts.iter().rev().nth(KEEP_RECENT_TURNS - 1)?;
     (point > covered).then_some(point)
 }
@@ -129,9 +134,13 @@ pub fn request_messages(messages: &[Message], summary: Option<&Summary>) -> Vec<
     let mut out: Vec<Message> = messages[start..].to_vec();
     let mut seen = 0usize;
     for message in out.iter_mut().rev() {
-        let Message::User { content } = message else { continue };
+        let Message::User { content } = message else {
+            continue;
+        };
         for item in content.iter_mut().rev() {
-            let UserContent::ToolResult(result) = item else { continue };
+            let UserContent::ToolResult(result) = item else {
+                continue;
+            };
             seen += 1;
             let old = seen > KEEP_FULL_RESULTS;
             for part in result.content.iter_mut() {
@@ -161,28 +170,57 @@ pub fn brief_error(text: &str) -> String {
 
 pub fn short_error(text: &str) -> String {
     let text = text.replace("\\\"", "\"");
-    let status: u16 = regex::Regex::new(r"status (\d{3})").ok().and_then(|re| re.captures(&text)).and_then(|c| c[1].parse().ok()).unwrap_or(0);
+    let status: u16 = regex::Regex::new(r"status (\d{3})")
+        .ok()
+        .and_then(|re| re.captures(&text))
+        .and_then(|c| c[1].parse().ok())
+        .unwrap_or(0);
     // A provider's JSON error reads better as just its message.
-    let message = regex::Regex::new(r#""(?:message|error)"\s*:\s*"([^"]{1,200})""#).ok().and_then(|re| re.captures(&text)).map(|m| m[1].to_string());
+    let message = regex::Regex::new(r#""(?:message|error)"\s*:\s*"([^"]{1,200})""#)
+        .ok()
+        .and_then(|re| re.captures(&text))
+        .map(|m| m[1].to_string());
     let lower = text.to_lowercase();
     // What it means, for the errors people meet most.
-    let reason = if status == 401 || status == 403 || lower.contains("invalid api key") || lower.contains("incorrect api key") {
+    let reason = if status == 401
+        || status == 403
+        || lower.contains("invalid api key")
+        || lower.contains("incorrect api key")
+    {
         Some("The provider refused the API key; check it in Settings → Providers.")
-    } else if status == 402 || ["credit", "balance", "quota", "payment required", "billing"].iter().any(|w| lower.contains(w)) {
+    } else if status == 402
+        || ["credit", "balance", "quota", "payment required", "billing"]
+            .iter()
+            .any(|w| lower.contains(w))
+    {
         Some("The provider account is out of credit.")
     } else if status == 429 || lower.contains("rate limit") {
         Some("The provider is limiting requests; wait a moment and continue.")
     } else if lower.contains("auth_unavailable") || lower.contains("no auth available") {
         Some("The provider has no access to this model right now.")
-    } else if lower.contains("context length") || lower.contains("maximum context") || lower.contains("too many tokens") {
+    } else if lower.contains("context length")
+        || lower.contains("maximum context")
+        || lower.contains("too many tokens")
+    {
         Some("The conversation is too long for this model; start a new chat or pick a model with a larger window.")
     } else {
         None
     };
     let detail = message.unwrap_or_else(|| text.lines().next().unwrap_or_default().to_string());
-    let detail = if detail.chars().count() > 120 { format!("{}…", detail.chars().take(120).collect::<String>()) } else { detail };
+    let detail = if detail.chars().count() > 120 {
+        format!("{}…", detail.chars().take(120).collect::<String>())
+    } else {
+        detail
+    };
     match reason {
-        Some(reason) => format!("{reason} ({}{detail})", if status > 0 { format!("HTTP {status}: ") } else { String::new() }),
+        Some(reason) => format!(
+            "{reason} ({}{detail})",
+            if status > 0 {
+                format!("HTTP {status}: ")
+            } else {
+                String::new()
+            }
+        ),
         None => detail,
     }
 }
@@ -210,10 +248,16 @@ pub struct Breakdown {
 }
 
 /// Splits what the next request carries into what it is made of.
-pub fn breakdown(messages: &[Message], summary: Option<&Summary>, measured: u64, window: u64) -> Breakdown {
+pub fn breakdown(
+    messages: &[Message],
+    summary: Option<&Summary>,
+    measured: u64,
+    window: u64,
+) -> Breakdown {
     use rig_core::completion::message::AssistantContent;
     let size = |text: &str| text.len() as u64 / 4;
-    let (mut you, mut files, mut answers, mut thinking, mut calls, mut results) = (0u64, 0u64, 0u64, 0u64, 0u64, 0u64);
+    let (mut you, mut files, mut answers, mut thinking, mut calls, mut results) =
+        (0u64, 0u64, 0u64, 0u64, 0u64, 0u64);
     let request = request_messages(messages, summary);
     for message in &request {
         match message {
@@ -221,7 +265,9 @@ pub fn breakdown(messages: &[Message], summary: Option<&Summary>, measured: u64,
                 for item in content.iter() {
                     match item {
                         UserContent::Text(t) => you += size(&t.text),
-                        UserContent::ToolResult(r) => results += size(&serde_json::to_string(r).unwrap_or_default()),
+                        UserContent::ToolResult(r) => {
+                            results += size(&serde_json::to_string(r).unwrap_or_default())
+                        }
                         // An image costs by its size in pixels, not its bytes; a typical one is about this.
                         UserContent::Image(_) => files += 1_000,
                         other => files += size(&serde_json::to_string(other).unwrap_or_default()),
@@ -232,8 +278,12 @@ pub fn breakdown(messages: &[Message], summary: Option<&Summary>, measured: u64,
                 for item in a.content.iter() {
                     match item {
                         AssistantContent::Text(t) => answers += size(&t.text),
-                        AssistantContent::ToolCall(c) => calls += size(&serde_json::to_string(c).unwrap_or_default()),
-                        other => thinking += size(&serde_json::to_string(other).unwrap_or_default()),
+                        AssistantContent::ToolCall(c) => {
+                            calls += size(&serde_json::to_string(c).unwrap_or_default())
+                        }
+                        other => {
+                            thinking += size(&serde_json::to_string(other).unwrap_or_default())
+                        }
                     }
                 }
             }
@@ -243,11 +293,25 @@ pub fn breakdown(messages: &[Message], summary: Option<&Summary>, measured: u64,
     let note = summary.map_or(0, |s| s.text.len() as u64 / 4);
     let counted = you + files + answers + thinking + calls + results + note;
     let cleared_results = {
-        let total = request.iter().filter_map(|m| match m { Message::User { content } => Some(content.iter().filter(|c| matches!(c, UserContent::ToolResult(_))).count()), _ => None }).sum::<usize>();
+        let total = request
+            .iter()
+            .filter_map(|m| match m {
+                Message::User { content } => Some(
+                    content
+                        .iter()
+                        .filter(|c| matches!(c, UserContent::ToolResult(_)))
+                        .count(),
+                ),
+                _ => None,
+            })
+            .sum::<usize>();
         total.saturating_sub(KEEP_FULL_RESULTS)
     };
     let mut slices: Vec<Slice> = [
-        ("Instructions, knowledge, skills and tool definitions", measured.saturating_sub(counted)),
+        (
+            "Instructions, knowledge, skills and tool definitions",
+            measured.saturating_sub(counted),
+        ),
         ("Your messages", you),
         ("Answers", answers),
         ("Tool results", results),
@@ -258,15 +322,26 @@ pub fn breakdown(messages: &[Message], summary: Option<&Summary>, measured: u64,
     ]
     .into_iter()
     .filter(|(_, tokens)| *tokens > 0)
-    .map(|(label, tokens)| Slice { label: label.into(), tokens })
+    .map(|(label, tokens)| Slice {
+        label: label.into(),
+        tokens,
+    })
     .collect();
     slices.sort_by_key(|a| std::cmp::Reverse(a.tokens));
-    Breakdown { window, measured, slices, summarized_messages: summary.map_or(0, |s| s.upto.min(messages.len())), cleared_results }
+    Breakdown {
+        window,
+        measured,
+        slices,
+        summarized_messages: summary.map_or(0, |s| s.upto.min(messages.len())),
+        cleared_results,
+    }
 }
 
 /// The instruction that turns old turns into a note the conversation can continue from.
 pub fn summary_prompt(previous: Option<&str>, transcript: &str) -> String {
-    let previous = previous.map_or(String::new(), |p| format!("The earlier summary, to fold in:\n{p}\n\n"));
+    let previous = previous.map_or(String::new(), |p| {
+        format!("The earlier summary, to fold in:\n{p}\n\n")
+    });
     format!(
         "Summarize the conversation below so it can continue without it. Keep what later turns \
          need and drop the rest. Use these headings, skipping empty ones:\n\
@@ -295,7 +370,11 @@ pub fn transcript(messages: &[Message]) -> String {
                                     _ => None,
                                 })
                                 .collect();
-                            out.push_str(&format!("Tool result ({}): {}\n\n", r.name, clip(&text, 1500, "cut")));
+                            out.push_str(&format!(
+                                "Tool result ({}): {}\n\n",
+                                r.name,
+                                clip(&text, 1500, "cut")
+                            ));
                         }
                         _ => {}
                     }
@@ -307,11 +386,12 @@ pub fn transcript(messages: &[Message]) -> String {
                         rig_core::completion::message::AssistantContent::Text(t) => {
                             out.push_str(&format!("Assistant: {}\n\n", t.text))
                         }
-                        rig_core::completion::message::AssistantContent::ToolCall(c) => out.push_str(&format!(
-                            "Assistant called {} with {}\n\n",
-                            c.function.name,
-                            serde_json::Value::Object(c.function.arguments.clone())
-                        )),
+                        rig_core::completion::message::AssistantContent::ToolCall(c) => out
+                            .push_str(&format!(
+                                "Assistant called {} with {}\n\n",
+                                c.function.name,
+                                serde_json::Value::Object(c.function.arguments.clone())
+                            )),
                         _ => {}
                     }
                 }
@@ -344,7 +424,6 @@ pub fn message_text(message: &Message) -> String {
             .join("\n"),
         _ => String::new(),
     }
-
 }
 
 #[cfg(test)]
@@ -352,7 +431,9 @@ mod tests {
     use super::*;
     #[test]
     fn long_results_show_their_start_and_end() {
-        let text: String = (0..30_000).map(|i| char::from(b'a' + (i % 26) as u8)).collect();
+        let text: String = (0..30_000)
+            .map(|i| char::from(b'a' + (i % 26) as u8))
+            .collect();
         let shown = head_and_tail(&text, "call_7");
         assert!(shown.starts_with(&text[..100]));
         assert!(shown.ends_with(&text[text.len() - 100..]));
@@ -361,21 +442,33 @@ mod tests {
         assert_eq!(head_and_tail("short", "x"), "short");
     }
 
-
     #[test]
     fn provider_errors_read_plainly() {
         let credit = r#"ProviderResponseError: status 402 Payment Required: {\"code\":\"x\",\"error\":\"You have run out of credits\"}"#;
-        assert_eq!(short_error(credit), "The provider account is out of credit. (HTTP 402: You have run out of credits)");
+        assert_eq!(
+            short_error(credit),
+            "The provider account is out of credit. (HTTP 402: You have run out of credits)"
+        );
         let key = r#"ProviderResponseError: status 401 Unauthorized: {"error":{"message":"Incorrect API key provided"}}"#;
         assert!(short_error(key).starts_with("The provider refused the API key"));
-        assert_eq!(short_error("connection reset by peer\nmore"), "connection reset by peer");
+        assert_eq!(
+            short_error("connection reset by peer\nmore"),
+            "connection reset by peer"
+        );
         assert_eq!(brief_error(credit), "The provider account is out of credit");
-        assert!(short_error(r#"status 400: {"message":"maximum context length is 8192 tokens"}"#).starts_with("The conversation is too long"));
+        assert!(
+            short_error(r#"status 400: {"message":"maximum context length is 8192 tokens"}"#)
+                .starts_with("The conversation is too long")
+        );
     }
     use rig_core::completion::message::{AssistantContent, AssistantMessage, CallId, ToolName};
 
     fn result(id: &str, text: &str) -> Message {
-        Message::tool_result(CallId::from_wire(id), ToolName::new("web_search").unwrap(), text)
+        Message::tool_result(
+            CallId::from_wire(id),
+            ToolName::new("web_search").unwrap(),
+            text,
+        )
     }
 
     fn call(id: &str) -> Message {
@@ -387,9 +480,15 @@ mod tests {
     }
 
     fn result_text(m: &Message) -> &str {
-        let Message::User { content } = m else { panic!() };
-        let UserContent::ToolResult(r) = &content[0] else { panic!() };
-        let ToolResultContent::Text(t) = &r.content[0] else { panic!() };
+        let Message::User { content } = m else {
+            panic!()
+        };
+        let UserContent::ToolResult(r) = &content[0] else {
+            panic!()
+        };
+        let ToolResultContent::Text(t) = &r.content[0] else {
+            panic!()
+        };
         &t.text
     }
 
@@ -414,8 +513,17 @@ mod tests {
 
     #[test]
     fn a_summary_starts_requests_after_what_it_covers() {
-        let messages = vec![Message::user("a"), Message::assistant("b"), Message::user("c"), Message::assistant("d")];
-        let summary = Summary { text: "s".into(), upto: 2, created_at: Utc::now() };
+        let messages = vec![
+            Message::user("a"),
+            Message::assistant("b"),
+            Message::user("c"),
+            Message::assistant("d"),
+        ];
+        let summary = Summary {
+            text: "s".into(),
+            upto: 2,
+            created_at: Utc::now(),
+        };
         let out = request_messages(&messages, Some(&summary));
         assert_eq!(out, messages[2..].to_vec());
     }
@@ -423,9 +531,14 @@ mod tests {
     #[test]
     fn compaction_cuts_at_a_prompt_and_keeps_recent_turns() {
         let messages = vec![
-            Message::user("1"), Message::assistant("a"),
-            Message::user("2"), call("x"), result("x", "r"), Message::assistant("b"),
-            Message::user("3"), Message::assistant("c"),
+            Message::user("1"),
+            Message::assistant("a"),
+            Message::user("2"),
+            call("x"),
+            result("x", "r"),
+            Message::assistant("b"),
+            Message::user("3"),
+            Message::assistant("c"),
         ];
         assert_eq!(compaction_point(&messages, 0), Some(2));
         assert_eq!(compaction_point(&messages, 2), None);
@@ -436,7 +549,12 @@ mod tests {
 
     #[test]
     fn transcripts_and_prompts_carry_the_essentials() {
-        let messages = vec![Message::user("Plan Lisbon"), call("x"), result("x", "tram 28"), Message::assistant("Day 1")];
+        let messages = vec![
+            Message::user("Plan Lisbon"),
+            call("x"),
+            result("x", "tram 28"),
+            Message::assistant("Day 1"),
+        ];
         let text = transcript(&messages);
         assert!(text.contains("User: Plan Lisbon"));
         assert!(text.contains("Tool result (web_search): tram 28"));
@@ -446,11 +564,22 @@ mod tests {
         assert!(context_window("openai/gpt-5.5") >= 100_000);
         assert_eq!(context_window("nobody/nothing"), DEFAULT_WINDOW);
         assert!(estimate_tokens(&messages) > 0);
-        assert_eq!(short_error(r#"ProviderResponseError: status 400: {"error":{"code":"model_not_found","message":"unknown provider for model x"}}"#), "unknown provider for model x");
+        assert_eq!(
+            short_error(
+                r#"ProviderResponseError: status 400: {"error":{"code":"model_not_found","message":"unknown provider for model x"}}"#
+            ),
+            "unknown provider for model x"
+        );
         // The context view: what is counted is named, and the rest is the instructions and tools.
         let view = breakdown(&messages, None, 50_000, 128_000);
-        assert_eq!(view.slices[0].label, "Instructions, knowledge, skills and tool definitions");
+        assert_eq!(
+            view.slices[0].label,
+            "Instructions, knowledge, skills and tool definitions"
+        );
         assert!(view.slices.iter().any(|s| s.label == "Your messages"));
-        assert_eq!((view.window, view.measured, view.summarized_messages), (128_000, 50_000, 0));
+        assert_eq!(
+            (view.window, view.measured, view.summarized_messages),
+            (128_000, 50_000, 0)
+        );
     }
 }

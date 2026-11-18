@@ -15,11 +15,20 @@ pub const DEFER_OVER: usize = 30;
 /// Tools one search loads.
 const MATCHES: usize = 8;
 /// Connectors always offered in full: the core of working with files, commands and the web.
-const CORE: &[&str] = &["filesystem", "bash", "browser", "tool_results", "terminal", "sandbox"];
+const CORE: &[&str] = &[
+    "filesystem",
+    "bash",
+    "browser",
+    "tool_results",
+    "terminal",
+    "sandbox",
+];
 
 /// Whether a tool may wait to be loaded: a connector's, outside the core.
 pub fn deferrable(tool: &ChatTool) -> bool {
-    tool.connector_id.as_deref().is_some_and(|c| !CORE.contains(&c))
+    tool.connector_id
+        .as_deref()
+        .is_some_and(|c| !CORE.contains(&c))
 }
 
 /// Whether this request should load some tools on demand.
@@ -61,7 +70,16 @@ pub fn search<'a>(offered: &'a [ChatTool], query: &str, limit: usize) -> Vec<&'a
         .map(|t| {
             let name = words(&t.name.replace("__", " ").replace('_', " "));
             let description = words(&t.description);
-            let score = terms.iter().map(|w| 3 * name.iter().filter(|n| n.starts_with(w.as_str())).count() + description.iter().filter(|d| d.starts_with(w.as_str())).count()).sum();
+            let score = terms
+                .iter()
+                .map(|w| {
+                    3 * name.iter().filter(|n| n.starts_with(w.as_str())).count()
+                        + description
+                            .iter()
+                            .filter(|d| d.starts_with(w.as_str()))
+                            .count()
+                })
+                .sum();
             (score, t)
         })
         .filter(|(score, _)| *score > 0)
@@ -72,10 +90,17 @@ pub fn search<'a>(offered: &'a [ChatTool], query: &str, limit: usize) -> Vec<&'a
 
 /// Runs `find_tools`: the matches, as the tool result, and the names to load.
 pub fn find(offered: &[ChatTool], args: &Value) -> (String, Vec<String>) {
-    let query = args.get("query").and_then(Value::as_str).unwrap_or_default();
+    let query = args
+        .get("query")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     let found = search(offered, query, MATCHES);
     if found.is_empty() {
-        return (json!({ "query": query, "matches": [], "note": "No tool matched; try other words." }).to_string(), Vec::new());
+        return (
+            json!({ "query": query, "matches": [], "note": "No tool matched; try other words." })
+                .to_string(),
+            Vec::new(),
+        );
     }
     let matches: Vec<Value> = found
         .iter()
@@ -88,7 +113,10 @@ pub fn find(offered: &[ChatTool], args: &Value) -> (String, Vec<String>) {
 /// The part of the instructions that says which tools wait to be loaded.
 pub fn prompt(offered: &[ChatTool], loaded: &[String]) -> String {
     let mut by_connector: Vec<(String, usize)> = Vec::new();
-    for tool in offered.iter().filter(|t| deferrable(t) && !loaded.contains(&t.name)) {
+    for tool in offered
+        .iter()
+        .filter(|t| deferrable(t) && !loaded.contains(&t.name))
+    {
         let connector = tool.connector_id.clone().unwrap_or_default();
         match by_connector.iter_mut().find(|(c, _)| *c == connector) {
             Some((_, n)) => *n += 1,
@@ -98,7 +126,10 @@ pub fn prompt(offered: &[ChatTool], loaded: &[String]) -> String {
     if by_connector.is_empty() {
         return String::new();
     }
-    let list: Vec<String> = by_connector.iter().map(|(c, n)| format!("{} ({n})", c.trim_start_matches("mcp-"))).collect();
+    let list: Vec<String> = by_connector
+        .iter()
+        .map(|(c, n)| format!("{} ({n})", c.trim_start_matches("mcp-")))
+        .collect();
     format!(
         "\n\n## More tools\nMore tools are available but not loaded, to keep requests small: {}. When the task needs \
          one of these services, call `{FIND_TOOLS}` with what you need to do; the matches load for your next step.",
@@ -127,10 +158,20 @@ mod tests {
         for i in 0..DEFER_OVER {
             offered.push(tool("mcp-crm", &format!("op_{i}"), "Generic operation"));
         }
-        assert!(!should_defer(&offered), "at the limit everything is offered");
-        offered.push(tool("mcp-calendar", "create_event", "Create a calendar event with attendees"));
+        assert!(
+            !should_defer(&offered),
+            "at the limit everything is offered"
+        );
+        offered.push(tool(
+            "mcp-calendar",
+            "create_event",
+            "Create a calendar event with attendees",
+        ));
         assert!(should_defer(&offered));
-        assert!(!deferrable(&offered[0]), "core connectors are never deferred");
+        assert!(
+            !deferrable(&offered[0]),
+            "core connectors are never deferred"
+        );
 
         let (text, loaded) = find(&offered, &json!({ "query": "schedule a calendar event" }));
         assert_eq!(loaded, vec!["mcp-calendar__create_event".to_string()]);

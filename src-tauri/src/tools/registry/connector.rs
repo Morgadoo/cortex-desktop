@@ -199,7 +199,10 @@ pub trait Connector: Send + Sync {
 
     /// The text of one of `resources`.
     async fn read_resource(&self, uri: &str) -> Result<String, ToolError> {
-        Err(ToolError::ExecutionFailed(format!("{} offers no documents ({uri})", self.id())))
+        Err(ToolError::ExecutionFailed(format!(
+            "{} offers no documents ({uri})",
+            self.id()
+        )))
     }
 }
 

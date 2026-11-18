@@ -10,80 +10,80 @@
 //! - [`engine`]: one turn: stream a reply, run the tools it calls, repeat
 //! - [`tools`]: the app's connectors (filesystem, shell, MCP) and built-ins offered to the model
 
+pub mod acp;
 pub mod agent_cli;
+pub mod agent_market;
 pub mod agents;
-pub mod at_rest;
-pub mod headless;
-pub mod reader;
-pub mod recorder;
-pub mod coding_import;
-pub mod config_cli;
-pub mod share;
-pub mod sync;
-pub mod terminal_chat;
-pub mod ui_language;
-pub mod vault;
-pub mod video;
-pub mod hooks;
-pub mod plugins;
-pub mod router;
-pub mod search_all;
+pub mod animation;
 pub mod api_server;
 pub mod arena;
+pub mod at_rest;
 pub mod audio;
-pub mod custom_tools;
-pub mod computer;
-pub mod openapi;
-pub mod embeddings;
-pub mod emoji_pack;
-pub mod uploads;
-pub mod learning;
-pub mod outputs;
-pub mod webpage;
-pub mod extraction;
-pub mod acp;
+pub mod audit;
 mod backup;
+pub mod batched_qwen2;
 pub mod builtins;
 pub mod calendar;
 pub mod canvas;
 pub mod code;
+pub mod coding_import;
 pub mod commands;
+pub mod computer;
+pub mod config_cli;
 pub mod context;
-pub mod engine;
-pub mod import;
+pub mod custom_tools;
 mod deferred;
+pub mod discord;
+pub mod embeddings;
+pub mod emoji_pack;
+pub mod engine;
+pub mod extraction;
 mod favicon;
+pub mod functions;
+pub mod headless;
+pub mod hooks;
+pub mod import;
 mod index;
-mod preview;
 pub mod knowledge;
+pub mod learning;
 pub mod libraries;
 pub mod links;
-pub mod media;
-pub mod videogen;
-pub mod batched_qwen2;
 pub mod local_models;
-pub mod functions;
-pub mod agent_market;
-pub mod animation;
-pub mod audit;
-pub mod telegram;
-pub mod discord;
-pub mod slack;
-pub mod skill_catalog;
+pub mod media;
 pub mod memory;
+pub mod openapi;
+pub mod outputs;
+pub mod plugins;
+mod preview;
 pub mod privacy;
 pub mod providers;
+pub mod reader;
+pub mod recent_files;
+pub mod recorder;
+pub mod router;
 pub mod sandbox;
 pub mod search;
+pub mod search_all;
+pub mod share;
 pub mod sheets;
+pub mod skill_catalog;
 pub mod skills;
+pub mod slack;
 pub mod store;
 pub mod subagents;
+pub mod sync;
 pub mod tasks;
+pub mod telegram;
 pub mod terminal;
+pub mod terminal_chat;
 pub mod tools;
-pub mod recent_files;
+pub mod ui_language;
+pub mod uploads;
+pub mod vault;
 pub mod versions;
+pub mod video;
+pub mod videogen;
+pub mod webpage;
 pub mod workflows;
 
 use std::collections::HashMap;
@@ -114,7 +114,9 @@ pub struct ChatState {
 
 impl ChatState {
     fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-        mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        mutex
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     /// Registers a turn for `conversation`; `None` when one is already running.
@@ -144,17 +146,24 @@ impl ChatState {
         if !self.is_running(conversation) {
             return false;
         }
-        Self::lock(&self.steering).entry(conversation.to_string()).or_default().push(text);
+        Self::lock(&self.steering)
+            .entry(conversation.to_string())
+            .or_default()
+            .push(text);
         true
     }
 
     /// The guidance waiting for a turn, removed from the queue.
     pub fn take_steering(&self, conversation: &str) -> Vec<String> {
-        Self::lock(&self.steering).remove(conversation).unwrap_or_default()
+        Self::lock(&self.steering)
+            .remove(conversation)
+            .unwrap_or_default()
     }
 
     pub fn has_steering(&self, conversation: &str) -> bool {
-        Self::lock(&self.steering).get(conversation).is_some_and(|v| !v.is_empty())
+        Self::lock(&self.steering)
+            .get(conversation)
+            .is_some_and(|v| !v.is_empty())
     }
 
     pub fn is_running(&self, conversation: &str) -> bool {
@@ -164,8 +173,16 @@ impl ChatState {
     /// Keeps a streamed event for replay: a new turn starts afresh, an ended one is forgotten,
     /// and text pieces in a row are joined so the buffer stays small.
     pub fn record(&self, event: &serde_json::Value) {
-        let Some(id) = event.get("conversationId").and_then(serde_json::Value::as_str) else { return };
-        let kind = event.get("type").and_then(serde_json::Value::as_str).unwrap_or_default();
+        let Some(id) = event
+            .get("conversationId")
+            .and_then(serde_json::Value::as_str)
+        else {
+            return;
+        };
+        let kind = event
+            .get("type")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
         let mut replay = Self::lock(&self.replay);
         match kind {
             "started" => {
@@ -177,9 +194,19 @@ impl ChatState {
             "title" | "usage" => {}
             _ => {
                 let events = replay.entry(id.to_string()).or_default();
-                if let (Some(last), Some(text)) = (events.last_mut(), event.get("text").and_then(serde_json::Value::as_str)) {
-                    if last.get("type").and_then(serde_json::Value::as_str) == Some(kind) && matches!(kind, "text" | "reasoning") {
-                        let joined = format!("{}{text}", last.get("text").and_then(serde_json::Value::as_str).unwrap_or_default());
+                if let (Some(last), Some(text)) = (
+                    events.last_mut(),
+                    event.get("text").and_then(serde_json::Value::as_str),
+                ) {
+                    if last.get("type").and_then(serde_json::Value::as_str) == Some(kind)
+                        && matches!(kind, "text" | "reasoning")
+                    {
+                        let joined = format!(
+                            "{}{text}",
+                            last.get("text")
+                                .and_then(serde_json::Value::as_str)
+                                .unwrap_or_default()
+                        );
                         last["text"] = serde_json::Value::String(joined);
                         return;
                     }
@@ -196,7 +223,10 @@ impl ChatState {
         if !self.is_running(conversation) {
             return Vec::new();
         }
-        Self::lock(&self.replay).get(conversation).cloned().unwrap_or_default()
+        Self::lock(&self.replay)
+            .get(conversation)
+            .cloned()
+            .unwrap_or_default()
     }
 
     pub fn ask(&self, call_id: &str) -> oneshot::Receiver<String> {
@@ -245,7 +275,10 @@ mod tests {
         assert!(state.steer("c", "focus on the EU".into()));
         assert!(state.steer("c", "and keep it short".into()));
         assert!(state.has_steering("c"));
-        assert_eq!(state.take_steering("c"), ["focus on the EU", "and keep it short"]);
+        assert_eq!(
+            state.take_steering("c"),
+            ["focus on the EU", "and keep it short"]
+        );
         assert!(!state.has_steering("c"));
     }
 

@@ -50,7 +50,10 @@ fn path(config_dir: &Path) -> PathBuf {
 }
 
 pub fn load(config_dir: &Path) -> Vec<RecentFile> {
-    crate::chat::at_rest::read_to_string(path(config_dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::chat::at_rest::read_to_string(path(config_dir))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
 }
 
 /// Puts the files first in the list (moving any the list already has), within the limits.
@@ -95,22 +98,39 @@ mod tests {
     use super::*;
 
     fn file(name: &str, text: &str) -> RecentFile {
-        RecentFile { name: name.into(), text: text.into(), image: None, used_at: Utc::now() }
+        RecentFile {
+            name: name.into(),
+            text: text.into(),
+            image: None,
+            used_at: Utc::now(),
+        }
     }
 
     #[test]
     fn newest_first_without_repeats_within_limits() {
         let mut list = Vec::new();
         remember(&mut list, vec![file("a.txt", "A"), file("b.txt", "B")]);
-        assert_eq!(list.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(), ["a.txt", "b.txt"]);
+        assert_eq!(
+            list.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(),
+            ["a.txt", "b.txt"]
+        );
         // Attaching a file again moves it to the front instead of adding a copy.
         remember(&mut list, vec![file("b.txt", "B")]);
-        assert_eq!(list.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(), ["b.txt", "a.txt"]);
+        assert_eq!(
+            list.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(),
+            ["b.txt", "a.txt"]
+        );
         // A changed file of the same name is another entry.
         remember(&mut list, vec![file("b.txt", "B2")]);
         assert_eq!(list.len(), 3);
         // Empty and very large files are not kept.
-        remember(&mut list, vec![file("empty.txt", ""), file("big.txt", &"x".repeat(MAX_FILE + 1))]);
+        remember(
+            &mut list,
+            vec![
+                file("empty.txt", ""),
+                file("big.txt", &"x".repeat(MAX_FILE + 1)),
+            ],
+        );
         assert_eq!(list.len(), 3);
         for i in 0..30 {
             remember(&mut list, vec![file(&format!("{i}.txt"), "x")]);
@@ -120,7 +140,10 @@ mod tests {
         // The total size is bounded: the oldest go first.
         let mut list = Vec::new();
         for i in 0..8 {
-            remember(&mut list, vec![file(&format!("{i}"), &"y".repeat(MAX_FILE))]);
+            remember(
+                &mut list,
+                vec![file(&format!("{i}"), &"y".repeat(MAX_FILE))],
+            );
         }
         assert_eq!(list.len(), MAX_TOTAL / MAX_FILE);
         assert_eq!(list[0].name, "7");

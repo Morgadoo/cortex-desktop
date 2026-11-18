@@ -5,12 +5,12 @@
 //! and a per-row mask keeps padding out of attention. Rotary embeddings make attention depend
 //! only on how far apart two tokens are, so a padded row computes what it would alone.
 
-use candle_transformers::{quantized_nn::RmsNorm, utils::repeat_kv};
 use candle_core::{
     quantized::{gguf_file, QMatMul},
     DType, Device, IndexOp, Result, Tensor,
 };
 use candle_nn::{Embedding, Module};
+use candle_transformers::{quantized_nn::RmsNorm, utils::repeat_kv};
 
 #[derive(Debug, Clone)]
 struct Mlp {
@@ -231,7 +231,6 @@ impl ModelWeights {
                 ct.tensor(reader, &format!("{prefix}.attn_norm.weight"), device)?;
             let ffn_norm = ct.tensor(reader, &format!("{prefix}.ffn_norm.weight"), device)?;
 
-
             layers.push(LayerWeights {
                 attention_wq: QMatMul::from_qtensor(attention_wq)?,
                 attention_wk: QMatMul::from_qtensor(attention_wk)?,
@@ -252,7 +251,6 @@ impl ModelWeights {
                 kv_cache: None,
             });
         }
-
 
         Ok(Self {
             tok_embeddings: Embedding::new(tok_embeddings, embedding_length),
@@ -283,7 +281,13 @@ impl ModelWeights {
 
     /// Keeps only the given rows of the batch (in that order) in the KV cache.
     pub fn retain_rows(&mut self, rows: &[usize]) -> Result<()> {
-        let index = Tensor::new(rows.iter().map(|&r| r as u32).collect::<Vec<_>>().as_slice(), &Device::Cpu)?;
+        let index = Tensor::new(
+            rows.iter()
+                .map(|&r| r as u32)
+                .collect::<Vec<_>>()
+                .as_slice(),
+            &Device::Cpu,
+        )?;
         for layer in self.layers.iter_mut() {
             if let Some((k, v)) = &layer.kv_cache {
                 layer.kv_cache = Some((k.index_select(&index, 0)?, v.index_select(&index, 0)?));

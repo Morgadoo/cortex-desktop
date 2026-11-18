@@ -54,7 +54,10 @@ pub fn always_allowed(config_dir: &Path) -> bool {
 pub fn set_always_allowed(config_dir: &Path, allowed: bool) -> Result<(), String> {
     LOADED.store(true, Ordering::Relaxed);
     ALWAYS.store(allowed, Ordering::Relaxed);
-    super::store::write_json(&settings_path(config_dir), &json!({ "alwaysAllow": allowed }))
+    super::store::write_json(
+        &settings_path(config_dir),
+        &json!({ "alwaysAllow": allowed }),
+    )
 }
 
 struct Language {
@@ -64,9 +67,21 @@ struct Language {
 }
 
 const LANGUAGES: &[Language] = &[
-    Language { name: "python", programs: &["python3", "python"], ext: "py" },
-    Language { name: "javascript", programs: &["node", "deno", "bun"], ext: "js" },
-    Language { name: "bash", programs: &["bash", "sh"], ext: "sh" },
+    Language {
+        name: "python",
+        programs: &["python3", "python"],
+        ext: "py",
+    },
+    Language {
+        name: "javascript",
+        programs: &["node", "deno", "bun"],
+        ext: "js",
+    },
+    Language {
+        name: "bash",
+        programs: &["bash", "sh"],
+        ext: "sh",
+    },
 ];
 
 fn find_program(name: &str) -> Option<PathBuf> {
@@ -87,7 +102,12 @@ fn interpreters() -> &'static HashMap<&'static str, PathBuf> {
     FOUND.get_or_init(|| {
         LANGUAGES
             .iter()
-            .filter_map(|l| l.programs.iter().find_map(|p| find_program(p)).map(|path| (l.name, path)))
+            .filter_map(|l| {
+                l.programs
+                    .iter()
+                    .find_map(|p| find_program(p))
+                    .map(|path| (l.name, path))
+            })
             .collect()
     })
 }
@@ -102,7 +122,15 @@ fn bubblewrap() -> Option<&'static PathBuf> {
             }
             let bwrap = find_program("bwrap")?;
             let works = std::process::Command::new(&bwrap)
-                .args(["--ro-bind", "/", "/", "--unshare-all", "--die-with-parent", "--", "true"])
+                .args([
+                    "--ro-bind",
+                    "/",
+                    "/",
+                    "--unshare-all",
+                    "--die-with-parent",
+                    "--",
+                    "true",
+                ])
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .status()
@@ -114,7 +142,11 @@ fn bubblewrap() -> Option<&'static PathBuf> {
 
 /// The languages a run may use, for the tool description; empty when none is installed.
 pub fn languages() -> Vec<&'static str> {
-    LANGUAGES.iter().map(|l| l.name).filter(|n| interpreters().contains_key(n)).collect()
+    LANGUAGES
+        .iter()
+        .map(|l| l.name)
+        .filter(|n| interpreters().contains_key(n))
+        .collect()
 }
 
 /// The `run_code` tool, when an interpreter is installed.
@@ -176,7 +208,12 @@ fn snapshot(dir: &Path) -> HashMap<String, (u64, Option<SystemTime>)> {
         .filter_map(Result::ok)
         .filter(|e| e.file_type().is_file())
         .filter_map(|e| {
-            let rel = e.path().strip_prefix(dir).ok()?.to_string_lossy().replace('\\', "/");
+            let rel = e
+                .path()
+                .strip_prefix(dir)
+                .ok()?
+                .to_string_lossy()
+                .replace('\\', "/");
             if rel.starts_with('.') {
                 return None;
             }
@@ -193,7 +230,10 @@ fn tail(text: &[u8]) -> String {
         return text.into_owned();
     }
     let kept: String = text.chars().skip(count - OUTPUT_CHARS).collect();
-    format!("[… {} earlier characters cut]\n{kept}", count - OUTPUT_CHARS)
+    format!(
+        "[… {} earlier characters cut]\n{kept}",
+        count - OUTPUT_CHARS
+    )
 }
 
 /// Runs `code`, returning a JSON report of its exit, output and files.
@@ -233,25 +273,48 @@ pub async fn run(config_dir: &Path, conversation_id: &str, args: &Value) -> Outc
 }
 
 /// Runs code in the conversation's workspace, inside an agent's environment when given.
-pub async fn run_in(config_dir: &Path, conversation_id: &str, args: &Value, env: Option<&AgentEnv>) -> Outcome {
-    let err = |text: String| Outcome { text, is_error: true };
-    let language = args.get("language").and_then(Value::as_str).unwrap_or("python").to_ascii_lowercase();
+pub async fn run_in(
+    config_dir: &Path,
+    conversation_id: &str,
+    args: &Value,
+    env: Option<&AgentEnv>,
+) -> Outcome {
+    let err = |text: String| Outcome {
+        text,
+        is_error: true,
+    };
+    let language = args
+        .get("language")
+        .and_then(Value::as_str)
+        .unwrap_or("python")
+        .to_ascii_lowercase();
     let language = match language.as_str() {
         "py" | "python3" => "python".to_string(),
         "js" | "node" | "typescript" => "javascript".to_string(),
         "sh" | "shell" => "bash".to_string(),
         _ => language,
     };
-    let Some(code) = args.get("code").and_then(Value::as_str).filter(|c| !c.trim().is_empty()) else {
+    let Some(code) = args
+        .get("code")
+        .and_then(Value::as_str)
+        .filter(|c| !c.trim().is_empty())
+    else {
         return err("Give the code to run.".into());
     };
     let Some(lang) = LANGUAGES.iter().find(|l| l.name == language) else {
-        return err(format!("Unknown language `{language}`. Use one of: {}.", languages().join(", ")));
+        return err(format!(
+            "Unknown language `{language}`. Use one of: {}.",
+            languages().join(", ")
+        ));
     };
     let Some(program) = interpreters().get(lang.name) else {
         return err(format!("{} is not installed on this computer.", lang.name));
     };
-    let timeout = args.get("timeout_seconds").and_then(Value::as_u64).unwrap_or(DEFAULT_TIMEOUT).clamp(1, MAX_TIMEOUT);
+    let timeout = args
+        .get("timeout_seconds")
+        .and_then(Value::as_u64)
+        .unwrap_or(DEFAULT_TIMEOUT)
+        .clamp(1, MAX_TIMEOUT);
     let dir = match workspace(config_dir, conversation_id) {
         Ok(d) => d,
         Err(e) => return err(e),
@@ -269,12 +332,26 @@ pub async fn run_in(config_dir: &Path, conversation_id: &str, args: &Value, env:
     let mut command = match bubblewrap() {
         Some(bwrap) => {
             let mut c = tokio::process::Command::new(bwrap);
-            c.args(["--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp"]);
+            c.args([
+                "--ro-bind",
+                "/",
+                "/",
+                "--dev",
+                "/dev",
+                "--proc",
+                "/proc",
+                "--tmpfs",
+                "/tmp",
+            ]);
             // Hide the user's files, then put the workspace back where it was.
             if let Some(home) = dirs_home() {
                 c.arg("--tmpfs").arg(&home);
                 // An interpreter installed under the home folder (pyenv, nvm) stays reachable.
-                if let Some(prefix) = program.parent().and_then(Path::parent).filter(|p| p.starts_with(&home)) {
+                if let Some(prefix) = program
+                    .parent()
+                    .and_then(Path::parent)
+                    .filter(|p| p.starts_with(&home))
+                {
                     c.arg("--ro-bind").arg(prefix).arg(prefix);
                 }
             }
@@ -314,7 +391,14 @@ pub async fn run_in(config_dir: &Path, conversation_id: &str, args: &Value, env:
         .env("PYTHONUSERBASE", home.join(".local"))
         .env("PIP_USER", if env.is_some() { "1" } else { "0" })
         .env("NPM_CONFIG_PREFIX", home.join(".local"))
-        .env("TMPDIR", if isolated { PathBuf::from("/tmp") } else { std::env::temp_dir() })
+        .env(
+            "TMPDIR",
+            if isolated {
+                PathBuf::from("/tmp")
+            } else {
+                std::env::temp_dir()
+            },
+        )
         .env("LANG", "C.UTF-8")
         .env("MPLBACKEND", "Agg")
         .env("PYTHONDONTWRITEBYTECODE", "1")
@@ -340,7 +424,12 @@ pub async fn run_in(config_dir: &Path, conversation_id: &str, args: &Value, env:
     };
     let (exit_code, stdout, stderr, timed_out) =
         match tokio::time::timeout(Duration::from_secs(timeout), child.wait_with_output()).await {
-            Ok(Ok(out)) => (out.status.code(), tail(&out.stdout), tail(&out.stderr), false),
+            Ok(Ok(out)) => (
+                out.status.code(),
+                tail(&out.stdout),
+                tail(&out.stderr),
+                false,
+            ),
             Ok(Err(e)) => return err(format!("The run failed: {e}")),
             // Dropping the future kills the process.
             Err(_) => (None, String::new(), String::new(), true),
@@ -353,7 +442,9 @@ pub async fn run_in(config_dir: &Path, conversation_id: &str, args: &Value, env:
         .map(|(name, (bytes, modified))| FileInfo {
             name: name.clone(),
             bytes: *bytes,
-            new: before.get(name).is_none_or(|(b, m)| b != bytes || m != modified),
+            new: before
+                .get(name)
+                .is_none_or(|(b, m)| b != bytes || m != modified),
         })
         .collect();
     files.sort_by(|a, b| b.new.cmp(&a.new).then(a.name.cmp(&b.name)));
@@ -374,15 +465,25 @@ pub async fn run_in(config_dir: &Path, conversation_id: &str, args: &Value, env:
     if timed_out {
         text.push_str(&format!("\n\nThe run was stopped after {timeout} seconds."));
     }
-    Outcome { text, is_error: failed }
+    Outcome {
+        text,
+        is_error: failed,
+    }
 }
 
 fn dirs_home() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(PathBuf::from).filter(|p| p.is_absolute() && p != Path::new("/"))
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute() && p != Path::new("/"))
 }
 
 fn content_type(name: &str) -> &'static str {
-    match name.rsplit('.').next().map(str::to_ascii_lowercase).as_deref() {
+    match name
+        .rsplit('.')
+        .next()
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
         Some("png") => "image/png",
         Some("jpg" | "jpeg") => "image/jpeg",
         Some("gif") => "image/gif",
@@ -402,31 +503,57 @@ fn content_type(name: &str) -> &'static str {
 /// charts. Only files inside that conversation's workspace are served.
 /// The bytes a `Range: bytes=a-b` header asks for, within a file of `len` bytes.
 pub fn byte_range(header: &str, len: usize) -> Option<(usize, usize)> {
-    let spec = header.trim().strip_prefix("bytes=")?.split(',').next()?.trim();
+    let spec = header
+        .trim()
+        .strip_prefix("bytes=")?
+        .split(',')
+        .next()?
+        .trim();
     let (a, b) = spec.split_once('-')?;
     let (start, end) = match (a.trim(), b.trim()) {
         ("", n) => (len.saturating_sub(n.parse().ok()?), len.checked_sub(1)?),
         (s, "") => (s.parse().ok()?, len.checked_sub(1)?),
-        (s, e) => (s.parse().ok()?, e.parse::<usize>().ok()?.min(len.checked_sub(1)?)),
+        (s, e) => (
+            s.parse().ok()?,
+            e.parse::<usize>().ok()?.min(len.checked_sub(1)?),
+        ),
     };
     (start <= end && end < len).then_some((start, end))
 }
 
 /// Like `serve`, answering a byte range when one is asked for: the media player reads videos
 /// in pieces and will not play one served only whole.
-pub fn serve_range(config_dir: &Path, rest: &str, range: Option<&str>) -> tauri::http::Response<Vec<u8>> {
+pub fn serve_range(
+    config_dir: &Path,
+    rest: &str,
+    range: Option<&str>,
+) -> tauri::http::Response<Vec<u8>> {
     let not_found = || {
-        tauri::http::Response::builder().status(404).body(b"Not found".to_vec()).unwrap_or_default()
+        tauri::http::Response::builder()
+            .status(404)
+            .body(b"Not found".to_vec())
+            .unwrap_or_default()
     };
     let rest = rest.split('?').next().unwrap_or_default();
-    let Some((conversation, file)) = rest.split_once('/') else { return not_found() };
+    let Some((conversation, file)) = rest.split_once('/') else {
+        return not_found();
+    };
     let file = percent_decode(file);
-    if file.is_empty() || file.split('/').any(|seg| seg.is_empty() || seg == ".." || seg.starts_with('.')) || file.contains('\\') {
+    if file.is_empty()
+        || file
+            .split('/')
+            .any(|seg| seg.is_empty() || seg == ".." || seg.starts_with('.'))
+        || file.contains('\\')
+    {
         return not_found();
     }
-    let Ok(dir) = workspace(config_dir, conversation) else { return not_found() };
+    let Ok(dir) = workspace(config_dir, conversation) else {
+        return not_found();
+    };
     let path = dir.join(&file);
-    let (Ok(root), Ok(real)) = (dir.canonicalize(), path.canonicalize()) else { return not_found() };
+    let (Ok(root), Ok(real)) = (dir.canonicalize(), path.canonicalize()) else {
+        return not_found();
+    };
     if !real.starts_with(&root) {
         return not_found();
     }
@@ -435,20 +562,30 @@ pub fn serve_range(config_dir: &Path, rest: &str, range: Option<&str>) -> tauri:
             Some((start, end)) => tauri::http::Response::builder()
                 .status(206)
                 .header("Content-Type", content_type(&file))
-                .header("Content-Range", format!("bytes {start}-{end}/{}", bytes.len()))
+                .header(
+                    "Content-Range",
+                    format!("bytes {start}-{end}/{}", bytes.len()),
+                )
                 .header("Accept-Ranges", "bytes")
                 .header("X-Content-Type-Options", "nosniff")
                 .header("Cache-Control", "no-store")
                 .body(bytes[start..=end].to_vec())
                 .unwrap_or_default(),
-            None => tauri::http::Response::builder().status(416).header("Content-Range", format!("bytes */{}", bytes.len())).body(Vec::new()).unwrap_or_default(),
+            None => tauri::http::Response::builder()
+                .status(416)
+                .header("Content-Range", format!("bytes */{}", bytes.len()))
+                .body(Vec::new())
+                .unwrap_or_default(),
         },
         Ok(bytes) => tauri::http::Response::builder()
             .status(200)
             .header("Accept-Ranges", "bytes")
             .header("Content-Type", content_type(&file))
             // An SVG could carry script; it is shown as an image, never as a page.
-            .header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'")
+            .header(
+                "Content-Security-Policy",
+                "default-src 'none'; style-src 'unsafe-inline'",
+            )
             .header("X-Content-Type-Options", "nosniff")
             .header("Cache-Control", "no-store")
             .body(bytes)
@@ -496,15 +633,26 @@ mod tests {
         assert_eq!(report["files"][0]["name"], "out.csv");
         assert_eq!(report["files"][0]["new"], true);
         // The program file itself is not left behind.
-        assert!(!workspace(dir.path(), "conv").unwrap().join(".cell.py").exists());
+        assert!(!workspace(dir.path(), "conv")
+            .unwrap()
+            .join(".cell.py")
+            .exists());
 
         let served = serve_range(dir.path(), "conv/out.csv", None);
         assert_eq!(served.status(), 200);
         assert_eq!(served.body(), b"a,b\n1,2\n");
-        assert_eq!(serve_range(dir.path(), "conv/../conv/out.csv", None).status(), 404);
+        assert_eq!(
+            serve_range(dir.path(), "conv/../conv/out.csv", None).status(),
+            404
+        );
         assert_eq!(serve_range(dir.path(), "../x/out.csv", None).status(), 404);
 
-        let failed = run(dir.path(), "conv", &json!({ "language": "python", "code": "raise SystemExit(3)" })).await;
+        let failed = run(
+            dir.path(),
+            "conv",
+            &json!({ "language": "python", "code": "raise SystemExit(3)" }),
+        )
+        .await;
         assert!(failed.is_error);
         let slow = run(dir.path(), "conv", &json!({ "language": "python", "code": "import time\ntime.sleep(5)", "timeout_seconds": 1 })).await;
         assert!(slow.is_error && slow.text.contains("\"timed_out\": true"));
@@ -546,8 +694,14 @@ mod permission_tests {
         assert!(out.text.contains("agent-a/.local"), "{}", out.text);
         // Another chat of the same agent sees the file; another agent does not.
         let read = json!({"language": "bash", "code": "cat \"$HOME/note.txt\" 2>/dev/null || echo missing"});
-        assert!(run_in(dir.path(), "chat-2", &read, Some(&a)).await.text.contains("kept"));
-        assert!(run_in(dir.path(), "chat-3", &read, Some(&b)).await.text.contains("missing"));
+        assert!(run_in(dir.path(), "chat-2", &read, Some(&a))
+            .await
+            .text
+            .contains("kept"));
+        assert!(run_in(dir.path(), "chat-3", &read, Some(&b))
+            .await
+            .text
+            .contains("missing"));
         reset_agent_env(dir.path(), "agent-a").unwrap();
         assert!(!a.home.exists());
         assert!(agent_env(dir.path(), "../x", false).is_err());

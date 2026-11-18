@@ -26,15 +26,29 @@ fn dir(config_dir: &Path, kind: &str, id: &str) -> Result<PathBuf, String> {
     if !KINDS.contains(&kind) {
         return Err(format!("Unknown kind {kind}."));
     }
-    if id.is_empty() || id.len() > 80 || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+    if id.is_empty()
+        || id.len() > 80
+        || !id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
         return Err("invalid id".into());
     }
     Ok(chat_dir(config_dir).join("versions").join(kind).join(id))
 }
 
 /// Keeps `previous` as a version of the item, when it differs from what is about to be saved.
-pub fn keep<T: Serialize>(config_dir: &Path, kind: &str, id: &str, previous: &T, next: &T) -> Result<(), String> {
-    let (previous, next) = (serde_json::to_value(previous).map_err(|e| e.to_string())?, serde_json::to_value(next).map_err(|e| e.to_string())?);
+pub fn keep<T: Serialize>(
+    config_dir: &Path,
+    kind: &str,
+    id: &str,
+    previous: &T,
+    next: &T,
+) -> Result<(), String> {
+    let (previous, next) = (
+        serde_json::to_value(previous).map_err(|e| e.to_string())?,
+        serde_json::to_value(next).map_err(|e| e.to_string())?,
+    );
     if previous == next {
         return Ok(());
     }
@@ -47,8 +61,17 @@ pub fn keep<T: Serialize>(config_dir: &Path, kind: &str, id: &str, previous: &T,
         file = dir.join(format!("{stamp}-{n}.json"));
         n += 1;
     }
-    crate::chat::at_rest::write(&file, serde_json::to_string_pretty(&previous).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-    let mut files: Vec<_> = std::fs::read_dir(&dir).into_iter().flatten().flatten().map(|e| e.path()).collect();
+    crate::chat::at_rest::write(
+        &file,
+        serde_json::to_string_pretty(&previous).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    let mut files: Vec<_> = std::fs::read_dir(&dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .collect();
     files.sort();
     for old in files.iter().take(files.len().saturating_sub(KEEP)) {
         let _ = std::fs::remove_file(old);
@@ -73,7 +96,8 @@ pub fn list(config_dir: &Path, kind: &str, id: &str) -> Result<Vec<Version>, Str
         .flatten()
         .filter_map(|e| {
             let id = e.path().file_stem()?.to_string_lossy().into_owned();
-            let value = serde_json::from_str(&crate::chat::at_rest::read_to_string(e.path()).ok()?).ok()?;
+            let value =
+                serde_json::from_str(&crate::chat::at_rest::read_to_string(e.path()).ok()?).ok()?;
             Some(Version { id, value })
         })
         .collect();
@@ -95,17 +119,26 @@ fn production_path(config_dir: &Path, kind: &str, id: &str) -> Result<PathBuf, S
 }
 
 pub fn production(config_dir: &Path, kind: &str, id: &str) -> Option<Production> {
-    let text = crate::chat::at_rest::read_to_string(production_path(config_dir, kind, id).ok()?).ok()?;
+    let text =
+        crate::chat::at_rest::read_to_string(production_path(config_dir, kind, id).ok()?).ok()?;
     serde_json::from_str(&text).ok()
 }
 
 /// Marks `value` as the item's production version, or, with `None`, goes back to running the
 /// current one.
-pub fn set_production(config_dir: &Path, kind: &str, id: &str, value: Option<Value>) -> Result<Option<Production>, String> {
+pub fn set_production(
+    config_dir: &Path,
+    kind: &str,
+    id: &str,
+    value: Option<Value>,
+) -> Result<Option<Production>, String> {
     let path = production_path(config_dir, kind, id)?;
     match value {
         Some(value) => {
-            let marked = Production { at: Utc::now(), value };
+            let marked = Production {
+                at: Utc::now(),
+                value,
+            };
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
             }
@@ -133,12 +166,22 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         assert!(production(dir.path(), "workflows", "w1").is_none());
         set_production(dir.path(), "workflows", "w1", Some(json!({"steps": ["a"]}))).unwrap();
-        assert_eq!(production(dir.path(), "workflows", "w1").unwrap().value, json!({"steps": ["a"]}));
+        assert_eq!(
+            production(dir.path(), "workflows", "w1").unwrap().value,
+            json!({"steps": ["a"]})
+        );
         for i in 0..40 {
             keep(dir.path(), "workflows", "w1", &json!(i), &json!(i + 1)).unwrap();
         }
-        assert_eq!(list(dir.path(), "workflows", "w1").unwrap().len(), KEEP, "the marker is not a version");
-        assert!(production(dir.path(), "workflows", "w1").is_some(), "pruning keeps it");
+        assert_eq!(
+            list(dir.path(), "workflows", "w1").unwrap().len(),
+            KEEP,
+            "the marker is not a version"
+        );
+        assert!(
+            production(dir.path(), "workflows", "w1").is_some(),
+            "pruning keeps it"
+        );
         set_production(dir.path(), "workflows", "w1", None).unwrap();
         set_production(dir.path(), "workflows", "w1", None).unwrap();
         assert!(production(dir.path(), "workflows", "w1").is_none());
@@ -151,11 +194,18 @@ mod tests {
         let v1 = json!({ "name": "Researcher", "instructions": "Cite sources." });
         let v2 = json!({ "name": "Researcher", "instructions": "Cite sources. Be brief." });
         keep(dir.path(), "agents", "a1", &v1, &v1).unwrap();
-        assert!(list(dir.path(), "agents", "a1").unwrap().is_empty(), "an unchanged save keeps nothing");
+        assert!(
+            list(dir.path(), "agents", "a1").unwrap().is_empty(),
+            "an unchanged save keeps nothing"
+        );
         keep(dir.path(), "agents", "a1", &v1, &v2).unwrap();
         keep(dir.path(), "agents", "a1", &v2, &v1).unwrap();
         let versions = list(dir.path(), "agents", "a1").unwrap();
-        assert_eq!(versions.iter().map(|v| v.value.clone()).collect::<Vec<_>>(), [v2, v1], "newest first");
+        assert_eq!(
+            versions.iter().map(|v| v.value.clone()).collect::<Vec<_>>(),
+            [v2, v1],
+            "newest first"
+        );
         assert!(keep(dir.path(), "secrets", "a1", &json!(1), &json!(2)).is_err());
         assert!(list(dir.path(), "agents", "../x").is_err());
         for i in 0..40 {

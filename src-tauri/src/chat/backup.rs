@@ -35,7 +35,9 @@ fn conversation_file(config_dir: &Path, id: &str) -> Result<PathBuf, String> {
     if !valid_id(id) {
         return Err(format!("invalid conversation id `{id}`"));
     }
-    Ok(chat_dir(config_dir).join("conversations").join(format!("{id}.json")))
+    Ok(chat_dir(config_dir)
+        .join("conversations")
+        .join(format!("{id}.json")))
 }
 
 fn readable(path: &Path) -> Option<Conversation> {
@@ -48,7 +50,10 @@ pub fn before_overwrite(config_dir: &Path, path: &Path) {
     if !path.exists() {
         return;
     }
-    let dest = backups_dir(config_dir).join(today()).join("conversations").join(name);
+    let dest = backups_dir(config_dir)
+        .join(today())
+        .join("conversations")
+        .join(name);
     if dest.exists() {
         return;
     }
@@ -65,7 +70,11 @@ pub fn daily(config_dir: &Path) {
     let chat = chat_dir(config_dir);
     let state = backups_dir(config_dir).join(today()).join("state");
     if !state.exists() && std::fs::create_dir_all(&state).is_ok() {
-        for entry in std::fs::read_dir(&chat).into_iter().flatten().filter_map(Result::ok) {
+        for entry in std::fs::read_dir(&chat)
+            .into_iter()
+            .flatten()
+            .filter_map(Result::ok)
+        {
             let path = entry.path();
             if path.is_file() && path.extension().is_some_and(|x| x == "json") {
                 let _ = std::fs::copy(&path, state.join(entry.file_name()));
@@ -73,15 +82,31 @@ pub fn daily(config_dir: &Path) {
         }
     }
     let cutoff = Local::now().date_naive() - chrono::Duration::days(KEEP_DAYS);
-    for entry in std::fs::read_dir(backups_dir(config_dir)).into_iter().flatten().filter_map(Result::ok) {
-        let old = entry.file_name().to_str().and_then(|n| NaiveDate::parse_from_str(n, "%Y-%m-%d").ok()).is_some_and(|d| d < cutoff);
+    for entry in std::fs::read_dir(backups_dir(config_dir))
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+    {
+        let old = entry
+            .file_name()
+            .to_str()
+            .and_then(|n| NaiveDate::parse_from_str(n, "%Y-%m-%d").ok())
+            .is_some_and(|d| d < cutoff);
         if old {
             let _ = std::fs::remove_dir_all(entry.path());
         }
     }
     let expired = SystemTime::now() - Duration::from_secs(KEEP_DAYS as u64 * 86_400);
-    for entry in std::fs::read_dir(trash_dir(config_dir)).into_iter().flatten().filter_map(Result::ok) {
-        if entry.metadata().and_then(|m| m.modified()).is_ok_and(|t| t < expired) {
+    for entry in std::fs::read_dir(trash_dir(config_dir))
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+    {
+        if entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .is_ok_and(|t| t < expired)
+        {
             let _ = std::fs::remove_file(entry.path());
         }
     }
@@ -125,9 +150,17 @@ pub fn list_trash(config_dir: &Path) -> Vec<TrashItem> {
         .filter_map(|entry| {
             let id = entry.path().file_stem()?.to_str()?.to_string();
             let deleted_at: DateTime<Utc> = entry.metadata().ok()?.modified().ok()?.into();
-            let title = readable(&entry.path()).map(|c| c.title).filter(|t| !t.is_empty()).unwrap_or_else(|| "Untitled".into());
+            let title = readable(&entry.path())
+                .map(|c| c.title)
+                .filter(|t| !t.is_empty())
+                .unwrap_or_else(|| "Untitled".into());
             let days_left = (KEEP_DAYS - (Utc::now() - deleted_at).num_days()).max(0);
-            Some(TrashItem { id, title, deleted_at, days_left })
+            Some(TrashItem {
+                id,
+                title,
+                deleted_at,
+                days_left,
+            })
         })
         .collect();
     out.sort_by_key(|a| std::cmp::Reverse(a.deleted_at));
@@ -141,7 +174,8 @@ pub fn restore(config_dir: &Path, id: &str) -> Result<(), String> {
     if dest.exists() {
         return Err("A conversation with that id already exists.".into());
     }
-    std::fs::rename(&from, &dest).map_err(|_| "That conversation is no longer in the trash.".to_string())
+    std::fs::rename(&from, &dest)
+        .map_err(|_| "That conversation is no longer in the trash.".to_string())
 }
 
 /// Deletes one conversation from the trash for good, or all of them.
@@ -149,7 +183,8 @@ pub fn delete_forever(config_dir: &Path, id: Option<&str>) -> Result<(), String>
     match id {
         Some(id) => {
             conversation_file(config_dir, id)?;
-            std::fs::remove_file(trash_dir(config_dir).join(format!("{id}.json"))).map_err(|e| e.to_string())
+            std::fs::remove_file(trash_dir(config_dir).join(format!("{id}.json")))
+                .map_err(|e| e.to_string())
         }
         None => match std::fs::remove_dir_all(trash_dir(config_dir)) {
             Ok(()) => Ok(()),
@@ -161,10 +196,17 @@ pub fn delete_forever(config_dir: &Path, id: Option<&str>) -> Result<(), String>
 
 /// The newest readable backup of a conversation: its date and file.
 pub fn latest_backup(config_dir: &Path, id: &str) -> Option<(String, PathBuf)> {
-    let mut days: Vec<String> = std::fs::read_dir(backups_dir(config_dir)).ok()?.filter_map(Result::ok).filter_map(|e| e.file_name().into_string().ok()).collect();
+    let mut days: Vec<String> = std::fs::read_dir(backups_dir(config_dir))
+        .ok()?
+        .filter_map(Result::ok)
+        .filter_map(|e| e.file_name().into_string().ok())
+        .collect();
     days.sort();
     days.into_iter().rev().find_map(|day| {
-        let path = backups_dir(config_dir).join(&day).join("conversations").join(format!("{id}.json"));
+        let path = backups_dir(config_dir)
+            .join(&day)
+            .join("conversations")
+            .join(format!("{id}.json"));
         readable(&path).map(|_| (day, path))
     })
 }
@@ -172,11 +214,16 @@ pub fn latest_backup(config_dir: &Path, id: &str) -> Option<(String, PathBuf)> {
 /// Replaces a damaged conversation with its newest backup; returns the backup's date.
 pub fn recover(config_dir: &Path, id: &str) -> Result<String, String> {
     let path = conversation_file(config_dir, id)?;
-    let (day, backup) = latest_backup(config_dir, id).ok_or("There is no backup of that conversation.")?;
+    let (day, backup) =
+        latest_backup(config_dir, id).ok_or("There is no backup of that conversation.")?;
     if path.exists() {
         let quarantine = chat_dir(config_dir).join("quarantine");
         std::fs::create_dir_all(&quarantine).map_err(|e| e.to_string())?;
-        std::fs::rename(&path, quarantine.join(format!("{id}-{}.json", Utc::now().format("%Y%m%d%H%M%S")))).map_err(|e| e.to_string())?;
+        std::fs::rename(
+            &path,
+            quarantine.join(format!("{id}-{}.json", Utc::now().format("%Y%m%d%H%M%S"))),
+        )
+        .map_err(|e| e.to_string())?;
     }
     std::fs::copy(&backup, &path).map_err(|e| e.to_string())?;
     Ok(day)
@@ -206,12 +253,29 @@ pub struct Health {
 }
 
 pub fn health(config_dir: &Path) -> Health {
-    let mut days: Vec<String> = std::fs::read_dir(backups_dir(config_dir)).into_iter().flatten().filter_map(Result::ok).filter_map(|e| e.file_name().into_string().ok()).collect();
+    let mut days: Vec<String> = std::fs::read_dir(backups_dir(config_dir))
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .filter_map(|e| e.file_name().into_string().ok())
+        .collect();
     days.sort();
-    let bytes = walkdir::WalkDir::new(chat_dir(config_dir)).into_iter().filter_map(Result::ok).filter_map(|e| e.metadata().ok()).filter(|m| m.is_file()).map(|m| m.len()).sum();
+    let bytes = walkdir::WalkDir::new(chat_dir(config_dir))
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter_map(|e| e.metadata().ok())
+        .filter(|m| m.is_file())
+        .map(|m| m.len())
+        .sum();
     Health {
         conversations: super::index::list(config_dir).len(),
-        damaged: super::index::damaged(config_dir).into_iter().map(|id| Damaged { backup: latest_backup(config_dir, &id).map(|(day, _)| day), id }).collect(),
+        damaged: super::index::damaged(config_dir)
+            .into_iter()
+            .map(|id| Damaged {
+                backup: latest_backup(config_dir, &id).map(|(day, _)| day),
+                id,
+            })
+            .collect(),
         trash: list_trash(config_dir).len(),
         backup_days: days.len(),
         newest_backup: days.last().cloned(),
@@ -247,19 +311,28 @@ mod tests {
         delete_conversation(dir.path(), ID).unwrap();
         assert!(load_conversation(dir.path(), ID).is_err());
         let trash = list_trash(dir.path());
-        assert_eq!((trash.len(), trash[0].title.as_str(), trash[0].days_left), (1, "Third", KEEP_DAYS));
+        assert_eq!(
+            (trash.len(), trash[0].title.as_str(), trash[0].days_left),
+            (1, "Third", KEEP_DAYS)
+        );
         restore(dir.path(), ID).unwrap();
         assert_eq!(load_conversation(dir.path(), ID).unwrap().title, "Third");
         assert!(list_trash(dir.path()).is_empty() && restore(dir.path(), ID).is_err());
 
         // A damaged file is replaced by the backup and kept in quarantine.
-        crate::chat::at_rest::write(conversation_file(dir.path(), ID).unwrap(), "{ broken").unwrap();
+        crate::chat::at_rest::write(conversation_file(dir.path(), ID).unwrap(), "{ broken")
+            .unwrap();
         let health = health(dir.path());
         assert_eq!(health.damaged.len(), 1);
         assert_eq!(health.damaged[0].backup.as_deref(), Some(today().as_str()));
         assert_eq!(recover(dir.path(), ID).unwrap(), today());
         assert_eq!(load_conversation(dir.path(), ID).unwrap().title, "First");
-        assert_eq!(std::fs::read_dir(chat_dir(dir.path()).join("quarantine")).unwrap().count(), 1);
+        assert_eq!(
+            std::fs::read_dir(chat_dir(dir.path()).join("quarantine"))
+                .unwrap()
+                .count(),
+            1
+        );
 
         // A temporary conversation is deleted outright.
         let mut temp = Conversation::new("22222222-2222-4222-8222-222222222222".into(), None, None);
@@ -272,7 +345,10 @@ mod tests {
         crate::chat::at_rest::write(chat_dir(dir.path()).join("projects.json"), "[]").unwrap();
         std::fs::create_dir_all(backups_dir(dir.path()).join("2020-01-01/conversations")).unwrap();
         daily(dir.path());
-        assert!(backups_dir(dir.path()).join(today()).join("state/projects.json").exists());
+        assert!(backups_dir(dir.path())
+            .join(today())
+            .join("state/projects.json")
+            .exists());
         assert!(!backups_dir(dir.path()).join("2020-01-01").exists());
         delete_forever(dir.path(), None).unwrap();
     }

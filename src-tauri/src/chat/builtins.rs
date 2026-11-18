@@ -234,7 +234,7 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
     if memories.enabled {
         // "Save new facts" off: knowledge is used but not changed.
         if memories.update {
-        out.push(tool(
+            out.push(tool(
             KNOWLEDGE_WRITE,
             "Create or update a knowledge page: lasting, detailed context worth keeping across \
              conversations (a project, a client, a process, how the user wants something done). \
@@ -280,7 +280,7 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             json!({ "type": "object", "properties": { "id": { "type": "string" } }, "required": ["id"] }),
         ));
         if memories.update {
-        out.push(tool(
+            out.push(tool(
             REMEMBER,
             "Save one lasting fact about the user for future conversations.",
             json!({
@@ -294,7 +294,7 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
                 "required": ["fact"]
             }),
         ));
-        out.push(tool(
+            out.push(tool(
             FORGET,
             "Delete a saved fact that is wrong or that the user asks you to forget.",
             json!({
@@ -376,19 +376,49 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
 }
 
 pub fn is_builtin(name: &str) -> bool {
-    matches!(name, WEB_SEARCH | CALENDAR_EVENTS | FIND_CONTACT | REMEMBER | FORGET | USE_SKILL | UPDATE_PLAN | SCHEDULE_TASK | SEARCH_LIBRARY | READ_DOCUMENT | SAVE_SKILL | KNOWLEDGE_WRITE | KNOWLEDGE_READ | KNOWLEDGE_SEARCH | SEARCH_CHATS | READ_CHAT)
+    matches!(
+        name,
+        WEB_SEARCH
+            | CALENDAR_EVENTS
+            | FIND_CONTACT
+            | REMEMBER
+            | FORGET
+            | USE_SKILL
+            | UPDATE_PLAN
+            | SCHEDULE_TASK
+            | SEARCH_LIBRARY
+            | READ_DOCUMENT
+            | SAVE_SKILL
+            | KNOWLEDGE_WRITE
+            | KNOWLEDGE_READ
+            | KNOWLEDGE_SEARCH
+            | SEARCH_CHATS
+            | READ_CHAT
+    )
 }
 
 fn ok(text: impl Into<String>) -> Outcome {
-    Outcome { text: text.into(), is_error: false }
+    Outcome {
+        text: text.into(),
+        is_error: false,
+    }
 }
 
 fn err(text: impl Into<String>) -> Outcome {
-    Outcome { text: text.into(), is_error: true }
+    Outcome {
+        text: text.into(),
+        is_error: true,
+    }
 }
 
 pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
-    let str_arg = |key: &str| args.get(key).and_then(Value::as_str).unwrap_or_default().trim().to_string();
+    let str_arg = |key: &str| {
+        args.get(key)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    };
     if matches!(name, REMEMBER | FORGET | KNOWLEDGE_WRITE) && !memory::load(config_dir).update {
         return err("The user has turned off saving to knowledge; nothing was changed.");
     }
@@ -398,13 +428,32 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
             if query.is_empty() {
                 return err("Give a search query.");
             }
-            let max = args.get("max_results").and_then(Value::as_u64).unwrap_or(6).clamp(1, 10) as usize;
+            let max = args
+                .get("max_results")
+                .and_then(Value::as_u64)
+                .unwrap_or(6)
+                .clamp(1, 10) as usize;
             let recency = search::Recency::parse(&str_arg("recency"));
-            let sites: Vec<String> = args.get("sites").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default();
+            let sites: Vec<String> = args
+                .get("sites")
+                .and_then(Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default();
             let sites = search::clean_sites(&sites);
             match search::search_sites(config_dir, &query, max, recency, &sites).await {
-                Ok(hits) if hits.is_empty() && !sites.is_empty() => ok(format!("No results on {} for that query. Try other words or search without sites.", sites.join(", "))),
-                Ok(hits) => ok(serde_json::to_string_pretty(&json!({ "query": query, "sites": sites, "results": hits })).unwrap_or_default()),
+                Ok(hits) if hits.is_empty() && !sites.is_empty() => ok(format!(
+                    "No results on {} for that query. Try other words or search without sites.",
+                    sites.join(", ")
+                )),
+                Ok(hits) => ok(serde_json::to_string_pretty(
+                    &json!({ "query": query, "sites": sites, "results": hits }),
+                )
+                .unwrap_or_default()),
                 Err(e) => err(e),
             }
         }
@@ -417,7 +466,10 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
                     "high" => Some(3),
                     _ => Some(2),
                 },
-                inferred: args.get("inferred").and_then(Value::as_bool).unwrap_or(false),
+                inferred: args
+                    .get("inferred")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
                 conversation: Some(str_arg("conversation")).filter(|c| !c.is_empty()),
             };
             if let Some(reason) = memory::refuse_sensitive(&memories, &str_arg("fact")) {
@@ -447,21 +499,47 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
             let sources: Vec<String> = args
                 .get("sources")
                 .and_then(Value::as_array)
-                .map(|a| a.iter().filter_map(Value::as_str).map(String::from).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(Value::as_str)
+                        .map(String::from)
+                        .collect()
+                })
                 .unwrap_or_default();
             let id = str_arg("id");
-            if let Some(reason) = memory::refuse_sensitive(&memory::load(config_dir), &format!("{}\n{}", str_arg("title"), str_arg("content"))) {
+            if let Some(reason) = memory::refuse_sensitive(
+                &memory::load(config_dir),
+                &format!("{}\n{}", str_arg("title"), str_arg("content")),
+            ) {
                 return err(reason);
             }
-            match super::knowledge::write(config_dir, (!id.is_empty()).then_some(id.as_str()), &str_arg("title"), &str_arg("content"), "assistant", &sources) {
-                Ok(page) => ok(json!({ "id": page.id, "title": page.title, "saved": true }).to_string()),
+            match super::knowledge::write(
+                config_dir,
+                (!id.is_empty()).then_some(id.as_str()),
+                &str_arg("title"),
+                &str_arg("content"),
+                "assistant",
+                &sources,
+            ) {
+                Ok(page) => {
+                    ok(json!({ "id": page.id, "title": page.title, "saved": true }).to_string())
+                }
                 Err(e) => err(e),
             }
         }
         KNOWLEDGE_READ => {
             let pages = super::knowledge::load(config_dir);
             match super::knowledge::find(&pages, &str_arg("page")) {
-                Some(page) => ok(format!("# {}\n\n{}\n\nSources: {}", page.title, page.body, if page.sources.is_empty() { "none".into() } else { page.sources.join("; ") })),
+                Some(page) => ok(format!(
+                    "# {}\n\n{}\n\nSources: {}",
+                    page.title,
+                    page.body,
+                    if page.sources.is_empty() {
+                        "none".into()
+                    } else {
+                        page.sources.join("; ")
+                    }
+                )),
                 None => err("There is no knowledge page with that id or title."),
             }
         }
@@ -472,7 +550,11 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
                 .take(5)
                 .map(|(p, _)| json!({ "id": &p.id[..8], "title": p.title, "excerpt": p.body.chars().take(400).collect::<String>() }))
                 .collect();
-            if hits.is_empty() { ok("No knowledge page matches.") } else { ok(serde_json::to_string_pretty(&hits).unwrap_or_default()) }
+            if hits.is_empty() {
+                ok("No knowledge page matches.")
+            } else {
+                ok(serde_json::to_string_pretty(&hits).unwrap_or_default())
+            }
         }
         READ_DOCUMENT => {
             let wanted = str_arg("document");
@@ -496,35 +578,64 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
                 .iter()
                 .map(|h| json!({ "id": h.id, "title": h.title, "date": h.updated_at.format("%Y-%m-%d").to_string(), "snippet": h.snippet }))
                 .collect();
-            ok(serde_json::to_string_pretty(&json!({ "query": query, "conversations": rows })).unwrap_or_default())
+            ok(
+                serde_json::to_string_pretty(&json!({ "query": query, "conversations": rows }))
+                    .unwrap_or_default(),
+            )
         }
         READ_CHAT => match super::store::load_conversation(config_dir, &str_arg("id")) {
             Ok(c) if !c.temporary => ok(chat_transcript(&c, READ_CHAT_LIMIT)),
             _ => err("There is no conversation with that id; use an id from search_chats."),
         },
-        SAVE_SKILL => match skills::save(config_dir, &str_arg("name"), &str_arg("description"), &str_arg("instructions")) {
-            Ok(()) => ok(format!("Saved the skill `{}`. The user can call it with /{}.", str_arg("name"), str_arg("name"))),
+        SAVE_SKILL => match skills::save(
+            config_dir,
+            &str_arg("name"),
+            &str_arg("description"),
+            &str_arg("instructions"),
+        ) {
+            Ok(()) => ok(format!(
+                "Saved the skill `{}`. The user can call it with /{}.",
+                str_arg("name"),
+                str_arg("name")
+            )),
             Err(e) => err(e),
         },
         CALENDAR_EVENTS => {
             let today = chrono::Local::now().date_naive();
-            let date = |key: &str| chrono::NaiveDate::parse_from_str(&str_arg(key), "%Y-%m-%d").ok();
+            let date =
+                |key: &str| chrono::NaiveDate::parse_from_str(&str_arg(key), "%Y-%m-%d").ok();
             let from_day = date("from").unwrap_or(today);
-            let to_day = date("to").unwrap_or(from_day + chrono::Duration::days(7)).max(from_day);
+            let to_day = date("to")
+                .unwrap_or(from_day + chrono::Duration::days(7))
+                .max(from_day);
             if (to_day - from_day).num_days() > 366 {
                 return err("Ask for at most a year at a time.");
             }
             let local = |d: chrono::NaiveDate, end: bool| {
                 use chrono::TimeZone as _;
-                let t = if end { d.and_hms_opt(23, 59, 59) } else { d.and_hms_opt(0, 0, 0) }.unwrap_or_default();
-                chrono::Local.from_local_datetime(&t).earliest().map_or_else(chrono::Utc::now, |t| t.with_timezone(&chrono::Utc))
+                let t = if end {
+                    d.and_hms_opt(23, 59, 59)
+                } else {
+                    d.and_hms_opt(0, 0, 0)
+                }
+                .unwrap_or_default();
+                chrono::Local
+                    .from_local_datetime(&t)
+                    .earliest()
+                    .map_or_else(chrono::Utc::now, |t| t.with_timezone(&chrono::Utc))
             };
             let (from, to) = (local(from_day, false), local(to_day, true));
             let mut events = Vec::new();
             let mut problems = Vec::new();
             for cal in super::calendar::load(config_dir).calendars {
                 match super::calendar::fetch(&cal.location).await {
-                    Ok(text) => events.extend(super::calendar::occurrences(&cal.name, &super::calendar::parse_ics(&text), from, to, &str_arg("query"))),
+                    Ok(text) => events.extend(super::calendar::occurrences(
+                        &cal.name,
+                        &super::calendar::parse_ics(&text),
+                        from,
+                        to,
+                        &str_arg("query"),
+                    )),
                     Err(e) => problems.push(format!("{}: {e}", cal.name)),
                 }
             }
@@ -553,7 +664,10 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
                 }
             }
             let found = super::calendar::find(&all, &query);
-            ok(serde_json::to_string_pretty(&json!({ "query": query, "contacts": found, "unreadable": problems })).unwrap_or_default())
+            ok(serde_json::to_string_pretty(
+                &json!({ "query": query, "contacts": found, "unreadable": problems }),
+            )
+            .unwrap_or_default())
         }
         SEARCH_LIBRARY => {
             let query = str_arg("query");
@@ -564,7 +678,10 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
             let only: Vec<String> = if wanted.is_empty() {
                 Vec::new()
             } else {
-                match super::libraries::list(config_dir).into_iter().find(|l| l.name.eq_ignore_ascii_case(&wanted)) {
+                match super::libraries::list(config_dir)
+                    .into_iter()
+                    .find(|l| l.name.eq_ignore_ascii_case(&wanted))
+                {
                     Some(l) => vec![l.id],
                     None => return err(format!("There is no library named {wanted}.")),
                 }
@@ -575,9 +692,18 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
                 return err("`since` is a date like 2026-03-01, or a span like 30d, 6m or 1y.");
             }
             // With a cutoff, a wider pool is searched and the older documents' passages left out.
-            let (hits, note) = super::embeddings::search(config_dir, &only, &query, if since.is_some() { 30 } else { 6 }).await;
+            let (hits, note) = super::embeddings::search(
+                config_dir,
+                &only,
+                &query,
+                if since.is_some() { 30 } else { 6 },
+            )
+            .await;
             let hits: Vec<_> = match since {
-                Some(cutoff) => super::libraries::changed_since(config_dir, hits, cutoff).into_iter().take(6).collect(),
+                Some(cutoff) => super::libraries::changed_since(config_dir, hits, cutoff)
+                    .into_iter()
+                    .take(6)
+                    .collect(),
                 None => hits,
             };
             let note = match (since, hits.is_empty()) {
@@ -587,11 +713,17 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
             if hits.is_empty() {
                 ok(json!({ "query": query, "passages": [], "note": note.unwrap_or_else(|| "Nothing matched; try other keywords.".into()) }).to_string())
             } else {
-                ok(serde_json::to_string_pretty(&json!({ "query": query, "passages": hits, "note": note })).unwrap_or_default())
+                ok(serde_json::to_string_pretty(
+                    &json!({ "query": query, "passages": hits, "note": note }),
+                )
+                .unwrap_or_default())
             }
         }
         UPDATE_PLAN => {
-            let steps = args.get("steps").and_then(Value::as_array).map_or(0, Vec::len);
+            let steps = args
+                .get("steps")
+                .and_then(Value::as_array)
+                .map_or(0, Vec::len);
             if steps == 0 {
                 err("Give the plan's steps.")
             } else {
@@ -599,10 +731,19 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
             }
         }
         USE_SKILL => match skills::find(config_dir, &str_arg("name")) {
-            Some(skill) if skill.enabled && !str_arg("file").trim().is_empty() => match skills::read_file(config_dir, &skill.name, str_arg("file").trim()) {
-                Ok(text) => ok(text),
-                Err(e) => err(format!("{e} Its files: {}.", if skill.files.is_empty() { "none".to_string() } else { skill.files.join(", ") })),
-            },
+            Some(skill) if skill.enabled && !str_arg("file").trim().is_empty() => {
+                match skills::read_file(config_dir, &skill.name, str_arg("file").trim()) {
+                    Ok(text) => ok(text),
+                    Err(e) => err(format!(
+                        "{e} Its files: {}.",
+                        if skill.files.is_empty() {
+                            "none".to_string()
+                        } else {
+                            skill.files.join(", ")
+                        }
+                    )),
+                }
+            }
             Some(skill) if skill.enabled => ok(skills::loaded(&skill)),
             Some(_) => err("That skill is turned off."),
             None => err("There is no skill with that name."),
@@ -613,36 +754,72 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
 
 fn schedule(config_dir: &Path, args: &Value) -> Outcome {
     use super::tasks::{self, Frequency};
-    let s = |k: &str| args.get(k).and_then(Value::as_str).unwrap_or_default().trim().to_string();
+    let s = |k: &str| {
+        args.get(k)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    };
     let time = s("time");
     let frequency = match s("frequency").as_str() {
-        "once" => Frequency::Once { date: s("date"), time },
+        "once" => Frequency::Once {
+            date: s("date"),
+            time,
+        },
         "daily" => Frequency::Daily { time },
         "weekly" => {
             let days: Vec<u8> = args
                 .get("days")
                 .and_then(Value::as_array)
-                .map(|a| a.iter().filter_map(Value::as_str).filter_map(tasks::weekday_index).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(Value::as_str)
+                        .filter_map(tasks::weekday_index)
+                        .collect()
+                })
                 .unwrap_or_default();
             Frequency::Weekly { days, time }
         }
-        "monthly" => Frequency::Monthly { day: args.get("day_of_month").and_then(Value::as_u64).unwrap_or(1).min(31) as u8, time },
+        "monthly" => Frequency::Monthly {
+            day: args
+                .get("day_of_month")
+                .and_then(Value::as_u64)
+                .unwrap_or(1)
+                .min(31) as u8,
+            time,
+        },
         "yearly" => Frequency::Yearly {
-            month: args.get("month").and_then(Value::as_u64).unwrap_or(1).clamp(1, 12) as u8,
-            day: args.get("day_of_month").and_then(Value::as_u64).unwrap_or(1).clamp(1, 31) as u8,
+            month: args
+                .get("month")
+                .and_then(Value::as_u64)
+                .unwrap_or(1)
+                .clamp(1, 12) as u8,
+            day: args
+                .get("day_of_month")
+                .and_then(Value::as_u64)
+                .unwrap_or(1)
+                .clamp(1, 31) as u8,
             time,
         },
         other => return err(format!("Unknown frequency `{other}`.")),
     };
     let agent_id = match s("agent") {
         name if name.is_empty() => None,
-        name => match super::agents::load(config_dir).into_iter().find(|a| a.name.eq_ignore_ascii_case(&name)) {
+        name => match super::agents::load(config_dir)
+            .into_iter()
+            .find(|a| a.name.eq_ignore_ascii_case(&name))
+        {
             Some(agent) => Some(agent.id),
             None => return err(format!("There is no agent named {name}.")),
         },
     };
     // The engine fills `reply_in` with this conversation's id when the model asked for it.
-    let reply_in = args.get("reply_in").and_then(Value::as_str).filter(|_| args.get("in_this_chat").and_then(Value::as_bool) == Some(true)).map(str::to_string);
+    let reply_in = args
+        .get("reply_in")
+        .and_then(Value::as_str)
+        .filter(|_| args.get("in_this_chat").and_then(Value::as_bool) == Some(true))
+        .map(str::to_string);
     let task = tasks::Task {
         id: uuid::Uuid::new_v4().to_string(),
         title: s("title"),
@@ -683,7 +860,10 @@ const READ_CHAT_LIMIT: usize = 24_000;
 /// Earlier conversations matching `query`: every word first; failing that, the most words.
 pub(crate) fn search_chats(config_dir: &Path, query: &str) -> Vec<super::index::Hit> {
     let all = super::index::search(config_dir, query, 8);
-    let words: Vec<&str> = query.split_whitespace().filter(|w| w.chars().count() > 2).collect();
+    let words: Vec<&str> = query
+        .split_whitespace()
+        .filter(|w| w.chars().count() > 2)
+        .collect();
     if !all.is_empty() || words.len() < 2 {
         return all;
     }
@@ -702,9 +882,13 @@ pub(crate) fn search_chats(config_dir: &Path, query: &str) -> Vec<super::index::
 
 /// What was said in a conversation, as plain text, cut at `limit` characters.
 pub(super) fn chat_transcript(conversation: &super::store::Conversation, limit: usize) -> String {
-    let mut text = format!("# {}
+    let mut text = format!(
+        "# {}
 Date: {}
-\n", conversation.title, conversation.created_at.format("%Y-%m-%d"));
+\n",
+        conversation.title,
+        conversation.created_at.format("%Y-%m-%d")
+    );
     for turn in super::store::turns(conversation) {
         let said: Vec<String> = turn
             .parts
@@ -718,7 +902,11 @@ Date: {}
         if said.is_empty() {
             continue;
         }
-        text.push_str(if turn.role == "user" { "User: " } else { "Assistant: " });
+        text.push_str(if turn.role == "user" {
+            "User: "
+        } else {
+            "Assistant: "
+        });
         text.push_str(&said.join("\n"));
         text.push_str("\n\n");
         if text.chars().count() > limit {
@@ -740,15 +928,31 @@ mod tests {
         assert!(!out.is_error, "{}", out.text);
         assert!(out.text.contains("Every Monday at 09:00"));
         assert_eq!(super::super::tasks::load(dir.path()).len(), 1);
-        let bad = run(dir.path(), SCHEDULE_TASK, &json!({"title": "x", "prompt": "y", "frequency": "hourly", "time": "09:00"})).await;
+        let bad = run(
+            dir.path(),
+            SCHEDULE_TASK,
+            &json!({"title": "x", "prompt": "y", "frequency": "hourly", "time": "09:00"}),
+        )
+        .await;
         assert!(bad.is_error);
         // A follow-up in the chat it was asked in; `reply_in` is set by the engine, and only used
         // when the model asked for it.
         run(dir.path(), SCHEDULE_TASK, &json!({"title": "Check prices", "prompt": "Check again", "frequency": "once", "date": "2030-01-02", "time": "08:00", "in_this_chat": true, "reply_in": "conv-1"})).await;
         run(dir.path(), SCHEDULE_TASK, &json!({"title": "Other", "prompt": "New chat", "frequency": "daily", "time": "08:00", "reply_in": "conv-1"})).await;
         let tasks = super::super::tasks::load(dir.path());
-        assert_eq!(tasks.iter().find(|t| t.title == "Check prices").unwrap().reply_in.as_deref(), Some("conv-1"));
-        assert_eq!(tasks.iter().find(|t| t.title == "Other").unwrap().reply_in, None);
+        assert_eq!(
+            tasks
+                .iter()
+                .find(|t| t.title == "Check prices")
+                .unwrap()
+                .reply_in
+                .as_deref(),
+            Some("conv-1")
+        );
+        assert_eq!(
+            tasks.iter().find(|t| t.title == "Other").unwrap().reply_in,
+            None
+        );
     }
 
     #[tokio::test]
@@ -757,17 +961,39 @@ mod tests {
         let saved = run(dir.path(), REMEMBER, &json!({"fact": "Lives in Porto"})).await;
         assert!(!saved.is_error, "{}", saved.text);
         // Sensitive data stays out while the switch is on (the default), in facts and pages.
-        let refused = run(dir.path(), REMEMBER, &json!({"fact": "The office wifi password is hunter22-blue"})).await;
-        assert!(refused.is_error && refused.text.contains("a password, key or token"), "{}", refused.text);
-        let page = run(dir.path(), KNOWLEDGE_WRITE, &json!({"title": "Payments", "content": "Card 4111 1111 1111 1111"})).await;
-        assert!(page.is_error && page.text.contains("a card number"), "{}", page.text);
+        let refused = run(
+            dir.path(),
+            REMEMBER,
+            &json!({"fact": "The office wifi password is hunter22-blue"}),
+        )
+        .await;
+        assert!(
+            refused.is_error && refused.text.contains("a password, key or token"),
+            "{}",
+            refused.text
+        );
+        let page = run(
+            dir.path(),
+            KNOWLEDGE_WRITE,
+            &json!({"title": "Payments", "content": "Card 4111 1111 1111 1111"}),
+        )
+        .await;
+        assert!(
+            page.is_error && page.text.contains("a card number"),
+            "{}",
+            page.text
+        );
         let memories = memory::load(dir.path());
         assert_eq!(memories.items.len(), 1);
         let short = &memories.items[0].id[..8];
         let forgotten = run(dir.path(), FORGET, &json!({"id": short})).await;
         assert!(!forgotten.is_error, "{}", forgotten.text);
         assert!(memory::load(dir.path()).items.is_empty());
-        assert!(run(dir.path(), FORGET, &json!({"id": "nope"})).await.is_error);
+        assert!(
+            run(dir.path(), FORGET, &json!({"id": "nope"}))
+                .await
+                .is_error
+        );
     }
 
     #[tokio::test]
@@ -776,26 +1002,104 @@ mod tests {
         let loaded = run(dir.path(), USE_SKILL, &json!({"name": "write-email"})).await;
         assert!(!loaded.is_error);
         assert!(loaded.text.starts_with("# Skill: write-email"));
-        assert!(run(dir.path(), USE_SKILL, &json!({"name": "missing"})).await.is_error);
+        assert!(
+            run(dir.path(), USE_SKILL, &json!({"name": "missing"}))
+                .await
+                .is_error
+        );
     }
 
     #[test]
     fn definitions_follow_settings() {
         let dir = tempfile::tempdir().unwrap();
-        let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).filter(|n| n != super::super::sandbox::RUN_CODE && n != super::super::media::GENERATE_IMAGE && n != super::super::videogen::GENERATE_VIDEO && n != super::super::animation::MAKE_ANIMATION && n != SAVE_SKILL && n != NOTIFY && n != super::super::webpage::BROWSER_VIEW && n != super::super::webpage::BROWSER_ACT && !n.starts_with("knowledge_")).collect();
-        assert_eq!(names, [WEB_SEARCH, UPDATE_PLAN, DELEGATE, CANVAS, SCHEDULE_TASK, SEARCH_CHATS, READ_CHAT, REMEMBER, FORGET, USE_SKILL]);
-        memory::save(dir.path(), &memory::Memories { enabled: false, ..Default::default() }).unwrap();
-        let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).filter(|n| n != super::super::sandbox::RUN_CODE && n != super::super::media::GENERATE_IMAGE && n != super::super::videogen::GENERATE_VIDEO && n != super::super::animation::MAKE_ANIMATION && n != SAVE_SKILL && n != NOTIFY && n != super::super::webpage::BROWSER_VIEW && n != super::super::webpage::BROWSER_ACT && !n.starts_with("knowledge_")).collect();
-        assert_eq!(names, [WEB_SEARCH, UPDATE_PLAN, DELEGATE, CANVAS, SCHEDULE_TASK, USE_SKILL]);
+        let names: Vec<String> = definitions(dir.path())
+            .into_iter()
+            .map(|t| t.name)
+            .filter(|n| {
+                n != super::super::sandbox::RUN_CODE
+                    && n != super::super::media::GENERATE_IMAGE
+                    && n != super::super::videogen::GENERATE_VIDEO
+                    && n != super::super::animation::MAKE_ANIMATION
+                    && n != SAVE_SKILL
+                    && n != NOTIFY
+                    && n != super::super::webpage::BROWSER_VIEW
+                    && n != super::super::webpage::BROWSER_ACT
+                    && !n.starts_with("knowledge_")
+            })
+            .collect();
+        assert_eq!(
+            names,
+            [
+                WEB_SEARCH,
+                UPDATE_PLAN,
+                DELEGATE,
+                CANVAS,
+                SCHEDULE_TASK,
+                SEARCH_CHATS,
+                READ_CHAT,
+                REMEMBER,
+                FORGET,
+                USE_SKILL
+            ]
+        );
+        memory::save(
+            dir.path(),
+            &memory::Memories {
+                enabled: false,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let names: Vec<String> = definitions(dir.path())
+            .into_iter()
+            .map(|t| t.name)
+            .filter(|n| {
+                n != super::super::sandbox::RUN_CODE
+                    && n != super::super::media::GENERATE_IMAGE
+                    && n != super::super::videogen::GENERATE_VIDEO
+                    && n != super::super::animation::MAKE_ANIMATION
+                    && n != SAVE_SKILL
+                    && n != NOTIFY
+                    && n != super::super::webpage::BROWSER_VIEW
+                    && n != super::super::webpage::BROWSER_ACT
+                    && !n.starts_with("knowledge_")
+            })
+            .collect();
+        assert_eq!(
+            names,
+            [
+                WEB_SEARCH,
+                UPDATE_PLAN,
+                DELEGATE,
+                CANVAS,
+                SCHEDULE_TASK,
+                USE_SKILL
+            ]
+        );
     }
 
     #[tokio::test]
     async fn knowledge_can_be_used_without_being_changed() {
         let dir = tempfile::tempdir().unwrap();
-        memory::save(dir.path(), &memory::Memories { update: false, ..Default::default() }).unwrap();
-        let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).collect();
-        assert!(names.iter().any(|n| n == KNOWLEDGE_READ) && names.iter().any(|n| n == KNOWLEDGE_SEARCH));
-        assert!(!names.iter().any(|n| n == REMEMBER || n == FORGET || n == KNOWLEDGE_WRITE));
+        memory::save(
+            dir.path(),
+            &memory::Memories {
+                update: false,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let names: Vec<String> = definitions(dir.path())
+            .into_iter()
+            .map(|t| t.name)
+            .collect();
+        assert!(
+            names.iter().any(|n| n == KNOWLEDGE_READ)
+                && names.iter().any(|n| n == KNOWLEDGE_SEARCH)
+        );
+        assert!(!names
+            .iter()
+            .any(|n| n == REMEMBER || n == FORGET || n == KNOWLEDGE_WRITE));
         let refused = run(dir.path(), REMEMBER, &json!({"fact": "Lives in Porto"})).await;
         assert!(refused.is_error && memory::load(dir.path()).items.is_empty());
         let prompt = memory::prompt(&memory::load(dir.path())).unwrap();
@@ -808,14 +1112,34 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut c = super::super::store::Conversation::new("c1".into(), None, None);
         c.title = "Kitchen renovation".into();
-        c.messages = vec![Message::user("Which oak worktop should we pick?"), Message::assistant("The 40 mm solid oak one, oiled.")];
+        c.messages = vec![
+            Message::user("Which oak worktop should we pick?"),
+            Message::assistant("The 40 mm solid oak one, oiled."),
+        ];
         super::super::store::save_conversation(dir.path(), &c).unwrap();
         let found = run(dir.path(), SEARCH_CHATS, &json!({"query": "oak worktop"})).await;
-        assert!(found.text.contains("\"c1\"") && found.text.contains("Kitchen renovation"), "{}", found.text);
+        assert!(
+            found.text.contains("\"c1\"") && found.text.contains("Kitchen renovation"),
+            "{}",
+            found.text
+        );
         // Not every word needs to match.
-        assert!(run(dir.path(), SEARCH_CHATS, &json!({"query": "walnut worktop"})).await.text.contains("c1"));
+        assert!(run(
+            dir.path(),
+            SEARCH_CHATS,
+            &json!({"query": "walnut worktop"})
+        )
+        .await
+        .text
+        .contains("c1"));
         let read = run(dir.path(), READ_CHAT, &json!({"id": "c1"})).await;
-        assert!(read.text.contains("User: Which oak") && read.text.contains("Assistant: The 40 mm"));
-        assert!(run(dir.path(), READ_CHAT, &json!({"id": "nope"})).await.is_error);
+        assert!(
+            read.text.contains("User: Which oak") && read.text.contains("Assistant: The 40 mm")
+        );
+        assert!(
+            run(dir.path(), READ_CHAT, &json!({"id": "nope"}))
+                .await
+                .is_error
+        );
     }
 }

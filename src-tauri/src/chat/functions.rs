@@ -51,7 +51,13 @@ pub fn list(config_dir: &Path) -> Vec<Function> {
 }
 
 pub fn save(config_dir: &Path, f: Function) -> Result<Vec<Function>, String> {
-    if f.id.is_empty() || f.id.len() > 48 || !f.id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
+    if f.id.is_empty()
+        || f.id.len() > 48
+        || !f
+            .id
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    {
         return Err("Give it an id of lowercase letters, digits and dashes.".into());
     }
     if !matches!(f.kind.as_str(), "filter" | "pipe") {
@@ -82,24 +88,65 @@ pub fn models(config_dir: &Path) -> Vec<super::providers::ModelView> {
     list(config_dir)
         .into_iter()
         .filter(|f| f.enabled && f.kind == "pipe")
-        .map(|f| super::providers::ModelView { reference: format!("{VENDOR}/{}", f.id), vendor: VENDOR.into(), provider_label: "Your functions".into(), id: f.id, name: f.name, reasoning: false, tools: false, context_window: None })
+        .map(|f| super::providers::ModelView {
+            reference: format!("{VENDOR}/{}", f.id),
+            vendor: VENDOR.into(),
+            provider_label: "Your functions".into(),
+            id: f.id,
+            name: f.name,
+            reasoning: false,
+            tools: false,
+            context_window: None,
+        })
         .collect()
 }
 
 pub fn find_pipe(config_dir: &Path, reference: &str) -> Option<Function> {
     let id = reference.strip_prefix(VENDOR)?.strip_prefix('/')?;
-    list(config_dir).into_iter().find(|f| f.enabled && f.kind == "pipe" && f.id == id)
+    list(config_dir)
+        .into_iter()
+        .find(|f| f.enabled && f.kind == "pipe" && f.id == id)
 }
 
 /// Runs a function's code in the sandbox with `args`; returns what it printed.
-pub async fn run(config_dir: &Path, conversation_id: &str, f: &Function, args: &Value) -> Result<String, String> {
+pub async fn run(
+    config_dir: &Path,
+    conversation_id: &str,
+    f: &Function,
+    args: &Value,
+) -> Result<String, String> {
     let code = super::custom_tools::program_for(&f.language, &f.code, args);
-    let outcome = super::sandbox::run(config_dir, conversation_id, &json!({ "language": f.language, "code": code })).await;
-    let report: Value = serde_json::from_str(&outcome.text).unwrap_or_else(|_| json!({ "stdout": outcome.text }));
-    let stdout = report.get("stdout").and_then(Value::as_str).unwrap_or_default().trim_end().to_string();
-    let stderr = report.get("stderr").and_then(Value::as_str).unwrap_or_default().trim().to_string();
-    if outcome.is_error || report.get("exit_code").and_then(Value::as_i64).is_some_and(|c| c != 0) {
-        return Err(format!("{} failed: {}", f.name, if stderr.is_empty() { stdout } else { stderr }));
+    let outcome = super::sandbox::run(
+        config_dir,
+        conversation_id,
+        &json!({ "language": f.language, "code": code }),
+    )
+    .await;
+    let report: Value =
+        serde_json::from_str(&outcome.text).unwrap_or_else(|_| json!({ "stdout": outcome.text }));
+    let stdout = report
+        .get("stdout")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim_end()
+        .to_string();
+    let stderr = report
+        .get("stderr")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    if outcome.is_error
+        || report
+            .get("exit_code")
+            .and_then(Value::as_i64)
+            .is_some_and(|c| c != 0)
+    {
+        return Err(format!(
+            "{} failed: {}",
+            f.name,
+            if stderr.is_empty() { stdout } else { stderr }
+        ));
     }
     Ok(stdout)
 }
@@ -133,7 +180,10 @@ pub fn verdict(output: &str) -> Verdict {
 }
 
 fn filters(config_dir: &Path) -> Vec<Function> {
-    list(config_dir).into_iter().filter(|f| f.enabled && f.kind == "filter").collect()
+    list(config_dir)
+        .into_iter()
+        .filter(|f| f.enabled && f.kind == "filter")
+        .collect()
 }
 
 pub fn has_filters(config_dir: &Path) -> bool {
@@ -142,10 +192,23 @@ pub fn has_filters(config_dir: &Path) -> bool {
 
 /// Passes a text through every filter in turn. `Err` is the reason a filter refused it. A filter
 /// that fails is reported in the log and skipped, so a bug in one does not stop the chat.
-pub async fn apply(config_dir: &Path, conversation_id: &str, stage: &str, model: &str, text: &str) -> Result<String, String> {
+pub async fn apply(
+    config_dir: &Path,
+    conversation_id: &str,
+    stage: &str,
+    model: &str,
+    text: &str,
+) -> Result<String, String> {
     let mut text = text.to_string();
     for f in filters(config_dir) {
-        match run(config_dir, conversation_id, &f, &json!({ "stage": stage, "text": text, "model": model })).await {
+        match run(
+            config_dir,
+            conversation_id,
+            &f,
+            &json!({ "stage": stage, "text": text, "model": model }),
+        )
+        .await
+        {
             Ok(out) => match verdict(&out) {
                 Verdict::Keep => {}
                 Verdict::Replace(t) => text = t,
@@ -162,7 +225,18 @@ pub fn messages(conversation: &super::store::Conversation) -> Vec<Value> {
     super::store::turns(conversation)
         .iter()
         .map(|t| {
-            let text = t.parts.iter().filter_map(|p| if let super::store::Part::Text { text } = p { Some(text.as_str()) } else { None }).collect::<Vec<_>>().join("\n");
+            let text = t
+                .parts
+                .iter()
+                .filter_map(|p| {
+                    if let super::store::Part::Text { text } = p {
+                        Some(text.as_str())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
             json!({ "role": t.role, "content": text })
         })
         .filter(|m| !m["content"].as_str().unwrap_or_default().trim().is_empty())
@@ -174,19 +248,52 @@ mod tests {
     use super::*;
 
     fn sample(kind: &str, code: &str) -> Function {
-        Function { id: "redact".into(), name: "Redact emails".into(), kind: kind.into(), description: String::new(), language: "python".into(), code: code.into(), enabled: true }
+        Function {
+            id: "redact".into(),
+            name: "Redact emails".into(),
+            kind: kind.into(),
+            description: String::new(),
+            language: "python".into(),
+            code: code.into(),
+            enabled: true,
+        }
     }
 
     #[test]
     fn functions_are_saved_and_pipes_listed() {
         let dir = tempfile::tempdir().unwrap();
         save(dir.path(), sample("filter", "print(args['text'])")).unwrap();
-        assert!(save(dir.path(), Function { id: "Bad Id".into(), ..sample("filter", "x") }).is_err());
-        assert!(save(dir.path(), Function { kind: "other".into(), ..sample("filter", "x") }).is_err());
+        assert!(save(
+            dir.path(),
+            Function {
+                id: "Bad Id".into(),
+                ..sample("filter", "x")
+            }
+        )
+        .is_err());
+        assert!(save(
+            dir.path(),
+            Function {
+                kind: "other".into(),
+                ..sample("filter", "x")
+            }
+        )
+        .is_err());
         assert!(models(dir.path()).is_empty() && has_filters(dir.path()));
-        save(dir.path(), Function { id: "echo".into(), name: "Echo".into(), ..sample("pipe", "print('hi')") }).unwrap();
+        save(
+            dir.path(),
+            Function {
+                id: "echo".into(),
+                name: "Echo".into(),
+                ..sample("pipe", "print('hi')")
+            },
+        )
+        .unwrap();
         assert_eq!(models(dir.path())[0].reference, "fn/echo");
-        assert!(find_pipe(dir.path(), "fn/echo").is_some() && find_pipe(dir.path(), "fn/redact").is_none());
+        assert!(
+            find_pipe(dir.path(), "fn/echo").is_some()
+                && find_pipe(dir.path(), "fn/redact").is_none()
+        );
         delete(dir.path(), "echo").unwrap();
         assert!(models(dir.path()).is_empty());
     }
@@ -194,10 +301,22 @@ mod tests {
     #[test]
     fn filter_output_becomes_a_verdict() {
         assert_eq!(verdict("  \n"), Verdict::Keep);
-        assert_eq!(verdict("Hello [email]"), Verdict::Replace("Hello [email]".into()));
-        assert_eq!(verdict(r#"{"block": "No customer numbers here."}"#), Verdict::Block("No customer numbers here.".into()));
-        assert_eq!(verdict(r#"{"text": "new"}"#), Verdict::Replace("new".into()));
+        assert_eq!(
+            verdict("Hello [email]"),
+            Verdict::Replace("Hello [email]".into())
+        );
+        assert_eq!(
+            verdict(r#"{"block": "No customer numbers here."}"#),
+            Verdict::Block("No customer numbers here.".into())
+        );
+        assert_eq!(
+            verdict(r#"{"text": "new"}"#),
+            Verdict::Replace("new".into())
+        );
         // JSON without those keys is just text.
-        assert_eq!(verdict(r#"{"a": 1}"#), Verdict::Replace(r#"{"a": 1}"#.into()));
+        assert_eq!(
+            verdict(r#"{"a": 1}"#),
+            Verdict::Replace(r#"{"a": 1}"#.into())
+        );
     }
 }

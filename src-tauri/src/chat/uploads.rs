@@ -38,7 +38,9 @@ pub fn attachments(text: &str) -> Vec<(String, String)> {
         let Some(q) = after.find("\">") else { break };
         let name = after[..q].to_string();
         let body_start = &after[q + 2..];
-        let Some(end) = body_start.find("</attachment>") else { break };
+        let Some(end) = body_start.find("</attachment>") else {
+            break;
+        };
         out.push((name, body_start[..end].trim_matches('\n').to_string()));
         rest = &body_start[end + 13..];
     }
@@ -49,7 +51,9 @@ pub fn attachments(text: &str) -> Vec<(String, String)> {
 pub fn in_conversation(c: &store::Conversation) -> Vec<Upload> {
     let mut out = Vec::new();
     for (i, message) in c.messages.iter().enumerate() {
-        let Message::User { content } = message else { continue };
+        let Message::User { content } = message else {
+            continue;
+        };
         let at = c.times.iter().find(|(j, _)| *j == i).map(|(_, t)| *t);
         let mut images = 0;
         for part in content.iter() {
@@ -59,7 +63,15 @@ pub fn in_conversation(c: &store::Conversation) -> Vec<Upload> {
                         if body.trim() == REMOVED {
                             continue;
                         }
-                        out.push(Upload { conversation_id: c.id.clone(), conversation_title: c.title.clone(), message_index: i, kind: "file", name, size: body.chars().count(), at });
+                        out.push(Upload {
+                            conversation_id: c.id.clone(),
+                            conversation_title: c.title.clone(),
+                            message_index: i,
+                            kind: "file",
+                            name,
+                            size: body.chars().count(),
+                            at,
+                        });
                     }
                 }
                 UserContent::Image(image) => {
@@ -68,7 +80,15 @@ pub fn in_conversation(c: &store::Conversation) -> Vec<Upload> {
                         rig_core::completion::message::DocumentSourceKind::Base64(b) => b.len(),
                         _ => 0,
                     };
-                    out.push(Upload { conversation_id: c.id.clone(), conversation_title: c.title.clone(), message_index: i, kind: "image", name: format!("Image {images}"), size, at });
+                    out.push(Upload {
+                        conversation_id: c.id.clone(),
+                        conversation_title: c.title.clone(),
+                        message_index: i,
+                        kind: "image",
+                        name: format!("Image {images}"),
+                        size,
+                        at,
+                    });
                 }
                 _ => {}
             }
@@ -89,10 +109,20 @@ pub fn list(config_dir: &Path) -> Vec<Upload> {
 }
 
 /// Takes a file (by name) or an image (`Image n`) out of a message.
-pub fn remove(c: &mut store::Conversation, index: usize, kind: &str, name: &str) -> Result<(), String> {
-    let Some(Message::User { content }) = c.messages.get_mut(index) else { return Err("That message no longer exists.".into()) };
+pub fn remove(
+    c: &mut store::Conversation,
+    index: usize,
+    kind: &str,
+    name: &str,
+) -> Result<(), String> {
+    let Some(Message::User { content }) = c.messages.get_mut(index) else {
+        return Err("That message no longer exists.".into());
+    };
     if kind == "image" {
-        let n: usize = name.strip_prefix("Image ").and_then(|n| n.parse().ok()).ok_or("No such image.")?;
+        let n: usize = name
+            .strip_prefix("Image ")
+            .and_then(|n| n.parse().ok())
+            .ok_or("No such image.")?;
         let mut seen = 0;
         let position = content.iter().position(|p| {
             if matches!(p, UserContent::Image(_)) {
@@ -113,14 +143,19 @@ pub fn remove(c: &mut store::Conversation, index: usize, kind: &str, name: &str)
             if let Some(start) = t.text.find(&open) {
                 if let Some(len) = t.text[start..].find("</attachment>") {
                     let end = start + len + "</attachment>".len();
-                    t.text.replace_range(start..end, &format!("{open}\n{REMOVED}\n</attachment>"));
+                    t.text
+                        .replace_range(start..end, &format!("{open}\n{REMOVED}\n</attachment>"));
                     found = true;
                     break;
                 }
             }
         }
     }
-    if found { Ok(()) } else { Err("That file is no longer in the message.".into()) }
+    if found {
+        Ok(())
+    } else {
+        Err("That file is no longer in the message.".into())
+    }
 }
 
 #[cfg(test)]
@@ -133,22 +168,54 @@ mod tests {
         c.title = "Budget".into();
         let text = "Compare these.\n\n<attachment name=\"q1.csv\">\na,b\n1,2\n</attachment>\n\n<attachment name=\"notes.md\">\nHello\n</attachment>";
         c.messages.push(Message::User {
-            content: vec![UserContent::image_base64("aGVsbG8=", Some(rig_core::completion::message::ImageMediaType::PNG), None), UserContent::text(text)],
+            content: vec![
+                UserContent::image_base64(
+                    "aGVsbG8=",
+                    Some(rig_core::completion::message::ImageMediaType::PNG),
+                    None,
+                ),
+                UserContent::text(text),
+            ],
         });
         c.times.push((0, Utc::now()));
         let all = in_conversation(&c);
         let names: Vec<(&str, &str)> = all.iter().map(|u| (u.kind, u.name.as_str())).collect();
-        assert_eq!(names, [("image", "Image 1"), ("file", "q1.csv"), ("file", "notes.md")]);
+        assert_eq!(
+            names,
+            [
+                ("image", "Image 1"),
+                ("file", "q1.csv"),
+                ("file", "notes.md")
+            ]
+        );
         assert_eq!(all[1].size, 7);
         remove(&mut c, 0, "file", "q1.csv").unwrap();
         remove(&mut c, 0, "image", "Image 1").unwrap();
         let left: Vec<String> = in_conversation(&c).into_iter().map(|u| u.name).collect();
         assert_eq!(left, ["notes.md"]);
-        assert!(remove(&mut c, 0, "file", "q1.csv").is_ok(), "removing twice leaves the note");
+        assert!(
+            remove(&mut c, 0, "file", "q1.csv").is_ok(),
+            "removing twice leaves the note"
+        );
         assert!(remove(&mut c, 0, "file", "missing.txt").is_err());
         assert!(remove(&mut c, 5, "file", "notes.md").is_err());
-        let Message::User { content } = &c.messages[0] else { panic!() };
-        let all_text: String = content.iter().filter_map(|p| if let UserContent::Text(t) = p { Some(t.text.clone()) } else { None }).collect();
-        assert!(all_text.contains("Compare these.") && all_text.contains(REMOVED) && all_text.contains("removed an image"));
+        let Message::User { content } = &c.messages[0] else {
+            panic!()
+        };
+        let all_text: String = content
+            .iter()
+            .filter_map(|p| {
+                if let UserContent::Text(t) = p {
+                    Some(t.text.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert!(
+            all_text.contains("Compare these.")
+                && all_text.contains(REMOVED)
+                && all_text.contains("removed an image")
+        );
     }
 }

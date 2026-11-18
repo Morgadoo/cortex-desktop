@@ -74,7 +74,10 @@ fn settings_path(config_dir: &Path) -> PathBuf {
 }
 
 pub fn load(config_dir: &Path) -> EmbeddingSettings {
-    crate::chat::at_rest::read_to_string(settings_path(config_dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::chat::at_rest::read_to_string(settings_path(config_dir))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
 }
 
 pub fn save(config_dir: &Path, settings: &EmbeddingSettings) -> Result<(), String> {
@@ -97,28 +100,51 @@ pub fn ready(settings: &EmbeddingSettings) -> bool {
 
 async fn key() -> Result<String, String> {
     let account = crate::account::AccountId::parse(super::LOCAL_ACCOUNT)?;
-    Ok(crate::tools::auth::keychain_secrets(account).load(SECRET).await?.unwrap_or_default())
+    Ok(crate::tools::auth::keychain_secrets(account)
+        .load(SECRET)
+        .await?
+        .unwrap_or_default())
 }
 
 /// Vectors for `texts`, in order, from the configured model.
-pub async fn embed(settings: &EmbeddingSettings, texts: Vec<String>) -> Result<Vec<Vec<f32>>, String> {
+pub async fn embed(
+    settings: &EmbeddingSettings,
+    texts: Vec<String>,
+) -> Result<Vec<Vec<f32>>, String> {
     if settings.base_url == BUILTIN {
         let root = super::local_models::root()?;
         let model = settings.model.clone();
-        return tokio::task::spawn_blocking(move || super::local_models::embed_texts(&root, &model, &texts)).await.map_err(|e| e.to_string())?;
+        return tokio::task::spawn_blocking(move || {
+            super::local_models::embed_texts(&root, &model, &texts)
+        })
+        .await
+        .map_err(|e| e.to_string())?;
     }
-    let config = OpenAIConfig::with_key(&dialects::OPENAI, key().await?).with_base_url(settings.base_url.clone());
+    let config = OpenAIConfig::with_key(&dialects::OPENAI, key().await?)
+        .with_base_url(settings.base_url.clone());
     let model = config.client().embedding(settings.model.clone(), None);
     let mut out = Vec::with_capacity(texts.len());
     for chunk in texts.chunks(BATCH) {
-        let response = tokio::time::timeout(std::time::Duration::from_secs(120), model.call(chunk.to_vec()))
-            .await
-            .map_err(|_| "The embedding server did not answer in time.".to_string())?
-            .map_err(|e| super::context::short_error(&e.to_string()))?;
+        let response = tokio::time::timeout(
+            std::time::Duration::from_secs(120),
+            model.call(chunk.to_vec()),
+        )
+        .await
+        .map_err(|_| "The embedding server did not answer in time.".to_string())?
+        .map_err(|e| super::context::short_error(&e.to_string()))?;
         if response.embeddings.len() != chunk.len() {
-            return Err(format!("The embedding server returned {} vectors for {} passages.", response.embeddings.len(), chunk.len()));
+            return Err(format!(
+                "The embedding server returned {} vectors for {} passages.",
+                response.embeddings.len(),
+                chunk.len()
+            ));
         }
-        out.extend(response.embeddings.into_iter().map(|e| e.vec.into_iter().map(|v| v as f32).collect::<Vec<f32>>()));
+        out.extend(
+            response
+                .embeddings
+                .into_iter()
+                .map(|e| e.vec.into_iter().map(|v| v as f32).collect::<Vec<f32>>()),
+        );
     }
     Ok(out)
 }
@@ -131,17 +157,40 @@ pub struct Cached {
 }
 
 fn cache_path(doc_dir: &Path, document_id: &str, model: &str) -> PathBuf {
-    let tag: String = model.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).take(60).collect();
+    let tag: String = model
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .take(60)
+        .collect();
     doc_dir.join(format!("{document_id}.{tag}.vec.json"))
 }
 
-pub fn read_cache(doc_dir: &Path, document_id: &str, model: &str, passages: usize) -> Option<Vec<Vec<f32>>> {
-    let cached: Cached = serde_json::from_str(&crate::chat::at_rest::read_to_string(cache_path(doc_dir, document_id, model)).ok()?).ok()?;
+pub fn read_cache(
+    doc_dir: &Path,
+    document_id: &str,
+    model: &str,
+    passages: usize,
+) -> Option<Vec<Vec<f32>>> {
+    let cached: Cached = serde_json::from_str(
+        &crate::chat::at_rest::read_to_string(cache_path(doc_dir, document_id, model)).ok()?,
+    )
+    .ok()?;
     (cached.model == model && cached.vectors.len() == passages).then_some(cached.vectors)
 }
 
-fn write_cache(doc_dir: &Path, document_id: &str, model: &str, vectors: Vec<Vec<f32>>) -> Result<(), String> {
-    write_json(&cache_path(doc_dir, document_id, model), &Cached { model: model.into(), vectors })
+fn write_cache(
+    doc_dir: &Path,
+    document_id: &str,
+    model: &str,
+    vectors: Vec<Vec<f32>>,
+) -> Result<(), String> {
+    write_json(
+        &cache_path(doc_dir, document_id, model),
+        &Cached {
+            model: model.into(),
+            vectors,
+        },
+    )
 }
 
 pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
@@ -154,7 +203,11 @@ pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
         na += x * x;
         nb += y * y;
     }
-    if na == 0.0 || nb == 0.0 { 0.0 } else { dot / (na.sqrt() * nb.sqrt()) }
+    if na == 0.0 || nb == 0.0 {
+        0.0
+    } else {
+        dot / (na.sqrt() * nb.sqrt())
+    }
 }
 
 /// Merges ranked lists by reciprocal rank fusion: a passage high in either list, or fairly high
@@ -163,7 +216,9 @@ pub fn fuse(lists: &[Vec<Passage>], k: usize) -> Vec<Passage> {
     let mut scores: HashMap<(String, String, usize), (f64, Passage)> = HashMap::new();
     for list in lists {
         for (rank, p) in list.iter().enumerate() {
-            let entry = scores.entry((p.library.clone(), p.document.clone(), p.passage)).or_insert((0.0, p.clone()));
+            let entry = scores
+                .entry((p.library.clone(), p.document.clone(), p.passage))
+                .or_insert((0.0, p.clone()));
             entry.0 += 1.0 / (RRF_K + rank as f64 + 1.0);
         }
     }
@@ -180,14 +235,27 @@ pub fn fuse(lists: &[Vec<Passage>], k: usize) -> Vec<Passage> {
 }
 
 /// Embeds every passage of the given libraries not cached yet; returns how many were embedded.
-pub async fn index(config_dir: &Path, settings: &EmbeddingSettings, only: &[String]) -> Result<usize, String> {
+pub async fn index(
+    config_dir: &Path,
+    settings: &EmbeddingSettings,
+    only: &[String],
+) -> Result<usize, String> {
     let mut done = 0;
-    for library in libraries::list(config_dir).into_iter().filter(|l| only.is_empty() || only.contains(&l.id)) {
+    for library in libraries::list(config_dir)
+        .into_iter()
+        .filter(|l| only.is_empty() || only.contains(&l.id))
+    {
         let doc_dir = libraries::docs_dir(config_dir, &library.id)?;
         for document in &library.documents {
-            let Ok(text) = crate::chat::at_rest::read_to_string(doc_dir.join(format!("{}.txt", document.id))) else { continue };
+            let Ok(text) =
+                crate::chat::at_rest::read_to_string(doc_dir.join(format!("{}.txt", document.id)))
+            else {
+                continue;
+            };
             let passages = libraries::passages(&text);
-            if passages.is_empty() || read_cache(&doc_dir, &document.id, &settings.model, passages.len()).is_some() {
+            if passages.is_empty()
+                || read_cache(&doc_dir, &document.id, &settings.model, passages.len()).is_some()
+            {
                 continue;
             }
             let vectors = embed(settings, passages.clone()).await?;
@@ -202,22 +270,50 @@ pub async fn index(config_dir: &Path, settings: &EmbeddingSettings, only: &[Stri
 }
 
 /// The passages closest in meaning to `query`, best first.
-async fn semantic(config_dir: &Path, settings: &EmbeddingSettings, only: &[String], query: &str, k: usize) -> Result<Vec<Passage>, String> {
+async fn semantic(
+    config_dir: &Path,
+    settings: &EmbeddingSettings,
+    only: &[String],
+    query: &str,
+    k: usize,
+) -> Result<Vec<Passage>, String> {
     index(config_dir, settings, only).await?;
-    let question = embed(settings, vec![query.to_string()]).await?.pop().unwrap_or_default();
+    let question = embed(settings, vec![query.to_string()])
+        .await?
+        .pop()
+        .unwrap_or_default();
     if settings.uses_qdrant() {
         return qdrant::search(config_dir, settings, only, &question, k).await;
     }
     let mut scored: Vec<(f32, Passage)> = Vec::new();
-    for library in libraries::list(config_dir).into_iter().filter(|l| only.is_empty() || only.contains(&l.id)) {
+    for library in libraries::list(config_dir)
+        .into_iter()
+        .filter(|l| only.is_empty() || only.contains(&l.id))
+    {
         let doc_dir = libraries::docs_dir(config_dir, &library.id)?;
         for document in &library.documents {
-            let Ok(text) = crate::chat::at_rest::read_to_string(doc_dir.join(format!("{}.txt", document.id))) else { continue };
+            let Ok(text) =
+                crate::chat::at_rest::read_to_string(doc_dir.join(format!("{}.txt", document.id)))
+            else {
+                continue;
+            };
             let passages = libraries::passages(&text);
-            let Some(vectors) = read_cache(&doc_dir, &document.id, &settings.model, passages.len()) else { continue };
+            let Some(vectors) = read_cache(&doc_dir, &document.id, &settings.model, passages.len())
+            else {
+                continue;
+            };
             for (i, (passage, vector)) in passages.into_iter().zip(vectors).enumerate() {
                 let similarity = cosine(&question, &vector);
-                scored.push((similarity, Passage { library: library.name.clone(), document: document.name.clone(), passage: i, text: passage, score: similarity as f64 }));
+                scored.push((
+                    similarity,
+                    Passage {
+                        library: library.name.clone(),
+                        document: document.name.clone(),
+                        passage: i,
+                        text: passage,
+                        score: similarity as f64,
+                    },
+                ));
             }
         }
     }
@@ -227,7 +323,12 @@ async fn semantic(config_dir: &Path, settings: &EmbeddingSettings, only: &[Strin
 
 /// Library search: hybrid when semantic search is set up, keyword-only otherwise. The note says
 /// when semantic search was wanted but could not run.
-pub async fn search(config_dir: &Path, only: &[String], query: &str, k: usize) -> (Vec<Passage>, Option<String>) {
+pub async fn search(
+    config_dir: &Path,
+    only: &[String],
+    query: &str,
+    k: usize,
+) -> (Vec<Passage>, Option<String>) {
     let settings = load(config_dir);
     let reranking = !settings.rerank_url.is_empty() && !settings.rerank_model.is_empty();
     // A reranker gets a wider pool to choose from.
@@ -240,7 +341,12 @@ pub async fn search(config_dir: &Path, only: &[String], query: &str, k: usize) -
             Ok(meaning) => (fuse(&[keyword, meaning], pool), None),
             Err(e) => {
                 log::warn!("semantic search failed, keyword search only: {e}");
-                (keyword.into_iter().take(pool).collect(), Some(format!("Semantic search could not run ({e}); these are keyword matches.")))
+                (
+                    keyword.into_iter().take(pool).collect(),
+                    Some(format!(
+                        "Semantic search could not run ({e}); these are keyword matches."
+                    )),
+                )
             }
         }
     };
@@ -249,10 +355,23 @@ pub async fn search(config_dir: &Path, only: &[String], query: &str, k: usize) -
     }
     let key = rerank_key().await.unwrap_or_default();
     match rerank(&settings, &key, query, &candidates, k).await {
-        Ok(order) => (order.into_iter().filter_map(|(i, score)| candidates.get(i).cloned().map(|p| Passage { score: (score * 1000.0).round() / 1000.0, ..p })).collect(), note),
+        Ok(order) => (
+            order
+                .into_iter()
+                .filter_map(|(i, score)| {
+                    candidates.get(i).cloned().map(|p| Passage {
+                        score: (score * 1000.0).round() / 1000.0,
+                        ..p
+                    })
+                })
+                .collect(),
+            note,
+        ),
         Err(e) => {
             log::warn!("reranking failed: {e}");
-            note.get_or_insert_with(|| format!("Reranking could not run ({e}); these are in search order."));
+            note.get_or_insert_with(|| {
+                format!("Reranking could not run ({e}); these are in search order.")
+            });
             (candidates.into_iter().take(k).collect(), note)
         }
     }
@@ -260,12 +379,24 @@ pub async fn search(config_dir: &Path, only: &[String], query: &str, k: usize) -
 
 async fn rerank_key() -> Result<String, String> {
     let account = crate::account::AccountId::parse(super::LOCAL_ACCOUNT)?;
-    Ok(crate::tools::auth::keychain_secrets(account).load(RERANK_SECRET).await?.unwrap_or_default())
+    Ok(crate::tools::auth::keychain_secrets(account)
+        .load(RERANK_SECRET)
+        .await?
+        .unwrap_or_default())
 }
 
 /// The candidates' order by the reranker: `(index, relevance)`, best first, at most `k`.
-pub async fn rerank(settings: &EmbeddingSettings, key: &str, query: &str, candidates: &[Passage], k: usize) -> Result<Vec<(usize, f64)>, String> {
-    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(30)).build().map_err(|e| e.to_string())?;
+pub async fn rerank(
+    settings: &EmbeddingSettings,
+    key: &str,
+    query: &str,
+    candidates: &[Passage],
+    k: usize,
+) -> Result<Vec<(usize, f64)>, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
     let documents: Vec<&str> = candidates.iter().map(|p| p.text.as_str()).collect();
     let url = format!("{}/rerank", settings.rerank_url.trim_end_matches('/'));
     let mut request = client.post(&url).json(&serde_json::json!({
@@ -281,9 +412,20 @@ pub async fn rerank(settings: &EmbeddingSettings, key: &str, query: &str, candid
     }
     let response = request.send().await.map_err(|e| e.to_string())?;
     let status = response.status();
-    let body: serde_json::Value = response.json().await.map_err(|e| format!("the reranker answered {status} without JSON: {e}"))?;
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("the reranker answered {status} without JSON: {e}"))?;
     if !status.is_success() {
-        return Err(format!("the reranker answered {status}: {}", body.get("error").or_else(|| body.get("message")).map_or_else(|| body.to_string(), |e| e.to_string()).chars().take(200).collect::<String>()));
+        return Err(format!(
+            "the reranker answered {status}: {}",
+            body.get("error")
+                .or_else(|| body.get("message"))
+                .map_or_else(|| body.to_string(), |e| e.to_string())
+                .chars()
+                .take(200)
+                .collect::<String>()
+        ));
     }
     parse_rerank(&body, candidates.len(), k)
 }
@@ -291,12 +433,20 @@ pub async fn rerank(settings: &EmbeddingSettings, key: &str, query: &str, candid
 /// Reads `{"results": [{"index", "relevance_score"}]}` (Cohere, Jina, llama.cpp, vLLM) or
 /// `[{"index", "score"}]` (TEI).
 fn parse_rerank(body: &serde_json::Value, n: usize, k: usize) -> Result<Vec<(usize, f64)>, String> {
-    let items = body.get("results").or_else(|| body.get("data")).unwrap_or(body).as_array().ok_or("the reranker's answer has no results")?;
+    let items = body
+        .get("results")
+        .or_else(|| body.get("data"))
+        .unwrap_or(body)
+        .as_array()
+        .ok_or("the reranker's answer has no results")?;
     let mut out: Vec<(usize, f64)> = items
         .iter()
         .filter_map(|r| {
             let index = r.get("index")?.as_u64()? as usize;
-            let score = r.get("relevance_score").or_else(|| r.get("score"))?.as_f64()?;
+            let score = r
+                .get("relevance_score")
+                .or_else(|| r.get("score"))?
+                .as_f64()?;
             (index < n).then_some((index, score))
         })
         .collect();
@@ -322,13 +472,30 @@ pub mod qdrant {
     const UPSERT_BATCH: usize = 128;
 
     async fn key() -> String {
-        let Ok(account) = crate::account::AccountId::parse(crate::chat::LOCAL_ACCOUNT) else { return String::new() };
-        crate::tools::auth::keychain_secrets(account).load(super::QDRANT_SECRET).await.ok().flatten().unwrap_or_default()
+        let Ok(account) = crate::account::AccountId::parse(crate::chat::LOCAL_ACCOUNT) else {
+            return String::new();
+        };
+        crate::tools::auth::keychain_secrets(account)
+            .load(super::QDRANT_SECRET)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or_default()
     }
 
     /// One collection per embedding model, since each has its own width and meaning.
     pub fn collection(model: &str) -> String {
-        let tag: String = model.chars().map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '_' }).take(60).collect();
+        let tag: String = model
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() {
+                    c.to_ascii_lowercase()
+                } else {
+                    '_'
+                }
+            })
+            .take(60)
+            .collect();
         format!("lumo_{tag}")
     }
 
@@ -342,8 +509,16 @@ pub mod qdrant {
         h & (u64::MAX >> 1)
     }
 
-    async fn call(settings: &EmbeddingSettings, method: reqwest::Method, path: &str, body: Option<Value>) -> Result<(u16, Value), String> {
-        let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(60)).build().map_err(|e| e.to_string())?;
+    async fn call(
+        settings: &EmbeddingSettings,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<Value>,
+    ) -> Result<(u16, Value), String> {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(60))
+            .build()
+            .map_err(|e| e.to_string())?;
         let mut request = client.request(method, format!("{}{path}", settings.qdrant_url));
         let key = key().await;
         if !key.is_empty() {
@@ -352,23 +527,41 @@ pub mod qdrant {
         if let Some(body) = body {
             request = request.json(&body);
         }
-        let response = request.send().await.map_err(|e| format!("Qdrant did not answer at {}: {e}", settings.qdrant_url))?;
+        let response = request
+            .send()
+            .await
+            .map_err(|e| format!("Qdrant did not answer at {}: {e}", settings.qdrant_url))?;
         let status = response.status().as_u16();
         let body: Value = response.json().await.unwrap_or(Value::Null);
         Ok((status, body))
     }
 
     fn failed(what: &str, status: u16, body: &Value) -> String {
-        let detail = body.pointer("/status/error").and_then(Value::as_str).map_or_else(|| body.to_string(), str::to_string);
-        format!("Qdrant could not {what} ({status}): {}", detail.chars().take(200).collect::<String>())
+        let detail = body
+            .pointer("/status/error")
+            .and_then(Value::as_str)
+            .map_or_else(|| body.to_string(), str::to_string);
+        format!(
+            "Qdrant could not {what} ({status}): {}",
+            detail.chars().take(200).collect::<String>()
+        )
     }
 
     /// Creates the collection for `width`-wide vectors unless it is there; a collection made for
     /// another width is an error (the model changed under the same name).
     async fn ensure(settings: &EmbeddingSettings, name: &str, width: usize) -> Result<(), String> {
-        let (status, body) = call(settings, reqwest::Method::GET, &format!("/collections/{name}"), None).await?;
+        let (status, body) = call(
+            settings,
+            reqwest::Method::GET,
+            &format!("/collections/{name}"),
+            None,
+        )
+        .await?;
         if status == 200 {
-            let size = body.pointer("/result/config/params/vectors/size").and_then(Value::as_u64).unwrap_or(0) as usize;
+            let size = body
+                .pointer("/result/config/params/vectors/size")
+                .and_then(Value::as_u64)
+                .unwrap_or(0) as usize;
             if size != 0 && size != width {
                 return Err(format!("Qdrant's collection {name} holds {size}-wide vectors, but the model makes {width}-wide ones. Delete the collection in Qdrant to start over."));
             }
@@ -377,13 +570,25 @@ pub mod qdrant {
         if status != 404 {
             return Err(failed("read the collection", status, &body));
         }
-        let (status, body) = call(settings, reqwest::Method::PUT, &format!("/collections/{name}"), Some(json!({ "vectors": { "size": width, "distance": "Cosine" } }))).await?;
+        let (status, body) = call(
+            settings,
+            reqwest::Method::PUT,
+            &format!("/collections/{name}"),
+            Some(json!({ "vectors": { "size": width, "distance": "Cosine" } })),
+        )
+        .await?;
         if status != 200 {
             return Err(failed("create the collection", status, &body));
         }
         // Filters on library and document ids are fast with keyword indexes.
         for field in ["library_id", "document_id"] {
-            let _ = call(settings, reqwest::Method::PUT, &format!("/collections/{name}/index?wait=true"), Some(json!({ "field_name": field, "field_schema": "keyword" }))).await;
+            let _ = call(
+                settings,
+                reqwest::Method::PUT,
+                &format!("/collections/{name}/index?wait=true"),
+                Some(json!({ "field_name": field, "field_schema": "keyword" })),
+            )
+            .await;
         }
         Ok(())
     }
@@ -405,7 +610,10 @@ pub mod qdrant {
     pub async fn sync(config_dir: &Path, settings: &EmbeddingSettings) -> Result<(), String> {
         let name = collection(&settings.model);
         let mut marker = read_marker(config_dir);
-        let known = marker.get(&format!("{}|{name}", settings.qdrant_url)).cloned().unwrap_or_default();
+        let known = marker
+            .get(&format!("{}|{name}", settings.qdrant_url))
+            .cloned()
+            .unwrap_or_default();
         let mut now: BTreeSet<String> = BTreeSet::new();
         let mut library_ids = Vec::new();
         let mut pending: Vec<Value> = Vec::new();
@@ -415,9 +623,17 @@ pub mod qdrant {
             library_ids.push(library.id.clone());
             let doc_dir = libraries::docs_dir(config_dir, &library.id)?;
             for document in &library.documents {
-                let Ok(text) = crate::chat::at_rest::read_to_string(doc_dir.join(format!("{}.txt", document.id))) else { continue };
+                let Ok(text) = crate::chat::at_rest::read_to_string(
+                    doc_dir.join(format!("{}.txt", document.id)),
+                ) else {
+                    continue;
+                };
                 let passages = libraries::passages(&text);
-                let Some(vectors) = read_cache(&doc_dir, &document.id, &settings.model, passages.len()) else { continue };
+                let Some(vectors) =
+                    read_cache(&doc_dir, &document.id, &settings.model, passages.len())
+                else {
+                    continue;
+                };
                 let stamp = format!("{}/{}/{}", library.id, document.id, passages.len());
                 now.insert(stamp.clone());
                 if known.contains(&stamp) {
@@ -441,7 +657,13 @@ pub mod qdrant {
             ensure(settings, &name, width).await?;
         } else {
             // Nothing to add: only deletions, which need the collection to exist.
-            let (status, _) = call(settings, reqwest::Method::GET, &format!("/collections/{name}"), None).await?;
+            let (status, _) = call(
+                settings,
+                reqwest::Method::GET,
+                &format!("/collections/{name}"),
+                None,
+            )
+            .await?;
             if status == 404 {
                 marker.insert(format!("{}|{name}", settings.qdrant_url), now);
                 return crate::chat::store::write_json(&marker_path(config_dir), &marker);
@@ -450,23 +672,53 @@ pub mod qdrant {
         // A changed document's old passages go first (it may now have fewer).
         for (library, document) in &changed_docs {
             let filter = json!({ "must": [{ "key": "library_id", "match": { "value": library } }, { "key": "document_id", "match": { "value": document } }] });
-            let (status, body) = call(settings, reqwest::Method::POST, &format!("/collections/{name}/points/delete?wait=true"), Some(json!({ "filter": filter }))).await?;
+            let (status, body) = call(
+                settings,
+                reqwest::Method::POST,
+                &format!("/collections/{name}/points/delete?wait=true"),
+                Some(json!({ "filter": filter })),
+            )
+            .await?;
             if status != 200 {
                 return Err(failed("remove a document's old passages", status, &body));
             }
         }
         for batch in pending.chunks(UPSERT_BATCH) {
-            let (status, body) = call(settings, reqwest::Method::PUT, &format!("/collections/{name}/points?wait=true"), Some(json!({ "points": batch }))).await?;
+            let (status, body) = call(
+                settings,
+                reqwest::Method::PUT,
+                &format!("/collections/{name}/points?wait=true"),
+                Some(json!({ "points": batch })),
+            )
+            .await?;
             if status != 200 {
                 return Err(failed("store passages", status, &body));
             }
         }
         // Documents and libraries that are gone.
-        let gone: BTreeSet<(String, String)> = known.difference(&now).filter_map(|s| { let mut parts = s.splitn(3, '/'); Some((parts.next()?.to_string(), parts.next()?.to_string())) }).collect();
-        let still: BTreeSet<(String, String)> = now.iter().filter_map(|s| { let mut parts = s.splitn(3, '/'); Some((parts.next()?.to_string(), parts.next()?.to_string())) }).collect();
+        let gone: BTreeSet<(String, String)> = known
+            .difference(&now)
+            .filter_map(|s| {
+                let mut parts = s.splitn(3, '/');
+                Some((parts.next()?.to_string(), parts.next()?.to_string()))
+            })
+            .collect();
+        let still: BTreeSet<(String, String)> = now
+            .iter()
+            .filter_map(|s| {
+                let mut parts = s.splitn(3, '/');
+                Some((parts.next()?.to_string(), parts.next()?.to_string()))
+            })
+            .collect();
         for (library, document) in gone.difference(&still) {
             let filter = json!({ "must": [{ "key": "library_id", "match": { "value": library } }, { "key": "document_id", "match": { "value": document } }] });
-            let (status, body) = call(settings, reqwest::Method::POST, &format!("/collections/{name}/points/delete?wait=true"), Some(json!({ "filter": filter }))).await?;
+            let (status, body) = call(
+                settings,
+                reqwest::Method::POST,
+                &format!("/collections/{name}/points/delete?wait=true"),
+                Some(json!({ "filter": filter })),
+            )
+            .await?;
             if status != 200 {
                 return Err(failed("remove a deleted document", status, &body));
             }
@@ -476,15 +728,30 @@ pub mod qdrant {
     }
 
     /// The `k` passages nearest to `vector`, in the given libraries (all when empty).
-    pub async fn search(config_dir: &Path, settings: &EmbeddingSettings, only: &[String], vector: &[f32], k: usize) -> Result<Vec<Passage>, String> {
+    pub async fn search(
+        config_dir: &Path,
+        settings: &EmbeddingSettings,
+        only: &[String],
+        vector: &[f32],
+        k: usize,
+    ) -> Result<Vec<Passage>, String> {
         let name = collection(&settings.model);
-        let libraries: Vec<_> = libraries::list(config_dir).into_iter().filter(|l| only.is_empty() || only.contains(&l.id)).collect();
+        let libraries: Vec<_> = libraries::list(config_dir)
+            .into_iter()
+            .filter(|l| only.is_empty() || only.contains(&l.id))
+            .collect();
         if libraries.is_empty() {
             return Ok(Vec::new());
         }
         let ids: Vec<&str> = libraries.iter().map(|l| l.id.as_str()).collect();
         let body = json!({ "vector": vector, "limit": k, "with_payload": true, "filter": { "must": [{ "key": "library_id", "match": { "any": ids } }] } });
-        let (status, answer) = call(settings, reqwest::Method::POST, &format!("/collections/{name}/points/search"), Some(body)).await?;
+        let (status, answer) = call(
+            settings,
+            reqwest::Method::POST,
+            &format!("/collections/{name}/points/search"),
+            Some(body),
+        )
+        .await?;
         if status == 404 {
             return Ok(Vec::new());
         }
@@ -503,13 +770,21 @@ pub mod qdrant {
             .flatten()
             .filter_map(|hit| {
                 let payload = hit.get("payload")?;
-                let library = libraries.iter().find(|l| Some(l.id.as_str()) == payload.get("library_id").and_then(Value::as_str))?;
-                let document = library.documents.iter().find(|d| Some(d.id.as_str()) == payload.get("document_id").and_then(Value::as_str))?;
+                let library = libraries.iter().find(|l| {
+                    Some(l.id.as_str()) == payload.get("library_id").and_then(Value::as_str)
+                })?;
+                let document = library.documents.iter().find(|d| {
+                    Some(d.id.as_str()) == payload.get("document_id").and_then(Value::as_str)
+                })?;
                 Some(Passage {
                     library: library.name.clone(),
                     document: document.name.clone(),
                     passage: payload.get("passage").and_then(Value::as_u64).unwrap_or(0) as usize,
-                    text: payload.get("text").and_then(Value::as_str).unwrap_or_default().to_string(),
+                    text: payload
+                        .get("text")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
                     score: hit.get("score").and_then(Value::as_f64).unwrap_or(0.0),
                 })
             })
@@ -525,8 +800,13 @@ pub mod qdrant {
         if status != 200 {
             return Err(failed("list collections", status, &body));
         }
-        let (_, root) = call(settings, reqwest::Method::GET, "/", None).await.unwrap_or((0, Value::Null));
-        Ok(root.get("version").and_then(Value::as_str).map_or_else(|| "Qdrant".to_string(), |v| format!("Qdrant {v}")))
+        let (_, root) = call(settings, reqwest::Method::GET, "/", None)
+            .await
+            .unwrap_or((0, Value::Null));
+        Ok(root
+            .get("version")
+            .and_then(Value::as_str)
+            .map_or_else(|| "Qdrant".to_string(), |v| format!("Qdrant {v}")))
     }
 }
 
@@ -535,13 +815,23 @@ mod tests {
     use super::*;
 
     fn p(document: &str, passage: usize) -> Passage {
-        Passage { library: "L".into(), document: document.into(), passage, text: format!("{document} {passage}"), score: 0.0 }
+        Passage {
+            library: "L".into(),
+            document: document.into(),
+            passage,
+            text: format!("{document} {passage}"),
+            score: 0.0,
+        }
     }
 
     #[test]
     fn rerank_answers_in_both_shapes() {
         let cohere = serde_json::json!({ "results": [{ "index": 2, "relevance_score": 0.91 }, { "index": 0, "relevance_score": 0.12 }, { "index": 9, "relevance_score": 0.99 }] });
-        assert_eq!(parse_rerank(&cohere, 3, 5).unwrap(), [(2, 0.91), (0, 0.12)], "out-of-range indexes are dropped");
+        assert_eq!(
+            parse_rerank(&cohere, 3, 5).unwrap(),
+            [(2, 0.91), (0, 0.12)],
+            "out-of-range indexes are dropped"
+        );
         let tei = serde_json::json!([{ "index": 0, "score": 0.2 }, { "index": 1, "score": 0.8 }]);
         assert_eq!(parse_rerank(&tei, 2, 1).unwrap(), [(1, 0.8)]);
         assert!(parse_rerank(&serde_json::json!({ "results": [] }), 2, 1).is_err());
@@ -565,9 +855,25 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        let settings = EmbeddingSettings { rerank_url: format!("http://{addr}/v1"), rerank_model: "bge-reranker".into(), ..Default::default() };
-        let candidates = vec![p("pricing", 0), Passage { text: "termination termination clause".into(), ..p("contract", 3) }, Passage { text: "termination notice".into(), ..p("faq", 1) }];
-        let order = rerank(&settings, "", "how do I cancel", &candidates, 2).await.unwrap();
+        let settings = EmbeddingSettings {
+            rerank_url: format!("http://{addr}/v1"),
+            rerank_model: "bge-reranker".into(),
+            ..Default::default()
+        };
+        let candidates = vec![
+            p("pricing", 0),
+            Passage {
+                text: "termination termination clause".into(),
+                ..p("contract", 3)
+            },
+            Passage {
+                text: "termination notice".into(),
+                ..p("faq", 1)
+            },
+        ];
+        let order = rerank(&settings, "", "how do I cancel", &candidates, 2)
+            .await
+            .unwrap();
         assert_eq!(order.iter().map(|(i, _)| *i).collect::<Vec<_>>(), [1, 2]);
     }
 
@@ -586,12 +892,33 @@ mod tests {
     fn cosine_and_cache() {
         assert!((cosine(&[1.0, 0.0], &[1.0, 0.0]) - 1.0).abs() < 1e-6);
         assert_eq!(cosine(&[1.0, 0.0], &[0.0, 1.0]), 0.0);
-        assert_eq!(cosine(&[1.0], &[1.0, 2.0]), 0.0, "different widths never match");
+        assert_eq!(
+            cosine(&[1.0], &[1.0, 2.0]),
+            0.0,
+            "different widths never match"
+        );
         let dir = tempfile::tempdir().unwrap();
-        write_cache(dir.path(), "doc", "nomic-embed-text:v1.5", vec![vec![0.1, 0.2], vec![0.3, 0.4]]).unwrap();
-        assert_eq!(read_cache(dir.path(), "doc", "nomic-embed-text:v1.5", 2).unwrap().len(), 2);
-        assert!(read_cache(dir.path(), "doc", "nomic-embed-text:v1.5", 3).is_none(), "a changed document is embedded again");
-        assert!(read_cache(dir.path(), "doc", "other-model", 2).is_none(), "each model has its own vectors");
+        write_cache(
+            dir.path(),
+            "doc",
+            "nomic-embed-text:v1.5",
+            vec![vec![0.1, 0.2], vec![0.3, 0.4]],
+        )
+        .unwrap();
+        assert_eq!(
+            read_cache(dir.path(), "doc", "nomic-embed-text:v1.5", 2)
+                .unwrap()
+                .len(),
+            2
+        );
+        assert!(
+            read_cache(dir.path(), "doc", "nomic-embed-text:v1.5", 3).is_none(),
+            "a changed document is embedded again"
+        );
+        assert!(
+            read_cache(dir.path(), "doc", "other-model", 2).is_none(),
+            "each model has its own vectors"
+        );
     }
 
     #[test]
@@ -608,7 +935,14 @@ mod tests {
         ] });
         let hits = qdrant::read_hits(&answer, &[library]);
         assert_eq!(hits.len(), 1, "passages of removed documents are dropped");
-        assert_eq!((hits[0].library.as_str(), hits[0].document.as_str(), hits[0].passage), ("Contracts", "lease.pdf", 3));
+        assert_eq!(
+            (
+                hits[0].library.as_str(),
+                hits[0].document.as_str(),
+                hits[0].passage
+            ),
+            ("Contracts", "lease.pdf", 3)
+        );
     }
 
     /// With a Qdrant server at `LUMO_TEST_QDRANT` (e.g. http://localhost:6333) and the built-in
@@ -617,47 +951,116 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn a_qdrant_server_stores_and_finds_passages() {
-        let (Ok(url), Ok(models)) = (std::env::var("LUMO_TEST_QDRANT"), std::env::var("LUMO_TEST_MODELS")) else { return };
+        let (Ok(url), Ok(models)) = (
+            std::env::var("LUMO_TEST_QDRANT"),
+            std::env::var("LUMO_TEST_MODELS"),
+        ) else {
+            return;
+        };
         super::super::local_models::init(Path::new(&models));
         let dir = tempfile::tempdir().unwrap();
-        let settings = EmbeddingSettings { enabled: true, base_url: BUILTIN.into(), model: "minilm-l6".into(), qdrant_url: url, vector_store: "qdrant".into(), ..Default::default() };
+        let settings = EmbeddingSettings {
+            enabled: true,
+            base_url: BUILTIN.into(),
+            model: "minilm-l6".into(),
+            qdrant_url: url,
+            vector_store: "qdrant".into(),
+            ..Default::default()
+        };
         save(dir.path(), &settings).unwrap();
-        assert!(qdrant::check(&settings).await.unwrap().starts_with("Qdrant"));
+        assert!(qdrant::check(&settings)
+            .await
+            .unwrap()
+            .starts_with("Qdrant"));
         let lib = libraries::create(dir.path(), "Contracts", "").unwrap();
         libraries::add_text(dir.path(), &lib.id, "lease.txt", "Either party may end this agreement by giving thirty days written notice to the other party.").unwrap();
-        libraries::add_text(dir.path(), &lib.id, "bakery.txt", "Fresh sourdough loaves are baked every Saturday morning and sold until noon.").unwrap();
+        libraries::add_text(
+            dir.path(),
+            &lib.id,
+            "bakery.txt",
+            "Fresh sourdough loaves are baked every Saturday morning and sold until noon.",
+        )
+        .unwrap();
         let other = libraries::create(dir.path(), "Recipes", "").unwrap();
-        libraries::add_text(dir.path(), &other.id, "soup.txt", "Simmer the lentils with cumin and garlic for forty minutes.").unwrap();
+        libraries::add_text(
+            dir.path(),
+            &other.id,
+            "soup.txt",
+            "Simmer the lentils with cumin and garlic for forty minutes.",
+        )
+        .unwrap();
         assert_eq!(index(dir.path(), &settings, &[]).await.unwrap(), 3);
-        let question = embed(&settings, vec!["How can I cancel the contract?".into()]).await.unwrap().pop().unwrap();
-        let hits = qdrant::search(dir.path(), &settings, &[], &question, 3).await.unwrap();
+        let question = embed(&settings, vec!["How can I cancel the contract?".into()])
+            .await
+            .unwrap()
+            .pop()
+            .unwrap();
+        let hits = qdrant::search(dir.path(), &settings, &[], &question, 3)
+            .await
+            .unwrap();
         eprintln!("{hits:?}");
         assert_eq!(hits.len(), 3);
-        assert_eq!(hits[0].document, "lease.txt", "found by meaning: no word in common");
-        let only = qdrant::search(dir.path(), &settings, std::slice::from_ref(&other.id), &question, 3).await.unwrap();
-        assert!(only.iter().all(|p| p.library == "Recipes"), "limited to the libraries asked");
+        assert_eq!(
+            hits[0].document, "lease.txt",
+            "found by meaning: no word in common"
+        );
+        let only = qdrant::search(
+            dir.path(),
+            &settings,
+            std::slice::from_ref(&other.id),
+            &question,
+            3,
+        )
+        .await
+        .unwrap();
+        assert!(
+            only.iter().all(|p| p.library == "Recipes"),
+            "limited to the libraries asked"
+        );
         // Through the app's search: semantic and keyword fused.
         let (fused, note) = search(dir.path(), &[], "How can I cancel the contract?", 2).await;
         assert!(note.is_none(), "{note:?}");
         assert_eq!(fused[0].document, "lease.txt");
         // Removing a document removes its passages from Qdrant.
-        let lease = libraries::load(dir.path(), &lib.id).unwrap().documents.into_iter().find(|d| d.name == "lease.txt").unwrap();
+        let lease = libraries::load(dir.path(), &lib.id)
+            .unwrap()
+            .documents
+            .into_iter()
+            .find(|d| d.name == "lease.txt")
+            .unwrap();
         libraries::remove(dir.path(), &lib.id, &lease.id).unwrap();
         index(dir.path(), &settings, &[]).await.unwrap();
-        let after = qdrant::search(dir.path(), &settings, &[], &question, 3).await.unwrap();
+        let after = qdrant::search(dir.path(), &settings, &[], &question, 3)
+            .await
+            .unwrap();
         assert_eq!(after.len(), 2);
         assert!(after.iter().all(|p| p.document != "lease.txt"));
         libraries::delete(dir.path(), &other.id).unwrap();
         index(dir.path(), &settings, &[]).await.unwrap();
         let (_, raw) = (0, reqwest::Client::new().post(format!("{}/collections/{}/points/count", settings.qdrant_url, qdrant::collection("minilm-l6"))).json(&serde_json::json!({"exact": true, "filter": { "must": [{ "key": "library_id", "match": { "any": [lib.id, other.id] } }] }})).send().await.unwrap().json::<serde_json::Value>().await.unwrap());
-        assert_eq!(raw.pointer("/result/count").and_then(serde_json::Value::as_u64), Some(1), "a deleted library's passages are gone too: {raw}");
+        assert_eq!(
+            raw.pointer("/result/count")
+                .and_then(serde_json::Value::as_u64),
+            Some(1),
+            "a deleted library's passages are gone too: {raw}"
+        );
     }
 
     #[test]
     fn settings_round_trip_and_readiness() {
         let dir = tempfile::tempdir().unwrap();
         assert!(!ready(&load(dir.path())), "off until set up");
-        save(dir.path(), &EmbeddingSettings { enabled: true, base_url: " http://localhost:11434/v1/ ".into(), model: "nomic-embed-text".into(), has_key: false, ..Default::default() }).unwrap();
+        save(
+            dir.path(),
+            &EmbeddingSettings {
+                enabled: true,
+                base_url: " http://localhost:11434/v1/ ".into(),
+                model: "nomic-embed-text".into(),
+                has_key: false,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let s = load(dir.path());
         assert_eq!(s.base_url, "http://localhost:11434/v1");
         assert!(ready(&s));

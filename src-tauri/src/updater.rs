@@ -174,7 +174,9 @@ pub fn startup(app: &AppHandle) {
         return;
     }
     // The user can turn the check at start off (Settings → General → Privacy).
-    if crate::settings::get_config_dir(app).is_ok_and(|dir| !crate::reporting::load_prefs(&dir).update_checks) {
+    if crate::settings::get_config_dir(app)
+        .is_ok_and(|dir| !crate::reporting::load_prefs(&dir).update_checks)
+    {
         return;
     }
     // Acquire the update guard before spawning to prevent concurrent manual checks.

@@ -30,7 +30,23 @@ pub struct Secret {
 }
 
 /// Names a secret may not take: they would change how programs run.
-const RESERVED: &[&str] = &["PATH", "HOME", "TMPDIR", "LANG", "SHELL", "USER", "PWD", "LD_PRELOAD", "LD_LIBRARY_PATH", "PYTHONPATH", "NODE_OPTIONS", "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT"];
+const RESERVED: &[&str] = &[
+    "PATH",
+    "HOME",
+    "TMPDIR",
+    "LANG",
+    "SHELL",
+    "USER",
+    "PWD",
+    "LD_PRELOAD",
+    "LD_LIBRARY_PATH",
+    "PYTHONPATH",
+    "NODE_OPTIONS",
+    "SYSTEMROOT",
+    "WINDIR",
+    "COMSPEC",
+    "PATHEXT",
+];
 
 tokio::task_local! {
     /// The secrets of the tool call running in this task, as (name, value).
@@ -46,7 +62,10 @@ fn keychain_name(name: &str) -> String {
 }
 
 pub fn list(config_dir: &Path) -> Vec<Secret> {
-    crate::chat::at_rest::read_to_string(path(config_dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::chat::at_rest::read_to_string(path(config_dir))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
 }
 
 fn write(config_dir: &Path, secrets: &[Secret]) -> Result<(), String> {
@@ -54,26 +73,38 @@ fn write(config_dir: &Path, secrets: &[Secret]) -> Result<(), String> {
     if let Some(dir) = p.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
-    crate::chat::at_rest::write(p, serde_json::to_string_pretty(secrets).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+    crate::chat::at_rest::write(
+        p,
+        serde_json::to_string_pretty(secrets).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())
 }
 
 /// `GITHUB_TOKEN`-style: capitals, digits and underscores, not starting with a digit.
 pub fn valid_name(name: &str) -> Result<(), String> {
     let ok = !name.is_empty()
         && name.len() <= 64
-        && name.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+        && name
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
         && !name.starts_with(|c: char| c.is_ascii_digit());
     if !ok {
         return Err("Use capitals, digits and underscores for the name, like GITHUB_TOKEN.".into());
     }
     if RESERVED.contains(&name) || name.starts_with("LUMO_") {
-        return Err(format!("{name} is used by the system; choose another name."));
+        return Err(format!(
+            "{name} is used by the system; choose another name."
+        ));
     }
     Ok(())
 }
 
 /// Adds or updates a secret; `value` replaces the stored one when given (required when new).
-pub async fn save(config_dir: &Path, secret: Secret, value: Option<String>) -> Result<Vec<Secret>, String> {
+pub async fn save(
+    config_dir: &Path,
+    secret: Secret,
+    value: Option<String>,
+) -> Result<Vec<Secret>, String> {
     valid_name(&secret.name)?;
     let mut all = list(config_dir);
     let exists = all.iter().any(|s| s.name == secret.name);
@@ -83,7 +114,9 @@ pub async fn save(config_dir: &Path, secret: Secret, value: Option<String>) -> R
     }
     if let Some(value) = value {
         let account = AccountId::parse(LOCAL_ACCOUNT)?;
-        keychain_secrets(account).store(&keychain_name(&secret.name), &value).await?;
+        keychain_secrets(account)
+            .store(&keychain_name(&secret.name), &value)
+            .await?;
     }
     match all.iter_mut().find(|s| s.name == secret.name) {
         Some(s) => *s = secret,
@@ -99,13 +132,18 @@ pub async fn delete(config_dir: &Path, name: &str) -> Result<Vec<Secret>, String
     all.retain(|s| s.name != name);
     write(config_dir, &all)?;
     let account = AccountId::parse(LOCAL_ACCOUNT)?;
-    keychain_secrets(account).delete(&keychain_name(name)).await?;
+    keychain_secrets(account)
+        .delete(&keychain_name(name))
+        .await?;
     Ok(all)
 }
 
 /// The secrets a run may use: the agent's own, and those marked everywhere.
 pub fn granted(all: &[Secret], agent: Option<&Agent>) -> Vec<Secret> {
-    all.iter().filter(|s| s.everywhere || agent.is_some_and(|a| a.secrets.contains(&s.name))).cloned().collect()
+    all.iter()
+        .filter(|s| s.everywhere || agent.is_some_and(|a| a.secrets.contains(&s.name)))
+        .cloned()
+        .collect()
 }
 
 /// Names and values of the granted secrets, read from the keychain; a missing value is skipped.
@@ -114,7 +152,9 @@ pub async fn env_for(config_dir: &Path, agent: Option<&Agent>) -> Vec<(String, S
     if granted.is_empty() {
         return Vec::new();
     }
-    let Ok(account) = AccountId::parse(LOCAL_ACCOUNT) else { return Vec::new() };
+    let Ok(account) = AccountId::parse(LOCAL_ACCOUNT) else {
+        return Vec::new();
+    };
     let store = keychain_secrets(account);
     let mut out = Vec::new();
     for s in granted {
@@ -159,7 +199,13 @@ pub fn prompt(granted: &[Secret]) -> Option<String> {
     }
     let lines: Vec<String> = granted
         .iter()
-        .map(|s| if s.description.trim().is_empty() { format!("- ${}", s.name) } else { format!("- ${}: {}", s.name, s.description.trim()) })
+        .map(|s| {
+            if s.description.trim().is_empty() {
+                format!("- ${}", s.name)
+            } else {
+                format!("- ${}: {}", s.name, s.description.trim())
+            }
+        })
         .collect();
     Some(format!(
         "\n\n## Secrets\nThese are set as environment variables in shell commands, `run_code` and the user's own tools. Refer to them by name (in a shell, `\"${{NAME}}\"`; in Python, `os.environ[\"NAME\"]`); never print, echo or ask for their values, and never write them into files or answers.\n{}",
@@ -172,22 +218,42 @@ mod tests {
     use super::*;
 
     fn secret(name: &str, everywhere: bool) -> Secret {
-        Secret { name: name.into(), description: format!("{name} for tests"), everywhere }
+        Secret {
+            name: name.into(),
+            description: format!("{name} for tests"),
+            everywhere,
+        }
     }
 
     #[test]
     fn names_are_checked() {
         assert!(valid_name("GITHUB_TOKEN").is_ok());
         assert!(valid_name("API_KEY_2").is_ok());
-        for bad in ["", "github_token", "2FA", "MY-KEY", "PATH", "LD_PRELOAD", "LUMO_X", "A B"] {
+        for bad in [
+            "",
+            "github_token",
+            "2FA",
+            "MY-KEY",
+            "PATH",
+            "LD_PRELOAD",
+            "LUMO_X",
+            "A B",
+        ] {
             assert!(valid_name(bad).is_err(), "{bad}");
         }
     }
 
     #[test]
     fn agents_get_only_their_secrets() {
-        let all = vec![secret("A_TOKEN", false), secret("B_TOKEN", false), secret("SHARED", true)];
-        let agent = Agent { secrets: vec!["B_TOKEN".into()], ..Default::default() };
+        let all = vec![
+            secret("A_TOKEN", false),
+            secret("B_TOKEN", false),
+            secret("SHARED", true),
+        ];
+        let agent = Agent {
+            secrets: vec!["B_TOKEN".into()],
+            ..Default::default()
+        };
         let names = |v: Vec<Secret>| v.into_iter().map(|s| s.name).collect::<Vec<_>>();
         assert_eq!(names(granted(&all, Some(&agent))), ["B_TOKEN", "SHARED"]);
         assert_eq!(names(granted(&all, None)), ["SHARED"]);
@@ -198,8 +264,15 @@ mod tests {
 
     #[test]
     fn values_are_masked_in_output() {
-        let env = vec![("TOKEN".to_string(), "ghp_abcdef123456".to_string()), ("LONG".to_string(), "ghp_abcdef123456XYZ".to_string()), ("PIN".to_string(), "12".to_string())];
-        let out = mask("got ghp_abcdef123456XYZ and ghp_abcdef123456 at 12:00", &env);
+        let env = vec![
+            ("TOKEN".to_string(), "ghp_abcdef123456".to_string()),
+            ("LONG".to_string(), "ghp_abcdef123456XYZ".to_string()),
+            ("PIN".to_string(), "12".to_string()),
+        ];
+        let out = mask(
+            "got ghp_abcdef123456XYZ and ghp_abcdef123456 at 12:00",
+            &env,
+        );
         assert_eq!(out, "got [secret LONG] and [secret TOKEN] at 12:00");
     }
 

@@ -22,11 +22,16 @@ pub struct Prefs {
 }
 
 fn path(app: &AppHandle) -> Option<PathBuf> {
-    crate::settings::get_config_dir(app).ok().map(|d| d.join("chat").join("browser.json"))
+    crate::settings::get_config_dir(app)
+        .ok()
+        .map(|d| d.join("chat").join("browser.json"))
 }
 
 pub fn prefs(app: &AppHandle) -> Prefs {
-    path(app).and_then(|p| crate::chat::at_rest::read_to_string(p).ok()).and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    path(app)
+        .and_then(|p| crate::chat::at_rest::read_to_string(p).ok())
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
 }
 
 pub fn save(app: &AppHandle, prefs: &Prefs) -> Result<(), String> {
@@ -34,7 +39,11 @@ pub fn save(app: &AppHandle, prefs: &Prefs) -> Result<(), String> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
-    crate::chat::at_rest::write(path, serde_json::to_string_pretty(prefs).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+    crate::chat::at_rest::write(
+        path,
+        serde_json::to_string_pretty(prefs).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())
 }
 
 /// Only web pages open here; anything else (mailto:, files) goes to the system.
@@ -51,14 +60,41 @@ pub fn open(app: &AppHandle, url: &url::Url) -> Result<(), String> {
         return Ok(());
     }
     let menu = {
-        let back = MenuItemBuilder::with_id("back", "Back").accelerator("Alt+Left").build(app).map_err(|e| e.to_string())?;
-        let forward = MenuItemBuilder::with_id("forward", "Forward").accelerator("Alt+Right").build(app).map_err(|e| e.to_string())?;
-        let reload = MenuItemBuilder::with_id("reload", "Reload").accelerator("CmdOrCtrl+R").build(app).map_err(|e| e.to_string())?;
-        let copy = MenuItemBuilder::with_id("copy-link", "Copy link").build(app).map_err(|e| e.to_string())?;
-        let external = MenuItemBuilder::with_id("external", "Open in external browser").accelerator("CmdOrCtrl+Shift+O").build(app).map_err(|e| e.to_string())?;
-        let close = MenuItemBuilder::with_id("close", "Close").accelerator("CmdOrCtrl+W").build(app).map_err(|e| e.to_string())?;
-        let page = SubmenuBuilder::new(app, "Page").items(&[&back, &forward, &reload]).separator().items(&[&copy, &external]).separator().item(&close).build().map_err(|e| e.to_string())?;
-        MenuBuilder::new(app).item(&page).build().map_err(|e| e.to_string())?
+        let back = MenuItemBuilder::with_id("back", "Back")
+            .accelerator("Alt+Left")
+            .build(app)
+            .map_err(|e| e.to_string())?;
+        let forward = MenuItemBuilder::with_id("forward", "Forward")
+            .accelerator("Alt+Right")
+            .build(app)
+            .map_err(|e| e.to_string())?;
+        let reload = MenuItemBuilder::with_id("reload", "Reload")
+            .accelerator("CmdOrCtrl+R")
+            .build(app)
+            .map_err(|e| e.to_string())?;
+        let copy = MenuItemBuilder::with_id("copy-link", "Copy link")
+            .build(app)
+            .map_err(|e| e.to_string())?;
+        let external = MenuItemBuilder::with_id("external", "Open in external browser")
+            .accelerator("CmdOrCtrl+Shift+O")
+            .build(app)
+            .map_err(|e| e.to_string())?;
+        let close = MenuItemBuilder::with_id("close", "Close")
+            .accelerator("CmdOrCtrl+W")
+            .build(app)
+            .map_err(|e| e.to_string())?;
+        let page = SubmenuBuilder::new(app, "Page")
+            .items(&[&back, &forward, &reload])
+            .separator()
+            .items(&[&copy, &external])
+            .separator()
+            .item(&close)
+            .build()
+            .map_err(|e| e.to_string())?;
+        MenuBuilder::new(app)
+            .item(&page)
+            .build()
+            .map_err(|e| e.to_string())?
     };
     let handle = app.clone();
     let window = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::External(url.clone()))
@@ -80,7 +116,9 @@ pub fn open(app: &AppHandle, url: &url::Url) -> Result<(), String> {
         .build()
         .map_err(|e| e.to_string())?;
     window.on_menu_event(|window, event| {
-        let Some(window) = window.app_handle().get_webview_window(LABEL) else { return };
+        let Some(window) = window.app_handle().get_webview_window(LABEL) else {
+            return;
+        };
         let current = window.url().ok();
         match event.id().as_ref() {
             "back" => {
@@ -100,7 +138,10 @@ pub fn open(app: &AppHandle, url: &url::Url) -> Result<(), String> {
             "external" => {
                 if let Some(url) = current {
                     if let Err(e) = open::that_detached(url.as_str()) {
-                        warn!("could not open the page in the system browser: {:?}", e.kind());
+                        warn!(
+                            "could not open the page in the system browser: {:?}",
+                            e.kind()
+                        );
                     }
                 }
             }
@@ -110,7 +151,10 @@ pub fn open(app: &AppHandle, url: &url::Url) -> Result<(), String> {
             _ => {}
         }
     });
-    info!("opened Lumo's browser on {}", url.host_str().unwrap_or_default());
+    info!(
+        "opened Lumo's browser on {}",
+        url.host_str().unwrap_or_default()
+    );
     Ok(())
 }
 
@@ -122,10 +166,18 @@ pub(crate) fn copy_text(text: &str) -> bool {
     } else if cfg!(windows) {
         &[("clip", &[])]
     } else {
-        &[("wl-copy", &[]), ("xclip", &["-selection", "clipboard"]), ("xsel", &["--clipboard", "--input"])]
+        &[
+            ("wl-copy", &[]),
+            ("xclip", &["-selection", "clipboard"]),
+            ("xsel", &["--clipboard", "--input"]),
+        ]
     };
     for (program, args) in tools {
-        if let Ok(mut child) = std::process::Command::new(program).args(*args).stdin(std::process::Stdio::piped()).spawn() {
+        if let Ok(mut child) = std::process::Command::new(program)
+            .args(*args)
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+        {
             if let Some(mut stdin) = child.stdin.take() {
                 let _ = stdin.write_all(text.as_bytes());
             }

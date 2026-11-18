@@ -56,12 +56,32 @@ fn clip(s: &str) -> String {
 
 /// A tool step as one readable line: `→ Bash: git status`.
 fn tool_line(name: &str, input: &Value) -> String {
-    let detail = ["command", "file_path", "path", "pattern", "query", "url", "description", "prompt"]
-        .iter()
-        .find_map(|k| input.get(*k).and_then(Value::as_str))
-        .map(|s| s.lines().next().unwrap_or_default().chars().take(160).collect::<String>())
-        .unwrap_or_default();
-    if detail.is_empty() { format!("→ {name}") } else { format!("→ {name}: {detail}") }
+    let detail = [
+        "command",
+        "file_path",
+        "path",
+        "pattern",
+        "query",
+        "url",
+        "description",
+        "prompt",
+    ]
+    .iter()
+    .find_map(|k| input.get(*k).and_then(Value::as_str))
+    .map(|s| {
+        s.lines()
+            .next()
+            .unwrap_or_default()
+            .chars()
+            .take(160)
+            .collect::<String>()
+    })
+    .unwrap_or_default();
+    if detail.is_empty() {
+        format!("→ {name}")
+    } else {
+        format!("→ {name}: {detail}")
+    }
 }
 
 /// Text of Claude Code message content: strings, text blocks, tool uses as lines; tool results
@@ -73,7 +93,10 @@ fn claude_text(content: &Value) -> String {
             .iter()
             .filter_map(|p| match p.get("type").and_then(Value::as_str) {
                 Some("text") => p.get("text").and_then(Value::as_str).map(str::to_string),
-                Some("tool_use") => Some(tool_line(p.get("name").and_then(Value::as_str).unwrap_or("tool"), p.get("input").unwrap_or(&Value::Null))),
+                Some("tool_use") => Some(tool_line(
+                    p.get("name").and_then(Value::as_str).unwrap_or("tool"),
+                    p.get("input").unwrap_or(&Value::Null),
+                )),
                 _ => None,
             })
             .collect::<Vec<_>>()
@@ -84,7 +107,11 @@ fn claude_text(content: &Value) -> String {
 
 fn is_noise(text: &str) -> bool {
     let t = text.trim();
-    t.is_empty() || t.starts_with("<system-reminder>") || t.starts_with("<command-") || t.starts_with("<local-command") || t.starts_with("Caveat: The messages below")
+    t.is_empty()
+        || t.starts_with("<system-reminder>")
+        || t.starts_with("<command-")
+        || t.starts_with("<local-command")
+        || t.starts_with("Caveat: The messages below")
 }
 
 /// A coding agent's session folder: its name, where it is, how deep sessions sit, which files are sessions.
@@ -96,12 +123,23 @@ pub fn read(path: &Path) -> Result<Session, String> {
     let mut session = Session::default();
     for line in std::io::BufReader::new(file).lines() {
         let Ok(line) = line else { continue };
-        let Ok(v) = serde_json::from_str::<Value>(&line) else { continue };
-        let at = v.get("timestamp").and_then(Value::as_str).and_then(|t| t.parse().ok());
+        let Ok(v) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+        let at = v
+            .get("timestamp")
+            .and_then(Value::as_str)
+            .and_then(|t| t.parse().ok());
         // Claude Code: {"type": "user"|"assistant", "cwd", "message": {"role", "content"}}
-        if let (Some(kind @ ("user" | "assistant")), Some(message)) = (v.get("type").and_then(Value::as_str), v.get("message")) {
+        if let (Some(kind @ ("user" | "assistant")), Some(message)) =
+            (v.get("type").and_then(Value::as_str), v.get("message"))
+        {
             if session.folder.is_empty() {
-                session.folder = v.get("cwd").and_then(Value::as_str).unwrap_or_default().to_string();
+                session.folder = v
+                    .get("cwd")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
             }
             if v.get("isMeta").and_then(Value::as_bool) == Some(true) {
                 continue;
@@ -116,24 +154,55 @@ pub fn read(path: &Path) -> Result<Session, String> {
         // {"type": "response_item", "payload": {"type": "message", "role", "content": [{"text"}]}}
         let payload = v.get("payload").unwrap_or(&Value::Null);
         match v.get("type").and_then(Value::as_str) {
-            Some("session_meta") if session.folder.is_empty() => session.folder = payload.get("cwd").and_then(Value::as_str).unwrap_or_default().to_string(),
+            Some("session_meta") if session.folder.is_empty() => {
+                session.folder = payload
+                    .get("cwd")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string()
+            }
             Some("response_item") => match payload.get("type").and_then(Value::as_str) {
                 Some("message") => {
-                    let role = payload.get("role").and_then(Value::as_str).unwrap_or_default();
+                    let role = payload
+                        .get("role")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default();
                     if role != "user" && role != "assistant" {
                         continue;
                     }
-                    let text = payload.get("content").and_then(Value::as_array).map(|parts| parts.iter().filter_map(|p| p.get("text").and_then(Value::as_str)).collect::<Vec<_>>().join("\n")).unwrap_or_default();
+                    let text = payload
+                        .get("content")
+                        .and_then(Value::as_array)
+                        .map(|parts| {
+                            parts
+                                .iter()
+                                .filter_map(|p| p.get("text").and_then(Value::as_str))
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        })
+                        .unwrap_or_default();
                     // Codex puts its environment and instructions in user messages too.
-                    if !is_noise(&text) && !text.trim_start().starts_with("<environment_context>") && !text.trim_start().starts_with("<user_instructions>") {
+                    if !is_noise(&text)
+                        && !text.trim_start().starts_with("<environment_context>")
+                        && !text.trim_start().starts_with("<user_instructions>")
+                    {
                         push(&mut session.turns, role == "user", text, at);
                     }
                 }
                 Some("function_call") => {
-                    let name = payload.get("name").and_then(Value::as_str).unwrap_or("tool");
-                    let input = payload.get("arguments").and_then(Value::as_str).and_then(|a| serde_json::from_str(a).ok()).unwrap_or(Value::Null);
+                    let name = payload
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .unwrap_or("tool");
+                    let input = payload
+                        .get("arguments")
+                        .and_then(Value::as_str)
+                        .and_then(|a| serde_json::from_str(a).ok())
+                        .unwrap_or(Value::Null);
                     let input = match input.get("command") {
-                        Some(Value::Array(parts)) => serde_json::json!({ "command": parts.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(" ") }),
+                        Some(Value::Array(parts)) => {
+                            serde_json::json!({ "command": parts.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(" ") })
+                        }
                         _ => input,
                     };
                     push(&mut session.turns, false, tool_line(name, &input), at);
@@ -157,11 +226,15 @@ fn push(turns: &mut Vec<Turn>, user: bool, text: String, at: Option<DateTime<Utc
 }
 
 fn home() -> Option<PathBuf> {
-    std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).map(PathBuf::from)
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
 }
 
 fn session_files(root: &Path, depth: usize, wanted: &dyn Fn(&str) -> bool, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(root) else { return };
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
     for e in entries.filter_map(Result::ok) {
         let p = e.path();
         if p.is_dir() && depth > 0 {
@@ -177,29 +250,60 @@ fn id_for(path: &Path) -> String {
     use sha2::{Digest, Sha256};
     let hash = Sha256::digest(path.to_string_lossy().as_bytes());
     let h: String = hash.iter().take(16).map(|b| format!("{b:02x}")).collect();
-    format!("{}-{}-{}-{}-{}", &h[0..8], &h[8..12], &h[12..16], &h[16..20], &h[20..32])
+    format!(
+        "{}-{}-{}-{}-{}",
+        &h[0..8],
+        &h[8..12],
+        &h[12..16],
+        &h[16..20],
+        &h[20..32]
+    )
 }
 
 /// The sessions on this computer, newest first.
 pub fn find(config_dir: &Path, home_dir: Option<&Path>) -> Vec<Found> {
-    let Some(home) = home_dir.map(Path::to_path_buf).or_else(home) else { return Vec::new() };
+    let Some(home) = home_dir.map(Path::to_path_buf).or_else(home) else {
+        return Vec::new();
+    };
     let mut out = Vec::new();
     let sources: [Source; 2] = [
-        ("claude-code", home.join(".claude").join("projects"), 1, &|n: &str| n.ends_with(".jsonl")),
-        ("codex", home.join(".codex").join("sessions"), 4, &|n: &str| n.starts_with("rollout-") && n.ends_with(".jsonl")),
+        (
+            "claude-code",
+            home.join(".claude").join("projects"),
+            1,
+            &|n: &str| n.ends_with(".jsonl"),
+        ),
+        (
+            "codex",
+            home.join(".codex").join("sessions"),
+            4,
+            &|n: &str| n.starts_with("rollout-") && n.ends_with(".jsonl"),
+        ),
     ];
     for (source, root, depth, wanted) in sources {
         let mut files = Vec::new();
         session_files(&root, depth, wanted, &mut files);
         for path in files {
             let Ok(session) = read(&path) else { continue };
-            let Some(first) = session.turns.iter().find(|t| t.user) else { continue };
-            let updated_at = std::fs::metadata(&path).and_then(|m| m.modified()).ok().map(DateTime::<Utc>::from);
+            let Some(first) = session.turns.iter().find(|t| t.user) else {
+                continue;
+            };
+            let updated_at = std::fs::metadata(&path)
+                .and_then(|m| m.modified())
+                .ok()
+                .map(DateTime::<Utc>::from);
             out.push(Found {
                 path: path.to_string_lossy().into_owned(),
                 source: source.into(),
                 folder: session.folder.clone(),
-                title: first.text.lines().next().unwrap_or_default().chars().take(80).collect(),
+                title: first
+                    .text
+                    .lines()
+                    .next()
+                    .unwrap_or_default()
+                    .chars()
+                    .take(80)
+                    .collect(),
                 messages: session.turns.len(),
                 updated_at,
                 imported: store::load_conversation(config_dir, &id_for(&path)).is_ok(),
@@ -218,23 +322,65 @@ pub fn import(config_dir: &Path, path: &Path) -> Result<String, String> {
     }
     let id = id_for(path);
     let mut c = Conversation::new(id.clone(), None, None);
-    let source = if path.to_string_lossy().contains(".codex") { "Codex" } else { "Claude Code" };
-    let first = session.turns.iter().find(|t| t.user).map(|t| t.text.clone()).unwrap_or_default();
-    c.title = first.lines().next().unwrap_or_default().chars().take(60).collect();
+    let source = if path.to_string_lossy().contains(".codex") {
+        "Codex"
+    } else {
+        "Claude Code"
+    };
+    let first = session
+        .turns
+        .iter()
+        .find(|t| t.user)
+        .map(|t| t.text.clone())
+        .unwrap_or_default();
+    c.title = first
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .chars()
+        .take(60)
+        .collect();
     c.tags = vec![source.to_lowercase().replace(' ', "-")];
     c.workdir = Some(session.folder.clone()).filter(|f| !f.is_empty() && Path::new(f).is_dir());
-    let turns: Vec<&Turn> = session.turns.iter().rev().take(MAX_MESSAGES).collect::<Vec<_>>().into_iter().rev().collect();
+    let turns: Vec<&Turn> = session
+        .turns
+        .iter()
+        .rev()
+        .take(MAX_MESSAGES)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
     for t in &turns {
-        c.messages.push(if t.user { Message::user(clip(&t.text)) } else { Message::assistant(clip(&t.text)) });
+        c.messages.push(if t.user {
+            Message::user(clip(&t.text))
+        } else {
+            Message::assistant(clip(&t.text))
+        });
         if let Some(at) = t.at {
             c.times.push((c.messages.len() - 1, at));
         }
     }
-    c.notices.push((0, format!("Imported from {source} ({} messages){}.", turns.len(), if turns.len() < session.turns.len() { ", the latest kept" } else { "" })));
+    c.notices.push((
+        0,
+        format!(
+            "Imported from {source} ({} messages){}.",
+            turns.len(),
+            if turns.len() < session.turns.len() {
+                ", the latest kept"
+            } else {
+                ""
+            }
+        ),
+    ));
     if let Some(first_at) = turns.first().and_then(|t| t.at) {
         c.created_at = first_at;
     }
-    c.updated_at = turns.iter().rev().find_map(|t| t.at).unwrap_or_else(Utc::now);
+    c.updated_at = turns
+        .iter()
+        .rev()
+        .find_map(|t| t.at)
+        .unwrap_or_else(Utc::now);
     store::save_conversation(config_dir, &c)?;
     Ok(id)
 }
@@ -253,28 +399,52 @@ mod tests {
         let cwd = work.to_string_lossy();
         let lines = [
             r#"{"type":"queue-operation"}"#.to_string(),
-            format!(r#"{{"type":"user","cwd":"{cwd}","timestamp":"2026-11-01T10:00:00Z","message":{{"role":"user","content":"Fix the failing test"}}}}"#),
-            format!(r#"{{"type":"user","cwd":"{cwd}","isMeta":true,"message":{{"role":"user","content":"<system-reminder>x</system-reminder>"}}}}"#),
-            format!(r#"{{"type":"assistant","cwd":"{cwd}","timestamp":"2026-11-01T10:00:05Z","message":{{"role":"assistant","content":[{{"type":"text","text":"Looking."}},{{"type":"tool_use","name":"Bash","input":{{"command":"cargo test"}}}}]}}}}"#),
-            format!(r#"{{"type":"user","cwd":"{cwd}","message":{{"role":"user","content":[{{"type":"tool_result","content":"ok"}}]}}}}"#),
-            format!(r#"{{"type":"assistant","cwd":"{cwd}","timestamp":"2026-11-01T10:01:00Z","message":{{"role":"assistant","content":[{{"type":"text","text":"Fixed."}}]}}}}"#),
+            format!(
+                r#"{{"type":"user","cwd":"{cwd}","timestamp":"2026-11-01T10:00:00Z","message":{{"role":"user","content":"Fix the failing test"}}}}"#
+            ),
+            format!(
+                r#"{{"type":"user","cwd":"{cwd}","isMeta":true,"message":{{"role":"user","content":"<system-reminder>x</system-reminder>"}}}}"#
+            ),
+            format!(
+                r#"{{"type":"assistant","cwd":"{cwd}","timestamp":"2026-11-01T10:00:05Z","message":{{"role":"assistant","content":[{{"type":"text","text":"Looking."}},{{"type":"tool_use","name":"Bash","input":{{"command":"cargo test"}}}}]}}}}"#
+            ),
+            format!(
+                r#"{{"type":"user","cwd":"{cwd}","message":{{"role":"user","content":[{{"type":"tool_result","content":"ok"}}]}}}}"#
+            ),
+            format!(
+                r#"{{"type":"assistant","cwd":"{cwd}","timestamp":"2026-11-01T10:01:00Z","message":{{"role":"assistant","content":[{{"type":"text","text":"Fixed."}}]}}}}"#
+            ),
         ];
         crate::chat::at_rest::write(&file, lines.join("\n")).unwrap();
         let s = read(&file).unwrap();
         assert_eq!(s.folder, cwd);
         assert_eq!(s.turns.len(), 2, "{:?}", s.turns);
-        assert!(s.turns[1].text.contains("Looking.\n→ Bash: cargo test") && s.turns[1].text.ends_with("Fixed."));
+        assert!(
+            s.turns[1].text.contains("Looking.\n→ Bash: cargo test")
+                && s.turns[1].text.ends_with("Fixed.")
+        );
 
         let config = tempfile::tempdir().unwrap();
         let found = find(config.path(), Some(dir.path()));
         assert_eq!(found.len(), 1);
-        assert_eq!((found[0].source.as_str(), found[0].title.as_str(), found[0].imported), ("claude-code", "Fix the failing test", false));
+        assert_eq!(
+            (
+                found[0].source.as_str(),
+                found[0].title.as_str(),
+                found[0].imported
+            ),
+            ("claude-code", "Fix the failing test", false)
+        );
         let id = import(config.path(), &file).unwrap();
         let c = store::load_conversation(config.path(), &id).unwrap();
         assert_eq!(c.workdir.as_deref(), Some(cwd.as_ref()));
         assert_eq!(c.messages.len(), 2);
         assert!(find(config.path(), Some(dir.path()))[0].imported);
-        assert_eq!(import(config.path(), &file).unwrap(), id, "importing again updates the same conversation");
+        assert_eq!(
+            import(config.path(), &file).unwrap(),
+            id,
+            "importing again updates the same conversation"
+        );
     }
 
     #[test]
@@ -290,9 +460,20 @@ mod tests {
         ].join("\n")).unwrap();
         let s = read(&file).unwrap();
         assert_eq!(s.folder, "/repo");
-        assert_eq!(s.turns, vec![
-            Turn { user: true, text: "Add a README".into(), at: None },
-            Turn { user: false, text: "→ shell: bash -lc ls\n\nDone.".into(), at: None },
-        ]);
+        assert_eq!(
+            s.turns,
+            vec![
+                Turn {
+                    user: true,
+                    text: "Add a README".into(),
+                    at: None
+                },
+                Turn {
+                    user: false,
+                    text: "→ shell: bash -lc ls\n\nDone.".into(),
+                    at: None
+                },
+            ]
+        );
     }
 }

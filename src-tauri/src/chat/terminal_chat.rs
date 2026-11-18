@@ -67,7 +67,9 @@ pub enum Command {
 pub fn command(line: &str) -> Option<Command> {
     let line = line.trim();
     let rest = line.strip_prefix('/')?;
-    let (name, arg) = rest.split_once(char::is_whitespace).map_or((rest, ""), |(n, a)| (n, a.trim()));
+    let (name, arg) = rest
+        .split_once(char::is_whitespace)
+        .map_or((rest, ""), |(n, a)| (n, a.trim()));
     Some(match name {
         "help" | "?" => Command::Help,
         "model" => Command::Model(Some(arg.to_string()).filter(|a| !a.is_empty())),
@@ -95,7 +97,14 @@ pub fn command(line: &str) -> Option<Command> {
 
 /// The conversation as Markdown, for `/save`.
 pub fn markdown(c: &Conversation) -> String {
-    let mut out = format!("# {}\n\n", if c.title.is_empty() { "Conversation" } else { &c.title });
+    let mut out = format!(
+        "# {}\n\n",
+        if c.title.is_empty() {
+            "Conversation"
+        } else {
+            &c.title
+        }
+    );
     for m in &c.messages {
         // Tool results travel as user messages; only what was said is kept.
         let is_tool = matches!(m, Message::User { content } if content.iter().all(|p| !matches!(p, UserContent::Text(_))));
@@ -103,7 +112,11 @@ pub fn markdown(c: &Conversation) -> String {
         if text.trim().is_empty() || is_tool {
             continue;
         }
-        let who = if matches!(m, Message::User { .. }) { "You" } else { "Lumo" };
+        let who = if matches!(m, Message::User { .. }) {
+            "You"
+        } else {
+            "Lumo"
+        };
         out.push_str(&format!("**{who}:** {}\n\n", text.trim()));
     }
     out
@@ -141,8 +154,16 @@ pub fn maybe_run() -> Option<i32> {
     if args.first().map(String::as_str) != Some("chat") {
         return None;
     }
-    let value = |flag: &str| args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1)).cloned();
-    Some(tauri::async_runtime::block_on(run(value("--model"), value("--resume"))))
+    let value = |flag: &str| {
+        args.iter()
+            .position(|a| a == flag)
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+    };
+    Some(tauri::async_runtime::block_on(run(
+        value("--model"),
+        value("--resume"),
+    )))
 }
 
 async fn run(model_arg: Option<String>, resume: Option<String>) -> i32 {
@@ -160,7 +181,10 @@ async fn run(model_arg: Option<String>, resume: Option<String>) -> i32 {
         },
         None => Conversation::new(uuid::Uuid::new_v4().to_string(), None, None),
     };
-    let mut reference = match model_arg.or_else(|| conversation.model.clone()).or_else(|| super::providers::load(&config_dir).default_model) {
+    let mut reference = match model_arg
+        .or_else(|| conversation.model.clone())
+        .or_else(|| super::providers::load(&config_dir).default_model)
+    {
         Some(r) => r,
         None => {
             eprintln!("lumo: no model: pass --model vendor/model, or choose one in the app first");
@@ -178,7 +202,11 @@ async fn run(model_arg: Option<String>, resume: Option<String>) -> i32 {
     let mut use_tools = true;
     println!("Lumo · {reference} · /help for commands, /exit to leave");
     if !conversation.messages.is_empty() {
-        println!("Resuming “{}” ({} messages).", conversation.title, conversation.messages.len());
+        println!(
+            "Resuming “{}” ({} messages).",
+            conversation.title,
+            conversation.messages.len()
+        );
     }
     loop {
         let Some(line) = read_line("› ") else {
@@ -193,22 +221,40 @@ async fn run(model_arg: Option<String>, resume: Option<String>) -> i32 {
                 Command::Help => println!("{HELP}"),
                 Command::Exit => return 0,
                 Command::Model(None) => println!("{reference}"),
-                Command::Model(Some(r)) => match super::engine::connect_model(&config_dir, &r).await {
-                    Ok(m) => {
-                        model = m;
-                        reference = r;
-                        println!("Now using {reference}.");
+                Command::Model(Some(r)) => {
+                    match super::engine::connect_model(&config_dir, &r).await {
+                        Ok(m) => {
+                            model = m;
+                            reference = r;
+                            println!("Now using {reference}.");
+                        }
+                        Err(e) => println!("{e}"),
                     }
-                    Err(e) => println!("{e}"),
-                },
+                }
                 Command::Models => {
                     for m in super::providers::models(&super::providers::load(&config_dir)).await {
-                        println!("  {}{}", m.reference, if m.reference == reference { "  (in use)" } else { "" });
+                        println!(
+                            "  {}{}",
+                            m.reference,
+                            if m.reference == reference {
+                                "  (in use)"
+                            } else {
+                                ""
+                            }
+                        );
                     }
                 }
                 Command::Think(s) => {
                     speed = s;
-                    println!("Thinking: {}.", match s { Speed::Fast => "fast, no extended reasoning", Speed::Low => "a little", Speed::Think => "for complex tasks", Speed::Deep => "harder" });
+                    println!(
+                        "Thinking: {}.",
+                        match s {
+                            Speed::Fast => "fast, no extended reasoning",
+                            Speed::Low => "a little",
+                            Speed::Think => "for complex tasks",
+                            Speed::Deep => "harder",
+                        }
+                    );
                 }
                 Command::Tools(on) => {
                     use_tools = on;
@@ -219,20 +265,30 @@ async fn run(model_arg: Option<String>, resume: Option<String>) -> i32 {
                     println!("New conversation.");
                 }
                 Command::Open => println!("lumo://chat/{}", conversation.id),
-                Command::Save(path) => match crate::chat::at_rest::write(&path, markdown(&conversation)) {
-                    Ok(()) => println!("Saved to {path}."),
-                    Err(e) => println!("Could not save: {e}"),
-                },
+                Command::Save(path) => {
+                    match crate::chat::at_rest::write(&path, markdown(&conversation)) {
+                        Ok(()) => println!("Saved to {path}."),
+                        Err(e) => println!("Could not save: {e}"),
+                    }
+                }
                 Command::Unknown(msg) => println!("{msg}"),
             }
             continue;
         }
         if conversation.title.is_empty() {
-            conversation.title = line.lines().next().unwrap_or_default().chars().take(60).collect();
+            conversation.title = line
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .chars()
+                .take(60)
+                .collect();
         }
         conversation.model = Some(reference.clone());
         conversation.messages.push(Message::user(line.clone()));
-        conversation.times.push((conversation.messages.len() - 1, chrono::Utc::now()));
+        conversation
+            .times
+            .push((conversation.messages.len() - 1, chrono::Utc::now()));
         if let Err(e) = turn(&config_dir, &model, &mut conversation, speed, use_tools).await {
             println!("\n! {e}");
         }
@@ -244,14 +300,32 @@ async fn run(model_arg: Option<String>, resume: Option<String>) -> i32 {
 }
 
 /// One reply, streamed to the terminal, with tool steps between.
-async fn turn(config_dir: &Path, model: &rig_core::DynModel<rig_core::operation::Completion>, conversation: &mut Conversation, speed: Speed, use_tools: bool) -> Result<(), String> {
-    let tools: Vec<ChatTool> = if use_tools { builtins::definitions(config_dir).into_iter().filter(|t| READ_ONLY.contains(&t.name.as_str())).collect() } else { Vec::new() };
+async fn turn(
+    config_dir: &Path,
+    model: &rig_core::DynModel<rig_core::operation::Completion>,
+    conversation: &mut Conversation,
+    speed: Speed,
+    use_tools: bool,
+) -> Result<(), String> {
+    let tools: Vec<ChatTool> = if use_tools {
+        builtins::definitions(config_dir)
+            .into_iter()
+            .filter(|t| READ_ONLY.contains(&t.name.as_str()))
+            .collect()
+    } else {
+        Vec::new()
+    };
     let system = super::headless::preamble(config_dir).replace("answering one request from the command line. Nobody can answer questions back, so make reasonable assumptions and state them.", "chatting with the user in a terminal. Keep answers readable as plain text.");
     for step in 0..=MAX_STEPS {
         let last = step == MAX_STEPS;
-        let request_messages = super::context::request_messages(&conversation.messages, conversation.summary.as_ref());
-        let Some((prompt, history)) = request_messages.split_last() else { return Ok(()) };
-        let mut request = CompletionRequest::new(prompt.clone()).messages(history.iter().cloned()).preamble(system.clone());
+        let request_messages =
+            super::context::request_messages(&conversation.messages, conversation.summary.as_ref());
+        let Some((prompt, history)) = request_messages.split_last() else {
+            return Ok(());
+        };
+        let mut request = CompletionRequest::new(prompt.clone())
+            .messages(history.iter().cloned())
+            .preamble(system.clone());
         if !last && !tools.is_empty() {
             request = request.tools(tools.iter().filter_map(ChatTool::definition));
         }
@@ -291,7 +365,10 @@ async fn turn(config_dir: &Path, model: &rig_core::DynModel<rig_core::operation:
                     if thinking {
                         print!("\r\x1b[2K");
                     }
-                    println!("\x1b[2m(retrying: {})\x1b[0m", super::context::brief_error(&e.to_string()));
+                    println!(
+                        "\x1b[2m(retrying: {})\x1b[0m",
+                        super::context::brief_error(&e.to_string())
+                    );
                     tokio::time::sleep(std::time::Duration::from_secs(2u64.pow(attempt))).await;
                 }
                 Err(e) => return Err(super::context::short_error(&e.to_string())),
@@ -306,18 +383,32 @@ async fn turn(config_dir: &Path, model: &rig_core::DynModel<rig_core::operation:
             conversation.messages.push(message);
         }
         if calls.is_empty() {
-            conversation.times.push((conversation.messages.len() - 1, chrono::Utc::now()));
+            conversation
+                .times
+                .push((conversation.messages.len() - 1, chrono::Utc::now()));
             return Ok(());
         }
         let mut results = Vec::new();
         for call in calls {
             let name = call.function.name.as_str().to_string();
             let outcome = if READ_ONLY.contains(&name.as_str()) {
-                builtins::run(config_dir, &name, &serde_json::Value::Object(call.function.arguments.clone())).await
+                builtins::run(
+                    config_dir,
+                    &name,
+                    &serde_json::Value::Object(call.function.arguments.clone()),
+                )
+                .await
             } else {
-                super::tools::Outcome { text: format!("{name} is not available in the terminal."), is_error: true }
+                super::tools::Outcome {
+                    text: format!("{name} is not available in the terminal."),
+                    is_error: true,
+                }
             };
-            println!("\x1b[2m  · {}{}\x1b[0m", name.replace('_', " "), if outcome.is_error { " (failed)" } else { "" });
+            println!(
+                "\x1b[2m  · {}{}\x1b[0m",
+                name.replace('_', " "),
+                if outcome.is_error { " (failed)" } else { "" }
+            );
             let mut result = call.result(vec![ToolResultContent::text(outcome.text)]);
             result.is_error = outcome.is_error;
             results.push(result);
@@ -335,11 +426,17 @@ mod tests {
     fn slash_commands_are_read() {
         assert_eq!(command("hello"), None);
         assert_eq!(command("/model"), Some(Command::Model(None)));
-        assert_eq!(command("/model xai/grok-4"), Some(Command::Model(Some("xai/grok-4".into()))));
+        assert_eq!(
+            command("/model xai/grok-4"),
+            Some(Command::Model(Some("xai/grok-4".into())))
+        );
         assert_eq!(command("/think deep"), Some(Command::Think(Speed::Deep)));
         assert_eq!(command("/think off"), Some(Command::Think(Speed::Fast)));
         assert_eq!(command("/tools off"), Some(Command::Tools(false)));
-        assert_eq!(command("/save notes.md"), Some(Command::Save("notes.md".into())));
+        assert_eq!(
+            command("/save notes.md"),
+            Some(Command::Save("notes.md".into()))
+        );
         assert!(matches!(command("/save"), Some(Command::Unknown(_))));
         assert!(matches!(command("/nope"), Some(Command::Unknown(_))));
         assert_eq!(command(" /exit "), Some(Command::Exit));
@@ -351,6 +448,9 @@ mod tests {
         c.title = "Trip".into();
         c.messages.push(Message::user("Where to?"));
         c.messages.push(Message::assistant("Porto."));
-        assert_eq!(markdown(&c), "# Trip\n\n**You:** Where to?\n\n**Lumo:** Porto.\n\n");
+        assert_eq!(
+            markdown(&c),
+            "# Trip\n\n**You:** Where to?\n\n**Lumo:** Porto.\n\n"
+        );
     }
 }

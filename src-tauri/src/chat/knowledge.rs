@@ -59,12 +59,23 @@ pub fn find<'a>(pages: &'a [Page], key: &str) -> Option<&'a Page> {
     pages
         .iter()
         .find(|p| p.id == key)
-        .or_else(|| (key.len() >= 8).then(|| pages.iter().find(|p| p.id.starts_with(key))).flatten())
+        .or_else(|| {
+            (key.len() >= 8)
+                .then(|| pages.iter().find(|p| p.id.starts_with(key)))
+                .flatten()
+        })
         .or_else(|| pages.iter().find(|p| p.title.eq_ignore_ascii_case(key)))
 }
 
 /// Creates a page, or replaces the body of the one with this id or title.
-pub fn write(config_dir: &Path, id: Option<&str>, title: &str, body: &str, author: &str, sources: &[String]) -> Result<Page, String> {
+pub fn write(
+    config_dir: &Path,
+    id: Option<&str>,
+    title: &str,
+    body: &str,
+    author: &str,
+    sources: &[String],
+) -> Result<Page, String> {
     let title: String = title.trim().chars().take(120).collect();
     if title.is_empty() {
         return Err("A knowledge page needs a title.".into());
@@ -89,14 +100,20 @@ pub fn write(config_dir: &Path, id: Option<&str>, title: &str, body: &str, autho
         }
         None => {
             if pages.len() >= MAX_PAGES {
-                return Err(format!("The knowledge base is full ({MAX_PAGES} pages). Remove some first."));
+                return Err(format!(
+                    "The knowledge base is full ({MAX_PAGES} pages). Remove some first."
+                ));
             }
             let page = Page {
                 id: uuid::Uuid::new_v4().to_string(),
                 title,
                 body,
                 author: author.into(),
-                sources: sources.iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
+                sources: sources
+                    .iter()
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect(),
                 updated_at: Utc::now(),
             };
             pages.push(page.clone());
@@ -169,7 +186,12 @@ pub fn prompt(pages: &[Page], query: &str) -> Option<String> {
     let ranked = rank(pages, query);
     let best = ranked.first().map_or(0.0, |r| r.1);
     // Recall only clear matches: within reach of the best score, and above a floor.
-    let recalled: Vec<&Page> = ranked.iter().filter(|(_, s)| *s >= 1.0 && *s >= best * 0.5).take(RECALL_PAGES).map(|(p, _)| *p).collect();
+    let recalled: Vec<&Page> = ranked
+        .iter()
+        .filter(|(_, s)| *s >= 1.0 && *s >= best * 0.5)
+        .take(RECALL_PAGES)
+        .map(|(p, _)| *p)
+        .collect();
     let mut out = String::from(
         "\n\nKnowledge pages: the user's knowledge base. Pages relevant to this message are below; \
          read others with `knowledge_read`, search with `knowledge_search`, and create or update one \
@@ -178,7 +200,12 @@ pub fn prompt(pages: &[Page], query: &str) -> Option<String> {
     );
     for page in &recalled {
         let body: String = page.body.chars().take(RECALL_CHARS).collect();
-        out.push_str(&format!("\n\n<knowledge_page id=\"{}\" title=\"{}\">\n{}\n</knowledge_page>", &page.id[..8], page.title, body));
+        out.push_str(&format!(
+            "\n\n<knowledge_page id=\"{}\" title=\"{}\">\n{}\n</knowledge_page>",
+            &page.id[..8],
+            page.title,
+            body
+        ));
     }
     let others: Vec<String> = pages
         .iter()
@@ -199,12 +226,44 @@ mod tests {
     #[test]
     fn pages_are_written_found_and_recalled_by_relevance() {
         let dir = tempfile::tempdir().unwrap();
-        let acme = write(dir.path(), None, "Acme account", "Acme is our biggest client. Renewal is in March; contact is Rita.", "assistant", &["Chat: Q1 planning".into()]).unwrap();
-        write(dir.path(), None, "Report style", "Reports: short, bullet points, numbers first.", "user", &[]).unwrap();
-        write(dir.path(), None, "Garden", "Tomatoes go in the south bed in April.", "user", &[]).unwrap();
+        let acme = write(
+            dir.path(),
+            None,
+            "Acme account",
+            "Acme is our biggest client. Renewal is in March; contact is Rita.",
+            "assistant",
+            &["Chat: Q1 planning".into()],
+        )
+        .unwrap();
+        write(
+            dir.path(),
+            None,
+            "Report style",
+            "Reports: short, bullet points, numbers first.",
+            "user",
+            &[],
+        )
+        .unwrap();
+        write(
+            dir.path(),
+            None,
+            "Garden",
+            "Tomatoes go in the south bed in April.",
+            "user",
+            &[],
+        )
+        .unwrap();
 
         // Updating by title keeps the page and merges its sources.
-        let updated = write(dir.path(), None, "acme account", "Acme renewal moved to April.", "assistant", &["Mail from Rita".into()]).unwrap();
+        let updated = write(
+            dir.path(),
+            None,
+            "acme account",
+            "Acme renewal moved to April.",
+            "assistant",
+            &["Mail from Rita".into()],
+        )
+        .unwrap();
         assert_eq!(updated.id, acme.id);
         assert_eq!(updated.sources, ["Chat: Q1 planning", "Mail from Rita"]);
         let pages = load(dir.path());
@@ -213,7 +272,10 @@ mod tests {
 
         let text = prompt(&pages, "When is the Acme renewal?").unwrap();
         assert!(text.contains("<knowledge_page") && text.contains("renewal moved to April"));
-        assert!(!text.contains("Tomatoes"), "unrelated pages are listed, not recalled");
+        assert!(
+            !text.contains("Tomatoes"),
+            "unrelated pages are listed, not recalled"
+        );
         assert!(text.contains("Garden ("));
         assert!(rank(&pages, "zzz unrelated").is_empty());
 

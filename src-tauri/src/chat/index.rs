@@ -51,14 +51,21 @@ fn text_path(config_dir: &Path, id: &str) -> PathBuf {
 
 fn cache() -> std::sync::MutexGuard<'static, HashMap<PathBuf, IndexFile>> {
     static CACHE: OnceLock<Mutex<HashMap<PathBuf, IndexFile>>> = OnceLock::new();
-    CACHE.get_or_init(Default::default).lock().unwrap_or_else(|p| p.into_inner())
+    CACHE
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
 }
 
 fn summarize(c: &Conversation) -> ConversationSummary {
     ConversationSummary {
         archived: c.archived,
         tags: c.tags.clone(),
-        title: if c.title.is_empty() { "New chat".into() } else { c.title.clone() },
+        title: if c.title.is_empty() {
+            "New chat".into()
+        } else {
+            c.title.clone()
+        },
         id: c.id.clone(),
         project_id: c.project_id.clone(),
         workdir: c.workdir.clone(),
@@ -86,9 +93,16 @@ fn preview(c: &Conversation) -> String {
         .find(|t| !t.trim().is_empty() && !t.starts_with('{'))
         .unwrap_or_default();
     // Markdown marks read as noise in a tooltip.
-    let plain: String = text.chars().filter(|c| !matches!(c, '*' | '#' | '`' | '>' | '_')).collect();
+    let plain: String = text
+        .chars()
+        .filter(|c| !matches!(c, '*' | '#' | '`' | '>' | '_'))
+        .collect();
     let flat: String = plain.split_whitespace().collect::<Vec<_>>().join(" ");
-    if flat.chars().count() > 160 { format!("{}…", flat.chars().take(160).collect::<String>()) } else { flat }
+    if flat.chars().count() > 160 {
+        format!("{}…", flat.chars().take(160).collect::<String>())
+    } else {
+        flat
+    }
 }
 
 /// What search reads: the title, then what was said, one message a line.
@@ -127,44 +141,85 @@ fn synced<R>(config_dir: &Path, read: impl FnOnce(&IndexFile) -> R) -> R {
     index.version = INDEX_VERSION;
     let mut dirty = false;
     let mut seen: Vec<String> = Vec::new();
-    let files = std::fs::read_dir(chat_dir(config_dir).join("conversations")).into_iter().flatten().filter_map(Result::ok);
+    let files = std::fs::read_dir(chat_dir(config_dir).join("conversations"))
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok);
     for file in files {
         let path = file.path();
         if path.extension().is_none_or(|x| x != "json") {
             continue;
         }
-        let Some(id) = path.file_stem().and_then(|s| s.to_str()).map(str::to_string) else { continue };
+        let Some(id) = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(str::to_string)
+        else {
+            continue;
+        };
         let Ok(meta) = file.metadata() else { continue };
-        let modified = meta.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_millis());
+        let modified = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+            .map_or(0, |d| d.as_millis());
         seen.push(id.clone());
         // A damaged entry is looked at again: the cause may have passed (a locked keychain).
-        if index.entries.get(&id).is_some_and(|e| !e.damaged && e.modified == modified && e.size == meta.len()) {
+        if index
+            .entries
+            .get(&id)
+            .is_some_and(|e| !e.damaged && e.modified == modified && e.size == meta.len())
+        {
             continue;
         }
         dirty = true;
-        let parsed = crate::chat::at_rest::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<Conversation>(&t).ok());
+        let parsed = crate::chat::at_rest::read_to_string(&path)
+            .ok()
+            .and_then(|t| serde_json::from_str::<Conversation>(&t).ok());
         let text = text_path(config_dir, &id);
         let entry = match parsed {
             Some(c) if c.temporary => {
                 let _ = std::fs::remove_file(&text);
-                Entry { modified, size: meta.len(), summary: None, damaged: false }
+                Entry {
+                    modified,
+                    size: meta.len(),
+                    summary: None,
+                    damaged: false,
+                }
             }
             Some(c) => {
                 if let Some(parent) = text.parent() {
                     let _ = std::fs::create_dir_all(parent);
                 }
                 let _ = crate::chat::at_rest::write(&text, searchable(&c));
-                Entry { modified, size: meta.len(), summary: Some(summarize(&c)), damaged: false }
+                Entry {
+                    modified,
+                    size: meta.len(),
+                    summary: Some(summarize(&c)),
+                    damaged: false,
+                }
             }
             None => {
-                log::warn!("conversation file {path:?} cannot be read; kept and reported as damaged");
-                Entry { modified, size: meta.len(), summary: None, damaged: true }
+                log::warn!(
+                    "conversation file {path:?} cannot be read; kept and reported as damaged"
+                );
+                Entry {
+                    modified,
+                    size: meta.len(),
+                    summary: None,
+                    damaged: true,
+                }
             }
         };
         index.entries.insert(id, entry);
     }
     if index.entries.len() != seen.len() {
-        let gone: Vec<String> = index.entries.keys().filter(|id| !seen.contains(id)).cloned().collect();
+        let gone: Vec<String> = index
+            .entries
+            .keys()
+            .filter(|id| !seen.contains(id))
+            .cloned()
+            .collect();
         for id in gone {
             index.entries.remove(&id);
             let _ = std::fs::remove_file(text_path(config_dir, &id));
@@ -181,14 +236,31 @@ fn synced<R>(config_dir: &Path, read: impl FnOnce(&IndexFile) -> R) -> R {
 
 /// The sidebar rows: pinned first, then newest.
 pub fn list(config_dir: &Path) -> Vec<ConversationSummary> {
-    let mut out: Vec<ConversationSummary> = synced(config_dir, |index| index.entries.values().filter_map(|e| e.summary.clone()).collect());
-    out.sort_by(|a, b| b.pinned.cmp(&a.pinned).then(b.updated_at.cmp(&a.updated_at)));
+    let mut out: Vec<ConversationSummary> = synced(config_dir, |index| {
+        index
+            .entries
+            .values()
+            .filter_map(|e| e.summary.clone())
+            .collect()
+    });
+    out.sort_by(|a, b| {
+        b.pinned
+            .cmp(&a.pinned)
+            .then(b.updated_at.cmp(&a.updated_at))
+    });
     out
 }
 
 /// Conversation files that exist but cannot be read.
 pub fn damaged(config_dir: &Path) -> Vec<String> {
-    synced(config_dir, |index| index.entries.iter().filter(|(_, e)| e.damaged).map(|(id, _)| id.clone()).collect())
+    synced(config_dir, |index| {
+        index
+            .entries
+            .iter()
+            .filter(|(_, e)| e.damaged)
+            .map(|(id, _)| id.clone())
+            .collect()
+    })
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -205,24 +277,44 @@ pub struct Hit {
 }
 
 fn snippet(text: &str, lower: &str, term: &str) -> String {
-    let Some(at) = lower.find(term) else { return String::new() };
+    let Some(at) = lower.find(term) else {
+        return String::new();
+    };
     // Lowercasing can change byte lengths; fall back to the lowercased text when it did.
-    let source = if lower.len() == text.len() { text } else { lower };
-    let (mut start, mut end) = (at.saturating_sub(60), (at + term.len() + 100).min(source.len()));
+    let source = if lower.len() == text.len() {
+        text
+    } else {
+        lower
+    };
+    let (mut start, mut end) = (
+        at.saturating_sub(60),
+        (at + term.len() + 100).min(source.len()),
+    );
     while !source.is_char_boundary(start) {
         start -= 1;
     }
     while !source.is_char_boundary(end) {
         end += 1;
     }
-    let body = source[start..end].split_whitespace().collect::<Vec<_>>().join(" ");
-    format!("{}{body}{}", if start > 0 { "…" } else { "" }, if end < source.len() { "…" } else { "" })
+    let body = source[start..end]
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!(
+        "{}{body}{}",
+        if start > 0 { "…" } else { "" },
+        if end < source.len() { "…" } else { "" }
+    )
 }
 
 /// Full-text search over titles and what was said: every word must appear. Title matches come
 /// first, then the newest.
 pub fn search(config_dir: &Path, query: &str, limit: usize) -> Vec<Hit> {
-    let terms: Vec<String> = query.to_lowercase().split_whitespace().map(str::to_string).collect();
+    let terms: Vec<String> = query
+        .to_lowercase()
+        .split_whitespace()
+        .map(str::to_string)
+        .collect();
     if terms.is_empty() {
         return Vec::new();
     }
@@ -231,11 +323,13 @@ pub fn search(config_dir: &Path, query: &str, limit: usize) -> Vec<Hit> {
         .filter_map(|c| {
             let title = c.title.to_lowercase();
             let in_title = terms.iter().all(|t| title.contains(t));
-            let text = crate::chat::at_rest::read_to_string(text_path(config_dir, &c.id)).unwrap_or_default();
+            let text = crate::chat::at_rest::read_to_string(text_path(config_dir, &c.id))
+                .unwrap_or_default();
             // The first line repeats the title; snippets come from what was said.
             let said = text.split_once('\n').map_or("", |(_, rest)| rest);
             let lower = said.to_lowercase();
-            let in_text = terms.iter().all(|t| lower.contains(t) || title.contains(t)) && terms.iter().any(|t| lower.contains(t));
+            let in_text = terms.iter().all(|t| lower.contains(t) || title.contains(t))
+                && terms.iter().any(|t| lower.contains(t));
             if !in_title && !in_text {
                 return None;
             }
@@ -251,7 +345,11 @@ pub fn search(config_dir: &Path, query: &str, limit: usize) -> Vec<Hit> {
             })
         })
         .collect();
-    hits.sort_by(|a, b| b.in_title.cmp(&a.in_title).then(b.updated_at.cmp(&a.updated_at)));
+    hits.sort_by(|a, b| {
+        b.in_title
+            .cmp(&a.in_title)
+            .then(b.updated_at.cmp(&a.updated_at))
+    });
     hits.truncate(limit);
     hits
 }
@@ -260,7 +358,7 @@ pub fn search(config_dir: &Path, query: &str, limit: usize) -> Vec<Hit> {
 mod tests {
     use super::*;
     use crate::chat::engine::user_message;
-    use crate::chat::store::{save_conversation, delete_conversation};
+    use crate::chat::store::{delete_conversation, save_conversation};
 
     fn conversation(id: &str, title: &str, said: &str) -> Conversation {
         let mut c = Conversation::new(id.into(), None, None);
@@ -272,8 +370,20 @@ mod tests {
     #[test]
     fn lists_from_the_index_and_follows_changes() {
         let dir = tempfile::tempdir().unwrap();
-        save_conversation(dir.path(), &conversation("11111111-1111-4111-8111-111111111111", "Trip to Porto", "Book the Douro valley train")).unwrap();
-        let mut temp = conversation("22222222-2222-4222-8222-222222222222", "Secret", "a hidden thing");
+        save_conversation(
+            dir.path(),
+            &conversation(
+                "11111111-1111-4111-8111-111111111111",
+                "Trip to Porto",
+                "Book the Douro valley train",
+            ),
+        )
+        .unwrap();
+        let mut temp = conversation(
+            "22222222-2222-4222-8222-222222222222",
+            "Secret",
+            "a hidden thing",
+        );
         temp.temporary = true;
         save_conversation(dir.path(), &temp).unwrap();
         assert_eq!(list(dir.path()).len(), 1);
@@ -293,10 +403,14 @@ mod tests {
         assert_eq!(search(dir.path(), "douro", 10).len(), 1);
 
         // A file that cannot be read is reported, and the rest still list.
-        let bad = chat_dir(dir.path()).join("conversations/33333333-3333-4333-8333-333333333333.json");
+        let bad =
+            chat_dir(dir.path()).join("conversations/33333333-3333-4333-8333-333333333333.json");
         crate::chat::at_rest::write(&bad, "{ not json").unwrap();
         assert_eq!(list(dir.path()).len(), 1);
-        assert_eq!(damaged(dir.path()), vec!["33333333-3333-4333-8333-333333333333".to_string()]);
+        assert_eq!(
+            damaged(dir.path()),
+            vec!["33333333-3333-4333-8333-333333333333".to_string()]
+        );
 
         delete_conversation(dir.path(), "11111111-1111-4111-8111-111111111111").unwrap();
         assert!(list(dir.path()).is_empty());

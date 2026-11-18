@@ -21,12 +21,19 @@ use super::tools::{ChatTool, Outcome};
 pub const GENERATE_IMAGE: &str = "generate_image";
 
 /// Providers whose image endpoint rig speaks, with the model used when none is chosen.
-const IMAGE_DEFAULTS: &[(&str, &str)] = &[("openai", "gpt-image-1"), ("xai", "grok-imagine-image"), ("together", "black-forest-labs/FLUX.1-schnell")];
+const IMAGE_DEFAULTS: &[(&str, &str)] = &[
+    ("openai", "gpt-image-1"),
+    ("xai", "grok-imagine-image"),
+    ("together", "black-forest-labs/FLUX.1-schnell"),
+];
 /// Providers that read text aloud, with the model used when none is chosen.
 const VOICE_DEFAULTS: &[(&str, &str)] = &[("openai", "gpt-4o-mini-tts"), ("xai", "grok-tts")];
 
 /// Providers with a speech-to-text endpoint, with the model used when none is chosen.
-const SPEECH_DEFAULTS: &[(&str, &str)] = &[("openai", "gpt-4o-mini-transcribe"), ("groq", "whisper-large-v3-turbo")];
+const SPEECH_DEFAULTS: &[(&str, &str)] = &[
+    ("openai", "gpt-4o-mini-transcribe"),
+    ("groq", "whisper-large-v3-turbo"),
+];
 
 /// What settings shows: the models in use, and the providers that could serve each.
 #[derive(Debug, Serialize)]
@@ -60,7 +67,11 @@ pub(crate) fn usable(file: &ProvidersFile, vendor: &str) -> bool {
         .is_some_and(|s| s.enabled && (s.has_key || providers::env_key(vendor).is_some()))
 }
 
-fn pick(file: &ProvidersFile, chosen: Option<&String>, defaults: &[(&str, &str)]) -> Option<String> {
+fn pick(
+    file: &ProvidersFile,
+    chosen: Option<&String>,
+    defaults: &[(&str, &str)],
+) -> Option<String> {
     if let Some(chosen) = chosen.filter(|c| !c.trim().is_empty()) {
         let vendor = providers::split_reference(chosen)?.0;
         return (usable(file, vendor) && dialect(vendor).is_some()).then(|| chosen.clone());
@@ -74,10 +85,15 @@ fn pick(file: &ProvidersFile, chosen: Option<&String>, defaults: &[(&str, &str)]
 pub fn image_model(file: &ProvidersFile) -> Option<String> {
     // A local image server needs no key: chosen, or the only image maker there is.
     let local = file.image_server.as_ref().filter(|u| !u.trim().is_empty());
-    if let Some(chosen) = file.image_model.as_ref().filter(|m| m.starts_with(SDWEBUI_PREFIX)) {
+    if let Some(chosen) = file
+        .image_model
+        .as_ref()
+        .filter(|m| m.starts_with(SDWEBUI_PREFIX))
+    {
         return local.map(|_| chosen.clone());
     }
-    pick(file, file.image_model.as_ref(), IMAGE_DEFAULTS).or_else(|| local.map(|_| format!("{SDWEBUI_PREFIX}default")))
+    pick(file, file.image_model.as_ref(), IMAGE_DEFAULTS)
+        .or_else(|| local.map(|_| format!("{SDWEBUI_PREFIX}default")))
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -88,7 +104,14 @@ pub fn image_model(file: &ProvidersFile) -> Option<String> {
 pub const SDWEBUI_PREFIX: &str = "sdwebui/";
 
 /// The request body for the AUTOMATIC1111 API.
-pub fn sdwebui_body(prompt: &str, width: u32, height: u32, seed: Option<u64>, checkpoint: Option<&str>, init_image: Option<&str>) -> Value {
+pub fn sdwebui_body(
+    prompt: &str,
+    width: u32,
+    height: u32,
+    seed: Option<u64>,
+    checkpoint: Option<&str>,
+    init_image: Option<&str>,
+) -> Value {
     let mut body = json!({
         "prompt": prompt,
         "negative_prompt": "blurry, low quality, watermark, text artifacts",
@@ -110,30 +133,63 @@ pub fn sdwebui_body(prompt: &str, width: u32, height: u32, seed: Option<u64>, ch
 }
 
 /// Makes one image on the local server; returns its bytes.
-pub async fn sdwebui_image(server: &str, model: &str, prompt: &str, width: u32, height: u32, seed: Option<u64>, init_image: Option<&str>) -> Result<Vec<u8>, String> {
+pub async fn sdwebui_image(
+    server: &str,
+    model: &str,
+    prompt: &str,
+    width: u32,
+    height: u32,
+    seed: Option<u64>,
+    init_image: Option<&str>,
+) -> Result<Vec<u8>, String> {
     use base64::Engine as _;
     let base = server.trim().trim_end_matches('/');
-    let endpoint = if init_image.is_some() { "img2img" } else { "txt2img" };
+    let endpoint = if init_image.is_some() {
+        "img2img"
+    } else {
+        "txt2img"
+    };
     let checkpoint = model.strip_prefix(SDWEBUI_PREFIX);
-    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(600)).build().map_err(|e| e.to_string())?;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(600))
+        .build()
+        .map_err(|e| e.to_string())?;
     let response = client
         .post(format!("{base}/sdapi/v1/{endpoint}"))
-        .json(&sdwebui_body(prompt, width, height, seed, checkpoint, init_image))
+        .json(&sdwebui_body(
+            prompt, width, height, seed, checkpoint, init_image,
+        ))
         .send()
         .await
         .map_err(|e| format!("The local image server did not answer at {base}: {e}"))?;
     if !response.status().is_success() {
-        return Err(format!("The local image server answered {}.", response.status()));
+        return Err(format!(
+            "The local image server answered {}.",
+            response.status()
+        ));
     }
-    let body: Value = response.json().await.map_err(|e| format!("The local image server sent something unexpected: {e}"))?;
-    let b64 = body["images"].get(0).and_then(Value::as_str).ok_or("The local image server sent back no image.")?;
+    let body: Value = response
+        .json()
+        .await
+        .map_err(|e| format!("The local image server sent something unexpected: {e}"))?;
+    let b64 = body["images"]
+        .get(0)
+        .and_then(Value::as_str)
+        .ok_or("The local image server sent back no image.")?;
     // Some servers prefix a data URL.
-    let b64 = b64.split_once(",").filter(|(head, _)| head.starts_with("data:")).map_or(b64, |(_, rest)| rest);
-    base64::engine::general_purpose::STANDARD.decode(b64).map_err(|e| e.to_string())
+    let b64 = b64
+        .split_once(",")
+        .filter(|(head, _)| head.starts_with("data:"))
+        .map_or(b64, |(_, rest)| rest);
+    base64::engine::general_purpose::STANDARD
+        .decode(b64)
+        .map_err(|e| e.to_string())
 }
 
 fn image_server(config_dir: &Path) -> Option<String> {
-    providers::load(config_dir).image_server.filter(|u| !u.trim().is_empty())
+    providers::load(config_dir)
+        .image_server
+        .filter(|u| !u.trim().is_empty())
 }
 
 /// The base64 of a reference image, for img2img.
@@ -154,7 +210,13 @@ pub fn voice_model(file: &ProvidersFile) -> Option<String> {
 
 pub fn models(config_dir: &Path) -> MediaModels {
     let file = providers::load(config_dir);
-    let vendors = |defaults: &[(&str, &str)]| defaults.iter().filter(|(v, _)| usable(&file, v)).map(|(v, _)| v.to_string()).collect();
+    let vendors = |defaults: &[(&str, &str)]| {
+        defaults
+            .iter()
+            .filter(|(v, _)| usable(&file, v))
+            .map(|(v, _)| v.to_string())
+            .collect()
+    };
     MediaModels {
         image_model: image_model(&file),
         speech_model: speech_model(&file),
@@ -169,8 +231,13 @@ pub fn models(config_dir: &Path) -> MediaModels {
 }
 
 /// An OpenAI-shaped client for `vendor`, with the user's key and base URL.
-fn client(vendor: &str, settings: &ProviderSettings, key: Option<String>) -> Result<OpenAI, String> {
-    let dialect = dialect(vendor).ok_or_else(|| format!("{vendor} has no image or speech endpoint here."))?;
+fn client(
+    vendor: &str,
+    settings: &ProviderSettings,
+    key: Option<String>,
+) -> Result<OpenAI, String> {
+    let dialect =
+        dialect(vendor).ok_or_else(|| format!("{vendor} has no image or speech endpoint here."))?;
     let key = key
         .filter(|k| !k.is_empty())
         .or_else(|| providers::env_key(vendor).and_then(|name| std::env::var(name).ok()))
@@ -182,10 +249,22 @@ fn client(vendor: &str, settings: &ProviderSettings, key: Option<String>) -> Res
     Ok(config.client())
 }
 
-pub(crate) async fn connect(config_dir: &Path, reference: &str) -> Result<(OpenAI, String), String> {
-    let (vendor, model) = providers::split_reference(reference).ok_or_else(|| format!("`{reference}` is not vendor/model"))?;
-    let settings = providers::load(config_dir).providers.get(vendor).cloned().unwrap_or_default();
-    let key = if settings.has_key { super::engine::api_key(vendor).await? } else { None };
+pub(crate) async fn connect(
+    config_dir: &Path,
+    reference: &str,
+) -> Result<(OpenAI, String), String> {
+    let (vendor, model) = providers::split_reference(reference)
+        .ok_or_else(|| format!("`{reference}` is not vendor/model"))?;
+    let settings = providers::load(config_dir)
+        .providers
+        .get(vendor)
+        .cloned()
+        .unwrap_or_default();
+    let key = if settings.has_key {
+        super::engine::api_key(vendor).await?
+    } else {
+        None
+    };
     Ok((client(vendor, &settings, key)?, model.to_string()))
 }
 
@@ -231,27 +310,49 @@ fn extension(bytes: &[u8]) -> &'static str {
 
 /// Generates images (one to four) and saves them in the conversation's workspace.
 pub async fn generate(config_dir: &Path, conversation_id: &str, args: &Value) -> Outcome {
-    let s = |k: &str| args.get(k).and_then(Value::as_str).map(str::trim).filter(|v| !v.is_empty()).map(str::to_string);
+    let s = |k: &str| {
+        args.get(k)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(str::to_string)
+    };
     let request = StudioRequest {
         prompt: s("prompt").unwrap_or_default(),
         model: None,
         shape: s("shape").unwrap_or_default(),
         quality: s("quality"),
-        count: args.get("count").and_then(Value::as_u64).map_or(1, |c| c.clamp(1, 4) as u32),
+        count: args
+            .get("count")
+            .and_then(Value::as_u64)
+            .map_or(1, |c| c.clamp(1, 4) as u32),
         seed: args.get("seed").and_then(Value::as_u64),
         reference: s("reference"),
     };
     let model = image_model(&providers::load(config_dir)).unwrap_or_default();
     match make_images(config_dir, conversation_id, request).await {
-        Ok((files, errors)) => Outcome { text: json!({ "file": files[0], "files": files, "model": model, "failed": errors }).to_string(), is_error: false },
-        Err(e) => Outcome { text: e, is_error: true },
+        Ok((files, errors)) => Outcome {
+            text: json!({ "file": files[0], "files": files, "model": model, "failed": errors })
+                .to_string(),
+            is_error: false,
+        },
+        Err(e) => Outcome {
+            text: e,
+            is_error: true,
+        },
     }
 }
 
 /// The image an edit starts from: the user's latest attachment, or an image in the workspace.
-pub(crate) fn reference_image(config_dir: &Path, conversation_id: &str, reference: &str) -> Result<rig_core::completion::message::Image, String> {
+pub(crate) fn reference_image(
+    config_dir: &Path,
+    conversation_id: &str,
+    reference: &str,
+) -> Result<rig_core::completion::message::Image, String> {
     use base64::Engine as _;
-    use rig_core::completion::message::{DocumentSourceKind, Image, ImageMediaType, Message, UserContent};
+    use rig_core::completion::message::{
+        DocumentSourceKind, Image, ImageMediaType, Message, UserContent,
+    };
     let (data, media_type) = if reference == "attached" {
         let conversation = super::store::load_conversation(config_dir, conversation_id)?;
         conversation
@@ -261,7 +362,9 @@ pub(crate) fn reference_image(config_dir: &Path, conversation_id: &str, referenc
             .find_map(|m| match m {
                 Message::User { content } => content.iter().find_map(|c| match c {
                     UserContent::Image(image) => match &image.data {
-                        DocumentSourceKind::Base64(b64) => Some((b64.clone(), image.media_type.clone())),
+                        DocumentSourceKind::Base64(b64) => {
+                            Some((b64.clone(), image.media_type.clone()))
+                        }
                         _ => None,
                     },
                     _ => None,
@@ -272,15 +375,26 @@ pub(crate) fn reference_image(config_dir: &Path, conversation_id: &str, referenc
     } else {
         // Only files inside this conversation's workspace.
         let root = super::sandbox::workspace(config_dir, conversation_id)?;
-        let canonical = root.join(reference).canonicalize().map_err(|_| format!("There is no image at {reference}."))?;
+        let canonical = root
+            .join(reference)
+            .canonicalize()
+            .map_err(|_| format!("There is no image at {reference}."))?;
         if !canonical.starts_with(root.canonicalize().map_err(|e| e.to_string())?) {
             return Err("The reference must be an image in this conversation's workspace.".into());
         }
         let bytes = crate::chat::at_rest::read(&canonical).map_err(|e| e.to_string())?;
         let media = ImageMediaType::sniff(&bytes);
-        (base64::engine::general_purpose::STANDARD.encode(bytes), media)
+        (
+            base64::engine::general_purpose::STANDARD.encode(bytes),
+            media,
+        )
     };
-    Ok(Image { data: DocumentSourceKind::Base64(data), media_type, detail: None, native: None })
+    Ok(Image {
+        data: DocumentSourceKind::Base64(data),
+        media_type,
+        detail: None,
+        native: None,
+    })
 }
 
 /// Characters read aloud at most; long answers are cut at a sentence.
@@ -299,10 +413,16 @@ pub fn speakable(markdown: &str) -> String {
             }
             continue;
         }
-        if in_code || trimmed.starts_with('|') && trimmed.matches('|').count() > 2 && trimmed.contains("---") {
+        if in_code
+            || trimmed.starts_with('|')
+                && trimmed.matches('|').count() > 2
+                && trimmed.contains("---")
+        {
             continue;
         }
-        let line = trimmed.trim_start_matches(['#', '>', '-', '*', '+']).trim_start();
+        let line = trimmed
+            .trim_start_matches(['#', '>', '-', '*', '+'])
+            .trim_start();
         out.push_str(line);
         out.push('\n');
     }
@@ -319,8 +439,9 @@ pub fn speakable(markdown: &str) -> String {
 
 /// Reads `text` aloud with the chosen voice model; returns the audio and its media type.
 pub async fn speak(config_dir: &Path, text: &str) -> Result<(Vec<u8>, String), String> {
-    let reference = voice_model(&providers::load(config_dir))
-        .ok_or("Read aloud needs a provider with text-to-speech (OpenAI or xAI) in Settings → Providers.")?;
+    let reference = voice_model(&providers::load(config_dir)).ok_or(
+        "Read aloud needs a provider with text-to-speech (OpenAI or xAI) in Settings → Providers.",
+    )?;
     let (vendor, _) = providers::split_reference(&reference).unwrap_or_default();
     let (client, model) = connect(config_dir, &reference).await?;
     let text = speakable(text);
@@ -329,10 +450,13 @@ pub async fn speak(config_dir: &Path, text: &str) -> Result<(Vec<u8>, String), S
     }
     let voice = if vendor == "xai" { "eve" } else { "alloy" };
     let request = AudioGenerationRequestBuilder::new(text, voice).build();
-    let response = tokio::time::timeout(std::time::Duration::from_secs(120), client.audio_generation(model).call(request))
-        .await
-        .map_err(|_| "Reading aloud took too long.".to_string())?
-        .map_err(|e| e.to_string())?;
+    let response = tokio::time::timeout(
+        std::time::Duration::from_secs(120),
+        client.audio_generation(model).call(request),
+    )
+    .await
+    .map_err(|_| "Reading aloud took too long.".to_string())?
+    .map_err(|e| e.to_string())?;
     let mime = match response.audio.as_slice() {
         [b'R', b'I', b'F', b'F', ..] => "audio/wav",
         [b'O', b'g', b'g', b'S', ..] => "audio/ogg",
@@ -342,12 +466,22 @@ pub async fn speak(config_dir: &Path, text: &str) -> Result<(Vec<u8>, String), S
 }
 
 /// Turns recorded speech into text with the chosen speech model.
-pub async fn transcribe(config_dir: &Path, audio: Vec<u8>, file_name: &str) -> Result<String, String> {
+pub async fn transcribe(
+    config_dir: &Path,
+    audio: Vec<u8>,
+    file_name: &str,
+) -> Result<String, String> {
     let reference = speech_model(&providers::load(config_dir))
         .ok_or("Voice input needs a provider with speech-to-text (OpenAI or Groq) in Settings → Providers.")?;
     let (client, model) = connect(config_dir, &reference).await?;
-    let request = TranscriptionRequestBuilder::new(audio).filename(Some(file_name.to_string())).build();
-    let response = client.transcription(model).call(request).await.map_err(|e| e.to_string())?;
+    let request = TranscriptionRequestBuilder::new(audio)
+        .filename(Some(file_name.to_string()))
+        .build();
+    let response = client
+        .transcription(model)
+        .call(request)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(response.text.trim().to_string())
 }
 
@@ -358,20 +492,39 @@ mod tests {
     fn file(vendors: &[&str]) -> ProvidersFile {
         let mut f = ProvidersFile::default();
         for v in vendors {
-            f.providers.insert(v.to_string(), ProviderSettings { enabled: true, has_key: true, ..Default::default() });
+            f.providers.insert(
+                v.to_string(),
+                ProviderSettings {
+                    enabled: true,
+                    has_key: true,
+                    ..Default::default()
+                },
+            );
         }
         f
     }
 
     #[test]
     fn picks_a_model_from_the_providers_set_up() {
-        assert_eq!(image_model(&file(&["xai"])).as_deref(), Some("xai/grok-imagine-image"));
-        assert_eq!(image_model(&file(&["openai", "xai"])).as_deref(), Some("openai/gpt-image-1"));
+        assert_eq!(
+            image_model(&file(&["xai"])).as_deref(),
+            Some("xai/grok-imagine-image")
+        );
+        assert_eq!(
+            image_model(&file(&["openai", "xai"])).as_deref(),
+            Some("openai/gpt-image-1")
+        );
         assert_eq!(image_model(&file(&["anthropic"])), None);
-        assert_eq!(speech_model(&file(&["groq"])).as_deref(), Some("groq/whisper-large-v3-turbo"));
+        assert_eq!(
+            speech_model(&file(&["groq"])).as_deref(),
+            Some("groq/whisper-large-v3-turbo")
+        );
         let mut chosen = file(&["openai", "xai"]);
         chosen.image_model = Some("xai/grok-imagine-image-pro".into());
-        assert_eq!(image_model(&chosen).as_deref(), Some("xai/grok-imagine-image-pro"));
+        assert_eq!(
+            image_model(&chosen).as_deref(),
+            Some("xai/grok-imagine-image-pro")
+        );
         // A choice whose provider was turned off falls back to nothing rather than failing later.
         chosen.providers.get_mut("xai").unwrap().enabled = false;
         assert_eq!(image_model(&chosen), None);
@@ -393,7 +546,11 @@ mod tests {
                 if let Some(end) = text.find("\r\n\r\n") {
                     let length = text[..end]
                         .lines()
-                        .find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap_or(0)))
+                        .find_map(|l| {
+                            l.to_ascii_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                        })
                         .unwrap_or(0);
                     if request.len() >= end + 4 + length {
                         break;
@@ -413,13 +570,27 @@ mod tests {
     #[tokio::test]
     async fn transcribes_through_an_openai_shaped_endpoint() {
         let (url, server) = serve_once(r#"{"text":"  hello there  "}"#);
-        let settings = ProviderSettings { enabled: true, has_key: true, base_url: Some(url), custom_models: vec![] };
+        let settings = ProviderSettings {
+            enabled: true,
+            has_key: true,
+            base_url: Some(url),
+            custom_models: vec![],
+        };
         let client = client("openai", &settings, Some("test-key".into())).unwrap();
-        let request = TranscriptionRequestBuilder::new(b"RIFFfake".to_vec()).filename(Some("speech.webm".into())).build();
-        let response = client.transcription("whisper-1").call(request).await.unwrap();
+        let request = TranscriptionRequestBuilder::new(b"RIFFfake".to_vec())
+            .filename(Some("speech.webm".into()))
+            .build();
+        let response = client
+            .transcription("whisper-1")
+            .call(request)
+            .await
+            .unwrap();
         assert_eq!(response.text.trim(), "hello there");
         let asked = server.join().unwrap();
-        assert!(asked.starts_with("POST /v1/audio/transcriptions"), "{asked}");
+        assert!(
+            asked.starts_with("POST /v1/audio/transcriptions"),
+            "{asked}"
+        );
         assert!(asked.contains("Bearer test-key"));
         assert!(asked.contains("whisper-1"));
     }
@@ -510,17 +681,26 @@ pub fn studio_params(quality: Option<&str>, seed: Option<u64>) -> Option<Value> 
 
 /// Makes the images in a conversation's workspace; returns their files, and the errors of
 /// those that failed.
-pub async fn make_images(config_dir: &Path, workspace: &str, request: StudioRequest) -> Result<(Vec<String>, Vec<String>), String> {
+pub async fn make_images(
+    config_dir: &Path,
+    workspace: &str,
+    request: StudioRequest,
+) -> Result<(Vec<String>, Vec<String>), String> {
     let prompt = request.prompt.trim().to_string();
     if prompt.is_empty() {
         return Err("Describe the image to create.".into());
     }
     let reference = match request.model.filter(|m| !m.trim().is_empty()) {
         Some(m) => m,
-        None => image_model(&providers::load(config_dir)).ok_or("No provider that makes images is set up.")?,
+        None => image_model(&providers::load(config_dir))
+            .ok_or("No provider that makes images is set up.")?,
     };
     let (width, height) = studio_size(&request.shape);
-    let image = match request.reference.as_deref().filter(|r| !r.trim().is_empty()) {
+    let image = match request
+        .reference
+        .as_deref()
+        .filter(|r| !r.trim().is_empty())
+    {
         Some(r) => Some(reference_image(config_dir, workspace, r)?),
         None => None,
     };
@@ -528,45 +708,83 @@ pub async fn make_images(config_dir: &Path, workspace: &str, request: StudioRequ
     let dir = super::sandbox::workspace(config_dir, workspace)?.join("images");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     if reference.starts_with(SDWEBUI_PREFIX) {
-        let server = image_server(config_dir).ok_or("Set the local image server's address in Settings → Providers.")?;
+        let server = image_server(config_dir)
+            .ok_or("Set the local image server's address in Settings → Providers.")?;
         let init = image.as_ref().and_then(image_b64);
         let (w, h) = (width * 2 / 3, height * 2 / 3);
         let mut files = Vec::new();
         let mut errors = Vec::new();
         // One at a time: a local GPU makes images in turn anyway.
         for i in 0..count {
-            match sdwebui_image(&server, &reference, &prompt, w, h, request.seed.map(|s| s + u64::from(i)), init.as_deref()).await {
+            match sdwebui_image(
+                &server,
+                &reference,
+                &prompt,
+                w,
+                h,
+                request.seed.map(|s| s + u64::from(i)),
+                init.as_deref(),
+            )
+            .await
+            {
                 Ok(bytes) => {
-                    let name = format!("{}-{}.{}", chrono::Local::now().format("%Y%m%d-%H%M%S-%3f"), i + 1, extension(&bytes));
-                    crate::chat::at_rest::write(dir.join(&name), &bytes).map_err(|e| e.to_string())?;
+                    let name = format!(
+                        "{}-{}.{}",
+                        chrono::Local::now().format("%Y%m%d-%H%M%S-%3f"),
+                        i + 1,
+                        extension(&bytes)
+                    );
+                    crate::chat::at_rest::write(dir.join(&name), &bytes)
+                        .map_err(|e| e.to_string())?;
                     files.push(format!("images/{name}"));
                 }
                 Err(e) => errors.push(e),
             }
         }
         if files.is_empty() {
-            return Err(errors.first().cloned().unwrap_or_else(|| "No image was made.".into()));
+            return Err(errors
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "No image was made.".into()));
         }
         return Ok((files, errors));
     }
     let (client, model) = connect(config_dir, &reference).await?;
     let calls = (0..count).map(|i| {
-        let mut builder = ImageGenerationRequestBuilder::new(prompt.clone()).width(width).height(height);
+        let mut builder = ImageGenerationRequestBuilder::new(prompt.clone())
+            .width(width)
+            .height(height);
         // With a seed, each image of the batch gets the next one, so a batch stays reproducible.
         let vendor = providers::split_reference(&reference).map_or("", |(v, _)| v);
         let aspect = aspect_for(vendor, width, height).map(|a| json!({ "aspect_ratio": a }));
-        builder = builder.additional_params(merge(studio_params(request.quality.as_deref(), request.seed.map(|s| s + u64::from(i))), aspect));
+        builder = builder.additional_params(merge(
+            studio_params(
+                request.quality.as_deref(),
+                request.seed.map(|s| s + u64::from(i)),
+            ),
+            aspect,
+        ));
         if let Some(img) = &image {
             builder = builder.image(img.clone());
         }
         let request = builder.build();
         let client = client.clone();
         let model = model.clone();
-        async move { tokio::time::timeout(std::time::Duration::from_secs(240), client.image_generation(model).call(request)).await }
+        async move {
+            tokio::time::timeout(
+                std::time::Duration::from_secs(240),
+                client.image_generation(model).call(request),
+            )
+            .await
+        }
     });
     let mut files = Vec::new();
     let mut errors = Vec::new();
-    for (i, result) in futures::future::join_all(calls).await.into_iter().enumerate() {
+    for (i, result) in futures::future::join_all(calls)
+        .await
+        .into_iter()
+        .enumerate()
+    {
         match result {
             Ok(Ok(r)) if !r.image.is_empty() => {
                 let name = format!("{}-{}.{}", chrono::Local::now().format("%Y%m%d-%H%M%S-%3f"), i + 1, extension(&r.image));
@@ -580,7 +798,10 @@ pub async fn make_images(config_dir: &Path, workspace: &str, request: StudioRequ
         }
     }
     if files.is_empty() {
-        return Err(errors.first().cloned().unwrap_or_else(|| "No image was made.".into()));
+        return Err(errors
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "No image was made.".into()));
     }
     Ok((files, errors))
 }
@@ -595,21 +816,51 @@ mod studio_tests {
         assert_eq!(studio_size("portrait"), (1024, 1536));
         assert_eq!(studio_size("anything"), (1024, 1024));
         assert_eq!(studio_params(None, None), None);
-        assert_eq!(studio_params(Some("high"), Some(7)), Some(json!({"quality": "high", "seed": 7})));
-        assert_eq!(studio_params(Some("ultra"), None), None, "unknown qualities are not sent");
+        assert_eq!(
+            studio_params(Some("high"), Some(7)),
+            Some(json!({"quality": "high", "seed": 7}))
+        );
+        assert_eq!(
+            studio_params(Some("ultra"), None),
+            None,
+            "unknown qualities are not sent"
+        );
         assert_eq!(aspect_for("xai", 1024, 1536), Some("2:3"));
         assert_eq!(aspect_for("xai", 1536, 1024), Some("3:2"));
-        assert_eq!(aspect_for("openai", 1536, 1024), None, "OpenAI takes the size itself");
-        assert_eq!(merge(Some(json!({"seed": 1})), Some(json!({"aspect_ratio": "2:3"}))), Some(json!({"seed": 1, "aspect_ratio": "2:3"})));
+        assert_eq!(
+            aspect_for("openai", 1536, 1024),
+            None,
+            "OpenAI takes the size itself"
+        );
+        assert_eq!(
+            merge(
+                Some(json!({"seed": 1})),
+                Some(json!({"aspect_ratio": "2:3"}))
+            ),
+            Some(json!({"seed": 1, "aspect_ratio": "2:3"}))
+        );
         let body = sdwebui_body("a fox", 680, 1024, Some(5), Some("dreamshaper_8"), None);
-        assert_eq!((body["width"].clone(), body["seed"].clone()), (json!(680), json!(5)));
-        assert_eq!(body["override_settings"]["sd_model_checkpoint"], "dreamshaper_8");
-        assert_eq!(sdwebui_body("x", 1, 1, None, Some("default"), Some("AAA"))["init_images"], json!(["AAA"]));
+        assert_eq!(
+            (body["width"].clone(), body["seed"].clone()),
+            (json!(680), json!(5))
+        );
+        assert_eq!(
+            body["override_settings"]["sd_model_checkpoint"],
+            "dreamshaper_8"
+        );
+        assert_eq!(
+            sdwebui_body("x", 1, 1, None, Some("default"), Some("AAA"))["init_images"],
+            json!(["AAA"])
+        );
         assert_eq!(sdwebui_body("x", 1, 1, None, None, None)["seed"], json!(-1));
         let mut file = ProvidersFile::default();
         assert_eq!(image_model(&file), None);
         file.image_server = Some("http://127.0.0.1:7860".into());
-        assert_eq!(image_model(&file).as_deref(), Some("sdwebui/default"), "a local server needs no key");
+        assert_eq!(
+            image_model(&file).as_deref(),
+            Some("sdwebui/default"),
+            "a local server needs no key"
+        );
         file.image_model = Some("sdwebui/dreamshaper_8".into());
         assert_eq!(image_model(&file).as_deref(), Some("sdwebui/dreamshaper_8"));
     }

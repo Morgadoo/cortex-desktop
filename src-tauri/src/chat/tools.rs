@@ -8,8 +8,8 @@
 
 use std::time::Duration;
 
-use rig_core::completion::request::ToolDefinition as RigTool;
 use rig_core::completion::message::ToolName;
+use rig_core::completion::request::ToolDefinition as RigTool;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
@@ -75,7 +75,13 @@ impl ChatTool {
 pub(crate) fn safe_name(name: &str) -> String {
     let cleaned: String = name
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     cleaned.chars().take(64).collect()
 }
@@ -204,7 +210,10 @@ pub fn risk(tool: &ChatTool, input: &Value) -> Option<&'static str> {
         return None;
     }
     let name = tool.tool_name.to_ascii_lowercase();
-    if ["delete", "remove", "unlink", "rmdir"].iter().any(|w| name.contains(w)) {
+    if ["delete", "remove", "unlink", "rmdir"]
+        .iter()
+        .any(|w| name.contains(w))
+    {
         return Some("it deletes something");
     }
     fn texts(value: &Value, out: &mut String) {
@@ -221,7 +230,10 @@ pub fn risk(tool: &ChatTool, input: &Value) -> Option<&'static str> {
     let mut text = String::new();
     texts(input, &mut text);
     let squeezed = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    RISKY.iter().find(|(pattern, _)| squeezed.contains(pattern)).map(|(_, why)| *why)
+    RISKY
+        .iter()
+        .find(|(pattern, _)| squeezed.contains(pattern))
+        .map(|(_, why)| *why)
 }
 
 /// The instruction for Auto mode's check: may this change run without asking?
@@ -246,7 +258,11 @@ pub fn auto_check_verdict(answer: &str) -> Option<String> {
         return None;
     }
     let reason = line.split_once(':').map_or("", |(_, r)| r).trim();
-    Some(if reason.is_empty() { "this goes beyond what you asked".into() } else { reason.trim_end_matches('.').to_string() })
+    Some(if reason.is_empty() {
+        "this goes beyond what you asked".into()
+    } else {
+        reason.trim_end_matches('.').to_string()
+    })
 }
 
 /// Whether a call should wait for the user before it runs, under `mode`.
@@ -271,12 +287,21 @@ const APPROVAL_WAIT: Duration = Duration::from_secs(15 * 60);
 
 /// Asks the page to approve a call, with the payload the registry's own gate uses, so one
 /// approval card serves both.
-pub(crate) async fn request_approval(app: &AppHandle, tool: &ChatTool, input: &Value) -> ApprovalDecision {
+pub(crate) async fn request_approval(
+    app: &AppHandle,
+    tool: &ChatTool,
+    input: &Value,
+) -> ApprovalDecision {
     request_approval_because(app, tool, input, None).await
 }
 
 /// Asks with a reason Auto mode gave, shown on the card.
-pub(crate) async fn request_approval_because(app: &AppHandle, tool: &ChatTool, input: &Value, auto_reason: Option<&str>) -> ApprovalDecision {
+pub(crate) async fn request_approval_because(
+    app: &AppHandle,
+    tool: &ChatTool,
+    input: &Value,
+    auto_reason: Option<&str>,
+) -> ApprovalDecision {
     let reason = risk(tool, input)
         .map(|why| json!({ "kind": "risky", "sources": [], "detail": why }))
         .or_else(|| auto_reason.map(|why| json!({ "kind": "auto", "sources": [], "detail": why })));
@@ -349,7 +374,10 @@ pub async fn execute(
     conversation_id: &str,
 ) -> Outcome {
     let Some(connector_id) = tool.connector_id.as_deref() else {
-        return Outcome { text: "This tool is handled by the app.".into(), is_error: true };
+        return Outcome {
+            text: "This tool is handled by the app.".into(),
+            is_error: true,
+        };
     };
     if mode == ApprovalMode::Plan && needs_approval(tool, &input, mode) {
         return Outcome {
@@ -396,28 +424,54 @@ pub async fn execute(
     // The user's own tools: the same gate, then their script in the sandbox.
     if connector_id == super::custom_tools::CONNECTOR {
         let Ok(config_dir) = crate::settings::get_config_dir(app) else {
-            return Outcome { text: "The app's data folder is not available.".into(), is_error: true };
+            return Outcome {
+                text: "The app's data folder is not available.".into(),
+                is_error: true,
+            };
         };
-        return match super::custom_tools::run(&config_dir, conversation_id, &tool.tool_name, &input).await {
-            Ok(text) => Outcome { text, is_error: false },
-            Err(e) => Outcome { text: e, is_error: true },
+        return match super::custom_tools::run(&config_dir, conversation_id, &tool.tool_name, &input)
+            .await
+        {
+            Ok(text) => Outcome {
+                text,
+                is_error: false,
+            },
+            Err(e) => Outcome {
+                text: e,
+                is_error: true,
+            },
         };
     }
     // Computer use: the same gate, then the screen, mouse and keyboard.
     if connector_id == super::computer::CONNECTOR {
         return match super::computer::run(conversation_id, &input).await {
-            Ok(text) => Outcome { text, is_error: false },
-            Err(e) => Outcome { text: e, is_error: true },
+            Ok(text) => Outcome {
+                text,
+                is_error: false,
+            },
+            Err(e) => Outcome {
+                text: e,
+                is_error: true,
+            },
         };
     }
     // OpenAPI tool servers: the same gate as any connector, then an HTTP call.
     if connector_id.starts_with(super::openapi::PREFIX) {
         let Ok(config_dir) = crate::settings::get_config_dir(app) else {
-            return Outcome { text: "The app's data folder is not available.".into(), is_error: true };
+            return Outcome {
+                text: "The app's data folder is not available.".into(),
+                is_error: true,
+            };
         };
         return match super::openapi::call(&config_dir, tool, &input).await {
-            Ok(text) => Outcome { text, is_error: false },
-            Err(e) => Outcome { text: e, is_error: true },
+            Ok(text) => Outcome {
+                text,
+                is_error: false,
+            },
+            Err(e) => Outcome {
+                text: e,
+                is_error: true,
+            },
         };
     }
     let context = CallContext {
@@ -436,8 +490,14 @@ pub async fn execute(
         )
         .await
     {
-        Ok(value) => Outcome { text: value_text(&value), is_error: false },
-        Err(e) => Outcome { text: e.to_ipc_string(), is_error: true },
+        Ok(value) => Outcome {
+            text: value_text(&value),
+            is_error: false,
+        },
+        Err(e) => Outcome {
+            text: e.to_ipc_string(),
+            is_error: true,
+        },
     }
 }
 
@@ -458,7 +518,10 @@ mod tests {
 
     #[test]
     fn names_are_made_safe_for_providers() {
-        assert_eq!(safe_name("mcp-github__search.code"), "mcp-github__search_code");
+        assert_eq!(
+            safe_name("mcp-github__search.code"),
+            "mcp-github__search_code"
+        );
         assert_eq!(safe_name(&"a".repeat(80)).len(), 64);
     }
 
@@ -480,18 +543,40 @@ mod tests {
         // Auto's check: clear yes, a reason to ask, and unclear answers ask.
         assert_eq!(auto_check_verdict("ALLOW"), None);
         assert_eq!(auto_check_verdict("allow - fine"), None);
-        assert_eq!(auto_check_verdict("ASK: it emails your whole team.").as_deref(), Some("it emails your whole team"));
+        assert_eq!(
+            auto_check_verdict("ASK: it emails your whole team.").as_deref(),
+            Some("it emails your whole team")
+        );
         assert!(auto_check_verdict("Hmm, not sure").is_some());
-        assert!(auto_check_prompt("fix the typo", "filesystem__fs_write", &json!({"path": "a.md"})).contains("fix the typo"));
+        assert!(auto_check_prompt(
+            "fix the typo",
+            "filesystem__fs_write",
+            &json!({"path": "a.md"})
+        )
+        .contains("fix the typo"));
         // Smart-approve: risky calls ask even in full auto.
         let rm = json!({"command": "cd build &&  rm   -rf  ./out"});
         assert_eq!(risk(&shell, &rm), Some("it deletes files recursively"));
         assert!(needs_approval(&shell, &rm, ApprovalMode::Auto));
-        assert!(needs_approval(&shell, &json!({"args": ["git", "push --force"]}), ApprovalMode::AcceptEdits));
+        assert!(needs_approval(
+            &shell,
+            &json!({"args": ["git", "push --force"]}),
+            ApprovalMode::AcceptEdits
+        ));
         assert!(risk(&shell, &json!({"command": "ls -la && cargo test"})).is_none());
-        assert!(!needs_approval(&shell, &json!({"command": "ls"}), ApprovalMode::Auto));
-        assert!(needs_approval(&write, &none, ApprovalMode::Plan), "plan mode refuses what would ask");
-        assert!(!needs_approval(&write, &none, ApprovalMode::Auto), "full auto asks for nothing");
+        assert!(!needs_approval(
+            &shell,
+            &json!({"command": "ls"}),
+            ApprovalMode::Auto
+        ));
+        assert!(
+            needs_approval(&write, &none, ApprovalMode::Plan),
+            "plan mode refuses what would ask"
+        );
+        assert!(
+            !needs_approval(&write, &none, ApprovalMode::Auto),
+            "full auto asks for nothing"
+        );
         assert!(!needs_approval(&write, &none, ApprovalMode::AcceptEdits));
         assert!(needs_approval(&shell, &none, ApprovalMode::AcceptEdits));
         assert!(!needs_approval(&read, &none, ApprovalMode::Ask));
@@ -502,9 +587,21 @@ mod tests {
     fn reading_the_web_needs_no_approval_but_posting_does() {
         let mut fetch = tool(Some("browser"), false);
         fetch.tool_name = "fetch".into();
-        assert!(!needs_approval(&fetch, &json!({"url": "https://x"}), ApprovalMode::Ask));
-        assert!(!needs_approval(&fetch, &json!({"method": "get"}), ApprovalMode::Ask));
-        assert!(needs_approval(&fetch, &json!({"method": "POST"}), ApprovalMode::Ask));
+        assert!(!needs_approval(
+            &fetch,
+            &json!({"url": "https://x"}),
+            ApprovalMode::Ask
+        ));
+        assert!(!needs_approval(
+            &fetch,
+            &json!({"method": "get"}),
+            ApprovalMode::Ask
+        ));
+        assert!(needs_approval(
+            &fetch,
+            &json!({"method": "POST"}),
+            ApprovalMode::Ask
+        ));
         let mut navigate = tool(Some("browser"), false);
         navigate.tool_name = "navigate".into();
         assert!(!needs_approval(&navigate, &json!({}), ApprovalMode::Ask));

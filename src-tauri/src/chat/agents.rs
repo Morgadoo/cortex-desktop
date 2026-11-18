@@ -103,14 +103,25 @@ pub struct Bundle {
 
 /// The MCP servers an agent names in its tools (`mcp-<id>`), made safe to share: environment
 /// values are blanked, since a key may have been typed there instead of the keychain.
-pub fn shareable_mcp_servers(agent: &Agent, servers: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
+pub fn shareable_mcp_servers(
+    agent: &Agent,
+    servers: Vec<serde_json::Value>,
+) -> Vec<serde_json::Value> {
     let named = |id: &str| {
         let connector = format!("mcp-{id}");
-        agent.tools.iter().chain(agent.ask_tools.iter()).any(|t| *t == connector || t.starts_with(&format!("{connector}__")))
+        agent
+            .tools
+            .iter()
+            .chain(agent.ask_tools.iter())
+            .any(|t| *t == connector || t.starts_with(&format!("{connector}__")))
     };
     servers
         .into_iter()
-        .filter(|s| s.get("id").and_then(serde_json::Value::as_str).is_some_and(named))
+        .filter(|s| {
+            s.get("id")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(named)
+        })
         .map(|mut s| {
             if let Some(env) = s.get_mut("env").and_then(serde_json::Value::as_object_mut) {
                 for value in env.values_mut() {
@@ -135,9 +146,20 @@ pub fn bundle(config_dir: &Path, id: &str) -> Result<Bundle, String> {
     let skills = super::skills::list(config_dir)
         .into_iter()
         .filter(|s| s.origin == "user" && agent.skills.contains(&s.name))
-        .map(|s| BundledSkill { name: s.name, description: s.description, body: s.body })
+        .map(|s| BundledSkill {
+            name: s.name,
+            description: s.description,
+            body: s.body,
+        })
         .collect();
-    Ok(Bundle { format: "lumo-agent".into(), version: 1, notebook: notebook(config_dir, id), skills, agent, mcp_servers: Vec::new() })
+    Ok(Bundle {
+        format: "lumo-agent".into(),
+        version: 1,
+        notebook: notebook(config_dir, id),
+        skills,
+        agent,
+        mcp_servers: Vec::new(),
+    })
 }
 
 /// Adds a bundled agent as a new one; skills of the same name already here are kept as they are.
@@ -149,11 +171,18 @@ pub fn install(config_dir: &Path, bundle: Bundle) -> Result<Agent, String> {
     let mut agent = bundle.agent;
     agent.id = uuid::Uuid::new_v4().to_string();
     agent.created_at = Utc::now();
-    if existing.iter().any(|a| a.name.eq_ignore_ascii_case(&agent.name)) {
+    if existing
+        .iter()
+        .any(|a| a.name.eq_ignore_ascii_case(&agent.name))
+    {
         agent.name = format!("{} (imported)", agent.name);
     }
     let have = super::skills::list(config_dir);
-    for skill in bundle.skills.iter().filter(|s| !have.iter().any(|h| h.name == s.name)) {
+    for skill in bundle
+        .skills
+        .iter()
+        .filter(|s| !have.iter().any(|h| h.name == s.name))
+    {
         super::skills::save(config_dir, &skill.name, &skill.description, &skill.body)?;
     }
     save(config_dir, agent.clone())?;
@@ -219,18 +248,26 @@ fn notebook_path(config_dir: &Path, id: &str) -> Result<PathBuf, String> {
     if !valid_id(id) {
         return Err("invalid agent id".into());
     }
-    Ok(chat_dir(config_dir).join("agents").join(id).join("notebook.md"))
+    Ok(chat_dir(config_dir)
+        .join("agents")
+        .join(id)
+        .join("notebook.md"))
 }
 
 /// The agent's notebook: what it keeps across conversations and runs, in Markdown.
 pub fn notebook(config_dir: &Path, id: &str) -> String {
-    notebook_path(config_dir, id).ok().and_then(|p| crate::chat::at_rest::read_to_string(p).ok()).unwrap_or_default()
+    notebook_path(config_dir, id)
+        .ok()
+        .and_then(|p| crate::chat::at_rest::read_to_string(p).ok())
+        .unwrap_or_default()
 }
 
 pub fn save_notebook(config_dir: &Path, id: &str, text: &str) -> Result<(), String> {
     let text = text.trim();
     if text.chars().count() > NOTEBOOK_CHARS {
-        return Err(format!("The notebook holds at most {NOTEBOOK_CHARS} characters; condense it."));
+        return Err(format!(
+            "The notebook holds at most {NOTEBOOK_CHARS} characters; condense it."
+        ));
     }
     let path = notebook_path(config_dir, id)?;
     if let Some(parent) = path.parent() {
@@ -257,7 +294,11 @@ pub fn notebook_tool() -> super::tools::ChatTool {
 
 /// The part of the agent's prompt about its notebook.
 pub fn notebook_prompt(text: &str) -> String {
-    let body = if text.trim().is_empty() { "(empty: start it when you learn something worth keeping)" } else { text.trim() };
+    let body = if text.trim().is_empty() {
+        "(empty: start it when you learn something worth keeping)"
+    } else {
+        text.trim()
+    };
     format!(
         "\n\n## Your notebook\nYou keep this across every conversation and run; the user can read and \
          edit it. Update it with `{NOTEBOOK_TOOL}` when you learn something that will matter next \
@@ -270,7 +311,17 @@ pub fn team_prompt(agents: &[Agent], except: Option<&str>) -> Option<String> {
     let team: Vec<String> = agents
         .iter()
         .filter(|a| Some(a.id.as_str()) != except)
-        .map(|a| format!("- **{}**: {}", a.name, if a.description.trim().is_empty() { "no description" } else { a.description.trim() }))
+        .map(|a| {
+            format!(
+                "- **{}**: {}",
+                a.name,
+                if a.description.trim().is_empty() {
+                    "no description"
+                } else {
+                    a.description.trim()
+                }
+            )
+        })
         .collect();
     if team.is_empty() {
         return None;
@@ -295,21 +346,34 @@ pub fn message_text(from: &str, message: &str, files: &[(String, String)]) -> St
     let mut out = format!("Message from {from}:\n\n{}", message.trim());
     for (name, text) in files {
         let text: String = text.chars().take(SHARED_FILE_CHARS).collect();
-        out.push_str(&format!("\n\n<attachment name=\"{name}\">\n{text}\n</attachment>"));
+        out.push_str(&format!(
+            "\n\n<attachment name=\"{name}\">\n{text}\n</attachment>"
+        ));
     }
     out.push_str("\n\nReply to them directly; your reply is passed back.");
     out
 }
 
 /// Reads the files an agent shares: paths inside its folder (or absolute), text only.
-pub fn read_shared(paths: &[String], workdir: Option<&Path>) -> Result<Vec<(String, String)>, String> {
+pub fn read_shared(
+    paths: &[String],
+    workdir: Option<&Path>,
+) -> Result<Vec<(String, String)>, String> {
     let mut out = Vec::new();
     for p in paths.iter().take(5) {
         let path = Path::new(p);
-        let full = if path.is_absolute() { path.to_path_buf() } else { workdir.ok_or("Relative paths need the chat's folder; give a full path.")?.join(path) };
+        let full = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            workdir
+                .ok_or("Relative paths need the chat's folder; give a full path.")?
+                .join(path)
+        };
         let bytes = std::fs::read(&full).map_err(|e| format!("could not read {p}: {e}"))?;
         let text = String::from_utf8(bytes).map_err(|_| format!("{p} is not a text file."))?;
-        let name = full.file_name().map_or_else(|| p.clone(), |n| n.to_string_lossy().into_owned());
+        let name = full
+            .file_name()
+            .map_or_else(|| p.clone(), |n| n.to_string_lossy().into_owned());
         out.push((name, text));
     }
     Ok(out)
@@ -320,10 +384,21 @@ pub fn files_library(config_dir: &Path, id: &str) -> Result<super::libraries::Li
     let mut agent = find(config_dir, id).ok_or("No such agent.")?;
     let all = super::libraries::list(config_dir);
     let wanted = format!("{} files", agent.name);
-    if let Some(l) = all.iter().find(|l| agent.libraries.contains(&l.id) && l.name == wanted).or_else(|| all.iter().find(|l| agent.libraries.contains(&l.id))) {
+    if let Some(l) = all
+        .iter()
+        .find(|l| agent.libraries.contains(&l.id) && l.name == wanted)
+        .or_else(|| all.iter().find(|l| agent.libraries.contains(&l.id)))
+    {
         return Ok(l.clone());
     }
-    let library = super::libraries::create(config_dir, &wanted, &format!("Context for the agent {}: it searches these before answering.", agent.name))?;
+    let library = super::libraries::create(
+        config_dir,
+        &wanted,
+        &format!(
+            "Context for the agent {}: it searches these before answering.",
+            agent.name
+        ),
+    )?;
     agent.libraries.push(library.id.clone());
     save(config_dir, agent)?;
     Ok(library)
@@ -339,12 +414,28 @@ pub fn routing_enabled(config_dir: &Path) -> bool {
 }
 
 pub fn set_routing(config_dir: &Path, enabled: bool) -> Result<(), String> {
-    super::store::write_json(&chat_dir(config_dir).join("agent-routing.json"), &serde_json::json!({ "enabled": enabled }))
+    super::store::write_json(
+        &chat_dir(config_dir).join("agent-routing.json"),
+        &serde_json::json!({ "enabled": enabled }),
+    )
 }
 
 /// The question that picks an agent for a new chat.
 pub fn route_prompt(agents: &[Agent], message: &str) -> String {
-    let list: Vec<String> = agents.iter().map(|a| format!("- {}: {}", a.name, if a.description.trim().is_empty() { "no description" } else { a.description.trim() })).collect();
+    let list: Vec<String> = agents
+        .iter()
+        .map(|a| {
+            format!(
+                "- {}: {}",
+                a.name,
+                if a.description.trim().is_empty() {
+                    "no description"
+                } else {
+                    a.description.trim()
+                }
+            )
+        })
+        .collect();
     format!(
         "A user starts a chat with this message:\n\n{}\n\nThese agents could take it:\n{}\n\nWhich one is clearly \
          the best fit? Reply with only its name, exactly as written, or with `none` when the message \
@@ -356,16 +447,32 @@ pub fn route_prompt(agents: &[Agent], message: &str) -> String {
 
 /// The agent a routing reply names, if any.
 pub fn parse_route<'a>(agents: &'a [Agent], reply: &str) -> Option<&'a Agent> {
-    let line = reply.trim().lines().next().unwrap_or_default().trim().trim_matches(['`', '*', '"', '\'', '.']).trim();
+    let line = reply
+        .trim()
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .trim_matches(['`', '*', '"', '\'', '.'])
+        .trim();
     if line.eq_ignore_ascii_case("none") || line.is_empty() {
         return None;
     }
-    by_name(agents, line).or_else(|| agents.iter().filter(|a| line.to_lowercase().contains(&a.name.to_lowercase())).max_by_key(|a| a.name.len()))
+    by_name(agents, line).or_else(|| {
+        agents
+            .iter()
+            .filter(|a| line.to_lowercase().contains(&a.name.to_lowercase()))
+            .max_by_key(|a| a.name.len())
+    })
 }
 
 /// What a group's host is told: its members, and how to run them.
 pub fn group_prompt(agents: &[Agent], group: &Agent) -> Option<String> {
-    let members: Vec<&Agent> = group.members.iter().filter_map(|id| agents.iter().find(|a| &a.id == id && a.id != group.id)).collect();
+    let members: Vec<&Agent> = group
+        .members
+        .iter()
+        .filter_map(|id| agents.iter().find(|a| &a.id == id && a.id != group.id))
+        .collect();
     if members.is_empty() {
         return None;
     }
@@ -379,7 +486,20 @@ pub fn group_prompt(agents: &[Agent], group: &Agent) -> Option<String> {
         "debate" => "all at once, then a second round where each answers the others; say where they converged and where they still disagree",
         _ => "all at once, each on its own",
     };
-    let list: Vec<String> = members.iter().map(|a| format!("- **{}**: {}", a.name, if a.description.trim().is_empty() { "no description" } else { a.description.trim() })).collect();
+    let list: Vec<String> = members
+        .iter()
+        .map(|a| {
+            format!(
+                "- **{}**: {}",
+                a.name,
+                if a.description.trim().is_empty() {
+                    "no description"
+                } else {
+                    a.description.trim()
+                }
+            )
+        })
+        .collect();
     Some(format!(
         "\n\n## Your group\nYou host a group of agents. For each request, unless it is small talk or a \
          question about the group itself, call `delegate` once with `mode: \"{mode}\"` and one task per \
@@ -394,7 +514,9 @@ pub fn group_prompt(agents: &[Agent], group: &Agent) -> Option<String> {
 /// Finds an agent by name (any case) or id.
 pub fn by_name<'a>(agents: &'a [Agent], name: &str) -> Option<&'a Agent> {
     let name = name.trim();
-    agents.iter().find(|a| a.id == name || a.name.eq_ignore_ascii_case(name))
+    agents
+        .iter()
+        .find(|a| a.id == name || a.name.eq_ignore_ascii_case(name))
 }
 
 /// What an agent's conversations cost this calendar month.
@@ -411,7 +533,9 @@ pub fn spend_this_month(config_dir: &Path) -> std::collections::HashMap<String, 
     let now = Utc::now();
     let mut out: std::collections::HashMap<String, Spend> = Default::default();
     for c in super::store::list_conversations(config_dir) {
-        let Some(agent) = c.agent_id.clone() else { continue };
+        let Some(agent) = c.agent_id.clone() else {
+            continue;
+        };
         if c.updated_at.year() != now.year() || c.updated_at.month() != now.month() {
             continue;
         }
@@ -425,8 +549,12 @@ pub fn spend_this_month(config_dir: &Path) -> std::collections::HashMap<String, 
 
 /// Refuses a turn when the agent's monthly budget is used up.
 pub fn check_budget(config_dir: &Path, agent: &Agent) -> Result<(), String> {
-    let Some(budget) = agent.monthly_budget.filter(|b| *b > 0.0) else { return Ok(()) };
-    let spent = spend_this_month(config_dir).get(&agent.id).map_or(0.0, |s| s.cost);
+    let Some(budget) = agent.monthly_budget.filter(|b| *b > 0.0) else {
+        return Ok(());
+    };
+    let spent = spend_this_month(config_dir)
+        .get(&agent.id)
+        .map_or(0.0, |s| s.cost);
     if spent >= budget {
         return Err(format!(
             "{} has used its monthly budget (${spent:.2} of ${budget:.2}). Raise the budget on its page to continue.",
@@ -468,10 +596,30 @@ pub fn refine_prompt(current: &Agent, request: &str, tools: &[&str], skills: &[S
 /// Reads the model's draft. Unknown tools and skills are dropped.
 pub fn parse_draft(text: &str, tools: &[&str], skills: &[String]) -> Result<Agent, String> {
     let start = text.find('{').ok_or("The model did not return an agent.")?;
-    let end = text.rfind('}').ok_or("The model did not return an agent.")?;
-    let value: serde_json::Value = serde_json::from_str(&text[start..=end]).map_err(|_| "The model's draft was not valid JSON; try again.".to_string())?;
-    let field = |k: &str| value.get(k).and_then(|v| v.as_str()).unwrap_or_default().trim().to_string();
-    let list = |k: &str| -> Vec<String> { value.get(k).and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default() };
+    let end = text
+        .rfind('}')
+        .ok_or("The model did not return an agent.")?;
+    let value: serde_json::Value = serde_json::from_str(&text[start..=end])
+        .map_err(|_| "The model's draft was not valid JSON; try again.".to_string())?;
+    let field = |k: &str| {
+        value
+            .get(k)
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    };
+    let list = |k: &str| -> Vec<String> {
+        value
+            .get(k)
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
     let name = field("name");
     if name.is_empty() {
         return Err("The draft had no name; try again.".into());
@@ -482,10 +630,19 @@ pub fn parse_draft(text: &str, tools: &[&str], skills: &[String]) -> Result<Agen
         description: field("description"),
         instructions: field("instructions"),
         model: None,
-        tools: list("tools").into_iter().filter(|t| tools.contains(&t.as_str())).collect(),
-        skills: list("skills").into_iter().filter(|s| skills.contains(s)).collect(),
+        tools: list("tools")
+            .into_iter()
+            .filter(|t| tools.contains(&t.as_str()))
+            .collect(),
+        skills: list("skills")
+            .into_iter()
+            .filter(|s| skills.contains(s))
+            .collect(),
         ask_tools: Vec::new(),
-        think: value.get("think").and_then(|v| v.as_bool()).unwrap_or(false),
+        think: value
+            .get("think")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
         fallback_model: None,
         monthly_budget: None,
         starters: Vec::new(),
@@ -507,7 +664,11 @@ pub fn asks_first(agent: &Agent, tool: &str) -> bool {
 }
 
 /// The approval mode for one call: an agent's "ask" tools ask even when the mode would not.
-pub fn mode_for(agent: Option<&Agent>, tool: &str, mode: super::tools::ApprovalMode) -> super::tools::ApprovalMode {
+pub fn mode_for(
+    agent: Option<&Agent>,
+    tool: &str,
+    mode: super::tools::ApprovalMode,
+) -> super::tools::ApprovalMode {
     use super::tools::ApprovalMode;
     let Some(agent) = agent else { return mode };
     let ask = asks_first(agent, tool);
@@ -521,7 +682,12 @@ pub fn mode_for(agent: Option<&Agent>, tool: &str, mode: super::tools::ApprovalM
 
 /// Ready-made agents a user can add with one click.
 pub fn templates() -> Vec<Agent> {
-    let make = |id: &str, name: &str, avatar: &str, description: &str, instructions: &str, tools: &[&str]| Agent {
+    let make = |id: &str,
+                name: &str,
+                avatar: &str,
+                description: &str,
+                instructions: &str,
+                tools: &[&str]| Agent {
         id: id.into(),
         name: name.into(),
         avatar: avatar.into(),
@@ -633,28 +799,59 @@ mod group_tests {
         assert!(read_shared(&["notes.md".into()], None).is_err());
         assert!(read_shared(&["missing.md".into()], Some(dir.path())).is_err());
         let text = message_text("Researcher", "Check the budget.", &files);
-        assert!(text.starts_with("Message from Researcher:") && text.contains("<attachment name=\"notes.md\">\nBudget: 40k") && text.ends_with("passed back."));
+        assert!(
+            text.starts_with("Message from Researcher:")
+                && text.contains("<attachment name=\"notes.md\">\nBudget: 40k")
+                && text.ends_with("passed back.")
+        );
     }
 
     #[test]
     fn agents_get_their_own_files_library() {
         let dir = tempfile::tempdir().unwrap();
-        let agent = Agent { id: "a1".into(), name: "Researcher".into(), created_at: Utc::now(), ..Default::default() };
+        let agent = Agent {
+            id: "a1".into(),
+            name: "Researcher".into(),
+            created_at: Utc::now(),
+            ..Default::default()
+        };
         save(dir.path(), agent).unwrap();
         let first = files_library(dir.path(), "a1").unwrap();
         assert_eq!(first.name, "Researcher files");
-        assert_eq!(files_library(dir.path(), "a1").unwrap().id, first.id, "made once");
+        assert_eq!(
+            files_library(dir.path(), "a1").unwrap().id,
+            first.id,
+            "made once"
+        );
         assert_eq!(find(dir.path(), "a1").unwrap().libraries, [first.id]);
         assert!(files_library(dir.path(), "nope").is_err());
     }
 
     #[test]
     fn new_chats_route_to_the_named_agent() {
-        let make = |id: &str, name: &str| Agent { id: id.into(), name: name.into(), ..Default::default() };
-        let all = vec![make("a", "Researcher"), make("b", "Code Reviewer"), make("c", "Code")];
-        assert_eq!(parse_route(&all, "Code Reviewer").map(|a| a.id.as_str()), Some("b"));
-        assert_eq!(parse_route(&all, "**researcher**\n").map(|a| a.id.as_str()), Some("a"));
-        assert_eq!(parse_route(&all, "The best fit is Code Reviewer.").map(|a| a.id.as_str()), Some("b"), "the longest name mentioned wins");
+        let make = |id: &str, name: &str| Agent {
+            id: id.into(),
+            name: name.into(),
+            ..Default::default()
+        };
+        let all = vec![
+            make("a", "Researcher"),
+            make("b", "Code Reviewer"),
+            make("c", "Code"),
+        ];
+        assert_eq!(
+            parse_route(&all, "Code Reviewer").map(|a| a.id.as_str()),
+            Some("b")
+        );
+        assert_eq!(
+            parse_route(&all, "**researcher**\n").map(|a| a.id.as_str()),
+            Some("a")
+        );
+        assert_eq!(
+            parse_route(&all, "The best fit is Code Reviewer.").map(|a| a.id.as_str()),
+            Some("b"),
+            "the longest name mentioned wins"
+        );
         assert!(parse_route(&all, "none").is_none());
         assert!(parse_route(&all, "Translator").is_none());
         assert!(route_prompt(&all, "Review my PR").contains("- Code Reviewer: no description"));
@@ -666,18 +863,40 @@ mod group_tests {
 
     #[test]
     fn groups_host_their_members() {
-        let make = |id: &str, name: &str| Agent { id: id.into(), name: name.into(), description: format!("{name} work"), ..Default::default() };
-        let all = vec![make("a", "Researcher"), make("b", "Critic"), make("g", "Board")];
+        let make = |id: &str, name: &str| Agent {
+            id: id.into(),
+            name: name.into(),
+            description: format!("{name} work"),
+            ..Default::default()
+        };
+        let all = vec![
+            make("a", "Researcher"),
+            make("b", "Critic"),
+            make("g", "Board"),
+        ];
         let mut group = all[2].clone();
         assert!(group_prompt(&all, &group).is_none(), "no members, no group");
         group.members = vec!["b".into(), "a".into(), "g".into(), "missing".into()];
         group.group_mode = "debate".into();
         group.tools = vec!["web_search".into()];
         let p = group_prompt(&all, &group).unwrap();
-        assert!(p.contains("mode: \"debate\"") && p.find("Critic").unwrap() < p.find("Researcher").unwrap(), "{p}");
+        assert!(
+            p.contains("mode: \"debate\"")
+                && p.find("Critic").unwrap() < p.find("Researcher").unwrap(),
+            "{p}"
+        );
         assert!(!p.contains("**Board**"), "a group is not its own member");
-        assert!(allows(&group, super::super::builtins::DELEGATE), "a group may always delegate");
-        assert!(!allows(&Agent { tools: vec!["web_search".into()], ..Default::default() }, super::super::builtins::DELEGATE));
+        assert!(
+            allows(&group, super::super::builtins::DELEGATE),
+            "a group may always delegate"
+        );
+        assert!(!allows(
+            &Agent {
+                tools: vec!["web_search".into()],
+                ..Default::default()
+            },
+            super::super::builtins::DELEGATE
+        ));
     }
 }
 
@@ -686,7 +905,13 @@ mod tests {
     #[test]
     fn agents_travel_as_bundles() {
         let from = tempfile::tempdir().unwrap();
-        super::super::skills::save(from.path(), "triage-inbox", "Use when sorting email.", "1. Read.\n2. Sort.").unwrap();
+        super::super::skills::save(
+            from.path(),
+            "triage-inbox",
+            "Use when sorting email.",
+            "1. Read.\n2. Sort.",
+        )
+        .unwrap();
         let agent = Agent {
             id: "a1".into(),
             name: "Inbox helper".into(),
@@ -712,7 +937,11 @@ mod tests {
         save(from.path(), agent).unwrap();
         save_notebook(from.path(), "a1", "Boss emails first.").unwrap();
         let b = bundle(from.path(), "a1").unwrap();
-        assert_eq!(b.skills.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), ["triage-inbox"], "built-in skills stay behind");
+        assert_eq!(
+            b.skills.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(),
+            ["triage-inbox"],
+            "built-in skills stay behind"
+        );
         let json = serde_json::to_string(&b).unwrap();
 
         let to = tempfile::tempdir().unwrap();
@@ -740,8 +969,18 @@ mod tests {
             serde_json::json!({ "id": "notion", "display_name": "Notion", "transport": "http", "url": "https://mcp.notion.com", "auth": { "type": "none" } }),
         ];
         let shared = shareable_mcp_servers(&agent, servers);
-        assert_eq!(shared.iter().map(|s| s["id"].as_str().unwrap()).collect::<Vec<_>>(), ["github", "linear"], "only the servers it uses");
-        assert_eq!(shared[0]["env"]["GITHUB_TOKEN"], "", "values typed into env are not shared");
+        assert_eq!(
+            shared
+                .iter()
+                .map(|s| s["id"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            ["github", "linear"],
+            "only the servers it uses"
+        );
+        assert_eq!(
+            shared[0]["env"]["GITHUB_TOKEN"], "",
+            "values typed into env are not shared"
+        );
     }
 
     #[test]
@@ -756,10 +995,20 @@ mod tests {
         assert!(!allows(&agent, "bash__run"));
         assert!(!allows(&agent, "search_library"));
         agent.libraries = vec!["lib1".into()];
-        assert!(allows(&agent, "search_library") && allows(&agent, "read_document"), "its libraries come with the tools that read them");
+        assert!(
+            allows(&agent, "search_library") && allows(&agent, "read_document"),
+            "its libraries come with the tools that read them"
+        );
         agent.tools.clear();
         assert!(allows(&agent, "bash__run"));
-        assert!(save(dir.path(), Agent { name: " ".into(), ..agent.clone() }).is_err());
+        assert!(save(
+            dir.path(),
+            Agent {
+                name: " ".into(),
+                ..agent.clone()
+            }
+        )
+        .is_err());
         assert!(delete(dir.path(), "a1").unwrap().is_empty());
     }
 
@@ -781,7 +1030,20 @@ mod tests {
             &skills,
         )
         .unwrap();
-        assert_eq!((draft.name.as_str(), draft.tools.clone(), draft.skills.clone(), draft.think), ("Market Watcher", vec!["web_search".to_string()], skills.clone(), true));
+        assert_eq!(
+            (
+                draft.name.as_str(),
+                draft.tools.clone(),
+                draft.skills.clone(),
+                draft.think
+            ),
+            (
+                "Market Watcher",
+                vec!["web_search".to_string()],
+                skills.clone(),
+                true
+            )
+        );
         assert!(parse_draft("no json here", &tools, &skills).is_err());
 
         let team = templates();
@@ -796,26 +1058,51 @@ mod tests {
         use crate::chat::tools::ApprovalMode;
         let mut agent = templates().remove(0);
         agent.ask_tools = vec!["bash".into()];
-        assert_eq!(mode_for(Some(&agent), "bash__run", ApprovalMode::Auto), ApprovalMode::Ask);
-        assert_eq!(mode_for(Some(&agent), "bash__run", ApprovalMode::Autonomous), ApprovalMode::Unattended);
-        assert_eq!(mode_for(Some(&agent), "web_search", ApprovalMode::Auto), ApprovalMode::Auto);
-        assert_eq!(mode_for(None, "bash__run", ApprovalMode::Auto), ApprovalMode::Auto);
+        assert_eq!(
+            mode_for(Some(&agent), "bash__run", ApprovalMode::Auto),
+            ApprovalMode::Ask
+        );
+        assert_eq!(
+            mode_for(Some(&agent), "bash__run", ApprovalMode::Autonomous),
+            ApprovalMode::Unattended
+        );
+        assert_eq!(
+            mode_for(Some(&agent), "web_search", ApprovalMode::Auto),
+            ApprovalMode::Auto
+        );
+        assert_eq!(
+            mode_for(None, "bash__run", ApprovalMode::Auto),
+            ApprovalMode::Auto
+        );
     }
 
     #[test]
     fn budgets_stop_an_agent() {
         let dir = tempfile::tempdir().unwrap();
         let mut agent = templates().remove(0);
-        let mut c = crate::chat::store::Conversation::new("11111111-1111-4111-8111-111111111111".into(), None, None);
+        let mut c = crate::chat::store::Conversation::new(
+            "11111111-1111-4111-8111-111111111111".into(),
+            None,
+            None,
+        );
         c.agent_id = Some(agent.id.clone());
         c.usage.cost = 1.5;
         c.usage.input_tokens = 1000;
         crate::chat::store::save_conversation(dir.path(), &c).unwrap();
         let spend = spend_this_month(dir.path());
-        assert_eq!(spend[&agent.id], Spend { runs: 1, tokens: 1000, cost: 1.5 });
+        assert_eq!(
+            spend[&agent.id],
+            Spend {
+                runs: 1,
+                tokens: 1000,
+                cost: 1.5
+            }
+        );
         assert!(check_budget(dir.path(), &agent).is_ok());
         agent.monthly_budget = Some(1.0);
-        assert!(check_budget(dir.path(), &agent).unwrap_err().contains("monthly budget"));
+        assert!(check_budget(dir.path(), &agent)
+            .unwrap_err()
+            .contains("monthly budget"));
         agent.monthly_budget = Some(2.0);
         assert!(check_budget(dir.path(), &agent).is_ok());
     }

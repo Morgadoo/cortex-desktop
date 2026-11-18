@@ -58,7 +58,11 @@ fn api_base() -> String {
 }
 
 pub async fn token() -> Option<String> {
-    super::engine::api_key(SECRET).await.ok().flatten().filter(|t| !t.is_empty())
+    super::engine::api_key(SECRET)
+        .await
+        .ok()
+        .flatten()
+        .filter(|t| !t.is_empty())
 }
 
 pub async fn set_token(token: &str) -> Result<(), String> {
@@ -67,19 +71,34 @@ pub async fn set_token(token: &str) -> Result<(), String> {
     if token.trim().is_empty() {
         secrets.delete(&super::providers::secret_name(SECRET)).await
     } else {
-        secrets.store(&super::providers::secret_name(SECRET), token.trim()).await
+        secrets
+            .store(&super::providers::secret_name(SECRET), token.trim())
+            .await
     }
 }
 
 fn client() -> reqwest::Client {
-    reqwest::Client::builder().timeout(Duration::from_secs(60)).build().unwrap_or_default()
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(60))
+        .build()
+        .unwrap_or_default()
 }
 
 async fn call(token: &str, method: &str, body: Value) -> Result<Value, String> {
-    let r = client().post(format!("{}/bot{token}/{method}", api_base())).json(&body).send().await.map_err(|e| format!("Telegram did not answer: {e}"))?;
+    let r = client()
+        .post(format!("{}/bot{token}/{method}", api_base()))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Telegram did not answer: {e}"))?;
     let v: Value = r.json().await.map_err(|e| e.to_string())?;
     if v.get("ok").and_then(Value::as_bool) != Some(true) {
-        return Err(format!("Telegram: {}", v.get("description").and_then(Value::as_str).unwrap_or("refused")));
+        return Err(format!(
+            "Telegram: {}",
+            v.get("description")
+                .and_then(Value::as_str)
+                .unwrap_or("refused")
+        ));
     }
     Ok(v.get("result").cloned().unwrap_or(Value::Null))
 }
@@ -87,7 +106,11 @@ async fn call(token: &str, method: &str, body: Value) -> Result<Value, String> {
 /// Checks a token and returns the bot's @name.
 pub async fn check(token: &str) -> Result<String, String> {
     let me = call(token, "getMe", json!({})).await?;
-    Ok(me.get("username").and_then(Value::as_str).unwrap_or("bot").to_string())
+    Ok(me
+        .get("username")
+        .and_then(Value::as_str)
+        .unwrap_or("bot")
+        .to_string())
 }
 
 /// Splits an answer into Telegram-sized messages, at paragraph or line breaks where it can.
@@ -155,11 +178,34 @@ pub fn decide(settings: &Settings, user_id: i64, user_name: &str, text: &str) ->
 }
 
 /// Runs one turn for a Telegram chat and returns the answer.
-async fn ask(app: &AppHandle, config_dir: &Path, settings: &mut Settings, chat_id: i64, text: &str) -> Result<String, String> {
-    let existing = settings.chats.iter().find(|(c, _)| *c == chat_id).map(|(_, id)| id.clone());
-    let (id, answer) = run_message(app, config_dir, settings.agent_id.clone(), settings.allow_changes, existing, "Telegram", text).await;
+async fn ask(
+    app: &AppHandle,
+    config_dir: &Path,
+    settings: &mut Settings,
+    chat_id: i64,
+    text: &str,
+) -> Result<String, String> {
+    let existing = settings
+        .chats
+        .iter()
+        .find(|(c, _)| *c == chat_id)
+        .map(|(_, id)| id.clone());
+    let (id, answer) = run_message(
+        app,
+        config_dir,
+        settings.agent_id.clone(),
+        settings.allow_changes,
+        existing,
+        "Telegram",
+        text,
+    )
+    .await;
     if let Some(id) = id {
-        if !settings.chats.iter().any(|(c, i)| *c == chat_id && *i == id) {
+        if !settings
+            .chats
+            .iter()
+            .any(|(c, i)| *c == chat_id && *i == id)
+        {
             settings.chats.retain(|(c, _)| *c != chat_id);
             settings.chats.push((chat_id, id));
             save(config_dir, settings)?;
@@ -171,10 +217,24 @@ async fn ask(app: &AppHandle, config_dir: &Path, settings: &mut Settings, chat_i
 /// Runs a message from a channel (Telegram, Slack) as a turn in a Lumo chat: the chat
 /// `existing` when it still exists, else a new one titled `title`. Returns the chat's id and the
 /// answer. Unattended unless `allow_changes`: nobody can approve from the channel.
-pub async fn run_message(app: &AppHandle, config_dir: &Path, agent_id: Option<String>, allow_changes: bool, existing: Option<String>, title: &str, text: &str) -> (Option<String>, Result<String, String>) {
+pub async fn run_message(
+    app: &AppHandle,
+    config_dir: &Path,
+    agent_id: Option<String>,
+    allow_changes: bool,
+    existing: Option<String>,
+    title: &str,
+    text: &str,
+) -> (Option<String>, Result<String, String>) {
     use super::engine::{run_turn, TurnRequest};
-    let agent = agent_id.as_deref().and_then(|a| super::agents::find(config_dir, a));
-    let Some(model) = agent.as_ref().and_then(|a| a.model.clone()).or(super::providers::load(config_dir).default_model) else {
+    let agent = agent_id
+        .as_deref()
+        .and_then(|a| super::agents::find(config_dir, a));
+    let Some(model) = agent
+        .as_ref()
+        .and_then(|a| a.model.clone())
+        .or(super::providers::load(config_dir).default_model)
+    else {
         return (None, Err("Choose a default model in Lumo first.".into()));
     };
     let id = match existing.filter(|id| super::store::load_conversation(config_dir, id).is_ok()) {
@@ -190,13 +250,26 @@ pub async fn run_message(app: &AppHandle, config_dir: &Path, agent_id: Option<St
             id
         }
     };
-    let Some(cancel) = app.state::<super::ChatState>().begin(&id) else { return (Some(id), Err("I am still answering your last message.".into())) };
+    let Some(cancel) = app.state::<super::ChatState>().begin(&id) else {
+        return (
+            Some(id),
+            Err("I am still answering your last message.".into()),
+        );
+    };
     let request = TurnRequest {
         conversation_id: id.clone(),
         text: text.to_string(),
         model,
-        speed: if agent.as_ref().is_some_and(|a| a.think) { super::engine::Speed::Think } else { super::engine::Speed::Fast },
-        approval: if allow_changes { super::tools::ApprovalMode::Autonomous } else { super::tools::ApprovalMode::Unattended },
+        speed: if agent.as_ref().is_some_and(|a| a.think) {
+            super::engine::Speed::Think
+        } else {
+            super::engine::Speed::Fast
+        },
+        approval: if allow_changes {
+            super::tools::ApprovalMode::Autonomous
+        } else {
+            super::tools::ApprovalMode::Unattended
+        },
         project_id: None,
         agent_id,
         images: Vec::new(),
@@ -211,7 +284,9 @@ pub async fn run_message(app: &AppHandle, config_dir: &Path, agent_id: Option<St
     run_turn(app.clone(), request, cancel).await;
     let answer = match super::store::load_conversation(config_dir, &id) {
         Ok(c) => match c.messages.last() {
-            Some(m @ rig_core::completion::Message::Assistant(_)) => Ok(super::context::message_text(m)),
+            Some(m @ rig_core::completion::Message::Assistant(_)) => {
+                Ok(super::context::message_text(m))
+            }
             _ => Err("I could not answer that; see the chat in Lumo for what went wrong.".into()),
         },
         Err(e) => Err(e),
@@ -231,10 +306,20 @@ pub fn start(app: &AppHandle) {
         let mut offset: i64 = 0;
         while let Ok(config_dir) = crate::settings::get_config_dir(&app) {
             let settings = load(&config_dir);
-            let Some(token) = (if settings.enabled { token().await } else { None }) else {
+            let Some(token) = (if settings.enabled {
+                token().await
+            } else {
+                None
+            }) else {
                 break;
             };
-            let updates = match call(&token, "getUpdates", json!({ "offset": offset, "timeout": 25, "allowed_updates": ["message"] })).await {
+            let updates = match call(
+                &token,
+                "getUpdates",
+                json!({ "offset": offset, "timeout": 25, "allowed_updates": ["message"] }),
+            )
+            .await
+            {
                 Ok(u) => u,
                 Err(e) => {
                     log::warn!("telegram: {e}");
@@ -243,18 +328,41 @@ pub fn start(app: &AppHandle) {
                 }
             };
             for update in updates.as_array().cloned().unwrap_or_default() {
-                offset = offset.max(update.get("update_id").and_then(Value::as_i64).unwrap_or(0) + 1);
-                let Some(message) = update.get("message") else { continue };
-                let chat_id = message.pointer("/chat/id").and_then(Value::as_i64).unwrap_or(0);
-                let user_id = message.pointer("/from/id").and_then(Value::as_i64).unwrap_or(0);
-                let name = message.pointer("/from/first_name").and_then(Value::as_str).unwrap_or("someone").to_string();
-                let text = message.get("text").and_then(Value::as_str).unwrap_or_default().to_string();
+                offset =
+                    offset.max(update.get("update_id").and_then(Value::as_i64).unwrap_or(0) + 1);
+                let Some(message) = update.get("message") else {
+                    continue;
+                };
+                let chat_id = message
+                    .pointer("/chat/id")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0);
+                let user_id = message
+                    .pointer("/from/id")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0);
+                let name = message
+                    .pointer("/from/first_name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("someone")
+                    .to_string();
+                let text = message
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
                 let mut settings = load(&config_dir);
                 let send = |t: String| {
                     let token = token.clone();
                     async move {
                         for piece in chunks(&t) {
-                            if let Err(e) = call(&token, "sendMessage", json!({ "chat_id": chat_id, "text": piece })).await {
+                            if let Err(e) = call(
+                                &token,
+                                "sendMessage",
+                                json!({ "chat_id": chat_id, "text": piece }),
+                            )
+                            .await
+                            {
                                 log::warn!("telegram: could not send: {e}");
                             }
                         }
@@ -278,8 +386,15 @@ pub fn start(app: &AppHandle) {
                         send("Started a fresh conversation.".into()).await;
                     }
                     Action::Ask(t) => {
-                        let _ = call(&token, "sendChatAction", json!({ "chat_id": chat_id, "action": "typing" })).await;
-                        let answer = ask(&app, &config_dir, &mut settings, chat_id, &t).await.unwrap_or_else(|e| e);
+                        let _ = call(
+                            &token,
+                            "sendChatAction",
+                            json!({ "chat_id": chat_id, "action": "typing" }),
+                        )
+                        .await;
+                        let answer = ask(&app, &config_dir, &mut settings, chat_id, &t)
+                            .await
+                            .unwrap_or_else(|e| e);
                         send(answer).await;
                     }
                 }
@@ -295,15 +410,32 @@ mod tests {
 
     #[test]
     fn only_paired_people_are_answered() {
-        let mut s = Settings { pairing_code: Some("482913".into()), ..Default::default() };
-        assert!(matches!(decide(&s, 7, "Ana", "hello"), Action::Reply(t) if t.contains("only its owner")));
-        assert!(matches!(decide(&s, 7, "Ana", "/pair 111111"), Action::Reply(_)));
-        assert_eq!(decide(&s, 7, "Ana", "/pair 482913"), Action::Pair(7, "Ana".into()));
+        let mut s = Settings {
+            pairing_code: Some("482913".into()),
+            ..Default::default()
+        };
+        assert!(
+            matches!(decide(&s, 7, "Ana", "hello"), Action::Reply(t) if t.contains("only its owner"))
+        );
+        assert!(matches!(
+            decide(&s, 7, "Ana", "/pair 111111"),
+            Action::Reply(_)
+        ));
+        assert_eq!(
+            decide(&s, 7, "Ana", "/pair 482913"),
+            Action::Pair(7, "Ana".into())
+        );
         s.paired.push(7);
         s.pairing_code = None;
-        assert_eq!(decide(&s, 7, "Ana", "What's on today?"), Action::Ask("What's on today?".into()));
+        assert_eq!(
+            decide(&s, 7, "Ana", "What's on today?"),
+            Action::Ask("What's on today?".into())
+        );
         assert_eq!(decide(&s, 7, "Ana", "/new"), Action::Reset);
-        assert!(matches!(decide(&s, 8, "Eve", "/pair 482913"), Action::Reply(_)), "pairing closed after use");
+        assert!(
+            matches!(decide(&s, 8, "Eve", "/pair 482913"), Action::Reply(_)),
+            "pairing closed after use"
+        );
         assert_eq!(decide(&s, 7, "Ana", "  "), Action::Ignore);
     }
 

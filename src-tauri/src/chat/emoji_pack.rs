@@ -55,7 +55,11 @@ pub fn dir(root: &Path, style: &str) -> PathBuf {
 
 /// An image's name: code points in lowercase hex joined by hyphens.
 fn valid_name(name: &str) -> bool {
-    !name.is_empty() && name.len() <= 120 && name.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase() || c == '-')
+    !name.is_empty()
+        && name.len() <= 120
+        && name
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase() || c == '-')
 }
 
 pub fn installed(root: &Path, style: &str) -> bool {
@@ -64,7 +68,9 @@ pub fn installed(root: &Path, style: &str) -> bool {
 
 /// The image names in an installed pack, without their extension.
 pub fn index(root: &Path, style: &str) -> Vec<String> {
-    let Some(pack) = pack(style) else { return Vec::new() };
+    let Some(pack) = pack(style) else {
+        return Vec::new();
+    };
     if !installed(root, style) {
         return Vec::new();
     }
@@ -72,7 +78,12 @@ pub fn index(root: &Path, style: &str) -> Vec<String> {
         .into_iter()
         .flatten()
         .flatten()
-        .filter_map(|e| e.file_name().to_str()?.strip_suffix(&format!(".{}", pack.ext)).map(str::to_string))
+        .filter_map(|e| {
+            e.file_name()
+                .to_str()?
+                .strip_suffix(&format!(".{}", pack.ext))
+                .map(str::to_string)
+        })
         .filter(|n| valid_name(n))
         .collect();
     out.sort();
@@ -81,7 +92,9 @@ pub fn index(root: &Path, style: &str) -> Vec<String> {
 
 /// Whether `bytes` match npm's `sha512-<base64>` integrity string.
 pub fn verify(bytes: &[u8], integrity: &str) -> bool {
-    let Some(expected) = integrity.strip_prefix("sha512-") else { return false };
+    let Some(expected) = integrity.strip_prefix("sha512-") else {
+        return false;
+    };
     base64::engine::general_purpose::STANDARD.encode(sha2::Sha512::digest(bytes)) == expected
 }
 
@@ -91,14 +104,25 @@ pub fn extract(tgz: &[u8], ext: &str, target: &Path) -> Result<usize, String> {
     std::fs::create_dir_all(target).map_err(|e| e.to_string())?;
     let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(tgz));
     let mut count = 0;
-    for entry in archive.entries().map_err(|e| format!("The emoji pack is damaged: {e}"))? {
+    for entry in archive
+        .entries()
+        .map_err(|e| format!("The emoji pack is damaged: {e}"))?
+    {
         let mut entry = entry.map_err(|e| format!("The emoji pack is damaged: {e}"))?;
         if !entry.header().entry_type().is_file() || entry.size() > MAX_IMAGE {
             continue;
         }
-        let path = entry.path().map_err(|e| e.to_string())?.to_string_lossy().into_owned();
-        let Some(file) = path.strip_prefix("package/assets/") else { continue };
-        let Some(name) = file.strip_suffix(&format!(".{ext}")) else { continue };
+        let path = entry
+            .path()
+            .map_err(|e| e.to_string())?
+            .to_string_lossy()
+            .into_owned();
+        let Some(file) = path.strip_prefix("package/assets/") else {
+            continue;
+        };
+        let Some(name) = file.strip_suffix(&format!(".{ext}")) else {
+            continue;
+        };
         if !valid_name(name) {
             continue;
         }
@@ -136,13 +160,25 @@ fn set_running(style: &str, value: Option<Option<String>>) {
 
 pub fn status(root: &Path, style: &str) -> Status {
     if installed(root, style) {
-        return Status { state: "ready".into(), error: None };
+        return Status {
+            state: "ready".into(),
+            error: None,
+        };
     }
     let guard = RUNNING.lock().unwrap_or_else(|e| e.into_inner());
     match guard.as_ref().and_then(|m| m.get(style)) {
-        Some(None) => Status { state: "downloading".into(), error: None },
-        Some(Some(e)) => Status { state: "failed".into(), error: Some(e.clone()) },
-        None => Status { state: "missing".into(), error: None },
+        Some(None) => Status {
+            state: "downloading".into(),
+            error: None,
+        },
+        Some(Some(e)) => Status {
+            state: "failed".into(),
+            error: Some(e.clone()),
+        },
+        None => Status {
+            state: "missing".into(),
+            error: None,
+        },
     }
 }
 
@@ -162,24 +198,41 @@ pub async fn install(root: &Path, style: &str) -> Result<usize, String> {
 }
 
 async fn download_and_unpack(root: &Path, pack: &Pack) -> Result<usize, String> {
-    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(600)).build().map_err(|e| e.to_string())?;
-    let response = client.get(pack.url).send().await.map_err(|e| format!("Could not download the emoji: {e}"))?;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(600))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let response = client
+        .get(pack.url)
+        .send()
+        .await
+        .map_err(|e| format!("Could not download the emoji: {e}"))?;
     if !response.status().is_success() {
-        return Err(format!("Could not download the emoji ({}).", response.status()));
+        return Err(format!(
+            "Could not download the emoji ({}).",
+            response.status()
+        ));
     }
-    let bytes = response.bytes().await.map_err(|e| format!("The emoji download stopped: {e}"))?;
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| format!("The emoji download stopped: {e}"))?;
     if bytes.len() > MAX_DOWNLOAD {
         return Err("The emoji download is larger than expected.".into());
     }
     if !verify(&bytes, pack.integrity) {
-        return Err("The emoji download did not match its published checksum, so it was not used.".into());
+        return Err(
+            "The emoji download did not match its published checksum, so it was not used.".into(),
+        );
     }
     let target = dir(root, pack.style);
     let partial = target.with_extension("partial");
     let _ = std::fs::remove_dir_all(&partial);
     let ext = pack.ext;
     let partial2 = partial.clone();
-    let count = tokio::task::spawn_blocking(move || extract(&bytes, ext, &partial2)).await.map_err(|e| e.to_string())??;
+    let count = tokio::task::spawn_blocking(move || extract(&bytes, ext, &partial2))
+        .await
+        .map_err(|e| e.to_string())??;
     if count < 1000 {
         let _ = std::fs::remove_dir_all(&partial);
         return Err(format!("The emoji pack held only {count} images."));
@@ -194,11 +247,22 @@ async fn download_and_unpack(root: &Path, pack: &Pack) -> Result<usize, String> 
 /// Serves `<style>/<name>.<ext>` from an installed pack.
 pub fn serve(root: &Path, rest: &str) -> tauri::http::Response<Vec<u8>> {
     let builder = tauri::http::Response::builder();
-    let not_found = || tauri::http::Response::builder().status(404).body(Vec::new()).unwrap_or_default();
+    let not_found = || {
+        tauri::http::Response::builder()
+            .status(404)
+            .body(Vec::new())
+            .unwrap_or_default()
+    };
     let rest = rest.split(['?', '#']).next().unwrap_or_default();
-    let Some((style, file)) = rest.split_once('/') else { return not_found() };
-    let Some(pack) = pack(style) else { return not_found() };
-    let Some(name) = file.strip_suffix(&format!(".{}", pack.ext)) else { return not_found() };
+    let Some((style, file)) = rest.split_once('/') else {
+        return not_found();
+    };
+    let Some(pack) = pack(style) else {
+        return not_found();
+    };
+    let Some(name) = file.strip_suffix(&format!(".{}", pack.ext)) else {
+        return not_found();
+    };
     if !valid_name(name) || !installed(root, style) {
         return not_found();
     }
@@ -262,7 +326,13 @@ mod tests {
         assert_eq!(ok.status(), 200);
         assert_eq!(ok.body(), b"RIFFgrin");
         assert_eq!(ok.headers()["Content-Type"], "image/webp");
-        for bad in ["3d/../../secret.webp", "3d/1f600.png", "4d/1f600.webp", "3d/1F600.webp", "flat/1f600.svg"] {
+        for bad in [
+            "3d/../../secret.webp",
+            "3d/1f600.png",
+            "4d/1f600.webp",
+            "3d/1F600.webp",
+            "flat/1f600.svg",
+        ] {
             assert_eq!(serve(dir.path(), bad).status(), 404, "{bad}");
         }
     }
@@ -270,7 +340,10 @@ mod tests {
     #[test]
     fn integrity_is_checked() {
         let bytes = b"emoji";
-        let good = format!("sha512-{}", base64::engine::general_purpose::STANDARD.encode(sha2::Sha512::digest(bytes)));
+        let good = format!(
+            "sha512-{}",
+            base64::engine::general_purpose::STANDARD.encode(sha2::Sha512::digest(bytes))
+        );
         assert!(verify(bytes, &good));
         assert!(!verify(b"emojj", &good));
         assert!(!verify(bytes, "sha1-abc"));

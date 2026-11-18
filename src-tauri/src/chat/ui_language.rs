@@ -61,7 +61,10 @@ pub struct Coverage {
 pub fn coverage(config_dir: &Path, code: &str) -> Coverage {
     let all = translations(config_dir, code);
     let catalog = catalog();
-    Coverage { known: catalog.iter().filter(|s| all.contains_key(*s)).count(), total: catalog.len() }
+    Coverage {
+        known: catalog.iter().filter(|s| all.contains_key(*s)).count(),
+        total: catalog.len(),
+    }
 }
 
 /// Everything known for `code`: the bundled translations, then the model's for the rest.
@@ -75,12 +78,20 @@ pub fn translations(config_dir: &Path, code: &str) -> BTreeMap<String, String> {
 }
 
 fn path(config_dir: &Path, code: &str) -> Option<PathBuf> {
-    LANGUAGES.iter().any(|(c, _)| *c == code).then(|| config_dir.join("chat").join("ui-translations").join(format!("{code}.json")))
+    LANGUAGES.iter().any(|(c, _)| *c == code).then(|| {
+        config_dir
+            .join("chat")
+            .join("ui-translations")
+            .join(format!("{code}.json"))
+    })
 }
 
 /// What has been translated for `code` so far.
 pub fn load(config_dir: &Path, code: &str) -> BTreeMap<String, String> {
-    path(config_dir, code).and_then(|p| crate::chat::at_rest::read_to_string(p).ok()).and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    path(config_dir, code)
+        .and_then(|p| crate::chat::at_rest::read_to_string(p).ok())
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
 }
 
 fn save(config_dir: &Path, code: &str, map: &BTreeMap<String, String>) -> Result<(), String> {
@@ -88,7 +99,11 @@ fn save(config_dir: &Path, code: &str, map: &BTreeMap<String, String>) -> Result
     if let Some(dir) = p.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
-    crate::chat::at_rest::write(p, serde_json::to_string_pretty(map).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+    crate::chat::at_rest::write(
+        p,
+        serde_json::to_string_pretty(map).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())
 }
 
 /// A translation keeps every `{n}` placeholder of the original, and no others.
@@ -96,7 +111,9 @@ fn placeholders(s: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut rest = s;
     while let Some(start) = rest.find('{') {
-        let Some(len) = rest[start..].find('}') else { break };
+        let Some(len) = rest[start..].find('}') else {
+            break;
+        };
         let inner = &rest[start + 1..start + len];
         if !inner.is_empty() && inner.chars().all(|c| c.is_ascii_digit()) {
             out.push(rest[start..=start + len].to_string());
@@ -114,18 +131,32 @@ pub fn keeps_placeholders(original: &str, translated: &str) -> bool {
 /// Reads the model's reply: a JSON object from each original to its translation. Entries that
 /// are missing, empty or lose a placeholder are dropped.
 pub fn parse_reply(reply: &str, asked: &[String]) -> BTreeMap<String, String> {
-    let Some(start) = reply.find('{') else { return BTreeMap::new() };
-    let Some(end) = reply.rfind('}') else { return BTreeMap::new() };
-    let Ok(map) = serde_json::from_str::<BTreeMap<String, String>>(&reply[start..=end]) else { return BTreeMap::new() };
-    map.into_iter().filter(|(k, v)| asked.contains(k) && !v.trim().is_empty() && keeps_placeholders(k, v)).collect()
+    let Some(start) = reply.find('{') else {
+        return BTreeMap::new();
+    };
+    let Some(end) = reply.rfind('}') else {
+        return BTreeMap::new();
+    };
+    let Ok(map) = serde_json::from_str::<BTreeMap<String, String>>(&reply[start..=end]) else {
+        return BTreeMap::new();
+    };
+    map.into_iter()
+        .filter(|(k, v)| asked.contains(k) && !v.trim().is_empty() && keeps_placeholders(k, v))
+        .collect()
 }
 
 /// Translates the catalog strings not yet known for `code` with `model`.
 pub async fn translate(config_dir: &Path, model: &str, code: &str) -> Result<Coverage, String> {
-    let (_, name) = LANGUAGES.iter().find(|(c, _)| *c == code).ok_or("That language is not offered.")?;
+    let (_, name) = LANGUAGES
+        .iter()
+        .find(|(c, _)| *c == code)
+        .ok_or("That language is not offered.")?;
     let mut known = load(config_dir, code);
     let all = translations(config_dir, code);
-    let mut wanted: Vec<String> = catalog().into_iter().filter(|s| !all.contains_key(s)).collect();
+    let mut wanted: Vec<String> = catalog()
+        .into_iter()
+        .filter(|s| !all.contains_key(s))
+        .collect();
     wanted.sort();
     wanted.dedup();
     for batch in wanted.chunks(BATCH) {
@@ -164,15 +195,25 @@ mod tests {
 
     #[test]
     fn placeholders_must_survive() {
-        assert!(keeps_placeholders("{0} conversations, {1} MB", "{0} conversas, {1} MB"));
+        assert!(keeps_placeholders(
+            "{0} conversations, {1} MB",
+            "{0} conversas, {1} MB"
+        ));
         assert!(!keeps_placeholders("{0} conversations", "conversas"));
         assert!(!keeps_placeholders("Save", "Guardar {0}"));
-        assert!(keeps_placeholders("Use {name}", "Usar {nome}"), "only numbered placeholders count");
+        assert!(
+            keeps_placeholders("Use {name}", "Usar {nome}"),
+            "only numbered placeholders count"
+        );
     }
 
     #[test]
     fn replies_are_read_strictly() {
-        let asked = vec!["Save".to_string(), "{0} sent".to_string(), "Cancel".to_string()];
+        let asked = vec![
+            "Save".to_string(),
+            "{0} sent".to_string(),
+            "Cancel".to_string(),
+        ];
         let reply = "Here you go:\n```json\n{\"Save\": \"Guardar\", \"{0} sent\": \"enviados\", \"Cancel\": \"\", \"Other\": \"Outro\"}\n```";
         let got = parse_reply(reply, &asked);
         assert_eq!(got.len(), 1);
@@ -185,9 +226,14 @@ mod tests {
         let catalog = catalog();
         assert!(catalog.len() > 1000);
         for code in ["pt", "es", "fr", "de", "ar"] {
-            let map: BTreeMap<String, String> = serde_json::from_str(bundled(code).unwrap()).unwrap();
+            let map: BTreeMap<String, String> =
+                serde_json::from_str(bundled(code).unwrap()).unwrap();
             let covered = catalog.iter().filter(|s| map.contains_key(*s)).count();
-            assert!(covered * 100 >= catalog.len() * 97, "{code}: {covered} of {}", catalog.len());
+            assert!(
+                covered * 100 >= catalog.len() * 97,
+                "{code}: {covered} of {}",
+                catalog.len()
+            );
             for (en, tr) in &map {
                 assert!(keeps_placeholders(en, tr), "{code}: {en} → {tr}");
             }

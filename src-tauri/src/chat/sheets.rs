@@ -54,7 +54,10 @@ fn csv_field(value: &str) -> String {
 }
 
 pub fn to_csv(rows: &[Vec<String>]) -> String {
-    rows.iter().map(|r| r.iter().map(|v| csv_field(v)).collect::<Vec<_>>().join(",")).collect::<Vec<_>>().join("\n")
+    rows.iter()
+        .map(|r| r.iter().map(|v| csv_field(v)).collect::<Vec<_>>().join(","))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// A sheet canvas's content: the CSV, unwrapped from a ```csv fence if the model added one.
@@ -71,7 +74,10 @@ pub fn sheet_csv(content: &str) -> String {
 /// The sheets of a sheet canvas: `## Sheet: Name` starts each; content without one is one sheet.
 pub fn split_sheets(content: &str, fallback_name: &str) -> Vec<(String, String)> {
     let text = sheet_csv(content);
-    if !text.lines().any(|l| l.trim_start().starts_with("## Sheet:")) {
+    if !text
+        .lines()
+        .any(|l| l.trim_start().starts_with("## Sheet:"))
+    {
         return vec![(fallback_name.to_string(), text)];
     }
     let mut out: Vec<(String, String)> = Vec::new();
@@ -83,7 +89,9 @@ pub fn split_sheets(content: &str, fallback_name: &str) -> Vec<(String, String)>
             csv.push('\n');
         }
     }
-    out.into_iter().map(|(n, c)| (n, c.trim().to_string())).collect()
+    out.into_iter()
+        .map(|(n, c)| (n, c.trim().to_string()))
+        .collect()
 }
 
 /// Writes sheets into one workbook, in order: numbers stay numbers, each first row is a bold header.
@@ -93,7 +101,13 @@ pub fn write_workbook(path: &Path, sheets: &[(String, Vec<Vec<String>>)]) -> Res
     let mut used: Vec<String> = Vec::new();
     for (i, (sheet_name, rows)) in sheets.iter().enumerate() {
         let sheet = workbook.add_worksheet();
-        let mut name: String = sheet_name.chars().filter(|c| !"[]:*?/\\".contains(*c)).take(31).collect::<String>().trim().to_string();
+        let mut name: String = sheet_name
+            .chars()
+            .filter(|c| !"[]:*?/\\".contains(*c))
+            .take(31)
+            .collect::<String>()
+            .trim()
+            .to_string();
         if name.is_empty() || used.iter().any(|u| u.eq_ignore_ascii_case(&name)) {
             name = format!("Sheet{}", i + 1);
         }
@@ -103,9 +117,16 @@ pub fn write_workbook(path: &Path, sheets: &[(String, Vec<Vec<String>>)]) -> Res
         for (r, row) in rows.iter().enumerate() {
             for (c, value) in row.iter().enumerate() {
                 let (r, c) = (r as u32, c as u16);
-                let number = value.trim().replace(' ', "").parse::<f64>().ok().filter(|n| n.is_finite());
+                let number = value
+                    .trim()
+                    .replace(' ', "")
+                    .parse::<f64>()
+                    .ok()
+                    .filter(|n| n.is_finite());
                 match (r, number) {
-                    (0, _) => sheet.write_string_with_format(r, c, value, &bold).map(|_| ()),
+                    (0, _) => sheet
+                        .write_string_with_format(r, c, value, &bold)
+                        .map(|_| ()),
                     (_, Some(n)) => sheet.write_number(r, c, n).map(|_| ()),
                     _ => sheet.write_string(r, c, value).map(|_| ()),
                 }
@@ -114,8 +135,15 @@ pub fn write_workbook(path: &Path, sheets: &[(String, Vec<Vec<String>>)]) -> Res
         }
         if let Some(width) = rows.first().map(Vec::len) {
             for c in 0..width {
-                let longest = rows.iter().filter_map(|r| r.get(c)).map(|v| v.chars().count()).max().unwrap_or(8);
-                sheet.set_column_width(c as u16, (longest.clamp(6, 50) + 2) as f64).map_err(|e| e.to_string())?;
+                let longest = rows
+                    .iter()
+                    .filter_map(|r| r.get(c))
+                    .map(|v| v.chars().count())
+                    .max()
+                    .unwrap_or(8);
+                sheet
+                    .set_column_width(c as u16, (longest.clamp(6, 50) + 2) as f64)
+                    .map_err(|e| e.to_string())?;
             }
         }
     }
@@ -125,10 +153,13 @@ pub fn write_workbook(path: &Path, sheets: &[(String, Vec<Vec<String>>)]) -> Res
 /// Reads a workbook (`.xlsx`, `.xls`, `.ods`) into CSV text per sheet, for the model.
 pub fn read_workbook(bytes: &[u8]) -> Result<Vec<(String, String)>, String> {
     use calamine::{open_workbook_auto_from_rs, Data, Reader};
-    let mut workbook = open_workbook_auto_from_rs(std::io::Cursor::new(bytes.to_vec())).map_err(|e| format!("Not a readable spreadsheet: {e}"))?;
+    let mut workbook = open_workbook_auto_from_rs(std::io::Cursor::new(bytes.to_vec()))
+        .map_err(|e| format!("Not a readable spreadsheet: {e}"))?;
     let mut out = Vec::new();
     for name in workbook.sheet_names().to_vec() {
-        let Ok(range) = workbook.worksheet_range(&name) else { continue };
+        let Ok(range) = workbook.worksheet_range(&name) else {
+            continue;
+        };
         let rows: Vec<Vec<String>> = range
             .rows()
             .take(MAX_ROWS)
@@ -136,7 +167,9 @@ pub fn read_workbook(bytes: &[u8]) -> Result<Vec<(String, String)>, String> {
                 row.iter()
                     .map(|cell| match cell {
                         Data::Empty => String::new(),
-                        Data::Float(f) if f.fract() == 0.0 && f.abs() < 1e15 => format!("{}", *f as i64),
+                        Data::Float(f) if f.fract() == 0.0 && f.abs() < 1e15 => {
+                            format!("{}", *f as i64)
+                        }
                         other => other.to_string(),
                     })
                     .collect()
@@ -160,11 +193,14 @@ mod tests {
     fn csv_round_trips_quotes_commas_and_newlines() {
         let text = "Name,Note,Amount\nAna,\"Says \"\"hi\"\", ok\",12.5\nRui,\"two\nlines\",3\n";
         let rows = parse_csv(text);
-        assert_eq!(rows, vec![
-            vec!["Name".to_string(), "Note".into(), "Amount".into()],
-            vec!["Ana".into(), "Says \"hi\", ok".into(), "12.5".into()],
-            vec!["Rui".into(), "two\nlines".into(), "3".into()],
-        ]);
+        assert_eq!(
+            rows,
+            vec![
+                vec!["Name".to_string(), "Note".into(), "Amount".into()],
+                vec!["Ana".into(), "Says \"hi\", ok".into(), "12.5".into()],
+                vec!["Rui".into(), "two\nlines".into(), "3".into()],
+            ]
+        );
         assert_eq!(parse_csv(&to_csv(&rows)), rows);
         assert_eq!(sheet_csv("```csv\na,b\n1,2\n```"), "a,b\n1,2");
     }
@@ -173,14 +209,29 @@ mod tests {
     fn several_sheets_split_and_save_together() {
         let content = "```csv\n## Sheet: Budget\nItem,Cost\nRent,1200\n\n## Sheet: Notes\nNote\nPay by the 5th\n```";
         let sheets = split_sheets(content, "Plan");
-        assert_eq!(sheets, vec![("Budget".to_string(), "Item,Cost\nRent,1200".to_string()), ("Notes".to_string(), "Note\nPay by the 5th".to_string())]);
-        assert_eq!(split_sheets("a,b\n1,2", "Plan"), vec![("Plan".to_string(), "a,b\n1,2".to_string())]);
+        assert_eq!(
+            sheets,
+            vec![
+                ("Budget".to_string(), "Item,Cost\nRent,1200".to_string()),
+                ("Notes".to_string(), "Note\nPay by the 5th".to_string())
+            ]
+        );
+        assert_eq!(
+            split_sheets("a,b\n1,2", "Plan"),
+            vec![("Plan".to_string(), "a,b\n1,2".to_string())]
+        );
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("plan.xlsx");
-        let rows: Vec<(String, Vec<Vec<String>>)> = sheets.iter().map(|(n, c)| (n.clone(), parse_csv(c))).collect();
+        let rows: Vec<(String, Vec<Vec<String>>)> = sheets
+            .iter()
+            .map(|(n, c)| (n.clone(), parse_csv(c)))
+            .collect();
         write_workbook(&path, &rows).unwrap();
         let back = read_workbook(&crate::chat::at_rest::read(&path).unwrap()).unwrap();
-        assert_eq!(back.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(), ["Budget", "Notes"]);
+        assert_eq!(
+            back.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
+            ["Budget", "Notes"]
+        );
         assert_eq!(back[1].1, "Note\nPay by the 5th");
     }
 

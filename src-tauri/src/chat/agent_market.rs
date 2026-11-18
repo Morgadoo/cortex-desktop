@@ -43,7 +43,12 @@ fn cache_path(config_dir: &Path) -> PathBuf {
 
 /// The catalog's index in LobeHub's layout, as listings.
 pub fn parse_index(body: &Value) -> Vec<Listing> {
-    let s = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
+    let s = |v: &Value, k: &str| {
+        v.get(k)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
     body.get("agents")
         .and_then(Value::as_array)
         .map(|agents| {
@@ -52,7 +57,11 @@ pub fn parse_index(body: &Value) -> Vec<Listing> {
                 .filter_map(|a| {
                     let meta = a.get("meta")?;
                     let identifier = s(a, "identifier");
-                    if identifier.is_empty() || !identifier.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+                    if identifier.is_empty()
+                        || !identifier
+                            .chars()
+                            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+                    {
                         return None;
                     }
                     Some(Listing {
@@ -61,7 +70,16 @@ pub fn parse_index(body: &Value) -> Vec<Listing> {
                         description: s(meta, "description"),
                         avatar: s(meta, "avatar"),
                         category: s(meta, "category"),
-                        tags: meta.get("tags").and_then(Value::as_array).map(|t| t.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default(),
+                        tags: meta
+                            .get("tags")
+                            .and_then(Value::as_array)
+                            .map(|t| {
+                                t.iter()
+                                    .filter_map(Value::as_str)
+                                    .map(str::to_string)
+                                    .collect()
+                            })
+                            .unwrap_or_default(),
                         author: s(a, "author"),
                         created_at: s(a, "createdAt"),
                     })
@@ -87,24 +105,41 @@ fn locale(language: &str) -> &'static str {
 }
 
 fn client() -> Result<reqwest::Client, String> {
-    reqwest::Client::builder().timeout(std::time::Duration::from_secs(30)).build().map_err(|e| e.to_string())
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())
 }
 
 async fn fetch_json(url: &str) -> Result<Value, String> {
-    let r = client()?.get(url).send().await.map_err(|e| format!("The agent catalog did not answer: {e}"))?;
+    let r = client()?
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("The agent catalog did not answer: {e}"))?;
     if !r.status().is_success() {
         return Err(format!("The agent catalog answered {}.", r.status()));
     }
-    r.json().await.map_err(|e| format!("The agent catalog sent something unreadable: {e}"))
+    r.json()
+        .await
+        .map_err(|e| format!("The agent catalog sent something unreadable: {e}"))
 }
 
 /// The catalog, from the cache when it is recent.
-pub async fn listings(config_dir: &Path, source: &str, language: &str, refresh: bool) -> Result<Vec<Listing>, String> {
+pub async fn listings(
+    config_dir: &Path,
+    source: &str,
+    language: &str,
+    refresh: bool,
+) -> Result<Vec<Listing>, String> {
     let source = source.trim().trim_end_matches('/');
     let lang = locale(language);
     if !refresh {
         if let Some(c) = super::store::read_json::<Cache>(&cache_path(config_dir)) {
-            if c.source == source && c.language == lang && chrono::Utc::now() - c.fetched_at < chrono::Duration::hours(CACHE_HOURS) {
+            if c.source == source
+                && c.language == lang
+                && chrono::Utc::now() - c.fetched_at < chrono::Duration::hours(CACHE_HOURS)
+            {
                 return Ok(c.listings);
             }
         }
@@ -119,34 +154,83 @@ pub async fn listings(config_dir: &Path, source: &str, language: &str, refresh: 
     if listings.is_empty() {
         return Err("The agent catalog lists no agents.".into());
     }
-    let _ = super::store::write_json(&cache_path(config_dir), &Cache { source: source.into(), language: lang.into(), fetched_at: chrono::Utc::now(), listings: listings.clone() });
+    let _ = super::store::write_json(
+        &cache_path(config_dir),
+        &Cache {
+            source: source.into(),
+            language: lang.into(),
+            fetched_at: chrono::Utc::now(),
+            listings: listings.clone(),
+        },
+    );
     Ok(listings)
 }
 
 /// A catalog agent as one of yours: its prompt, avatar, description and opening questions.
 pub fn to_agent(body: &Value, id: String) -> Result<super::agents::Agent, String> {
-    let s = |v: Option<&Value>| v.and_then(Value::as_str).unwrap_or_default().trim().to_string();
+    let s = |v: Option<&Value>| {
+        v.and_then(Value::as_str)
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    };
     let meta = body.get("meta");
     let name = s(meta.and_then(|m| m.get("title")));
     let instructions = s(body.pointer("/config/systemRole"));
     if name.is_empty() || instructions.is_empty() {
         return Err("That agent has no name or instructions.".into());
     }
-    let mut starters: Vec<String> = body.get("openingQuestions").and_then(Value::as_array).map(|q| q.iter().filter_map(Value::as_str).map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).take(4).collect()).unwrap_or_default();
+    let mut starters: Vec<String> = body
+        .get("openingQuestions")
+        .and_then(Value::as_array)
+        .map(|q| {
+            q.iter()
+                .filter_map(Value::as_str)
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty())
+                .take(4)
+                .collect()
+        })
+        .unwrap_or_default();
     if starters.is_empty() {
-        starters = body.get("examples").and_then(Value::as_array).map(|ex| ex.iter().filter(|e| e.get("role").and_then(Value::as_str) == Some("user")).filter_map(|e| e.get("content").and_then(Value::as_str)).map(|t| t.chars().take(200).collect()).take(3).collect()).unwrap_or_default();
+        starters = body
+            .get("examples")
+            .and_then(Value::as_array)
+            .map(|ex| {
+                ex.iter()
+                    .filter(|e| e.get("role").and_then(Value::as_str) == Some("user"))
+                    .filter_map(|e| e.get("content").and_then(Value::as_str))
+                    .map(|t| t.chars().take(200).collect())
+                    .take(3)
+                    .collect()
+            })
+            .unwrap_or_default();
     }
     let mut instructions = instructions;
-    if let Some(opening) = body.get("openingMessage").and_then(Value::as_str).filter(|t| !t.trim().is_empty()) {
-        instructions.push_str(&format!("\n\nWhen a conversation starts, you may open with: {}", opening.trim()));
+    if let Some(opening) = body
+        .get("openingMessage")
+        .and_then(Value::as_str)
+        .filter(|t| !t.trim().is_empty())
+    {
+        instructions.push_str(&format!(
+            "\n\nWhen a conversation starts, you may open with: {}",
+            opening.trim()
+        ));
     }
     let avatar = s(meta.and_then(|m| m.get("avatar")));
     Ok(super::agents::Agent {
         id,
         name: name.chars().take(80).collect(),
         // Emoji avatars carry over; image links do not (the app shows no remote images here).
-        avatar: if avatar.starts_with("http") { String::new() } else { avatar.chars().take(8).collect() },
-        description: s(meta.and_then(|m| m.get("description"))).chars().take(400).collect(),
+        avatar: if avatar.starts_with("http") {
+            String::new()
+        } else {
+            avatar.chars().take(8).collect()
+        },
+        description: s(meta.and_then(|m| m.get("description")))
+            .chars()
+            .take(400)
+            .collect(),
         instructions,
         starters,
         ..Default::default()
@@ -154,23 +238,40 @@ pub fn to_agent(body: &Value, id: String) -> Result<super::agents::Agent, String
 }
 
 /// Adds a catalog agent as one of yours; returns its new id.
-pub async fn install(config_dir: &Path, source: &str, language: &str, identifier: &str) -> Result<super::agents::Agent, String> {
-    if identifier.is_empty() || !identifier.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+pub async fn install(
+    config_dir: &Path,
+    source: &str,
+    language: &str,
+    identifier: &str,
+) -> Result<super::agents::Agent, String> {
+    if identifier.is_empty()
+        || !identifier
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
         return Err("Not an agent of the catalog.".into());
     }
     let source = source.trim().trim_end_matches('/');
     let lang = locale(language);
     let body = match fetch_json(&format!("{source}/{identifier}.{lang}.json")).await {
         Ok(b) => b,
-        Err(_) if lang != "en-US" => fetch_json(&format!("{source}/{identifier}.en-US.json")).await?,
+        Err(_) if lang != "en-US" => {
+            fetch_json(&format!("{source}/{identifier}.en-US.json")).await?
+        }
         Err(e) => return Err(e),
     };
     let mut agent = to_agent(&body, uuid::Uuid::new_v4().to_string())?;
     // A name already taken gets a number, as imports do.
-    let taken: Vec<String> = super::agents::load(config_dir).into_iter().map(|a| a.name).collect();
+    let taken: Vec<String> = super::agents::load(config_dir)
+        .into_iter()
+        .map(|a| a.name)
+        .collect();
     if taken.contains(&agent.name) {
         let base = agent.name.clone();
-        agent.name = (2..).map(|n| format!("{base} ({n})")).find(|n| !taken.contains(n)).unwrap_or(base);
+        agent.name = (2..)
+            .map(|n| format!("{base} ({n})"))
+            .find(|n| !taken.contains(n))
+            .unwrap_or(base);
     }
     super::agents::save(config_dir, agent.clone())?;
     Ok(agent)
@@ -190,11 +291,20 @@ mod tests {
         ]});
         let l = parse_index(&index);
         assert_eq!(l.len(), 1);
-        assert_eq!((l[0].identifier.as_str(), l[0].avatar.as_str(), l[0].tags[0].as_str()), ("travel-guide", "🧭", "travel"));
+        assert_eq!(
+            (
+                l[0].identifier.as_str(),
+                l[0].avatar.as_str(),
+                l[0].tags[0].as_str()
+            ),
+            ("travel-guide", "🧭", "travel")
+        );
         let body = json!({"meta": {"title": "Travel Guide", "avatar": "🧭", "description": "Plans trips"}, "config": {"systemRole": "You plan trips."}, "openingMessage": "Where to?", "openingQuestions": ["A weekend in Porto", " "]});
         let a = to_agent(&body, "00000000-0000-4000-8000-000000000001".into()).unwrap();
         assert_eq!(a.name, "Travel Guide");
-        assert!(a.instructions.starts_with("You plan trips.") && a.instructions.contains("Where to?"));
+        assert!(
+            a.instructions.starts_with("You plan trips.") && a.instructions.contains("Where to?")
+        );
         assert_eq!(a.starters, vec!["A weekend in Porto"]);
         assert!(to_agent(&json!({"meta": {"title": "X"}}), "x".into()).is_err());
         assert_eq!(locale("pt"), "pt-BR");
@@ -205,9 +315,13 @@ mod tests {
     #[ignore]
     async fn the_public_catalog_answers() {
         let dir = tempfile::tempdir().unwrap();
-        let l = listings(dir.path(), DEFAULT_SOURCE, "en", true).await.unwrap();
+        let l = listings(dir.path(), DEFAULT_SOURCE, "en", true)
+            .await
+            .unwrap();
         assert!(l.len() > 100);
-        let agent = install(dir.path(), DEFAULT_SOURCE, "en", &l[0].identifier).await.unwrap();
+        let agent = install(dir.path(), DEFAULT_SOURCE, "en", &l[0].identifier)
+            .await
+            .unwrap();
         assert!(!agent.instructions.is_empty());
     }
 }

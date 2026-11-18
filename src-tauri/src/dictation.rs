@@ -12,7 +12,9 @@ use std::sync::Mutex;
 
 use log::{info, warn};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, State, WebviewUrl, WebviewWindowBuilder, Window};
+use tauri::{
+    AppHandle, Emitter, Manager, PhysicalPosition, State, WebviewUrl, WebviewWindowBuilder, Window,
+};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
 pub const LABEL: &str = "dictation";
@@ -45,7 +47,12 @@ pub struct Prefs {
 
 impl Default for Prefs {
     fn default() -> Self {
-        Self { enabled: false, shortcut: "Ctrl+Alt+D".into(), insert: Insert::Type, stop_on_pause: false }
+        Self {
+            enabled: false,
+            shortcut: "Ctrl+Alt+D".into(),
+            insert: Insert::Type,
+            stop_on_pause: false,
+        }
     }
 }
 
@@ -64,11 +71,16 @@ struct Inner {
 }
 
 fn path(app: &AppHandle) -> Option<PathBuf> {
-    crate::settings::get_config_dir(app).ok().map(|d| d.join("chat").join("dictation.json"))
+    crate::settings::get_config_dir(app)
+        .ok()
+        .map(|d| d.join("chat").join("dictation.json"))
 }
 
 pub fn prefs(app: &AppHandle) -> Prefs {
-    path(app).and_then(|p| crate::chat::at_rest::read_to_string(p).ok()).and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    path(app)
+        .and_then(|p| crate::chat::at_rest::read_to_string(p).ok())
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
 }
 
 fn save(app: &AppHandle, prefs: &Prefs) -> Result<(), String> {
@@ -76,7 +88,11 @@ fn save(app: &AppHandle, prefs: &Prefs) -> Result<(), String> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
-    crate::chat::at_rest::write(path, serde_json::to_string_pretty(prefs).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+    crate::chat::at_rest::write(
+        path,
+        serde_json::to_string_pretty(prefs).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())
 }
 
 /// Registers the saved shortcut at startup, when dictation is on.
@@ -100,12 +116,15 @@ pub fn startup(app: &AppHandle) {
 
 /// Whether `shortcut` is the dictation one (the plugin has one handler for every shortcut).
 pub fn is_shortcut(app: &AppHandle, shortcut: &Shortcut) -> bool {
-    app.try_state::<Dictation>().is_some_and(|s| s.inner.lock().unwrap().shortcut.as_ref() == Some(shortcut))
+    app.try_state::<Dictation>()
+        .is_some_and(|s| s.inner.lock().unwrap().shortcut.as_ref() == Some(shortcut))
 }
 
 /// The shortcut was pressed: start listening, or finish.
 pub fn toggle(app: &AppHandle) {
-    let Some(state) = app.try_state::<Dictation>() else { return };
+    let Some(state) = app.try_state::<Dictation>() else {
+        return;
+    };
     let listening = state.inner.lock().unwrap().listening;
     if listening {
         if let Some(window) = app.get_webview_window(LABEL) {
@@ -134,17 +153,18 @@ fn show(app: &AppHandle) -> tauri::Result<()> {
         }
         // A new window starts listening as soon as its page loads.
         None => {
-            let window = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("dictate.html".into()))
-                .title("Dictation")
-                .decorations(false)
-                .skip_taskbar(true)
-                .always_on_top(true)
-                .transparent(true)
-                .shadow(false)
-                .resizable(false)
-                .focused(false)
-                .inner_size(WIDTH, HEIGHT)
-                .build()?;
+            let window =
+                WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("dictate.html".into()))
+                    .title("Dictation")
+                    .decorations(false)
+                    .skip_taskbar(true)
+                    .always_on_top(true)
+                    .transparent(true)
+                    .shadow(false)
+                    .resizable(false)
+                    .focused(false)
+                    .inner_size(WIDTH, HEIGHT)
+                    .build()?;
             #[cfg(target_os = "linux")]
             crate::main_window::allow_microphone(&window);
             #[cfg(target_os = "macos")]
@@ -152,13 +172,23 @@ fn show(app: &AppHandle) -> tauri::Result<()> {
             window
         }
     };
-    let monitor = window.cursor_position().ok().and_then(|c| window.monitor_from_point(c.x, c.y).ok().flatten()).or_else(|| window.primary_monitor().ok().flatten());
+    let monitor = window
+        .cursor_position()
+        .ok()
+        .and_then(|c| window.monitor_from_point(c.x, c.y).ok().flatten())
+        .or_else(|| window.primary_monitor().ok().flatten());
     if let Some(monitor) = monitor {
         // From the known size: a window not yet mapped can report none.
         let scale = monitor.scale_factor();
         let (w, h) = ((WIDTH * scale) as i32, (HEIGHT * scale) as i32);
         let x = monitor.position().x + (monitor.size().width as i32 - w) / 2;
-        let y = monitor.position().y + monitor.size().height as i32 - h - ((if cfg!(target_os = "macos") { 150.0 } else { 60.0 }) * scale) as i32;
+        let y = monitor.position().y + monitor.size().height as i32
+            - h
+            - ((if cfg!(target_os = "macos") {
+                150.0
+            } else {
+                60.0
+            }) * scale) as i32;
         window.set_position(PhysicalPosition::new(x, y))?;
     }
     Ok(())
@@ -170,11 +200,17 @@ fn focused_window() -> Option<String> {
         return None;
     }
     // The window manager's idea of the active window, else the X input focus (no window manager).
-    ["getactivewindow", "getwindowfocus"].iter().find_map(|verb| {
-        let out = Command::new("xdotool").arg(verb).stderr(Stdio::null()).output().ok()?;
-        let id = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        (out.status.success() && !id.is_empty()).then_some(id)
-    })
+    ["getactivewindow", "getwindowfocus"]
+        .iter()
+        .find_map(|verb| {
+            let out = Command::new("xdotool")
+                .arg(verb)
+                .stderr(Stdio::null())
+                .output()
+                .ok()?;
+            let id = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            (out.status.success() && !id.is_empty()).then_some(id)
+        })
 }
 
 fn wayland() -> bool {
@@ -182,7 +218,12 @@ fn wayland() -> bool {
 }
 
 fn run(program: &str, args: &[&str]) -> Result<(), String> {
-    let status = Command::new(program).args(args).stdout(Stdio::null()).stderr(Stdio::null()).status().map_err(|e| format!("{program}: {e}"))?;
+    let status = Command::new(program)
+        .args(args)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map_err(|e| format!("{program}: {e}"))?;
     if status.success() {
         Ok(())
     } else {
@@ -194,8 +235,19 @@ fn run(program: &str, args: &[&str]) -> Result<(), String> {
 pub fn type_commands(text: &str, os: &str, wayland: bool) -> Vec<Vec<String>> {
     let v = |parts: &[&str]| parts.iter().map(|s| s.to_string()).collect::<Vec<_>>();
     match os {
-        "linux" if wayland => vec![v(&["wtype", "--", text]), v(&["ydotool", "type", "--", text])],
-        "linux" => vec![v(&["xdotool", "type", "--clearmodifiers", "--delay", "6", "--", text])],
+        "linux" if wayland => vec![
+            v(&["wtype", "--", text]),
+            v(&["ydotool", "type", "--", text]),
+        ],
+        "linux" => vec![v(&[
+            "xdotool",
+            "type",
+            "--clearmodifiers",
+            "--delay",
+            "6",
+            "--",
+            text,
+        ])],
         _ => Vec::new(),
     }
 }
@@ -212,7 +264,13 @@ pub fn paste_commands(os: &str, wayland: bool) -> Vec<Vec<String>> {
 }
 
 fn first_that_works(commands: &[Vec<String>]) -> bool {
-    commands.iter().any(|c| run(&c[0], &c[1..].iter().map(String::as_str).collect::<Vec<_>>()).is_ok())
+    commands.iter().any(|c| {
+        run(
+            &c[0],
+            &c[1..].iter().map(String::as_str).collect::<Vec<_>>(),
+        )
+        .is_ok()
+    })
 }
 
 /// Puts the text where the user was; returns how it went, for the pill to show.
@@ -249,8 +307,21 @@ pub fn dictation_prefs(app: AppHandle) -> Prefs {
 }
 
 #[tauri::command]
-pub fn set_dictation_prefs(app: AppHandle, state: State<'_, Dictation>, prefs: Prefs) -> Result<(), String> {
-    let new = if prefs.enabled { Some(prefs.shortcut.parse::<Shortcut>().map_err(|e| format!("That shortcut is not valid: {e}"))?) } else { None };
+pub fn set_dictation_prefs(
+    app: AppHandle,
+    state: State<'_, Dictation>,
+    prefs: Prefs,
+) -> Result<(), String> {
+    let new = if prefs.enabled {
+        Some(
+            prefs
+                .shortcut
+                .parse::<Shortcut>()
+                .map_err(|e| format!("That shortcut is not valid: {e}"))?,
+        )
+    } else {
+        None
+    };
     let old = state.inner.lock().unwrap().shortcut;
     if old != new {
         if let Some(old) = old {
@@ -263,7 +334,9 @@ pub fn set_dictation_prefs(app: AppHandle, state: State<'_, Dictation>, prefs: P
                 if let Some(old) = old {
                     let _ = app.global_shortcut().register(old);
                 }
-                return Err(format!("That shortcut could not be registered (another app may use it): {e}"));
+                return Err(format!(
+                    "That shortcut could not be registered (another app may use it): {e}"
+                ));
             }
         }
         state.inner.lock().unwrap().shortcut = new;
@@ -273,7 +346,11 @@ pub fn set_dictation_prefs(app: AppHandle, state: State<'_, Dictation>, prefs: P
 
 /// From the pill: the transcript, to put where the user was.
 #[tauri::command]
-pub async fn dictation_insert(app: AppHandle, window: Window, text: String) -> Result<String, String> {
+pub async fn dictation_insert(
+    app: AppHandle,
+    window: Window,
+    text: String,
+) -> Result<String, String> {
     if window.label() != LABEL {
         return Err("Only the dictation pill can insert text.".into());
     }
@@ -285,10 +362,16 @@ pub async fn dictation_insert(app: AppHandle, window: Window, text: String) -> R
         return Ok("empty".into());
     }
     let how = prefs(&app).insert;
-    let done = tauri::async_runtime::spawn_blocking(move || insert(&text, how, target.as_deref())).await.map_err(|e| e.to_string())?;
+    let done = tauri::async_runtime::spawn_blocking(move || insert(&text, how, target.as_deref()))
+        .await
+        .map_err(|e| e.to_string())?;
     info!("dictation: {done}");
     if done == "copied" || done == "failed" {
-        let body = if done == "copied" { "The dictated text is on the clipboard." } else { "The dictated text could not be typed or copied." };
+        let body = if done == "copied" {
+            "The dictated text is on the clipboard."
+        } else {
+            "The dictated text could not be typed or copied."
+        };
         crate::chat::engine::notify(&app, "Dictation", body);
     }
     Ok(done.into())
@@ -309,19 +392,44 @@ mod tests {
 
     #[test]
     fn typing_and_pasting_use_each_systems_tools() {
-        assert_eq!(type_commands("héllo", "linux", false), vec![vec!["xdotool", "type", "--clearmodifiers", "--delay", "6", "--", "héllo"]]);
-        assert_eq!(type_commands("-x", "linux", true)[0], vec!["wtype", "--", "-x"]);
-        assert!(type_commands("x", "macos", false).is_empty() && type_commands("x", "windows", false).is_empty());
-        assert_eq!(paste_commands("linux", false), vec![vec!["xdotool", "key", "--clearmodifiers", "ctrl+v"]]);
+        assert_eq!(
+            type_commands("héllo", "linux", false),
+            vec![vec![
+                "xdotool",
+                "type",
+                "--clearmodifiers",
+                "--delay",
+                "6",
+                "--",
+                "héllo"
+            ]]
+        );
+        assert_eq!(
+            type_commands("-x", "linux", true)[0],
+            vec!["wtype", "--", "-x"]
+        );
+        assert!(
+            type_commands("x", "macos", false).is_empty()
+                && type_commands("x", "windows", false).is_empty()
+        );
+        assert_eq!(
+            paste_commands("linux", false),
+            vec![vec!["xdotool", "key", "--clearmodifiers", "ctrl+v"]]
+        );
         assert!(paste_commands("macos", false)[0][2].contains("command down"));
         assert!(paste_commands("windows", false)[0][3].contains("^v"));
-        assert_eq!(paste_commands("linux", true)[1], vec!["ydotool", "key", "29:1", "47:1", "47:0", "29:0"]);
+        assert_eq!(
+            paste_commands("linux", true)[1],
+            vec!["ydotool", "key", "29:1", "47:1", "47:0", "29:0"]
+        );
     }
 
     #[test]
     fn prefs_default_off_and_read_old_files() {
         let p: Prefs = serde_json::from_str(r#"{"enabled":true}"#).unwrap();
-        assert!(p.enabled && p.shortcut == "Ctrl+Alt+D" && p.insert == Insert::Type && !p.stop_on_pause);
+        assert!(
+            p.enabled && p.shortcut == "Ctrl+Alt+D" && p.insert == Insert::Type && !p.stop_on_pause
+        );
         assert!(!Prefs::default().enabled);
         assert!(Prefs::default().shortcut.parse::<Shortcut>().is_ok());
         let p: Prefs = serde_json::from_str(r#"{"insert":"paste","stopOnPause":true}"#).unwrap();

@@ -59,7 +59,11 @@ pub struct Report {
 }
 
 pub fn worker_tools(offered: &[ChatTool]) -> Vec<ChatTool> {
-    offered.iter().filter(|t| WORKER_TOOLS.contains(&t.name.as_str())).cloned().collect()
+    offered
+        .iter()
+        .filter(|t| WORKER_TOOLS.contains(&t.name.as_str()))
+        .cloned()
+        .collect()
 }
 
 /// How a `delegate` call's tasks run (LobeHub's agent group modes).
@@ -88,16 +92,28 @@ pub fn after(task: &Task, earlier: &[Report]) -> Task {
     if earlier.is_empty() {
         return task.clone();
     }
-    let notes: Vec<String> = earlier.iter().map(|r| format!("### {}\n{}", r.title, r.report.trim())).collect();
+    let notes: Vec<String> = earlier
+        .iter()
+        .map(|r| format!("### {}\n{}", r.title, r.report.trim()))
+        .collect();
     Task {
-        instructions: format!("{}\n\nWhat the members before you reported (build on it; do not repeat it):\n\n{}", task.instructions, notes.join("\n\n")),
+        instructions: format!(
+            "{}\n\nWhat the members before you reported (build on it; do not repeat it):\n\n{}",
+            task.instructions,
+            notes.join("\n\n")
+        ),
         ..task.clone()
     }
 }
 
 /// A member's second-round task in a debate: the others' first answers, to answer.
 pub fn rebuttal(task: &Task, own: usize, first: &[Report]) -> Task {
-    let others: Vec<String> = first.iter().enumerate().filter(|(i, _)| *i != own).map(|(_, r)| format!("### {}\n{}", r.title, r.report.trim())).collect();
+    let others: Vec<String> = first
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i != own)
+        .map(|(_, r)| format!("### {}\n{}", r.title, r.report.trim()))
+        .collect();
     Task {
         title: format!("Round 2 · {}", task.title),
         instructions: format!(
@@ -110,8 +126,9 @@ pub fn rebuttal(task: &Task, own: usize, first: &[Report]) -> Task {
 }
 
 pub fn parse_tasks(args: &Value) -> Result<Vec<Task>, String> {
-    let tasks: Vec<Task> = serde_json::from_value(args.get("tasks").cloned().unwrap_or(Value::Null))
-        .map_err(|_| "`tasks` must be a list of {title, instructions}.".to_string())?;
+    let tasks: Vec<Task> =
+        serde_json::from_value(args.get("tasks").cloned().unwrap_or(Value::Null))
+            .map_err(|_| "`tasks` must be a list of {title, instructions}.".to_string())?;
     if tasks.is_empty() {
         return Err("Give at least one task.".into());
     }
@@ -123,9 +140,15 @@ pub fn parse_tasks(args: &Value) -> Result<Vec<Task>, String> {
 
 fn worker_preamble(task: &Task, agent: Option<&super::agents::Agent>) -> String {
     let persona = agent.map_or(String::new(), |a| {
-        format!("You are {}, an agent with this role: {}\n\n{}\n\n", a.name, a.description.trim(), a.instructions.trim())
+        format!(
+            "You are {}, an agent with this role: {}\n\n{}\n\n",
+            a.name,
+            a.description.trim(),
+            a.instructions.trim()
+        )
     });
-    persona + &format!(
+    persona
+        + &format!(
         "You are a research worker helping another assistant. Complete exactly this task, then \
          stop:\n\n## {}\n{}\n\nUse the tools to find what the task needs; prefer primary and \
          official sources and open the most promising results. You cannot ask questions, so \
@@ -140,7 +163,10 @@ fn worker_preamble(task: &Task, agent: Option<&super::agents::Agent>) -> String 
 /// Whether a worker's last message is a report, not nothing or a tool call written as text.
 fn is_report(text: &str) -> bool {
     let text = text.trim();
-    !text.is_empty() && !text.starts_with("[called tool") && !text.starts_with("<tool_call") && text.split_whitespace().count() >= 8
+    !text.is_empty()
+        && !text.starts_with("[called tool")
+        && !text.starts_with("<tool_call")
+        && text.split_whitespace().count() >= 8
 }
 
 fn short(text: &str, max: usize) -> String {
@@ -198,7 +224,13 @@ async fn run_one(
     let mut messages = vec![Message::user(format!("Begin: {}", task.title))];
     let mut steps: Vec<Step> = Vec::new();
     let finish = |steps: &mut Vec<Step>, report: Report| {
-        steps.push(Step { kind: "text".into(), tool: String::new(), input: String::new(), output: report.report.clone(), is_error: report.status != "done" });
+        steps.push(Step {
+            kind: "text".into(),
+            tool: String::new(),
+            input: String::new(),
+            output: report.report.clone(),
+            is_error: report.status != "done",
+        });
         save_transcript(config_dir, call_id, index, steps);
         report
     };
@@ -206,10 +238,16 @@ async fn run_one(
     for step in 0..=MAX_WORKER_STEPS {
         let last = step == MAX_WORKER_STEPS;
         let request_messages = context::request_messages(&messages, None);
-        let Some((prompt, history)) = request_messages.split_last() else { break };
+        let Some((prompt, history)) = request_messages.split_last() else {
+            break;
+        };
         let mut request = CompletionRequest::new(prompt.clone())
             .messages(history.iter().cloned())
-            .preamble(if last { format!("{system}\n\nNo more tool calls: write the report now.") } else { system.clone() });
+            .preamble(if last {
+                format!("{system}\n\nNo more tool calls: write the report now.")
+            } else {
+                system.clone()
+            });
         if !last {
             request = request.tools(definitions.iter().cloned());
         }
@@ -217,7 +255,15 @@ async fn run_one(
             Ok(r) => r,
             Err(e) => {
                 progress("failed", short(&e.to_string(), 120));
-                return finish(&mut steps, Report { title: task.title.clone(), status: "failed", report: e.to_string(), steps: step });
+                return finish(
+                    &mut steps,
+                    Report {
+                        title: task.title.clone(),
+                        status: "failed",
+                        report: e.to_string(),
+                        steps: step,
+                    },
+                );
             }
         };
         let calls: Vec<ToolCall> = response.tool_calls().cloned().collect();
@@ -232,7 +278,9 @@ async fn run_one(
                 messages.push(Message::user("Stop researching. Write your report now from what you have already found, as plain text. Do not call or mention tools."));
                 let request_messages = context::request_messages(&messages, None);
                 if let Some((prompt, history)) = request_messages.split_last() {
-                    let request = CompletionRequest::new(prompt.clone()).messages(history.iter().cloned()).preamble(system.clone());
+                    let request = CompletionRequest::new(prompt.clone())
+                        .messages(history.iter().cloned())
+                        .preamble(system.clone());
                     if let Ok(retry) = model.call(request).await {
                         text = retry.text();
                     }
@@ -240,11 +288,27 @@ async fn run_one(
             }
             if !is_report(&text) {
                 progress("failed", "No report".into());
-                return finish(&mut steps, Report { title: task.title.clone(), status: "failed", report: "The worker did not write a report.".into(), steps: step });
+                return finish(
+                    &mut steps,
+                    Report {
+                        title: task.title.clone(),
+                        status: "failed",
+                        report: "The worker did not write a report.".into(),
+                        steps: step,
+                    },
+                );
             }
             let report = short(&text, MAX_REPORT_CHARS);
             progress("done", format!("Done after {step} tool steps"));
-            return finish(&mut steps, Report { title: task.title.clone(), status: "done", report, steps: step });
+            return finish(
+                &mut steps,
+                Report {
+                    title: task.title.clone(),
+                    status: "done",
+                    report,
+                    steps: step,
+                },
+            );
         }
         progress("running", activity(&calls[0]));
         let outcomes = join_all(calls.iter().map(|call| {
@@ -255,9 +319,20 @@ async fn run_one(
                 if builtins::is_builtin(&name) {
                     builtins::run(config_dir, &name, &args).await
                 } else if let Some(tool) = tools.iter().find(|t| t.name == name) {
-                    tools::execute(app, registry, tool, args, ApprovalMode::Ask, conversation_id).await
+                    tools::execute(
+                        app,
+                        registry,
+                        tool,
+                        args,
+                        ApprovalMode::Ask,
+                        conversation_id,
+                    )
+                    .await
                 } else {
-                    Outcome { text: format!("{name} is not available to workers."), is_error: true }
+                    Outcome {
+                        text: format!("{name} is not available to workers."),
+                        is_error: true,
+                    }
                 }
             }
         }))
@@ -283,7 +358,15 @@ async fn run_one(
         messages.push(Message::tool_results(results));
     }
     progress("failed", "Ran out of steps".into());
-    finish(&mut steps, Report { title: task.title, status: "failed", report: "The worker ran out of steps without a report.".into(), steps: MAX_WORKER_STEPS })
+    finish(
+        &mut steps,
+        Report {
+            title: task.title,
+            status: "failed",
+            report: "The worker ran out of steps without a report.".into(),
+            steps: MAX_WORKER_STEPS,
+        },
+    )
 }
 
 /// Runs every task at once; reports come back in task order. A task for a named agent runs
@@ -303,12 +386,26 @@ pub async fn run_all(
     let team = super::agents::load(config_dir);
     let mut prepared = Vec::new();
     for mut task in tasks {
-        let agent = task.agent.as_deref().and_then(|n| super::agents::by_name(&team, n)).cloned();
+        let agent = task
+            .agent
+            .as_deref()
+            .and_then(|n| super::agents::by_name(&team, n))
+            .cloned();
         let own = match agent.as_ref().and_then(|a| a.model.clone()) {
-            Some(reference) => super::engine::connect_model(config_dir, &reference).await.ok(),
+            Some(reference) => super::engine::connect_model(config_dir, &reference)
+                .await
+                .ok(),
             None => None,
         };
-        let allowed: Vec<ChatTool> = tools.iter().filter(|t| agent.as_ref().is_none_or(|a| super::agents::allows(a, &t.name))).cloned().collect();
+        let allowed: Vec<ChatTool> = tools
+            .iter()
+            .filter(|t| {
+                agent
+                    .as_ref()
+                    .is_none_or(|a| super::agents::allows(a, &t.name))
+            })
+            .cloned()
+            .collect();
         if let Some(a) = &agent {
             task.title = format!("{}: {}", a.name, task.title);
         }
@@ -316,10 +413,28 @@ pub async fn run_all(
     }
     let run = |i: usize, task: Task, slot: usize| {
         let (_, agent, own, allowed) = &prepared[slot];
-        run_one(app, config_dir, own.as_ref().unwrap_or(model), allowed, conversation_id, call_id, i, task, agent.as_ref())
+        run_one(
+            app,
+            config_dir,
+            own.as_ref().unwrap_or(model),
+            allowed,
+            conversation_id,
+            call_id,
+            i,
+            task,
+            agent.as_ref(),
+        )
     };
     match mode {
-        Mode::Parallel => join_all(prepared.iter().enumerate().map(|(i, (task, ..))| run(i, task.clone(), i))).await,
+        Mode::Parallel => {
+            join_all(
+                prepared
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (task, ..))| run(i, task.clone(), i)),
+            )
+            .await
+        }
         Mode::Sequential => {
             let mut reports: Vec<Report> = Vec::new();
             for (i, (task, ..)) in prepared.iter().enumerate() {
@@ -330,11 +445,23 @@ pub async fn run_all(
         }
         Mode::Debate => {
             let n = prepared.len();
-            let first = join_all(prepared.iter().enumerate().map(|(i, (task, ..))| run(i, task.clone(), i))).await;
+            let first = join_all(
+                prepared
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (task, ..))| run(i, task.clone(), i)),
+            )
+            .await;
             if n < 2 {
                 return first;
             }
-            let second = join_all(prepared.iter().enumerate().map(|(i, (task, ..))| run(n + i, rebuttal(task, i, &first), i))).await;
+            let second = join_all(
+                prepared
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (task, ..))| run(n + i, rebuttal(task, i, &first), i)),
+            )
+            .await;
             first.into_iter().chain(second).collect()
         }
     }
@@ -356,8 +483,16 @@ pub struct Step {
 const STEP_OUTPUT_CHARS: usize = 2_000;
 
 fn transcript_path(config_dir: &Path, call_id: &str, index: usize) -> Option<std::path::PathBuf> {
-    let safe = !call_id.is_empty() && call_id.len() <= 200 && call_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-    safe.then(|| super::store::chat_dir(config_dir).join("subagents").join(format!("{call_id}-{index}.json")))
+    let safe = !call_id.is_empty()
+        && call_id.len() <= 200
+        && call_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    safe.then(|| {
+        super::store::chat_dir(config_dir)
+            .join("subagents")
+            .join(format!("{call_id}-{index}.json"))
+    })
 }
 
 fn save_transcript(config_dir: &Path, call_id: &str, index: usize, steps: &[Step]) {
@@ -387,22 +522,50 @@ mod tests {
     use serde_json::json;
 
     fn report(title: &str, text: &str) -> Report {
-        Report { title: title.into(), status: "done", report: text.into(), steps: 1 }
+        Report {
+            title: title.into(),
+            status: "done",
+            report: text.into(),
+            steps: 1,
+        }
     }
 
     #[test]
     fn modes_pass_reports_along() {
         assert_eq!(Mode::parse(&json!({})), Mode::Parallel);
-        assert_eq!(Mode::parse(&json!({"mode": "sequential"})), Mode::Sequential);
+        assert_eq!(
+            Mode::parse(&json!({"mode": "sequential"})),
+            Mode::Sequential
+        );
         assert_eq!(Mode::parse(&json!({"mode": "debate"})), Mode::Debate);
-        let task = Task { title: "Pricing".into(), instructions: "Propose a price.".into(), agent: Some("Analyst".into()) };
+        let task = Task {
+            title: "Pricing".into(),
+            instructions: "Propose a price.".into(),
+            agent: Some("Analyst".into()),
+        };
         assert_eq!(after(&task, &[]).instructions, "Propose a price.");
-        let next = after(&task, &[report("Researcher: Market", "Rivals charge 9 EUR.")]);
-        assert!(next.instructions.contains("What the members before you reported") && next.instructions.contains("Rivals charge 9 EUR."));
-        let first = [report("A", "Charge 9."), report("B", "Charge 12."), report("C", "Charge 10.")];
+        let next = after(
+            &task,
+            &[report("Researcher: Market", "Rivals charge 9 EUR.")],
+        );
+        assert!(
+            next.instructions
+                .contains("What the members before you reported")
+                && next.instructions.contains("Rivals charge 9 EUR.")
+        );
+        let first = [
+            report("A", "Charge 9."),
+            report("B", "Charge 12."),
+            report("C", "Charge 10."),
+        ];
         let r = rebuttal(&task, 1, &first);
         assert_eq!(r.title, "Round 2 · Pricing");
-        assert!(r.instructions.contains("Charge 9.") && r.instructions.contains("Charge 10.") && !r.instructions.contains("Charge 12."), "a member answers the others, not itself");
+        assert!(
+            r.instructions.contains("Charge 9.")
+                && r.instructions.contains("Charge 10.")
+                && !r.instructions.contains("Charge 12."),
+            "a member answers the others, not itself"
+        );
         assert_eq!(r.agent.as_deref(), Some("Analyst"));
     }
 
@@ -410,9 +573,14 @@ mod tests {
     fn tasks_are_validated() {
         assert!(parse_tasks(&json!({})).is_err());
         assert!(parse_tasks(&json!({"tasks": []})).is_err());
-        let six: Vec<_> = (0..6).map(|i| json!({"title": i.to_string(), "instructions": "x"})).collect();
+        let six: Vec<_> = (0..6)
+            .map(|i| json!({"title": i.to_string(), "instructions": "x"}))
+            .collect();
         assert!(parse_tasks(&json!({ "tasks": six })).is_err());
-        let ok = parse_tasks(&json!({"tasks": [{"title": "Prices", "instructions": "Find 2026 tariffs"}]})).unwrap();
+        let ok = parse_tasks(
+            &json!({"tasks": [{"title": "Prices", "instructions": "Find 2026 tariffs"}]}),
+        )
+        .unwrap();
         assert_eq!(ok[0].title, "Prices");
     }
 
@@ -426,7 +594,14 @@ mod tests {
             tool_name: name.into(),
             read_only: false,
         };
-        let offered = vec![tool("ask_user"), tool("web_search"), tool("bash__run"), tool("browser__navigate"), tool("delegate"), tool("remember")];
+        let offered = vec![
+            tool("ask_user"),
+            tool("web_search"),
+            tool("bash__run"),
+            tool("browser__navigate"),
+            tool("delegate"),
+            tool("remember"),
+        ];
         let names: Vec<String> = worker_tools(&offered).into_iter().map(|t| t.name).collect();
         assert_eq!(names, ["web_search", "browser__navigate"]);
     }
@@ -434,7 +609,9 @@ mod tests {
     #[test]
     fn tool_calls_written_as_text_are_not_reports() {
         assert!(!is_report(""));
-        assert!(!is_report("[called tool browser__fetch with {\"url\":\"https://x\"}]"));
+        assert!(!is_report(
+            "[called tool browser__fetch with {\"url\":\"https://x\"}]"
+        ));
         assert!(!is_report("Done."));
         assert!(is_report("The AI Act's obligations for high-risk systems apply from 2 August 2026, per Article 113."));
     }
@@ -442,7 +619,13 @@ mod tests {
     #[test]
     fn transcripts_are_kept_by_call() {
         let dir = tempfile::tempdir().unwrap();
-        let steps = vec![Step { kind: "call".into(), tool: "web_search".into(), input: "{}".into(), output: "3 results".into(), is_error: false }];
+        let steps = vec![Step {
+            kind: "call".into(),
+            tool: "web_search".into(),
+            input: "{}".into(),
+            output: "3 results".into(),
+            is_error: false,
+        }];
         save_transcript(dir.path(), "call_abc-1", 0, &steps);
         assert_eq!(transcript(dir.path(), "call_abc-1", 0), steps);
         assert!(transcript(dir.path(), "call_abc-1", 1).is_empty());
@@ -452,8 +635,18 @@ mod tests {
     #[test]
     fn reports_render_as_json_in_order() {
         let reports = vec![
-            Report { title: "A".into(), status: "done", report: "found".into(), steps: 2 },
-            Report { title: "B".into(), status: "failed", report: "no".into(), steps: 8 },
+            Report {
+                title: "A".into(),
+                status: "done",
+                report: "found".into(),
+                steps: 2,
+            },
+            Report {
+                title: "B".into(),
+                status: "failed",
+                report: "no".into(),
+                steps: 8,
+            },
         ];
         let value: Value = serde_json::from_str(&render(&reports)).unwrap();
         assert_eq!(value["reports"][1]["title"], "B");

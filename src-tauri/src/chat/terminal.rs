@@ -65,14 +65,15 @@ fn append(id: &str, text: &str) {
 
 /// The terminal tools, offered in coding sessions.
 pub fn definitions() -> Vec<ChatTool> {
-    let tool = |name: &str, description: &str, parameters: serde_json::Value, read_only: bool| ChatTool {
-        name: name.into(),
-        description: description.into(),
-        parameters,
-        connector_id: None,
-        tool_name: name.into(),
-        read_only,
-    };
+    let tool =
+        |name: &str, description: &str, parameters: serde_json::Value, read_only: bool| ChatTool {
+            name: name.into(),
+            description: description.into(),
+            parameters,
+            connector_id: None,
+            tool_name: name.into(),
+            read_only,
+        };
     vec![
         tool(
             START,
@@ -103,8 +104,15 @@ pub fn start(conversation_id: &str, dir: &str, command: &str) -> Result<String, 
     if command.is_empty() {
         return Err("Give the command to run.".into());
     }
-    if lock().values().filter(|r| r.view.status == "running").count() >= MAX_RUNNING {
-        return Err(format!("{MAX_RUNNING} commands are already running; stop one first."));
+    if lock()
+        .values()
+        .filter(|r| r.view.status == "running")
+        .count()
+        >= MAX_RUNNING
+    {
+        return Err(format!(
+            "{MAX_RUNNING} commands are already running; stop one first."
+        ));
     }
     #[cfg(windows)]
     let mut child = tokio::process::Command::new("cmd");
@@ -125,7 +133,9 @@ pub fn start(conversation_id: &str, dir: &str, command: &str) -> Result<String, 
     // Its own process group, so stopping it reaches what the shell started (a server, a watcher).
     #[cfg(unix)]
     let child = child.process_group(0);
-    let mut child = child.spawn().map_err(|e| format!("Could not start the command: {e}"))?;
+    let mut child = child
+        .spawn()
+        .map_err(|e| format!("Could not start the command: {e}"))?;
     let pid = child.id();
     let id = uuid::Uuid::new_v4().to_string()[..8].to_string();
     let (kill_tx, mut kill_rx) = tokio::sync::oneshot::channel();
@@ -147,7 +157,13 @@ pub fn start(conversation_id: &str, dir: &str, command: &str) -> Result<String, 
     );
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
-    for stream in [stdout.map(|s| Box::new(s) as Box<dyn tokio::io::AsyncRead + Unpin + Send>), stderr.map(|s| Box::new(s) as Box<dyn tokio::io::AsyncRead + Unpin + Send>)].into_iter().flatten() {
+    for stream in [
+        stdout.map(|s| Box::new(s) as Box<dyn tokio::io::AsyncRead + Unpin + Send>),
+        stderr.map(|s| Box::new(s) as Box<dyn tokio::io::AsyncRead + Unpin + Send>),
+    ]
+    .into_iter()
+    .flatten()
+    {
         let id = id.clone();
         tauri::async_runtime::spawn(async move {
             let mut lines = BufReader::new(stream).lines();
@@ -180,24 +196,41 @@ async fn stop_group(pid: Option<u32>) {
     #[cfg(unix)]
     if let Some(pid) = pid {
         let group = format!("-{pid}");
-        let _ = tokio::process::Command::new("kill").args(["-TERM", "--", &group]).status().await;
+        let _ = tokio::process::Command::new("kill")
+            .args(["-TERM", "--", &group])
+            .status()
+            .await;
         tokio::time::sleep(std::time::Duration::from_millis(800)).await;
-        let _ = tokio::process::Command::new("kill").args(["-KILL", "--", &group]).status().await;
+        let _ = tokio::process::Command::new("kill")
+            .args(["-KILL", "--", &group])
+            .status()
+            .await;
     }
     #[cfg(windows)]
     if let Some(pid) = pid {
-        let _ = tokio::process::Command::new("taskkill").args(["/T", "/F", "/PID", &pid.to_string()]).status().await;
+        let _ = tokio::process::Command::new("taskkill")
+            .args(["/T", "/F", "/PID", &pid.to_string()])
+            .status()
+            .await;
     }
 }
 
 /// Ends every running command and what it started, synchronously: the app is quitting.
 pub fn stop_all() {
-    let pids: Vec<u32> = lock().values().filter(|r| r.view.status == "running").filter_map(|r| r.pid).collect();
+    let pids: Vec<u32> = lock()
+        .values()
+        .filter(|r| r.view.status == "running")
+        .filter_map(|r| r.pid)
+        .collect();
     for pid in pids {
         #[cfg(unix)]
-        let _ = std::process::Command::new("kill").args(["-KILL", "--", &format!("-{pid}")]).status();
+        let _ = std::process::Command::new("kill")
+            .args(["-KILL", "--", &format!("-{pid}")])
+            .status();
         #[cfg(windows)]
-        let _ = std::process::Command::new("taskkill").args(["/T", "/F", "/PID", &pid.to_string()]).status();
+        let _ = std::process::Command::new("taskkill")
+            .args(["/T", "/F", "/PID", &pid.to_string()])
+            .status();
     }
 }
 
@@ -215,7 +248,11 @@ pub fn stop(id: &str) -> Result<(), String> {
 
 /// The commands of a conversation, newest first.
 pub fn list(conversation_id: &str) -> Vec<CommandView> {
-    let mut out: Vec<CommandView> = lock().values().filter(|r| r.view.conversation_id == conversation_id).map(|r| r.view.clone()).collect();
+    let mut out: Vec<CommandView> = lock()
+        .values()
+        .filter(|r| r.view.conversation_id == conversation_id)
+        .map(|r| r.view.clone())
+        .collect();
     out.sort_by_key(|a| std::cmp::Reverse(a.started_at));
     out
 }
@@ -235,7 +272,11 @@ pub fn tail(view: &CommandView, chars: usize) -> String {
     if count <= chars {
         view.output.clone()
     } else {
-        format!("[… {} earlier characters]\n{}", count - chars, view.output.chars().skip(count - chars).collect::<String>())
+        format!(
+            "[… {} earlier characters]\n{}",
+            count - chars,
+            view.output.chars().skip(count - chars).collect::<String>()
+        )
     }
 }
 
@@ -249,10 +290,22 @@ mod tests {
             return;
         }
         let dir = tempfile::tempdir().unwrap();
-        let quick = start("conv-t", dir.path().to_str().unwrap(), "echo hello; echo oops >&2; exit 3").unwrap();
-        let slow = start("conv-t", dir.path().to_str().unwrap(), "sleep 98765 & while true; do echo tick; sleep 0.1; done").unwrap();
+        let quick = start(
+            "conv-t",
+            dir.path().to_str().unwrap(),
+            "echo hello; echo oops >&2; exit 3",
+        )
+        .unwrap();
+        let slow = start(
+            "conv-t",
+            dir.path().to_str().unwrap(),
+            "sleep 98765 & while true; do echo tick; sleep 0.1; done",
+        )
+        .unwrap();
         for _ in 0..50 {
-            if get(&quick).is_some_and(|v| v.status == "exited") && get(&slow).is_some_and(|v| v.output.contains("tick")) {
+            if get(&quick).is_some_and(|v| v.status == "exited")
+                && get(&slow).is_some_and(|v| v.output.contains("tick"))
+            {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -270,7 +323,11 @@ mod tests {
         }
         assert_eq!(get(&slow).unwrap().status, "stopped");
         // What the shell started is gone too.
-        let left = std::process::Command::new("pgrep").args(["-f", "sleep 98765"]).output().map(|o| o.stdout).unwrap_or_default();
+        let left = std::process::Command::new("pgrep")
+            .args(["-f", "sleep 98765"])
+            .output()
+            .map(|o| o.stdout)
+            .unwrap_or_default();
         assert!(left.is_empty(), "the background child survived");
         assert!(stop(&slow).is_err());
         assert_eq!(list("conv-t").len(), 2);

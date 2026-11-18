@@ -37,17 +37,28 @@ fn path(config_dir: &Path) -> PathBuf {
 }
 
 pub fn load(config_dir: &Path) -> Vec<Match> {
-    crate::chat::at_rest::read_to_string(path(config_dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::chat::at_rest::read_to_string(path(config_dir))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
 }
 
 /// Records a comparison's result.
 pub fn record(config_dir: &Path, winner: &str, losers: &[String]) -> Result<(), String> {
-    let losers: Vec<String> = losers.iter().filter(|l| l.as_str() != winner).cloned().collect();
+    let losers: Vec<String> = losers
+        .iter()
+        .filter(|l| l.as_str() != winner)
+        .cloned()
+        .collect();
     if winner.trim().is_empty() || losers.is_empty() {
         return Err("A comparison needs a winner and at least one other model.".into());
     }
     let mut all = load(config_dir);
-    all.push(Match { winner: winner.into(), losers, at: Utc::now() });
+    all.push(Match {
+        winner: winner.into(),
+        losers,
+        at: Utc::now(),
+    });
     write_json(&path(config_dir), &all)
 }
 
@@ -69,7 +80,12 @@ pub fn standings(matches: &[Match]) -> Vec<Standing> {
     }
     let mut out: Vec<Standing> = rating
         .into_iter()
-        .map(|(model, r)| Standing { wins: *wins.get(&model).unwrap_or(&0), losses: *losses.get(&model).unwrap_or(&0), rating: r.round() as i64, model })
+        .map(|(model, r)| Standing {
+            wins: *wins.get(&model).unwrap_or(&0),
+            losses: *losses.get(&model).unwrap_or(&0),
+            rating: r.round() as i64,
+            model,
+        })
         .collect();
     out.sort_by(|a, b| b.rating.cmp(&a.rating).then(a.model.cmp(&b.model)));
     out
@@ -89,9 +105,15 @@ mod tests {
         record(dir.path(), "a/x", &["b/y".into(), "c/z".into()]).unwrap();
         record(dir.path(), "a/x", &["b/y".into()]).unwrap();
         record(dir.path(), "b/y", &["c/z".into()]).unwrap();
-        assert!(record(dir.path(), "a/x", &["a/x".into()]).is_err(), "a model cannot beat itself");
+        assert!(
+            record(dir.path(), "a/x", &["a/x".into()]).is_err(),
+            "a model cannot beat itself"
+        );
         let board = standings(&load(dir.path()));
-        assert_eq!(board.iter().map(|s| s.model.as_str()).collect::<Vec<_>>(), ["a/x", "b/y", "c/z"]);
+        assert_eq!(
+            board.iter().map(|s| s.model.as_str()).collect::<Vec<_>>(),
+            ["a/x", "b/y", "c/z"]
+        );
         assert_eq!((board[0].wins, board[0].losses), (3, 0));
         assert_eq!((board[1].wins, board[1].losses), (1, 2));
         assert!(board[0].rating > 1000 && board[2].rating < 1000);

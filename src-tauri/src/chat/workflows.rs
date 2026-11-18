@@ -103,7 +103,11 @@ pub fn load(config_dir: &Path) -> Vec<Workflow> {
         w.builtin = false;
     }
     let hidden: Vec<String> = mine.iter().map(|w| w.name.to_lowercase()).collect();
-    mine.extend(builtins().into_iter().filter(|b| !hidden.contains(&b.name.to_lowercase())));
+    mine.extend(
+        builtins()
+            .into_iter()
+            .filter(|b| !hidden.contains(&b.name.to_lowercase())),
+    );
     mine
 }
 
@@ -151,8 +155,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let start = load(dir.path());
         assert!(start.iter().all(|w| w.builtin));
-        let brief = start.iter().find(|w| w.name == "Research brief").unwrap().clone();
-        let edited = Workflow { steps: vec!["Only one step".into()], ..brief };
+        let brief = start
+            .iter()
+            .find(|w| w.name == "Research brief")
+            .unwrap()
+            .clone();
+        let edited = Workflow {
+            steps: vec!["Only one step".into()],
+            ..brief
+        };
         let all = save(dir.path(), edited).unwrap();
         assert!(!all[0].builtin);
         assert_eq!(all[0].steps, ["Only one step"]);
@@ -160,7 +171,17 @@ mod tests {
         let id = all[0].id.clone();
         let all = delete(dir.path(), &id).unwrap();
         assert!(all.iter().any(|w| w.name == "Research brief" && w.builtin));
-        assert!(save(dir.path(), Workflow { id: String::new(), name: " ".into(), description: String::new(), steps: vec![], builtin: false }).is_err());
+        assert!(save(
+            dir.path(),
+            Workflow {
+                id: String::new(),
+                name: " ".into(),
+                description: String::new(),
+                steps: vec![],
+                builtin: false
+            }
+        )
+        .is_err());
     }
 }
 
@@ -186,11 +207,23 @@ pub struct Live {
 pub fn views(config_dir: &Path, all: Vec<Workflow>) -> Vec<WorkflowView> {
     all.into_iter()
         .map(|workflow| {
-            let production = if workflow.builtin { None } else { super::versions::production(config_dir, "workflows", &workflow.id) }.and_then(|p| {
+            let production = if workflow.builtin {
+                None
+            } else {
+                super::versions::production(config_dir, "workflows", &workflow.id)
+            }
+            .and_then(|p| {
                 let w: Workflow = serde_json::from_value(p.value).ok()?;
-                Some(Live { at: p.at, name: w.name, steps: w.steps })
+                Some(Live {
+                    at: p.at,
+                    name: w.name,
+                    steps: w.steps,
+                })
             });
-            WorkflowView { workflow, production }
+            WorkflowView {
+                workflow,
+                production,
+            }
         })
         .collect()
 }
@@ -218,15 +251,43 @@ pub fn draft_prompt(request: &str, current: Option<&Workflow>) -> String {
 
 /// Reads a model's draft workflow.
 pub fn parse_draft(text: &str) -> Result<Workflow, String> {
-    let start = text.find('{').ok_or("The model did not return a workflow.")?;
-    let end = text.rfind('}').ok_or("The model did not return a workflow.")?;
-    let value: serde_json::Value = serde_json::from_str(&text[start..=end]).map_err(|_| "The model's draft was not valid JSON; try again.".to_string())?;
-    let field = |k: &str| value.get(k).and_then(|v| v.as_str()).unwrap_or_default().trim().to_string();
-    let steps: Vec<String> = value.get("steps").and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|v| v.as_str()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()).unwrap_or_default();
+    let start = text
+        .find('{')
+        .ok_or("The model did not return a workflow.")?;
+    let end = text
+        .rfind('}')
+        .ok_or("The model did not return a workflow.")?;
+    let value: serde_json::Value = serde_json::from_str(&text[start..=end])
+        .map_err(|_| "The model's draft was not valid JSON; try again.".to_string())?;
+    let field = |k: &str| {
+        value
+            .get(k)
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    };
+    let steps: Vec<String> = value
+        .get("steps")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
     if field("name").is_empty() || steps.is_empty() {
         return Err("The draft had no name or steps; try again.".into());
     }
-    Ok(Workflow { id: String::new(), name: field("name"), description: field("description"), steps, builtin: false })
+    Ok(Workflow {
+        id: String::new(),
+        name: field("name"),
+        description: field("description"),
+        steps,
+        builtin: false,
+    })
 }
 
 #[cfg(test)]
@@ -239,18 +300,42 @@ mod draft_tests {
         assert_eq!(w.steps, ["Gather {{week:number}} notes", "Write it"]);
         assert!(parse_draft("{\"name\": \"x\", \"steps\": []}").is_err());
         let prompt = draft_prompt("make it shorter", Some(&w));
-        assert!(prompt.contains("\"Weekly report\"") && prompt.contains("make it shorter") && prompt.contains("{{name:type}}"), "{prompt}");
+        assert!(
+            prompt.contains("\"Weekly report\"")
+                && prompt.contains("make it shorter")
+                && prompt.contains("{{name:type}}"),
+            "{prompt}"
+        );
 
         let dir = tempfile::tempdir().unwrap();
         let all = save(dir.path(), w).unwrap();
         let mine = all.iter().find(|w| !w.builtin).unwrap().clone();
-        assert!(views(dir.path(), all.clone()).iter().all(|v| v.production.is_none()));
-        super::super::versions::set_production(dir.path(), "workflows", &mine.id, Some(serde_json::to_value(&mine).unwrap())).unwrap();
+        assert!(views(dir.path(), all.clone())
+            .iter()
+            .all(|v| v.production.is_none()));
+        super::super::versions::set_production(
+            dir.path(),
+            "workflows",
+            &mine.id,
+            Some(serde_json::to_value(&mine).unwrap()),
+        )
+        .unwrap();
         let mut edited = mine.clone();
         edited.steps = vec!["Draft step".into()];
         let all = save(dir.path(), edited).unwrap();
-        let view = views(dir.path(), all).into_iter().find(|v| v.workflow.id == mine.id).unwrap();
-        assert_eq!(view.workflow.steps, ["Draft step"], "the editor sees the draft");
-        assert_eq!(view.production.unwrap().steps, mine.steps, "runs use production");
+        let view = views(dir.path(), all)
+            .into_iter()
+            .find(|v| v.workflow.id == mine.id)
+            .unwrap();
+        assert_eq!(
+            view.workflow.steps,
+            ["Draft step"],
+            "the editor sees the draft"
+        );
+        assert_eq!(
+            view.production.unwrap().steps,
+            mine.steps,
+            "runs use production"
+        );
     }
 }

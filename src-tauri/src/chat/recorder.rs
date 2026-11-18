@@ -67,12 +67,22 @@ pub struct Status {
 
 /// The title of the window in front, where the system says.
 pub(crate) fn active_window() -> String {
-    let run = |program: &str, args: &[&str]| std::process::Command::new(program).args(args).stderr(std::process::Stdio::null()).output().ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+    let run = |program: &str, args: &[&str]| {
+        std::process::Command::new(program)
+            .args(args)
+            .stderr(std::process::Stdio::null())
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    };
     if cfg!(target_os = "macos") {
         return run("osascript", &["-e", "tell application \"System Events\" to get name of first application process whose frontmost is true"]).unwrap_or_default();
     }
     if cfg!(target_os = "linux") {
-        return run("xdotool", &["getactivewindow", "getwindowname"]).or_else(|| run("xdotool", &["getwindowfocus", "getwindowname"])).unwrap_or_default();
+        return run("xdotool", &["getactivewindow", "getwindowname"])
+            .or_else(|| run("xdotool", &["getwindowfocus", "getwindowname"]))
+            .unwrap_or_default();
     }
     String::new()
 }
@@ -80,7 +90,12 @@ pub(crate) fn active_window() -> String {
 /// A small greyscale copy for telling whether the screen changed.
 fn thumbnail(png: &[u8]) -> Option<Vec<u8>> {
     let image = image::load_from_memory(png).ok()?;
-    Some(image.resize_exact(160, 90, image::imageops::FilterType::Triangle).to_luma8().into_raw())
+    Some(
+        image
+            .resize_exact(160, 90, image::imageops::FilterType::Triangle)
+            .to_luma8()
+            .into_raw(),
+    )
 }
 
 /// The share of pixels that changed noticeably between two thumbnails (1 when they differ in size).
@@ -88,7 +103,11 @@ pub fn difference(a: &[u8], b: &[u8]) -> f64 {
     if a.len() != b.len() || a.is_empty() {
         return 1.0;
     }
-    a.iter().zip(b).filter(|(x, y)| x.abs_diff(**y) > PIXEL).count() as f64 / a.len() as f64
+    a.iter()
+        .zip(b)
+        .filter(|(x, y)| x.abs_diff(**y) > PIXEL)
+        .count() as f64
+        / a.len() as f64
 }
 
 /// Keeps the first and last frames and thins the middle to stay under the limit.
@@ -112,7 +131,10 @@ pub fn pick(frames: &[Frame], n: usize) -> Vec<usize> {
     }
     let mut chosen: Vec<usize> = (0..n).map(|k| k * (frames.len() - 1) / (n - 1)).collect();
     for (i, pair) in frames.windows(2).enumerate() {
-        if pair[0].window != pair[1].window && !chosen.contains(&(i + 1)) && chosen.len() < n + n / 2 {
+        if pair[0].window != pair[1].window
+            && !chosen.contains(&(i + 1))
+            && chosen.len() < n + n / 2
+        {
             chosen.push(i + 1);
         }
     }
@@ -124,8 +146,16 @@ pub fn pick(frames: &[Frame], n: usize) -> Vec<usize> {
 impl Recorder {
     pub fn status(&self) -> Status {
         match self.inner.lock().unwrap().as_ref() {
-            Some(s) => Status { recording: true, seconds: s.started.elapsed().as_secs(), steps: s.frames.lock().unwrap().len() },
-            None => Status { recording: false, seconds: self.done_seconds.load(Ordering::Relaxed), steps: self.done.lock().unwrap().len() },
+            Some(s) => Status {
+                recording: true,
+                seconds: s.started.elapsed().as_secs(),
+                steps: s.frames.lock().unwrap().len(),
+            },
+            None => Status {
+                recording: false,
+                seconds: self.done_seconds.load(Ordering::Relaxed),
+                steps: self.done.lock().unwrap().len(),
+            },
         }
     }
 
@@ -137,7 +167,12 @@ impl Recorder {
         let stop = Arc::new(AtomicBool::new(false));
         let finished = Arc::new(AtomicBool::new(false));
         let frames = Arc::new(Mutex::new(Vec::new()));
-        *inner = Some(Session { stop: stop.clone(), finished: finished.clone(), frames: frames.clone(), started: Instant::now() });
+        *inner = Some(Session {
+            stop: stop.clone(),
+            finished: finished.clone(),
+            frames: frames.clone(),
+            started: Instant::now(),
+        });
         self.done.lock().unwrap().clear();
         tauri::async_runtime::spawn(async move {
             let started = Instant::now();
@@ -148,11 +183,18 @@ impl Recorder {
                 if let Ok(png) = super::computer::capture().await {
                     let window = active_window();
                     if let Some(thumb) = thumbnail(&png) {
-                        let changed = last.as_ref().is_none_or(|(t, w)| *w != window || difference(t, &thumb) > if ending { 0.0 } else { CHANGED });
+                        let changed = last.as_ref().is_none_or(|(t, w)| {
+                            *w != window
+                                || difference(t, &thumb) > if ending { 0.0 } else { CHANGED }
+                        });
                         if changed {
                             if let Ok((image, ..)) = super::computer::shrink(&png, 1024) {
                                 let mut list = frames.lock().unwrap();
-                                list.push(Frame { seconds: started.elapsed().as_secs_f64(), window: window.clone(), image });
+                                list.push(Frame {
+                                    seconds: started.elapsed().as_secs_f64(),
+                                    window: window.clone(),
+                                    image,
+                                });
                                 thin(&mut list, MAX_FRAMES);
                             }
                             last = Some((thumb, window));
@@ -176,10 +218,13 @@ impl Recorder {
             session.stop.store(true, Ordering::Relaxed);
             // Wait (briefly) for the last screenshot.
             let waited = Instant::now();
-            while !session.finished.load(Ordering::Relaxed) && waited.elapsed() < Duration::from_secs(4) {
+            while !session.finished.load(Ordering::Relaxed)
+                && waited.elapsed() < Duration::from_secs(4)
+            {
                 std::thread::sleep(Duration::from_millis(50));
             }
-            self.done_seconds.store(session.started.elapsed().as_secs(), Ordering::Relaxed);
+            self.done_seconds
+                .store(session.started.elapsed().as_secs(), Ordering::Relaxed);
             *self.done.lock().unwrap() = std::mem::take(&mut *session.frames.lock().unwrap());
         }
         self.status()
@@ -205,9 +250,23 @@ pub struct Draft {
 
 pub fn parse_draft(reply: &str) -> Result<Draft, String> {
     let start = reply.find('{').ok_or("The model did not return a skill.")?;
-    let end = reply.rfind('}').ok_or("The model did not return a skill.")?;
-    let mut d: Draft = serde_json::from_str(&reply[start..=end]).map_err(|_| "The model's draft could not be read; try again or another model.".to_string())?;
-    d.name = d.name.trim().to_lowercase().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect::<String>().split('-').filter(|p| !p.is_empty()).collect::<Vec<_>>().join("-");
+    let end = reply
+        .rfind('}')
+        .ok_or("The model did not return a skill.")?;
+    let mut d: Draft = serde_json::from_str(&reply[start..=end]).map_err(|_| {
+        "The model's draft could not be read; try again or another model.".to_string()
+    })?;
+    d.name = d
+        .name
+        .trim()
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|p| !p.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
     if d.name.is_empty() || d.body.trim().is_empty() {
         return Err("The draft was empty; try again.".into());
     }
@@ -215,9 +274,16 @@ pub fn parse_draft(reply: &str) -> Result<Draft, String> {
 }
 
 /// Asks `model` (one that reads images) to turn the recording into a skill.
-pub async fn draft(config_dir: &std::path::Path, model: &str, frames: &[Frame], note: &str) -> Result<Draft, String> {
+pub async fn draft(
+    config_dir: &std::path::Path,
+    model: &str,
+    frames: &[Frame],
+    note: &str,
+) -> Result<Draft, String> {
     if frames.is_empty() {
-        return Err("Nothing was recorded. Record the task again and change something on screen.".into());
+        return Err(
+            "Nothing was recorded. Record the task again and change something on screen.".into(),
+        );
     }
     let chosen = pick(frames, SENT_FRAMES);
     let mut content = vec![UserContent::text(format!(
@@ -236,10 +302,25 @@ pub async fn draft(config_dir: &std::path::Path, model: &str, frames: &[Frame], 
     ))];
     for i in chosen {
         let f = &frames[i];
-        content.push(UserContent::text(format!("Step at {:.0}s — window: {}", f.seconds, if f.window.is_empty() { "unknown" } else { &f.window })));
+        content.push(UserContent::text(format!(
+            "Step at {:.0}s — window: {}",
+            f.seconds,
+            if f.window.is_empty() {
+                "unknown"
+            } else {
+                &f.window
+            }
+        )));
         // The image is checked to decode before it goes out.
-        if base64::engine::general_purpose::STANDARD.decode(&f.image).is_ok() {
-            content.push(UserContent::image_base64(f.image.clone(), Some(ImageMediaType::JPEG), None));
+        if base64::engine::general_purpose::STANDARD
+            .decode(&f.image)
+            .is_ok()
+        {
+            content.push(UserContent::image_base64(
+                f.image.clone(),
+                Some(ImageMediaType::JPEG),
+                None,
+            ));
         }
     }
     let request = CompletionRequest::new(Message::User { content }).max_tokens(6_000u64);
@@ -252,7 +333,11 @@ mod tests {
     use super::*;
 
     fn frame(seconds: f64, window: &str) -> Frame {
-        Frame { seconds, window: window.into(), image: String::new() }
+        Frame {
+            seconds,
+            window: window.into(),
+            image: String::new(),
+        }
     }
 
     #[test]
@@ -274,11 +359,16 @@ mod tests {
 
     #[test]
     fn the_model_sees_spread_frames_and_window_changes() {
-        let frames: Vec<Frame> = (0..30).map(|i| frame(i as f64, if i < 17 { "Files" } else { "Mail" })).collect();
+        let frames: Vec<Frame> = (0..30)
+            .map(|i| frame(i as f64, if i < 17 { "Files" } else { "Mail" }))
+            .collect();
         let chosen = pick(&frames, 6);
         assert_eq!(chosen.first(), Some(&0));
         assert_eq!(chosen.last(), Some(&29));
-        assert!(chosen.contains(&17), "the switch to Mail is shown: {chosen:?}");
+        assert!(
+            chosen.contains(&17),
+            "the switch to Mail is shown: {chosen:?}"
+        );
         assert_eq!(pick(&frames[..4], 6), vec![0, 1, 2, 3]);
     }
 

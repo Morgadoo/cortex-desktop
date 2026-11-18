@@ -47,7 +47,14 @@ pub struct SttSettings {
 
 impl Default for SttSettings {
     fn default() -> Self {
-        Self { engine: "provider".into(), base_url: String::new(), model: String::new(), language: String::new(), auto_send: false, has_key: false }
+        Self {
+            engine: "provider".into(),
+            base_url: String::new(),
+            model: String::new(),
+            language: String::new(),
+            auto_send: false,
+            has_key: false,
+        }
     }
 }
 
@@ -68,7 +75,15 @@ pub struct TtsSettings {
 
 impl Default for TtsSettings {
     fn default() -> Self {
-        Self { engine: "provider".into(), base_url: String::new(), model: String::new(), voice: String::new(), speed: 1.0, auto_play: false, has_key: false }
+        Self {
+            engine: "provider".into(),
+            base_url: String::new(),
+            model: String::new(),
+            voice: String::new(),
+            speed: 1.0,
+            auto_play: false,
+            has_key: false,
+        }
     }
 }
 
@@ -84,7 +99,10 @@ fn path(config_dir: &Path) -> PathBuf {
 }
 
 pub fn load(config_dir: &Path) -> AudioSettings {
-    crate::chat::at_rest::read_to_string(path(config_dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::chat::at_rest::read_to_string(path(config_dir))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
 }
 
 pub fn save(config_dir: &Path, settings: &AudioSettings) -> Result<(), String> {
@@ -96,10 +114,19 @@ pub fn normalize(mut s: AudioSettings) -> AudioSettings {
     if !["provider", "builtin", "openai", "elevenlabs", "off"].contains(&s.stt.engine.as_str()) {
         s.stt.engine = "provider".into();
     }
-    if !["provider", "openai", "xai", "elevenlabs", "browser", "off"].contains(&s.tts.engine.as_str()) {
+    if !["provider", "openai", "xai", "elevenlabs", "browser", "off"]
+        .contains(&s.tts.engine.as_str())
+    {
         s.tts.engine = "provider".into();
     }
-    for field in [&mut s.stt.base_url, &mut s.stt.model, &mut s.stt.language, &mut s.tts.base_url, &mut s.tts.model, &mut s.tts.voice] {
+    for field in [
+        &mut s.stt.base_url,
+        &mut s.stt.model,
+        &mut s.stt.language,
+        &mut s.tts.base_url,
+        &mut s.tts.model,
+        &mut s.tts.voice,
+    ] {
         *field = field.trim().to_string();
     }
     s.stt.base_url = s.stt.base_url.trim_end_matches('/').to_string();
@@ -115,16 +142,24 @@ pub fn normalize(mut s: AudioSettings) -> AudioSettings {
 /// the well-known ones.
 pub fn known_voices(engine: &str) -> Vec<(String, String)> {
     let names: &[&str] = match engine {
-        "openai" | "provider" => &["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse"],
+        "openai" | "provider" => &[
+            "alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer",
+            "verse",
+        ],
         "xai" => &["eve", "ara", "rex", "sal", "leo"],
         _ => &[],
     };
-    names.iter().map(|n| (n.to_string(), n.to_string())).collect()
+    names
+        .iter()
+        .map(|n| (n.to_string(), n.to_string()))
+        .collect()
 }
 
 async fn secret(name: &str) -> Result<Option<String>, String> {
     let account = crate::account::AccountId::parse(super::LOCAL_ACCOUNT)?;
-    crate::tools::auth::keychain_secrets(account).load(name).await
+    crate::tools::auth::keychain_secrets(account)
+        .load(name)
+        .await
 }
 
 fn mime_of(audio: &[u8]) -> &'static str {
@@ -137,12 +172,19 @@ fn mime_of(audio: &[u8]) -> &'static str {
 }
 
 fn http() -> reqwest::Client {
-    reqwest::Client::builder().timeout(std::time::Duration::from_secs(120)).build().unwrap_or_default()
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .unwrap_or_default()
 }
 
 /// Reads `text` (already prose) aloud with the chosen engine. `Ok(None)` means the page speaks it
 /// itself (the `browser` engine).
-pub async fn speak(config_dir: &Path, text: &str, settings: &TtsSettings) -> Result<Option<(Vec<u8>, String)>, String> {
+pub async fn speak(
+    config_dir: &Path,
+    text: &str,
+    settings: &TtsSettings,
+) -> Result<Option<(Vec<u8>, String)>, String> {
     let speed = (settings.speed - 1.0).abs() > f32::EPSILON;
     let audio = match settings.engine.as_str() {
         "off" => return Err("Read aloud is off in Settings → Audio.".into()),
@@ -151,40 +193,95 @@ pub async fn speak(config_dir: &Path, text: &str, settings: &TtsSettings) -> Res
         "openai" | "xai" => {
             let key = secret(TTS_SECRET).await?.unwrap_or_default();
             let xai = settings.engine == "xai";
-            let mut config = OpenAIConfig::with_key(if xai { &xai::DIALECT } else { &dialects::OPENAI }, key);
+            let mut config = OpenAIConfig::with_key(
+                if xai {
+                    &xai::DIALECT
+                } else {
+                    &dialects::OPENAI
+                },
+                key,
+            );
             if !settings.base_url.is_empty() {
-                config = config.with_base_url(if xai { super::providers::normalize_base_url("xai", &settings.base_url) } else { settings.base_url.clone() });
+                config = config.with_base_url(if xai {
+                    super::providers::normalize_base_url("xai", &settings.base_url)
+                } else {
+                    settings.base_url.clone()
+                });
             } else if !xai {
                 return Err("Set the text-to-speech server's base URL in Settings → Audio.".into());
             }
-            let model = if settings.model.is_empty() { if xai { "grok-tts".into() } else { "tts-1".into() } } else { settings.model.clone() };
-            let voice = if settings.voice.is_empty() { if xai { "eve" } else { "alloy" } } else { settings.voice.as_str() };
+            let model = if settings.model.is_empty() {
+                if xai {
+                    "grok-tts".into()
+                } else {
+                    "tts-1".into()
+                }
+            } else {
+                settings.model.clone()
+            };
+            let voice = if settings.voice.is_empty() {
+                if xai {
+                    "eve"
+                } else {
+                    "alloy"
+                }
+            } else {
+                settings.voice.as_str()
+            };
             let mut request = AudioGenerationRequestBuilder::new(text, voice);
             if speed && !xai {
                 request = request.speed(settings.speed);
             }
-            config.client().audio_generation(model).call(request.build()).await.map_err(|e| e.to_string())?.audio
+            config
+                .client()
+                .audio_generation(model)
+                .call(request.build())
+                .await
+                .map_err(|e| e.to_string())?
+                .audio
         }
         "elevenlabs" => {
-            let key = secret(TTS_SECRET).await?.ok_or("Add your ElevenLabs API key in Settings → Audio.")?;
+            let key = secret(TTS_SECRET)
+                .await?
+                .ok_or("Add your ElevenLabs API key in Settings → Audio.")?;
             if settings.voice.is_empty() {
                 return Err("Choose an ElevenLabs voice in Settings → Audio.".into());
             }
-            let base = if settings.base_url.is_empty() { ELEVENLABS } else { settings.base_url.as_str() };
-            let model = if settings.model.is_empty() { "eleven_multilingual_v2" } else { settings.model.as_str() };
+            let base = if settings.base_url.is_empty() {
+                ELEVENLABS
+            } else {
+                settings.base_url.as_str()
+            };
+            let model = if settings.model.is_empty() {
+                "eleven_multilingual_v2"
+            } else {
+                settings.model.as_str()
+            };
             let mut body = json!({ "text": text, "model_id": model });
             if speed {
                 body["voice_settings"] = json!({ "speed": settings.speed.clamp(0.7, 1.2) });
             }
             let response = http()
-                .post(format!("{base}/v1/text-to-speech/{}?output_format=mp3_44100_128", settings.voice))
+                .post(format!(
+                    "{base}/v1/text-to-speech/{}?output_format=mp3_44100_128",
+                    settings.voice
+                ))
                 .header("xi-api-key", key)
                 .json(&body)
                 .send()
                 .await
                 .map_err(|e| e.to_string())?;
             if !response.status().is_success() {
-                return Err(format!("ElevenLabs: {}", response.text().await.unwrap_or_default().chars().take(300).collect::<String>()));
+                return Err(format!(
+                    "ElevenLabs: {}",
+                    response
+                        .text()
+                        .await
+                        .unwrap_or_default()
+                        .chars()
+                        .take(300)
+                        .collect::<String>()
+                ));
             }
             response.bytes().await.map_err(|e| e.to_string())?.to_vec()
         }
@@ -198,17 +295,34 @@ pub async fn speak(config_dir: &Path, text: &str, settings: &TtsSettings) -> Res
 }
 
 /// Transcribes recorded speech with the chosen engine.
-pub async fn transcribe(config_dir: &Path, audio: Vec<u8>, file_name: &str, settings: &SttSettings) -> Result<String, String> {
+pub async fn transcribe(
+    config_dir: &Path,
+    audio: Vec<u8>,
+    file_name: &str,
+    settings: &SttSettings,
+) -> Result<String, String> {
     match settings.engine.as_str() {
         "off" => Err("Voice input is off in Settings → Audio.".into()),
         "provider" => super::media::transcribe(config_dir, audio, file_name).await,
         "builtin" => {
             let root = super::local_models::root()?;
             // The model chosen, else the first Whisper downloaded.
-            let speech = |id: &str| super::local_models::entry(id).is_some_and(|e| e.kind == super::local_models::Kind::Speech) && super::local_models::installed(&root, id);
-            let id = Some(settings.model.clone()).filter(|m| speech(m)).or_else(|| {
-                super::local_models::list(&root).into_iter().find(|m| m.installed && m.kind == super::local_models::Kind::Speech).map(|m| m.id)
-            }).ok_or("Download a Whisper model first (Settings → Providers → Built-in models).")?;
+            let speech = |id: &str| {
+                super::local_models::entry(id)
+                    .is_some_and(|e| e.kind == super::local_models::Kind::Speech)
+                    && super::local_models::installed(&root, id)
+            };
+            let id = Some(settings.model.clone())
+                .filter(|m| speech(m))
+                .or_else(|| {
+                    super::local_models::list(&root)
+                        .into_iter()
+                        .find(|m| m.installed && m.kind == super::local_models::Kind::Speech)
+                        .map(|m| m.id)
+                })
+                .ok_or(
+                    "Download a Whisper model first (Settings → Providers → Built-in models).",
+                )?;
             let language = settings.language.clone();
             tokio::task::spawn_blocking(move || {
                 let samples = super::local_models::audio_samples(&audio)?;
@@ -222,32 +336,70 @@ pub async fn transcribe(config_dir: &Path, audio: Vec<u8>, file_name: &str, sett
                 return Err("Set the speech-to-text server's base URL in Settings → Audio.".into());
             }
             let key = secret(STT_SECRET).await?.unwrap_or_default();
-            let config = OpenAIConfig::with_key(&dialects::OPENAI, key).with_base_url(settings.base_url.clone());
-            let model = if settings.model.is_empty() { "whisper-1".into() } else { settings.model.clone() };
-            let mut request = TranscriptionRequestBuilder::new(audio).filename(Some(file_name.to_string()));
+            let config = OpenAIConfig::with_key(&dialects::OPENAI, key)
+                .with_base_url(settings.base_url.clone());
+            let model = if settings.model.is_empty() {
+                "whisper-1".into()
+            } else {
+                settings.model.clone()
+            };
+            let mut request =
+                TranscriptionRequestBuilder::new(audio).filename(Some(file_name.to_string()));
             if !settings.language.is_empty() {
                 request = request.language(settings.language.clone());
             }
-            let response = config.client().transcription(model).call(request.build()).await.map_err(|e| e.to_string())?;
+            let response = config
+                .client()
+                .transcription(model)
+                .call(request.build())
+                .await
+                .map_err(|e| e.to_string())?;
             Ok(response.text.trim().to_string())
         }
         "elevenlabs" => {
-            let key = secret(STT_SECRET).await?.ok_or("Add your ElevenLabs API key in Settings → Audio.")?;
-            let base = if settings.base_url.is_empty() { ELEVENLABS } else { settings.base_url.as_str() };
-            let model = if settings.model.is_empty() { "scribe_v1" } else { settings.model.as_str() };
+            let key = secret(STT_SECRET)
+                .await?
+                .ok_or("Add your ElevenLabs API key in Settings → Audio.")?;
+            let base = if settings.base_url.is_empty() {
+                ELEVENLABS
+            } else {
+                settings.base_url.as_str()
+            };
+            let model = if settings.model.is_empty() {
+                "scribe_v1"
+            } else {
+                settings.model.as_str()
+            };
             let mut form = reqwest::multipart::Form::new()
                 .text("model_id", model.to_string())
-                .part("file", reqwest::multipart::Part::bytes(audio).file_name(file_name.to_string()));
+                .part(
+                    "file",
+                    reqwest::multipart::Part::bytes(audio).file_name(file_name.to_string()),
+                );
             if !settings.language.is_empty() {
                 form = form.text("language_code", settings.language.clone());
             }
-            let response = http().post(format!("{base}/v1/speech-to-text")).header("xi-api-key", key).multipart(form).send().await.map_err(|e| e.to_string())?;
+            let response = http()
+                .post(format!("{base}/v1/speech-to-text"))
+                .header("xi-api-key", key)
+                .multipart(form)
+                .send()
+                .await
+                .map_err(|e| e.to_string())?;
             let status = response.status();
             let body: Value = response.json().await.map_err(|e| e.to_string())?;
             if !status.is_success() {
-                return Err(format!("ElevenLabs: {}", body.to_string().chars().take(300).collect::<String>()));
+                return Err(format!(
+                    "ElevenLabs: {}",
+                    body.to_string().chars().take(300).collect::<String>()
+                ));
             }
-            Ok(body.get("text").and_then(Value::as_str).unwrap_or_default().trim().to_string())
+            Ok(body
+                .get("text")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .trim()
+                .to_string())
         }
         other => Err(format!("Unknown speech-to-text engine `{other}`.")),
     }
@@ -255,15 +407,34 @@ pub async fn transcribe(config_dir: &Path, audio: Vec<u8>, file_name: &str, sett
 
 /// ElevenLabs voices on the user's account, as (id, name).
 pub async fn elevenlabs_voices(base_url: &str) -> Result<Vec<(String, String)>, String> {
-    let key = secret(TTS_SECRET).await?.ok_or("Add your ElevenLabs API key first.")?;
-    let base = if base_url.is_empty() { ELEVENLABS } else { base_url };
-    let body: Value = http().get(format!("{base}/v1/voices")).header("xi-api-key", key).send().await.map_err(|e| e.to_string())?.json().await.map_err(|e| e.to_string())?;
+    let key = secret(TTS_SECRET)
+        .await?
+        .ok_or("Add your ElevenLabs API key first.")?;
+    let base = if base_url.is_empty() {
+        ELEVENLABS
+    } else {
+        base_url
+    };
+    let body: Value = http()
+        .get(format!("{base}/v1/voices"))
+        .header("xi-api-key", key)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(body
         .get("voices")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .filter_map(|v| Some((v.get("voice_id")?.as_str()?.to_string(), v.get("name")?.as_str()?.to_string())))
+        .filter_map(|v| {
+            Some((
+                v.get("voice_id")?.as_str()?.to_string(),
+                v.get("name")?.as_str()?.to_string(),
+            ))
+        })
         .collect())
 }
 

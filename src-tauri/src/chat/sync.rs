@@ -71,10 +71,18 @@ impl Report {
             parts.push(format!("{} deleted", self.deleted));
         }
         if !self.conflicts.is_empty() {
-            parts.push(format!("{} conflict{} (newer kept)", self.conflicts.len(), if self.conflicts.len() == 1 { "" } else { "s" }));
+            parts.push(format!(
+                "{} conflict{} (newer kept)",
+                self.conflicts.len(),
+                if self.conflicts.len() == 1 { "" } else { "s" }
+            ));
         }
         if !self.errors.is_empty() {
-            parts.push(format!("{} error{}", self.errors.len(), if self.errors.len() == 1 { "" } else { "s" }));
+            parts.push(format!(
+                "{} error{}",
+                self.errors.len(),
+                if self.errors.len() == 1 { "" } else { "s" }
+            ));
         }
         if parts.is_empty() {
             "Everything was already in sync.".into()
@@ -139,7 +147,11 @@ fn write<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
     let tmp = path.with_extension("tmp");
-    crate::chat::at_rest::write(&tmp, serde_json::to_vec_pretty(value).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    crate::chat::at_rest::write(
+        &tmp,
+        serde_json::to_vec_pretty(value).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, path).map_err(|e| e.to_string())
 }
 
@@ -166,7 +178,9 @@ fn derive(passphrase: &str, salt: &[u8]) -> Result<[u8; 32], String> {
         }
     }
     let mut key = [0u8; 32];
-    argon2::Argon2::default().hash_password_into(passphrase.as_bytes(), salt, &mut key).map_err(|e| e.to_string())?;
+    argon2::Argon2::default()
+        .hash_password_into(passphrase.as_bytes(), salt, &mut key)
+        .map_err(|e| e.to_string())?;
     *CACHE.lock().unwrap() = Some((hashed, salt.to_vec(), key));
     Ok(key)
 }
@@ -175,7 +189,9 @@ fn seal(key: &[u8; 32], plain: &[u8]) -> Result<Vec<u8>, String> {
     let cipher = XChaCha20Poly1305::new(key.into());
     let mut nonce = [0u8; 24];
     rand::fill(&mut nonce);
-    let sealed = cipher.encrypt(XNonce::from_slice(&nonce), plain).map_err(|_| "could not encrypt".to_string())?;
+    let sealed = cipher
+        .encrypt(XNonce::from_slice(&nonce), plain)
+        .map_err(|_| "could not encrypt".to_string())?;
     Ok([MAGIC, &nonce[..], &sealed].concat())
 }
 
@@ -185,7 +201,9 @@ fn open(key: &[u8; 32], data: &[u8]) -> Result<Vec<u8>, String> {
         return Err("a sync file is cut short".into());
     }
     let (nonce, sealed) = rest.split_at(24);
-    XChaCha20Poly1305::new(key.into()).decrypt(XNonce::from_slice(nonce), sealed).map_err(|_| "wrong passphrase, or a damaged sync file".to_string())
+    XChaCha20Poly1305::new(key.into())
+        .decrypt(XNonce::from_slice(nonce), sealed)
+        .map_err(|_| "wrong passphrase, or a damaged sync file".to_string())
 }
 
 /// The item's file name: a keyed hash of the path, so the folder shows no names.
@@ -213,11 +231,19 @@ pub fn unlock(remote: &Path, passphrase: &str) -> Result<[u8; 32], String> {
             _ => Err("That passphrase does not open this sync folder. Use the one set on your other device.".into()),
         };
     }
-    std::fs::create_dir_all(remote.join("items")).map_err(|e| format!("Could not create the sync folder: {e}"))?;
+    std::fs::create_dir_all(remote.join("items"))
+        .map_err(|e| format!("Could not create the sync folder: {e}"))?;
     let mut salt = [0u8; 16];
     rand::fill(&mut salt);
     let key = derive(passphrase, &salt)?;
-    write(&check_path, &KeyCheck { version: 1, salt: b64.encode(salt), check: b64.encode(seal(&key, CHECK_TEXT)?) })?;
+    write(
+        &check_path,
+        &KeyCheck {
+            version: 1,
+            salt: b64.encode(salt),
+            check: b64.encode(seal(&key, CHECK_TEXT)?),
+        },
+    )?;
     Ok(key)
 }
 
@@ -231,14 +257,23 @@ fn local_files(config_dir: &Path) -> BTreeMap<String, PathBuf> {
             out.insert(rel, full);
         }
     };
-    for file in ["agents.json", "memories.json", "knowledge.json", "projects.json", "instructions.json"] {
+    for file in [
+        "agents.json",
+        "memories.json",
+        "knowledge.json",
+        "projects.json",
+        "instructions.json",
+    ] {
         add(format!("chat/{file}"), config_dir.join("chat").join(file));
     }
     if let Ok(entries) = std::fs::read_dir(config_dir.join("chat").join("conversations")) {
         for e in entries.filter_map(Result::ok) {
             let name = e.file_name().to_string_lossy().to_string();
             // Temporary chats are never kept, so they never sync.
-            let temporary = crate::chat::at_rest::read_to_string(e.path()).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()).is_some_and(|v| v.get("temporary").and_then(|t| t.as_bool()) == Some(true));
+            let temporary = crate::chat::at_rest::read_to_string(e.path())
+                .ok()
+                .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+                .is_some_and(|v| v.get("temporary").and_then(|t| t.as_bool()) == Some(true));
             if name.ends_with(".json") && !temporary {
                 add(format!("chat/conversations/{name}"), e.path());
             }
@@ -251,7 +286,9 @@ fn local_files(config_dir: &Path) -> BTreeMap<String, PathBuf> {
 }
 
 fn walk(dir: &Path, rel: &str, add: &mut impl FnMut(String, PathBuf)) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in entries.filter_map(Result::ok) {
         let name = e.file_name().to_string_lossy().to_string();
         if name.starts_with('.') || name.ends_with(".tmp") {
@@ -269,9 +306,20 @@ fn walk(dir: &Path, rel: &str, add: &mut impl FnMut(String, PathBuf)) {
 /// Whether a path from the sync folder may be written here: only the kinds of files that sync,
 /// and never outside the config folder.
 fn allowed(path: &str) -> bool {
-    let safe = !path.split('/').any(|p| p.is_empty() || p == "." || p == ".." || p.contains('\\')) && !path.contains(':');
-    safe && (matches!(path, "chat/agents.json" | "chat/memories.json" | "chat/knowledge.json" | "chat/projects.json" | "chat/instructions.json")
-        || (path.starts_with("chat/conversations/") && path.ends_with(".json") && path.matches('/').count() == 2)
+    let safe = !path
+        .split('/')
+        .any(|p| p.is_empty() || p == "." || p == ".." || p.contains('\\'))
+        && !path.contains(':');
+    safe && (matches!(
+        path,
+        "chat/agents.json"
+            | "chat/memories.json"
+            | "chat/knowledge.json"
+            | "chat/projects.json"
+            | "chat/instructions.json"
+    ) || (path.starts_with("chat/conversations/")
+        && path.ends_with(".json")
+        && path.matches('/').count() == 2)
         || path.starts_with("chat/agents/")
         || path.starts_with("chat/canvases/")
         || path.starts_with("skills/"))
@@ -284,7 +332,11 @@ fn now_ms() -> i64 {
 }
 
 fn modified_ms(path: &Path) -> i64 {
-    std::fs::metadata(path).and_then(|m| m.modified()).ok().map(|t| chrono::DateTime::<chrono::Utc>::from(t).timestamp_millis()).unwrap_or_else(now_ms)
+    std::fs::metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .map(|t| chrono::DateTime::<chrono::Utc>::from(t).timestamp_millis())
+        .unwrap_or_else(now_ms)
 }
 
 fn device_name() -> String {
@@ -292,7 +344,12 @@ fn device_name() -> String {
 }
 
 fn hostname() -> Option<String> {
-    std::env::var("HOSTNAME").ok().or_else(|| std::env::var("COMPUTERNAME").ok()).or_else(|| crate::chat::at_rest::read_to_string("/etc/hostname").ok()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    std::env::var("HOSTNAME")
+        .ok()
+        .or_else(|| std::env::var("COMPUTERNAME").ok())
+        .or_else(|| crate::chat::at_rest::read_to_string("/etc/hostname").ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 /// Syncs the config folder with `<folder>/Lumo Sync` under `key`.
@@ -304,8 +361,12 @@ pub fn sync_once(config_dir: &Path, remote: &Path, key: &[u8; 32]) -> Report {
         report.errors.push(format!("the sync folder: {e}"));
         return report;
     }
-    let store = read::<KeyCheck>(&remote.join("keycheck.json")).map(|c| c.salt).unwrap_or_default();
-    let mut state: State = read(&state_path(config_dir)).filter(|s: &State| s.store == store).unwrap_or_default();
+    let store = read::<KeyCheck>(&remote.join("keycheck.json"))
+        .map(|c| c.salt)
+        .unwrap_or_default();
+    let mut state: State = read(&state_path(config_dir))
+        .filter(|s: &State| s.store == store)
+        .unwrap_or_default();
     state.store = store;
 
     // What the folder holds, by path.
@@ -315,14 +376,24 @@ pub fn sync_once(config_dir: &Path, remote: &Path, key: &[u8; 32]) -> Report {
             if !e.file_name().to_string_lossy().ends_with(".lumo") {
                 continue;
             }
-            let item = crate::chat::at_rest::read(e.path()).map_err(|e| e.to_string()).and_then(|d| open(key, &d)).and_then(|p| serde_json::from_slice::<Item>(&p).map_err(|e| e.to_string()));
+            let item = crate::chat::at_rest::read(e.path())
+                .map_err(|e| e.to_string())
+                .and_then(|d| open(key, &d))
+                .and_then(|p| serde_json::from_slice::<Item>(&p).map_err(|e| e.to_string()));
             match item {
                 // A name that does not match its path was not written by Lumo with this key.
-                Ok(item) if item_name(key, &item.path) == e.file_name().to_string_lossy() && allowed(&item.path) => {
+                Ok(item)
+                    if item_name(key, &item.path) == e.file_name().to_string_lossy()
+                        && allowed(&item.path) =>
+                {
                     remote_items.insert(item.path.clone(), item);
                 }
-                Ok(item) => report.errors.push(format!("{} is not where it belongs; left alone", item.path)),
-                Err(err) => report.errors.push(format!("an item could not be read ({err})")),
+                Ok(item) => report
+                    .errors
+                    .push(format!("{} is not where it belongs; left alone", item.path)),
+                Err(err) => report
+                    .errors
+                    .push(format!("an item could not be read ({err})")),
             }
         }
     }
@@ -346,7 +417,16 @@ pub fn sync_once(config_dir: &Path, remote: &Path, key: &[u8; 32]) -> Report {
         crate::chat::at_rest::write(&tmp, sealed).map_err(|e| e.to_string())?;
         std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
     };
-    let upload = |rel: &str, hash: &str, bytes: &[u8]| put(&Item { path: rel.into(), hash: hash.into(), modified: modified_ms(&local[rel]), device: device.clone(), deleted: false, content: b64.encode(bytes) });
+    let upload = |rel: &str, hash: &str, bytes: &[u8]| {
+        put(&Item {
+            path: rel.into(),
+            hash: hash.into(),
+            modified: modified_ms(&local[rel]),
+            device: device.clone(),
+            deleted: false,
+            content: b64.encode(bytes),
+        })
+    };
     let download = |item: &Item| -> Result<(), String> {
         let bytes = b64.decode(&item.content).map_err(|e| e.to_string())?;
         if sha256(&bytes) != item.hash {
@@ -365,13 +445,21 @@ pub fn sync_once(config_dir: &Path, remote: &Path, key: &[u8; 32]) -> Report {
         std::fs::rename(&tmp, &target).map_err(|e| e.to_string())
     };
     let remove_local = |rel: &str| -> Result<(), String> {
-        if let Some(id) = rel.strip_prefix("chat/conversations/").and_then(|n| n.strip_suffix(".json")) {
+        if let Some(id) = rel
+            .strip_prefix("chat/conversations/")
+            .and_then(|n| n.strip_suffix(".json"))
+        {
             return super::store::delete_conversation(config_dir, id);
         }
         std::fs::remove_file(config_dir.join(rel)).map_err(|e| e.to_string())
     };
 
-    let paths: BTreeSet<String> = local_hashes.keys().chain(remote_items.keys()).chain(state.synced.keys()).cloned().collect();
+    let paths: BTreeSet<String> = local_hashes
+        .keys()
+        .chain(remote_items.keys())
+        .chain(state.synced.keys())
+        .cloned()
+        .collect();
     for path in paths {
         let l = local_hashes.get(&path);
         let r = remote_items.get(&path);
@@ -384,7 +472,15 @@ pub fn sync_once(config_dir: &Path, remote: &Path, key: &[u8; 32]) -> Report {
             (None, Some(item)) if !item.deleted => {
                 if s.as_deref() == Some(item.hash.as_str()) {
                     // Synced before and gone here: deleted on this device.
-                    put(&Item { path: path.clone(), hash: String::new(), modified: now_ms(), device: device.clone(), deleted: true, content: String::new() }).map(|_| {
+                    put(&Item {
+                        path: path.clone(),
+                        hash: String::new(),
+                        modified: now_ms(),
+                        device: device.clone(),
+                        deleted: true,
+                        content: String::new(),
+                    })
+                    .map(|_| {
                         report.deleted += 1;
                         None
                     })
@@ -477,7 +573,11 @@ pub async fn set_passphrase(value: Option<&str>) -> Result<(), String> {
 /// too deep never starts a second, separate store.
 pub fn remote_dir(folder: &str) -> PathBuf {
     let folder = PathBuf::from(folder);
-    folder.ancestors().find(|a| a.file_name().is_some_and(|n| n == DIR_NAME)).map(Path::to_path_buf).unwrap_or_else(|| folder.join(DIR_NAME))
+    folder
+        .ancestors()
+        .find(|a| a.file_name().is_some_and(|n| n == DIR_NAME))
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| folder.join(DIR_NAME))
 }
 
 /// One sync with the saved settings and passphrase; the report is also saved.
@@ -486,7 +586,9 @@ pub async fn run(config_dir: &Path) -> Result<Report, String> {
     let _one_at_a_time = RUNNING.lock().await;
     let mut s = settings(config_dir);
     let folder = s.folder.clone().ok_or("Choose a sync folder first.")?;
-    let phrase = passphrase().await?.ok_or("Set the sync passphrase first.")?;
+    let phrase = passphrase()
+        .await?
+        .ok_or("Set the sync passphrase first.")?;
     let dir = config_dir.to_path_buf();
     let report = tokio::task::spawn_blocking(move || {
         let remote = remote_dir(&folder);
@@ -508,7 +610,9 @@ pub async fn run(config_dir: &Path) -> Result<Report, String> {
 pub fn start(app: tauri::AppHandle) {
     use tauri::Emitter;
     tauri::async_runtime::spawn(async move {
-        let Ok(config_dir) = crate::settings::get_config_dir(&app) else { return };
+        let Ok(config_dir) = crate::settings::get_config_dir(&app) else {
+            return;
+        };
         // A first sync shortly after start, then on the chosen interval.
         tokio::time::sleep(std::time::Duration::from_secs(20)).await;
         loop {
@@ -562,7 +666,9 @@ mod tests {
         assert!(unlock(&remote, "short").is_err());
         let key = unlock(&remote, "first passphrase").unwrap();
         assert_eq!(unlock(&remote, "first passphrase").unwrap(), key);
-        assert!(unlock(&remote, "wrong passphrase").unwrap_err().contains("does not open"));
+        assert!(unlock(&remote, "wrong passphrase")
+            .unwrap_err()
+            .contains("does not open"));
     }
 
     #[test]
@@ -570,8 +676,25 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         let remote = folder.path().join(DIR_NAME);
         let key = unlock(&remote, "shared passphrase").unwrap();
-        let a = device(&[("chat/conversations/c1.json", r#"{"id":"c1","title":"From A"}"#), ("chat/memories.json", "[]"), ("skills/s/SKILL.md", "# Skill"), ("chat/providers.json", "{\"secret\":1}")]);
-        let b = device(&[("chat/conversations/c2.json", r#"{"id":"c2","title":"From B"}"#), ("chat/conversations/t.json", r#"{"id":"t","temporary":true}"#)]);
+        let a = device(&[
+            (
+                "chat/conversations/c1.json",
+                r#"{"id":"c1","title":"From A"}"#,
+            ),
+            ("chat/memories.json", "[]"),
+            ("skills/s/SKILL.md", "# Skill"),
+            ("chat/providers.json", "{\"secret\":1}"),
+        ]);
+        let b = device(&[
+            (
+                "chat/conversations/c2.json",
+                r#"{"id":"c2","title":"From B"}"#,
+            ),
+            (
+                "chat/conversations/t.json",
+                r#"{"id":"t","temporary":true}"#,
+            ),
+        ]);
 
         let r = sync_once(a.path(), &remote, &key);
         assert_eq!((r.sent, r.received), (3, 0), "{r:?}");
@@ -582,26 +705,45 @@ mod tests {
         }
         let r = sync_once(b.path(), &remote, &key);
         assert_eq!((r.sent, r.received), (1, 3), "{r:?}");
-        assert_eq!(text(b.path(), "chat/conversations/c1.json").unwrap(), r#"{"id":"c1","title":"From A"}"#);
+        assert_eq!(
+            text(b.path(), "chat/conversations/c1.json").unwrap(),
+            r#"{"id":"c1","title":"From A"}"#
+        );
         assert_eq!(text(b.path(), "skills/s/SKILL.md").unwrap(), "# Skill");
-        assert!(text(b.path(), "chat/providers.json").is_none(), "device settings and keys stay home");
+        assert!(
+            text(b.path(), "chat/providers.json").is_none(),
+            "device settings and keys stay home"
+        );
         sync_once(a.path(), &remote, &key);
         assert!(text(a.path(), "chat/conversations/c2.json").is_some());
-        assert!(text(a.path(), "chat/conversations/t.json").is_none(), "temporary chats stay home");
+        assert!(
+            text(a.path(), "chat/conversations/t.json").is_none(),
+            "temporary chats stay home"
+        );
 
         // An edit on B reaches A; nothing changes when both are in step.
-        crate::chat::at_rest::write(b.path().join("chat/memories.json"), "[\"likes tea\"]").unwrap();
+        crate::chat::at_rest::write(b.path().join("chat/memories.json"), "[\"likes tea\"]")
+            .unwrap();
         assert_eq!(sync_once(b.path(), &remote, &key).sent, 1);
         assert_eq!(sync_once(a.path(), &remote, &key).received, 1);
-        assert_eq!(text(a.path(), "chat/memories.json").unwrap(), "[\"likes tea\"]");
-        assert_eq!(sync_once(a.path(), &remote, &key).summary(), "Everything was already in sync.");
+        assert_eq!(
+            text(a.path(), "chat/memories.json").unwrap(),
+            "[\"likes tea\"]"
+        );
+        assert_eq!(
+            sync_once(a.path(), &remote, &key).summary(),
+            "Everything was already in sync."
+        );
 
         // A deletion on A reaches B instead of the file coming back.
         std::fs::remove_file(a.path().join("skills/s/SKILL.md")).unwrap();
         assert_eq!(sync_once(a.path(), &remote, &key).deleted, 1);
         assert_eq!(sync_once(b.path(), &remote, &key).deleted, 1);
         assert!(text(b.path(), "skills/s/SKILL.md").is_none());
-        assert_eq!(sync_once(a.path(), &remote, &key).summary(), "Everything was already in sync.");
+        assert_eq!(
+            sync_once(a.path(), &remote, &key).summary(),
+            "Everything was already in sync."
+        );
 
         // Both edit the same file: one conflict, the newer edit on both.
         crate::chat::at_rest::write(a.path().join("chat/memories.json"), "[\"A\"]").unwrap();
@@ -611,7 +753,10 @@ mod tests {
         let r = sync_once(b.path(), &remote, &key);
         assert_eq!(r.conflicts, ["chat/memories.json"]);
         sync_once(a.path(), &remote, &key);
-        assert_eq!(text(a.path(), "chat/memories.json").unwrap(), "[\"B newer\"]");
+        assert_eq!(
+            text(a.path(), "chat/memories.json").unwrap(),
+            "[\"B newer\"]"
+        );
     }
 
     #[test]
@@ -627,23 +772,54 @@ mod tests {
         let b = device(&[("chat/memories.json", "[\"old\"]")]);
         sync_once(b.path(), &remote, &k2);
         std::thread::sleep(std::time::Duration::from_millis(20));
-        crate::chat::at_rest::write(a.path().join("chat/memories.json"), "[\"edited here\"]").unwrap();
+        crate::chat::at_rest::write(a.path().join("chat/memories.json"), "[\"edited here\"]")
+            .unwrap();
         let r = sync_once(a.path(), &remote, &k2);
-        assert_eq!(r.conflicts, ["chat/memories.json"], "a first sync with a store treats differences as conflicts");
-        assert_eq!(text(a.path(), "chat/memories.json").unwrap(), "[\"edited here\"]", "the newer local edit is kept");
+        assert_eq!(
+            r.conflicts,
+            ["chat/memories.json"],
+            "a first sync with a store treats differences as conflicts"
+        );
+        assert_eq!(
+            text(a.path(), "chat/memories.json").unwrap(),
+            "[\"edited here\"]",
+            "the newer local edit is kept"
+        );
     }
 
     #[test]
     fn a_folder_inside_the_store_means_the_store() {
-        assert_eq!(remote_dir("/x/Dropbox"), PathBuf::from("/x/Dropbox/Lumo Sync"));
-        assert_eq!(remote_dir("/x/Dropbox/Lumo Sync"), PathBuf::from("/x/Dropbox/Lumo Sync"));
-        assert_eq!(remote_dir("/x/Dropbox/Lumo Sync/items"), PathBuf::from("/x/Dropbox/Lumo Sync"));
+        assert_eq!(
+            remote_dir("/x/Dropbox"),
+            PathBuf::from("/x/Dropbox/Lumo Sync")
+        );
+        assert_eq!(
+            remote_dir("/x/Dropbox/Lumo Sync"),
+            PathBuf::from("/x/Dropbox/Lumo Sync")
+        );
+        assert_eq!(
+            remote_dir("/x/Dropbox/Lumo Sync/items"),
+            PathBuf::from("/x/Dropbox/Lumo Sync")
+        );
     }
 
     #[test]
     fn only_known_paths_inside_the_config_folder_are_written() {
-        assert!(allowed("chat/conversations/abc.json") && allowed("skills/x/SKILL.md") && allowed("chat/agents.json"));
-        for bad in ["../x", "chat/conversations/../../x.json", "chat/providers.json", "/etc/passwd", "chat/conversations/a/b.json", "skills//x", "C:/x", "chat\\x"] {
+        assert!(
+            allowed("chat/conversations/abc.json")
+                && allowed("skills/x/SKILL.md")
+                && allowed("chat/agents.json")
+        );
+        for bad in [
+            "../x",
+            "chat/conversations/../../x.json",
+            "chat/providers.json",
+            "/etc/passwd",
+            "chat/conversations/a/b.json",
+            "skills//x",
+            "C:/x",
+            "chat\\x",
+        ] {
             assert!(!allowed(bad), "{bad}");
         }
     }

@@ -68,7 +68,12 @@ pub struct Memories {
 
 impl Default for Memories {
     fn default() -> Self {
-        Self { enabled: true, update: true, items: Vec::new(), keep_sensitive_out: true }
+        Self {
+            enabled: true,
+            update: true,
+            items: Vec::new(),
+            keep_sensitive_out: true,
+        }
     }
 }
 
@@ -106,15 +111,26 @@ pub fn add(memories: &mut Memories, text: &str, source: &str) -> Result<Memory, 
 }
 
 /// Adds a memory with its category, importance and confidence.
-pub fn add_filed(memories: &mut Memories, text: &str, source: &str, filing: Filing) -> Result<Memory, String> {
+pub fn add_filed(
+    memories: &mut Memories,
+    text: &str,
+    source: &str,
+    filing: Filing,
+) -> Result<Memory, String> {
     let text = text.trim();
     if text.is_empty() {
         return Err("A memory needs some text.".into());
     }
     if text.chars().count() > MAX_LENGTH {
-        return Err(format!("A memory is at most {MAX_LENGTH} characters; save the key fact only."));
+        return Err(format!(
+            "A memory is at most {MAX_LENGTH} characters; save the key fact only."
+        ));
     }
-    if let Some(existing) = memories.items.iter().find(|m| m.text.eq_ignore_ascii_case(text)) {
+    if let Some(existing) = memories
+        .items
+        .iter()
+        .find(|m| m.text.eq_ignore_ascii_case(text))
+    {
         return Ok(existing.clone());
     }
     // When full, the least important of the assistant's own facts goes first, oldest first.
@@ -134,9 +150,17 @@ pub fn add_filed(memories: &mut Memories, text: &str, source: &str, filing: Fili
         text: text.to_string(),
         created_at: Utc::now(),
         source: source.to_string(),
-        category: if CATEGORIES.contains(&category.as_str()) { category } else { String::new() },
+        category: if CATEGORIES.contains(&category.as_str()) {
+            category
+        } else {
+            String::new()
+        },
         importance: filing.importance.unwrap_or(2).clamp(1, 3),
-        confidence: if filing.inferred { "inferred".into() } else { "stated".into() },
+        confidence: if filing.inferred {
+            "inferred".into()
+        } else {
+            "stated".into()
+        },
         conversation: filing.conversation,
     };
     memories.items.push(memory.clone());
@@ -171,12 +195,22 @@ pub fn prompt(memories: &Memories) -> Option<String> {
         let mut groups: Vec<&str> = CATEGORIES.to_vec();
         groups.push("");
         for group in groups {
-            let mut items: Vec<&Memory> = memories.items.iter().filter(|m| m.category == group || (group.is_empty() && !CATEGORIES.contains(&m.category.as_str()))).collect();
+            let mut items: Vec<&Memory> = memories
+                .items
+                .iter()
+                .filter(|m| {
+                    m.category == group
+                        || (group.is_empty() && !CATEGORIES.contains(&m.category.as_str()))
+                })
+                .collect();
             if items.is_empty() {
                 continue;
             }
             items.sort_by_key(|m| std::cmp::Reverse(m.importance));
-            out.push_str(&format!("\n{}:", if group.is_empty() { "Other" } else { group }));
+            out.push_str(&format!(
+                "\n{}:",
+                if group.is_empty() { "Other" } else { group }
+            ));
             for m in items {
                 let mark = match (m.importance, m.confidence.as_str()) {
                     (3, "inferred") => " (important, inferred)",
@@ -184,7 +218,11 @@ pub fn prompt(memories: &Memories) -> Option<String> {
                     (_, "inferred") => " (inferred)",
                     _ => "",
                 };
-                out.push_str(&format!("\n- {}: {}{mark}", &m.id[..8.min(m.id.len())], m.text));
+                out.push_str(&format!(
+                    "\n- {}: {}{mark}",
+                    &m.id[..8.min(m.id.len())],
+                    m.text
+                ));
             }
         }
     }
@@ -194,11 +232,11 @@ pub fn prompt(memories: &Memories) -> Option<String> {
 /// Finds a memory by its full id or the short id shown in the prompt.
 pub fn resolve<'a>(memories: &'a Memories, id: &str) -> Option<&'a Memory> {
     let id = id.trim();
-    memories
-        .items
-        .iter()
-        .find(|m| m.id == id)
-        .or_else(|| (id.len() >= 6).then(|| memories.items.iter().find(|m| m.id.starts_with(id))).flatten())
+    memories.items.iter().find(|m| m.id == id).or_else(|| {
+        (id.len() >= 6)
+            .then(|| memories.items.iter().find(|m| m.id.starts_with(id)))
+            .flatten()
+    })
 }
 
 #[cfg(test)]
@@ -242,31 +280,83 @@ mod tests {
     #[test]
     fn facts_are_filed_and_weighed() {
         let mut m = Memories::default();
-        add_filed(&mut m, "Prefers metric units", "assistant", Filing { category: "Preference".into(), importance: Some(3), inferred: false, conversation: Some("c1".into()) }).unwrap();
-        add_filed(&mut m, "Probably works in fintech", "assistant", Filing { category: "work".into(), importance: Some(1), inferred: true, conversation: None }).unwrap();
+        add_filed(
+            &mut m,
+            "Prefers metric units",
+            "assistant",
+            Filing {
+                category: "Preference".into(),
+                importance: Some(3),
+                inferred: false,
+                conversation: Some("c1".into()),
+            },
+        )
+        .unwrap();
+        add_filed(
+            &mut m,
+            "Probably works in fintech",
+            "assistant",
+            Filing {
+                category: "work".into(),
+                importance: Some(1),
+                inferred: true,
+                conversation: None,
+            },
+        )
+        .unwrap();
         add(&mut m, "Lives in Porto", "user").unwrap();
-        add_filed(&mut m, "Odd one", "assistant", Filing { category: "astrology".into(), importance: Some(9), ..Default::default() }).unwrap();
+        add_filed(
+            &mut m,
+            "Odd one",
+            "assistant",
+            Filing {
+                category: "astrology".into(),
+                importance: Some(9),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert_eq!(m.items[0].category, "preference");
         assert_eq!(m.items[0].conversation.as_deref(), Some("c1"));
         assert_eq!(m.items[1].confidence, "inferred");
-        assert_eq!((m.items[2].category.as_str(), m.items[2].importance, m.items[2].confidence.as_str()), ("", 2, "stated"));
-        assert_eq!((m.items[3].category.as_str(), m.items[3].importance), ("", 3));
+        assert_eq!(
+            (
+                m.items[2].category.as_str(),
+                m.items[2].importance,
+                m.items[2].confidence.as_str()
+            ),
+            ("", 2, "stated")
+        );
+        assert_eq!(
+            (m.items[3].category.as_str(), m.items[3].importance),
+            ("", 3)
+        );
         let p = prompt(&m).unwrap();
         assert!(p.contains("preference:\n- ") && p.contains("Prefers metric units (important)"));
         assert!(p.contains("Probably works in fintech (inferred)"));
         assert!(p.find("preference:").unwrap() < p.find("work:").unwrap());
         assert!(p.contains("Other:"));
         // Old saved memories, without the new fields, still load.
-        let old: Memory = serde_json::from_str(r#"{"id":"x","text":"t","createdAt":"2026-01-01T00:00:00Z"}"#).unwrap();
+        let old: Memory =
+            serde_json::from_str(r#"{"id":"x","text":"t","createdAt":"2026-01-01T00:00:00Z"}"#)
+                .unwrap();
         assert_eq!((old.importance, old.confidence.as_str()), (2, "stated"));
         // When full, the least important assistant fact goes first.
         let mut full = Memories::default();
         for i in 0..MAX_MEMORIES {
-            add_filed(&mut full, &format!("fact {i}"), "assistant", Filing { importance: Some(if i == 50 { 1 } else { 2 }), ..Default::default() }).unwrap();
+            add_filed(
+                &mut full,
+                &format!("fact {i}"),
+                "assistant",
+                Filing {
+                    importance: Some(if i == 50 { 1 } else { 2 }),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
         }
         add(&mut full, "new", "user").unwrap();
         assert!(!full.items.iter().any(|x| x.text == "fact 50"));
         assert!(full.items.iter().any(|x| x.text == "fact 0"));
     }
-
 }

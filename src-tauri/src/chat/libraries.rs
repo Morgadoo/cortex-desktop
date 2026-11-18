@@ -76,7 +76,9 @@ fn lib_dir(config_dir: &Path, id: &str) -> Result<PathBuf, String> {
 }
 
 pub fn list(config_dir: &Path) -> Vec<Library> {
-    let Ok(entries) = std::fs::read_dir(root(config_dir)) else { return Vec::new() };
+    let Ok(entries) = std::fs::read_dir(root(config_dir)) else {
+        return Vec::new();
+    };
     let mut out: Vec<Library> = entries
         .filter_map(Result::ok)
         .filter_map(|e| crate::chat::at_rest::read_to_string(e.path().join("library.json")).ok())
@@ -87,12 +89,16 @@ pub fn list(config_dir: &Path) -> Vec<Library> {
 }
 
 pub fn load(config_dir: &Path, id: &str) -> Result<Library, String> {
-    let text = crate::chat::at_rest::read_to_string(lib_dir(config_dir, id)?.join("library.json")).map_err(|_| "No such library.".to_string())?;
+    let text = crate::chat::at_rest::read_to_string(lib_dir(config_dir, id)?.join("library.json"))
+        .map_err(|_| "No such library.".to_string())?;
     serde_json::from_str(&text).map_err(|e| e.to_string())
 }
 
 fn save(config_dir: &Path, library: &Library) -> Result<(), String> {
-    write_json(&lib_dir(config_dir, &library.id)?.join("library.json"), library)
+    write_json(
+        &lib_dir(config_dir, &library.id)?.join("library.json"),
+        library,
+    )
 }
 
 pub fn create(config_dir: &Path, name: &str, description: &str) -> Result<Library, String> {
@@ -129,17 +135,27 @@ pub const OFFICE_EXTENSIONS: &[&str] = &["docx", "pptx", "odt", "odp"];
 /// The text of an Office document: paragraphs on their own lines, slides in order.
 pub fn office_text(bytes: &[u8], ext: &str) -> Result<String, String> {
     use std::io::Read as _;
-    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|_| "The document could not be opened (not an Office file?).".to_string())?;
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes))
+        .map_err(|_| "The document could not be opened (not an Office file?).".to_string())?;
     let mut parts: Vec<String> = match ext {
         "docx" => {
             let mut names = vec!["word/document.xml".to_string()];
-            names.extend(zip.file_names().filter(|n| n.starts_with("word/footnotes") && n.ends_with(".xml")).map(str::to_string));
+            names.extend(
+                zip.file_names()
+                    .filter(|n| n.starts_with("word/footnotes") && n.ends_with(".xml"))
+                    .map(str::to_string),
+            );
             names
         }
         "pptx" => {
             let mut slides: Vec<(u32, String)> = zip
                 .file_names()
-                .filter_map(|n| n.strip_prefix("ppt/slides/slide").and_then(|r| r.strip_suffix(".xml")).and_then(|d| d.parse().ok()).map(|d| (d, n.to_string())))
+                .filter_map(|n| {
+                    n.strip_prefix("ppt/slides/slide")
+                        .and_then(|r| r.strip_suffix(".xml"))
+                        .and_then(|d| d.parse().ok())
+                        .map(|d| (d, n.to_string()))
+                })
                 .collect();
             slides.sort();
             slides.into_iter().map(|(_, n)| n).collect()
@@ -153,7 +169,10 @@ pub fn office_text(bytes: &[u8], ext: &str) -> Result<String, String> {
     let mut out = Vec::new();
     for (i, name) in parts.iter().enumerate() {
         let mut xml = String::new();
-        zip.by_name(name).map_err(|e| e.to_string())?.read_to_string(&mut xml).map_err(|e| e.to_string())?;
+        zip.by_name(name)
+            .map_err(|e| e.to_string())?
+            .read_to_string(&mut xml)
+            .map_err(|e| e.to_string())?;
         let text = xml_text(&xml);
         if ext == "pptx" {
             out.push(format!("Slide {}:\n{}", i + 1, text.trim()));
@@ -175,9 +194,15 @@ fn xml_text(xml: &str) -> String {
         if !(between.trim().is_empty() && between.contains('\n')) {
             out.push_str(&decode_entities(between));
         }
-        let Some(end) = rest[start..].find('>') else { break };
+        let Some(end) = rest[start..].find('>') else {
+            break;
+        };
         let tag = &rest[start + 1..start + end];
-        let name = tag.trim_start_matches('/').split(|c: char| c.is_whitespace() || c == '/').next().unwrap_or_default();
+        let name = tag
+            .trim_start_matches('/')
+            .split(|c: char| c.is_whitespace() || c == '/')
+            .next()
+            .unwrap_or_default();
         let closing = tag.starts_with('/');
         match name {
             "w:p" | "a:p" | "text:p" | "text:h" if closing => out.push('\n'),
@@ -230,7 +255,9 @@ fn decode_entities(s: &str) -> String {
             "gt" => Some('>'),
             "quot" => Some('"'),
             "apos" => Some('\''),
-            e if e.starts_with("#x") => u32::from_str_radix(&e[2..], 16).ok().and_then(char::from_u32),
+            e if e.starts_with("#x") => u32::from_str_radix(&e[2..], 16)
+                .ok()
+                .and_then(char::from_u32),
             e if e.starts_with('#') => e[1..].parse().ok().and_then(char::from_u32),
             _ => None,
         };
@@ -248,11 +275,19 @@ fn decode_entities(s: &str) -> String {
 /// attachments). Office documents inside are read too; binaries are listed but skipped.
 pub fn zip_text(bytes: &[u8], budget: usize) -> Result<String, String> {
     use std::io::Read as _;
-    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|_| "That is not a ZIP archive.".to_string())?;
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes))
+        .map_err(|_| "That is not a ZIP archive.".to_string())?;
     let mut out = String::new();
     let mut skipped = Vec::new();
     let names: Vec<String> = zip.file_names().map(str::to_string).collect();
-    let mut names: Vec<String> = names.into_iter().filter(|n| !n.ends_with('/') && !n.starts_with("__MACOSX/") && !n.split('/').any(|p| p.starts_with('.'))).collect();
+    let mut names: Vec<String> = names
+        .into_iter()
+        .filter(|n| {
+            !n.ends_with('/')
+                && !n.starts_with("__MACOSX/")
+                && !n.split('/').any(|p| p.starts_with('.'))
+        })
+        .collect();
     names.sort();
     for name in &names {
         if out.len() >= budget {
@@ -271,7 +306,11 @@ pub fn zip_text(bytes: &[u8], budget: usize) -> Result<String, String> {
             skipped.push(name.clone());
             continue;
         }
-        let ext = std::path::Path::new(name).extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
+        let ext = std::path::Path::new(name)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
         let text = if OFFICE_EXTENSIONS.contains(&ext.as_str()) {
             office_text(&data, &ext).ok()
         } else if data.iter().take(8000).any(|b| *b == 0) {
@@ -292,19 +331,40 @@ pub fn zip_text(bytes: &[u8], budget: usize) -> Result<String, String> {
         return Err("The archive has no readable text files.".into());
     }
     if !skipped.is_empty() {
-        out.push_str(&format!("(Not read: {})", skipped.iter().take(30).cloned().collect::<Vec<_>>().join(", ")));
+        out.push_str(&format!(
+            "(Not read: {})",
+            skipped
+                .iter()
+                .take(30)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
     }
     Ok(out)
 }
 
 /// Moves a document to another library, its text and name kept.
-pub fn move_document(config_dir: &Path, from: &str, document_id: &str, to: &str) -> Result<(), String> {
+pub fn move_document(
+    config_dir: &Path,
+    from: &str,
+    document_id: &str,
+    to: &str,
+) -> Result<(), String> {
     if from == to {
         return Ok(());
     }
     let source = load(config_dir, from)?;
-    let doc = source.documents.iter().find(|d| d.id == document_id).ok_or("That document is gone.")?.clone();
-    let text = crate::chat::at_rest::read_to_string(docs_dir(config_dir, from)?.join(format!("{}.txt", doc.id))).map_err(|e| e.to_string())?;
+    let doc = source
+        .documents
+        .iter()
+        .find(|d| d.id == document_id)
+        .ok_or("That document is gone.")?
+        .clone();
+    let text = crate::chat::at_rest::read_to_string(
+        docs_dir(config_dir, from)?.join(format!("{}.txt", doc.id)),
+    )
+    .map_err(|e| e.to_string())?;
     load(config_dir, to)?;
     add_text(config_dir, to, &doc.name, &text)?;
     remove(config_dir, from, document_id).map(|_| ())
@@ -312,7 +372,11 @@ pub fn move_document(config_dir: &Path, from: &str, document_id: &str, to: &str)
 
 /// The text of a file with its line breaks, by its kind: PDF, Office, HTML or plain text.
 pub fn read_text(path: &Path) -> Result<String, String> {
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
     let text = match ext.as_str() {
         "pdf" => {
             let pattern = glob::Pattern::escape(&path.to_string_lossy());
@@ -325,7 +389,10 @@ pub fn read_text(path: &Path) -> Result<String, String> {
                 .ok_or("The PDF could not be read.")?
                 .map_err(|e| format!("The PDF could not be read: {e}"))?
         }
-        e if OFFICE_EXTENSIONS.contains(&e) => office_text(&crate::chat::at_rest::read(path).map_err(|e| e.to_string())?, e)?,
+        e if OFFICE_EXTENSIONS.contains(&e) => office_text(
+            &crate::chat::at_rest::read(path).map_err(|e| e.to_string())?,
+            e,
+        )?,
         "html" | "htm" => {
             let raw = crate::chat::at_rest::read_to_string(path).map_err(|e| e.to_string())?;
             let doc = scraper::Html::parse_document(&raw);
@@ -348,7 +415,11 @@ pub fn read_text(path: &Path) -> Result<String, String> {
 
 /// The text of a file, by its kind, with whitespace collapsed for indexing.
 pub fn extract(path: &Path) -> Result<String, String> {
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
     let text = read_text(path)?;
     let text: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if text.trim().is_empty() {
@@ -367,13 +438,21 @@ pub fn extract(path: &Path) -> Result<String, String> {
 /// Adds a file's text to a library.
 pub fn add(config_dir: &Path, library_id: &str, path: &Path) -> Result<Library, String> {
     let text = extract(path)?;
-    let name = path.file_name().map_or_else(|| "document".into(), |n| n.to_string_lossy().into_owned());
+    let name = path
+        .file_name()
+        .map_or_else(|| "document".into(), |n| n.to_string_lossy().into_owned());
     add_text(config_dir, library_id, &name, &text)
 }
 
 /// Image files, whose text is read by a model that can see (`ocr`).
 pub fn is_image(path: &Path) -> Option<&'static str> {
-    match path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase().as_str() {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+        .as_str()
+    {
         "png" => Some("image/png"),
         "jpg" | "jpeg" => Some("image/jpeg"),
         "webp" => Some("image/webp"),
@@ -383,7 +462,12 @@ pub fn is_image(path: &Path) -> Option<&'static str> {
 }
 
 /// Adds text already extracted (from a file, or read from an image) as a document.
-pub fn add_text(config_dir: &Path, library_id: &str, name: &str, text: &str) -> Result<Library, String> {
+pub fn add_text(
+    config_dir: &Path,
+    library_id: &str,
+    name: &str,
+    text: &str,
+) -> Result<Library, String> {
     let mut library = load(config_dir, library_id)?;
     let text: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if text.trim().is_empty() {
@@ -402,14 +486,18 @@ pub fn add_text(config_dir: &Path, library_id: &str, name: &str, text: &str) -> 
     };
     let docs = lib_dir(config_dir, library_id)?.join("docs");
     std::fs::create_dir_all(&docs).map_err(|e| e.to_string())?;
-    crate::chat::at_rest::write(docs.join(format!("{}.txt", doc.id)), text).map_err(|e| e.to_string())?;
+    crate::chat::at_rest::write(docs.join(format!("{}.txt", doc.id)), text)
+        .map_err(|e| e.to_string())?;
     library.documents.push(doc);
     save(config_dir, &library)?;
     Ok(library)
 }
 
 /// Extensions an archive import reads; the rest (images, styles, scripts) are passed over.
-const ARCHIVE_EXTENSIONS: &[&str] = &["md", "markdown", "txt", "csv", "tsv", "html", "htm", "pdf", "docx", "pptx", "odt", "odp", "json", "yaml", "yml", "org", "rst"];
+const ARCHIVE_EXTENSIONS: &[&str] = &[
+    "md", "markdown", "txt", "csv", "tsv", "html", "htm", "pdf", "docx", "pptx", "odt", "odp",
+    "json", "yaml", "yml", "org", "rst",
+];
 
 /// A page's name without the id Notion adds (`Trip plan 1a2b…(32 hex)`), with its folders:
 /// `Projects/Trip plan 1a2b….md` → `Projects / Trip plan.md`.
@@ -429,14 +517,19 @@ pub fn archive_name(path: &str) -> String {
             None => stem.to_string(),
         }
     };
-    path.split('/').filter(|p| !p.is_empty()).map(clean).collect::<Vec<_>>().join(" / ")
+    path.split('/')
+        .filter(|p| !p.is_empty())
+        .map(clean)
+        .collect::<Vec<_>>()
+        .join(" / ")
 }
 
 /// The readable files of a ZIP archive (a Notion or Confluence export, a folder of notes), as
 /// names and bytes. ZIPs inside it (Notion splits large exports into parts) are opened too.
 pub fn archive_files(bytes: &[u8], depth: u8) -> Result<Vec<(String, Vec<u8>)>, String> {
     use std::io::Read as _;
-    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|_| "That is not a ZIP archive.".to_string())?;
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
+        .map_err(|_| "That is not a ZIP archive.".to_string())?;
     let mut out = Vec::new();
     let mut total = 0usize;
     for i in 0..archive.len() {
@@ -444,12 +537,20 @@ pub fn archive_files(bytes: &[u8], depth: u8) -> Result<Vec<(String, Vec<u8>)>, 
         if !entry.is_file() || entry.size() > 50 * 1024 * 1024 {
             continue;
         }
-        let Some(path) = entry.enclosed_name() else { continue };
+        let Some(path) = entry.enclosed_name() else {
+            continue;
+        };
         let path = path.to_string_lossy().replace('\\', "/");
-        if path.split('/').any(|p| p.starts_with("__MACOSX") || p.starts_with('.')) {
+        if path
+            .split('/')
+            .any(|p| p.starts_with("__MACOSX") || p.starts_with('.'))
+        {
             continue;
         }
-        let ext = path.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
+        let ext = path
+            .rsplit_once('.')
+            .map(|(_, e)| e.to_ascii_lowercase())
+            .unwrap_or_default();
         if ext != "zip" && !ARCHIVE_EXTENSIONS.contains(&ext.as_str()) {
             continue;
         }
@@ -480,7 +581,11 @@ pub struct ArchiveReport {
 }
 
 /// Adds every readable file of a ZIP archive to a library, one document each.
-pub fn import_archive(config_dir: &Path, library_id: &str, bytes: &[u8]) -> Result<ArchiveReport, String> {
+pub fn import_archive(
+    config_dir: &Path,
+    library_id: &str,
+    bytes: &[u8],
+) -> Result<ArchiveReport, String> {
     let files = archive_files(bytes, 0)?;
     if files.is_empty() {
         return Err("No pages or documents were found in that archive.".into());
@@ -492,10 +597,15 @@ pub fn import_archive(config_dir: &Path, library_id: &str, bytes: &[u8]) -> Resu
     let mut library = load(config_dir, library_id)?;
     for (i, (path, data)) in files.iter().enumerate() {
         let name = archive_name(path);
-        let ext = path.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
+        let ext = path
+            .rsplit_once('.')
+            .map(|(_, e)| e.to_ascii_lowercase())
+            .unwrap_or_default();
         // Read through a file, so every kind is read as when it is added from disk.
         let file = scratch.join(format!("{i}.{ext}"));
-        let result = crate::chat::at_rest::write(&file, data).map_err(|e| e.to_string()).and_then(|()| read_text(&file));
+        let result = crate::chat::at_rest::write(&file, data)
+            .map_err(|e| e.to_string())
+            .and_then(|()| read_text(&file));
         let _ = std::fs::remove_file(&file);
         match result.and_then(|text| add_text(config_dir, library_id, &name, &text)) {
             Ok(updated) => {
@@ -506,13 +616,19 @@ pub fn import_archive(config_dir: &Path, library_id: &str, bytes: &[u8]) -> Resu
         }
     }
     let _ = std::fs::remove_dir_all(&scratch);
-    Ok(ArchiveReport { library, added, skipped })
+    Ok(ArchiveReport {
+        library,
+        added,
+        skipped,
+    })
 }
 
 impl Document {
     /// When the document last changed: its file's time for a mirrored folder, else when it was added.
     pub fn changed_at(&self) -> DateTime<Utc> {
-        self.modified.and_then(|secs| DateTime::from_timestamp(secs, 0)).unwrap_or(self.added_at)
+        self.modified
+            .and_then(|secs| DateTime::from_timestamp(secs, 0))
+            .unwrap_or(self.added_at)
     }
 }
 
@@ -538,12 +654,27 @@ pub fn parse_since(text: &str, now: DateTime<Utc>) -> Option<DateTime<Utc>> {
 }
 
 /// Keeps the passages from documents changed on or after `since` (Onyx's time cutoff).
-pub fn changed_since(config_dir: &Path, passages: Vec<Passage>, since: DateTime<Utc>) -> Vec<Passage> {
+pub fn changed_since(
+    config_dir: &Path,
+    passages: Vec<Passage>,
+    since: DateTime<Utc>,
+) -> Vec<Passage> {
     let dates: HashMap<(String, String), DateTime<Utc>> = list(config_dir)
         .into_iter()
-        .flat_map(|l| l.documents.into_iter().map(move |d| ((l.name.clone(), d.name.clone()), d.changed_at())))
+        .flat_map(|l| {
+            l.documents
+                .into_iter()
+                .map(move |d| ((l.name.clone(), d.name.clone()), d.changed_at()))
+        })
         .collect();
-    passages.into_iter().filter(|p| dates.get(&(p.library.clone(), p.document.clone())).is_some_and(|d| *d >= since)).collect()
+    passages
+        .into_iter()
+        .filter(|p| {
+            dates
+                .get(&(p.library.clone(), p.document.clone()))
+                .is_some_and(|d| *d >= since)
+        })
+        .collect()
 }
 
 /// Where a library keeps its documents' text (and their cached vectors).
@@ -576,34 +707,61 @@ pub fn remove(config_dir: &Path, library_id: &str, document_id: &str) -> Result<
 const READ_PART: usize = 40_000;
 
 /// A whole document (or one part of a long one), found by name, for `read_document`.
-pub fn read_document(config_dir: &Path, library: &str, name: &str, part: usize) -> Result<String, String> {
+pub fn read_document(
+    config_dir: &Path,
+    library: &str,
+    name: &str,
+    part: usize,
+) -> Result<String, String> {
     let wanted = name.trim().to_lowercase();
-    let found = list(config_dir).into_iter().filter(|l| library.trim().is_empty() || l.name.eq_ignore_ascii_case(library.trim())).find_map(|l| {
-        let doc = l
-            .documents
-            .iter()
-            .find(|d| d.name.to_lowercase() == wanted)
-            .or_else(|| l.documents.iter().find(|d| d.name.to_lowercase().contains(&wanted)))
-            .cloned()?;
-        Some((l, doc))
-    });
+    let found = list(config_dir)
+        .into_iter()
+        .filter(|l| library.trim().is_empty() || l.name.eq_ignore_ascii_case(library.trim()))
+        .find_map(|l| {
+            let doc = l
+                .documents
+                .iter()
+                .find(|d| d.name.to_lowercase() == wanted)
+                .or_else(|| {
+                    l.documents
+                        .iter()
+                        .find(|d| d.name.to_lowercase().contains(&wanted))
+                })
+                .cloned()?;
+            Some((l, doc))
+        });
     let Some((library, doc)) = found else {
-        return Err(format!("No library document is named {name}; use a name from search_library."));
+        return Err(format!(
+            "No library document is named {name}; use a name from search_library."
+        ));
     };
-    let text = crate::chat::at_rest::read_to_string(docs_dir(config_dir, &library.id)?.join(format!("{}.txt", doc.id))).map_err(|e| e.to_string())?;
+    let text = crate::chat::at_rest::read_to_string(
+        docs_dir(config_dir, &library.id)?.join(format!("{}.txt", doc.id)),
+    )
+    .map_err(|e| e.to_string())?;
     let chars: Vec<char> = text.chars().collect();
     let parts = chars.len().div_ceil(READ_PART).max(1);
     if part > parts {
         return Err(format!("{} has {parts} part(s).", doc.name));
     }
-    let slice: String = chars[(part - 1) * READ_PART..(part * READ_PART).min(chars.len())].iter().collect();
-    Ok(format!("# {} ({}), part {part} of {parts}\n\n{slice}", doc.name, library.name))
+    let slice: String = chars[(part - 1) * READ_PART..(part * READ_PART).min(chars.len())]
+        .iter()
+        .collect();
+    Ok(format!(
+        "# {} ({}), part {part} of {parts}\n\n{slice}",
+        doc.name, library.name
+    ))
 }
 
 /// Saves a web page's readable text into a library (Onyx's web connector, Open WebUI's "add a
 /// webpage"); the document is named after the page and starts with its address.
-pub async fn add_web_page(config_dir: &Path, library_id: &str, url: &str) -> Result<Library, String> {
-    let parsed = url::Url::parse(url.trim()).map_err(|_| "That is not a web address.".to_string())?;
+pub async fn add_web_page(
+    config_dir: &Path,
+    library_id: &str,
+    url: &str,
+) -> Result<Library, String> {
+    let parsed =
+        url::Url::parse(url.trim()).map_err(|_| "That is not a web address.".to_string())?;
     if !matches!(parsed.scheme(), "http" | "https") {
         return Err("Only http and https pages can be saved.".into());
     }
@@ -612,7 +770,11 @@ pub async fn add_web_page(config_dir: &Path, library_id: &str, url: &str) -> Res
         .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Lumo")
         .build()
         .map_err(|e| e.to_string())?;
-    let response = client.get(parsed.clone()).send().await.map_err(|e| format!("The page could not be fetched: {e}"))?;
+    let response = client
+        .get(parsed.clone())
+        .send()
+        .await
+        .map_err(|e| format!("The page could not be fetched: {e}"))?;
     if !response.status().is_success() {
         return Err(format!("The page answered {}.", response.status()));
     }
@@ -626,21 +788,60 @@ pub async fn add_web_page(config_dir: &Path, library_id: &str, url: &str) -> Res
         return Err("That page has no readable text (it may need JavaScript).".into());
     }
     let title = crate::tools::connectors::browser::extract_title(&html);
-    let host = parsed.host_str().unwrap_or("page").trim_start_matches("www.").to_string();
-    let name: String = if title.trim().is_empty() { format!("{host}{}", parsed.path()) } else { format!("{} ({host})", title.trim()) }.chars().take(120).collect();
-    add_text(config_dir, library_id, &name, &format!("Source: {parsed}\n\n{text}"))
+    let host = parsed
+        .host_str()
+        .unwrap_or("page")
+        .trim_start_matches("www.")
+        .to_string();
+    let name: String = if title.trim().is_empty() {
+        format!("{host}{}", parsed.path())
+    } else {
+        format!("{} ({host})", title.trim())
+    }
+    .chars()
+    .take(120)
+    .collect();
+    add_text(
+        config_dir,
+        library_id,
+        &name,
+        &format!("Source: {parsed}\n\n{text}"),
+    )
 }
 
 /// The indexed text of a document, for its preview (at most `max` characters).
-pub fn document_text(config_dir: &Path, library_id: &str, document_id: &str, max: usize) -> Result<String, String> {
+pub fn document_text(
+    config_dir: &Path,
+    library_id: &str,
+    document_id: &str,
+    max: usize,
+) -> Result<String, String> {
     let library = load(config_dir, library_id)?;
-    let doc = library.documents.iter().find(|d| d.id == document_id).ok_or("That document is gone.")?;
-    let text = crate::chat::at_rest::read_to_string(docs_dir(config_dir, &library.id)?.join(format!("{}.txt", doc.id))).map_err(|e| e.to_string())?;
-    Ok(if text.chars().count() > max { format!("{}\n\n… (the rest is cut here; the assistant reads it all with read_document)", text.chars().take(max).collect::<String>()) } else { text })
+    let doc = library
+        .documents
+        .iter()
+        .find(|d| d.id == document_id)
+        .ok_or("That document is gone.")?;
+    let text = crate::chat::at_rest::read_to_string(
+        docs_dir(config_dir, &library.id)?.join(format!("{}.txt", doc.id)),
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(if text.chars().count() > max {
+        format!(
+            "{}\n\n… (the rest is cut here; the assistant reads it all with read_document)",
+            text.chars().take(max).collect::<String>()
+        )
+    } else {
+        text
+    })
 }
 
 /// File types a mirrored folder indexes.
-const SYNC_EXTENSIONS: &[&str] = &["pdf", "docx", "pptx", "odt", "odp", "md", "markdown", "txt", "html", "htm", "csv", "json", "yaml", "yml", "xml", "rs", "py", "js", "ts", "go", "java", "c", "cpp", "h", "sql", "log", "rst", "org", "tex"];
+const SYNC_EXTENSIONS: &[&str] = &[
+    "pdf", "docx", "pptx", "odt", "odp", "md", "markdown", "txt", "html", "htm", "csv", "json",
+    "yaml", "yml", "xml", "rs", "py", "js", "ts", "go", "java", "c", "cpp", "h", "sql", "log",
+    "rst", "org", "tex",
+];
 /// Files indexed per folder, and how deep a folder is walked.
 const SYNC_MAX_FILES: usize = 2_000;
 const SYNC_MAX_DEPTH: usize = 6;
@@ -659,19 +860,30 @@ fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
     if depth > SYNC_MAX_DEPTH || out.len() >= SYNC_MAX_FILES {
         return;
     }
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     let mut entries: Vec<_> = entries.flatten().collect();
     entries.sort_by_key(|e| e.file_name());
     for entry in entries {
         let name = entry.file_name().to_string_lossy().into_owned();
         // Hidden files and folders, and build and dependency folders, are not documents.
-        if name.starts_with('.') || matches!(name.as_str(), "node_modules" | "target" | "__pycache__" | "venv" | ".venv") {
+        if name.starts_with('.')
+            || matches!(
+                name.as_str(),
+                "node_modules" | "target" | "__pycache__" | "venv" | ".venv"
+            )
+        {
             continue;
         }
         let path = entry.path();
         if path.is_dir() {
             walk(&path, depth + 1, out);
-        } else if path.extension().and_then(|e| e.to_str()).is_some_and(|e| SYNC_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str())) {
+        } else if path
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| SYNC_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
+        {
             out.push(path);
             if out.len() >= SYNC_MAX_FILES {
                 return;
@@ -696,16 +908,24 @@ pub fn sync(config_dir: &Path, library_id: &str) -> Result<SyncReport, String> {
     for folder in &library.folders {
         walk(Path::new(folder), 0, &mut files);
     }
-    let present: std::collections::HashSet<String> = files.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+    let present: std::collections::HashSet<String> = files
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
     // Gone, or changed: the old copy goes.
     let mut keep = Vec::new();
     for doc in std::mem::take(&mut library.documents) {
         // Documents from connectors are kept in step by `sync_connectors`.
-        let Some(source) = doc.source.clone().filter(|s| !s.starts_with(CONNECTOR_SOURCE)) else {
+        let Some(source) = doc
+            .source
+            .clone()
+            .filter(|s| !s.starts_with(CONNECTOR_SOURCE))
+        else {
             keep.push(doc);
             continue;
         };
-        let changed = present.contains(&source) && modified_secs(Path::new(&source)) != doc.modified;
+        let changed =
+            present.contains(&source) && modified_secs(Path::new(&source)) != doc.modified;
         if present.contains(&source) && !changed {
             keep.push(doc);
             continue;
@@ -718,7 +938,11 @@ pub fn sync(config_dir: &Path, library_id: &str) -> Result<SyncReport, String> {
         }
     }
     library.documents = keep;
-    let known: std::collections::HashSet<String> = library.documents.iter().filter_map(|d| d.source.clone()).collect();
+    let known: std::collections::HashSet<String> = library
+        .documents
+        .iter()
+        .filter_map(|d| d.source.clone())
+        .collect();
     for path in files {
         let source = path.to_string_lossy().into_owned();
         if known.contains(&source) {
@@ -739,7 +963,8 @@ pub fn sync(config_dir: &Path, library_id: &str) -> Result<SyncReport, String> {
                     modified: modified_secs(&path),
                     source: Some(source),
                 };
-                crate::chat::at_rest::write(docs.join(format!("{}.txt", doc.id)), text).map_err(|e| e.to_string())?;
+                crate::chat::at_rest::write(docs.join(format!("{}.txt", doc.id)), text)
+                    .map_err(|e| e.to_string())?;
                 library.documents.push(doc);
                 report.added += 1;
             }
@@ -788,13 +1013,18 @@ pub fn text_fingerprint(text: &str) -> i64 {
 
 /// Brings the documents a library mirrors from its connectors in line with what they offer.
 /// A connector that cannot be reached keeps its documents until it answers again.
-pub async fn sync_connectors(config_dir: &Path, library_id: &str, connectors: &[std::sync::Arc<dyn crate::tools::registry::Connector>]) -> Result<SyncReport, String> {
+pub async fn sync_connectors(
+    config_dir: &Path,
+    library_id: &str,
+    connectors: &[std::sync::Arc<dyn crate::tools::registry::Connector>],
+) -> Result<SyncReport, String> {
     let mut library = load(config_dir, library_id)?;
     let docs = docs_dir(config_dir, library_id)?;
     std::fs::create_dir_all(&docs).map_err(|e| e.to_string())?;
     let mut report = SyncReport::default();
     // What each connector offers now; `None` for one that did not answer.
-    let mut offered: std::collections::HashMap<String, Option<Vec<(String, String)>>> = std::collections::HashMap::new();
+    let mut offered: std::collections::HashMap<String, Option<Vec<(String, String)>>> =
+        std::collections::HashMap::new();
     for id in &library.connectors {
         let Some(connector) = connectors.iter().find(|c| c.id() == id) else {
             report.errors.push(format!("{id} is not connected."));
@@ -807,7 +1037,12 @@ pub async fn sync_connectors(config_dir: &Path, library_id: &str, connectors: &[
                     .iter()
                     .filter_map(|r| {
                         let uri = r.get("uri")?.as_str()?.to_string();
-                        let name = r.get("title").or_else(|| r.get("name")).and_then(|n| n.as_str()).unwrap_or(&uri).to_string();
+                        let name = r
+                            .get("title")
+                            .or_else(|| r.get("name"))
+                            .and_then(|n| n.as_str())
+                            .unwrap_or(&uri)
+                            .to_string();
                         Some((uri, name))
                     })
                     .take(CONNECTOR_MAX_DOCS)
@@ -815,7 +1050,9 @@ pub async fn sync_connectors(config_dir: &Path, library_id: &str, connectors: &[
                 offered.insert(id.clone(), Some(items));
             }
             Err(e) => {
-                report.errors.push(format!("{}: {e}", connector.descriptor().display_name));
+                report
+                    .errors
+                    .push(format!("{}: {e}", connector.descriptor().display_name));
                 offered.insert(id.clone(), None);
             }
         }
@@ -824,7 +1061,11 @@ pub async fn sync_connectors(config_dir: &Path, library_id: &str, connectors: &[
     // Documents of connectors no longer mirrored, or no longer offered, leave.
     let mut keep = Vec::new();
     for doc in std::mem::take(&mut library.documents) {
-        let Some(source) = doc.source.clone().filter(|s| s.starts_with(CONNECTOR_SOURCE)) else {
+        let Some(source) = doc
+            .source
+            .clone()
+            .filter(|s| s.starts_with(CONNECTOR_SOURCE))
+        else {
             keep.push(doc);
             continue;
         };
@@ -842,7 +1083,11 @@ pub async fn sync_connectors(config_dir: &Path, library_id: &str, connectors: &[
     }
     library.documents = keep;
     for (connector_id, items) in &offered {
-        let (Some(items), Some(connector)) = (items, connectors.iter().find(|c| c.id() == connector_id)) else { continue };
+        let (Some(items), Some(connector)) =
+            (items, connectors.iter().find(|c| c.id() == connector_id))
+        else {
+            continue;
+        };
         for (uri, name) in items {
             let source = source_of(connector_id, uri);
             let text = match connector.read_resource(uri).await {
@@ -855,7 +1100,11 @@ pub async fn sync_connectors(config_dir: &Path, library_id: &str, connectors: &[
             };
             let text: String = text.chars().take(MAX_DOC_CHARS).collect();
             let fingerprint = text_fingerprint(&text);
-            if let Some(i) = library.documents.iter().position(|d| d.source.as_deref() == Some(source.as_str())) {
+            if let Some(i) = library
+                .documents
+                .iter()
+                .position(|d| d.source.as_deref() == Some(source.as_str()))
+            {
                 if library.documents[i].modified == Some(fingerprint) {
                     continue;
                 }
@@ -865,8 +1114,16 @@ pub async fn sync_connectors(config_dir: &Path, library_id: &str, connectors: &[
             } else {
                 report.added += 1;
             }
-            let doc = Document { id: uuid::Uuid::new_v4().to_string(), name: name.clone(), chars: text.chars().count(), added_at: Utc::now(), source: Some(source), modified: Some(fingerprint) };
-            crate::chat::at_rest::write(docs.join(format!("{}.txt", doc.id)), &text).map_err(|e| e.to_string())?;
+            let doc = Document {
+                id: uuid::Uuid::new_v4().to_string(),
+                name: name.clone(),
+                chars: text.chars().count(),
+                added_at: Utc::now(),
+                source: Some(source),
+                modified: Some(fingerprint),
+            };
+            crate::chat::at_rest::write(docs.join(format!("{}.txt", doc.id)), &text)
+                .map_err(|e| e.to_string())?;
             library.documents.push(doc);
         }
     }
@@ -876,7 +1133,12 @@ pub async fn sync_connectors(config_dir: &Path, library_id: &str, connectors: &[
 }
 
 /// Mirrors a connector's documents into a library.
-pub fn set_connector(config_dir: &Path, library_id: &str, connector_id: &str, on: bool) -> Result<Library, String> {
+pub fn set_connector(
+    config_dir: &Path,
+    library_id: &str,
+    connector_id: &str,
+    on: bool,
+) -> Result<Library, String> {
     let mut library = load(config_dir, library_id)?;
     library.connectors.retain(|c| c != connector_id);
     if on {
@@ -887,7 +1149,11 @@ pub fn set_connector(config_dir: &Path, library_id: &str, connector_id: &str, on
 }
 
 /// Mirrors a folder into a library and syncs it.
-pub fn add_folder(config_dir: &Path, library_id: &str, folder: &Path) -> Result<SyncReport, String> {
+pub fn add_folder(
+    config_dir: &Path,
+    library_id: &str,
+    folder: &Path,
+) -> Result<SyncReport, String> {
     if !folder.is_dir() {
         return Err("Choose a folder that exists.".into());
     }
@@ -901,7 +1167,11 @@ pub fn add_folder(config_dir: &Path, library_id: &str, folder: &Path) -> Result<
 }
 
 /// Stops mirroring a folder; its documents leave the library.
-pub fn remove_folder(config_dir: &Path, library_id: &str, folder: &str) -> Result<SyncReport, String> {
+pub fn remove_folder(
+    config_dir: &Path,
+    library_id: &str,
+    folder: &str,
+) -> Result<SyncReport, String> {
     let mut library = load(config_dir, library_id)?;
     library.folders.retain(|f| f != folder);
     save(config_dir, &library)?;
@@ -910,9 +1180,18 @@ pub fn remove_folder(config_dir: &Path, library_id: &str, folder: &str) -> Resul
 
 /// Syncs every library that mirrors folders (at start and every few minutes).
 pub fn sync_all(config_dir: &Path) {
-    for library in list(config_dir).into_iter().filter(|l| !l.folders.is_empty()) {
+    for library in list(config_dir)
+        .into_iter()
+        .filter(|l| !l.folders.is_empty())
+    {
         match sync(config_dir, &library.id) {
-            Ok(r) if r.added + r.updated + r.removed > 0 => log::info!("synced library {}: +{} ~{} -{}", library.name, r.added, r.updated, r.removed),
+            Ok(r) if r.added + r.updated + r.removed > 0 => log::info!(
+                "synced library {}: +{} ~{} -{}",
+                library.name,
+                r.added,
+                r.updated,
+                r.removed
+            ),
             Ok(_) => {}
             Err(e) => log::warn!("could not sync library {}: {e}", library.name),
         }
@@ -927,11 +1206,20 @@ pub fn passages(text: &str) -> Vec<String> {
     while start < chars.len() {
         let mut end = (start + PASSAGE).min(chars.len());
         if end < chars.len() {
-            if let Some(space) = chars[start + PASSAGE / 2..end].iter().rposition(|c| c.is_whitespace()) {
+            if let Some(space) = chars[start + PASSAGE / 2..end]
+                .iter()
+                .rposition(|c| c.is_whitespace())
+            {
                 end = start + PASSAGE / 2 + space;
             }
         }
-        out.push(chars[start..end].iter().collect::<String>().trim().to_string());
+        out.push(
+            chars[start..end]
+                .iter()
+                .collect::<String>()
+                .trim()
+                .to_string(),
+        );
         if end == chars.len() {
             break;
         }
@@ -977,17 +1265,33 @@ pub fn search(config_dir: &Path, only: &[String], query: &str, k: usize) -> Vec<
         len: f64,
     }
     let mut docs = Vec::new();
-    for library in list(config_dir).into_iter().filter(|l| only.is_empty() || only.contains(&l.id)) {
-        let Ok(dir) = lib_dir(config_dir, &library.id) else { continue };
+    for library in list(config_dir)
+        .into_iter()
+        .filter(|l| only.is_empty() || only.contains(&l.id))
+    {
+        let Ok(dir) = lib_dir(config_dir, &library.id) else {
+            continue;
+        };
         for document in &library.documents {
-            let Ok(text) = crate::chat::at_rest::read_to_string(dir.join("docs").join(format!("{}.txt", document.id))) else { continue };
+            let Ok(text) = crate::chat::at_rest::read_to_string(
+                dir.join("docs").join(format!("{}.txt", document.id)),
+            ) else {
+                continue;
+            };
             for (i, passage) in passages(&text).into_iter().enumerate() {
                 let words = tokens(&passage);
                 let mut terms = HashMap::new();
                 for w in &words {
                     *terms.entry(w.clone()).or_insert(0.0) += 1.0;
                 }
-                docs.push(Doc { library: library.name.clone(), document: document.name.clone(), passage: i, text: passage, len: words.len() as f64, terms });
+                docs.push(Doc {
+                    library: library.name.clone(),
+                    document: document.name.clone(),
+                    passage: i,
+                    text: passage,
+                    len: words.len() as f64,
+                    terms,
+                });
             }
         }
     }
@@ -1011,7 +1315,8 @@ pub fn search(config_dir: &Path, only: &[String], query: &str, k: usize) -> Vec<
                 .iter()
                 .map(|t| {
                     let tf = d.terms.get(t).copied().unwrap_or(0.0);
-                    idf[t.as_str()] * tf * (k1 + 1.0) / (tf + k1 * (1.0 - b + b * d.len / avg.max(1.0)))
+                    idf[t.as_str()] * tf * (k1 + 1.0)
+                        / (tf + k1 * (1.0 - b + b * d.len / avg.max(1.0)))
                 })
                 .sum::<f64>();
             (score, d)
@@ -1022,13 +1327,22 @@ pub fn search(config_dir: &Path, only: &[String], query: &str, k: usize) -> Vec<
     scored
         .into_iter()
         .take(k)
-        .map(|(score, d)| Passage { library: d.library.clone(), document: d.document.clone(), passage: d.passage, text: d.text.clone(), score: (score * 100.0).round() / 100.0 })
+        .map(|(score, d)| Passage {
+            library: d.library.clone(),
+            document: d.document.clone(),
+            passage: d.passage,
+            text: d.text.clone(),
+            score: (score * 100.0).round() / 100.0,
+        })
         .collect()
 }
 
 /// The system-prompt line naming the libraries the model can search.
 pub fn prompt(libraries: &[Library]) -> Option<String> {
-    let useful: Vec<&Library> = libraries.iter().filter(|l| !l.documents.is_empty()).collect();
+    let useful: Vec<&Library> = libraries
+        .iter()
+        .filter(|l| !l.documents.is_empty())
+        .collect();
     if useful.is_empty() {
         return None;
     }
@@ -1038,7 +1352,16 @@ pub fn prompt(libraries: &[Library]) -> Option<String> {
          the document name like [Doc name]):",
     );
     for l in useful {
-        out.push_str(&format!("\n- {} ({} documents){}", l.name, l.documents.len(), if l.description.is_empty() { String::new() } else { format!(": {}", l.description) }));
+        out.push_str(&format!(
+            "\n- {} ({} documents){}",
+            l.name,
+            l.documents.len(),
+            if l.description.is_empty() {
+                String::new()
+            } else {
+                format!(": {}", l.description)
+            }
+        ));
     }
     Some(out)
 }
@@ -1064,7 +1387,14 @@ mod connector_tests {
             "wiki"
         }
         fn descriptor(&self) -> ConnectorDescriptor {
-            ConnectorDescriptor { id: "wiki".into(), display_name: "Team wiki".into(), description: None, version: "1".into(), icon: None, auth: AuthMechanism::None }
+            ConnectorDescriptor {
+                id: "wiki".into(),
+                display_name: "Team wiki".into(),
+                description: None,
+                version: "1".into(),
+                icon: None,
+                auth: AuthMechanism::None,
+            }
         }
         fn tools(&self) -> Vec<ToolDefinition> {
             Vec::new()
@@ -1079,10 +1409,22 @@ mod connector_tests {
             if *self.down.lock().unwrap() {
                 return Err(ToolError::Unreachable("offline".into()));
             }
-            Ok(self.pages.lock().unwrap().iter().map(|(uri, _)| json!({"uri": uri, "name": uri.rsplit('/').next()})).collect())
+            Ok(self
+                .pages
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|(uri, _)| json!({"uri": uri, "name": uri.rsplit('/').next()}))
+                .collect())
         }
         async fn read_resource(&self, uri: &str) -> Result<String, ToolError> {
-            self.pages.lock().unwrap().iter().find(|(u, _)| u == uri).map(|(_, t)| t.clone()).ok_or_else(|| ToolError::ExecutionFailed("gone".into()))
+            self.pages
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|(u, _)| u == uri)
+                .map(|(_, t)| t.clone())
+                .ok_or_else(|| ToolError::ExecutionFailed("gone".into()))
         }
     }
 
@@ -1090,31 +1432,67 @@ mod connector_tests {
     async fn connector_documents_are_mirrored_and_kept_in_step() {
         let dir = tempfile::tempdir().unwrap();
         let lib = create(dir.path(), "Wiki", "").unwrap();
-        let wiki = Arc::new(Wiki { pages: Mutex::new(vec![("wiki://onboarding".into(), "Laptops are ordered by Rita.".into()), ("wiki://holidays".into(), "We close on 24 December.".into())]), down: Mutex::new(false) });
+        let wiki = Arc::new(Wiki {
+            pages: Mutex::new(vec![
+                (
+                    "wiki://onboarding".into(),
+                    "Laptops are ordered by Rita.".into(),
+                ),
+                ("wiki://holidays".into(), "We close on 24 December.".into()),
+            ]),
+            down: Mutex::new(false),
+        });
         let connectors: Vec<Arc<dyn Connector>> = vec![wiki.clone()];
         set_connector(dir.path(), &lib.id, "wiki", true).unwrap();
-        let r = sync_connectors(dir.path(), &lib.id, &connectors).await.unwrap();
+        let r = sync_connectors(dir.path(), &lib.id, &connectors)
+            .await
+            .unwrap();
         assert_eq!((r.added, r.updated, r.removed), (2, 0, 0));
-        assert!(search(dir.path(), std::slice::from_ref(&lib.id), "who orders laptops", 3).iter().any(|p| p.text.contains("Rita")));
+        assert!(search(
+            dir.path(),
+            std::slice::from_ref(&lib.id),
+            "who orders laptops",
+            3
+        )
+        .iter()
+        .any(|p| p.text.contains("Rita")));
         // Nothing changed: nothing to do; a folder sync leaves connector documents alone.
-        let r = sync_connectors(dir.path(), &lib.id, &connectors).await.unwrap();
+        let r = sync_connectors(dir.path(), &lib.id, &connectors)
+            .await
+            .unwrap();
         assert_eq!((r.added, r.updated, r.removed), (0, 0, 0));
         sync(dir.path(), &lib.id).unwrap();
         assert_eq!(load(dir.path(), &lib.id).unwrap().documents.len(), 2);
         // A page changes and one is deleted.
-        *wiki.pages.lock().unwrap() = vec![("wiki://onboarding".into(), "Laptops are ordered by Tomas.".into())];
-        let r = sync_connectors(dir.path(), &lib.id, &connectors).await.unwrap();
+        *wiki.pages.lock().unwrap() = vec![(
+            "wiki://onboarding".into(),
+            "Laptops are ordered by Tomas.".into(),
+        )];
+        let r = sync_connectors(dir.path(), &lib.id, &connectors)
+            .await
+            .unwrap();
         assert_eq!((r.added, r.updated, r.removed), (0, 1, 1));
-        assert!(search(dir.path(), std::slice::from_ref(&lib.id), "laptops ordered", 3).iter().any(|p| p.text.contains("Tomas")));
+        assert!(search(
+            dir.path(),
+            std::slice::from_ref(&lib.id),
+            "laptops ordered",
+            3
+        )
+        .iter()
+        .any(|p| p.text.contains("Tomas")));
         // Offline: its documents stay.
         *wiki.down.lock().unwrap() = true;
-        let r = sync_connectors(dir.path(), &lib.id, &connectors).await.unwrap();
+        let r = sync_connectors(dir.path(), &lib.id, &connectors)
+            .await
+            .unwrap();
         assert_eq!(r.removed, 0);
         assert!(!r.errors.is_empty());
         assert_eq!(load(dir.path(), &lib.id).unwrap().documents.len(), 1);
         // No longer mirrored: its documents leave.
         set_connector(dir.path(), &lib.id, "wiki", false).unwrap();
-        let r = sync_connectors(dir.path(), &lib.id, &connectors).await.unwrap();
+        let r = sync_connectors(dir.path(), &lib.id, &connectors)
+            .await
+            .unwrap();
         assert_eq!(r.removed, 1);
         assert!(load(dir.path(), &lib.id).unwrap().documents.is_empty());
     }
@@ -1122,7 +1500,10 @@ mod connector_tests {
     #[test]
     fn resource_text_joins_text_parts() {
         let v = json!({"contents": [{"uri": "a", "text": "one"}, {"uri": "b", "blob": "AA=="}, {"uri": "c", "text": "two"}]});
-        assert_eq!(crate::tools::connectors::mcp::resource_text(&v), "one\n\ntwo");
+        assert_eq!(
+            crate::tools::connectors::mcp::resource_text(&v),
+            "one\n\ntwo"
+        );
     }
 }
 
@@ -1133,35 +1514,58 @@ mod tests {
     fn whole_documents_are_read_in_parts() {
         let config = tempfile::tempdir().unwrap();
         let lib = create(config.path(), "Contracts", "").unwrap();
-        add_text(config.path(), &lib.id, "lease.md", &"clause ".repeat(12_000)).unwrap();
+        add_text(
+            config.path(),
+            &lib.id,
+            "lease.md",
+            &"clause ".repeat(12_000),
+        )
+        .unwrap();
         let first = read_document(config.path(), "", "LEASE", 1).unwrap();
-        assert!(first.starts_with("# lease.md (Contracts), part 1 of 3"), "{}", &first[..60]);
+        assert!(
+            first.starts_with("# lease.md (Contracts), part 1 of 3"),
+            "{}",
+            &first[..60]
+        );
         assert!(read_document(config.path(), "Contracts", "lease", 3).is_ok());
         assert!(read_document(config.path(), "", "lease.md", 4).is_err());
         assert!(read_document(config.path(), "", "missing", 1).is_err());
     }
-
 
     #[test]
     fn folders_are_mirrored() {
         let config = tempfile::tempdir().unwrap();
         let folder = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(folder.path().join("notes/.git")).unwrap();
-        crate::chat::at_rest::write(folder.path().join("a.md"), "Alpha project kickoff notes").unwrap();
-        crate::chat::at_rest::write(folder.path().join("notes/b.txt"), "Beta budget is 40k").unwrap();
+        crate::chat::at_rest::write(folder.path().join("a.md"), "Alpha project kickoff notes")
+            .unwrap();
+        crate::chat::at_rest::write(folder.path().join("notes/b.txt"), "Beta budget is 40k")
+            .unwrap();
         crate::chat::at_rest::write(folder.path().join("notes/.git/config"), "hidden").unwrap();
         crate::chat::at_rest::write(folder.path().join("photo.png"), [0u8, 1, 2]).unwrap();
         let lib = create(config.path(), "Work", "").unwrap();
         let r = add_folder(config.path(), &lib.id, folder.path()).unwrap();
         assert_eq!((r.added, r.updated, r.removed), (2, 0, 0));
-        let names: Vec<String> = load(config.path(), &lib.id).unwrap().documents.iter().map(|d| d.name.clone()).collect();
-        assert!(names.contains(&"a.md".to_string()) && names.iter().any(|n| n.ends_with("b.txt")), "{names:?}");
-        assert_eq!(search(config.path(), std::slice::from_ref(&lib.id), "budget", 3)[0].document, names.iter().find(|n| n.ends_with("b.txt")).unwrap().clone());
+        let names: Vec<String> = load(config.path(), &lib.id)
+            .unwrap()
+            .documents
+            .iter()
+            .map(|d| d.name.clone())
+            .collect();
+        assert!(
+            names.contains(&"a.md".to_string()) && names.iter().any(|n| n.ends_with("b.txt")),
+            "{names:?}"
+        );
+        assert_eq!(
+            search(config.path(), std::slice::from_ref(&lib.id), "budget", 3)[0].document,
+            names.iter().find(|n| n.ends_with("b.txt")).unwrap().clone()
+        );
         // Nothing changed: nothing to do.
         assert_eq!(sync(config.path(), &lib.id).unwrap(), SyncReport::default());
         // A change, a deletion and a new file.
         std::thread::sleep(std::time::Duration::from_millis(1100));
-        crate::chat::at_rest::write(folder.path().join("a.md"), "Alpha project moved to March").unwrap();
+        crate::chat::at_rest::write(folder.path().join("a.md"), "Alpha project moved to March")
+            .unwrap();
         std::fs::remove_file(folder.path().join("notes/b.txt")).unwrap();
         crate::chat::at_rest::write(folder.path().join("c.csv"), "item,cost\nchairs,300").unwrap();
         let r = sync(config.path(), &lib.id).unwrap();
@@ -1180,7 +1584,8 @@ mod tests {
         let mut buf = std::io::Cursor::new(Vec::new());
         let mut zip = zip::ZipWriter::new(&mut buf);
         for (name, body) in parts {
-            zip.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
+            zip.start_file(*name, zip::write::SimpleFileOptions::default())
+                .unwrap();
             zip.write_all(body.as_bytes()).unwrap();
         }
         zip.finish().unwrap();
@@ -1189,9 +1594,17 @@ mod tests {
 
     #[test]
     fn zip_archives_are_read_file_by_file() {
-        let archive = zipped(&[("notes/a.md", "# Alpha\nfirst"), ("b.txt", "second"), ("img.png", "\u{0}\u{1}binary"), ("__MACOSX/x", "junk")]);
+        let archive = zipped(&[
+            ("notes/a.md", "# Alpha\nfirst"),
+            ("b.txt", "second"),
+            ("img.png", "\u{0}\u{1}binary"),
+            ("__MACOSX/x", "junk"),
+        ]);
         let text = zip_text(&archive, 10_000).unwrap();
-        assert!(text.contains("--- b.txt ---\nsecond") && text.contains("--- notes/a.md ---\n# Alpha"), "{text}");
+        assert!(
+            text.contains("--- b.txt ---\nsecond") && text.contains("--- notes/a.md ---\n# Alpha"),
+            "{text}"
+        );
         assert!(text.ends_with("(Not read: img.png)"), "{text}");
         assert!(zip_text(b"nope", 100).is_err());
     }
@@ -1203,21 +1616,42 @@ mod tests {
             r#"<w:document><w:body><w:p><w:r><w:t>Quarterly</w:t></w:r><w:r><w:t xml:space="preserve"> report &amp; plan</w:t></w:r></w:p>
             <w:p><w:r><w:t>Revenue</w:t><w:tab/><w:t>12 &#8364;</w:t></w:r></w:p></w:body></w:document>"#,
         )]);
-        assert_eq!(office_text(&docx, "docx").unwrap(), "Quarterly report & plan\nRevenue\t12 €");
+        assert_eq!(
+            office_text(&docx, "docx").unwrap(),
+            "Quarterly report & plan\nRevenue\t12 €"
+        );
         let pptx = zipped(&[
-            ("ppt/slides/slide10.xml", "<p:sld><a:p><a:r><a:t>Last</a:t></a:r></a:p></p:sld>"),
-            ("ppt/slides/slide2.xml", "<p:sld><a:p><a:r><a:t>Second</a:t></a:r></a:p></p:sld>"),
-            ("ppt/slides/slide1.xml", "<p:sld><a:p><a:r><a:t>Title</a:t></a:r></a:p></p:sld>"),
+            (
+                "ppt/slides/slide10.xml",
+                "<p:sld><a:p><a:r><a:t>Last</a:t></a:r></a:p></p:sld>",
+            ),
+            (
+                "ppt/slides/slide2.xml",
+                "<p:sld><a:p><a:r><a:t>Second</a:t></a:r></a:p></p:sld>",
+            ),
+            (
+                "ppt/slides/slide1.xml",
+                "<p:sld><a:p><a:r><a:t>Title</a:t></a:r></a:p></p:sld>",
+            ),
         ]);
-        assert_eq!(office_text(&pptx, "pptx").unwrap(), "Slide 1:\nTitle\n\nSlide 2:\nSecond\n\nSlide 3:\nLast");
-        let odt = zipped(&[("content.xml", "<office:text><text:h>Heading</text:h><text:p>One<text:s/>two</text:p></office:text>")]);
+        assert_eq!(
+            office_text(&pptx, "pptx").unwrap(),
+            "Slide 1:\nTitle\n\nSlide 2:\nSecond\n\nSlide 3:\nLast"
+        );
+        let odt = zipped(&[(
+            "content.xml",
+            "<office:text><text:h>Heading</text:h><text:p>One<text:s/>two</text:p></office:text>",
+        )]);
         assert_eq!(office_text(&odt, "odt").unwrap(), "Heading\nOne two");
         assert!(office_text(b"not a zip", "docx").is_err());
         // Libraries index them too.
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("report.docx");
         crate::chat::at_rest::write(&path, &docx).unwrap();
-        assert_eq!(extract(&path).unwrap(), "Quarterly report & plan Revenue 12 €");
+        assert_eq!(
+            extract(&path).unwrap(),
+            "Quarterly report & plan Revenue 12 €"
+        );
     }
 
     #[test]
@@ -1231,7 +1665,10 @@ mod tests {
 
     #[test]
     fn tokens_ignore_case_and_accents() {
-        assert_eq!(tokens("Regulação da ERSE, 2026!"), ["regulacao", "da", "erse", "2026"]);
+        assert_eq!(
+            tokens("Regulação da ERSE, 2026!"),
+            ["regulacao", "da", "erse", "2026"]
+        );
     }
 
     #[test]
@@ -1240,11 +1677,20 @@ mod tests {
         let files = tempfile::tempdir().unwrap();
         let lib = create(dir.path(), "Energy", "Regulation notes").unwrap();
         let a = files.path().join("tariffs.md");
-        crate::chat::at_rest::write(&a, "ERSE sets regulated electricity tariffs every year after public consultation.").unwrap();
+        crate::chat::at_rest::write(
+            &a,
+            "ERSE sets regulated electricity tariffs every year after public consultation.",
+        )
+        .unwrap();
         let b = files.path().join("garden.txt");
-        crate::chat::at_rest::write(&b, "Tomatoes need sun and regular watering in summer.").unwrap();
+        crate::chat::at_rest::write(&b, "Tomatoes need sun and regular watering in summer.")
+            .unwrap();
         let html = files.path().join("page.html");
-        crate::chat::at_rest::write(&html, "<html><head><title>x</title></head><body><p>Gas market rules</p></body></html>").unwrap();
+        crate::chat::at_rest::write(
+            &html,
+            "<html><head><title>x</title></head><body><p>Gas market rules</p></body></html>",
+        )
+        .unwrap();
         add(dir.path(), &lib.id, &a).unwrap();
         add(dir.path(), &lib.id, &b).unwrap();
         let lib = add(dir.path(), &lib.id, &html).unwrap();
@@ -1252,7 +1698,9 @@ mod tests {
 
         let hits = search(dir.path(), &[], "electricity tariffs consultation", 5);
         assert_eq!(hits[0].document, "tariffs.md");
-        assert!(search(dir.path(), &[], "gas", 5).iter().any(|h| h.document == "page.html"));
+        assert!(search(dir.path(), &[], "gas", 5)
+            .iter()
+            .any(|h| h.document == "page.html"));
         assert!(search(dir.path(), &["other".into()], "tariffs", 5).is_empty());
 
         let binary = files.path().join("x.bin");
@@ -1260,15 +1708,23 @@ mod tests {
         assert!(add(dir.path(), &lib.id, &binary).is_err());
 
         let doc = lib.documents[1].id.clone();
-        assert_eq!(remove(dir.path(), &lib.id, &doc).unwrap().documents.len(), 2);
-        assert!(prompt(&list(dir.path())).unwrap().contains("Energy (2 documents)"));
+        assert_eq!(
+            remove(dir.path(), &lib.id, &doc).unwrap().documents.len(),
+            2
+        );
+        assert!(prompt(&list(dir.path()))
+            .unwrap()
+            .contains("Energy (2 documents)"));
         delete(dir.path(), &lib.id).unwrap();
         assert!(list(dir.path()).is_empty());
     }
 
     #[test]
     fn notion_exports_import_as_named_documents() {
-        assert_eq!(archive_name("Trip plan 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d.md"), "Trip plan.md");
+        assert_eq!(
+            archive_name("Trip plan 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d.md"),
+            "Trip plan.md"
+        );
         assert_eq!(archive_name("Projects 0123456789abcdef0123456789abcdef/Budget 0123456789abcdef0123456789abcdee.csv"), "Projects / Budget.csv");
         assert_eq!(archive_name("notes/plain name.md"), "notes / plain name.md");
         let zip_of = |entries: &[(&str, &[u8])]| {
@@ -1276,7 +1732,8 @@ mod tests {
             {
                 let mut w = zip::ZipWriter::new(std::io::Cursor::new(&mut bytes));
                 for (name, data) in entries {
-                    w.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
+                    w.start_file(*name, zip::write::SimpleFileOptions::default())
+                        .unwrap();
                     std::io::Write::write_all(&mut w, data).unwrap();
                 }
                 w.finish().unwrap();
@@ -1284,8 +1741,21 @@ mod tests {
             bytes
         };
         // Notion splits big exports into parts: a ZIP of ZIPs.
-        let part = zip_of(&[("Home 0123456789abcdef0123456789abcdef.md", b"# Home\nWelcome to the team wiki."), ("Home/logo.png", b"\x89PNG")]);
-        let export = zip_of(&[("Export-Part-1.zip", &part), ("Tasks 0123456789abcdef0123456789abcdef.csv", b"Name,Status\nShip,Done"), ("__MACOSX/x.md", b"junk")]);
+        let part = zip_of(&[
+            (
+                "Home 0123456789abcdef0123456789abcdef.md",
+                b"# Home\nWelcome to the team wiki.",
+            ),
+            ("Home/logo.png", b"\x89PNG"),
+        ]);
+        let export = zip_of(&[
+            ("Export-Part-1.zip", &part),
+            (
+                "Tasks 0123456789abcdef0123456789abcdef.csv",
+                b"Name,Status\nShip,Done",
+            ),
+            ("__MACOSX/x.md", b"junk"),
+        ]);
         let files = archive_files(&export, 0).unwrap();
         let names: Vec<String> = files.iter().map(|(p, _)| archive_name(p)).collect();
         assert_eq!(names, ["Home.md", "Tasks.csv"]);
@@ -1295,16 +1765,31 @@ mod tests {
         let report = import_archive(&dir, &library.id, &export).unwrap();
         assert_eq!(report.added, 2);
         assert!(report.skipped.is_empty());
-        assert_eq!(report.library.documents.iter().map(|d| d.name.as_str()).collect::<Vec<_>>(), ["Home.md", "Tasks.csv"]);
-        assert!(search(&dir, &[], "team wiki", 3).iter().any(|p| p.text.contains("Welcome")));
+        assert_eq!(
+            report
+                .library
+                .documents
+                .iter()
+                .map(|d| d.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Home.md", "Tasks.csv"]
+        );
+        assert!(search(&dir, &[], "team wiki", 3)
+            .iter()
+            .any(|p| p.text.contains("Welcome")));
         let _ = std::fs::remove_dir_all(&dir);
     }
-
 
     #[test]
     fn a_time_cutoff_keeps_recent_documents() {
         let now = Utc::now();
-        assert_eq!(parse_since("2026-03-01", now).unwrap().format("%Y-%m-%d").to_string(), "2026-03-01");
+        assert_eq!(
+            parse_since("2026-03-01", now)
+                .unwrap()
+                .format("%Y-%m-%d")
+                .to_string(),
+            "2026-03-01"
+        );
         assert_eq!((now - parse_since("30d", now).unwrap()).num_days(), 30);
         assert_eq!((now - parse_since("2 weeks", now).unwrap()).num_days(), 14);
         assert_eq!((now - parse_since("1y", now).unwrap()).num_days(), 365);
@@ -1322,8 +1807,13 @@ mod tests {
         let hits = search(&dir, &[], "budget figures", 5);
         assert_eq!(hits.len(), 2);
         let recent = changed_since(&dir, hits, parse_since("1y", now).unwrap());
-        assert_eq!(recent.iter().map(|p| p.document.as_str()).collect::<Vec<_>>(), ["new.md"]);
+        assert_eq!(
+            recent
+                .iter()
+                .map(|p| p.document.as_str())
+                .collect::<Vec<_>>(),
+            ["new.md"]
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
-
 }

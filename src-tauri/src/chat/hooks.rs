@@ -51,7 +51,10 @@ fn path(config_dir: &Path) -> PathBuf {
 }
 
 pub fn load(config_dir: &Path) -> Vec<Hook> {
-    crate::chat::at_rest::read_to_string(path(config_dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::chat::at_rest::read_to_string(path(config_dir))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
 }
 
 pub fn save(config_dir: &Path, hooks: &[Hook]) -> Result<(), String> {
@@ -68,8 +71,17 @@ pub fn save(config_dir: &Path, hooks: &[Hook]) -> Result<(), String> {
 
 /// Whether a hook's matcher covers a tool.
 pub fn matches(matcher: &str, tool: &str) -> bool {
-    let parts: Vec<&str> = matcher.split(',').map(str::trim).filter(|p| !p.is_empty()).collect();
-    parts.is_empty() || parts.iter().any(|p| tool == *p || tool.starts_with(p) || (p.ends_with('*') && tool.starts_with(p.trim_end_matches('*'))))
+    let parts: Vec<&str> = matcher
+        .split(',')
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .collect();
+    parts.is_empty()
+        || parts.iter().any(|p| {
+            tool == *p
+                || tool.starts_with(p)
+                || (p.ends_with('*') && tool.starts_with(p.trim_end_matches('*')))
+        })
 }
 
 /// What a hook did.
@@ -93,22 +105,38 @@ pub async fn run_command(command: &str, event: &Value, workdir: Option<&Path>) -
         c.arg("-c").arg(command);
         c
     };
-    cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
+    cmd.stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
     cmd.env("LUMO_EVENT", event["event"].as_str().unwrap_or_default());
     cmd.env("LUMO_TOOL", event["tool"].as_str().unwrap_or_default());
-    cmd.env("LUMO_CONVERSATION", event["conversationId"].as_str().unwrap_or_default());
+    cmd.env(
+        "LUMO_CONVERSATION",
+        event["conversationId"].as_str().unwrap_or_default(),
+    );
     if let Some(dir) = workdir.filter(|d| d.is_dir()) {
         cmd.current_dir(dir);
     }
     let mut child = match cmd.spawn() {
         Ok(c) => c,
-        Err(e) => return Ran { code: None, output: format!("The hook could not start: {e}") },
+        Err(e) => {
+            return Ran {
+                code: None,
+                output: format!("The hook could not start: {e}"),
+            }
+        }
     };
     if let Some(mut stdin) = child.stdin.take() {
         let input = event.to_string();
         let _ = stdin.write_all(input.as_bytes()).await;
     }
-    match tokio::time::timeout(std::time::Duration::from_secs(TIMEOUT_SECS), child.wait_with_output()).await {
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(TIMEOUT_SECS),
+        child.wait_with_output(),
+    )
+    .await
+    {
         Ok(Ok(out)) => {
             let mut text = String::from_utf8_lossy(&out.stdout).trim().to_string();
             let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
@@ -118,36 +146,73 @@ pub async fn run_command(command: &str, event: &Value, workdir: Option<&Path>) -
                 }
                 text.push_str(&err);
             }
-            Ran { code: out.status.code(), output: text.chars().take(MAX_OUTPUT).collect() }
+            Ran {
+                code: out.status.code(),
+                output: text.chars().take(MAX_OUTPUT).collect(),
+            }
         }
-        Ok(Err(e)) => Ran { code: None, output: e.to_string() },
-        Err(_) => Ran { code: None, output: format!("The hook ran past {TIMEOUT_SECS} seconds and was stopped.") },
+        Ok(Err(e)) => Ran {
+            code: None,
+            output: e.to_string(),
+        },
+        Err(_) => Ran {
+            code: None,
+            output: format!("The hook ran past {TIMEOUT_SECS} seconds and was stopped."),
+        },
     }
 }
 
 /// Runs the `before_tool` hooks for a call; `Some(reason)` when one of them blocks it.
-pub async fn before_tool(config_dir: &Path, conversation_id: &str, tool: &str, arguments: &Value, workdir: Option<&Path>) -> Option<String> {
+pub async fn before_tool(
+    config_dir: &Path,
+    conversation_id: &str,
+    tool: &str,
+    arguments: &Value,
+    workdir: Option<&Path>,
+) -> Option<String> {
     let event = json!({ "event": "before_tool", "conversationId": conversation_id, "tool": tool, "arguments": arguments, "workdir": workdir, "hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": arguments, "session_id": conversation_id, "cwd": workdir });
-    for hook in load(config_dir).iter().filter(|h| h.enabled && h.event == "before_tool" && matches(&h.matcher, tool)) {
+    for hook in load(config_dir)
+        .iter()
+        .filter(|h| h.enabled && h.event == "before_tool" && matches(&h.matcher, tool))
+    {
         let ran = run_command(&hook.command, &event, workdir).await;
         if ran.code == Some(2) {
-            let reason = if ran.output.is_empty() { "A hook blocked this call.".to_string() } else { ran.output };
+            let reason = if ran.output.is_empty() {
+                "A hook blocked this call.".to_string()
+            } else {
+                ran.output
+            };
             log::info!("a before_tool hook blocked {tool}: {reason}");
             return Some(reason);
         }
         if ran.code != Some(0) {
-            log::warn!("a before_tool hook for {tool} failed ({:?}): {}", ran.code, ran.output);
+            log::warn!(
+                "a before_tool hook for {tool} failed ({:?}): {}",
+                ran.code,
+                ran.output
+            );
         }
     }
     None
 }
 
 /// Runs the `after_tool` hooks for a call; what they print, to add to the result.
-pub async fn after_tool(config_dir: &Path, conversation_id: &str, tool: &str, arguments: &Value, output: &str, is_error: bool, workdir: Option<&Path>) -> Vec<String> {
+pub async fn after_tool(
+    config_dir: &Path,
+    conversation_id: &str,
+    tool: &str,
+    arguments: &Value,
+    output: &str,
+    is_error: bool,
+    workdir: Option<&Path>,
+) -> Vec<String> {
     let output: String = output.chars().take(20_000).collect();
     let event = json!({ "event": "after_tool", "conversationId": conversation_id, "tool": tool, "arguments": arguments, "output": output, "isError": is_error, "workdir": workdir, "hook_event_name": "PostToolUse", "tool_name": tool, "tool_input": arguments, "tool_response": output, "session_id": conversation_id, "cwd": workdir });
     let mut notes = Vec::new();
-    for hook in load(config_dir).iter().filter(|h| h.enabled && h.event == "after_tool" && matches(&h.matcher, tool)) {
+    for hook in load(config_dir)
+        .iter()
+        .filter(|h| h.enabled && h.event == "after_tool" && matches(&h.matcher, tool))
+    {
         let ran = run_command(&hook.command, &event, workdir).await;
         if !ran.output.is_empty() {
             notes.push(ran.output);
@@ -157,9 +222,18 @@ pub async fn after_tool(config_dir: &Path, conversation_id: &str, tool: &str, ar
 }
 
 /// Runs the `turn_end` hooks once a reply has finished.
-pub async fn turn_end(config_dir: &Path, conversation_id: &str, answer: &str, cancelled: bool, workdir: Option<&Path>) {
+pub async fn turn_end(
+    config_dir: &Path,
+    conversation_id: &str,
+    answer: &str,
+    cancelled: bool,
+    workdir: Option<&Path>,
+) {
     let event = json!({ "event": "turn_end", "conversationId": conversation_id, "answer": answer.chars().take(20_000).collect::<String>(), "cancelled": cancelled, "workdir": workdir, "hook_event_name": "Stop", "session_id": conversation_id, "cwd": workdir });
-    for hook in load(config_dir).iter().filter(|h| h.enabled && h.event == "turn_end") {
+    for hook in load(config_dir)
+        .iter()
+        .filter(|h| h.enabled && h.event == "turn_end")
+    {
         let ran = run_command(&hook.command, &event, workdir).await;
         if ran.code != Some(0) {
             log::warn!("a turn_end hook failed ({:?}): {}", ran.code, ran.output);
@@ -213,10 +287,25 @@ pub fn from_claude(config: &Value, root: &Path, source: &str) -> (Vec<Hook>, Vec
             }
         };
         for group in groups.as_array().into_iter().flatten() {
-            let matcher = if ours == "turn_end" { String::new() } else { claude_matcher(group["matcher"].as_str().unwrap_or_default()) };
+            let matcher = if ours == "turn_end" {
+                String::new()
+            } else {
+                claude_matcher(group["matcher"].as_str().unwrap_or_default())
+            };
             for hook in group["hooks"].as_array().into_iter().flatten() {
-                let Some(command) = hook["command"].as_str().filter(|_| hook["type"].as_str().unwrap_or("command") == "command") else { continue };
-                hooks.push(Hook { event: ours.into(), matcher: matcher.clone(), command: command.replace("${CLAUDE_PLUGIN_ROOT}", &root), enabled: false, source: Some(source.to_string()) });
+                let Some(command) = hook["command"]
+                    .as_str()
+                    .filter(|_| hook["type"].as_str().unwrap_or("command") == "command")
+                else {
+                    continue;
+                };
+                hooks.push(Hook {
+                    event: ours.into(),
+                    matcher: matcher.clone(),
+                    command: command.replace("${CLAUDE_PLUGIN_ROOT}", &root),
+                    enabled: false,
+                    source: Some(source.to_string()),
+                });
             }
         }
     }
@@ -227,7 +316,10 @@ pub fn from_claude(config: &Value, root: &Path, source: &str) -> (Vec<Hook>, Vec
 
 /// Replaces the hooks that came with `source` by `hooks`.
 pub fn replace_from(config_dir: &Path, source: &str, hooks: Vec<Hook>) -> Result<(), String> {
-    let mut all: Vec<Hook> = load(config_dir).into_iter().filter(|h| h.source.as_deref() != Some(source)).collect();
+    let mut all: Vec<Hook> = load(config_dir)
+        .into_iter()
+        .filter(|h| h.source.as_deref() != Some(source))
+        .collect();
     all.extend(hooks);
     save(config_dir, &all)
 }
@@ -238,10 +330,16 @@ mod tests {
 
     #[test]
     fn claude_plugin_hooks_map_to_ours() {
-        assert_eq!(claude_matcher("Write|Edit|MultiEdit"), "filesystem__fs_write, filesystem__fs_edit");
+        assert_eq!(
+            claude_matcher("Write|Edit|MultiEdit"),
+            "filesystem__fs_write, filesystem__fs_edit"
+        );
         assert_eq!(claude_matcher("Bash"), "bash__run, run_code");
         assert_eq!(claude_matcher("*"), "");
-        assert_eq!(claude_matcher("mcp__github__create_issue"), "github__create_issue");
+        assert_eq!(
+            claude_matcher("mcp__github__create_issue"),
+            "github__create_issue"
+        );
         let config = json!({"hooks": {
             "PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/scripts/guard.sh"}]}],
             "PostToolUse": [{"matcher": "Write|Edit", "hooks": [{"type": "command", "command": "npx prettier --write"}, {"type": "prompt", "prompt": "x"}]}],
@@ -252,15 +350,40 @@ mod tests {
         assert_eq!(skipped, ["SessionStart"]);
         assert_eq!(hooks.len(), 3);
         let before = hooks.iter().find(|h| h.event == "before_tool").unwrap();
-        assert_eq!(before, &Hook { event: "before_tool".into(), matcher: "bash__run, run_code".into(), command: "/data/plugins/kit/scripts/guard.sh".into(), enabled: false, source: Some("kit".into()) });
-        assert!(hooks.iter().any(|h| h.event == "after_tool" && h.command == "npx prettier --write"));
+        assert_eq!(
+            before,
+            &Hook {
+                event: "before_tool".into(),
+                matcher: "bash__run, run_code".into(),
+                command: "/data/plugins/kit/scripts/guard.sh".into(),
+                enabled: false,
+                source: Some("kit".into())
+            }
+        );
+        assert!(hooks
+            .iter()
+            .any(|h| h.event == "after_tool" && h.command == "npx prettier --write"));
         assert!(hooks.iter().any(|h| h.event == "turn_end"));
         let dir = tempfile::tempdir().unwrap();
-        save(dir.path(), &[Hook { event: "turn_end".into(), matcher: String::new(), command: "mine".into(), enabled: true, source: None }]).unwrap();
+        save(
+            dir.path(),
+            &[Hook {
+                event: "turn_end".into(),
+                matcher: String::new(),
+                command: "mine".into(),
+                enabled: true,
+                source: None,
+            }],
+        )
+        .unwrap();
         replace_from(dir.path(), "kit", hooks.clone()).unwrap();
         replace_from(dir.path(), "kit", vec![before.clone()]).unwrap();
         let all = load(dir.path());
-        assert_eq!(all.len(), 2, "importing again replaces the plugin's hooks and keeps the user's");
+        assert_eq!(
+            all.len(),
+            2,
+            "importing again replaces the plugin's hooks and keeps the user's"
+        );
         assert_eq!(all[0].command, "mine");
     }
 
@@ -292,16 +415,44 @@ mod tests {
             ],
         )
         .unwrap();
-        let blocked = before_tool(&dir, "c1", "run_code", &json!({"code": "rm -rf /tmp/x"}), None).await;
+        let blocked = before_tool(
+            &dir,
+            "c1",
+            "run_code",
+            &json!({"code": "rm -rf /tmp/x"}),
+            None,
+        )
+        .await;
         assert_eq!(blocked.as_deref(), Some("No recursive deletes here."));
-        assert_eq!(before_tool(&dir, "c1", "run_code", &json!({"code": "ls"}), None).await, None);
-        assert_eq!(before_tool(&dir, "c1", "web_search", &json!({"query": "rm -rf"}), None).await, None);
-        assert_eq!(after_tool(&dir, "c1", "web_search", &json!({}), "ok", false, None).await, ["checked web_search"]);
+        assert_eq!(
+            before_tool(&dir, "c1", "run_code", &json!({"code": "ls"}), None).await,
+            None
+        );
+        assert_eq!(
+            before_tool(&dir, "c1", "web_search", &json!({"query": "rm -rf"}), None).await,
+            None
+        );
+        assert_eq!(
+            after_tool(&dir, "c1", "web_search", &json!({}), "ok", false, None).await,
+            ["checked web_search"]
+        );
         turn_end(&dir, "c1", "All done.", false, None).await;
-        let logged: Value = serde_json::from_str(crate::chat::at_rest::read_to_string(&log).unwrap().trim()).unwrap();
+        let logged: Value =
+            serde_json::from_str(crate::chat::at_rest::read_to_string(&log).unwrap().trim())
+                .unwrap();
         assert_eq!(logged["event"], "turn_end");
         assert_eq!(logged["answer"], "All done.");
-        assert!(save(&dir, &[Hook { event: "sometime".into(), matcher: String::new(), command: "x".into(), enabled: true, source: None }]).is_err());
+        assert!(save(
+            &dir,
+            &[Hook {
+                event: "sometime".into(),
+                matcher: String::new(),
+                command: "x".into(),
+                enabled: true,
+                source: None
+            }]
+        )
+        .is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
