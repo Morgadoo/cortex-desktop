@@ -1,6 +1,6 @@
 /** Apps: every mini app the assistant built, each running live in its own sandbox. */
 import { tauriInvoke } from '../../shared/tauri';
-import { appFrame } from './canvas';
+import { appFrame, openAppWindow } from './canvas';
 import { clear, h, icon, modal } from './dom';
 import { navigate } from './state';
 import { button, emptyState, modalHeader, pageHeader } from './ui';
@@ -36,13 +36,15 @@ export class AppsPage {
       apps.map((app) => {
         const open = button({ variant: 'subtle', size: 'sm', icon: 'share', label: 'Open' });
         open.addEventListener('click', () => void modal((close) => h('div', { class: 'app-modal' }, modalHeader(app.title, close), appFrame(app.id, app.versions.length)), true));
+        const windowed = button({ variant: 'subtle', size: 'sm', icon: 'expand', label: 'Window', title: 'Open in a window of its own' });
+        windowed.addEventListener('click', () => openAppWindow(app.id));
         const chat = button({ variant: 'subtle', size: 'sm', icon: 'chat', label: 'Conversation' });
         chat.addEventListener('click', () => navigate({ kind: 'chat', id: app.conversationId }));
         return h(
           'div',
           { class: 'app-tile' },
           h('div', { class: 'app-tile-preview' }, appFrame(app.id, app.versions.length)),
-          h('div', { class: 'app-tile-foot' }, h('strong', {}, app.title), h('span', { class: 'spacer' }), chat, open)
+          h('div', { class: 'app-tile-foot' }, h('strong', {}, app.title), h('span', { class: 'spacer' }), chat, windowed, open)
         );
       })
     );

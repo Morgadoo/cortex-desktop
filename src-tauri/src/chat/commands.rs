@@ -1170,6 +1170,52 @@ pub async fn chat_add_web_page(app: AppHandle, library_id: String, url: String) 
     super::libraries::add_web_page(&config_dir(&app)?, &library_id, &url).await
 }
 
+/// Adds every page and document of a ZIP the user picks (a Notion export, a folder of notes)
+/// to a library.
+#[tauri::command]
+pub async fn chat_import_archive(app: AppHandle, library_id: String) -> Result<Option<super::libraries::ArchiveReport>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog().file().set_title("Import an export (Notion, Confluence, notes)").add_filter("ZIP archive", &["zip"]).pick_file(move |path| {
+        let _ = tx.send(path);
+    });
+    let Some(path) = rx.await.map_err(|e| e.to_string())? else { return Ok(None) };
+    let path = path.into_path().map_err(|e| e.to_string())?;
+    let dir = config_dir(&app)?;
+    tokio::task::spawn_blocking(move || {
+        let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+        super::libraries::import_archive(&dir, &library_id, &bytes)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map(Some)
+}
+
+/// Opens an app canvas in a window of its own (LibreChat's artifact in a new window), or brings
+/// its window forward when it is open already.
+#[tauri::command]
+pub fn chat_open_app_window(app: AppHandle, id: String) -> Result<(), String> {
+    use tauri::Manager as _;
+    let canvas = super::canvas::load(&config_dir(&app)?, &id)?;
+    if canvas.kind != "app" {
+        return Err("Only apps open in a window of their own.".into());
+    }
+    let label = format!("app-{}", id.chars().filter(char::is_ascii_alphanumeric).take(24).collect::<String>());
+    if let Some(window) = app.get_webview_window(&label) {
+        let _ = window.unminimize();
+        return window.set_focus().map_err(|e| e.to_string());
+    }
+    let base = if cfg!(windows) { "http://lumoapp.localhost" } else { "lumoapp://localhost" };
+    let url: tauri::Url = format!("{base}/window/{}", canvas.id).parse().map_err(|e: url::ParseError| e.to_string())?;
+    tauri::WebviewWindowBuilder::new(&app, label, tauri::WebviewUrl::CustomProtocol(url))
+        .title(if canvas.title.is_empty() { "App".to_string() } else { canvas.title.clone() })
+        .inner_size(1000.0, 760.0)
+        .min_inner_size(360.0, 300.0)
+        .build()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
 /// The local API's latest requests, newest first.
 #[tauri::command]
 pub fn chat_api_server_log() -> Vec<super::api_server::LogEntry> {

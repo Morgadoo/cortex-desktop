@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 120 |
-| PARTIAL | 86 | 54 |
-| MISSING | 48 | 18 |
+| DONE | 58 | 122 |
+| PARTIAL | 86 | 55 |
+| MISSING | 48 | 15 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 36 / 8 / 1 / 9 · LibreChat 32 / 8 / 2 / 4 · LobeHub 16 / 10 / 3 / 5 · Onyx 12 / 6 / 3 / 5 · Osaurus 8 / 13 / 5 / 4 · OpenBot 16 / 9 / 4 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 36 / 8 / 1 / 9 · LibreChat 33 / 8 / 1 / 4 · LobeHub 17 / 11 / 1 / 5 · Onyx 12 / 6 / 3 / 5 · Osaurus 8 / 13 / 5 / 4 · OpenBot 16 / 9 / 4 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -101,7 +101,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 36 / 8 / 1 / 9
 | LibreChat | Upload files as text | PARTIAL | DONE | Chat attachments go in full as text (chat.ts:1694–1700) |
 | LibreChat | OCR | MISSING | DONE | parity L242 |
 | LibreChat | Mermaid as SVG/PNG | MISSING | DONE | parity L286 |
-| LibreChat | Artifact in a new window | MISSING | MISSING | Full-screen modal only (apps.ts) |
+| LibreChat | Artifact in a new window | MISSING | DONE | parity: Apps in a window of their own (chat_open_app_window; same sandbox) |
 | LibreChat | Pinned section (chats, models, agents, presets) | PARTIAL | PARTIAL | Pinned chats only (parity L192) |
 | LibreChat | Filter and sort chats | MISSING | DONE | Filter by tag, time, unread, scheduled runs; sort four ways (parity: Filter and group the chat list) |
 | LibreChat | Mark as unread | PARTIAL | DONE | parity L276; chat.ts:2811 |
@@ -136,7 +136,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 36 / 8 / 1 / 9
 | LobeHub | Semantic search | MISSING | DONE | parity L243 |
 | LobeHub | Batch operations (folder upload, move, delete) | MISSING | DONE | Folders mirrored, several documents removed or moved at once (parity: Move documents between libraries) |
 | LobeHub | Relevance scores, excerpt preview | PARTIAL | DONE | Passage scores in Test a search; document preview (parity: Library document preview) |
-| LobeHub | Notion ZIP import | MISSING | MISSING |  |
+| LobeHub | Notion ZIP import | MISSING | DONE | parity: Import an export into a library (libraries.rs `import_archive`) |
 | LobeHub | Pages: long documents with a page list | PARTIAL | PARTIAL | Canvas documents. Missing: a list of all documents (the Apps page lists apps only) |
 | LobeHub | Image page (ratio, size, count, seed…) | PARTIAL | PARTIAL | `generate_image` with a reference (parity L234). Missing: a page with those controls |
 | LobeHub | Video generation | MISSING | OUT OF SCOPE | Left out (parity L221) |
@@ -144,7 +144,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 36 / 8 / 1 / 9
 | LobeHub | Topic panel: status tabs, card/list views | PARTIAL | PARTIAL | Archive. Missing: status tabs and views |
 | LobeHub | Sort and group chats | MISSING | DONE | Sort four ways and date groups Today, Yesterday, 7 and 30 days, months |
 | LobeHub | Smart rename / rename | PARTIAL | DONE | Automatic title (engine.rs:804–808), Rename (chat.ts:2790) |
-| LobeHub | Open in new tab, right panel, new window | MISSING | MISSING |  |
+| LobeHub | Open in new tab, right panel, new window | MISSING | PARTIAL | Apps and canvases open in the right panel, apps also in a window of their own (parity: Apps in a window of their own). Missing: a chat in a second window |
 | LobeHub | Duplicate, move, forward to another agent | MISSING | DONE | Branch (duplicate), move to project, Continue with an agent (parity: Continue a chat with an agent) |
 | LobeHub | Export as screenshot, text, PDF, JSON | PARTIAL | PARTIAL | Markdown, JSON and PDF (print) export. Missing: export as a screenshot image |
 | LobeHub | Share link | MISSING | OUT OF SCOPE | Server-only (parity L202) |

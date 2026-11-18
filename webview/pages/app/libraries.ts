@@ -152,6 +152,19 @@ export class LibrariesPage {
       }
       await this.load();
     });
+    // A Notion (or Confluence, or notes app) export: every page becomes a document.
+    const importZip = h('button', { class: 'btn btn-secondary', title: 'A ZIP export from Notion, Confluence or a notes app: each page becomes a document' }, icon('download', 15), 'Import an export');
+    importZip.addEventListener('click', async () => {
+      try {
+        const r = await tauriInvoke<{ added: number; skipped: string[] } | null>('chat_import_archive', { libraryId: lib.id });
+        if (r) {
+          toast(`Added ${r.added} ${r.added === 1 ? 'page' : 'pages'}${r.skipped.length ? `; ${r.skipped.length} left out (${r.skipped.slice(0, 2).join('; ')})` : ''}.`, r.added ? 'info' : 'error');
+        }
+      } catch (e) {
+        toast(String(e), 'error');
+      }
+      await this.load();
+    });
     const addFolder = h('button', { class: 'btn btn-secondary' }, icon('folder', 15), 'Mirror a folder');
     addFolder.addEventListener('click', async () => {
       addFolder.textContent = 'Indexing…';
@@ -251,7 +264,7 @@ export class LibrariesPage {
     clear(
       this.body,
       tabs,
-      h('div', { class: 'library-actions' }, add, addFolder, addPage, h('span', { class: 'spacer' }), remove),
+      h('div', { class: 'library-actions' }, add, addFolder, addPage, importZip, h('span', { class: 'spacer' }), remove),
       folders,
       docs,
       h('div', { class: 'section-title' }, 'Test a search'),

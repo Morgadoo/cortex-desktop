@@ -213,7 +213,7 @@ items most likely to differ:
 Reviewed in November 2026 feature by feature against the docs of Open WebUI, LibreChat, LobeHub,
 Onyx, Osaurus and OpenBot (about 220 features). Every item of the review's shortlist is in the table
 below; every feature the review found missing or partial is tracked row by row, with evidence, in
-[review-coverage.md](review-coverage.md) (now 120 done, 54 partial, 18 missing, 31 out of scope).
+[review-coverage.md](review-coverage.md) (now 122 done, 55 partial, 15 missing, 31 out of scope).
 What was deliberately left out, and why:
 
 - **Team and enterprise features** (channels, comments, SSO, SCIM, tenants, admin plane, shared
@@ -332,6 +332,8 @@ What was deliberately left out, and why:
 | Coding agent programs as models | lobehub, Osaurus, OpenBot | Claude Code, Codex and Gemini CLI, when installed, show in the model picker under "Agent programs". A turn runs the program once, non-interactively, with the conversation so far, in the chat's folder (or a folder kept for that chat); its output streams in as the answer and Stop ends it. The program uses its own tools, login and permission settings. Verified live with stand-in programs (streaming, follow-up with history, Stop) | Done |
 | Import Claude plugins | Osaurus | Skills → Import → Claude plugin from a folder, or Claude plugins from GitHub (a plugin or a marketplace repository): `skills/` become skills, `commands/` become `/` skills (`$ARGUMENTS` explained), `agents/` become agents, `.mcp.json` servers become tool servers (the plugin's files are kept so `${CLAUDE_PLUGIN_ROOT}` works); hooks are reported as left out. Verified live from a folder: the plugin's MCP tool answered in a chat. GitHub downloads could not be tried from the test machine (blocked) | Done |
 | Tool servers start when added | Open WebUI, LibreChat | A tool server that needs no sign-in (a local command, or an address without auth) is started once when it is added, so its tools are offered in chats right away. Verified live | Done |
+| Import an export into a library | lobehub (Notion import) | Libraries → Import an export: a ZIP from Notion, Confluence or a notes app; every page and document becomes a library document named as in the source (Notion's page ids taken off, folders kept as "Parent / Page"), including the ZIPs Notion splits big exports into. Verified live: a nested Notion export imported and was found by search | Done |
+| Apps in a window of their own | LibreChat, lobehub | An app opens in a window of its own (Apps → Window, or the app panel's window button), in the same sandboxed frame it has inside Lumo; opening it again brings that window forward. Verified live | Done |
 | Translate an answer | LibreChat, lobehub | The globe under an answer translates it into a listed or any language, shown below the original (Markdown and code kept) without changing the conversation. Verified live | Done |
 | Quote a passage into the next message | LibreChat, lobehub | Selecting text in an answer (or a canvas) shows "Ask about this", which quotes it in the composer | Done |
 | Slash commands | open-webui (built-in `/` commands), Vibe CLI | `/` lists app commands before skills: /new, /temporary, /model, /voice, /fork, /context, /settings, /export, /clear. Verified live (/context) | Done |

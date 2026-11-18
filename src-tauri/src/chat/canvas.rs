@@ -116,10 +116,38 @@ pub fn app_html(content: &str) -> String {
     }
 }
 
-/// Serves `lumoapp://localhost/<canvas id>` to the sandboxed preview frame.
+/// The page of an app's own window: the app in the same sandboxed frame as inside Lumo, so it
+/// gets no more access in a window than it has in a chat.
+pub fn window_html(id: &str, title: &str, windows: bool) -> String {
+    let base = if windows { "http://lumoapp.localhost" } else { "lumoapp://localhost" };
+    let title = title.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+    format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>{title}</title><style>html,body{{margin:0;height:100%;background:#fff}}iframe{{border:0;width:100%;height:100%;display:block}}</style></head>\
+         <body><iframe sandbox=\"allow-scripts allow-forms allow-modals allow-popups\" src=\"{base}/{id}\"></iframe></body></html>"
+    )
+}
+
+/// The policy of an app window's page: only the app's frame.
+const WINDOW_CSP: &str = "default-src 'none'; style-src 'unsafe-inline'; frame-src lumoapp: http://lumoapp.localhost";
+
+/// Serves `lumoapp://localhost/<canvas id>` to the sandboxed preview frame, and
+/// `lumoapp://localhost/window/<canvas id>` to an app's own window.
 pub fn serve(config_dir: &Path, path: &str) -> tauri::http::Response<Vec<u8>> {
-    let id = path.trim_start_matches('/').split(['?', '/', '#']).next().unwrap_or_default();
     let builder = tauri::http::Response::builder();
+    if let Some(id) = path.trim_start_matches('/').strip_prefix("window/") {
+        let id = id.split(['?', '/', '#']).next().unwrap_or_default();
+        return match load(config_dir, id) {
+            Ok(canvas) if canvas.kind == "app" => builder
+                .status(200)
+                .header("Content-Type", "text/html; charset=utf-8")
+                .header("Content-Security-Policy", WINDOW_CSP)
+                .header("Cache-Control", "no-store")
+                .body(window_html(&canvas.id, &canvas.title, cfg!(windows)).into_bytes())
+                .unwrap_or_default(),
+            _ => builder.status(404).header("Content-Type", "text/plain").body(b"No such app".to_vec()).unwrap_or_default(),
+        };
+    }
+    let id = path.trim_start_matches('/').split(['?', '/', '#']).next().unwrap_or_default();
     if id == DIAGRAM_PAGE {
         // Mermaid diagrams from answers, drawn in the same sandbox as mini apps.
         return builder
@@ -305,4 +333,15 @@ mod tests {
         assert!(prompt(&list_for(dir.path(), "conv")).unwrap().contains("Step two"));
         assert!(prompt(&[]).is_none());
     }
+
+    #[test]
+    fn an_app_window_frames_the_app_in_the_sandbox() {
+        let page = window_html("abc", "Tip <calc>", false);
+        assert!(page.contains(r#"sandbox="allow-scripts allow-forms allow-modals allow-popups""#));
+        assert!(page.contains(r#"src="lumoapp://localhost/abc""#));
+        assert!(page.contains("<title>Tip &lt;calc&gt;</title>"));
+        assert!(!page.contains("allow-same-origin"));
+        assert!(window_html("abc", "x", true).contains("http://lumoapp.localhost/abc"));
+    }
+
 }

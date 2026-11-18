@@ -30,6 +30,11 @@ function idOf(part: Extract<Part, { kind: 'tool' }>): string | null {
   }
 }
 
+/** Opens an app in a window of its own, beside the main one. */
+export function openAppWindow(id: string) {
+  void tauriInvoke('chat_open_app_window', { id }).catch((e) => toast(String(e), 'error'));
+}
+
 /** Where a mini app is served: the `lumoapp` protocol, spelled per platform. */
 export function appUrl(id: string, version = 0): string {
   const windows = navigator.userAgent.includes('Windows');
@@ -155,6 +160,8 @@ export function openAppPanel(app: AppInfo) {
   copy.addEventListener('click', () => { void navigator.clipboard.writeText(app.code); toast('Code copied.'); });
   const full = iconButton({ icon: 'expand', title: 'Full screen', size: 'sm' });
   full.addEventListener('click', () => void modal((done) => h('div', { class: 'app-modal' }, modalHeader(app.title, done), appFrame(app.id, app.version)), true));
+  const windowed = iconButton({ icon: 'share', title: 'Open in a window of its own', size: 'sm' });
+  windowed.addEventListener('click', () => openAppWindow(app.id));
   const save = iconButton({ icon: 'download', title: 'Download as a web page', size: 'sm' });
   save.addEventListener('click', () => download(app.id));
   openSidePanel(
@@ -168,7 +175,7 @@ export function openAppPanel(app: AppInfo) {
         h('div', { class: 'panel-tools' }, close, viewSwitch(app, body, 'panel-frame')),
         h('strong', { class: 'panel-title' }, app.title),
         h('span', { class: 'spacer' }),
-        h('div', { class: 'panel-tools' }, copy, full, save)
+        h('div', { class: 'panel-tools' }, copy, full, windowed, save)
       ),
       body
     ),
