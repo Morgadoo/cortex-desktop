@@ -4,17 +4,17 @@ Every feature the November 2026 review of Open WebUI, LibreChat, LobeHub, Onyx, 
 OpenBot marked missing or partial (223 rows), re-checked against the code, then brought up to
 date after the work that followed (the "Now" column). DONE needs evidence in the code or a row
 in [feature-parity.md](feature-parity.md); OUT OF SCOPE rows are team, server or
-platform-only features, explained there under "deliberately left out".
+platform-only features, explained there under "deliberately left out"; the owner confirmed on 18 November 2026 that Lumo stays a personal desktop app, so they are not planned.
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 210 |
-| PARTIAL | 86 | 1 |
-| MISSING | 48 | 1 |
-| OUT OF SCOPE | 31 | 11 |
+| DONE | 58 | 211 |
+| PARTIAL | 86 | 0 |
+| MISSING | 48 | 0 |
+| OUT OF SCOPE | 31 | 12 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 50 / 0 / 0 / 4 · LibreChat 45 / 0 / 0 / 1 · LobeHub 33 / 0 / 0 / 1 · Onyx 24 / 0 / 0 / 2 · Osaurus 27 / 0 / 1 / 2 · OpenBot 31 / 1 / 0 / 1.
+Per app now (done / partial / missing / out of scope): Open WebUI 50 / 0 / 0 / 4 · LibreChat 45 / 0 / 0 / 1 · LobeHub 33 / 0 / 0 / 1 · Onyx 24 / 0 / 0 / 2 · Osaurus 27 / 0 / 0 / 3 · OpenBot 32 / 0 / 0 / 1.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -57,7 +57,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 50 / 0 / 0 / 4
 | Open WebUI | Knowledge base sync of folders and repos | PARTIAL | DONE | parity L240 (Mirror a folder, incremental, every 10 min) |
 | Open WebUI | Tabs side panel, split panes | PARTIAL | DONE | The side panel holds tabs: apps, canvases, sources, articles, Outputs, workspace files (Markdown, CSV as a table, text and code, images) and other chats (chat menu → Open beside this chat: kept up to date while it runs, with Swap and Open). Split shows two tabs side by side; a tab clicked while split goes in the other pane. Verified live: a chat, Outputs and a file as tabs, then a file and a chat split |
 | Open WebUI | Hands-free voice and video calls, realtime | PARTIAL | DONE | Hands-free call (parity L236). Video and realtime models are left out (L221) |
-| Open WebUI | Voice cloning | MISSING | OUT OF SCOPE | Left out (parity L221) |
+| Open WebUI | Voice cloning | MISSING | OUT OF SCOPE | Provider-specific; left out (parity: deliberately left out). Voice conversation, read-aloud and dictation are covered |
 | Open WebUI | Image generation and editing, ComfyUI | PARTIAL | DONE | Cloud image models (OpenAI, xAI, Together) with editing by reference, and a local image server: Stable Diffusion WebUI, Forge, SD.Next or Draw Things through the AUTOMATIC1111 API (txt2img, img2img for edits), its checkpoints listed as image models. ComfyUI's own workflow API is not used. Verified live against an AUTOMATIC1111-compatible server |
 | Open WebUI | Video generation | MISSING | DONE | generate_video tool (xAI Grok Imagine): a clip from text or an image, saved in the workspace, shown in chat and under Outputs → Videos; Video model in Settings. Tested against a stand-in for xAI's service (no credit on the test account) |
 | Open WebUI | Chat overview (map with compaction marks) | MISSING | DONE | Outline in the chat header with the summarized point marked (parity: Chat outline) |
@@ -65,13 +65,13 @@ Per app now (done / partial / missing / out of scope): Open WebUI 50 / 0 / 0 / 4
 | Open WebUI | Reference chats | MISSING | DONE | parity L285 |
 | Open WebUI | Sidebar hover previews | MISSING | DONE | parity L281; main.ts:212–215 |
 | Open WebUI | Chat sharing links | MISSING | DONE | Share → Share a link: the conversation as a read-only page served by Lumo at http://<this computer>:8485/s/<128-bit token>, with a QR code, an expiry (never, 1 hour to 30 days), view counts and Stop sharing; Settings → Profile lists links. Reaches the local network, not the internet (no server). Verified live: link served, expiry set, an expired link refused (404) |
-| Open WebUI | Comments | MISSING | OUT OF SCOPE | Team feature (parity L217) |
+| Open WebUI | Comments | MISSING | OUT OF SCOPE | Owner's decision (18 Nov 2026): Lumo stays a personal desktop app; team and enterprise features are not planned (parity: deliberately left out) |
 | Open WebUI | Data controls: uploaded-file management | PARTIAL | DONE | Archive, trash, export (parity L308), and Uploaded files in Settings → Profile: every file and image sent in any chat, filterable, with Open chat and Remove (the message keeps a note in its place) (uploads.rs). Verified live |
 | Open WebUI | Notes: rich editor with toolbar | PARTIAL | DONE | Canvas document editor: a formatting toolbar (bold, italic, strikethrough, code, H1–H3, lists, checklist, quote, link, table, code block) with Ctrl+B / Ctrl+I / Ctrl+K, undoable, toggling off what is already applied (`mdformat.ts`, checked by npm run check:i18n) |
 | Open WebUI | Notes: AI Enhance in place | PARTIAL | DONE | parity: Improve with AI in editors (selection or whole page rewritten in place, Undo) |
 | Open WebUI | Notes: attach a note to a chat | PARTIAL | DONE | parity: Knowledge pages and canvases as context (`#` in the composer) |
-| Open WebUI | Administration (RBAC, SSO…) | MISSING | OUT OF SCOPE | Team/enterprise (parity L217) |
-| Open WebUI | Channels | MISSING | OUT OF SCOPE | Team (parity L217) |
+| Open WebUI | Administration (RBAC, SSO…) | MISSING | OUT OF SCOPE | Owner's decision (18 Nov 2026): Lumo stays a personal desktop app; team and enterprise features are not planned (parity: deliberately left out) |
+| Open WebUI | Channels | MISSING | OUT OF SCOPE | Owner's decision (18 Nov 2026): Lumo stays a personal desktop app; team and enterprise features are not planned (parity: deliberately left out) |
 | LibreChat | Favorites pinned in the palette | MISSING | DONE | Ctrl+K opens with pinned chats and agents first (parity: Pinned chats and agents in the palette) |
 | LibreChat | Recently used files to attach again | MISSING | DONE | parity: Recent files (recent_files.rs) |
 | LibreChat | Long paste becomes a file | MISSING | DONE | parity L276 |
@@ -116,7 +116,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 50 / 0 / 0 / 4
 | LibreChat | Desktop notification and sound for finished replies | MISSING | DONE | Notification with an optional chime (parity: Sound and stream following) |
 | LibreChat | Every shortcut rebindable | PARTIAL | DONE | Settings → General → Keyboard shortcuts: every shortcut can be rebound, including prompt history (Ctrl+R), folding activity (Ctrl+O), the mode cycle (Shift+Tab) and the nine chat shortcuts (Ctrl+1–9); prompt history and the mode cycle act only in the message box |
 | LibreChat | Settings search | MISSING | DONE | Search box at the top of Settings (parity: Search settings) |
-| LibreChat | Security / admin | MISSING | OUT OF SCOPE | Team/enterprise (parity L217) |
+| LibreChat | Security / admin | MISSING | OUT OF SCOPE | Owner's decision (18 Nov 2026): Lumo stays a personal desktop app; team and enterprise features are not planned (parity: deliberately left out) |
 | LibreChat | Image generation and editing, local server | PARTIAL | DONE | Local image server (AUTOMATIC1111 API: Stable Diffusion WebUI, Forge, SD.Next, Draw Things) in Settings → Providers → Images and voice, with checkpoints as models, seeds and img2img edits (media.rs sdwebui). Verified live |
 | LobeHub | LaTeX in streaming answers | PARTIAL | DONE | parity L275 |
 | LobeHub | Translate a message | MISSING | DONE | chat.ts:730–760 (`chat_translate`; not in the parity doc) |
@@ -151,7 +151,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 50 / 0 / 0 / 4
 | LobeHub | Memory categories, weight, confidence, links | MISSING | DONE | parity: Memory categories, importance, confidence, links (memory.rs `Filing`) |
 | LobeHub | Filter memories | PARTIAL | DONE | Find, by source and by date (parity: Filter saved facts) |
 | LobeHub | Memory agent | PARTIAL | DONE | sanitize-my-knowledge skill (parity L60), and Review my knowledge weekly (Knowledge page): a background review of saved facts and knowledge pages leaves its proposals in an unread chat, changing nothing until the user answers (learning.rs). Verified live |
-| LobeHub | Multi-user, SSO, PWA, IM channels | MISSING | OUT OF SCOPE | parity L256–257 |
+| LobeHub | Multi-user, SSO, PWA, IM channels | MISSING | OUT OF SCOPE | Owner's decision (18 Nov 2026): Lumo stays a personal desktop app; team and enterprise features are not planned (parity: deliberately left out) |
 | Onyx | Auto model router | MISSING | DONE | parity: Auto model (router.rs) |
 | Onyx | Reasoning level and temperature | PARTIAL | DONE | Fast/Think (parity L74), temperature per chat (L272) |
 | Onyx | Agents with starters and knowledge | PARTIAL | DONE | Agents carry starters and libraries they search and cite (parity: Agent conversation starters and libraries) |
@@ -172,14 +172,14 @@ Per app now (done / partial / missing / out of scope): Open WebUI 50 / 0 / 0 / 4
 | Onyx | Share a Craft app | MISSING | DONE | An app's share button gives a link (its script runs, no network access), with QR code and expiry. Local network only. Verified live for conversations; apps use the same server and are covered by tests |
 | Onyx | Auto-send on pause | PARTIAL | DONE | parity L236 |
 | Onyx | Read, then listen again | PARTIAL | DONE | parity L236 |
-| Onyx | Collaboration | MISSING | OUT OF SCOPE | Team (parity L217) |
+| Onyx | Collaboration | MISSING | OUT OF SCOPE | Owner's decision (18 Nov 2026): Lumo stays a personal desktop app; team and enterprise features are not planned (parity: deliberately left out) |
 | Onyx | Memory reference / update switches | PARTIAL | DONE | Context → Knowledge: Use knowledge and Save new facts are separate (`Memories.update`); with saving off, knowledge is read but remember, forget and knowledge_write are neither offered nor run (test `knowledge_can_be_used_without_being_changed`) |
-| Onyx | Enterprise features | MISSING | OUT OF SCOPE | parity L217 |
+| Onyx | Enterprise features | MISSING | OUT OF SCOPE | Owner's decision (18 Nov 2026): Lumo stays a personal desktop app; team and enterprise features are not planned (parity: deliberately left out) |
 | Onyx | Custom code for PII and query rejection | PARTIAL | DONE | Filters (Functions) rewrite or refuse messages in code: personal data taken out before it is sent, messages matching a rule refused with the reason shown as Not sent. Verified live: an email address redacted and a customer number refused |
 | Onyx | Served as an MCP server | MISSING | DONE | `/mcp` on the local API: search_libraries, ask, list_models, list_tasks, run_task (parity: Lumo as an MCP server) |
 | Onyx | Extension, widget, Slack/Discord bots, CLI | MISSING | DONE | Browser extension (extension/, verified live in Chromium with a real model); website widget from the local API (/widget.js, own key, allowed origins; verified live in Chromium, other origins refused); Slack, Discord and Telegram bots (Settings → General; tested against stand-ins for their APIs); CLI: lumo-desktop chat |
 | Osaurus | Global hotkey | MISSING | DONE | parity L293 |
-| Osaurus | App Intents (Shortcuts, Spotlight, Siri) | MISSING | MISSING |  |
+| Osaurus | App Intents (Shortcuts, Spotlight, Siri) | MISSING | OUT OF SCOPE | Owner's decision (18 Nov 2026): Lumo stays a personal desktop app; dropped (needs a Mac to build and test). Quick ask (global shortcut), dictation anywhere and lumo:// links cover launching from the system |
 | Osaurus | Built-in local runtime, model downloads | PARTIAL | DONE | Settings → Providers → Built-in models: Qwen 2.5 (0.5B–7B) and Llama 3.2 (1B, 3B) run inside Lumo with candle (pure Rust, 4-bit GGUF), downloaded from Hugging Face with progress and cancel, then offline. They appear in the model menu as Built-in; the engine reaches them through an OpenAI-compatible endpoint on 127.0.0.1 started on first use, with a short brief and no tools so a processor answers in seconds. Verified live: downloaded, chatted (title and follow-ups made locally too) |
 | Osaurus | Local API: OpenAI, Responses, Anthropic, Ollama | MISSING | DONE | `/v1/chat/completions`, `/v1/responses` (plain and streamed events), `/v1/messages`, and Ollama's `/api/tags`, `/api/chat` (NDJSON stream), `/api/generate`, `/api/version`; verified live with curl against claude-haiku-5-5 (streamed chat counted 1–5, generate answered Lisbon, Responses answered Paris and streamed created/delta/done/completed events; no token → refused) |
 | Osaurus | Inference runtime (scheduler, batching) | MISSING | DONE | Built-in runtime (candle) serves Lumo and other apps (local/<id> on the local API); a scheduler queues up to 8 (429 past that) and answers requests for the same Qwen model together, up to 4 per batch (left padding with a padding mask, finished rows leave the batch). Verified live: four local API requests ran as one batch with correct answers; first word about 30% sooner on average, equal throughput on this shared CPU |
@@ -204,10 +204,10 @@ Per app now (done / partial / missing / out of scope): Open WebUI 50 / 0 / 0 / 4
 | Osaurus | System-wide dictation hotkey | MISSING | DONE | parity: Dictation anywhere (`dictation.rs`, `dictate.ts`; Settings → Audio). Verified live: Ctrl+Alt+D over an xterm opened the Listening pill, speech played into a virtual microphone was recorded (7.4 s WAV) and transcribed, and the text was typed into the xterm; changing the shortcut released the old one; auto-finish on pause and paste mode also ran |
 | Osaurus | On-device images | PARTIAL | DONE | Images made on the user's own machine through a local image server (Draw Things on a Mac, Stable Diffusion WebUI or Forge elsewhere), used by generate_image with no key (media.rs). Verified live against a local AUTOMATIC1111-compatible server |
 | Osaurus | Encrypted sync between devices | MISSING | DONE | parity: Sync between devices (`sync.rs`; Settings → Profile). Verified live with two configurations sharing one folder: device A sent 105 encrypted items (no plaintext in the folder); device B refused a wrong passphrase, then received A's 5 extra conversations and sent its renamed chat, which reached A; a chat deleted on A was moved to B's trash on B's next sync |
-| Osaurus | Workspaces | MISSING | OUT OF SCOPE | Team (parity L217) |
+| Osaurus | Workspaces | MISSING | OUT OF SCOPE | Owner's decision (18 Nov 2026): Lumo stays a personal desktop app; team and enterprise features are not planned (parity: deliberately left out) |
 | Osaurus | Encryption at rest | PARTIAL | DONE | parity: Encrypt data on this computer (`at_rest.rs`; Settings → Profile). Verified live: 338 files were sealed (no plaintext left outside sandboxes), the app restarted, unlocked from the keychain, listed and searched chats and saved a new one sealed; decrypting restored every file in the clear |
 | Osaurus | Telemetry toggles | MISSING | DONE | Error reports opt-in (absent from builds without a reporting key), update check at start can be turned off (parity: Error reports and update checks) |
-| Osaurus | Agent identity, encrypted relay | MISSING | OUT OF SCOPE | Team |
+| Osaurus | Agent identity, encrypted relay | MISSING | OUT OF SCOPE | Owner's decision (18 Nov 2026): Lumo stays a personal desktop app; team and enterprise features are not planned (parity: deliberately left out) |
 | OpenBot | FIFO queue: pause, resume, cancel, survives a crash | PARTIAL | DONE | Queue kept across restarts, paused and resumed, cleared |
 | OpenBot | Pinned messages | MISSING | DONE | Bookmarked messages, listed per chat and in search (parity: Bookmark messages) |
 | OpenBot | Audio, video, ZIP attachments | PARTIAL | DONE | Audio transcribed, ZIP read file by file, PDFs and Office read (parity: Audio and ZIP attachments), and videos (`video.rs`): six spread frames as images plus the soundtrack's transcript, with ffmpeg. Verified live: a 4-second clip showing "LISBON 2026" with a spoken question; the model read the text from the frames and answered the question from the transcript |
@@ -239,5 +239,5 @@ Per app now (done / partial / missing / out of scope): Open WebUI 50 / 0 / 0 / 4
 | OpenBot | Import agents | MISSING | DONE | parity L295 |
 | OpenBot | Audit log export | MISSING | DONE | Settings → Profile → Activity log: every tool call (tool, arguments shortened, outcome, duration, chat, agent) and every approval decision (approved, approved always, declined), kept a year on this computer (encrypted when encryption is on, vault secrets masked), exported as CSV (spreadsheet-safe) or JSON for the last 7 or 30 days or everything; Clear. Unit-tested; verified live: a run_code approval and call recorded and exported as CSV |
 | OpenBot | Privacy-safe diagnostics export | PARTIAL | DONE | Export diagnostics: versions, platform, settings and counts, no content |
-| OpenBot | SSO, SCIM, tenants, governance | MISSING | OUT OF SCOPE | parity L257 |
-| OpenBot | Slack, Teams, mobile, servers | MISSING | PARTIAL | Slack: an app of your own in Socket Mode (Settings → General → Slack), no public address needed; direct messages and channel mentions (answered in the thread) reach the chosen agent; pairing by one-time code; changes refused unless allowed. Mobile: Telegram (Settings → General → Telegram). Both tested against local stand-ins for the Slack and Telegram APIs (no real tokens here): strangers refused, pairing, real model answers delivered, Slack events acknowledged. Not here: Microsoft Teams (needs an Azure bot registration and a public endpoint) and server deployment |
+| OpenBot | SSO, SCIM, tenants, governance | MISSING | OUT OF SCOPE | Owner's decision (18 Nov 2026): Lumo stays a personal desktop app; team and enterprise features are not planned (parity: deliberately left out) |
+| OpenBot | Slack, Teams, mobile, servers | MISSING | DONE | Slack (Socket Mode) and Discord (Gateway) bots in Settings → General, no public address needed; mobile through Telegram; tested against stand-ins for their APIs (the owner tests with real tokens). Teams and server deployment dropped by the owner's decision (18 Nov 2026): Lumo stays a personal desktop app |

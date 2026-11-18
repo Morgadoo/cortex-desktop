@@ -222,9 +222,13 @@ items most likely to differ:
 Reviewed in November 2026 feature by feature against the docs of Open WebUI, LibreChat, LobeHub,
 Onyx, Osaurus and OpenBot (about 220 features). Every item of the review's shortlist is in the table
 below; every feature the review found missing or partial is tracked row by row, with evidence, in
-[review-coverage.md](review-coverage.md) (now 210 done, 1 partial, 1 missing, 11 out of scope).
+[review-coverage.md](review-coverage.md) (now 211 done, 0 partial, 0 missing, 12 out of scope).
 What was deliberately left out, and why:
 
+- **Owner's decision (18 November 2026):** Lumo stays a personal desktop app. Multi-user and
+  team features, a Microsoft Teams bot and macOS App Intents (Shortcuts, Siri) are not planned.
+  Integrations tested here only against stand-ins (Telegram, Slack, Discord, video generation,
+  Qdrant, Tika, ACP, PR status) are left for the owner to try with real accounts.
 - **Team and enterprise features** (channels, comments, SSO, SCIM, tenants, admin plane, publishing
   to shared marketplaces): this is a single-user desktop app. Browsing community agents and plugin
   marketplaces is in.
