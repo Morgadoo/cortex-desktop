@@ -393,13 +393,29 @@ What was deliberately left out, and why:
 
 ## Known gaps
 
-- **Reference coverage:** sections 1–6 were checked against the first 5 Vibe screenshots, and the
-  app canvas flow (thinking, card, side panel) against 3 fresh ones from November 2026. Screens
-  without a screenshot (Context pages, Scheduled, Settings, Code mode) follow Mistral's docs.
+What is not here, and why. Everything else in the Vibe tables is built and was run in the app.
+
+- **Vibe rows that need Mistral's cloud or accounts:** the "Upgrade to Pro" card, skills "Shared
+  with me", library roles and organization sharing, `/teleport` to Vibe Code Web, and mobile apps,
+  admin rollout and workspaces. Lumo is a single-user desktop app with no account server; the
+  nearest local features are sync between your own devices, share links on your network, and
+  agent and skill export files. The AFP news feed is Mistral's partnership; the reader works on
+  any source instead.
+- **Share links reach your network, not the internet:** there is no Lumo server to host pages
+  publicly. A page can still be saved as one file and sent.
+- **macOS-only and Windows-only paths were not run here:** App Intents (Siri, Shortcuts,
+  Spotlight) are not built, as they need Swift on a Mac. Dictation anywhere types with xdotool,
+  wtype or ydotool on Linux and pastes on macOS and Windows; computer use on macOS (screencapture,
+  cliclick) and on Wayland (grim, ydotool, wtype) is unit-tested, and only Linux/X11 was run.
 - **Speech services that need their own keys:** dictation and voice conversation were verified with
-  a real speech-to-text model (Whisper tiny.en behind an OpenAI-compatible endpoint, fed speech the
-  xAI voice model spoke). ElevenLabs speech-to-text and ElevenLabs voices need keys this setup does
-  not have.
-- **Computer use on macOS and Wayland:** only Linux/X11 was run here. macOS uses screencapture and cliclick (no scrolling); Wayland uses grim for screenshots and ydotool (with ydotoold) for the mouse and keys, or wtype for typing. The Wayland commands are unit-tested, not run against a compositor.
-- **Pull requests on unknown hosts:** a host that is not recognised and prints no link during the push gets the branch pushed, and the pull request is opened there by hand.
-- **Branding:** the app still carries the Lumo name and logo; a new name is the owner's decision.
+  a real speech-to-text model (Whisper tiny.en behind an OpenAI-compatible endpoint). The wake word
+  and dictation anywhere were run with the microphone, hotkey and typing real and a stand-in
+  transcription server. ElevenLabs needs keys this setup does not have.
+- **Coding agents and plugins from GitHub:** the Claude Code CLI ran for real; Codex and Gemini
+  CLIs were run as stand-ins with the same command-line shape. Downloading a plugin ZIP from
+  GitHub was blocked by this environment's network; reading the official marketplace worked.
+- **Interface translations:** Portuguese, Spanish, French and German were translated by a model
+  and have not been reviewed by native speakers.
+- **Pull requests on unknown hosts:** a host that is not recognised and prints no link during the
+  push gets the branch pushed, and the pull request is opened there by hand.
+- **Branding:** the app keeps the Lumo name and logo, as the owner chose.
