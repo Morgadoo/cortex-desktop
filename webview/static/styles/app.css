@@ -1850,3 +1850,9 @@ video.output-thumb { object-fit: cover; background: #000; }
 .market-foot { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
 .market-tags { display: flex; gap: 4px; flex-wrap: wrap; min-width: 0; overflow: hidden; max-height: 26px; }
 .market-category { width: auto; }
+.video-fallback-box { position: relative; display: flex; flex-direction: column; background: #000; border-radius: 8px 8px 0 0; overflow: hidden; }
+.video-fallback { min-height: 120px; display: flex; align-items: center; justify-content: center; }
+.video-fallback img { display: block; width: 100%; height: auto; opacity: 0.85; }
+.video-fallback-actions { position: absolute; inset: auto 0 12px 0; display: flex; justify-content: center; }
+.video-fallback-box.output-thumb .video-fallback { min-height: 0; height: 100%; }
+.video-fallback-box.output-thumb img { height: 100%; object-fit: cover; }

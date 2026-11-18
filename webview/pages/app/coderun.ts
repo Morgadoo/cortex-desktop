@@ -1,7 +1,8 @@
 /** A code run in the conversation: the program, what it printed, and the charts it saved. */
 import type { Part } from './api';
-import { h, icon, modal, toast } from './dom';
-import { iconButton } from './ui';
+import { clear, h, icon, modal, toast } from './dom';
+import { tauriInvoke } from '../../shared/tauri';
+import { button, iconButton } from './ui';
 
 interface RunReport {
   language: string;
@@ -81,8 +82,25 @@ export function renderImage(part: Extract<Part, { kind: 'tool' }>, live: boolean
  * A video from the workspace in a player. The Linux media player streams only http(s) and blob
  * addresses, so the clip is fetched and played from a blob.
  */
-export function workspaceVideo(src: string, attrs: Record<string, unknown>): HTMLVideoElement {
+export function workspaceVideo(src: string, attrs: Record<string, unknown>, file?: { conversationId: string; path: string }): HTMLElement {
   const video = h('video', attrs as never);
+  // Where the system has no codec for it (some Linux setups), a still and the system's player.
+  if (file) {
+    let replaced = false;
+    video.addEventListener('error', () => {
+      if (replaced || !video.getAttribute('src')) return;
+      replaced = true;
+      const still = h('div', { class: 'video-fallback' }, h('span', { class: 'muted small' }, 'This window cannot play the video here.'));
+      const play = button({ variant: 'primary', icon: 'play', label: 'Play in your video player', onClick: () => void tauriInvoke('chat_open_workspace_file', file).catch((e) => toast(String(e), 'error')) });
+      const thumb = String(attrs.class ?? '').includes('output-thumb');
+      const box = h('div', { class: `video-fallback-box ${String(attrs.class ?? '')}` }, still, thumb ? null : h('div', { class: 'video-fallback-actions' }, play));
+      if (thumb) clear(still);
+      video.replaceWith(box);
+      void tauriInvoke<string>('chat_video_poster', file)
+        .then((jpeg) => clear(still, h('img', { src: `data:image/jpeg;base64,${jpeg}`, alt: 'A still from the video' })))
+        .catch(() => undefined);
+    });
+  }
   void fetch(src)
     .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))))
     .then((b) => {
@@ -109,7 +127,7 @@ export function renderVideo(part: Extract<Part, { kind: 'tool' }>, live: boolean
   const body = running
     ? h('div', { class: 'image-wait' }, h('span', { class: 'dots' }), animation ? 'Rendering the animation… this takes a minute or more.' : 'Making the video… this takes a minute or two.')
     : file
-      ? workspaceVideo(workspaceUrl(conversationId, file), { class: `generated-video ${shape}`, controls: true, loop: true, playsinline: true, preload: 'metadata' })
+      ? workspaceVideo(workspaceUrl(conversationId, file), { class: `generated-video ${shape}`, controls: true, loop: true, playsinline: true, preload: 'metadata' }, { conversationId, path: file })
       : h('pre', { class: 'run-stderr' }, part.output ?? 'The video could not be made.');
   const copy = iconButton({ icon: 'copy', title: 'Copy prompt', size: 'sm' });
   copy.addEventListener('click', () => {

@@ -1958,6 +1958,56 @@ pub async fn chat_save_output(app: AppHandle, conversation_id: String, path: Str
     Ok(true)
 }
 
+/// A workspace file's real path, checked to be inside that chat's workspace.
+fn workspace_file(app: &AppHandle, conversation_id: &str, path: &str) -> Result<std::path::PathBuf, String> {
+    let ws = super::sandbox::workspace(&config_dir(app)?, conversation_id)?;
+    let (Ok(root), Ok(real)) = (ws.canonicalize(), ws.join(path).canonicalize()) else { return Err("No such file.".into()) };
+    if !real.starts_with(&root) {
+        return Err("No such file.".into());
+    }
+    Ok(real)
+}
+
+/// Opens a workspace file (a video, a document) in the system's app for it. A file kept
+/// encrypted is opened from a plain copy in the temporary folder.
+#[tauri::command]
+pub fn chat_open_workspace_file(app: AppHandle, conversation_id: String, path: String) -> Result<(), String> {
+    let real = workspace_file(&app, &conversation_id, &path)?;
+    let bytes = crate::chat::at_rest::read(&real).map_err(|e| e.to_string())?;
+    let on_disk = std::fs::read(&real).map_err(|e| e.to_string())?;
+    let target = if bytes == on_disk {
+        real
+    } else {
+        let dir = std::env::temp_dir().join("lumo-open");
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let t = dir.join(real.file_name().ok_or("No such file.")?);
+        std::fs::write(&t, bytes).map_err(|e| e.to_string())?;
+        t
+    };
+    open::that_detached(&target).map_err(|e| format!("No app here opens this file: {e}"))
+}
+
+/// A still from a video (JPEG, base64), for when the window cannot play it itself.
+#[tauri::command]
+pub async fn chat_video_poster(app: AppHandle, conversation_id: String, path: String) -> Result<String, String> {
+    use base64::Engine as _;
+    let real = workspace_file(&app, &conversation_id, &path)?;
+    let bytes = crate::chat::at_rest::read(&real).map_err(|e| e.to_string())?;
+    tokio::task::spawn_blocking(move || {
+        let tmp = std::env::temp_dir().join(format!("lumo-poster-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::write(&tmp, &bytes).map_err(|e| e.to_string())?;
+        let out = std::process::Command::new("ffmpeg").args(["-v", "error", "-ss", "1", "-i"]).arg(&tmp).args(["-frames:v", "1", "-vf", "scale=960:-2", "-q:v", "4", "-f", "image2", "-c:v", "mjpeg", "pipe:1"]).output();
+        let _ = std::fs::remove_file(&tmp);
+        let out = out.map_err(|_| "ffmpeg is not installed.".to_string())?;
+        if out.stdout.is_empty() {
+            return Err("No still could be taken.".into());
+        }
+        Ok(base64::engine::general_purpose::STANDARD.encode(out.stdout))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Opens an agent's browser profile in a window, to sign in to sites for it; `clear` forgets it.
 #[tauri::command]
 pub fn chat_agent_browser(app: AppHandle, agent_id: Option<String>, url: Option<String>, clear: bool) -> Result<(), String> {

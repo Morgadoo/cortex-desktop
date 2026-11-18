@@ -451,7 +451,7 @@ What is not here, and why. Everything else in the Vibe tables is built and was r
   and dictation anywhere were run with the microphone, hotkey and typing real and a stand-in
   transcription server. ElevenLabs needs keys this setup does not have.
 - **Coding agents and plugins from GitHub:** the Claude Code CLI ran for real; Codex and Gemini
-  CLIs were run as stand-ins with the same command-line shape. ACP agents were tested with a stand-in that speaks the protocol; the Tika and Docling clients were tested against stand-in servers. Video generation was tested against a stand-in for xAI's video service (the account has no credit); in this Linux test machine WebKitGTK's media player refused to play any clip, so playback in the chat was not seen here. Downloading a plugin ZIP from
+  CLIs were run as stand-ins with the same command-line shape. ACP agents were tested with a stand-in that speaks the protocol; the Tika and Docling clients were tested against stand-in servers. Video generation was tested against a stand-in for xAI's video service (the account has no credit); in this Linux test machine WebKitGTK's media player refused to play any clip (no codecs for it here), so in-window playback was not seen. Where the window cannot play a clip, the chat shows a still from it (taken with ffmpeg) and "Play in your video player", which opens the file in the system's player; that path was verified live. Downloading a plugin ZIP from
   GitHub was blocked by this environment's network; reading the official marketplace worked.
 - **Interface translations:** Portuguese, Spanish, French, German and Arabic were translated by a model
   and have not been reviewed by native speakers.

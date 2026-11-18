@@ -66,7 +66,7 @@ async function openOutput(o: Output, inPanel: boolean) {
       return;
     }
     if (o.kind === 'video') {
-      void modal((close) => h('div', { class: 'dialog-small wide' }, modalHeader(o.title, close, { flush: true }), workspaceVideo(fileUrl(o.conversationId, o.id), { class: 'output-image-large', controls: true, autoplay: true, loop: true })));
+      void modal((close) => h('div', { class: 'dialog-small wide' }, modalHeader(o.title, close, { flush: true }), workspaceVideo(fileUrl(o.conversationId, o.id), { class: 'output-image-large', controls: true, autoplay: true, loop: true }, { conversationId: o.conversationId, path: o.id })));
       return;
     }
     if (o.kind === 'file') {
@@ -101,7 +101,7 @@ function card(o: Output, showChat: boolean): HTMLElement {
   return h(
     'button',
     { class: `output-card kind-${o.kind}`, title: o.id, on: { click: () => void openOutput(o, !showChat) } },
-    o.kind === 'image' ? h('img', { class: 'output-thumb', src: fileUrl(o.conversationId, o.id), alt: '', loading: 'lazy' }) : o.kind === 'video' ? workspaceVideo(fileUrl(o.conversationId, o.id), { class: 'output-thumb', muted: true, preload: 'metadata' }) : h('div', { class: 'output-icon' }, icon(kind?.[2] ?? 'file', 22)),
+    o.kind === 'image' ? h('img', { class: 'output-thumb', src: fileUrl(o.conversationId, o.id), alt: '', loading: 'lazy' }) : o.kind === 'video' ? workspaceVideo(fileUrl(o.conversationId, o.id), { class: 'output-thumb', muted: true, preload: 'metadata' }, { conversationId: o.conversationId, path: o.id }) : h('div', { class: 'output-icon' }, icon(kind?.[2] ?? 'file', 22)),
     h('div', { class: 'output-meta' }, h('strong', { class: 'output-title' }, o.title || 'Untitled'), h('small', { class: 'muted' }, [kind?.[1].replace(/s$/, ''), size(o.bytes), o.at ? timeLabel(o.at) : ''].filter(Boolean).join(' · '))),
     showChat && chat
       ? h('span', { class: 'output-chat', on: { click: (e: MouseEvent) => { e.stopPropagation(); navigate({ kind: 'chat', id: chat.id }); } } }, icon('chat', 12), chat.title || 'Chat')
