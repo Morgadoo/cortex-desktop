@@ -87,8 +87,22 @@ export function workspaceVideo(src: string, attrs: Record<string, unknown>, file
   // Where the system has no codec for it (some Linux setups), a still and the system's player.
   if (file) {
     let replaced = false;
+    let converted = false;
     video.addEventListener('error', () => {
       if (replaced || !video.getAttribute('src')) return;
+      // First try: the same clip as Ogg Theora, which the base media plugins can play.
+      if (!converted) {
+        converted = true;
+        video.setAttribute('title', 'Converting the video for this window…');
+        void tauriInvoke<string>('chat_playable_video', file)
+          .then((b64) => {
+            const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+            video.src = URL.createObjectURL(new Blob([bytes], { type: 'video/ogg' }));
+            video.removeAttribute('title');
+          })
+          .catch(() => video.dispatchEvent(new Event('error')));
+        return;
+      }
       replaced = true;
       const still = h('div', { class: 'video-fallback' }, h('span', { class: 'muted small' }, 'This window cannot play the video here.'));
       const play = button({ variant: 'primary', icon: 'play', label: 'Play in your video player', onClick: () => void tauriInvoke('chat_open_workspace_file', file).catch((e) => toast(String(e), 'error')) });

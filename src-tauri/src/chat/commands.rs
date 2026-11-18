@@ -2027,6 +2027,40 @@ pub fn chat_open_workspace_file(app: AppHandle, conversation_id: String, path: S
     open::that_detached(&target).map_err(|e| format!("No app here opens this file: {e}"))
 }
 
+/// The video as Ogg Theora (base64), which the Linux media player can decode with only its base
+/// plugins, for systems without H.264 or WebM support. Converted once and kept beside the clip
+/// (in a hidden folder, out of Outputs).
+#[tauri::command]
+pub async fn chat_playable_video(app: AppHandle, conversation_id: String, path: String) -> Result<String, String> {
+    use base64::Engine as _;
+    let real = workspace_file(&app, &conversation_id, &path)?;
+    let ws = super::sandbox::workspace(&config_dir(&app)?, &conversation_id)?;
+    let cache = ws.join(".playable").join(format!("{}.ogv", path.replace(['/', '\\'], "_")));
+    if !cache.exists() {
+        let bytes = crate::chat::at_rest::read(&real).map_err(|e| e.to_string())?;
+        if bytes.len() > 200 * 1024 * 1024 {
+            return Err("The video is too large to convert here.".into());
+        }
+        let cache2 = cache.clone();
+        tokio::task::spawn_blocking(move || {
+            std::fs::create_dir_all(cache2.parent().ok_or("bad path")?).map_err(|e| e.to_string())?;
+            let tmp = std::env::temp_dir().join(format!("lumo-play-{}", uuid::Uuid::new_v4().simple()));
+            std::fs::write(&tmp, &bytes).map_err(|e| e.to_string())?;
+            let out = std::process::Command::new("ffmpeg").args(["-v", "error", "-y", "-i"]).arg(&tmp).args(["-c:v", "libtheora", "-q:v", "7", "-c:a", "libvorbis", "-q:a", "4"]).arg(&cache2).output();
+            let _ = std::fs::remove_file(&tmp);
+            match out {
+                Ok(o) if o.status.success() => Ok(()),
+                Ok(o) => Err(format!("The video could not be converted: {}", String::from_utf8_lossy(&o.stderr).lines().last().unwrap_or_default())),
+                Err(_) => Err("ffmpeg is not installed.".to_string()),
+            }
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+    }
+    let ogv = std::fs::read(&cache).map_err(|e| e.to_string())?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(ogv))
+}
+
 /// A still from a video (JPEG, base64), for when the window cannot play it itself.
 #[tauri::command]
 pub async fn chat_video_poster(app: AppHandle, conversation_id: String, path: String) -> Result<String, String> {

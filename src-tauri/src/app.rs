@@ -212,6 +212,7 @@ pub fn run() {
             chat::commands::chat_usage_breakdown,
             chat::commands::chat_task_comment,
             chat::commands::chat_open_preview,
+            chat::commands::chat_playable_video,
             chat::commands::chat_audit_summary,
             chat::commands::chat_export_audit,
             chat::commands::chat_clear_audit,
