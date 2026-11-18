@@ -874,10 +874,21 @@ function renderActions(conversation: Conversation, turn: Turn, isLast: boolean, 
     await api.updateConversation({ id: conversation.id, rating: [turn.index, next] });
     changed();
     viewCache.chat?.refresh(false);
+    // A thumbs down can say what went wrong; kept with the conversation for later review.
+    if (next < 0) {
+      const reason = await promptText('What was wrong with this reply? (optional)', '', 'Inaccurate, too long, missed the point…');
+      if (reason) await tauriInvoke('chat_rate_reason', { id: conversation.id, index: turn.index, reason }).catch(() => undefined);
+    }
   };
   const copy = h('button', { class: 'icon-btn small', title: 'Copy' }, icon('copy', 16));
   copy.addEventListener('click', () => {
-    void navigator.clipboard.writeText(textOf(turn.parts));
+    // Formatted for Office and mail apps, plain Markdown for editors (LibreChat's rich copy).
+    const text = textOf(turn.parts);
+    const html = h('div', {}, markdown(text)).innerHTML;
+    const rich = typeof ClipboardItem !== 'undefined'
+      ? navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([text], { type: 'text/plain' }) })])
+      : Promise.reject(new Error('no rich clipboard'));
+    void rich.catch(() => navigator.clipboard.writeText(text));
     copy.replaceChildren(icon('check', 16));
     setTimeout(() => copy.replaceChildren(icon('copy', 16)), 1200);
   });
@@ -1375,9 +1386,11 @@ class Composer {
     this.renderBar();
   }
 
+  private expanded = false;
+
   private autosize() {
     this.textarea.style.height = 'auto';
-    this.textarea.style.height = `${Math.min(this.textarea.scrollHeight, 260)}px`;
+    this.textarea.style.height = this.expanded ? '60vh' : `${Math.min(this.textarea.scrollHeight, 260)}px`;
   }
 
   private running(): boolean {
@@ -1669,7 +1682,16 @@ class Composer {
     const voice = !running && !hasText && !this.recorder && !this.transcribing
       ? h('button', { class: 'icon-btn', title: 'Voice conversation: talk hands-free', on: { click: () => this.startVoice() } }, icon('wave', 17))
       : null;
-    clear(this.bar, h('div', { class: 'bar-left' }, plus, approval), h('div', { class: 'bar-right' }, speed, modelBtn, dictation, voice, action));
+    // A taller editor for long prompts (Open WebUI's expand).
+    const expand = h('button', { class: `icon-btn${this.expanded ? ' active' : ''}`, title: this.expanded ? 'Shrink the editor' : 'Expand the editor' }, icon('expand', 16));
+    expand.addEventListener('click', () => {
+      this.expanded = !this.expanded;
+      this.el.classList.toggle('expanded', this.expanded);
+      this.autosize();
+      this.renderBar();
+      this.focus();
+    });
+    clear(this.bar, h('div', { class: 'bar-left' }, plus, approval), h('div', { class: 'bar-right' }, speed, modelBtn, expand, dictation, voice, action));
   }
 
   private recorder: Recording | null = null;
@@ -1848,6 +1870,36 @@ class Composer {
         entry('settings', 'Manage libraries', null, () => navigate({ kind: 'page', page: 'libraries' })),
       ];
     };
+    // Another conversation as context, as Open WebUI's "Reference chats".
+    const chats = async () => {
+      const search = h('input', { class: 'input small', placeholder: 'Search chats' });
+      const list = h('div', { class: 'flyout-list' });
+      const render = () => {
+        const q = search.value.toLowerCase();
+        const shown = state.conversations.filter((c) => c.id !== this.conversationId && (!q || c.title.toLowerCase().includes(q))).slice(0, 12);
+        clear(
+          list,
+          shown.length
+            ? shown.map((c) =>
+                entry('chat', c.title || 'Untitled', null, async () => {
+                  try {
+                    const text = await tauriInvoke<string>('chat_conversation_text', { id: c.id });
+                    this.attachments.push({ name: `Chat: ${c.title || 'Untitled'}`, text });
+                    this.renderChips();
+                    this.renderBar();
+                  } catch (e) {
+                    toast(String(e), 'error');
+                  }
+                })
+              )
+            : empty('No chat matches.')
+        );
+      };
+      search.addEventListener('input', render);
+      render();
+      setTimeout(() => search.focus());
+      return [heading('Add a chat as context'), h('div', { class: 'flyout-head' }, search), list];
+    };
     const workflows = async () => {
       const all = await workflowsApi.list();
       return [
@@ -1868,6 +1920,7 @@ class Composer {
       sub('folder', 'Projects', projects),
       sub('library', 'Libraries', libraries),
       sub('workflow', 'Workflows', workflows),
+      sub('chat', 'Other chats', chats),
       item('file', 'Canvas', () => { this.useCanvas = true; this.renderChips(); this.focus(); }),
       sep(),
       item('reset', 'Reset input', () => { this.setText(''); this.attachments = []; this.folder = null; this.library = null; this.workflow = null; this.quote = null; this.useCanvas = false; this.renderChips(); this.renderBar(); })

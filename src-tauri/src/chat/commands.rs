@@ -1169,6 +1169,47 @@ pub fn chat_save_computer_settings(app: AppHandle, settings: super::computer::Co
     super::computer::save(&config_dir(&app)?, &settings)
 }
 
+/// Saves bytes the page made (a code block, a diagram) to a file the user picks.
+#[tauri::command]
+pub async fn chat_save_file(app: AppHandle, name: String, data: String) -> Result<bool, String> {
+    use base64::Engine as _;
+    use tauri_plugin_dialog::DialogExt;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(data.as_bytes()).map_err(|e| e.to_string())?;
+    if bytes.len() > 64 * 1024 * 1024 {
+        return Err("The file is too large.".into());
+    }
+    let name: String = name.chars().filter(|c| !matches!(c, '/' | '\\' | ':') && !c.is_control()).take(120).collect();
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog().file().set_file_name(if name.is_empty() { "file".to_string() } else { name }).save_file(move |path| {
+        let _ = tx.send(path);
+    });
+    let Some(path) = rx.await.map_err(|e| e.to_string())? else {
+        return Ok(false);
+    };
+    std::fs::write(path.into_path().map_err(|e| e.to_string())?, bytes).map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+/// A conversation as plain text, to add to another one as context.
+#[tauri::command]
+pub fn chat_conversation_text(app: AppHandle, id: String) -> Result<String, String> {
+    let conversation = store::load_conversation(&config_dir(&app)?, &id)?;
+    Ok(super::builtins::chat_transcript(&conversation, 60_000))
+}
+
+/// Why a reply was rated down, kept with the conversation.
+#[tauri::command]
+pub fn chat_rate_reason(app: AppHandle, id: String, index: usize, reason: String) -> Result<(), String> {
+    let dir = config_dir(&app)?;
+    let mut conversation = store::load_conversation(&dir, &id)?;
+    let reason: String = reason.trim().chars().take(500).collect();
+    conversation.rating_reasons.retain(|(i, _)| *i != index);
+    if !reason.is_empty() {
+        conversation.rating_reasons.push((index, reason));
+    }
+    store::save_conversation(&dir, &conversation)
+}
+
 #[tauri::command]
 pub fn chat_search_settings(app: AppHandle) -> Result<super::search::SearchSettings, String> {
     Ok(super::search::load_settings(&config_dir(&app)?))

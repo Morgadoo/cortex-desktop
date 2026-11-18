@@ -532,3 +532,8 @@ commands.allow = ["chat_openapi_servers", "chat_add_openapi_server", "chat_refre
 identifier = "allow-chat-computer"
 description = "Turn computer use on or off."
 commands.allow = ["chat_computer_settings", "chat_save_computer_settings"]
+
+[[permission]]
+identifier = "allow-chat-context-and-feedback"
+description = "Read a conversation as text for context, and keep why a reply was rated down."
+commands.allow = ["chat_conversation_text", "chat_rate_reason", "chat_save_file"]

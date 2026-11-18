@@ -116,6 +116,9 @@ pub struct Conversation {
     /// The user's rating of each reply, by the index of its last message.
     #[serde(default)]
     pub ratings: Vec<(usize, i8)>,
+    /// What the user said was wrong with a reply they rated down, by the same index.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rating_reasons: Vec<(usize, String)>,
     /// How long the model thought before each reply message, in milliseconds, by message index.
     #[serde(default)]
     pub thought: Vec<(usize, u32)>,
@@ -163,6 +166,7 @@ impl Conversation {
             loaded_tools: Vec::new(),
             params: ChatParams::default(),
             ratings: Vec::new(),
+            rating_reasons: Vec::new(),
             summary: None,
             usage: Default::default(),
         }

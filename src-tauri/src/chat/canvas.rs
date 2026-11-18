@@ -93,6 +93,12 @@ try {
 }
 report();
 new ResizeObserver(report).observe(document.body);
+// The page can ask for the drawn SVG, to save it as a file.
+window.addEventListener('message', (e) => {
+  if (!e.data || e.data.exportKey !== key) return;
+  const svg = out.querySelector('svg');
+  parent.postMessage({ diagramKey: key, svg: svg ? new XMLSerializer().serializeToString(svg) : null }, '*');
+});
 </script></body></html>"#;
 
 /// An app's HTML: its content, unwrapped from a ```html fence if the model added one.

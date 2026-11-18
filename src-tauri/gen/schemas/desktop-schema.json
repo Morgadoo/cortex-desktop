@@ -285,6 +285,12 @@
           "markdownDescription": "Turn computer use on or off."
         },
         {
+          "description": "Read a conversation as text for context, and keep why a reply was rated down.",
+          "type": "string",
+          "const": "allow-chat-context-and-feedback",
+          "markdownDescription": "Read a conversation as text for context, and keep why a reply was rated down."
+        },
+        {
           "description": "Read what fills a conversation's context window.",
           "type": "string",
           "const": "allow-chat-context-breakdown",

@@ -1402,3 +1402,5 @@ button.usage-meter:hover { background: var(--hover); }
 .bubble-file summary { display: flex; align-items: center; gap: 8px; padding: 6px 10px; cursor: pointer; font-size: var(--fs-sm); list-style: none; }
 .bubble-file summary::-webkit-details-marker { display: none; }
 .bubble-file pre { margin: 0; padding: 8px 10px; max-height: 320px; overflow: auto; font-size: var(--fs-xs); border-top: 1px solid var(--border); white-space: pre-wrap; }
+
+.composer.expanded .composer-input { max-height: none; }

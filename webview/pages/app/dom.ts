@@ -1,6 +1,7 @@
 /** A small element builder, an icon set, and safe Markdown rendering for the chat page. */
 import DOMPurify from 'dompurify';
 import katex from 'katex';
+import { tauriInvoke } from '../../shared/tauri';
 import { marked } from 'marked';
 
 type Child = Node | string | null | undefined | false;
@@ -268,13 +269,7 @@ export function markdown(text: string, options: { breaks?: boolean } = {}): Docu
     });
     // Save the block as a file, named by its language.
     const save = h('button', { class: 'code-copy', title: 'Download as a file' }, icon('download', 14));
-    save.addEventListener('click', () => {
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([code?.textContent ?? ''], { type: 'text/plain' }));
-      a.download = `snippet.${EXTENSIONS[lang.toLowerCase()] ?? 'txt'}`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-    });
+    save.addEventListener('click', () => void saveFile(`snippet.${EXTENSIONS[lang.toLowerCase()] ?? 'txt'}`, new Blob([code?.textContent ?? ''], { type: 'text/plain' })));
     const head = h('div', { class: 'code-head' }, h('span', {}, lang || 'code'), h('span', { class: 'code-actions' }, save, copy));
     pre.before(head);
     const wrap = h('div', { class: 'code-block' });
@@ -398,4 +393,16 @@ export function toast(message: string, kind: 'info' | 'error' = 'info') {
   document.body.append(el);
   clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => el.remove(), kind === 'error' ? 6000 : 3000);
+}
+
+/** Saves a blob through the system's save dialog (the webview does not download blobs). */
+export async function saveFile(name: string, blob: Blob): Promise<void> {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  try {
+    if (await tauriInvoke<boolean>('chat_save_file', { name, data: btoa(binary) })) toast('Saved.');
+  } catch (e) {
+    toast(String(e), 'error');
+  }
 }
