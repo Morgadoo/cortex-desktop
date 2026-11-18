@@ -102,6 +102,27 @@ fn clip(text: &str, max: usize, note: &str) -> String {
     format!("{head}\n[… {note}]")
 }
 
+/// Characters of a long result's start and end the model sees; the rest is read with
+/// `read_tool_output`.
+pub const RESULT_HEAD: usize = 16_000;
+pub const RESULT_TAIL: usize = 4_000;
+
+/// A long tool result as Vibe shows it: its start and its end, and how to read the middle from
+/// the file it was saved to.
+pub fn head_and_tail(text: &str, call_id: &str) -> String {
+    let total = text.chars().count();
+    if total <= MAX_RESULT_CHARS {
+        return text.to_string();
+    }
+    let head: String = text.chars().take(RESULT_HEAD).collect();
+    let tail: String = text.chars().skip(total - RESULT_TAIL).collect();
+    format!(
+        "{head}\n[… {} characters not shown of {total}. The whole output is saved; read any part with \
+         read_tool_output(call_id=\"{call_id}\", offset={RESULT_HEAD}) …]\n{tail}",
+        total - RESULT_HEAD - RESULT_TAIL
+    )
+}
+
 /// The messages a request carries: from the summary on, with older tool results cleared.
 pub fn request_messages(messages: &[Message], summary: Option<&Summary>) -> Vec<Message> {
     let start = summary.map_or(0, |s| s.upto.min(messages.len()));
@@ -119,7 +140,7 @@ pub fn request_messages(messages: &[Message], summary: Option<&Summary>) -> Vec<
                     text.text = if old {
                         clip(&text.text, CLEARED_HEAD, &format!("older result cleared, {total} characters in all; run the tool again if you need it"))
                     } else {
-                        clip(&text.text, MAX_RESULT_CHARS, &format!("cut at {MAX_RESULT_CHARS} of {total} characters"))
+                        head_and_tail(&text.text, &result.call.to_string())
                     };
                 }
             }
@@ -303,6 +324,17 @@ pub fn transcript(messages: &[Message]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn long_results_show_their_start_and_end() {
+        let text: String = (0..30_000).map(|i| char::from(b'a' + (i % 26) as u8)).collect();
+        let shown = head_and_tail(&text, "call_7");
+        assert!(shown.starts_with(&text[..100]));
+        assert!(shown.ends_with(&text[text.len() - 100..]));
+        assert!(shown.contains("10000 characters not shown of 30000"));
+        assert!(shown.contains("read_tool_output(call_id=\"call_7\", offset=16000)"));
+        assert_eq!(head_and_tail("short", "x"), "short");
+    }
+
 
     #[test]
     fn provider_errors_read_plainly() {
@@ -350,7 +382,8 @@ mod tests {
         assert!(result_text(&out[2]).len() < 800);
         let recent = result_text(&out[out.len() - 3]);
         assert_eq!(recent.len(), 2000);
-        assert!(result_text(&out[out.len() - 1]).contains("cut at"));
+        let big = result_text(&out[out.len() - 1]);
+        assert!(big.contains("read_tool_output(call_id=\"big\"") && big.len() < MAX_RESULT_CHARS);
     }
 
     #[test]
@@ -419,4 +452,5 @@ pub fn message_text(message: &Message) -> String {
             .join("\n"),
         _ => String::new(),
     }
+
 }

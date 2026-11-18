@@ -164,7 +164,7 @@ equivalent, that is what is compared.
 | Pinned todo plan (2.25.8) | Plan panel beside the conversation | Done |
 | Subagent history with live status (2.25.5) | Sub-agent rows with live status and reports; "View every step" opens a worker's transcript (each tool call, its input and result, then the report), kept apart from the main context | Done |
 | Errors and warnings inline, not pop-ups (3.1.0) | Errors are cards in the conversation; notices (a backup model taking over) are lines in the reply, kept with it | Done |
-| Large tool outputs saved to a file, start and end shown to the model (3.0.1) | Results over 24,000 characters are cut, older ones cleared; `tool_results__read` reads them back | Adapted |
+| Large tool outputs saved to a file, start and end shown to the model (3.0.1) | A tool result over 24,000 characters is saved whole to a file (chat/tool-outputs/<chat>/<call>.txt); the conversation and the model get its first 16,000 and last 4,000 characters with how to read the rest, and `read_tool_output` pages through it by call id and offset. Older results are still cleared to save context. Verified live: a 74,159-character run_code output, the model read line 3500 from the saved file without running the code again | Done |
 | Footer: active model and thinking level; click to change (3.0.3) | Model and Fast / Think in the composer | Done |
 | Monthly usage gauge (3.1.0) | This month's tokens, cost and chats in the profile menu; also per conversation and per agent | Done |
 | Session PRs shown with links (3.0.3) | Changes view opens the pull request | Done |

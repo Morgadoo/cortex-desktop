@@ -24,8 +24,9 @@ pub const RUN_CODE: &str = "run_code";
 /// Seconds a run may take unless the model asks for more, and the most it may ask for.
 const DEFAULT_TIMEOUT: u64 = 30;
 const MAX_TIMEOUT: u64 = 120;
-/// Characters kept of each output stream; the tail is what matters when a run fails.
-const OUTPUT_CHARS: usize = 12_000;
+/// Characters kept of each output stream (its end, which matters when a run fails). A long
+/// output is saved whole by the engine and shown to the model by its start and end.
+const OUTPUT_CHARS: usize = 300_000;
 /// Files listed back to the model after a run.
 const MAX_FILES: usize = 40;
 
