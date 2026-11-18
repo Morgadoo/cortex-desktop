@@ -59,6 +59,13 @@ pub struct Agent {
     /// reminder), for rules the agent must not drift from in long chats.
     #[serde(default)]
     pub reminder: String,
+    /// The agents this one hosts as a group (LobeHub's agent groups), by id; empty for a single
+    /// agent. A group answers by handing each request to its members, then writing the result.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub members: Vec<String>,
+    /// How the members work: `parallel`, `sequential` or `debate`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub group_mode: String,
     pub created_at: DateTime<Utc>,
 }
 
@@ -188,6 +195,10 @@ pub fn allows(agent: &Agent, name: &str) -> bool {
     if agent.tools.is_empty() {
         return true;
     }
+    // A group works through its members.
+    if !agent.members.is_empty() && name == super::builtins::DELEGATE {
+        return true;
+    }
     // Libraries given to the agent come with the tools that read them.
     if !agent.libraries.is_empty() && matches!(name, "search_library" | "read_document") {
         return true;
@@ -265,6 +276,68 @@ pub fn team_prompt(agents: &[Agent], except: Option<&str>) -> Option<String> {
         "\n\n## Your team\nThese agents can take tasks through `delegate`: set a task's `agent` to the \
          agent's name and it works on it with its own instructions and model, then reports back.\n{}",
         team.join("\n")
+    ))
+}
+
+/// Whether new chats are handed to the best-suited agent (Osaurus's orchestrator).
+pub fn routing_enabled(config_dir: &Path) -> bool {
+    crate::chat::at_rest::read_to_string(chat_dir(config_dir).join("agent-routing.json"))
+        .ok()
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        .and_then(|v| v.get("enabled").and_then(serde_json::Value::as_bool))
+        .unwrap_or(false)
+}
+
+pub fn set_routing(config_dir: &Path, enabled: bool) -> Result<(), String> {
+    super::store::write_json(&chat_dir(config_dir).join("agent-routing.json"), &serde_json::json!({ "enabled": enabled }))
+}
+
+/// The question that picks an agent for a new chat.
+pub fn route_prompt(agents: &[Agent], message: &str) -> String {
+    let list: Vec<String> = agents.iter().map(|a| format!("- {}: {}", a.name, if a.description.trim().is_empty() { "no description" } else { a.description.trim() })).collect();
+    format!(
+        "A user starts a chat with this message:\n\n{}\n\nThese agents could take it:\n{}\n\nWhich one is clearly \
+         the best fit? Reply with only its name, exactly as written, or with `none` when the message \
+         is general, small talk, or no agent fits better than a general assistant.",
+        message.chars().take(2_000).collect::<String>(),
+        list.join("\n")
+    )
+}
+
+/// The agent a routing reply names, if any.
+pub fn parse_route<'a>(agents: &'a [Agent], reply: &str) -> Option<&'a Agent> {
+    let line = reply.trim().lines().next().unwrap_or_default().trim().trim_matches(['`', '*', '"', '\'', '.']).trim();
+    if line.eq_ignore_ascii_case("none") || line.is_empty() {
+        return None;
+    }
+    by_name(agents, line).or_else(|| agents.iter().filter(|a| line.to_lowercase().contains(&a.name.to_lowercase())).max_by_key(|a| a.name.len()))
+}
+
+/// What a group's host is told: its members, and how to run them.
+pub fn group_prompt(agents: &[Agent], group: &Agent) -> Option<String> {
+    let members: Vec<&Agent> = group.members.iter().filter_map(|id| agents.iter().find(|a| &a.id == id && a.id != group.id)).collect();
+    if members.is_empty() {
+        return None;
+    }
+    let mode = match group.group_mode.as_str() {
+        "sequential" => "sequential",
+        "debate" => "debate",
+        _ => "parallel",
+    };
+    let how = match mode {
+        "sequential" => "one after another, each building on the reports before it, in the order listed",
+        "debate" => "all at once, then a second round where each answers the others; say where they converged and where they still disagree",
+        _ => "all at once, each on its own",
+    };
+    let list: Vec<String> = members.iter().map(|a| format!("- **{}**: {}", a.name, if a.description.trim().is_empty() { "no description" } else { a.description.trim() })).collect();
+    Some(format!(
+        "\n\n## Your group\nYou host a group of agents. For each request, unless it is small talk or a \
+         question about the group itself, call `delegate` once with `mode: \"{mode}\"` and one task per \
+         member below, in this order, with `agent` set to the member's name. Each task restates the \
+         request and what that member should contribute, so it stands alone. The members work {how}. \
+         Then answer from their reports: name who said what, show where they agree and differ, and \
+         end with your conclusion.\n{}",
+        list.join("\n")
     ))
 }
 
@@ -369,6 +442,8 @@ pub fn parse_draft(text: &str, tools: &[&str], skills: &[String]) -> Result<Agen
         libraries: Vec::new(),
         secrets: Vec::new(),
         reminder: String::new(),
+        members: Vec::new(),
+        group_mode: String::new(),
         created_at: Utc::now(),
         name,
     })
@@ -412,6 +487,8 @@ pub fn templates() -> Vec<Agent> {
         libraries: Vec::new(),
         secrets: Vec::new(),
         reminder: String::new(),
+        members: Vec::new(),
+        group_mode: String::new(),
         created_at: Utc::now(),
     };
     vec![
@@ -492,6 +569,43 @@ pub fn templates() -> Vec<Agent> {
 }
 
 #[cfg(test)]
+mod group_tests {
+    use super::*;
+
+    #[test]
+    fn new_chats_route_to_the_named_agent() {
+        let make = |id: &str, name: &str| Agent { id: id.into(), name: name.into(), ..Default::default() };
+        let all = vec![make("a", "Researcher"), make("b", "Code Reviewer"), make("c", "Code")];
+        assert_eq!(parse_route(&all, "Code Reviewer").map(|a| a.id.as_str()), Some("b"));
+        assert_eq!(parse_route(&all, "**researcher**\n").map(|a| a.id.as_str()), Some("a"));
+        assert_eq!(parse_route(&all, "The best fit is Code Reviewer.").map(|a| a.id.as_str()), Some("b"), "the longest name mentioned wins");
+        assert!(parse_route(&all, "none").is_none());
+        assert!(parse_route(&all, "Translator").is_none());
+        assert!(route_prompt(&all, "Review my PR").contains("- Code Reviewer: no description"));
+        let dir = tempfile::tempdir().unwrap();
+        assert!(!routing_enabled(dir.path()));
+        set_routing(dir.path(), true).unwrap();
+        assert!(routing_enabled(dir.path()));
+    }
+
+    #[test]
+    fn groups_host_their_members() {
+        let make = |id: &str, name: &str| Agent { id: id.into(), name: name.into(), description: format!("{name} work"), ..Default::default() };
+        let all = vec![make("a", "Researcher"), make("b", "Critic"), make("g", "Board")];
+        let mut group = all[2].clone();
+        assert!(group_prompt(&all, &group).is_none(), "no members, no group");
+        group.members = vec!["b".into(), "a".into(), "g".into(), "missing".into()];
+        group.group_mode = "debate".into();
+        group.tools = vec!["web_search".into()];
+        let p = group_prompt(&all, &group).unwrap();
+        assert!(p.contains("mode: \"debate\"") && p.find("Critic").unwrap() < p.find("Researcher").unwrap(), "{p}");
+        assert!(!p.contains("**Board**"), "a group is not its own member");
+        assert!(allows(&group, super::super::builtins::DELEGATE), "a group may always delegate");
+        assert!(!allows(&Agent { tools: vec!["web_search".into()], ..Default::default() }, super::super::builtins::DELEGATE));
+    }
+}
+
+#[cfg(test)]
 mod tests {
     #[test]
     fn agents_travel_as_bundles() {
@@ -514,6 +628,8 @@ mod tests {
             libraries: Vec::new(),
             secrets: Vec::new(),
             reminder: String::new(),
+            members: Vec::new(),
+            group_mode: String::new(),
             created_at: Utc::now(),
         };
         save(from.path(), agent).unwrap();

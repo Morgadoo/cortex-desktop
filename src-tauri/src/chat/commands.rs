@@ -1634,6 +1634,16 @@ pub fn chat_emoji_install(app: AppHandle, style: String) -> Result<super::emoji_
     Ok(super::emoji_pack::Status { state: "downloading".into(), error: None })
 }
 
+/// Whether new chats go to the best-suited agent by themselves.
+#[tauri::command]
+pub fn chat_agent_routing(app: AppHandle, enabled: Option<bool>) -> Result<bool, String> {
+    let dir = config_dir(&app)?;
+    if let Some(on) = enabled {
+        super::agents::set_routing(&dir, on)?;
+    }
+    Ok(super::agents::routing_enabled(&dir))
+}
+
 /// The local API's latest requests, newest first.
 #[tauri::command]
 pub fn chat_api_server_log() -> Vec<super::api_server::LogEntry> {

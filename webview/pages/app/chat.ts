@@ -383,7 +383,11 @@ function renderDelegate(part: Extract<Part, { kind: 'tool' }>, live: boolean, du
   const progress = state.subagents.get(part.callId) ?? [];
   const running = live && part.output === null;
   const doneCount = reports.filter((r) => r.status === 'done').length || progress.filter((p) => p?.status === 'done').length;
-  const rows = tasks.map((task, i) => {
+  const mode = typeof part.arguments.mode === 'string' ? part.arguments.mode : 'parallel';
+  // A debate's second round comes after the tasks, one row per member.
+  const count = Math.max(tasks.length, reports.length, progress.length);
+  const rows = Array.from({ length: count }, (_, i) => {
+    const task: { title?: string; instructions?: string } = tasks[i] ?? { title: reports[i]?.title ?? progress[i]?.title, instructions: 'Answers the other members’ first answers.' };
     const report = reports[i];
     const now = progress[i];
     const status = report?.status ?? now?.status ?? (running ? 'running' : 'failed');
@@ -415,7 +419,7 @@ function renderDelegate(part: Extract<Part, { kind: 'tool' }>, live: boolean, du
       'div',
       { class: 'step-row' },
       h('span', { class: `step-icon${running ? ' spin' : ''}` }, icon(running ? 'wait' : 'workflow', 16)),
-      h('span', { class: 'step-title' }, running ? (tasks.length === 1 ? 'Running a sub-agent' : `Running ${tasks.length} sub-agents in parallel`) : `Ran ${tasks.length === 1 ? 'a sub-agent' : `${tasks.length} sub-agents`} · ${doneCount} reported`),
+      h('span', { class: 'step-title' }, running ? (tasks.length === 1 ? 'Running a sub-agent' : mode === 'sequential' ? `Running ${tasks.length} sub-agents one after another` : mode === 'debate' ? `${tasks.length} agents debating` : `Running ${tasks.length} sub-agents in parallel`) : `Ran ${tasks.length === 1 ? 'a sub-agent' : `${tasks.length} sub-agents`}${mode === 'debate' ? ' in a two-round debate' : mode === 'sequential' ? ' in turn' : ''} · ${doneCount} reported`),
       seconds(duration) ? h('span', { class: 'step-time' }, seconds(duration)) : null
     ),
     h('div', { class: 'step-content' }, h('div', { class: 'workers' }, rows))

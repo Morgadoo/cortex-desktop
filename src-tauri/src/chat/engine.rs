@@ -415,6 +415,7 @@ pub async fn run_turn(app: AppHandle, request: TurnRequest, cancel: watch::Recei
             return;
         }
     };
+    let request = route_to_agent(&app, request).await;
     let outcome = turn(&app, &request, cancel).await;
     app.state::<ChatState>().finish(&id);
     if let Ok(cancelled) = outcome {
@@ -456,6 +457,40 @@ pub async fn run_turn(app: AppHandle, request: TurnRequest, cancel: watch::Recei
             emit(&app, ChatEvent::Error { conversation_id: id, message });
         }
     }
+}
+
+/// The orchestrator: a new Work chat goes to the agent that fits it best, when that is turned on
+/// and one clearly fits; the chat says so. Any failure leaves the chat as it was.
+async fn route_to_agent(app: &AppHandle, mut request: TurnRequest) -> TurnRequest {
+    let Ok(dir) = config_dir(app) else { return request };
+    let fresh = store::load_conversation(&dir, &request.conversation_id).is_err();
+    if !fresh || request.agent_id.is_some() || request.workdir.is_some() || request.text.trim().is_empty() || !agents::routing_enabled(&dir) {
+        return request;
+    }
+    let team = agents::load(&dir);
+    if team.is_empty() {
+        return request;
+    }
+    // The fast model decides when Auto has one; otherwise the chat's own.
+    let reference = super::router::models(&providers::load(&dir)).map_or_else(|| request.model.clone(), |(fast, _)| fast);
+    let ask = CompletionRequest::new(Message::user(agents::route_prompt(&team, &request.text)));
+    let reply = match ask_text(&dir, &reference, ask, 30).await {
+        Ok(r) => r,
+        Err(e) => {
+            warn!("could not route the chat to an agent: {e}");
+            return request;
+        }
+    };
+    if let Some(agent) = agents::parse_route(&team, &reply) {
+        info!("routed a new chat to {}", agent.name);
+        request.agent_id = Some(agent.id.clone());
+        let note = format!("Lumo handed this chat to {}.", agent.name);
+        request.route_note = Some(match request.route_note.take() {
+            Some(before) => format!("{before} {note}"),
+            None => note,
+        });
+    }
+    request
 }
 
 /// The Auto model: picks the fast or the strong model for this message and says which.
@@ -694,8 +729,15 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         system.push_str(&agents::notebook_prompt(&agents::notebook(&config_dir, &agent.id)));
     }
     if offered.iter().any(|t| t.name == builtins::DELEGATE) {
-        if let Some(team) = agents::team_prompt(&agents::load(&config_dir), agent.as_ref().map(|a| a.id.as_str())) {
-            system.push_str(&team);
+        let all = agents::load(&config_dir);
+        // A group hosts its members; any other chat may call on the whole team.
+        match agent.as_ref().and_then(|a| agents::group_prompt(&all, a)) {
+            Some(group) => system.push_str(&group),
+            None => {
+                if let Some(team) = agents::team_prompt(&all, agent.as_ref().map(|a| a.id.as_str())) {
+                    system.push_str(&team);
+                }
+            }
         }
     }
     // Knowledge pages that matter for this message come in full; the rest by title.
@@ -1139,6 +1181,7 @@ impl Runner<'_> {
                         self.id,
                         &call.id.to_string(),
                         tasks,
+                        subagents::Mode::parse(&arguments),
                     )
                     .await;
                     tools::Outcome { text: subagents::render(&reports), is_error: reports.iter().all(|r| r.status != "done") }

@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 161 |
-| PARTIAL | 86 | 30 |
+| DONE | 58 | 163 |
+| PARTIAL | 86 | 28 |
 | MISSING | 48 | 1 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 40 / 5 / 0 / 9 · LibreChat 39 / 3 / 0 / 4 · LobeHub 23 / 6 / 0 / 5 · Onyx 18 / 3 / 0 / 5 · Osaurus 19 / 6 / 1 / 4 · OpenBot 22 / 7 / 0 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 40 / 5 / 0 / 9 · LibreChat 39 / 3 / 0 / 4 · LobeHub 24 / 5 / 0 / 5 · Onyx 18 / 3 / 0 / 5 · Osaurus 20 / 5 / 1 / 4 · OpenBot 22 / 7 / 0 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -125,7 +125,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 40 / 5 / 0 / 9
 | LobeHub | Select several messages, delete or forward | MISSING | DONE | parity: Select messages (copy, forward to a chat or agent, delete with re-keyed history) |
 | LobeHub | Agent market | MISSING | OUT OF SCOPE | Shared marketplaces (parity L217) |
 | LobeHub | Skills marketplace (browse, publish) | PARTIAL | OUT OF SCOPE | Shared marketplaces (parity L217); SKILL.md import exists (parity L82) |
-| LobeHub | Agent groups (sequential, parallel, debate…) | PARTIAL | PARTIAL | `delegate` to teammates (parity L251). Missing: group chat modes and an orchestrator setting |
+| LobeHub | Agent groups (sequential, parallel, debate…) | PARTIAL | DONE | An agent can host a group: members picked in order in the agent editor, and a mode (parallel, sequential, debate). The host hands each request to them with `delegate` and answers from their reports; sequential members see the earlier reports, a debate adds a second round where each answers the others (subagents.rs Mode, agents.rs group_prompt). Verified live: a two-member debate ran both rounds and the host summed up |
 | LobeHub | External agents (Claude Code, Codex) | MISSING | DONE | parity: Coding agent programs as models (agent_cli.rs) |
 | LobeHub | Tasks with delegation, status, comments | PARTIAL | DONE | Scheduled tasks and sub-agents (parity L165, L248), and comments on a task (the speech-bubble on its row): every run gets them as notes to follow, newest last (`tasks::run_prompt`). Verified live: a comment was saved on a task; unit test checks the run prompt |
 | LobeHub | Agent builder as a chat | PARTIAL | DONE | New agent is a conversation: the first message drafts it, each next one revises the draft shown beside the exchange, then Review and save (agents.rs refine_prompt, agents.ts newAgent). Verified live |
@@ -183,10 +183,10 @@ Per app now (done / partial / missing / out of scope): Open WebUI 40 / 5 / 0 / 9
 | Osaurus | Built-in local runtime, model downloads | PARTIAL | PARTIAL | Ollama, llama.cpp (parity L228). Missing: built-in runtime, downloads |
 | Osaurus | Local API: OpenAI, Responses, Anthropic, Ollama | MISSING | DONE | `/v1/chat/completions`, `/v1/responses` (plain and streamed events), `/v1/messages`, and Ollama's `/api/tags`, `/api/chat` (NDJSON stream), `/api/generate`, `/api/version`; verified live with curl against claude-haiku-5-5 (streamed chat counted 1–5, generate answered Lisbon, Responses answered Paris and streamed created/delta/done/completed events; no token → refused) |
 | Osaurus | Inference runtime (scheduler, batching) | MISSING | OUT OF SCOPE | An inference server; the app uses Ollama or llama.cpp for that |
-| Osaurus | Orchestrator | PARTIAL | PARTIAL | The assistant delegates (parity L251). Missing: routing to agents by itself |
+| Osaurus | Orchestrator | PARTIAL | DONE | Route new chats to agents (Agents page): a new chat that clearly fits an agent goes to it, decided by the fast model from the agents' descriptions, and the chat says so; general questions stay with the assistant (engine.rs route_to_agent). Groups orchestrate their members. Verified live both ways |
 | Osaurus | Built-in app agents | PARTIAL | DONE | MCP connectors, and ready-made specialist agents for the apps and data on this computer: Calendar Assistant (calendar and contacts), Data Analyst (run_code, sheets), Code Reviewer (read-only), Translator and Meeting Prep, besides Researcher, News Briefer, File Assistant and Writer |
 | Osaurus | External agent runtimes | MISSING | DONE | parity: Coding agent programs as models (Claude Code, Codex, Gemini CLI) |
-| Osaurus | Typed workflows, designer agent | PARTIAL | DONE | Inputs typed as {{name:number|date|time|url|email|long}}, optional with ?, choices with |, each with its own control and checked before sending (promptvars.ts); a designer in the workflow editor drafts or revises the workflow from a description (chat_draft_workflow). Verified live |
+| Osaurus | Typed workflows, designer agent | PARTIAL | DONE | Inputs typed as {{name:number}} (or date, time, url, email, long), optional with ?, choices as {{name&#124;a&#124;b}}, each with its own control and checked before sending (promptvars.ts); a designer in the workflow editor drafts or revises the workflow from a description (chat_draft_workflow). Verified live |
 | Osaurus | Triggers: schedule, folder, webhook, feed | PARTIAL | DONE | Schedules, new files (parity L274), webhooks through the local API (L291) and feeds: a task can start when an RSS or Atom feed has new items (`Frequency::NewFeedItems`, `parse_feed`). Verified live: the first check recorded the feed's two posts; after a third was added, one run started with its title and link in the prompt |
 | Osaurus | VM per agent | PARTIAL | PARTIAL | bubblewrap sandbox (parity L231). Missing: a separate environment per agent |
 | Osaurus | Browser session per agent | PARTIAL | PARTIAL | Missing: per-agent sessions |

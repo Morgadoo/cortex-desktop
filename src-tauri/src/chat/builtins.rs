@@ -103,6 +103,11 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
                         },
                         "required": ["title", "instructions"]
                     }
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": ["parallel", "sequential", "debate"],
+                    "description": "parallel (default): all at once. sequential: one after another, each seeing the earlier reports. debate: all at once, then a second round where each answers the others."
                 }
             },
             "required": ["tasks"]

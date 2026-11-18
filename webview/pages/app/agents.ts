@@ -5,7 +5,7 @@ import { clear, confirmDialog, h, icon, modal, timeLabel, toast } from './dom';
 import { historyButton } from './versions';
 import { changed, navigate, state } from './state';
 import { TasksPage } from './tasks';
-import { button, card, modalHeader } from './ui';
+import { button, card, modalHeader, switchInput } from './ui';
 
 /** Tools an agent can be given, by the name the engine matches. */
 const TOOL_CHOICES: { id: string; label: string }[] = [
@@ -221,6 +221,46 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
         )
       )
       .catch(() => clear(secretList));
+    // A group (LobeHub): other agents as members, and how they work on each request.
+    const pickedMembers: string[] = [...(base?.members ?? [])];
+    const memberList = h('div', { class: 'tool-grid' });
+    const paintMembers = () =>
+      clear(
+        memberList,
+        state.agents.filter((a) => a.id !== existing?.id && !(a.members?.length)).length
+          ? state.agents
+              .filter((a) => a.id !== existing?.id && !(a.members?.length))
+              .map((a) => {
+                const at = pickedMembers.indexOf(a.id);
+                return h(
+                  'button',
+                  {
+                    class: `tool-toggle${at >= 0 ? ' allowed on' : ' blocked'}`,
+                    title: a.description,
+                    on: {
+                      click: () => {
+                        if (at >= 0) pickedMembers.splice(at, 1);
+                        else pickedMembers.push(a.id);
+                        paintMembers();
+                      },
+                    },
+                  },
+                  at >= 0 ? h('span', { class: 'member-order' }, String(at + 1)) : icon('plus', 14),
+                  `${a.avatar ? `${a.avatar} ` : ''}${a.name}`
+                );
+              })
+          : h('small', { class: 'muted' }, 'Make two or more agents first; a group hands each request to them.')
+      );
+    paintMembers();
+    const groupMode = h(
+      'select',
+      { class: 'input' },
+      [
+        ['parallel', 'All at once, each on its own'],
+        ['sequential', 'One after another, building on each other'],
+        ['debate', 'Debate: answer, then respond to each other'],
+      ].map(([v, l]) => h('option', { value: v, selected: (base?.groupMode || 'parallel') === v }, l))
+    );
     const error = h('p', { class: 'error-text' });
     const save = async () => {
       try {
@@ -241,6 +281,8 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
           reminder: reminder.value.trim(),
           libraries: [...pickedLibraries],
           secrets: [...pickedSecrets],
+          members: pickedMembers.filter((id) => state.agents.some((a) => a.id === id)),
+          groupMode: pickedMembers.length ? groupMode.value : '',
           createdAt: existing?.createdAt ?? new Date().toISOString(),
         });
         changed();
@@ -290,6 +332,10 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
       libraryList,
       h('label', { class: 'field-label', title: 'Given to its shell commands, code and your own tools as environment variables; the model sees only the names' }, 'Secrets from the vault'),
       secretList,
+      h('label', { class: 'field-label', title: 'Pick members to make this agent a group: it hands each request to them, in the order picked, then answers from what they report' }, 'Group members (optional)'),
+      memberList,
+      h('label', { class: 'field-label' }, 'How the members work'),
+      groupMode,
       error,
       h(
         'div',
@@ -338,8 +384,12 @@ export class AgentsPage {
         toast(String(e), 'error');
       }
     });
+    // The orchestrator (Osaurus): new chats go to the agent that fits them.
+    const routing = switchInput(false, (on) => void tauriInvoke<boolean>('chat_agent_routing', { enabled: on }).then((now) => toast(now ? 'New chats now go to the agent that fits them best.' : 'New chats stay with the general assistant.')).catch((e) => toast(String(e), 'error')));
+    void tauriInvoke<boolean>('chat_agent_routing', { enabled: null }).then((on) => { routing.checked = on; }).catch(() => undefined);
     this.el.append(
       h('header', { class: 'page-header' }, h('div', {}, h('h1', {}, 'Your agents'), h('p', { class: 'muted' }, 'A workforce of assistants with their own instructions, tools and schedules. Chat with one, or give it tasks that run on their own.')), h('div', { class: 'page-actions' }, importBtn, create)),
+      h('div', { class: 'setting-row routing-row' }, h('div', {}, h('strong', {}, 'Route new chats to agents'), h('small', { class: 'muted' }, 'When a new chat clearly fits one of your agents, it goes to that agent, and the chat says so. A quick question to the fast model decides.')), routing),
       this.grid,
       h('div', { class: 'section-title' }, 'Add a ready-made agent'),
       this.templates
@@ -376,7 +426,7 @@ export class AgentsPage {
         return h(
           'button',
           { class: 'agent-card', on: { click: () => navigate({ kind: 'agent', id: agent.id }) } },
-          h('div', { class: 'agent-card-head' }, avatar(agent, 'large'), h('div', {}, h('strong', {}, agent.name), h('small', { class: 'muted' }, agent.description || 'No description'))),
+          h('div', { class: 'agent-card-head' }, avatar(agent, 'large'), h('div', {}, h('strong', {}, agent.name, agent.members?.length ? h('span', { class: 'tag' }, `Group · ${agent.members.length}`) : null), h('small', { class: 'muted' }, agent.description || 'No description'))),
           h(
             'div',
             { class: 'agent-card-foot' },

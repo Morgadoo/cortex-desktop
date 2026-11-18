@@ -212,6 +212,7 @@ pub fn run() {
             chat::commands::chat_usage_breakdown,
             chat::commands::chat_task_comment,
             chat::commands::chat_open_preview,
+            chat::commands::chat_agent_routing,
             chat::commands::chat_emoji_status,
             chat::commands::chat_emoji_index,
             chat::commands::chat_emoji_install,

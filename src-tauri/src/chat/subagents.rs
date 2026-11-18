@@ -62,6 +62,53 @@ pub fn worker_tools(offered: &[ChatTool]) -> Vec<ChatTool> {
     offered.iter().filter(|t| WORKER_TOOLS.contains(&t.name.as_str())).cloned().collect()
 }
 
+/// How a `delegate` call's tasks run (LobeHub's agent group modes).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    /// All at once, each on its own.
+    Parallel,
+    /// One after another, each seeing what the earlier ones reported.
+    Sequential,
+    /// All at once, then a second round where each answers the others' reports.
+    Debate,
+}
+
+impl Mode {
+    pub fn parse(args: &Value) -> Mode {
+        match args.get("mode").and_then(Value::as_str).unwrap_or_default() {
+            "sequential" => Mode::Sequential,
+            "debate" => Mode::Debate,
+            _ => Mode::Parallel,
+        }
+    }
+}
+
+/// The task as the next member sees it, with what the earlier ones reported.
+pub fn after(task: &Task, earlier: &[Report]) -> Task {
+    if earlier.is_empty() {
+        return task.clone();
+    }
+    let notes: Vec<String> = earlier.iter().map(|r| format!("### {}\n{}", r.title, r.report.trim())).collect();
+    Task {
+        instructions: format!("{}\n\nWhat the members before you reported (build on it; do not repeat it):\n\n{}", task.instructions, notes.join("\n\n")),
+        ..task.clone()
+    }
+}
+
+/// A member's second-round task in a debate: the others' first answers, to answer.
+pub fn rebuttal(task: &Task, own: usize, first: &[Report]) -> Task {
+    let others: Vec<String> = first.iter().enumerate().filter(|(i, _)| *i != own).map(|(_, r)| format!("### {}\n{}", r.title, r.report.trim())).collect();
+    Task {
+        title: format!("Round 2 · {}", task.title),
+        instructions: format!(
+            "{}\n\nYou answered this already. Here are the other members' answers:\n\n{}\n\nReply with where you agree, where you disagree and why, and your revised answer. Keep what you still hold; change what they convinced you of.",
+            task.instructions,
+            others.join("\n\n")
+        ),
+        agent: task.agent.clone(),
+    }
+}
+
 pub fn parse_tasks(args: &Value) -> Result<Vec<Task>, String> {
     let tasks: Vec<Task> = serde_json::from_value(args.get("tasks").cloned().unwrap_or(Value::Null))
         .map_err(|_| "`tasks` must be a list of {title, instructions}.".to_string())?;
@@ -241,6 +288,7 @@ async fn run_one(
 
 /// Runs every task at once; reports come back in task order. A task for a named agent runs
 /// with that agent's instructions, its model, and only the reading tools it is allowed.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_all(
     app: &AppHandle,
     config_dir: &Path,
@@ -249,6 +297,7 @@ pub async fn run_all(
     conversation_id: &str,
     call_id: &str,
     tasks: Vec<Task>,
+    mode: Mode,
 ) -> Vec<Report> {
     let tools = worker_tools(offered);
     let team = super::agents::load(config_dir);
@@ -265,10 +314,30 @@ pub async fn run_all(
         }
         prepared.push((task, agent, own, allowed));
     }
-    join_all(prepared.iter().enumerate().map(|(i, (task, agent, own, allowed))| {
-        run_one(app, config_dir, own.as_ref().unwrap_or(model), allowed, conversation_id, call_id, i, task.clone(), agent.as_ref())
-    }))
-    .await
+    let run = |i: usize, task: Task, slot: usize| {
+        let (_, agent, own, allowed) = &prepared[slot];
+        run_one(app, config_dir, own.as_ref().unwrap_or(model), allowed, conversation_id, call_id, i, task, agent.as_ref())
+    };
+    match mode {
+        Mode::Parallel => join_all(prepared.iter().enumerate().map(|(i, (task, ..))| run(i, task.clone(), i))).await,
+        Mode::Sequential => {
+            let mut reports: Vec<Report> = Vec::new();
+            for (i, (task, ..)) in prepared.iter().enumerate() {
+                let report = run(i, after(task, &reports), i).await;
+                reports.push(report);
+            }
+            reports
+        }
+        Mode::Debate => {
+            let n = prepared.len();
+            let first = join_all(prepared.iter().enumerate().map(|(i, (task, ..))| run(i, task.clone(), i))).await;
+            if n < 2 {
+                return first;
+            }
+            let second = join_all(prepared.iter().enumerate().map(|(i, (task, ..))| run(n + i, rebuttal(task, i, &first), i))).await;
+            first.into_iter().chain(second).collect()
+        }
+    }
 }
 
 /// One step of a worker, kept so the user can read what it did (Vibe's subagent history).
@@ -316,6 +385,26 @@ pub fn render(reports: &[Report]) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn report(title: &str, text: &str) -> Report {
+        Report { title: title.into(), status: "done", report: text.into(), steps: 1 }
+    }
+
+    #[test]
+    fn modes_pass_reports_along() {
+        assert_eq!(Mode::parse(&json!({})), Mode::Parallel);
+        assert_eq!(Mode::parse(&json!({"mode": "sequential"})), Mode::Sequential);
+        assert_eq!(Mode::parse(&json!({"mode": "debate"})), Mode::Debate);
+        let task = Task { title: "Pricing".into(), instructions: "Propose a price.".into(), agent: Some("Analyst".into()) };
+        assert_eq!(after(&task, &[]).instructions, "Propose a price.");
+        let next = after(&task, &[report("Researcher: Market", "Rivals charge 9 EUR.")]);
+        assert!(next.instructions.contains("What the members before you reported") && next.instructions.contains("Rivals charge 9 EUR."));
+        let first = [report("A", "Charge 9."), report("B", "Charge 12."), report("C", "Charge 10.")];
+        let r = rebuttal(&task, 1, &first);
+        assert_eq!(r.title, "Round 2 · Pricing");
+        assert!(r.instructions.contains("Charge 9.") && r.instructions.contains("Charge 10.") && !r.instructions.contains("Charge 12."), "a member answers the others, not itself");
+        assert_eq!(r.agent.as_deref(), Some("Analyst"));
+    }
 
     #[test]
     fn tasks_are_validated() {

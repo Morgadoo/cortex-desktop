@@ -210,6 +210,10 @@ export interface Agent {
   secrets?: string[];
   /** Added to the newest message on every request. */
   reminder?: string;
+  /** A group's members, by agent id (LobeHub's agent groups). */
+  members?: string[];
+  /** How a group's members work: parallel, sequential or debate. */
+  groupMode?: string;
   createdAt: string;
 }
 

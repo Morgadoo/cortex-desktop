@@ -1687,3 +1687,5 @@ button.usage-meter:hover { background: var(--hover); }
 .agent-avatar .fluent-emoji{width:1.15em;height:1.15em;vertical-align:middle}
 .emoji-jumbo .fluent-emoji{width:2.6em;height:2.6em;vertical-align:middle}
 .emoji-sample{font-size:22px;letter-spacing:4px}
+.member-order{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;border-radius:8px;background:var(--accent,#7c5cff);color:#fff;font-size:10px;font-weight:700}
+.routing-row{margin:0 0 14px;padding:10px 14px;border:1px solid var(--border);border-radius:10px}
