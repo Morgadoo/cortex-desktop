@@ -230,6 +230,8 @@ export interface Task {
   id: string;
   title: string;
   prompt: string;
+  /** The user's comments, given to every run as notes. */
+  comments?: { at: string; text: string }[];
   frequency: Frequency;
   agentId: string | null;
   model: string | null;

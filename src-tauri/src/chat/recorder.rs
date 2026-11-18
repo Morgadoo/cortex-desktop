@@ -66,7 +66,7 @@ pub struct Status {
 }
 
 /// The title of the window in front, where the system says.
-fn active_window() -> String {
+pub(crate) fn active_window() -> String {
     let run = |program: &str, args: &[&str]| std::process::Command::new(program).args(args).stderr(std::process::Stdio::null()).output().ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
     if cfg!(target_os = "macos") {
         return run("osascript", &["-e", "tell application \"System Events\" to get name of first application process whose frontmost is true"]).unwrap_or_default();

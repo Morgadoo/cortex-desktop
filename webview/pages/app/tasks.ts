@@ -3,7 +3,7 @@ import { api, newId, type Frequency, type Task } from './api';
 import { tauriInvoke } from '../../shared/tauri';
 import { clear, confirmDialog, h, icon, modal, toast, clockHour12 } from './dom';
 import { navigate, state } from './state';
-import { modalHeader } from './ui';
+import { button, modalHeader } from './ui';
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -290,6 +290,8 @@ export class TasksPage {
       e.stopPropagation();
       if (await confirmDialog('Delete task?', `“${t.title}” will stop running.`)) this.set(await api.deleteTask(t.id));
     });
+    // Comments (LobeHub): notes on the task that every run follows.
+    const comments = h('button', { class: 'btn btn-link btn-sm', title: 'Notes every run follows', on: { click: (e: MouseEvent) => { e.stopPropagation(); this.openComments(t); } } }, icon('chat', 14), t.comments?.length ? String(t.comments.length) : '');
     const last = t.lastConversation
       ? h('button', { class: 'btn btn-link btn-sm', on: { click: (e: MouseEvent) => { e.stopPropagation(); navigate({ kind: 'chat', id: t.lastConversation! }); } } }, t.lastStatus === 'failed' ? 'Last run failed' : t.lastStatus === 'running' ? 'Running…' : 'Last result')
       : null;
@@ -298,11 +300,49 @@ export class TasksPage {
       { class: 'task-row', on: { click: () => void editTask(t, (tasks) => this.set(tasks)) } },
       agent ? h('span', { class: 'agent-avatar small' }, agent.avatar || agent.name.charAt(0)) : icon('clock', 17),
       h('div', { class: 'task-text' }, h('strong', {}, t.title), h('span', { class: 'muted' }, `${t.schedule}${t.nextRun ? ` · next ${when(t.nextRun)}` : ''}${t.replyIn ? ` · continues “${state.conversations.find((c) => c.id === t.replyIn)?.title ?? 'a chat'}”` : ''}`)),
+      comments,
       last,
       run,
       remove,
       toggle
     );
+  }
+
+  private openComments(t: Task) {
+    void modal((close) => {
+      const list = h('div', { class: 'hook-list' });
+      const render = (task: Task) =>
+        clear(
+          list,
+          task.comments?.length
+            ? task.comments.map((c, i) =>
+                h(
+                  'div',
+                  { class: 'hook-row' },
+                  h('div', { class: 'grow' }, h('div', {}, c.text), h('small', { class: 'muted' }, new Date(c.at).toLocaleString())),
+                  h('button', { class: 'icon-btn small', title: 'Remove', on: { click: async () => { const tasks = await tauriInvoke<Task[]>('chat_task_comment', { id: t.id, text: null, remove: i }); this.set(tasks); render(tasks.find((x) => x.id === t.id) ?? task); } } }, icon('trash', 14))
+                )
+              )
+            : h('p', { class: 'muted' }, 'No comments yet.')
+        );
+      render(t);
+      const input = h('textarea', { class: 'input textarea short', rows: 2, placeholder: 'e.g. “Skip sports news” or “From now on, also check the EU Parliament site.”' });
+      const add = button({
+        variant: 'primary',
+        label: 'Add comment',
+        onClick: async () => {
+          try {
+            const tasks = await tauriInvoke<Task[]>('chat_task_comment', { id: t.id, text: input.value, remove: null });
+            this.set(tasks);
+            input.value = '';
+            render(tasks.find((x) => x.id === t.id) ?? t);
+          } catch (e) {
+            toast(String(e), 'error');
+          }
+        },
+      });
+      return h('div', { class: 'dialog-small' }, modalHeader(`Comments on “${t.title}”`, close, { flush: true }), h('p', { class: 'muted' }, 'Every run gets these as notes to follow, newest last, so you can steer the task without rewriting it.'), list, input, h('div', { class: 'dialog-actions' }, add));
+    });
   }
 
   update() {}

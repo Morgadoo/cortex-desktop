@@ -625,6 +625,7 @@ fn schedule(config_dir: &Path, args: &Value) -> Outcome {
         seen: None,
         reply_in,
         webhook: None,
+        comments: Vec::new(),
     };
     let id = task.id.clone();
     match tasks::save(config_dir, task) {

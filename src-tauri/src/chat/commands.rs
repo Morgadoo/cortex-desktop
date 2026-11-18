@@ -2309,7 +2309,7 @@ pub async fn chat_draft_agent(app: AppHandle, description: String) -> Result<sup
 }
 
 /// The tool names an agent can be given, matching the editor's choices.
-const TOOL_CHOICES: &[&str] = &["web_search", "browser", "filesystem", "bash", "delegate", "update_plan", "canvas", "schedule_task", "use_skill", "remember"];
+const TOOL_CHOICES: &[&str] = &["web_search", "browser", "filesystem", "bash", "delegate", "update_plan", "canvas", "schedule_task", "use_skill", "remember", "run_code", "calendar_events", "find_contact", "search_chats", "knowledge_search", "notify"];
 
 /// Tokens and cost across all conversations this calendar month, for the usage gauge.
 #[tauri::command]
@@ -2325,6 +2325,48 @@ pub fn chat_usage_month(app: AppHandle) -> Result<super::agents::Spend, String> 
         }
     }
     Ok(total)
+}
+
+/// Adds a comment to a scheduled task, or removes one (`remove`, its index).
+#[tauri::command]
+pub fn chat_task_comment(app: AppHandle, id: String, text: Option<String>, remove: Option<usize>) -> Result<Vec<super::tasks::Task>, String> {
+    super::tasks::comment(&config_dir(&app)?, &id, text.as_deref(), remove)
+}
+
+/// This month's usage by model and by agent (LobeHub's stats), largest first.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageLine {
+    name: String,
+    chats: u64,
+    tokens: u64,
+    cost: f64,
+}
+
+#[tauri::command]
+pub fn chat_usage_breakdown(app: AppHandle) -> Result<(Vec<UsageLine>, Vec<UsageLine>), String> {
+    use chrono::Datelike;
+    let dir = config_dir(&app)?;
+    let now = chrono::Utc::now();
+    let agents = super::agents::load(&dir);
+    let mut by_model: std::collections::BTreeMap<String, UsageLine> = Default::default();
+    let mut by_agent: std::collections::BTreeMap<String, UsageLine> = Default::default();
+    for c in store::list_conversations(&dir).into_iter().filter(|c| c.updated_at.year() == now.year() && c.updated_at.month() == now.month()) {
+        let model = c.model.clone().unwrap_or_else(|| "unknown".into());
+        let agent = c.agent_id.as_ref().and_then(|id| agents.iter().find(|a| &a.id == id)).map_or_else(|| "Without an agent".to_string(), |a| a.name.clone());
+        for (map, key) in [(&mut by_model, model), (&mut by_agent, agent)] {
+            let line = map.entry(key.clone()).or_insert(UsageLine { name: key, chats: 0, tokens: 0, cost: 0.0 });
+            line.chats += 1;
+            line.tokens += c.tokens;
+            line.cost += c.cost;
+        }
+    }
+    let sorted = |m: std::collections::BTreeMap<String, UsageLine>| {
+        let mut v: Vec<UsageLine> = m.into_values().filter(|l| l.tokens > 0 || l.cost > 0.0).collect();
+        v.sort_by(|a, b| b.cost.total_cmp(&a.cost).then(b.tokens.cmp(&a.tokens)));
+        v
+    };
+    Ok((sorted(by_model), sorted(by_agent)))
 }
 
 /// What a sub-agent did, step by step.

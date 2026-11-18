@@ -1488,7 +1488,8 @@ pub async fn run_task(app: AppHandle, task: tasks::Task) {
             id
         }
     };
-    let text = if task.reply_in.as_deref() == Some(id.as_str()) { format!("(Scheduled follow-up: {}) {}", task.title, task.prompt) } else { task.prompt.clone() };
+    let prompt = tasks::run_prompt(&task);
+    let text = if task.reply_in.as_deref() == Some(id.as_str()) { format!("(Scheduled follow-up: {}) {}", task.title, prompt) } else { prompt };
     let Some(cancel) = app.state::<ChatState>().begin(&id) else { return };
     let request = TurnRequest {
         conversation_id: id.clone(),

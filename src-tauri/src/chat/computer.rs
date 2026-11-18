@@ -33,6 +33,25 @@ pub const MAX_WIDTH: u32 = 1280;
 #[serde(rename_all = "camelCase", default)]
 pub struct ComputerSettings {
     pub enabled: bool,
+    /// Windows the assistant may never act in: words matched in the front window's title or app
+    /// name, case-insensitively (a bank, a password manager).
+    pub blocked_apps: Vec<String>,
+    /// When set, the only windows it may act in.
+    pub only_apps: Vec<String>,
+}
+
+/// Whether an action may run with `window` in front, under the per-app rules.
+pub fn app_allowed(settings: &ComputerSettings, window: &str) -> Result<(), String> {
+    let w = window.to_lowercase();
+    let has = |rule: &String| !rule.trim().is_empty() && w.contains(&rule.trim().to_lowercase());
+    if let Some(rule) = settings.blocked_apps.iter().find(|r| has(r)) {
+        return Err(format!("Computer use is not allowed in “{window}” (it matches “{}” in Settings → Permissions → Computer use). Ask the user to do this step.", rule.trim()));
+    }
+    let only: Vec<&String> = settings.only_apps.iter().filter(|r| !r.trim().is_empty()).collect();
+    if !only.is_empty() && !only.iter().any(|r| has(r)) {
+        return Err(format!("Computer use is only allowed in {} (Settings → Permissions → Computer use), and “{window}” is in front. Ask the user to bring the right window forward.", only.iter().map(|r| format!("“{}”", r.trim())).collect::<Vec<_>>().join(", ")));
+    }
+    Ok(())
 }
 
 fn settings_path(config_dir: &Path) -> std::path::PathBuf {
@@ -384,6 +403,14 @@ pub async fn run(conversation_id: &str, input: &Value) -> Result<String, String>
     if action == "screenshot" {
         return screenshot(conversation_id).await;
     }
+    // Per-app rules: the window in front decides whether the action may run.
+    if let Some(dir) = crate::reporting::early_config_dir() {
+        let settings = load(&dir);
+        if !settings.blocked_apps.is_empty() || !settings.only_apps.is_empty() {
+            let window = tokio::task::spawn_blocking(super::recorder::active_window).await.unwrap_or_default();
+            app_allowed(&settings, &window)?;
+        }
+    }
     let done = act(conversation_id, action, input).await?;
     tokio::time::sleep(std::time::Duration::from_millis(700)).await;
     let shot = screenshot(conversation_id).await.unwrap_or_else(|e| format!("(No new screenshot: {e})"));
@@ -393,6 +420,17 @@ pub async fn run(conversation_id: &str, input: &Value) -> Result<String, String>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn per_app_rules_block_or_limit_windows() {
+        let blocked = ComputerSettings { enabled: true, blocked_apps: vec!["Bank".into(), "  ".into()], only_apps: vec![] };
+        assert!(app_allowed(&blocked, "My Bank - Firefox").unwrap_err().contains("“Bank”"));
+        assert!(app_allowed(&blocked, "Terminal").is_ok());
+        let only = ComputerSettings { enabled: true, blocked_apps: vec![], only_apps: vec!["gimp".into(), "Terminal".into()] };
+        assert!(app_allowed(&only, "image.png - GIMP").is_ok());
+        assert!(app_allowed(&only, "Inbox - Mail").unwrap_err().contains("only allowed"));
+        assert!(app_allowed(&ComputerSettings::default(), "anything").is_ok());
+    }
 
     #[test]
     fn screenshots_shrink_and_map_back() {

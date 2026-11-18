@@ -1204,14 +1204,31 @@ function editTool(existing: CustomTool | null, onSaved: (tools: CustomTool[]) =>
 
 /** Computer use: the assistant may see the screen and use the mouse and keyboard. */
 async function computerCard(): Promise<HTMLElement> {
-  const current = await tauriInvoke<{ enabled: boolean }>('chat_computer_settings');
+  type Settings = { enabled: boolean; blockedApps: string[]; onlyApps: string[] };
+  let current = await tauriInvoke<Settings>('chat_computer_settings');
+  const save = (next: Partial<Settings>, said: string) => {
+    current = { ...current, ...next };
+    void tauriInvoke('chat_save_computer_settings', { settings: current }).then(() => toast(said)).catch((e) => toast(String(e), 'error'));
+  };
+  const lines = (s: string) => s.split('\n').map((l) => l.trim()).filter(Boolean);
+  const blocked = h('textarea', { class: 'input textarea short', rows: 3, placeholder: 'One per line, e.g.\nBank\n1Password\nKeePassXC' });
+  blocked.value = (current.blockedApps ?? []).join('\n');
+  blocked.addEventListener('change', () => save({ blockedApps: lines(blocked.value) }, 'Saved.'));
+  const only = h('textarea', { class: 'input textarea short', rows: 3, placeholder: 'Empty: any app not blocked. One per line, e.g.\nGIMP\nLibreOffice Calc' });
+  only.value = (current.onlyApps ?? []).join('\n');
+  only.addEventListener('change', () => save({ onlyApps: lines(only.value) }, 'Saved.'));
   return card(
     h('h3', {}, 'Computer use'),
     row(
       'Allow computer use',
       'Lets the assistant take screenshots and click, type and scroll on this computer. Screenshots are sent to your model. Each action follows the composer’s mode: Ask confirms every click, Auto checks each one against your request. Needs xdotool and ImageMagick on Linux, or cliclick on macOS.',
-      switchInput(current.enabled, (v) => void tauriInvoke('chat_save_computer_settings', { settings: { enabled: v } }).then(() => toast(v ? 'Computer use on.' : 'Computer use off.')))
-    )
+      switchInput(current.enabled, (v) => save({ enabled: v }, v ? 'Computer use on.' : 'Computer use off.'))
+    ),
+    h('label', { class: 'field-label' }, 'Never act in these apps'),
+    h('p', { class: 'muted small' }, 'Words matched in the title of the window in front. A click or keystroke there is refused, and the assistant asks you to do that step.'),
+    blocked,
+    h('label', { class: 'field-label' }, 'Only act in these apps'),
+    only
   );
 }
 

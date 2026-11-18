@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 148 |
-| PARTIAL | 86 | 43 |
+| DONE | 58 | 153 |
+| PARTIAL | 86 | 38 |
 | MISSING | 48 | 1 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9 · LibreChat 37 / 5 / 0 / 4 · LobeHub 19 / 10 / 0 / 5 · Onyx 17 / 4 / 0 / 5 · Osaurus 16 / 9 / 1 / 4 · OpenBot 22 / 7 / 0 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 38 / 7 / 0 / 9 · LibreChat 37 / 5 / 0 / 4 · LobeHub 21 / 8 / 0 / 5 · Onyx 17 / 4 / 0 / 5 · Osaurus 18 / 7 / 1 / 4 · OpenBot 22 / 7 / 0 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -67,7 +67,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9
 | Open WebUI | Chat sharing links | MISSING | OUT OF SCOPE | Hosted links are server-only; the local equivalent "Share as web page" exists (parity L202) |
 | Open WebUI | Comments | MISSING | OUT OF SCOPE | Team feature (parity L217) |
 | Open WebUI | Data controls: uploaded-file management | PARTIAL | PARTIAL | Archive, trash, export (parity L308; settings.ts:186). Missing: a page that lists and manages uploaded files |
-| Open WebUI | Notes: rich editor with toolbar | PARTIAL | PARTIAL | Canvas documents with Preview/Code (parity L111). Missing: a formatting toolbar |
+| Open WebUI | Notes: rich editor with toolbar | PARTIAL | DONE | Canvas document editor: a formatting toolbar (bold, italic, strikethrough, code, H1–H3, lists, checklist, quote, link, table, code block) with Ctrl+B / Ctrl+I / Ctrl+K, undoable, toggling off what is already applied (`mdformat.ts`, checked by npm run check:i18n) |
 | Open WebUI | Notes: AI Enhance in place | PARTIAL | DONE | parity: Improve with AI in editors (selection or whole page rewritten in place, Undo) |
 | Open WebUI | Notes: attach a note to a chat | PARTIAL | DONE | parity: Knowledge pages and canvases as context (`#` in the composer) |
 | Open WebUI | Administration (RBAC, SSO…) | MISSING | OUT OF SCOPE | Team/enterprise (parity L217) |
@@ -127,10 +127,10 @@ Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9
 | LobeHub | Skills marketplace (browse, publish) | PARTIAL | OUT OF SCOPE | Shared marketplaces (parity L217); SKILL.md import exists (parity L82) |
 | LobeHub | Agent groups (sequential, parallel, debate…) | PARTIAL | PARTIAL | `delegate` to teammates (parity L251). Missing: group chat modes and an orchestrator setting |
 | LobeHub | External agents (Claude Code, Codex) | MISSING | DONE | parity: Coding agent programs as models (agent_cli.rs) |
-| LobeHub | Tasks with delegation, status, comments | PARTIAL | PARTIAL | Scheduled tasks, sub-agents (parity L165, L248). Missing: comments on tasks |
+| LobeHub | Tasks with delegation, status, comments | PARTIAL | DONE | Scheduled tasks and sub-agents (parity L165, L248), and comments on a task (the speech-bubble on its row): every run gets them as notes to follow, newest last (`tasks::run_prompt`). Verified live: a comment was saved on a task; unit test checks the run prompt |
 | LobeHub | Agent builder as a chat | PARTIAL | PARTIAL | One-prompt draft (parity L249). Missing: a conversation that refines it |
 | LobeHub | Greeting and conversation starters per agent | MISSING | DONE | Conversation starters on the agent's new-chat page (parity: Agent conversation starters) |
-| LobeHub | Stats: cost, cache, tokens, models per agent | PARTIAL | PARTIAL | Spend per agent (parity L253). Missing: cache savings and a per-model breakdown |
+| LobeHub | Stats: cost, cache, tokens, models per agent | PARTIAL | DONE | Spend per agent (parity L253), and the profile menu's month gauge opens Usage this month: tokens, cost and chats by model and by agent, with bars. Verified live with this month's real usage (grok-4.7, deepseek-flash… by model; News Briefer, EU AI Brief… by agent) |
 | LobeHub | Export or copy an agent | MISSING | DONE | parity L295 |
 | LobeHub | Resource library (uploads, images, drafts) | PARTIAL | PARTIAL | Libraries hold documents; Apps page lists apps (apps.ts). Missing: generated images and canvases in one store |
 | LobeHub | Semantic search | MISSING | DONE | parity L243 |
@@ -184,13 +184,13 @@ Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9
 | Osaurus | Local API: OpenAI, Responses, Anthropic, Ollama | MISSING | DONE | `/v1/chat/completions`, `/v1/responses` (plain and streamed events), `/v1/messages`, and Ollama's `/api/tags`, `/api/chat` (NDJSON stream), `/api/generate`, `/api/version`; verified live with curl against claude-haiku-5-5 (streamed chat counted 1–5, generate answered Lisbon, Responses answered Paris and streamed created/delta/done/completed events; no token → refused) |
 | Osaurus | Inference runtime (scheduler, batching) | MISSING | OUT OF SCOPE | An inference server; the app uses Ollama or llama.cpp for that |
 | Osaurus | Orchestrator | PARTIAL | PARTIAL | The assistant delegates (parity L251). Missing: routing to agents by itself |
-| Osaurus | Built-in app agents | PARTIAL | PARTIAL | MCP connectors. Missing: ready-made specialist agents |
+| Osaurus | Built-in app agents | PARTIAL | DONE | MCP connectors, and ready-made specialist agents for the apps and data on this computer: Calendar Assistant (calendar and contacts), Data Analyst (run_code, sheets), Code Reviewer (read-only), Translator and Meeting Prep, besides Researcher, News Briefer, File Assistant and Writer |
 | Osaurus | External agent runtimes | MISSING | DONE | parity: Coding agent programs as models (Claude Code, Codex, Gemini CLI) |
 | Osaurus | Typed workflows, designer agent | PARTIAL | PARTIAL | `{{blank}}` inputs in workflows (parity L269). Missing: typed inputs, a designer agent |
 | Osaurus | Triggers: schedule, folder, webhook, feed | PARTIAL | DONE | Schedules, new files (parity L274), webhooks through the local API (L291) and feeds: a task can start when an RSS or Atom feed has new items (`Frequency::NewFeedItems`, `parse_feed`). Verified live: the first check recorded the feed's two posts; after a third was added, one run started with its title and link in the prompt |
 | Osaurus | VM per agent | PARTIAL | PARTIAL | bubblewrap sandbox (parity L231). Missing: a separate environment per agent |
 | Osaurus | Browser session per agent | PARTIAL | PARTIAL | Missing: per-agent sessions |
-| Osaurus | Computer use with rules per app | MISSING | PARTIAL | Computer use (parity L288). Missing: per-app rules |
+| Osaurus | Computer use with rules per app | MISSING | DONE | Settings → Permissions → Computer use: never act in these apps, and only act in these apps, matched in the front window's title; a refused action tells the model to ask the user (`computer::app_allowed`, tested) |
 | Osaurus | Calendar, Mail, Contacts… integrations | MISSING | DONE | parity: Calendars and contacts (calendar.rs: ICS links/files with repeat rules, vCard); mail through the Proton Mail connector |
 | Osaurus | Agent channels | MISSING | OUT OF SCOPE | parity L256 |
 | Osaurus | Import Claude plugins | MISSING | DONE | parity: Import Claude plugins (plugins.rs: skills, commands, agents, MCP servers) |

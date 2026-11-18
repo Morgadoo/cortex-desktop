@@ -1632,3 +1632,17 @@ button.usage-meter:hover { background: var(--hover); }
 .doc-list .doc-row:not(.doc-head):not(.doc-tools) { grid-template-columns: 18px 22px 18px 1fr auto auto 30px 30px; }
 .doc-list .doc-row.doc-tools { display: flex; align-items: center; }
 .doc-list .doc-row.doc-tools .input { width: auto; }
+
+.usage-gauge{background:none;border:0;color:inherit;font:inherit;cursor:pointer;width:100%;text-align:left}
+.usage-table{margin-top:14px}
+.usage-row{display:grid;grid-template-columns:minmax(120px,1.4fr) 1fr auto auto auto;gap:12px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px}
+.usage-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.usage-bar{height:6px;border-radius:3px;background:var(--border);overflow:hidden}
+.usage-bar span{display:block;height:100%;background:var(--accent)}
+
+/* Formatting toolbar for Markdown editors. */
+.md-toolbar{display:flex;flex-wrap:wrap;gap:2px;padding:4px 0 8px}
+.md-btn{min-width:30px;height:28px;padding:0 7px;border:1px solid transparent;border-radius:6px;background:none;color:var(--muted);font:600 12px/1 var(--lumo-font-sans,inherit);cursor:pointer}
+.md-btn:hover{background:var(--card);color:var(--text);border-color:var(--border)}
+.md-italic{font-style:italic}.md-strike{text-decoration:line-through}.md-code,.md-codeblock{font-family:var(--font-mono,monospace)}
+.usage-row{grid-template-columns:minmax(120px,1.3fr) 1fr 104px 56px 64px}.usage-row>span:nth-child(n+3){text-align:right}

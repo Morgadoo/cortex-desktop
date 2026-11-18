@@ -290,6 +290,9 @@ pub struct ConversationSummary {
     pub tokens: u64,
     #[serde(default)]
     pub cost: f64,
+    /// The model the conversation last used, for usage by model.
+    #[serde(default)]
+    pub model: Option<String>,
     /// The start of the latest reply (or message), for the sidebar's hover preview.
     #[serde(default)]
     pub preview: String,

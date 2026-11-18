@@ -84,6 +84,41 @@ pub struct Task {
     /// its status and the answer, for a script, a chat app or an automation service.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub webhook: Option<String>,
+    /// The user's comments on the task (LobeHub's task comments): shown on it, and given to every
+    /// run as standing notes, so a comment steers the next run without rewriting the prompt.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub comments: Vec<Comment>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Comment {
+    pub at: DateTime<Utc>,
+    pub text: String,
+}
+
+/// The prompt a run gets: the task's, with the user's comments as notes.
+pub fn run_prompt(task: &Task) -> String {
+    if task.comments.is_empty() {
+        return task.prompt.clone();
+    }
+    let notes: Vec<String> = task.comments.iter().map(|c| format!("- ({}) {}", c.at.format("%Y-%m-%d"), c.text)).collect();
+    format!("{}\n\nThe user's notes on this task, to follow (newest last):\n{}", task.prompt, notes.join("\n"))
+}
+
+/// Adds a comment to a task; `None` text removes the comment at `remove`.
+pub fn comment(config_dir: &Path, id: &str, text: Option<&str>, remove: Option<usize>) -> Result<Vec<Task>, String> {
+    let mut tasks = load(config_dir);
+    let task = tasks.iter_mut().find(|t| t.id == id).ok_or("No such task.")?;
+    match (text.map(str::trim).filter(|t| !t.is_empty()), remove) {
+        (Some(t), _) => task.comments.push(Comment { at: Utc::now(), text: t.chars().take(2_000).collect() }),
+        (None, Some(i)) if i < task.comments.len() => {
+            task.comments.remove(i);
+        }
+        _ => return Err("Write a comment.".into()),
+    }
+    store(config_dir, &tasks)?;
+    Ok(tasks)
 }
 
 /// What a webhook receives when a run finishes.
@@ -618,6 +653,7 @@ mod tests {
             seen: None,
             reply_in: None,
             webhook: None,
+            comments: Vec::new(),
         };
         let mut paused = base.clone();
         paused.id = "p".into();
@@ -655,6 +691,7 @@ mod tests {
             seen: None,
             reply_in: None,
             webhook: None,
+            comments: Vec::new(),
         };
         save(config.path(), task).unwrap();
         let later = std::time::SystemTime::now() + Duration::from_secs(60);
@@ -694,6 +731,7 @@ mod tests {
             seen: None,
             reply_in: None,
             webhook: Some("https://example.com/hook".into()),
+            comments: Vec::new(),
         };
         let p = webhook_payload(&task, "c1", "ok", "Three items today.");
         assert_eq!((p["event"].as_str(), p["status"].as_str(), p["conversationId"].as_str()), (Some("task.finished"), Some("ok"), Some("c1")));
@@ -775,6 +813,7 @@ mod tests {
             seen: None,
             reply_in: None,
             webhook: None,
+            comments: Vec::new(),
         };
         save(dir.path(), task).unwrap();
         let next = load(dir.path())[0].next_run.unwrap();
@@ -784,6 +823,22 @@ mod tests {
         let saved = &load(dir.path())[0];
         assert!(saved.next_run.unwrap() > next);
         assert_eq!(saved.last_status.as_deref(), Some("running"));
+    }
+
+    #[test]
+    fn comments_reach_the_run_and_can_be_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut t = load(dir.path());
+        t.push(Task { id: "t1".into(), title: "Brief".into(), prompt: "Summarize the news.".into(), frequency: Frequency::Daily { time: "09:00".into() }, agent_id: None, model: None, enabled: true, allow_changes: false, created_at: Utc::now(), last_run: None, last_conversation: None, last_status: None, next_run: None, seen: None, reply_in: None, webhook: None, comments: Vec::new() });
+        store(dir.path(), &t).unwrap();
+        assert_eq!(run_prompt(&load(dir.path())[0]), "Summarize the news.");
+        comment(dir.path(), "t1", Some("Skip sports."), None).unwrap();
+        comment(dir.path(), "t1", Some("  Keep it to five bullets. "), None).unwrap();
+        let p = run_prompt(&load(dir.path())[0]);
+        assert!(p.starts_with("Summarize the news.\n\nThe user's notes") && p.contains("Skip sports.") && p.ends_with("Keep it to five bullets."), "{p}");
+        comment(dir.path(), "t1", None, Some(0)).unwrap();
+        assert_eq!(load(dir.path())[0].comments.len(), 1);
+        assert!(comment(dir.path(), "t1", Some("  "), None).is_err());
     }
 
     #[test]

@@ -1,4 +1,5 @@
 /** Canvas cards in the conversation, their editor, and quoting a selection into the composer. */
+import { markdownToolbar } from './mdformat';
 import { tauriInvoke } from '../../shared/tauri';
 import type { Part } from './api';
 import { clear, h, icon, markdown, modal, toast, clockHour12 } from './dom';
@@ -408,6 +409,7 @@ function openEditor(title: string, content: string, onSave: (title: string, cont
       'div',
       { class: 'canvas-modal' },
       modalHeader(titleInput, close),
+      markdownToolbar(area, renderPreview),
       h('div', { class: 'canvas-split' }, area, preview),
       h('div', { class: 'dialog-actions canvas-actions' }, improveButton(area, renderPreview), h('span', { class: 'hint' }, 'Markdown · Ctrl+S saves a new version'), h('span', { class: 'spacer' }), h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Save'))
     );
