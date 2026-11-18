@@ -212,22 +212,28 @@ pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
 
 /// Merges ranked lists by reciprocal rank fusion: a passage high in either list, or fairly high
 /// in both, comes first. Passages are the same when library, document and position match.
+/// Equal scores (one passage first in one list, another first in the other) go to the passage
+/// the first list ranks higher, so the order never depends on chance.
 pub fn fuse(lists: &[Vec<Passage>], k: usize) -> Vec<Passage> {
-    let mut scores: HashMap<(String, String, usize), (f64, Passage)> = HashMap::new();
-    for list in lists {
+    // A passage: library, document, position.
+    type Key = (String, String, usize);
+    // Score, then (list, rank) where the passage was first seen, for ties.
+    type Scored = (f64, (usize, usize), Passage);
+    let mut scores: HashMap<Key, Scored> = HashMap::new();
+    for (which, list) in lists.iter().enumerate() {
         for (rank, p) in list.iter().enumerate() {
             let entry = scores
                 .entry((p.library.clone(), p.document.clone(), p.passage))
-                .or_insert((0.0, p.clone()));
+                .or_insert((0.0, (which, rank), p.clone()));
             entry.0 += 1.0 / (RRF_K + rank as f64 + 1.0);
         }
     }
-    let mut merged: Vec<(f64, Passage)> = scores.into_values().collect();
-    merged.sort_by(|a, b| b.0.total_cmp(&a.0));
+    let mut merged: Vec<Scored> = scores.into_values().collect();
+    merged.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
     merged
         .into_iter()
         .take(k)
-        .map(|(score, mut p)| {
+        .map(|(score, _, mut p)| {
             p.score = (score * 10_000.0).round() / 10_000.0;
             p
         })
@@ -338,7 +344,9 @@ pub async fn search(
         (keyword.into_iter().take(pool).collect::<Vec<_>>(), None)
     } else {
         match semantic(config_dir, &settings, only, query, pool * 3).await {
-            Ok(meaning) => (fuse(&[keyword, meaning], pool), None),
+            // Meaning first: it decides ties, which come from a passage that only shares
+            // common words with the question.
+            Ok(meaning) => (fuse(&[meaning, keyword], pool), None),
             Err(e) => {
                 log::warn!("semantic search failed, keyword search only: {e}");
                 (
@@ -875,6 +883,21 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(order.iter().map(|(i, _)| *i).collect::<Vec<_>>(), [1, 2]);
+    }
+
+    #[test]
+    fn fusion_breaks_ties_by_the_first_list() {
+        // "x" leads by meaning, "y" by keywords: equal scores, every time the same order.
+        let meaning = vec![p("x", 0), p("y", 0)];
+        let keyword = vec![p("y", 0), p("x", 0)];
+        for _ in 0..50 {
+            let fused = fuse(&[meaning.clone(), keyword.clone()], 2);
+            assert_eq!(fused[0].score, fused[1].score);
+            assert_eq!(
+                (fused[0].document.as_str(), fused[1].document.as_str()),
+                ("x", "y")
+            );
+        }
     }
 
     #[test]
