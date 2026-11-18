@@ -324,6 +324,57 @@ pub fn import(config_dir: &Path, source: &Path) -> Result<String, String> {
     Ok(name)
 }
 
+/// Where to fetch a skill's `SKILL.md` from a link to it: a GitHub folder or file (tree, blob or
+/// raw), a repository with the skill at its root, or any `https` link to a Markdown file.
+pub fn skill_sources(link: &str) -> Result<Vec<String>, String> {
+    let link = link.trim().trim_end_matches('/');
+    let url = url::Url::parse(link).map_err(|_| "That is not a link.".to_string())?;
+    if url.scheme() != "https" {
+        return Err("Use an https link.".into());
+    }
+    let parts: Vec<&str> = url.path().trim_matches('/').split('/').filter(|p| !p.is_empty()).collect();
+    let skill_md = |base: String| if base.to_lowercase().ends_with(".md") { base } else { format!("{base}/SKILL.md") };
+    match url.host_str() {
+        Some("github.com") => match parts.as_slice() {
+            [owner, repo] => Ok(["HEAD", "main", "master"].iter().map(|r| format!("https://raw.githubusercontent.com/{owner}/{repo}/{r}/SKILL.md")).collect()),
+            [owner, repo, "tree" | "blob", reference, rest @ ..] => Ok(vec![skill_md(format!("https://raw.githubusercontent.com/{owner}/{repo}/{reference}/{}", rest.join("/")))]),
+            _ => Err("Link to the skill's folder or its SKILL.md on GitHub.".into()),
+        },
+        Some("raw.githubusercontent.com") => Ok(vec![skill_md(link.to_string())]),
+        Some(_) if link.to_lowercase().ends_with(".md") => Ok(vec![link.to_string()]),
+        _ => Err("Link to a SKILL.md file, or to a skill's folder on GitHub.".into()),
+    }
+}
+
+/// Downloads a skill from a link and saves it; returns its name. Only the instructions come
+/// along: scripts and other files in the skill's folder are not downloaded.
+pub async fn import_from_link(config_dir: &Path, link: &str) -> Result<String, String> {
+    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(20)).build().map_err(|e| e.to_string())?;
+    let mut last = String::from("No SKILL.md was found there.");
+    for source in skill_sources(link)? {
+        let response = match client.get(&source).send().await {
+            Ok(r) => r,
+            Err(e) => {
+                last = e.to_string();
+                continue;
+            }
+        };
+        if !response.status().is_success() {
+            last = format!("{source} answered {}.", response.status());
+            continue;
+        }
+        let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+        if bytes.len() > 512 * 1024 {
+            return Err("That file is too large for a skill.".into());
+        }
+        let text = String::from_utf8_lossy(&bytes);
+        let (name, description, body) = parse(&text).ok_or("That file has no `---` front matter with a name and description.")?;
+        save(config_dir, &name, &description, &body)?;
+        return Ok(name);
+    }
+    Err(last)
+}
+
 /// The part of the system prompt that lists the enabled skills.
 pub fn prompt(skills: &[Skill]) -> Option<String> {
     let enabled: Vec<&Skill> = skills.iter().filter(|s| s.enabled).collect();
@@ -338,6 +389,28 @@ pub fn prompt(skills: &[Skill]) -> Option<String> {
         out.push_str(&format!("\n- {}: {}", s.name, s.description));
     }
     Some(out)
+}
+
+#[cfg(test)]
+mod link_tests {
+    use super::*;
+
+    #[test]
+    fn links_point_at_the_skill_file() {
+        assert_eq!(
+            skill_sources("https://github.com/anthropics/skills/tree/main/document-skills/pdf").unwrap(),
+            ["https://raw.githubusercontent.com/anthropics/skills/main/document-skills/pdf/SKILL.md"]
+        );
+        assert_eq!(
+            skill_sources("https://github.com/acme/tools/blob/v2/skills/report/SKILL.md").unwrap(),
+            ["https://raw.githubusercontent.com/acme/tools/v2/skills/report/SKILL.md"]
+        );
+        assert_eq!(skill_sources("https://github.com/acme/my-skill/").unwrap().len(), 3, "a repository is tried at HEAD, main and master");
+        assert_eq!(skill_sources("https://example.com/skills/x.md").unwrap(), ["https://example.com/skills/x.md"]);
+        assert!(skill_sources("http://github.com/a/b").is_err());
+        assert!(skill_sources("https://example.com/page").is_err());
+        assert!(skill_sources("not a link").is_err());
+    }
 }
 
 #[cfg(test)]

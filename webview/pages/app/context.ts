@@ -1,7 +1,7 @@
 /** Context pages: Skills and Knowledge. */
 import { tauriInvoke } from '../../shared/tauri';
 import { api, type Memories, type Skill } from './api';
-import { clear, confirmDialog, h, icon, markdown, modal, toast } from './dom';
+import { clear, confirmDialog, h, icon, markdown, modal, popover, promptText, toast } from './dom';
 import { state } from './state';
 import { button, emptyState, iconButton, modalHeader, pageHeader, switchInput, tabs } from './ui';
 
@@ -104,17 +104,39 @@ export class SkillsPage {
   private tabs: HTMLElement = h('div', { class: 'tabs' });
 
   constructor() {
-    const importBtn = h('button', { class: 'btn btn-secondary' }, 'Import');
-    importBtn.addEventListener('click', async () => {
-      try {
-        const name = await api.importSkill();
-        if (name) {
-          toast(`Imported ${name}.`);
-          await this.load();
-        }
-      } catch (e) {
-        toast(String(e), 'error');
-      }
+    // Import a SKILL.md from this computer, or from a link (a skill's folder on GitHub).
+    const importBtn = h('button', { class: 'btn btn-secondary' }, 'Import', icon('chevron', 14));
+    importBtn.addEventListener('click', () => {
+      const done = async (name: string | null) => {
+        if (!name) return;
+        toast(`Imported ${name}.`);
+        await this.load();
+      };
+      const close = popover(
+        importBtn,
+        h(
+          'div',
+          { class: 'menu' },
+          h('button', { class: 'menu-item', on: { click: () => { close(); void api.importSkill().then(done).catch((e) => toast(String(e), 'error')); } } }, icon('upload', 15), h('span', {}, 'From a file…')),
+          h(
+            'button',
+            {
+              class: 'menu-item',
+              on: {
+                click: async () => {
+                  close();
+                  const url = await promptText('Import a skill from a link', '', 'https://github.com/owner/repo/tree/main/skills/name');
+                  if (!url) return;
+                  toast('Downloading the skill…');
+                  await tauriInvoke<string>('chat_import_skill_url', { url }).then(done).catch((e) => toast(String(e), 'error'));
+                },
+              },
+            },
+            icon('link', 15),
+            h('span', {}, 'From a link (GitHub)…')
+          )
+        )
+      );
     });
     const create = h('button', { class: 'btn btn-primary' }, icon('plus', 16), 'New skill');
     create.addEventListener('click', () => void editSkill(null, (skills) => this.set(skills)));

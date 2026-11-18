@@ -161,6 +161,7 @@ pub fn run() {
             chat::commands::chat_versions,
             chat::commands::chat_document_text,
             chat::commands::chat_api_server_log,
+            chat::commands::chat_import_skill_url,
                 chat::commands::chat_custom_tools,
                 chat::commands::chat_save_custom_tool,
                 chat::commands::chat_delete_custom_tool,

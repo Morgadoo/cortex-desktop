@@ -812,6 +812,12 @@ pub async fn chat_import_skill(app: AppHandle) -> Result<Option<String>, String>
     super::skills::import(&config_dir(&app)?, &path).map(Some)
 }
 
+/// Imports a skill from a link (a GitHub folder or a SKILL.md); returns its name.
+#[tauri::command]
+pub async fn chat_import_skill_url(app: AppHandle, url: String) -> Result<String, String> {
+    super::skills::import_from_link(&config_dir(&app)?, &url).await
+}
+
 #[tauri::command]
 pub fn chat_get_canvas(app: AppHandle, id: String) -> Result<super::canvas::Canvas, String> {
     super::canvas::load(&config_dir(&app)?, &id)
