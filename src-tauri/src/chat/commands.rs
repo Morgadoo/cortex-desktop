@@ -2555,13 +2555,16 @@ pub struct ApiServerView {
     status: super::api_server::Status,
     /// Shown so the user can paste it into other tools; only once the server was turned on.
     token: Option<String>,
+    /// The website widget's key, while the widget is on.
+    widget_token: Option<String>,
 }
 
 async fn api_server_view(app: &AppHandle) -> Result<ApiServerView, String> {
     let settings = super::api_server::load(&config_dir(app)?);
     let status = app.state::<super::api_server::ApiServer>().status();
     let token = if settings.enabled { Some(super::api_server::token(false).await?) } else { None };
-    Ok(ApiServerView { settings, status, token })
+    let widget_token = if settings.enabled && settings.widget.enabled { Some(super::api_server::widget_token(false).await?) } else { None };
+    Ok(ApiServerView { settings, status, token, widget_token })
 }
 
 #[tauri::command]
@@ -2571,10 +2574,13 @@ pub async fn chat_api_server(app: AppHandle) -> Result<ApiServerView, String> {
 
 /// Saves the local API's settings and starts, restarts or stops it to match.
 #[tauri::command]
-pub async fn chat_save_api_server(app: AppHandle, settings: super::api_server::ApiServerSettings, regenerate_token: bool) -> Result<ApiServerView, String> {
+pub async fn chat_save_api_server(app: AppHandle, settings: super::api_server::ApiServerSettings, regenerate_token: bool, regenerate_widget_token: Option<bool>) -> Result<ApiServerView, String> {
     super::api_server::save(&config_dir(&app)?, &settings)?;
     if regenerate_token {
         super::api_server::token(true).await?;
+    }
+    if regenerate_widget_token == Some(true) {
+        super::api_server::widget_token(true).await?;
     }
     super::api_server::apply(&app).await;
     api_server_view(&app).await

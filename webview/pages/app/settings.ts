@@ -76,7 +76,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Discord', 'general', 'discord bot server gateway channel direct message agent'],
   ['Voice orb colour', 'audio', 'voice orb colour color ember accent glow shader'],
   ['Telegram', 'general', 'telegram phone mobile bot channel message agent away remote'],
-  ['Local API', 'general', 'openai compatible server port token curl mcp anthropic'],
+  ['Local API', 'general', 'openai compatible server port token curl mcp anthropic website widget embed page chat bubble intranet snippet'],
   ['Defaults for every chat', 'general', 'temperature top-p top_p max tokens reply length model parameters'],
   ['Error reports and updates', 'general', 'privacy telemetry error reports crash sentry updates diagnostics'],
   ['Language', 'appearance', 'language translate português español français deutsch interface locale'],
@@ -1870,10 +1870,17 @@ function shortcutsCard(): HTMLElement {
   return card(h('h3', {}, 'Keyboard shortcuts'), h('p', { class: 'muted' }, 'Click a shortcut and press the new keys. Escape cancels; Backspace leaves it unbound.'), rows);
 }
 
+interface WidgetSettings {
+  enabled: boolean;
+  model: string;
+  origins: string[];
+}
+
 interface ApiServerView {
-  settings: { enabled: boolean; port: number };
+  settings: { enabled: boolean; port: number; widget: WidgetSettings };
   status: { running: boolean; address: string | null; error: string | null };
   token: string | null;
+  widgetToken: string | null;
 }
 
 /** The local OpenAI-compatible API: other apps on this computer use the models set up here. */
@@ -2066,9 +2073,9 @@ async function apiServerCard(): Promise<HTMLElement> {
   const body = h('div', {});
   const render = (view: ApiServerView) => {
     const port = h('input', { class: 'input small', type: 'number', min: '1024', max: '65535', value: String(view.settings.port), style: { width: '110px' } });
-    const save = async (enabled: boolean, regenerateToken = false) => {
+    const save = async (enabled: boolean, regenerateToken = false, widget: WidgetSettings = view.settings.widget, regenerateWidgetToken = false) => {
       try {
-        render(await tauriInvoke<ApiServerView>('chat_save_api_server', { settings: { enabled, port: Number(port.value) || 8484 }, regenerateToken }));
+        render(await tauriInvoke<ApiServerView>('chat_save_api_server', { settings: { enabled, port: Number(port.value) || 8484, widget }, regenerateToken, regenerateWidgetToken }));
       } catch (e) {
         toast(String(e), 'error');
       }
@@ -2091,6 +2098,7 @@ async function apiServerCard(): Promise<HTMLElement> {
             ? h('pre', { class: 'api-example' }, `curl ${s.address}/chat/completions \\\n  -H "Authorization: Bearer ${view.token.slice(0, 9)}…" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model": "${state.model ?? 'vendor/model'}", "messages": [{"role": "user", "content": "Hello"}]}'\n\n# As an MCP server, e.g. for Claude Code:\nclaude mcp add --transport http lumo ${s.address.replace(/\/v1$/, '')}/mcp \\\n  --header "Authorization: Bearer ${view.token.slice(0, 9)}…"`)
             : null,
           h('div', { class: 'card-actions' }, logButton(), h('button', { class: 'btn btn-secondary', on: { click: () => void save(true, true) } }, 'New API key')),
+          widgetSection(view, (widget, regenerate) => void save(true, false, widget, regenerate)),
         ]
       : [];
     clear(
@@ -2102,6 +2110,39 @@ async function apiServerCard(): Promise<HTMLElement> {
   };
   render(await tauriInvoke<ApiServerView>('chat_api_server'));
   return card(body);
+}
+
+/**
+ * The website widget (Onyx's): a chat bubble for web pages, answered by one model or agent
+ * through the local API, with its own key and a list of pages allowed to use it.
+ */
+function widgetSection(view: ApiServerView, save: (widget: WidgetSettings, regenerate: boolean) => void): HTMLElement {
+  const w = view.settings.widget ?? { enabled: false, model: '', origins: [] };
+  const who = h('select', { class: 'input', 'aria-label': 'Who answers' }, h('option', { value: '' }, 'The default model'), state.agents.map((a) => h('option', { value: `agent/${a.id}`, selected: w.model === `agent/${a.id}` }, a.name)));
+  if (w.model && !w.model.startsWith('agent/')) who.append(h('option', { value: w.model, selected: true }, w.model));
+  const origins = h('textarea', { class: 'input mono', rows: 3, placeholder: 'https://intranet.example.com\nhttp://localhost:3000' }, w.origins.join('\n'));
+  const current = (): WidgetSettings => ({ enabled: w.enabled, model: who.value, origins: origins.value.split(/\s+/).filter(Boolean) });
+  who.addEventListener('change', () => save(current(), false));
+  const base = view.status.address?.replace(/\/v1$/, '') ?? 'http://127.0.0.1:8484';
+  const snippet = view.widgetToken ? `<script src="${base}/widget.js" data-key="${view.widgetToken}" data-title="Ask us" defer></script>` : '';
+  return h(
+    'div',
+    { class: 'widget-settings' },
+    h('h4', { class: 'subhead' }, 'Website widget'),
+    row('Chat bubble for web pages', 'Pages you list get a chat bubble answered by the model or agent you choose. It has its own key, which can do nothing else, and pages cannot change its instructions. Pages opened on this computer reach it: an intranet page, your own site, documentation.', switchInput(w.enabled, (v) => save({ ...current(), enabled: v }, false))),
+    w.enabled
+      ? [
+          h('label', { class: 'field-label' }, 'Who answers'),
+          who,
+          h('label', { class: 'field-label' }, 'Pages allowed (origins, one per line; null for files opened from disk)'),
+          origins,
+          h('div', { class: 'card-actions' }, h('button', { class: 'btn btn-secondary', on: { click: () => save(current(), true) } }, 'New widget key'), h('button', { class: 'btn btn-primary', on: { click: () => { save(current(), false); toast('Saved.'); } } }, 'Save')),
+          snippet ? h('label', { class: 'field-label' }, 'Add to the page') : null,
+          snippet ? h('pre', { class: 'api-example' }, snippet) : null,
+          snippet ? h('div', { class: 'card-actions' }, h('button', { class: 'btn btn-secondary', on: { click: () => void navigator.clipboard.writeText(snippet).then(() => toast('Copied.')) } }, 'Copy snippet')) : null,
+        ]
+      : null
+  );
 }
 
 /** The local API's latest requests: when, which endpoint and model, the status and how long. */
