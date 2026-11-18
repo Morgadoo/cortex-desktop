@@ -3,6 +3,7 @@ import { emojiFor, findEmoji } from './emoji';
 import { autocompleteOn } from './state';
 import { tauriInvoke } from '../../shared/tauri';
 import { api, newId, type ApprovalMode, type ChatParams, type Conversation, type Part, type Turn, type UsageTotals } from './api';
+import { openOutputsPanel } from './outputs';
 import { conversationPng } from './chatimage';
 import { searchInstead } from './uploads';
 import { agentPanel } from './agentpanel';
@@ -3790,7 +3791,7 @@ export class ChatView {
         project || workdir ? h('span', { class: 'crumb-sep' }, '/') : null,
         titleBtn
       ),
-      h('div', { class: 'header-actions' }, filesBtn, terminalBtn, changesBtn, debugBtn, meter, outlineBtn, marksBtn, pin, exportBtn)
+      h('div', { class: 'header-actions' }, filesBtn, terminalBtn, changesBtn, debugBtn, meter, outlineBtn, marksBtn, h('button', { class: 'icon-btn', title: 'Outputs: what this chat made', on: { click: () => void openOutputsPanel(this.id) } }, icon('outputs', 17)), pin, exportBtn)
     );
   }
 

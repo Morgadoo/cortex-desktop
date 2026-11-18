@@ -354,6 +354,7 @@ export class ConnectorsPage {
 const PLACEHOLDERS: Record<Page, { title: string; subtitle: string; icon: string; empty: string; body: string }> = {
   connectors: { title: 'Connectors', subtitle: '', icon: 'plug', empty: '', body: '' },
   chats: { title: 'Chats', subtitle: '', icon: 'chat', empty: '', body: '' },
+  resources: { title: 'Resources', subtitle: '', icon: 'outputs', empty: '', body: '' },
   skills: {
     title: 'Skills',
     subtitle: 'Reusable instructions the assistant can follow. Set them up once, use them whenever you need.',

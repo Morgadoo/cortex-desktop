@@ -1731,3 +1731,21 @@ button.usage-meter:hover { background: var(--hover); }
 [dir="rtl"] .icon-dir{transform:scaleX(-1)}
 /* Messages take their direction from their own text, so English reads left to right inside an Arabic interface and the other way round. */
 .conv-title,.bubble-text,.markdown p,.markdown li,.markdown h1,.markdown h2,.markdown h3,.markdown td,.composer-input,.run-title,.chat-card-preview{unicode-bidi:plaintext}
+
+/* Outputs of a chat, and Resources across chats. */
+.output-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.output-grid.compact{grid-template-columns:1fr}
+.output-card{display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:10px;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--text);font:inherit;text-align:left;cursor:pointer;min-width:0}
+.output-grid.compact .output-card{flex-direction:row;align-items:center}
+.output-card:hover{border-color:var(--border-strong)}
+.output-thumb{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;background:var(--bg-hover)}
+.output-grid.compact .output-thumb{width:56px;height:56px;aspect-ratio:auto;flex:none}
+.output-icon{display:flex;align-items:center;justify-content:center;aspect-ratio:4/3;border-radius:8px;background:var(--bg-hover);color:var(--text-muted,var(--muted))}
+.output-grid.compact .output-icon{width:56px;height:56px;aspect-ratio:auto;flex:none}
+.output-meta{display:flex;flex-direction:column;gap:2px;min-width:0}
+.output-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13.5px}
+.output-chat{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--accent-strong,var(--accent));overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.output-image-large{max-width:100%;max-height:70vh;display:block;margin:0 auto;border-radius:8px}
+.output-sheet{white-space:pre;overflow:auto;font-size:12px}
+.output-body{overflow:auto}
+.output-app{height:60vh}.output-app iframe{width:100%;height:100%;border:0;border-radius:8px}.output-dialog{max-height:60vh}

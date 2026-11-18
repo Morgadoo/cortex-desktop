@@ -1707,6 +1707,40 @@ pub async fn chat_save_bytes(app: AppHandle, name: String, data: String) -> Resu
     Ok(true)
 }
 
+/// What a chat made (canvases, apps, images, files), or with no id, what every chat made.
+#[tauri::command]
+pub async fn chat_outputs(app: AppHandle, conversation_id: Option<String>) -> Result<Vec<super::outputs::Output>, String> {
+    let dir = config_dir(&app)?;
+    tokio::task::spawn_blocking(move || match conversation_id {
+        Some(id) => super::outputs::for_conversation(&dir, &id),
+        None => super::outputs::all(&dir),
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// Saves a copy of a file from a chat's workspace where the user picks.
+#[tauri::command]
+pub async fn chat_save_output(app: AppHandle, conversation_id: String, path: String) -> Result<bool, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let dir = config_dir(&app)?;
+    let ws = super::sandbox::workspace(&dir, &conversation_id)?;
+    let file = ws.join(&path);
+    let (Ok(root), Ok(real)) = (ws.canonicalize(), file.canonicalize()) else { return Err("No such file.".into()) };
+    if !real.starts_with(&root) {
+        return Err("No such file.".into());
+    }
+    let bytes = crate::chat::at_rest::read(&real).map_err(|e| e.to_string())?;
+    let name = real.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog().file().set_file_name(&name).save_file(move |p| {
+        let _ = tx.send(p);
+    });
+    let Some(target) = rx.await.map_err(|e| e.to_string())? else { return Ok(false) };
+    std::fs::write(target.into_path().map_err(|e| e.to_string())?, bytes).map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
 /// The local API's latest requests, newest first.
 #[tauri::command]
 pub fn chat_api_server_log() -> Vec<super::api_server::LogEntry> {

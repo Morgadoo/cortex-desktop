@@ -17,6 +17,7 @@ import { AgentPage, AgentsPage, avatar, editAgent, newAgent, pinnedAgents, reloa
 import { TasksPage } from './tasks';
 import { LibrariesPage } from './libraries';
 import { AppsPage } from './apps';
+import { ResourcesPage } from './outputs';
 import { ChatsPage } from './chatspage';
 import { WorkflowsPage } from './workflows';
 import { applyTheme, openSettings, reloadModels, setTheme, storedTheme } from './settings';
@@ -83,6 +84,8 @@ function renderMain() {
               ? new WorkflowsPage()
             : v.page === 'chats'
               ? new ChatsPage()
+            : v.page === 'resources'
+              ? new ResourcesPage()
             : v.page === 'scheduled'
               ? new TasksPage()
           : v.page === 'knowledge'
@@ -114,6 +117,7 @@ const CONTEXT_PAGES: { page: Page; label: string; preview?: boolean }[] = [
   { page: 'connectors', label: 'Connectors' },
   { page: 'libraries', label: 'Libraries' },
   { page: 'workflows', label: 'Workflows' },
+  { page: 'resources', label: 'Resources' },
 ];
 
 /** The app menu at the top left (Vibe's hamburger menu): the app's own actions in one place. */

@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 172 |
-| PARTIAL | 86 | 19 |
+| DONE | 58 | 174 |
+| PARTIAL | 86 | 17 |
 | MISSING | 48 | 1 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 42 / 3 / 0 / 9 · LibreChat 40 / 2 / 0 / 4 · LobeHub 27 / 2 / 0 / 5 · Onyx 18 / 3 / 0 / 5 · Osaurus 20 / 5 / 1 / 4 · OpenBot 25 / 4 / 0 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 42 / 3 / 0 / 9 · LibreChat 40 / 2 / 0 / 4 · LobeHub 28 / 1 / 0 / 5 · Onyx 19 / 2 / 0 / 5 · Osaurus 20 / 5 / 1 / 4 · OpenBot 25 / 4 / 0 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -132,7 +132,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 42 / 3 / 0 / 9
 | LobeHub | Greeting and conversation starters per agent | MISSING | DONE | Conversation starters on the agent's new-chat page (parity: Agent conversation starters) |
 | LobeHub | Stats: cost, cache, tokens, models per agent | PARTIAL | DONE | Spend per agent (parity L253), and the profile menu's month gauge opens Usage this month: tokens, cost and chats by model and by agent, with bars. Verified live with this month's real usage (grok-4.7, deepseek-flash… by model; News Briefer, EU AI Brief… by agent) |
 | LobeHub | Export or copy an agent | MISSING | DONE | parity L295 |
-| LobeHub | Resource library (uploads, images, drafts) | PARTIAL | PARTIAL | Libraries hold documents; Apps page lists apps (apps.ts). Missing: generated images and canvases in one store |
+| LobeHub | Resource library (uploads, images, drafts) | PARTIAL | DONE | Libraries hold documents; Uploaded files (Settings → Profile); and Resources (Context → Resources): everything chats made, by kind (documents, apps, sheets, images, files) with counts, search, thumbnails, opening in a dialog and a link to each chat (outputs.ts ResourcesPage). Verified live |
 | LobeHub | Semantic search | MISSING | DONE | parity L243 |
 | LobeHub | Batch operations (folder upload, move, delete) | MISSING | DONE | Folders mirrored, several documents removed or moved at once (parity: Move documents between libraries) |
 | LobeHub | Relevance scores, excerpt preview | PARTIAL | DONE | Passage scores in Test a search; document preview (parity: Library document preview) |
@@ -158,7 +158,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 42 / 3 / 0 / 9
 | Onyx | Per-turn reminder; system prompt replaced | MISSING | DONE | Agent instructions replace the persona; "Reminder on every turn" rides on each request (parity: A reminder on every turn) |
 | Onyx | Knowledge cutoff date | MISSING | DONE | parity: Time cutoff for library search (`since` on search_library) |
 | Onyx | MCP and OpenAPI actions | PARTIAL | DONE | parity L290 |
-| Onyx | Craft: Outputs / Files / Apps tabs | PARTIAL | PARTIAL | Canvases, apps, Files panel. Missing: an outputs tab per session |
+| Onyx | Craft: Outputs / Files / Apps tabs | PARTIAL | DONE | Canvases, apps, Files panel, and an Outputs panel per chat (button in the chat header): its documents, apps, sheets, generated images (thumbnails) and workspace files, each opening in the side panel or saved (outputs.rs, outputs.ts). Verified live after a run_code chart, CSV and canvas |
 | Onyx | Queue a follow-up | PARTIAL | DONE | parity L270 |
 | Onyx | User library across sessions | PARTIAL | DONE | Libraries usable from any chat (parity L49, L86) |
 | Onyx | Sandboxed browser with screenshots | PARTIAL | PARTIAL | Browser reads pages; screenshots only of the whole screen through computer use (parity L288). Missing: browser screenshots |

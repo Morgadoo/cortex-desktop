@@ -38,6 +38,7 @@ pub mod embeddings;
 pub mod emoji_pack;
 pub mod uploads;
 pub mod learning;
+pub mod outputs;
 mod backup;
 pub mod builtins;
 pub mod calendar;
