@@ -191,7 +191,7 @@ items most likely to differ:
 | Stop interrupts the task (black square) | Same | Done |
 | Pinned chats in their own **Pinned** section | Same | Done |
 | Command palette (Cmd+K) with groups: Chats, Modes, Context, Settings, View, Actions… | Ctrl+K: Actions (new chat, modes, context pages, settings, sidebar, archive, recently deleted, what's new) and Chats, with content search | Done |
-| Shortcuts: new session, sidebar, settings, Work / Code, Cmd+1–9 to sessions | Ctrl+N, Ctrl+B, Ctrl+,, Ctrl+Shift+1 / 2 / 3 (Work / Code / Agents), Ctrl+1–9 to the chats in the sidebar | Done |
+| Shortcuts: new session, sidebar, settings, Work / Code, Cmd+1–9 to sessions | Ctrl+N, Ctrl+B, Ctrl+,, Ctrl+Shift+1 / 2 / 3 (Work / Code / Agents), Ctrl+1–9 to the chats in the sidebar; all but Ctrl+1–9 can be rebound | Done |
 | Voice: Autosend on/off; cancel discards a recording | Send after dictation; a discard button while recording | Done |
 | Scheduled tasks: Once / Daily / Weekly (several days) / Monthly / Yearly, plain-words confirmation ("Every Monday at 9:00"), pause and resume, unread run in the sidebar | Same | Done |
 | Knowledge: inline read / write pills; edit by asking; a "Sensitive data" toggle | Citation pills for pages read; saves show as steps; facts and pages editable directly; personal-data filter in Settings | Adapted |
@@ -263,6 +263,7 @@ items most likely to differ:
 | Slash commands | open-webui (built-in `/` commands), Vibe CLI | `/` lists app commands before skills: /new, /temporary, /model, /voice, /fork, /context, /settings, /export, /clear. Verified live (/context) | Done |
 | Hover preview and temporary by default | open-webui, LibreChat | Hovering a chat in the sidebar shows how it left off (from the index, no file read); Settings → General can make new chats temporary by default. Preview verified live | Done |
 | `@` to switch model | open-webui (@model), LibreChat | Typing `@` lists matching models (by name or id) above the skills; picking one switches the model. Verified live | Done |
+| Rebindable keyboard shortcuts | open-webui | Settings → General → Keyboard shortcuts: palette, new chat, sidebar, settings, Work, Code and Agents; click, press the new keys (Ctrl/Cmd or Alt required), Escape cancels, Backspace unbinds, Reset restores; a combo moved to one action leaves the other. Verified live | Done |
 | Sort the chat list | LibreChat | The Chats heading's sort button: recent activity, newest first, A–Z or unread first, remembered. Verified live | Done |
 | Another chat as context | open-webui (Reference Chats) | + menu → Other chats: searchable list; the chosen conversation's text is attached as a file chip. Verified live | Done |
 | Mermaid diagrams as SVG or PNG | LibreChat | SVG and PNG buttons on each diagram, saved through the system's save dialog (PNG at twice the size). Verified live | Done |

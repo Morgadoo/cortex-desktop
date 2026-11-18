@@ -3,6 +3,7 @@
  * screen, a conversation or a context page. Model calls happen in Rust (`src-tauri/src/chat`);
  * this page renders what it streams back.
  */
+import { actionFor } from './shortcuts';
 import { api, listen, type ApprovalRequest, type ChatEvent } from './api';
 import { tauriInvoke } from '../../shared/tauri';
 import { ChatView, CompareView, HomeView, composer, conversationMenu, recordStepTimes, refreshConversations, turnEnded, viewCache } from './chat';
@@ -685,27 +686,24 @@ async function start() {
 
   document.addEventListener('keydown', (e) => {
     const mod = e.ctrlKey || e.metaKey;
-    if (mod && e.key === ',') {
+    // Rebindable shortcuts (Settings → General → Keyboard shortcuts); a field being recorded wins.
+    if (document.querySelector('.shortcut-recording')) return;
+    const action = actionFor(e);
+    if (action) {
       e.preventDefault();
-      if (!document.querySelector('.modal .settings')) void openSettings();
-    } else if (mod && e.key.toLowerCase() === 'k') {
-      e.preventDefault();
-      openSearch();
-    } else if (mod && e.shiftKey && e.key.toLowerCase() === 'o') {
+      if (action === 'settings') {
+        if (!document.querySelector('.modal .settings')) void openSettings();
+      } else if (action === 'search') openSearch();
+      else if (action === 'newChat') newChat();
+      else if (action === 'sidebar') {
+        state.sidebarCollapsed = !state.sidebarCollapsed;
+        changed();
+      } else switchMode(action);
+      return;
+    }
+    if (mod && e.shiftKey && e.key.toLowerCase() === 'o') {
       e.preventDefault();
       newChat();
-    } else if (mod && !e.shiftKey && e.key.toLowerCase() === 'n') {
-      e.preventDefault();
-      newChat();
-    } else if (mod && !e.shiftKey && e.key.toLowerCase() === 'b') {
-      e.preventDefault();
-      state.sidebarCollapsed = !state.sidebarCollapsed;
-      changed();
-    } else if (mod && e.shiftKey && ['1', '2', '3', '!', '@', '#'].includes(e.key)) {
-      // Ctrl+Shift+1 / 2 / 3: Work, Code, Agents.
-      e.preventDefault();
-      const mode = (['work', 'code', 'agents'] as const)[Math.max(['1', '2', '3'].indexOf(e.key), ['!', '@', '#'].indexOf(e.key))]!;
-      switchMode(mode);
     } else if (mod && !e.shiftKey && /^[1-9]$/.test(e.key)) {
       // Ctrl+1–9: the chats in the sidebar, in order.
       const links = [...document.querySelectorAll<HTMLElement>('.sidebar [data-chat-id]')];

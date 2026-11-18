@@ -1410,3 +1410,6 @@ button.usage-meter:hover { background: var(--hover); }
 .run-output.failed { color: var(--danger); }
 
 .folder-list { margin: 8px 0 4px; border: 1px dashed var(--border); border-radius: var(--radius-md); padding: 2px 8px; }
+
+.shortcut-key { min-width: 110px; padding: 4px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-family: ui-monospace, monospace; font-size: var(--fs-sm); background: var(--bg-hover); }
+.shortcut-key.shortcut-recording { border-color: var(--accent); color: var(--accent); }

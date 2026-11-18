@@ -5,6 +5,7 @@ import { clear, h, icon, modal, toast } from './dom';
 import { changed, followUpsOn, setFollowUps, setTemporaryByDefault, state, temporaryByDefault } from './state';
 import { button, card, modalHeader, switchInput } from './ui';
 import { audioApi, refreshAudioSettings, speakText, type AudioView } from './audio';
+import { SHORTCUTS, bindingFor, comboOf, display, setBinding } from './shortcuts';
 import { ACCENTS, BACKGROUNDS, accentHex, applyAppearance, setAccent, setBackground, storedAccent, storedBackground } from './appearance';
 
 export type Section = 'profile' | 'providers' | 'audio' | 'permissions' | 'general' | 'appearance';
@@ -712,8 +713,48 @@ async function renderGeneral(content: HTMLElement) {
       row('Suggest follow-ups', 'After each answer, offer three next questions. Each takes one short extra request to the model.', switchInput(followUpsOn(), (v) => setFollowUps(v))),
       row('New chats are temporary', 'Chats are not saved to your history unless you turn this off for one (the ghost button on the new-chat page). Takes effect from the next new chat.', switchInput(temporaryByDefault(), (v) => setTemporaryByDefault(v)))
     ),
-    await apiServerCard()
+    await apiServerCard(),
+    shortcutsCard()
   );
+}
+
+/** Every shortcut, rebindable: click, press the new keys; Escape cancels, Backspace clears. */
+function shortcutsCard(): HTMLElement {
+  const rows = h('div', {});
+  const render = () =>
+    clear(
+      rows,
+      SHORTCUTS.map((s) => {
+        const btn = h('button', { class: 'shortcut-key' }, display(bindingFor(s.action)));
+        btn.addEventListener('click', () => {
+          btn.classList.add('shortcut-recording');
+          btn.textContent = 'Press keys…';
+          const onKey = (e: KeyboardEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.key === 'Escape') return done();
+            if (e.key === 'Backspace') {
+              setBinding(s.action, '');
+              return done();
+            }
+            const combo = comboOf(e);
+            // A shortcut needs Ctrl (or Cmd) or Alt, so typing is never taken over.
+            if (!combo || !/^(Mod|Alt)\+/.test(combo)) return;
+            setBinding(s.action, combo);
+            done();
+          };
+          const done = () => {
+            document.removeEventListener('keydown', onKey, true);
+            render();
+          };
+          document.addEventListener('keydown', onKey, true);
+        });
+        const reset = h('button', { class: 'link-btn', title: 'Back to the default', on: { click: () => { setBinding(s.action, null); render(); } } }, 'Reset');
+        return h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, s.label), h('small', { class: 'muted' }, `Default ${display(s.fallback)}`)), h('div', { class: 'row-actions' }, reset, btn));
+      })
+    );
+  render();
+  return card(h('h3', {}, 'Keyboard shortcuts'), h('p', { class: 'muted' }, 'Click a shortcut and press the new keys. Escape cancels; Backspace leaves it unbound.'), rows);
 }
 
 interface ApiServerView {
