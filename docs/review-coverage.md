@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 133 |
+| DONE | 58 | 134 |
 | PARTIAL | 86 | 54 |
-| MISSING | 48 | 5 |
+| MISSING | 48 | 4 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9 · LibreChat 33 / 8 / 1 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 15 / 6 / 0 / 5 · Osaurus 11 / 12 / 3 / 4 · OpenBot 19 / 9 / 1 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9 · LibreChat 33 / 8 / 1 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 15 / 6 / 0 / 5 · Osaurus 12 / 12 / 2 / 4 · OpenBot 19 / 9 / 1 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -203,7 +203,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9
 | Osaurus | Wake word | MISSING | MISSING |  |
 | Osaurus | System-wide dictation hotkey | MISSING | DONE | parity: Dictation anywhere (`dictation.rs`, `dictate.ts`; Settings → Audio). Verified live: Ctrl+Alt+D over an xterm opened the Listening pill, speech played into a virtual microphone was recorded (7.4 s WAV) and transcribed, and the text was typed into the xterm; changing the shortcut released the old one; auto-finish on pause and paste mode also ran |
 | Osaurus | On-device images | PARTIAL | PARTIAL | Cloud only (parity L233) |
-| Osaurus | Encrypted sync between devices | MISSING | MISSING |  |
+| Osaurus | Encrypted sync between devices | MISSING | DONE | parity: Sync between devices (`sync.rs`; Settings → Profile). Verified live with two configurations sharing one folder: device A sent 105 encrypted items (no plaintext in the folder); device B refused a wrong passphrase, then received A's 5 extra conversations and sent its renamed chat, which reached A; a chat deleted on A was moved to B's trash on B's next sync |
 | Osaurus | Workspaces | MISSING | OUT OF SCOPE | Team (parity L217) |
 | Osaurus | Encryption at rest | PARTIAL | PARTIAL | Local files, keys in the keychain. Missing: encrypted data |
 | Osaurus | Telemetry toggles | MISSING | DONE | Error reports opt-in (absent from builds without a reporting key), update check at start can be turned off (parity: Error reports and update checks) |

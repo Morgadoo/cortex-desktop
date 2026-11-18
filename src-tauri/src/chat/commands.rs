@@ -788,6 +788,54 @@ pub fn chat_update_memory(app: AppHandle, id: String, text: String) -> Result<su
     Ok(memories)
 }
 
+/// Sync between devices, as this device has it.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncView {
+    #[serde(flatten)]
+    settings: super::sync::Settings,
+    has_passphrase: bool,
+}
+
+#[tauri::command]
+pub async fn chat_sync_settings(app: AppHandle) -> Result<SyncView, String> {
+    let settings = super::sync::settings(&config_dir(&app)?);
+    Ok(SyncView { settings, has_passphrase: super::sync::passphrase().await.ok().flatten().is_some() })
+}
+
+/// Sets the sync folder, interval and passphrase; checks the passphrase against the folder
+/// (another device may have set it up) before saving. `folder: None` turns sync off.
+#[tauri::command]
+pub async fn chat_save_sync_settings(app: AppHandle, folder: Option<String>, every_minutes: u32, passphrase: Option<String>) -> Result<SyncView, String> {
+    let dir = config_dir(&app)?;
+    let mut settings = super::sync::settings(&dir);
+    let Some(folder) = folder.filter(|f| !f.trim().is_empty()) else {
+        settings.folder = None;
+        super::sync::save_settings(&dir, &settings)?;
+        super::sync::set_passphrase(None).await?;
+        return chat_sync_settings(app).await;
+    };
+    let phrase = match passphrase.filter(|p| !p.is_empty()) {
+        Some(p) => p,
+        None => super::sync::passphrase().await?.ok_or("Set a passphrase: it encrypts everything in the sync folder.")?,
+    };
+    let remote = super::sync::remote_dir(&folder);
+    let check = phrase.clone();
+    tokio::task::spawn_blocking(move || super::sync::unlock(&remote, &check)).await.map_err(|e| e.to_string())??;
+    super::sync::set_passphrase(Some(&phrase)).await?;
+    settings.folder = Some(folder);
+    settings.every_minutes = every_minutes.min(24 * 60);
+    super::sync::save_settings(&dir, &settings)?;
+    chat_sync_settings(app).await
+}
+
+/// Syncs now; returns what happened, in words.
+#[tauri::command]
+pub async fn chat_sync_now(app: AppHandle) -> Result<String, String> {
+    let report = super::sync::run(&config_dir(&app)?).await?;
+    Ok(report.summary())
+}
+
 /// The vault's secrets (names and notes; values stay in the keychain).
 #[tauri::command]
 pub fn chat_vault_list(app: AppHandle) -> Result<Vec<super::vault::Secret>, String> {

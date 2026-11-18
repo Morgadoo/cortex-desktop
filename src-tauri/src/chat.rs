@@ -13,6 +13,7 @@
 pub mod agent_cli;
 pub mod agents;
 pub mod headless;
+pub mod sync;
 pub mod vault;
 pub mod hooks;
 pub mod plugins;

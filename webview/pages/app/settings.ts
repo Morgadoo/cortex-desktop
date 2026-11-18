@@ -25,6 +25,7 @@ const SECTIONS: { id: Section; label: string; icon: string; group: string }[] = 
 const SETTINGS_INDEX: [string, Section, string][] = [
   ['Your profile', 'profile', 'name about instructions tone personality'],
   ['Your data', 'profile', 'export import backup delete history'],
+  ['Sync between devices', 'profile', 'sync devices encrypted syncthing dropbox icloud nextcloud onedrive passphrase other computer'],
   ['Storage and backups', 'profile', 'backup restore damaged files recently deleted trash'],
   ['Backup model', 'providers', 'fallback failover failure credit down'],
   ['Providers and API keys', 'providers', 'key openai anthropic mistral xai ollama llama.cpp lm studio model default base url'],
@@ -315,9 +316,102 @@ function renderProfile(content: HTMLElement) {
         })
       )
     ),
-    dataCard
+    dataCard,
+    syncCard(() => void renderData())
   );
   void renderData();
+}
+
+/**
+ * Sync between devices (Osaurus): conversations, agents, knowledge, memories, projects, canvases
+ * and skills, encrypted with a passphrase, through a folder a sync service mirrors.
+ */
+function syncCard(onSynced: () => void): HTMLElement {
+  type View = { folder: string | null; everyMinutes: number; lastSync: string | null; lastReport: string; hasPassphrase: boolean };
+  let view: View = { folder: null, everyMinutes: 0, lastSync: null, lastReport: '', hasPassphrase: false };
+  const box = card();
+  const render = () => {
+    let folder = view.folder ?? '';
+    const folderLabel = h('span', { class: 'grow mono root-path' }, folder || 'No folder chosen');
+    const choose = button({
+      variant: 'secondary',
+      size: 'sm',
+      icon: 'folder',
+      label: folder ? 'Change' : 'Choose folder',
+      onClick: async () => {
+        const dir = await api.pickDirectory();
+        if (dir) {
+          folder = dir;
+          folderLabel.textContent = dir;
+        }
+      },
+    });
+    const passphrase = h('input', { class: 'input', type: 'password', autocomplete: 'new-password', placeholder: view.hasPassphrase ? 'Saved in the keychain; type to change' : 'At least 8 characters, the same on every device', 'aria-label': 'Sync passphrase' });
+    const every = h(
+      'select',
+      { class: 'input', 'aria-label': 'How often' },
+      ...[[0, 'Only when I press Sync now'], [5, 'Every 5 minutes'], [15, 'Every 15 minutes'], [60, 'Every hour']].map(([v, label]) => h('option', { value: String(v), selected: view.everyMinutes === v }, String(label)))
+    );
+    const status = h('p', { class: 'muted small' }, view.lastSync ? `Last sync ${new Date(view.lastSync).toLocaleString()}: ${view.lastReport}` : view.folder ? 'Not synced yet.' : '');
+    const save = async () => {
+      if (!folder) return toast('Choose the folder your sync service mirrors.', 'error');
+      try {
+        view = await tauriInvoke<View>('chat_save_sync_settings', { folder, everyMinutes: Number(every.value), passphrase: passphrase.value || null });
+        toast('Sync is set up.');
+        await syncNow();
+      } catch (e) {
+        toast(String(e), 'error');
+      }
+    };
+    const syncNow = async () => {
+      clear(status, h('span', { class: 'dots' }), ' Syncing…');
+      try {
+        const summary = await tauriInvoke<string>('chat_sync_now');
+        toast(summary);
+        window.dispatchEvent(new Event('chat:conversations-changed'));
+        onSynced();
+      } catch (e) {
+        toast(String(e), 'error');
+      }
+      view = await tauriInvoke<View>('chat_sync_settings').catch(() => view);
+      render();
+    };
+    clear(
+      box,
+      h('h3', {}, 'Sync between devices'),
+      h('p', { class: 'muted' }, 'Keep conversations, agents, knowledge, memories, projects, canvases and skills the same on your computers through a folder that Syncthing, Nextcloud, Dropbox, iCloud Drive or OneDrive mirrors. Everything is encrypted with your passphrase before it is written there; settings, API keys and the vault stay on each device.'),
+      h('label', { class: 'field-label' }, 'Folder'),
+      h('div', { class: 'root-row' }, icon('folder', 16), folderLabel, choose),
+      h('label', { class: 'field-label' }, 'Passphrase'),
+      passphrase,
+      h('label', { class: 'field-label' }, 'Sync automatically'),
+      every,
+      status,
+      h(
+        'div',
+        { class: 'card-actions' },
+        view.folder
+          ? button({
+              variant: 'secondary',
+              label: 'Turn off',
+              onClick: async () => {
+                if (!(await confirmDialog('Turn off sync?', 'This device stops syncing and forgets the passphrase. Nothing is deleted here or in the folder.'))) return;
+                view = await tauriInvoke<View>('chat_save_sync_settings', { folder: null, everyMinutes: 0, passphrase: null });
+                render();
+              },
+            })
+          : null,
+        view.folder ? button({ variant: 'secondary', icon: 'reset', label: 'Sync now', onClick: () => void syncNow() }) : null,
+        button({ variant: 'primary', label: 'Save', onClick: () => void save() })
+      )
+    );
+  };
+  render();
+  void tauriInvoke<View>('chat_sync_settings').then((v) => {
+    view = v;
+    render();
+  }).catch(() => undefined);
+  return box;
 }
 
 async function renderProviders(content: HTMLElement) {

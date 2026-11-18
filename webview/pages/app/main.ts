@@ -869,6 +869,11 @@ async function start() {
   });
   // Links into the app (lumo://new?prompt=…, lumo://chat/<id>): the prompt is typed, never sent.
   void listen('chat://link', () => void takeLink());
+  // Background sync brought changes from another device.
+  void listen<string>('chat://synced', (summary) => {
+    window.dispatchEvent(new Event('chat:conversations-changed'));
+    toast(`Synced from your other devices: ${summary}`);
+  });
   void listen<string>('chat://quick-ask', (query) => {
     navigate({ kind: 'home' });
     composer.setText(query);

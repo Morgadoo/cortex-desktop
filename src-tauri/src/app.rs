@@ -189,6 +189,9 @@ pub fn run() {
             chat::commands::chat_file_memory,
             chat::commands::chat_set_keep_sensitive_out,
             chat::commands::chat_vault_list,
+            chat::commands::chat_sync_settings,
+            chat::commands::chat_save_sync_settings,
+            chat::commands::chat_sync_now,
             chat::commands::chat_vault_save,
             chat::commands::chat_vault_delete,
             chat::commands::chat_router_models,
@@ -469,6 +472,7 @@ pub fn run() {
                 app.handle().global_shortcut().register(shortcut)?;
             }
             crate::dictation::startup(app.handle());
+            chat::sync::start(app.handle().clone());
             tray::create(app.handle())?;
             updater::startup(app.handle());
             Ok(())
