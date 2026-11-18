@@ -985,6 +985,34 @@ const OCR_PROMPT: &str = "Transcribe all the text in this image exactly, in read
     table rows (as Markdown). Describe charts, photos and diagrams in one short line each, in square brackets. \
     Output only the transcription. If there is no text at all, reply NO TEXT.";
 
+/// Mirrors a folder the user picks into a library.
+#[tauri::command]
+pub async fn chat_add_library_folder(app: AppHandle, id: String) -> Result<Option<super::libraries::SyncReport>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog().file().set_title("Mirror a folder").pick_folder(move |path| {
+        let _ = tx.send(path);
+    });
+    let Some(path) = rx.await.map_err(|e| e.to_string())? else {
+        return Ok(None);
+    };
+    let folder = path.into_path().map_err(|e| e.to_string())?;
+    let dir = config_dir(&app)?;
+    tokio::task::spawn_blocking(move || super::libraries::add_folder(&dir, &id, &folder)).await.map_err(|e| e.to_string())?.map(Some)
+}
+
+#[tauri::command]
+pub async fn chat_remove_library_folder(app: AppHandle, id: String, folder: String) -> Result<super::libraries::SyncReport, String> {
+    let dir = config_dir(&app)?;
+    tokio::task::spawn_blocking(move || super::libraries::remove_folder(&dir, &id, &folder)).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn chat_sync_library(app: AppHandle, id: String) -> Result<super::libraries::SyncReport, String> {
+    let dir = config_dir(&app)?;
+    tokio::task::spawn_blocking(move || super::libraries::sync(&dir, &id)).await.map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 pub fn chat_remove_document(app: AppHandle, library_id: String, document_id: String) -> Result<super::libraries::Library, String> {
     super::libraries::remove(&config_dir(&app)?, &library_id, &document_id)

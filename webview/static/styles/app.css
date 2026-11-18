@@ -1408,3 +1408,5 @@ button.usage-meter:hover { background: var(--hover); }
 
 .run-output { margin: 0; padding: 10px 12px; border-top: 1px dashed var(--border); background: var(--bg-hover); font-size: var(--fs-sm); white-space: pre-wrap; max-height: 320px; overflow: auto; }
 .run-output.failed { color: var(--danger); }
+
+.folder-list { margin: 8px 0 4px; border: 1px dashed var(--border); border-radius: var(--radius-md); padding: 2px 8px; }

@@ -477,6 +477,12 @@
           "markdownDescription": "List knowledge pages."
         },
         {
+          "description": "Mirror folders into libraries and sync them.",
+          "type": "string",
+          "const": "allow-chat-library-folders",
+          "markdownDescription": "Mirror folders into libraries and sync them."
+        },
+        {
           "description": "Read a web page's preview for a citation.",
           "type": "string",
           "const": "allow-chat-link-preview",

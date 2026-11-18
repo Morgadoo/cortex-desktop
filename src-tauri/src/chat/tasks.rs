@@ -378,7 +378,15 @@ pub fn start(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         // Let the window and providers settle before the first check.
         tokio::time::sleep(Duration::from_secs(5)).await;
+        let mut ticks: u64 = 0;
         loop {
+            // Mirrored library folders: at start, then every 10 minutes.
+            if ticks % 20 == 0 {
+                if let Ok(config_dir) = crate::settings::get_config_dir(&app) {
+                    let _ = tokio::task::spawn_blocking(move || super::libraries::sync_all(&config_dir)).await;
+                }
+            }
+            ticks += 1;
             if let Ok(config_dir) = crate::settings::get_config_dir(&app) {
                 for task in take_due(&config_dir, Utc::now()) {
                     info!("running scheduled task {}", task.title);

@@ -21,6 +21,11 @@ pub struct Document {
     pub name: String,
     pub chars: usize,
     pub added_at: DateTime<Utc>,
+    /// For a document mirrored from a folder: the file, and when it last changed (seconds).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modified: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -33,6 +38,11 @@ pub struct Library {
     pub created_at: DateTime<Utc>,
     #[serde(default)]
     pub documents: Vec<Document>,
+    /// Folders the library mirrors: their files are added, updated and removed as they change.
+    #[serde(default)]
+    pub folders: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub synced_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -93,6 +103,8 @@ pub fn create(config_dir: &Path, name: &str, description: &str) -> Result<Librar
         description: description.trim().to_string(),
         created_at: Utc::now(),
         documents: Vec::new(),
+        folders: Vec::new(),
+        synced_at: None,
     };
     save(config_dir, &library)?;
     Ok(library)
@@ -186,6 +198,8 @@ pub fn add_text(config_dir: &Path, library_id: &str, name: &str, text: &str) -> 
         name: name.to_string(),
         chars: text.chars().count(),
         added_at: Utc::now(),
+        source: None,
+        modified: None,
     };
     let docs = lib_dir(config_dir, library_id)?.join("docs");
     std::fs::create_dir_all(&docs).map_err(|e| e.to_string())?;
@@ -219,6 +233,162 @@ pub fn remove(config_dir: &Path, library_id: &str, document_id: &str) -> Result<
     }
     save(config_dir, &library)?;
     Ok(library)
+}
+
+/// File types a mirrored folder indexes.
+const SYNC_EXTENSIONS: &[&str] = &["pdf", "md", "markdown", "txt", "html", "htm", "csv", "json", "yaml", "yml", "xml", "rs", "py", "js", "ts", "go", "java", "c", "cpp", "h", "sql", "log", "rst", "org", "tex"];
+/// Files indexed per folder, and how deep a folder is walked.
+const SYNC_MAX_FILES: usize = 2_000;
+const SYNC_MAX_DEPTH: usize = 6;
+
+/// What a sync changed.
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncReport {
+    pub added: usize,
+    pub updated: usize,
+    pub removed: usize,
+    pub errors: Vec<String>,
+}
+
+fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
+    if depth > SYNC_MAX_DEPTH || out.len() >= SYNC_MAX_FILES {
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let mut entries: Vec<_> = entries.flatten().collect();
+    entries.sort_by_key(|e| e.file_name());
+    for entry in entries {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        // Hidden files and folders, and build and dependency folders, are not documents.
+        if name.starts_with('.') || matches!(name.as_str(), "node_modules" | "target" | "__pycache__" | "venv" | ".venv") {
+            continue;
+        }
+        let path = entry.path();
+        if path.is_dir() {
+            walk(&path, depth + 1, out);
+        } else if path.extension().and_then(|e| e.to_str()).is_some_and(|e| SYNC_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str())) {
+            out.push(path);
+            if out.len() >= SYNC_MAX_FILES {
+                return;
+            }
+        }
+    }
+}
+
+fn modified_secs(path: &Path) -> Option<i64> {
+    let m = std::fs::metadata(path).ok()?.modified().ok()?;
+    Some(m.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs() as i64)
+}
+
+/// Brings a library's mirrored documents in line with its folders: new files are added, changed
+/// ones re-read, and files that are gone (or folders no longer mirrored) leave the library.
+pub fn sync(config_dir: &Path, library_id: &str) -> Result<SyncReport, String> {
+    let mut library = load(config_dir, library_id)?;
+    let docs = docs_dir(config_dir, library_id)?;
+    std::fs::create_dir_all(&docs).map_err(|e| e.to_string())?;
+    let mut report = SyncReport::default();
+    let mut files: Vec<PathBuf> = Vec::new();
+    for folder in &library.folders {
+        walk(Path::new(folder), 0, &mut files);
+    }
+    let present: std::collections::HashSet<String> = files.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+    // Gone, or changed: the old copy goes.
+    let mut keep = Vec::new();
+    for doc in std::mem::take(&mut library.documents) {
+        let Some(source) = doc.source.clone() else {
+            keep.push(doc);
+            continue;
+        };
+        let changed = present.contains(&source) && modified_secs(Path::new(&source)) != doc.modified;
+        if present.contains(&source) && !changed {
+            keep.push(doc);
+            continue;
+        }
+        let _ = std::fs::remove_file(docs.join(format!("{}.txt", doc.id)));
+        if let Ok(entries) = std::fs::read_dir(&docs) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if name.starts_with(&format!("{}.", doc.id)) && name.ends_with(".vec.json") {
+                    let _ = std::fs::remove_file(entry.path());
+                }
+            }
+        }
+        if changed {
+            report.updated += 1;
+        } else {
+            report.removed += 1;
+        }
+    }
+    library.documents = keep;
+    let known: std::collections::HashSet<String> = library.documents.iter().filter_map(|d| d.source.clone()).collect();
+    for path in files {
+        let source = path.to_string_lossy().into_owned();
+        if known.contains(&source) {
+            continue;
+        }
+        match extract(&path) {
+            Ok(text) => {
+                let doc = Document {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    // The path inside the folder, so files with the same name stay apart.
+                    name: library
+                        .folders
+                        .iter()
+                        .find_map(|f| path.strip_prefix(f).ok())
+                        .map_or_else(|| source.clone(), |p| p.to_string_lossy().into_owned()),
+                    chars: text.chars().count(),
+                    added_at: Utc::now(),
+                    modified: modified_secs(&path),
+                    source: Some(source),
+                };
+                std::fs::write(docs.join(format!("{}.txt", doc.id)), text).map_err(|e| e.to_string())?;
+                library.documents.push(doc);
+                report.added += 1;
+            }
+            // Files without text (scans, empty files) are skipped quietly; others say why.
+            Err(e) if e.contains("no readable text") || e.contains("no text layer") => {}
+            Err(e) => report.errors.push(e),
+        }
+    }
+    // A document re-read after a change was counted as added too.
+    report.added = report.added.saturating_sub(report.updated);
+    library.synced_at = Some(Utc::now());
+    save(config_dir, &library)?;
+    Ok(report)
+}
+
+/// Mirrors a folder into a library and syncs it.
+pub fn add_folder(config_dir: &Path, library_id: &str, folder: &Path) -> Result<SyncReport, String> {
+    if !folder.is_dir() {
+        return Err("Choose a folder that exists.".into());
+    }
+    let mut library = load(config_dir, library_id)?;
+    let folder = folder.to_string_lossy().into_owned();
+    if !library.folders.contains(&folder) {
+        library.folders.push(folder);
+        save(config_dir, &library)?;
+    }
+    sync(config_dir, library_id)
+}
+
+/// Stops mirroring a folder; its documents leave the library.
+pub fn remove_folder(config_dir: &Path, library_id: &str, folder: &str) -> Result<SyncReport, String> {
+    let mut library = load(config_dir, library_id)?;
+    library.folders.retain(|f| f != folder);
+    save(config_dir, &library)?;
+    sync(config_dir, library_id)
+}
+
+/// Syncs every library that mirrors folders (at start and every few minutes).
+pub fn sync_all(config_dir: &Path) {
+    for library in list(config_dir).into_iter().filter(|l| !l.folders.is_empty()) {
+        match sync(config_dir, &library.id) {
+            Ok(r) if r.added + r.updated + r.removed > 0 => log::info!("synced library {}: +{} ~{} -{}", library.name, r.added, r.updated, r.removed),
+            Ok(_) => {}
+            Err(e) => log::warn!("could not sync library {}: {e}", library.name),
+        }
+    }
 }
 
 /// Overlapping passages, cut at whitespace where possible.
@@ -346,6 +516,38 @@ pub fn prompt(libraries: &[Library]) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn folders_are_mirrored() {
+        let config = tempfile::tempdir().unwrap();
+        let folder = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(folder.path().join("notes/.git")).unwrap();
+        std::fs::write(folder.path().join("a.md"), "Alpha project kickoff notes").unwrap();
+        std::fs::write(folder.path().join("notes/b.txt"), "Beta budget is 40k").unwrap();
+        std::fs::write(folder.path().join("notes/.git/config"), "hidden").unwrap();
+        std::fs::write(folder.path().join("photo.png"), [0u8, 1, 2]).unwrap();
+        let lib = create(config.path(), "Work", "").unwrap();
+        let r = add_folder(config.path(), &lib.id, folder.path()).unwrap();
+        assert_eq!((r.added, r.updated, r.removed), (2, 0, 0));
+        let names: Vec<String> = load(config.path(), &lib.id).unwrap().documents.iter().map(|d| d.name.clone()).collect();
+        assert!(names.contains(&"a.md".to_string()) && names.iter().any(|n| n.ends_with("b.txt")), "{names:?}");
+        assert_eq!(search(config.path(), &[lib.id.clone()], "budget", 3)[0].document, names.iter().find(|n| n.ends_with("b.txt")).unwrap().clone());
+        // Nothing changed: nothing to do.
+        assert_eq!(sync(config.path(), &lib.id).unwrap(), SyncReport::default());
+        // A change, a deletion and a new file.
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        std::fs::write(folder.path().join("a.md"), "Alpha project moved to March").unwrap();
+        std::fs::remove_file(folder.path().join("notes/b.txt")).unwrap();
+        std::fs::write(folder.path().join("c.csv"), "item,cost\nchairs,300").unwrap();
+        let r = sync(config.path(), &lib.id).unwrap();
+        assert_eq!((r.added, r.updated, r.removed), (1, 1, 1));
+        assert!(!search(config.path(), &[lib.id.clone()], "March", 3).is_empty());
+        // Unmirrored: its documents leave.
+        let r = remove_folder(config.path(), &lib.id, &folder.path().to_string_lossy()).unwrap();
+        assert_eq!(r.removed, 2);
+        assert!(load(config.path(), &lib.id).unwrap().documents.is_empty());
+    }
+
     use super::*;
 
     #[test]

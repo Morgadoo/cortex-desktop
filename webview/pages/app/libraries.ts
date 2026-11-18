@@ -15,6 +15,16 @@ interface Library {
   description: string;
   createdAt: string;
   documents: Doc[];
+  /** Folders mirrored into the library. */
+  folders: string[];
+  syncedAt?: string;
+}
+
+interface SyncReport {
+  added: number;
+  updated: number;
+  removed: number;
+  errors: string[];
 }
 
 interface Passage {
@@ -96,6 +106,41 @@ export class LibrariesPage {
       }
       await this.load();
     });
+    // A folder mirrored into the library: new, changed and deleted files follow (synced at start,
+    // every 10 minutes, and on demand).
+    const report = (r: SyncReport | null) => {
+      if (!r) return;
+      const parts = [r.added && `${r.added} added`, r.updated && `${r.updated} updated`, r.removed && `${r.removed} removed`].filter(Boolean);
+      toast(parts.length ? `Synced: ${parts.join(', ')}.` : 'Already up to date.');
+      if (r.errors.length) toast(r.errors.slice(0, 3).join(' '), 'error');
+    };
+    const addFolder = h('button', { class: 'btn btn-secondary' }, icon('folder', 15), 'Mirror a folder');
+    addFolder.addEventListener('click', async () => {
+      addFolder.textContent = 'Indexing…';
+      try {
+        report(await tauriInvoke<SyncReport | null>('chat_add_library_folder', { id: lib.id }));
+      } catch (e) {
+        toast(String(e), 'error');
+      }
+      await this.load();
+    });
+    const folders = lib.folders.length
+      ? h(
+          'div',
+          { class: 'folder-list' },
+          lib.folders.map((f) =>
+            h(
+              'div',
+              { class: 'doc-row' },
+              icon('folder', 16),
+              h('span', { class: 'doc-name' }, f),
+              h('span', { class: 'muted' }, lib.syncedAt ? `synced ${new Date(lib.syncedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}` : ''),
+              h('button', { class: 'link-btn', on: { click: async () => { report(await tauriInvoke<SyncReport>('chat_sync_library', { id: lib.id }).catch((e) => (toast(String(e), 'error'), null))); await this.load(); } } }, 'Sync now'),
+              h('button', { class: 'icon-btn small', title: 'Stop mirroring (its documents leave the library)', on: { click: async () => { report(await tauriInvoke<SyncReport>('chat_remove_library_folder', { id: lib.id, folder: f })); await this.load(); } } }, icon('close', 15))
+            )
+          )
+        )
+      : null;
     const remove = h('button', { class: 'btn btn-danger' }, 'Delete library');
     remove.addEventListener('click', async () => {
       if (!(await confirmDialog('Delete library?', `“${lib.name}” and its ${lib.documents.length} documents will be removed from this device.`))) return;
@@ -135,7 +180,8 @@ export class LibrariesPage {
     clear(
       this.body,
       tabs,
-      h('div', { class: 'library-actions' }, add, h('span', { class: 'spacer' }), remove),
+      h('div', { class: 'library-actions' }, add, addFolder, h('span', { class: 'spacer' }), remove),
+      folders,
       docs,
       h('div', { class: 'section-title' }, 'Test a search'),
       h('div', { class: 'search-wrap' }, icon('search', 16), query),
