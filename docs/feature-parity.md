@@ -420,6 +420,11 @@ What is not here, and why. Everything else in the Vibe tables is built and was r
 - **Coding agents and plugins from GitHub:** the Claude Code CLI ran for real; Codex and Gemini
   CLIs were run as stand-ins with the same command-line shape. Downloading a plugin ZIP from
   GitHub was blocked by this environment's network; reading the official marketplace worked.
+- **Encryption at rest:** conversations and knowledge are plain JSON files in the settings
+  folder (keys, the vault and the sync passphrase are in the OS keychain; sync copies are
+  encrypted). Encrypting the folder itself means routing about 40 modules' file reads and writes,
+  the search index, daily backups, the trash and exports through one sealed store; that is not
+  done yet. Full-disk encryption (FileVault, BitLocker, LUKS) covers it in the meantime.
 - **Interface translations:** Portuguese, Spanish, French and German were translated by a model
   and have not been reviewed by native speakers.
 - **Pull requests on unknown hosts:** a host that is not recognised and prints no link during the
