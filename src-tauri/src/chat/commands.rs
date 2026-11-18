@@ -2343,6 +2343,23 @@ pub async fn chat_import_coding_sessions(app: AppHandle, paths: Vec<String>) -> 
         .map_err(|e| e.to_string())?
 }
 
+/// A video attachment as frames and a soundtrack transcript (ffmpeg).
+#[tauri::command]
+pub async fn chat_read_video(app: AppHandle, name: String, data: String) -> Result<super::video::Digest, String> {
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(data.as_bytes()).map_err(|e| e.to_string())?;
+    if bytes.len() > 200 * 1024 * 1024 {
+        return Err("Videos can be at most 200 MB.".into());
+    }
+    let ext = std::path::Path::new(&name).extension().and_then(|e| e.to_str()).filter(|e| e.chars().all(|c| c.is_ascii_alphanumeric())).unwrap_or("mp4").to_string();
+    // A private temporary file, removed once read.
+    let path = std::env::temp_dir().join(format!("lumo-video-{}.{ext}", uuid::Uuid::new_v4().simple()));
+    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+    let digest = super::video::digest(&config_dir(&app)?, &path).await;
+    let _ = std::fs::remove_file(&path);
+    digest
+}
+
 /// A folder's files for `@` mentions: tracked and new ones, not ignored (git-aware).
 #[tauri::command]
 pub async fn chat_folder_files(dir: String) -> Result<(Vec<String>, bool), String> {

@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 141 |
-| PARTIAL | 86 | 50 |
+| DONE | 58 | 142 |
+| PARTIAL | 86 | 49 |
 | MISSING | 48 | 1 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9 · LibreChat 34 / 8 / 0 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 17 / 4 / 0 / 5 · Osaurus 15 / 10 / 1 / 4 · OpenBot 20 / 9 / 0 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9 · LibreChat 34 / 8 / 0 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 17 / 4 / 0 / 5 · Osaurus 15 / 10 / 1 / 4 · OpenBot 21 / 8 / 0 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -210,7 +210,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9
 | Osaurus | Agent identity, encrypted relay | MISSING | OUT OF SCOPE | Team |
 | OpenBot | FIFO queue: pause, resume, cancel, survives a crash | PARTIAL | DONE | Queue kept across restarts, paused and resumed, cleared |
 | OpenBot | Pinned messages | MISSING | DONE | Bookmarked messages, listed per chat and in search (parity: Bookmark messages) |
-| OpenBot | Audio, video, ZIP attachments | PARTIAL | PARTIAL | Audio transcribed, ZIP read file by file, PDFs and Office read (parity: Audio and ZIP attachments). Missing: video |
+| OpenBot | Audio, video, ZIP attachments | PARTIAL | DONE | Audio transcribed, ZIP read file by file, PDFs and Office read (parity: Audio and ZIP attachments), and videos (`video.rs`): six spread frames as images plus the soundtrack's transcript, with ffmpeg. Verified live: a 4-second clip showing "LISBON 2026" with a spoken question; the model read the text from the frames and answered the question from the transcript |
 | OpenBot | Bubble colours from the avatar | MISSING | DONE | parity: Agent colours from the avatar (chat.ts `avatarHue`) |
 | OpenBot | Backdrop | MISSING | DONE | parity: Backdrop (appearance.ts `applyBackdrop`) |
 | OpenBot | Copy an error's details | PARTIAL | DONE | Copy details on a failed reply (parity: Copy error details) |

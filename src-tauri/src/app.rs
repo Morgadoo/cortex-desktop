@@ -207,6 +207,7 @@ pub fn run() {
             chat::commands::chat_share_link,
             chat::commands::chat_read_article,
             chat::commands::chat_folder_files,
+            chat::commands::chat_read_video,
             chat::commands::chat_find_coding_sessions,
             chat::commands::chat_import_coding_sessions,
             chat::commands::chat_folder_read,

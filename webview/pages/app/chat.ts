@@ -2560,6 +2560,25 @@ class Composer {
           this.attachments.push({ name: file.name, text: '', image: await readImage(file), file: true });
           continue;
         }
+        // Videos: spread-out frames as images, and what is said as a transcript (ffmpeg).
+        if (file.type.startsWith('video/') || /\.(mp4|mov|m4v|mkv|avi)$/i.test(file.name)) {
+          try {
+            if (file.size > 200 * 1024 * 1024) throw new Error(`${file.name} is larger than 200 MB.`);
+            toast(`Reading ${file.name}…`);
+            const bytes = new Uint8Array(await file.arrayBuffer());
+            let binary = '';
+            for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+            const v = await tauriInvoke<{ seconds: number; frames: { at: number; data: string }[]; transcript: string | null; note: string | null }>('chat_read_video', { name: file.name, data: btoa(binary) });
+            const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+            for (const f of v.frames) this.attachments.push({ name: `${file.name} · ${clock(f.at)}`, text: '', image: { mediaType: 'image/jpeg', data: f.data }, file: true });
+            const about = `Video ${file.name}, ${clock(v.seconds)} long: ${v.frames.length} frames are attached as images, taken at ${v.frames.map((f) => clock(f.at)).join(', ')}.`;
+            this.attachments.push({ name: `${file.name} (${v.transcript ? 'transcript' : 'about'})`, text: v.transcript ? `${about}\n\nWhat is said in it:\n${v.transcript}` : `${about} ${v.note ?? ''}`, file: true });
+            if (v.note) toast(`${file.name}: ${v.note}`);
+          } catch (e) {
+            toast(`${file.name}: ${String(e)}`, 'error');
+          }
+          continue;
+        }
         // Recordings are transcribed with the speech-to-text model, and the transcript attached.
         if (file.type.startsWith('audio/') || /\.(mp3|m4a|wav|ogg|oga|opus|flac|webm)$/i.test(file.name)) {
           try {

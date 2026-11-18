@@ -22,6 +22,7 @@ pub mod sync;
 pub mod terminal_chat;
 pub mod ui_language;
 pub mod vault;
+pub mod video;
 pub mod hooks;
 pub mod plugins;
 pub mod router;
