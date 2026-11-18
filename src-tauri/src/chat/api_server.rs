@@ -6,6 +6,10 @@
 //! lists them and `POST /v1/tasks/{id}/run` runs one now, with optional `input` added to its
 //! prompt (a script, a cron job or another tool on this computer can trigger it).
 //!
+//! Agents answer as models too (`agent/<id>` in `/v1/models`): with their instructions, notebook
+//! and model, without tools. Anthropic-style clients can use `POST /v1/messages` (plain or
+//! streamed). Recent requests are listed in Settings (time, endpoint, model, status, duration).
+//!
 //! Off by default. When on, it listens on 127.0.0.1 only and every request needs the bearer
 //! token shown in Settings (kept in the keychain as `api-server`). It sends no CORS headers, so
 //! web pages cannot call it.
@@ -160,10 +164,42 @@ struct Ctx {
     app: AppHandle,
 }
 
+/// One request, for the log in Settings.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LogEntry {
+    pub at: chrono::DateTime<chrono::Utc>,
+    pub endpoint: String,
+    pub model: String,
+    pub status: u16,
+    pub ms: u64,
+}
+
+/// Requests kept in the log.
+const LOG_SIZE: usize = 100;
+
+fn log() -> &'static Mutex<std::collections::VecDeque<LogEntry>> {
+    static LOG: std::sync::OnceLock<Mutex<std::collections::VecDeque<LogEntry>>> = std::sync::OnceLock::new();
+    LOG.get_or_init(|| Mutex::new(std::collections::VecDeque::new()))
+}
+
+fn record(endpoint: &str, model: &str, status: StatusCode, started: std::time::Instant) {
+    if let Ok(mut log) = log().lock() {
+        log.push_front(LogEntry { at: chrono::Utc::now(), endpoint: endpoint.into(), model: model.into(), status: status.as_u16(), ms: started.elapsed().as_millis() as u64 });
+        log.truncate(LOG_SIZE);
+    }
+}
+
+/// The latest requests, newest first.
+pub fn recent() -> Vec<LogEntry> {
+    log().lock().map(|l| l.iter().cloned().collect()).unwrap_or_default()
+}
+
 fn router(ctx: Ctx) -> Router {
     Router::new()
         .route("/v1/models", get(models))
         .route("/v1/chat/completions", post(chat))
+        .route("/v1/messages", post(messages))
         .route("/v1/tasks", get(list_tasks))
         .route("/v1/tasks/{id}/run", post(run_task))
         .with_state(ctx)
@@ -178,12 +214,49 @@ fn same(a: &str, b: &str) -> bool {
     a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
+/// The bearer token, or (as Anthropic clients send it) the `x-api-key` header.
 fn authorized(headers: &HeaderMap, token: &str) -> bool {
-    headers
-        .get("authorization")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "))
-        .is_some_and(|given| same(given.trim(), token))
+    let bearer = headers.get("authorization").and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("Bearer "));
+    let api_key = headers.get("x-api-key").and_then(|v| v.to_str().ok());
+    bearer.or(api_key).is_some_and(|given| same(given.trim(), token))
+}
+
+/// An agent called as a model: `agent/<id>`.
+const AGENT_PREFIX: &str = "agent/";
+
+/// The model to call for a model id, and the agent's own preamble when the id names an agent.
+async fn resolve(config_dir: &Path, model: &str) -> Result<(rig_core::DynModel<rig_core::operation::Completion>, Option<String>), String> {
+    let Some(id) = model.strip_prefix(AGENT_PREFIX) else {
+        return Ok((super::engine::connect_model(config_dir, model).await?, None));
+    };
+    let agent = super::agents::find(config_dir, id).ok_or("There is no agent with that id.")?;
+    let reference = agent.model.clone().or_else(|| super::providers::load(config_dir).default_model).ok_or("The agent has no model and there is no default model.")?;
+    let mut preamble = format!("You are {}", agent.name);
+    if !agent.description.trim().is_empty() {
+        preamble.push_str(&format!(": {}", agent.description.trim()));
+    }
+    preamble.push_str(".\n\n");
+    preamble.push_str(agent.instructions.trim());
+    let notebook = super::agents::notebook(config_dir, &agent.id);
+    if !notebook.trim().is_empty() {
+        preamble.push_str("\n\n");
+        preamble.push_str(&super::agents::notebook_prompt(&notebook));
+    }
+    Ok((super::engine::connect_model(config_dir, &reference).await?, Some(preamble)))
+}
+
+/// Puts an agent's preamble ahead of the caller's own system text.
+fn with_agent(request: CompletionRequest, agent: Option<String>) -> CompletionRequest {
+    match agent {
+        None => request,
+        Some(agent) => {
+            let own = request.system_instructions().map(str::to_string).filter(|p| !p.trim().is_empty());
+            request.preamble(match own {
+                Some(own) => format!("{agent}\n\n{own}"),
+                None => agent,
+            })
+        }
+    }
 }
 
 async fn models(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
@@ -195,6 +268,7 @@ async fn models(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
         .await
         .into_iter()
         .map(|m| json!({ "id": m.reference, "object": "model", "owned_by": m.vendor, "name": m.name }))
+        .chain(super::agents::load(&ctx.config_dir).into_iter().map(|a| json!({ "id": format!("{AGENT_PREFIX}{}", a.id), "object": "model", "owned_by": "lumo-agent", "name": a.name })))
         .collect();
     Json(json!({ "object": "list", "data": data })).into_response()
 }
@@ -295,6 +369,14 @@ pub fn request_of(body: &ChatBody) -> Result<CompletionRequest, String> {
 }
 
 async fn chat(State(ctx): State<Ctx>, headers: HeaderMap, body: Result<Json<ChatBody>, axum::extract::rejection::JsonRejection>) -> Response {
+    let started = std::time::Instant::now();
+    let model = body.as_ref().map(|b| b.model.clone()).unwrap_or_default();
+    let response = chat_inner(ctx, headers, body).await;
+    record("chat/completions", &model, response.status(), started);
+    response
+}
+
+async fn chat_inner(ctx: Ctx, headers: HeaderMap, body: Result<Json<ChatBody>, axum::extract::rejection::JsonRejection>) -> Response {
     if !authorized(&headers, &ctx.token) {
         return error(StatusCode::UNAUTHORIZED, "Missing or wrong bearer token.");
     }
@@ -305,10 +387,11 @@ async fn chat(State(ctx): State<Ctx>, headers: HeaderMap, body: Result<Json<Chat
         Ok(r) => r,
         Err(e) => return error(StatusCode::BAD_REQUEST, &e),
     };
-    let model = match super::engine::connect_model(&ctx.config_dir, &body.model).await {
+    let (model, agent) = match resolve(&ctx.config_dir, &body.model).await {
         Ok(m) => m,
         Err(e) => return error(StatusCode::BAD_REQUEST, &format!("{e} Use an id from /v1/models.")),
     };
+    let request = with_agent(request, agent);
     let id = format!("chatcmpl-{}", uuid::Uuid::new_v4().simple());
     let created = chrono::Utc::now().timestamp();
     if !body.stream {
@@ -361,6 +444,110 @@ async fn chat(State(ctx): State<Ctx>, headers: HeaderMap, body: Result<Json<Chat
     Sse::new(events).keep_alive(KeepAlive::default()).into_response()
 }
 
+/// An Anthropic-style body: `system` apart, `messages` with string or block content.
+#[derive(Debug, Deserialize)]
+pub struct MessagesBody {
+    pub model: String,
+    #[serde(default)]
+    pub system: Option<Value>,
+    pub messages: Vec<Value>,
+    #[serde(default)]
+    pub max_tokens: Option<u64>,
+    #[serde(default)]
+    pub temperature: Option<f64>,
+    #[serde(default)]
+    pub stream: bool,
+}
+
+/// The same request as the OpenAI shape: the system text becomes a system message.
+pub fn chat_body_of(body: &MessagesBody) -> ChatBody {
+    let mut messages = Vec::new();
+    if let Some(system) = &body.system {
+        let text = content_text(system);
+        if !text.trim().is_empty() {
+            messages.push(json!({ "role": "system", "content": text }));
+        }
+    }
+    messages.extend(body.messages.iter().cloned());
+    ChatBody { model: body.model.clone(), messages, temperature: body.temperature, max_tokens: body.max_tokens, stream: body.stream }
+}
+
+async fn messages(State(ctx): State<Ctx>, headers: HeaderMap, body: Result<Json<MessagesBody>, axum::extract::rejection::JsonRejection>) -> Response {
+    let started = std::time::Instant::now();
+    let model = body.as_ref().map(|b| b.model.clone()).unwrap_or_default();
+    let response = messages_inner(ctx, headers, body).await;
+    record("messages", &model, response.status(), started);
+    response
+}
+
+fn anthropic_error(status: StatusCode, message: &str) -> Response {
+    (status, Json(json!({ "type": "error", "error": { "type": "invalid_request_error", "message": message } }))).into_response()
+}
+
+async fn messages_inner(ctx: Ctx, headers: HeaderMap, body: Result<Json<MessagesBody>, axum::extract::rejection::JsonRejection>) -> Response {
+    if !authorized(&headers, &ctx.token) {
+        return anthropic_error(StatusCode::UNAUTHORIZED, "Missing or wrong API key (x-api-key or bearer token).");
+    }
+    let Ok(Json(body)) = body else {
+        return anthropic_error(StatusCode::BAD_REQUEST, "The body must be JSON with `model`, `messages` and `max_tokens`.");
+    };
+    let request = match request_of(&chat_body_of(&body)) {
+        Ok(r) => r,
+        Err(e) => return anthropic_error(StatusCode::BAD_REQUEST, &e),
+    };
+    let (model, agent) = match resolve(&ctx.config_dir, &body.model).await {
+        Ok(m) => m,
+        Err(e) => return anthropic_error(StatusCode::BAD_REQUEST, &format!("{e} Use an id from /v1/models.")),
+    };
+    let request = with_agent(request, agent);
+    let id = format!("msg_{}", uuid::Uuid::new_v4().simple());
+    if !body.stream {
+        return match model.call(request).await {
+            Ok(response) => Json(json!({
+                "id": id,
+                "type": "message",
+                "role": "assistant",
+                "model": body.model,
+                "content": [{ "type": "text", "text": response.text() }],
+                "stop_reason": "end_turn",
+                "stop_sequence": null,
+                "usage": { "input_tokens": response.usage.input_tokens.unwrap_or(0), "output_tokens": response.usage.output_tokens.unwrap_or(0) },
+            }))
+            .into_response(),
+            Err(e) => anthropic_error(StatusCode::BAD_GATEWAY, &super::context::short_error(&e.to_string())),
+        };
+    }
+    let mut stream = match model.stream(request) {
+        Ok(s) => s,
+        Err(e) => return anthropic_error(StatusCode::BAD_GATEWAY, &e.to_string()),
+    };
+    let (tx, rx) = tokio::sync::mpsc::channel::<Event>(64);
+    let model_name = body.model.clone();
+    tauri::async_runtime::spawn(async move {
+        let event = |name: &str, data: Value| Event::default().event(name).data(data.to_string());
+        let _ = tx
+            .send(event("message_start", json!({ "type": "message_start", "message": { "id": id, "type": "message", "role": "assistant", "model": model_name, "content": [], "stop_reason": null, "usage": { "input_tokens": 0, "output_tokens": 0 } } })))
+            .await;
+        let _ = tx.send(event("content_block_start", json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }))).await;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(Item::Event(StreamEvent::Text { text, .. })) if !text.is_empty() => {
+                    if tx.send(event("content_block_delta", json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": text } }))).await.is_err() {
+                        return;
+                    }
+                }
+                Ok(_) => {}
+                Err(_) => break,
+            }
+        }
+        let _ = tx.send(event("content_block_stop", json!({ "type": "content_block_stop", "index": 0 }))).await;
+        let _ = tx.send(event("message_delta", json!({ "type": "message_delta", "delta": { "stop_reason": "end_turn", "stop_sequence": null }, "usage": { "output_tokens": 0 } }))).await;
+        let _ = tx.send(event("message_stop", json!({ "type": "message_stop" }))).await;
+    });
+    let events = futures::stream::unfold(rx, |mut rx| async move { rx.recv().await.map(|e| (Ok::<_, std::convert::Infallible>(e), rx)) });
+    Sse::new(events).keep_alive(KeepAlive::default()).into_response()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -398,6 +585,36 @@ mod tests {
         assert!(!authorized(&headers, "lumo-abd"));
         assert!(!authorized(&headers, "lumo-ab"));
         assert!(same("", "") && !same("a", "b"));
+        let mut anthropic = HeaderMap::new();
+        anthropic.insert("x-api-key", "lumo-abc".parse().unwrap());
+        assert!(authorized(&anthropic, "lumo-abc"), "Anthropic clients send x-api-key");
+    }
+
+    #[test]
+    fn anthropic_bodies_become_the_same_requests() {
+        let body: MessagesBody = serde_json::from_value(json!({
+            "model": "xai/grok-4",
+            "system": [{ "type": "text", "text": "Be brief." }],
+            "messages": [{ "role": "user", "content": [{ "type": "text", "text": "Hi" }] }],
+            "max_tokens": 64
+        }))
+        .unwrap();
+        let request = request_of(&chat_body_of(&body)).unwrap();
+        assert_eq!(request.system_instructions(), Some("Be brief."));
+        assert_eq!(request.max_tokens, Some(64));
+        // An agent's instructions come before the caller's own.
+        let with = with_agent(request, Some("You are Researcher.".into()));
+        assert_eq!(with.system_instructions(), Some("You are Researcher.\n\nBe brief."));
+    }
+
+    #[test]
+    fn requests_are_logged_newest_first() {
+        let started = std::time::Instant::now();
+        record("chat/completions", "xai/grok-4", StatusCode::OK, started);
+        record("messages", "agent/a1", StatusCode::UNAUTHORIZED, started);
+        let log = recent();
+        assert_eq!((log[0].endpoint.as_str(), log[0].status), ("messages", 401));
+        assert_eq!(log[1].model, "xai/grok-4");
     }
 
     #[test]

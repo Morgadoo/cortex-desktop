@@ -1074,6 +1074,12 @@ pub fn chat_delete_exchange(app: AppHandle, state: State<'_, ChatState>, id: Str
     store::save_conversation(&dir, &conversation)
 }
 
+/// The local API's latest requests, newest first.
+#[tauri::command]
+pub fn chat_api_server_log() -> Vec<super::api_server::LogEntry> {
+    super::api_server::recent()
+}
+
 /// The indexed text of a library document, for its preview.
 #[tauri::command]
 pub fn chat_document_text(app: AppHandle, library_id: String, document_id: String) -> Result<String, String> {

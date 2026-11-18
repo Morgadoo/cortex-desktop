@@ -1036,18 +1036,60 @@ async function apiServerCard(): Promise<HTMLElement> {
           s.running && s.address && view.token
             ? h('pre', { class: 'api-example' }, `curl ${s.address}/chat/completions \\\n  -H "Authorization: Bearer ${view.token.slice(0, 9)}…" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model": "${state.model ?? 'vendor/model'}", "messages": [{"role": "user", "content": "Hello"}]}'`)
             : null,
-          h('div', { class: 'card-actions' }, h('button', { class: 'btn btn-secondary', on: { click: () => void save(true, true) } }, 'New API key')),
+          h('div', { class: 'card-actions' }, logButton(), h('button', { class: 'btn btn-secondary', on: { click: () => void save(true, true) } }, 'New API key')),
         ]
       : [];
     clear(
       body,
-      row('Local API', 'Lets scripts, editors and other apps on this computer use your models through an OpenAI-compatible API (/v1/chat/completions, /v1/models), and start scheduled tasks like webhooks (GET /v1/tasks, POST /v1/tasks/{id}/run with an optional input). Only this computer can reach it, and every request needs the API key.', switchInput(view.settings.enabled, (v) => void save(v))),
+      row('Local API', 'Lets scripts, editors and other apps on this computer use your models and agents (as agent/<id>) through an OpenAI-compatible API (/v1/chat/completions, /v1/models) or an Anthropic-style one (/v1/messages, key in x-api-key), and start scheduled tasks like webhooks (GET /v1/tasks, POST /v1/tasks/{id}/run with an optional input). Only this computer can reach it, and every request needs the API key.', switchInput(view.settings.enabled, (v) => void save(v))),
       row('Port', '', port),
       details
     );
   };
   render(await tauriInvoke<ApiServerView>('chat_api_server'));
   return card(body);
+}
+
+/** The local API's latest requests: when, which endpoint and model, the status and how long. */
+function logButton(): HTMLElement {
+  type Entry = { at: string; endpoint: string; model: string; status: number; ms: number };
+  const button = h('button', { class: 'btn btn-ghost' }, icon('list', 14), 'Recent requests');
+  button.addEventListener('click', () => {
+    void modal((close) => {
+      const table = h('div', { class: 'api-log' }, h('p', { class: 'muted' }, 'Loading…'));
+      const load = () =>
+        void tauriInvoke<Entry[]>('chat_api_server_log').then((entries) =>
+          clear(
+            table,
+            entries.length
+              ? h(
+                  'table',
+                  { class: 'data-table' },
+                  h('thead', {}, h('tr', {}, ['Time', 'Endpoint', 'Model', 'Status', 'Took'].map((t) => h('th', {}, t)))),
+                  h(
+                    'tbody',
+                    {},
+                    entries.map((e) =>
+                      h(
+                        'tr',
+                        {},
+                        h('td', {}, new Date(e.at).toLocaleTimeString()),
+                        h('td', {}, e.endpoint),
+                        h('td', { class: 'mono' }, e.model || '—'),
+                        h('td', { class: e.status >= 400 ? 'error-text' : '' }, String(e.status)),
+                        h('td', {}, e.ms >= 1000 ? `${(e.ms / 1000).toFixed(1)} s` : `${e.ms} ms`)
+                      )
+                    )
+                  )
+                )
+              : h('p', { class: 'muted' }, 'No requests since Lumo started.')
+          )
+        );
+      load();
+      return h('div', { class: 'dialog-small wide' }, modalHeader('Recent requests', close, { flush: true, actions: [h('button', { class: 'btn btn-ghost btn-sm', on: { click: load } }, 'Refresh')] }), table);
+    });
+  });
+  return button;
 }
 
 function renderAppearance(content: HTMLElement) {

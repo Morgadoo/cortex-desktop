@@ -1460,3 +1460,8 @@ button.usage-meter:hover { background: var(--hover); }
 .doc-list .doc-row.doc-head { display: flex; gap: 12px; }
 .doc-list .doc-row.doc-head .spacer { flex: 1; }
 .subhead { margin: 16px 0 4px; font-size: var(--fs-md); font-weight: 600; }
+.api-log { max-height: 60vh; overflow: auto; }
+.data-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.data-table th { text-align: left; color: var(--text-muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.data-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.data-table .mono { font-family: ui-monospace, monospace; }
