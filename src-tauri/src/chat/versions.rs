@@ -4,10 +4,15 @@
 //! Saving a changed item first keeps the version it replaces, as JSON in
 //! `chat/versions/<kind>/<id>/<time>.json`; the newest [`KEEP`] per item stay. Restoring is
 //! saving an old version again, so the one it replaces is kept too.
+//!
+//! One version of an item can be marked production (LibreChat's prompt versions): that one is what
+//! runs, and saved edits stay a draft until they are marked in turn. It is kept apart, in
+//! `chat/versions/<kind>/<id>.production.json`, so pruning never takes it.
 
 use std::path::{Path, PathBuf};
 
-use serde::Serialize;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::store::chat_dir;
@@ -76,10 +81,69 @@ pub fn list(config_dir: &Path, kind: &str, id: &str) -> Result<Vec<Version>, Str
     Ok(out)
 }
 
+/// The version marked production, and when it was marked.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Production {
+    pub at: DateTime<Utc>,
+    pub value: Value,
+}
+
+fn production_path(config_dir: &Path, kind: &str, id: &str) -> Result<PathBuf, String> {
+    let dir = dir(config_dir, kind, id)?;
+    Ok(dir.with_file_name(format!("{id}.production.json")))
+}
+
+pub fn production(config_dir: &Path, kind: &str, id: &str) -> Option<Production> {
+    let text = crate::chat::at_rest::read_to_string(production_path(config_dir, kind, id).ok()?).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+/// Marks `value` as the item's production version, or, with `None`, goes back to running the
+/// current one.
+pub fn set_production(config_dir: &Path, kind: &str, id: &str, value: Option<Value>) -> Result<Option<Production>, String> {
+    let path = production_path(config_dir, kind, id)?;
+    match value {
+        Some(value) => {
+            let marked = Production { at: Utc::now(), value };
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            super::store::write_json(&path, &marked)?;
+            Ok(Some(marked))
+        }
+        None => {
+            match std::fs::remove_file(&path) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(e.to_string()),
+            }
+            Ok(None)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn one_version_can_be_production() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(production(dir.path(), "workflows", "w1").is_none());
+        set_production(dir.path(), "workflows", "w1", Some(json!({"steps": ["a"]}))).unwrap();
+        assert_eq!(production(dir.path(), "workflows", "w1").unwrap().value, json!({"steps": ["a"]}));
+        for i in 0..40 {
+            keep(dir.path(), "workflows", "w1", &json!(i), &json!(i + 1)).unwrap();
+        }
+        assert_eq!(list(dir.path(), "workflows", "w1").unwrap().len(), KEEP, "the marker is not a version");
+        assert!(production(dir.path(), "workflows", "w1").is_some(), "pruning keeps it");
+        set_production(dir.path(), "workflows", "w1", None).unwrap();
+        set_production(dir.path(), "workflows", "w1", None).unwrap();
+        assert!(production(dir.path(), "workflows", "w1").is_none());
+        assert!(set_production(dir.path(), "workflows", "../x", Some(json!(1))).is_err());
+    }
 
     #[test]
     fn changed_items_keep_what_they_replace() {

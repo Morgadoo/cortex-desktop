@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 155 |
-| PARTIAL | 86 | 36 |
+| DONE | 58 | 161 |
+| PARTIAL | 86 | 30 |
 | MISSING | 48 | 1 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 39 / 6 / 0 / 9 · LibreChat 37 / 5 / 0 / 4 · LobeHub 21 / 8 / 0 / 5 · Onyx 18 / 3 / 0 / 5 · Osaurus 18 / 7 / 1 / 4 · OpenBot 22 / 7 / 0 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 40 / 5 / 0 / 9 · LibreChat 39 / 3 / 0 / 4 · LobeHub 23 / 6 / 0 / 5 · Onyx 18 / 3 / 0 / 5 · Osaurus 19 / 6 / 1 / 4 · OpenBot 22 / 7 / 0 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -44,7 +44,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 39 / 6 / 0 / 9
 | Open WebUI | Actions: custom message-toolbar buttons | MISSING | DONE | parity: Answer actions (your own prompts under each answer, editable) |
 | Open WebUI | Pipes (providers from code) | MISSING | OUT OF SCOPE | Left out: "Filters and pipes" (parity L223) |
 | Open WebUI | OpenAPI tool servers | MISSING | DONE | parity L290 |
-| Open WebUI | Skills with supporting files and versions | PARTIAL | PARTIAL | Versions done (parity L278). Missing: supporting files (a skill is name, description and body only, api.ts `Skill`) |
+| Open WebUI | Skills with supporting files and versions | PARTIAL | DONE | Versions (parity L278) and supporting files: a skill's folder holds templates, notes and scripts; the editor lists, views, edits, adds and removes them; `use_skill` lists them and reads one with `file` (skills.rs add_file/read_file/loaded). Verified live: the model loaded a skill, then read refs/temperatures.md for the answer |
 | Open WebUI | Prompts with variables and versions | PARTIAL | DONE | Variables in prompts and workflows; skills and workflows keep versions |
 | Open WebUI | One-shot timer back into this chat | PARTIAL | DONE | `schedule_task` with `in_this_chat` continues the chat it was asked in (parity: Scheduled follow-ups) |
 | Open WebUI | Webhooks on completion; `notify` tool | MISSING | DONE | `notify` tool and task webhooks with Slack/Discord-friendly fields (parity: Webhooks when a task finishes) |
@@ -92,10 +92,10 @@ Per app now (done / partial / missing / out of scope): Open WebUI 39 / 6 / 0 / 9
 | LibreChat | Run a code block | PARTIAL | DONE | parity L277 |
 | LibreChat | Copy as rich text | MISSING | DONE | parity L287; chat.ts:921–928 |
 | LibreChat | Agent marketplace | MISSING | OUT OF SCOPE | Shared marketplaces left out (parity L217) |
-| LibreChat | Agent plugins (skills, MCP, hooks in one package) | MISSING | PARTIAL | Agent files carry notebook, skills and MCP servers (parity: Agents travel with their tool servers). Missing: hooks |
+| LibreChat | Agent plugins (skills, MCP, hooks in one package) | MISSING | DONE | Claude plugins import skills (with their supporting files), agents, MCP servers and now hooks: hooks/hooks.json PreToolUse, PostToolUse and Stop map to Lumo's hooks, arrive turned off, and get Claude's input fields (plugins.rs install, hooks.rs from_claude). Verified live: a plugin folder imported, its after-call hook read tool_name and annotated a web search, its Stop hook ran the plugin's own script |
 | LibreChat | Agents API | MISSING | DONE | Agents answer through the local API as `agent/<id>` (parity: Agents in the local API) |
 | LibreChat | Prompt variables | MISSING | DONE | parity L269 |
-| LibreChat | Prompt versions with Production | MISSING | PARTIAL | Skills, workflows, agents and tools keep versions (parity: Version history). Missing: a "production" marker |
+| LibreChat | Prompt versions with Production | MISSING | DONE | Workflows (Lumo's saved prompts) keep versions, and one can be marked production: that version runs from the + menu while saved edits stay a draft (versions.rs set_production, workflows.rs views). Verified live: a 5th step added after marking stayed out of the sent run |
 | LibreChat | PR status and CI for a chat's workspace | PARTIAL | PARTIAL | PR opened (parity L121). Missing: PR status and CI checks |
 | LibreChat | Jina / Cohere reranking | MISSING | DONE | Any Cohere/Jina-style `/rerank` server (parity: Reranking) |
 | LibreChat | Upload files as text | PARTIAL | DONE | Chat attachments go in full as text (chat.ts:1694–1700) |
@@ -128,7 +128,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 39 / 6 / 0 / 9
 | LobeHub | Agent groups (sequential, parallel, debate…) | PARTIAL | PARTIAL | `delegate` to teammates (parity L251). Missing: group chat modes and an orchestrator setting |
 | LobeHub | External agents (Claude Code, Codex) | MISSING | DONE | parity: Coding agent programs as models (agent_cli.rs) |
 | LobeHub | Tasks with delegation, status, comments | PARTIAL | DONE | Scheduled tasks and sub-agents (parity L165, L248), and comments on a task (the speech-bubble on its row): every run gets them as notes to follow, newest last (`tasks::run_prompt`). Verified live: a comment was saved on a task; unit test checks the run prompt |
-| LobeHub | Agent builder as a chat | PARTIAL | PARTIAL | One-prompt draft (parity L249). Missing: a conversation that refines it |
+| LobeHub | Agent builder as a chat | PARTIAL | DONE | New agent is a conversation: the first message drafts it, each next one revises the draft shown beside the exchange, then Review and save (agents.rs refine_prompt, agents.ts newAgent). Verified live |
 | LobeHub | Greeting and conversation starters per agent | MISSING | DONE | Conversation starters on the agent's new-chat page (parity: Agent conversation starters) |
 | LobeHub | Stats: cost, cache, tokens, models per agent | PARTIAL | DONE | Spend per agent (parity L253), and the profile menu's month gauge opens Usage this month: tokens, cost and chats by model and by agent, with bars. Verified live with this month's real usage (grok-4.7, deepseek-flash… by model; News Briefer, EU AI Brief… by agent) |
 | LobeHub | Export or copy an agent | MISSING | DONE | parity L295 |
@@ -144,7 +144,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 39 / 6 / 0 / 9
 | LobeHub | Topic panel: status tabs, card/list views | PARTIAL | PARTIAL | Archive. Missing: status tabs and views |
 | LobeHub | Sort and group chats | MISSING | DONE | Sort four ways and date groups Today, Yesterday, 7 and 30 days, months |
 | LobeHub | Smart rename / rename | PARTIAL | DONE | Automatic title (engine.rs:804–808), Rename (chat.ts:2790) |
-| LobeHub | Open in new tab, right panel, new window | MISSING | PARTIAL | Apps and canvases open in the right panel, apps also in a window of their own (parity: Apps in a window of their own). Missing: a chat in a second window |
+| LobeHub | Open in new tab, right panel, new window | MISSING | DONE | Apps and canvases in the right panel or their own window; any chat opens in a window of its own from its menu (chat_open_chat_window), sidebar folded, both windows streaming the same chat. Verified live |
 | LobeHub | Duplicate, move, forward to another agent | MISSING | DONE | Branch (duplicate), move to project, Continue with an agent (parity: Continue a chat with an agent) |
 | LobeHub | Export as screenshot, text, PDF, JSON | PARTIAL | PARTIAL | Markdown, JSON and PDF (print) export. Missing: export as a screenshot image |
 | LobeHub | Share link | MISSING | OUT OF SCOPE | Server-only (parity L202) |
@@ -186,7 +186,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 39 / 6 / 0 / 9
 | Osaurus | Orchestrator | PARTIAL | PARTIAL | The assistant delegates (parity L251). Missing: routing to agents by itself |
 | Osaurus | Built-in app agents | PARTIAL | DONE | MCP connectors, and ready-made specialist agents for the apps and data on this computer: Calendar Assistant (calendar and contacts), Data Analyst (run_code, sheets), Code Reviewer (read-only), Translator and Meeting Prep, besides Researcher, News Briefer, File Assistant and Writer |
 | Osaurus | External agent runtimes | MISSING | DONE | parity: Coding agent programs as models (Claude Code, Codex, Gemini CLI) |
-| Osaurus | Typed workflows, designer agent | PARTIAL | PARTIAL | `{{blank}}` inputs in workflows (parity L269). Missing: typed inputs, a designer agent |
+| Osaurus | Typed workflows, designer agent | PARTIAL | DONE | Inputs typed as {{name:number|date|time|url|email|long}}, optional with ?, choices with |, each with its own control and checked before sending (promptvars.ts); a designer in the workflow editor drafts or revises the workflow from a description (chat_draft_workflow). Verified live |
 | Osaurus | Triggers: schedule, folder, webhook, feed | PARTIAL | DONE | Schedules, new files (parity L274), webhooks through the local API (L291) and feeds: a task can start when an RSS or Atom feed has new items (`Frequency::NewFeedItems`, `parse_feed`). Verified live: the first check recorded the feed's two posts; after a third was added, one run started with its title and link in the prompt |
 | Osaurus | VM per agent | PARTIAL | PARTIAL | bubblewrap sandbox (parity L231). Missing: a separate environment per agent |
 | Osaurus | Browser session per agent | PARTIAL | PARTIAL | Missing: per-agent sessions |

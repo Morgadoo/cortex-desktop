@@ -329,6 +329,19 @@ pub fn draft_prompt(description: &str, tools: &[&str], skills: &[String]) -> Str
     )
 }
 
+/// The prompt asking a model to change a drafted agent as the user asks, keeping the rest.
+pub fn refine_prompt(current: &Agent, request: &str, tools: &[&str], skills: &[String]) -> String {
+    let now = serde_json::json!({
+        "name": current.name, "avatar": current.avatar, "description": current.description,
+        "instructions": current.instructions, "tools": current.tools, "skills": current.skills, "think": current.think,
+    });
+    format!(
+        "Here is an AI agent's definition as JSON:\n{now}\n\nRevise it as the user asks: {request}\n\
+         Keep what they did not ask to change. Reply with only the full JSON object, no prose and no \
+         code fence, with the same fields; tools must come from {tools:?} and skills from {skills:?}."
+    )
+}
+
 /// Reads the model's draft. Unknown tools and skills are dropped.
 pub fn parse_draft(text: &str, tools: &[&str], skills: &[String]) -> Result<Agent, String> {
     let start = text.find('{').ok_or("The model did not return an agent.")?;

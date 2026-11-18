@@ -28,6 +28,8 @@ pub struct SkillDraft {
     pub name: String,
     pub description: String,
     pub body: String,
+    /// Supporting files from the skill's folder (path inside it, bytes).
+    pub files: Vec<(String, Vec<u8>)>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -54,6 +56,8 @@ pub struct PluginDraft {
     pub agents: Vec<AgentDraft>,
     pub servers: Vec<ServerDraft>,
     pub has_hooks: bool,
+    /// `hooks/hooks.json`, or the manifest's `hooks` object.
+    pub hooks: Option<Value>,
 }
 
 /// What an import brought in, for the message the user sees.
@@ -64,6 +68,8 @@ pub struct Imported {
     pub skills: Vec<String>,
     pub agents: Vec<String>,
     pub servers: Vec<String>,
+    /// Hooks added, turned off until the user reviews them.
+    pub hooks: usize,
     pub skipped: Vec<String>,
 }
 
@@ -318,7 +324,7 @@ fn command_skill(name: &str, text: &str) -> SkillDraft {
     let body = inline_commands(&body)
         .replace("$ARGUMENTS", "(the text the user wrote after the command)")
         .replace("$1", "(the first thing the user wrote after the command)");
-    SkillDraft { name: slug(name), description, body }
+    SkillDraft { name: slug(name), description, body, files: Vec::new() }
 }
 
 /// Claude Code runs `` !`command` `` in a command file and puts its output there; here the model
@@ -352,7 +358,15 @@ pub fn read_plugin(files: &Files, root: &str) -> PluginDraft {
             ["skills", skill, "SKILL.md"] => {
                 let (front, text) = front_matter(&body);
                 let name = front.get("name").map(|n| slug(n)).filter(|n| !n.is_empty()).unwrap_or_else(|| slug(skill));
-                plugin.skills.push(SkillDraft { name, description: front.get("description").cloned().unwrap_or_default(), body: text });
+                // The rest of the skill's folder comes with it.
+                let folder = format!("{prefix}skills/{skill}/");
+                let files = files
+                    .range(folder.clone()..)
+                    .take_while(|(k, _)| k.starts_with(&folder))
+                    .filter(|(k, _)| k.as_str() != format!("{folder}SKILL.md"))
+                    .map(|(k, v)| (k[folder.len()..].to_string(), v.clone()))
+                    .collect();
+                plugin.skills.push(SkillDraft { name, description: front.get("description").cloned().unwrap_or_default(), body: text, files });
             }
             ["commands", .., file] if file.ends_with(".md") => plugin.skills.push(command_skill(file.trim_end_matches(".md"), &body)),
             ["agents", file] if file.ends_with(".md") => {
@@ -360,7 +374,10 @@ pub fn read_plugin(files: &Files, root: &str) -> PluginDraft {
                 let name = front.get("name").cloned().unwrap_or_else(|| file.trim_end_matches(".md").replace(['-', '_'], " "));
                 plugin.agents.push(AgentDraft { name, description: front.get("description").cloned().unwrap_or_default(), instructions: text });
             }
-            ["hooks", "hooks.json"] => plugin.has_hooks = true,
+            ["hooks", "hooks.json"] => {
+                plugin.has_hooks = true;
+                plugin.hooks = serde_json::from_str(&body).ok();
+            }
             _ => {}
         }
     }
@@ -374,6 +391,12 @@ pub fn read_plugin(files: &Files, root: &str) -> PluginDraft {
             if spec.is_object() {
                 plugin.servers.push(ServerDraft { name: server, spec });
             }
+        }
+    }
+    if plugin.hooks.is_none() {
+        if let Some(hooks) = manifest.get("hooks").filter(|v| v.is_object()) {
+            plugin.has_hooks = true;
+            plugin.hooks = Some(hooks.clone());
         }
     }
     plugin.name = name;
@@ -444,6 +467,11 @@ pub fn install(config_dir: &Path, plugin: &PluginDraft, out: &mut Imported) -> R
             name = slug(&format!("{}-{}", plugin.name, skill.name));
         }
         super::skills::save(config_dir, &name, &skill.description, &skill.body)?;
+        for (rel, bytes) in &skill.files {
+            if let Err(e) = super::skills::add_file(config_dir, &name, rel, bytes) {
+                out.skipped.push(format!("{rel} in skill {name} ({e})"));
+            }
+        }
         out.skills.push(name);
     }
     let existing = super::agents::load(config_dir);
@@ -468,8 +496,16 @@ pub fn install(config_dir: &Path, plugin: &PluginDraft, out: &mut Imported) -> R
         super::agents::save(config_dir, agent)?;
         out.agents.push(draft.name.clone());
     }
-    if plugin.has_hooks {
-        out.skipped.push(format!("{}'s hooks (not run by Lumo)", plugin.name));
+    // Hooks run commands, so they arrive turned off; the user turns them on under Hooks.
+    match &plugin.hooks {
+        Some(config) => {
+            let (hooks, unsupported) = super::hooks::from_claude(config, &plugin_dir(config_dir, &plugin.name), &plugin.name);
+            out.hooks += hooks.len();
+            super::hooks::replace_from(config_dir, &plugin.name, hooks)?;
+            out.skipped.extend(unsupported.into_iter().map(|e| format!("{e} hooks (no such moment in Lumo)")));
+        }
+        None if plugin.has_hooks => out.skipped.push(format!("{}'s hooks (unreadable hooks.json)", plugin.name)),
+        None => {}
     }
     out.plugins.push(plugin.name.clone());
     Ok(())
@@ -492,7 +528,9 @@ mod tests {
             ("commands/git/commit.md", "Write a commit message."),
             ("agents/security-reviewer.md", "---\nname: Security Reviewer\ndescription: Finds vulnerabilities\ntools: Read, Grep\n---\nYou review code for security issues."),
             (".mcp.json", r#"{"mcpServers": {"tracker": {"command": "${CLAUDE_PLUGIN_ROOT}/bin/tracker", "args": ["--port", "1"], "env": {"MODE": "x"}}, "docs": {"type": "http", "url": "https://example.com/mcp"}}}"#),
-            ("hooks/hooks.json", "{}"),
+            ("hooks/hooks.json", r#"{"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/guard.sh"}]}]}}"#),
+            ("skills/pr-summary/template.md", "## Summary"),
+            ("skills/pr-summary/scripts/diffstat.sh", "git diff --stat"),
             ("README.md", "readme"),
         ]);
         assert_eq!(plugin_roots(&f), [""]);
@@ -506,6 +544,16 @@ mod tests {
         assert_eq!(p.skills[0].description, "The /commit command.");
         assert_eq!(p.agents, [AgentDraft { name: "Security Reviewer".into(), description: "Finds vulnerabilities".into(), instructions: "You review code for security issues.".into() }]);
         assert!(p.has_hooks);
+        let summary = p.skills.iter().find(|s| s.name == "pr-summary").unwrap();
+        let paths: Vec<&str> = summary.files.iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(paths, ["scripts/diffstat.sh", "template.md"]);
+        let dir = tempfile::tempdir().unwrap();
+        let mut out = Imported::default();
+        install(dir.path(), &p, &mut out).unwrap();
+        assert_eq!(out.hooks, 1);
+        let hooks = super::super::hooks::load(dir.path());
+        assert!(!hooks[0].enabled && hooks[0].command.ends_with("plugins/review-kit/guard.sh"), "{hooks:?}");
+        assert_eq!(super::super::skills::read_file(dir.path(), "pr-summary", "template.md").unwrap(), "## Summary");
         assert_eq!(p.servers.len(), 2);
         let tracker = server_config(&p.name, p.servers.iter().find(|s| s.name == "tracker").unwrap(), Path::new("/data/plugins/review-kit")).unwrap();
         assert_eq!(tracker.id, "review-kit-tracker");

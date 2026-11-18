@@ -185,6 +185,8 @@ export interface Skill {
   body: string;
   origin: 'user' | 'builtin';
   enabled: boolean;
+  /** Supporting files in the skill's folder, relative to it. */
+  files: string[];
 }
 
 export interface Agent {
@@ -286,6 +288,8 @@ export interface Workflow {
   description: string;
   steps: string[];
   builtin: boolean;
+  /** The version marked production, which is what runs; the fields above are then a draft. */
+  production?: { at: string; name: string; steps: string[] };
 }
 
 export interface ConnectorManifest {
@@ -387,7 +391,8 @@ export const api = {
   agentNotebook: (id: string) => call<string>('chat_agent_notebook', { id }),
   saveAgentNotebook: (id: string, text: string) => call<void>('chat_save_agent_notebook', { id, text }),
   agentSpend: () => call<Record<string, AgentSpend>>('chat_agent_spend'),
-  draftAgent: (description: string) => call<Agent>('chat_draft_agent', { description }),
+  /** Drafts an agent, or, with `current`, revises that draft as `description` asks. */
+  draftAgent: (description: string, current: Agent | null = null) => call<Agent>('chat_draft_agent', { description, current }),
   usageMonth: () => call<AgentSpend>('chat_usage_month'),
   subagentTranscript: (callId: string, index: number) => call<{ kind: string; tool: string; input: string; output: string; isError: boolean }[]>('chat_subagent_transcript', { callId, index }),
   saveAgent: (agent: Agent) => call<Agent[]>('chat_save_agent', { agent }),

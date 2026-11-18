@@ -31,6 +31,13 @@ interface View {
   dispose?(): void;
 }
 
+/**
+ * Set when this page runs in a chat's own window (chat_open_chat_window): it shows that chat with
+ * the sidebar folded, and leaves app-wide duties (links, wake word, tray, notifications) to the
+ * main window so nothing happens twice.
+ */
+const SOLO_CHAT: string | null = (window as unknown as { __LUMO_SOLO_CHAT?: string }).__LUMO_SOLO_CHAT ?? null;
+
 const sidebar = h('aside', { class: 'sidebar' });
 const main = h('main', { class: 'main' });
 let view: View | null = null;
@@ -863,7 +870,7 @@ async function start() {
       // A failed turn keeps its live state, so the partial reply and the error stay on screen
       // until the next send; a finished one is replaced by what was saved.
       const failed = event.type === 'error';
-      if ((failed || (event.type === 'done' && !event.cancelled)) && !document.hasFocus() && finishNotificationsOn()) notifyFinished(id, failed);
+      if (!SOLO_CHAT && (failed || (event.type === 'done' && !event.cancelled)) && !document.hasFocus() && finishNotificationsOn()) notifyFinished(id, failed);
       void refreshConversations();
       const chat = viewCache.chat;
       if (chat && chat.key === `chat:${id}`) {
@@ -890,30 +897,33 @@ async function start() {
     state.approvals = state.approvals.filter((a) => a.request_id !== request_id);
     changed();
   });
-  // The app menu's Settings item (Ctrl+,) and the tray route here.
-  void listen('chat://open-settings', () => {
-    if (!document.querySelector('.modal .settings')) void openSettings();
-  });
-  // Links into the app (lumo://new?prompt=…, lumo://chat/<id>): the prompt is typed, never sent.
-  void listen('chat://link', () => void takeLink());
-  // The wake word: "Hey Lumo, …" asks in a new chat; "Hey Lumo" alone starts a voice conversation.
-  if (wakePrefs().enabled) void startWake();
-  window.addEventListener('lumo:wake-word-changed', () => {
-    stopWakeWord();
+  // App-wide duties stay with the main window (see SOLO_CHAT).
+  if (!SOLO_CHAT) {
+    // The app menu's Settings item (Ctrl+,) and the tray route here.
+    void listen('chat://open-settings', () => {
+      if (!document.querySelector('.modal .settings')) void openSettings();
+    });
+    // Links into the app (lumo://new?prompt=…, lumo://chat/<id>): the prompt is typed, never sent.
+    void listen('chat://link', () => void takeLink());
+    // The wake word: "Hey Lumo, …" asks in a new chat; "Hey Lumo" alone starts a voice conversation.
     if (wakePrefs().enabled) void startWake();
-  });
-  // A task recording was stopped from its pill: turn it into a skill.
-  void listen<{ seconds: number; steps: number }>('chat://recorded', (status) => reviewRecording(status));
-  // Background sync brought changes from another device.
-  void listen<string>('chat://synced', (summary) => {
-    window.dispatchEvent(new Event('chat:conversations-changed'));
-    toast(`Synced from your other devices: ${summary}`);
-  });
-  void listen<string>('chat://quick-ask', (query) => {
-    navigate({ kind: 'home' });
-    composer.setText(query);
-    void composer.submit();
-  });
+    window.addEventListener('lumo:wake-word-changed', () => {
+      stopWakeWord();
+      if (wakePrefs().enabled) void startWake();
+    });
+    // A task recording was stopped from its pill: turn it into a skill.
+    void listen<{ seconds: number; steps: number }>('chat://recorded', (status) => reviewRecording(status));
+    // Background sync brought changes from another device.
+    void listen<string>('chat://synced', (summary) => {
+      window.dispatchEvent(new Event('chat:conversations-changed'));
+      toast(`Synced from your other devices: ${summary}`);
+    });
+    void listen<string>('chat://quick-ask', (query) => {
+      navigate({ kind: 'home' });
+      composer.setText(query);
+      void composer.submit();
+    });
+  }
 
   document.addEventListener('keydown', (e) => {
     const mod = e.ctrlKey || e.metaKey;
@@ -962,6 +972,12 @@ async function start() {
   state.skills = await api.skills().catch(() => []);
   await reloadAgents().catch(() => undefined);
   await reloadModels().catch((e) => toast(String(e), 'error'));
+  if (SOLO_CHAT) {
+    state.sidebarCollapsed = true;
+    document.body.classList.add('solo-window');
+    navigate({ kind: 'chat', id: SOLO_CHAT }, false);
+    return;
+  }
   void takeLink();
   changed();
   if (!state.models.length) void openSettings('providers');

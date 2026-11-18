@@ -1012,6 +1012,8 @@ interface HookDef {
   matcher: string;
   command: string;
   enabled: boolean;
+  /** The plugin it came with. */
+  source?: string;
 }
 
 const HOOK_EVENTS: [HookDef['event'], string][] = [
@@ -1044,7 +1046,7 @@ async function hooksCard(): Promise<HTMLElement> {
             return h(
               'div',
               { class: 'hook-row' },
-              h('div', { class: 'hook-text' }, h('strong', {}, HOOK_EVENTS.find(([e]) => e === hook.event)?.[1] ?? hook.event, hook.matcher && hook.event !== 'turn_end' ? h('small', { class: 'muted' }, ` · ${hook.matcher}`) : null), h('code', {}, hook.command)),
+              h('div', { class: 'hook-text' }, h('strong', {}, HOOK_EVENTS.find(([e]) => e === hook.event)?.[1] ?? hook.event, hook.matcher && hook.event !== 'turn_end' ? h('small', { class: 'muted' }, ` · ${hook.matcher}`) : null, hook.source ? h('span', { class: 'badge', title: 'Came with this plugin; importing it again replaces these hooks' }, hook.source) : null), h('code', {}, hook.command)),
               toggle,
               remove
             );

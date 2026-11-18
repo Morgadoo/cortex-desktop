@@ -4,7 +4,8 @@
   "description": "The native chat page in the main window: providers, conversations and streaming replies.",
   "local": true,
   "windows": [
-    "lumo-window"
+    "lumo-window",
+    "lumo-chat-*"
   ],
   "permissions": [
     "allow-chat-list-providers",

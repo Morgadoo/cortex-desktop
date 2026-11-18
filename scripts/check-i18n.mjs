@@ -104,3 +104,17 @@ assert.equal(site.localSite('  VITE ready\n  \x1b[32m➜\x1b[0m  Local:   http:/
 assert.equal(site.localSite('Listening on http://0.0.0.0:8000.'), 'http://localhost:8000')
 assert.equal(site.localSite('see https://example.com'), null)
 console.log('check-preview: ok')
+
+// Typed prompt and workflow inputs (webview/pages/app/promptvars.ts).
+const pvBundle = await build({ entryPoints: [join(root, 'webview/pages/app/promptvars.ts')], bundle: true, format: 'esm', write: false, platform: 'neutral' })
+const pv = await import('data:text/javascript;base64,' + Buffer.from(pvBundle.outputFiles[0].text).toString('base64'))
+const vars = pv.variablesIn('Plan {{days:number}} days in {{city}} from {{start:date}}, {{pace|slow|fast}}. {{notes?:long}} {{city}} {{current_date}}', { current_date: 'x' })
+assert.deepEqual(vars.map((v) => [v.name, v.type, v.optional, v.options.length]), [['days', 'number', false, 0], ['city', 'text', false, 0], ['start', 'date', false, 0], ['pace', 'text', false, 2], ['notes', 'long', true, 0]])
+assert.equal(pv.invalid(vars[0], 'three'), 'Write a number.')
+assert.equal(pv.invalid(vars[0], '3'), null)
+assert.equal(pv.invalid(vars[2], '2026-11-31x'), 'Pick a date.')
+assert.equal(pv.invalid(vars[2], '2026-11-30'), null)
+assert.equal(pv.invalid(vars[4], ''), null, 'optional may stay empty')
+assert.equal(pv.invalid(vars[1], ' '), 'Fill this in.')
+assert.equal(pv.substitute('{{days:number}} in {{city}} ({{notes?:long}})', { days: '3', city: 'Porto', notes: '' }), '3 in Porto ()')
+console.log('check-promptvars: ok')

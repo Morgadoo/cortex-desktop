@@ -14,6 +14,10 @@
 //! The model sees only each enabled skill's name and description, and reads the body with
 //! `use_skill` when it decides one applies, so many skills cost little context. The user's skills
 //! live in `<config>/skills/<name>/`; a few ship with the app.
+//!
+//! A skill's folder can also hold supporting files next to `SKILL.md` (templates, reference
+//! notes, scripts), as Claude's and Open WebUI's skills do. The model is told their names when it
+//! loads the skill, and reads one with `use_skill` and its `file` argument.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -31,6 +35,8 @@ pub struct Skill {
     /// `user` or `builtin`.
     pub origin: &'static str,
     pub enabled: bool,
+    /// Supporting files in the skill's folder, as paths relative to it.
+    pub files: Vec<String>,
 }
 
 const BUILTIN: &[(&str, &str)] = &[
@@ -199,7 +205,8 @@ pub fn list(config_dir: &Path) -> Vec<Skill> {
             if !valid_name(&name) {
                 continue;
             }
-            skills.push(Skill { enabled: enabled(&name), name, description, body, origin: "user" });
+            let files = supporting_files(&entry.path());
+            skills.push(Skill { enabled: enabled(&name), name, description, body, origin: "user", files });
         }
     }
     skills.sort_by(|a, b| a.name.cmp(&b.name));
@@ -207,7 +214,7 @@ pub fn list(config_dir: &Path) -> Vec<Skill> {
         if let Some((name, description, body)) = parse(text) {
             // A user skill of the same name replaces the built-in one.
             if !skills.iter().any(|s| s.name == name) {
-                skills.push(Skill { enabled: enabled(&name), name, description, body, origin: "builtin" });
+                skills.push(Skill { enabled: enabled(&name), name, description, body, origin: "builtin", files: Vec::new() });
             }
         }
     }
@@ -314,14 +321,149 @@ pub fn set_enabled(config_dir: &Path, name: &str, enabled: bool) -> Result<(), S
     write_json(&state_path(config_dir), &state)
 }
 
-/// Imports a `SKILL.md`, or a folder holding one, by copying its text.
+/// Imports a `SKILL.md`, or a folder holding one with its supporting files.
 pub fn import(config_dir: &Path, source: &Path) -> Result<String, String> {
     let file = if source.is_dir() { source.join("SKILL.md") } else { source.to_path_buf() };
     let text = crate::chat::at_rest::read_to_string(&file).map_err(|e| format!("could not read {file:?}: {e}"))?;
     let (name, description, body) =
         parse(&text).ok_or("That file has no `---` front matter with a name and description.")?;
     save(config_dir, &name, &description, &body)?;
+    if source.is_dir() {
+        for rel in supporting_files(source) {
+            if let Ok(bytes) = std::fs::read(source.join(&rel)) {
+                add_file(config_dir, &name, &rel, &bytes)?;
+            }
+        }
+    }
     Ok(name)
+}
+
+/// Supporting files per skill, and the size of each.
+const MAX_FILES: usize = 200;
+const MAX_FILE_BYTES: usize = 5 * 1024 * 1024;
+/// Characters of a text file `use_skill` returns.
+const MAX_FILE_CHARS: usize = 100_000;
+
+/// A path inside a skill's folder: relative, no `..`, and neither `SKILL.md` nor its history.
+fn file_path_ok(rel: &str) -> bool {
+    let parts: Vec<&str> = rel.split(['/', '\\']).collect();
+    !rel.is_empty()
+        && rel.len() <= 200
+        && !rel.starts_with(['/', '\\'])
+        && !rel.contains(':')
+        && parts.iter().all(|p| !p.is_empty() && *p != "." && *p != ".." && !p.starts_with('.'))
+        && rel != "SKILL.md"
+        && parts[0] != "history"
+}
+
+/// The supporting files in a skill's folder, sorted, as `/`-separated relative paths.
+pub fn supporting_files(dir: &Path) -> Vec<String> {
+    fn walk(base: &Path, dir: &Path, depth: usize, out: &mut Vec<String>) {
+        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        for entry in entries.flatten() {
+            if out.len() >= MAX_FILES {
+                return;
+            }
+            let path = entry.path();
+            let Ok(rel) = path.strip_prefix(base) else { continue };
+            let rel = rel.to_string_lossy().replace('\\', "/");
+            if !file_path_ok(&rel) {
+                continue;
+            }
+            if path.is_dir() {
+                if depth < 5 {
+                    walk(base, &path, depth + 1, out);
+                }
+            } else {
+                out.push(rel);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(dir, dir, 0, &mut out);
+    out.sort();
+    out
+}
+
+fn user_skill_dir(config_dir: &Path, name: &str) -> Result<PathBuf, String> {
+    if !valid_name(name) {
+        return Err("invalid skill name".into());
+    }
+    let dir = skills_dir(config_dir).join(name);
+    if !dir.join("SKILL.md").is_file() {
+        return Err("Save the skill before adding files to it (a built-in skill needs your own copy first).".into());
+    }
+    Ok(dir)
+}
+
+/// Adds or replaces a supporting file.
+pub fn add_file(config_dir: &Path, name: &str, rel: &str, bytes: &[u8]) -> Result<(), String> {
+    let dir = user_skill_dir(config_dir, name)?;
+    let rel = rel.replace('\\', "/");
+    if !file_path_ok(&rel) {
+        return Err(format!("{rel} cannot be a skill file's name."));
+    }
+    if bytes.len() > MAX_FILE_BYTES {
+        return Err(format!("{rel} is over {} MB.", MAX_FILE_BYTES / 1024 / 1024));
+    }
+    let files = supporting_files(&dir);
+    if files.len() >= MAX_FILES && !files.contains(&rel) {
+        return Err(format!("A skill holds at most {MAX_FILES} files."));
+    }
+    let target = dir.join(&rel);
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    crate::chat::at_rest::write(&target, bytes).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    if rel.ends_with(".sh") || rel.starts_with("scripts/") || rel.starts_with("bin/") {
+        use std::os::unix::fs::PermissionsExt as _;
+        let _ = std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755));
+    }
+    Ok(())
+}
+
+pub fn remove_file(config_dir: &Path, name: &str, rel: &str) -> Result<(), String> {
+    let dir = user_skill_dir(config_dir, name)?;
+    if !file_path_ok(rel) {
+        return Err("No such file.".into());
+    }
+    std::fs::remove_file(dir.join(rel)).map_err(|e| e.to_string())?;
+    // Folders left empty go too.
+    let mut parent = dir.join(rel).parent().map(Path::to_path_buf);
+    while let Some(p) = parent.filter(|p| p != &dir) {
+        if std::fs::remove_dir(&p).is_err() {
+            break;
+        }
+        parent = p.parent().map(Path::to_path_buf);
+    }
+    Ok(())
+}
+
+/// A supporting file's text; a binary file is described with its full path, for tools that run it.
+pub fn read_file(config_dir: &Path, name: &str, rel: &str) -> Result<String, String> {
+    if !valid_name(name) || !file_path_ok(rel) {
+        return Err("No such file in that skill.".into());
+    }
+    let path = skills_dir(config_dir).join(name).join(rel);
+    let bytes = crate::chat::at_rest::read(&path).map_err(|_| "No such file in that skill.".to_string())?;
+    match String::from_utf8(bytes) {
+        Ok(text) if text.chars().count() > MAX_FILE_CHARS => Ok(format!("{}\n\n[cut at {MAX_FILE_CHARS} characters]", text.chars().take(MAX_FILE_CHARS).collect::<String>())),
+        Ok(text) => Ok(text),
+        Err(e) => Ok(format!("{rel} is a binary file ({} bytes) at {}.", e.as_bytes().len(), path.display())),
+    }
+}
+
+/// What `use_skill` returns: the instructions, and the files that come with them.
+pub fn loaded(skill: &Skill) -> String {
+    let mut out = format!("# Skill: {}\n\n{}", skill.name, skill.body);
+    if !skill.files.is_empty() {
+        out.push_str("\n\n## Supporting files\nRead one with `use_skill` and its `file` argument when the instructions call for it:");
+        for f in &skill.files {
+            out.push_str(&format!("\n- {f}"));
+        }
+    }
+    out
 }
 
 /// Where to fetch a skill's `SKILL.md` from a link to it: a GitHub folder or file (tree, blob or
@@ -389,6 +531,44 @@ pub fn prompt(skills: &[Skill]) -> Option<String> {
         out.push_str(&format!("\n- {}: {}", s.name, s.description));
     }
     Some(out)
+}
+
+#[cfg(test)]
+mod file_tests {
+    use super::*;
+
+    #[test]
+    fn skills_carry_supporting_files() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(add_file(dir.path(), "report", "template.md", b"x").is_err(), "the skill must exist first");
+        save(dir.path(), "report", "Use for the weekly report.", "Fill templates/week.md.").unwrap();
+        add_file(dir.path(), "report", "templates/week.md", b"# Week {{n}}").unwrap();
+        add_file(dir.path(), "report", "scripts/count.py", b"print(1)").unwrap();
+        add_file(dir.path(), "report", "logo.png", &[0x89, b'P', b'N', b'G', 0xff, 0xfe]).unwrap();
+        for bad in ["../escape.md", "/etc/passwd", "SKILL.md", "history/x.md", ".hidden", "a//b", "C:/x"] {
+            assert!(add_file(dir.path(), "report", bad, b"x").is_err(), "{bad}");
+        }
+        let skill = find(dir.path(), "report").unwrap();
+        assert_eq!(skill.files, ["logo.png", "scripts/count.py", "templates/week.md"]);
+        let text = loaded(&skill);
+        assert!(text.contains("## Supporting files") && text.contains("- templates/week.md"), "{text}");
+        assert_eq!(read_file(dir.path(), "report", "templates/week.md").unwrap(), "# Week {{n}}");
+        assert!(read_file(dir.path(), "report", "logo.png").unwrap().contains("binary file (6 bytes)"));
+        assert!(read_file(dir.path(), "report", "../report/SKILL.md").is_err());
+        // Saving the instructions again keeps the files, and the history stays out of the list.
+        save(dir.path(), "report", "Use for the weekly report.", "Fill it in.").unwrap();
+        assert_eq!(find(dir.path(), "report").unwrap().files.len(), 3);
+        remove_file(dir.path(), "report", "templates/week.md").unwrap();
+        assert!(!dir.path().join("skills/report/templates").exists(), "an emptied folder goes");
+        assert_eq!(find(dir.path(), "report").unwrap().files, ["logo.png", "scripts/count.py"]);
+        // A folder imports with its files.
+        let src = dir.path().join("src-skill");
+        std::fs::create_dir_all(src.join("refs")).unwrap();
+        std::fs::write(src.join("SKILL.md"), "---\nname: brand-voice\ndescription: Use for copy.\n---\nSee refs/tone.md.").unwrap();
+        std::fs::write(src.join("refs/tone.md"), "Warm, short.").unwrap();
+        assert_eq!(import(dir.path(), &src).unwrap(), "brand-voice");
+        assert_eq!(read_file(dir.path(), "brand-voice", "refs/tone.md").unwrap(), "Warm, short.");
+    }
 }
 
 #[cfg(test)]

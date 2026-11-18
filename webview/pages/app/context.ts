@@ -78,6 +78,56 @@ export function editSkill(skill: Skill | null, onSaved: (skills: Skill[]) => voi
             },
           }, 'History')
         : null;
+    // Supporting files (templates, reference notes, scripts) the assistant can read when the
+    // instructions call for them; only a saved skill of the user's own has a folder for them.
+    let current = skill;
+    const filesList = h('div', { class: 'skill-files' });
+    const renderFiles = () => {
+      const files = current?.files ?? [];
+      clear(
+        filesList,
+        files.length
+          ? files.map((f) =>
+              h(
+                'div',
+                { class: 'skill-file' },
+                icon('file', 14),
+                h('button', { class: 'btn-link grow', title: 'View', on: { click: () => void viewSkillFile(current!.name, f) } }, f),
+                h('button', { class: 'icon-btn small', title: 'Remove', on: { click: async () => { try { const all = await tauriInvoke<Skill[]>('chat_skill_remove_file', { name: current!.name, path: f }); current = all.find((s) => s.name === current!.name) ?? current; onSaved(all); renderFiles(); } catch (e) { toast(String(e), 'error'); } } } }, icon('trash', 14))
+              )
+            )
+          : h('p', { class: 'muted small' }, 'None. Templates, reference notes or scripts the instructions mention go here; the assistant reads them when it needs them.')
+      );
+    };
+    renderFiles();
+    const ownSkill = Boolean(skill && !builtin && !draft);
+    const addFiles = ownSkill
+      ? h('div', { class: 'skill-file-actions' },
+          button({ variant: 'secondary', size: 'sm', icon: 'plus', label: 'Add files…', onClick: async () => {
+            try {
+              const all = await tauriInvoke<Skill[]>('chat_skill_add_files', { name: skill!.name, folder: null });
+              current = all.find((s) => s.name === skill!.name) ?? current;
+              onSaved(all);
+              renderFiles();
+            } catch (e) {
+              toast(String(e), 'error');
+            }
+          } }),
+          button({ variant: 'subtle', size: 'sm', icon: 'pencil', label: 'New text file', onClick: async () => {
+            const path = await promptText('New file', '', 'Path inside the skill, e.g. templates/report.md');
+            if (!path) return;
+            try {
+              const all = await tauriInvoke<Skill[]>('chat_skill_write_file', { name: skill!.name, path, text: '' });
+              current = all.find((s) => s.name === skill!.name) ?? current;
+              onSaved(all);
+              renderFiles();
+              void viewSkillFile(skill!.name, path.trim());
+            } catch (e) {
+              toast(String(e), 'error');
+            }
+          } })
+        )
+      : null;
     return h(
       'div',
       { class: 'dialog-small wide skill-editor' },
@@ -89,9 +139,37 @@ export function editSkill(skill: Skill | null, onSaved: (skills: Skill[]) => voi
       description,
       h('label', { class: 'field-label' }, 'Instructions'),
       body,
+      ownSkill || (current?.files.length ?? 0) > 0 ? h('label', { class: 'field-label' }, 'Files') : null,
+      ownSkill || (current?.files.length ?? 0) > 0 ? filesList : null,
+      addFiles,
       error,
       h('div', { class: 'dialog-actions' }, remove, historyBtn, h('span', { class: 'spacer' }), h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Save'))
     );
+  });
+}
+
+/** A skill's supporting file, editable when it is text. */
+async function viewSkillFile(name: string, path: string): Promise<void> {
+  let text: string;
+  try {
+    text = await tauriInvoke<string>('chat_skill_read_file', { name, path });
+  } catch (e) {
+    return void toast(String(e), 'error');
+  }
+  const binary = /^\S.* is a binary file \(\d+ bytes\) at /.test(text);
+  return modal((close) => {
+    const area = h('textarea', { class: 'input textarea mono', rows: 18, disabled: binary });
+    area.value = text;
+    const save = button({ variant: 'primary', label: 'Save', onClick: async () => {
+      try {
+        await tauriInvoke('chat_skill_write_file', { name, path, text: area.value });
+        toast('File saved.');
+        close();
+      } catch (e) {
+        toast(String(e), 'error');
+      }
+    } });
+    return h('div', { class: 'dialog-small wide' }, modalHeader(`${name} / ${path}`, close, { flush: true }), area, binary ? null : h('div', { class: 'dialog-actions' }, h('span', { class: 'spacer' }), save));
   });
 }
 
@@ -109,7 +187,7 @@ export class SkillsPage {
    * become agents, `.mcp.json` servers become tool servers under Connectors.
    */
   private async importPlugin(link: string | null) {
-    type Imported = { plugins: string[]; skills: string[]; agents: string[]; servers: string[]; skipped: string[] };
+    type Imported = { plugins: string[]; skills: string[]; agents: string[]; servers: string[]; hooks: number; skipped: string[] };
     if (link) toast('Downloading…');
     try {
       const out = await tauriInvoke<Imported | null>('chat_import_plugin', { link });
@@ -119,6 +197,7 @@ export class SkillsPage {
         out.skills.length ? `${out.skills.length} skill${out.skills.length === 1 ? '' : 's'} (${out.skills.slice(0, 6).map((n) => `/${n}`).join(', ')}${out.skills.length > 6 ? '…' : ''})` : '',
         out.agents.length ? `${out.agents.length} agent${out.agents.length === 1 ? '' : 's'} (${out.agents.join(', ')})` : '',
         out.servers.length ? `the tool server${out.servers.length === 1 ? '' : 's'} ${out.servers.join(', ')} under Connectors` : '',
+        out.hooks ? `${out.hooks} hook${out.hooks === 1 ? '' : 's'}, turned off until you review ${out.hooks === 1 ? 'it' : 'them'} in Settings → Permissions → Hooks` : '',
       ].filter(Boolean);
       void modal((close) =>
         h(
@@ -326,6 +405,7 @@ export class SkillsPage {
           icon('skill', 18),
           h('strong', { class: 'skill-name' }, skill.name),
           skill.origin === 'user' ? h('span', { class: 'tag' }, 'Local') : null,
+          skill.files?.length ? h('span', { class: 'tag', title: skill.files.join('\n') }, `${skill.files.length} file${skill.files.length === 1 ? '' : 's'}`) : null,
           h('span', { class: 'skill-desc muted' }, skill.description),
           switchInput(skill.enabled, async (enabled) => this.set(await api.setSkillEnabled(skill.name, enabled)), skill.enabled ? 'Turn off' : 'Turn on')
         )

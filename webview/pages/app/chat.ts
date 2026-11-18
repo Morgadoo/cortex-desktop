@@ -17,7 +17,7 @@ import './diagrams';
 import { renderCodeRun, renderImage } from './coderun';
 import { startRecording, toBase64, type Recording } from './dictation';
 import { audioSettings, shortError, speakText, type Playback } from './audio';
-import { editWorkflow, workflowPrompt, workflowsApi } from './workflows';
+import { editWorkflow, liveWorkflow, workflowPrompt, workflowsApi } from './workflows';
 import type { Speed, Workflow } from './api';
 import { diffLines, loadChanges, openChanges, openFiles, openDebug } from './changes';
 import { openTerminal } from './terminal';
@@ -3033,7 +3033,7 @@ class Composer {
       const all = await workflowsApi.list();
       return [
         heading('Run a workflow'),
-        ...all.map((w) => entry('workflow', w.name, `${w.steps.length} steps`, () => { this.workflow = w; this.renderChips(); this.renderBar(); this.focus(); }, this.workflow?.id === w.id)),
+        ...all.map((w) => entry('workflow', w.name, `${liveWorkflow(w).steps.length} steps${w.production ? ' · production' : ''}`, () => { this.workflow = w; this.renderChips(); this.renderBar(); this.focus(); }, this.workflow?.id === w.id)),
         sep(),
         entry('plus', 'New workflow', null, () => editWorkflow(null, () => toast('Workflow saved.'))),
         entry('settings', 'Manage workflows', null, () => navigate({ kind: 'page', page: 'workflows' })),
@@ -4084,6 +4084,7 @@ export function conversationMenu(anchor: HTMLElement, id: string, title: string,
       }),
       item('download', 'Export as Markdown', () => void api.exportConversation(id).then((saved) => saved && toast('Conversation exported.'))),
       item('link', 'Copy link', () => void navigator.clipboard.writeText(`lumo://chat/${id}`).then(() => toast('Link copied. It opens this chat in Lumo on this computer.'))),
+      item('expand', 'Open in new window', () => void tauriInvoke('chat_open_chat_window', { id }).catch((e) => toast(String(e), 'error'))),
       item('download', 'Print or save as PDF', () => void printConversation(id, title)),
       item('code', 'Export as JSON', () => void tauriInvoke<boolean>('chat_export_conversation_json', { id }).then((saved) => saved && toast('Conversation exported.')).catch((e) => toast(String(e), 'error'))),
       item('settings', 'Chat settings…', () => void openChatSettings(id)),

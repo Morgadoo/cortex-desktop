@@ -152,3 +152,94 @@ mod tests {
         assert!(save(dir.path(), Workflow { id: String::new(), name: " ".into(), description: String::new(), steps: vec![], builtin: false }).is_err());
     }
 }
+
+/// A workflow as the app shows it: with its production version, when one is marked.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowView {
+    #[serde(flatten)]
+    pub workflow: Workflow,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub production: Option<Live>,
+}
+
+/// The production version's parts that run.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Live {
+    pub at: chrono::DateTime<chrono::Utc>,
+    pub name: String,
+    pub steps: Vec<String>,
+}
+
+pub fn views(config_dir: &Path, all: Vec<Workflow>) -> Vec<WorkflowView> {
+    all.into_iter()
+        .map(|workflow| {
+            let production = if workflow.builtin { None } else { super::versions::production(config_dir, "workflows", &workflow.id) }.and_then(|p| {
+                let w: Workflow = serde_json::from_value(p.value).ok()?;
+                Some(Live { at: p.at, name: w.name, steps: w.steps })
+            });
+            WorkflowView { workflow, production }
+        })
+        .collect()
+}
+
+/// The prompt asking a model to design a workflow, or to change `current` as `request` says.
+pub fn draft_prompt(request: &str, current: Option<&Workflow>) -> String {
+    let base = match current {
+        Some(w) => format!(
+            "Here is a workflow as JSON:\n{}\n\nRevise it as the user asks: {request}\nKeep what they did not ask to change.",
+            serde_json::json!({ "name": w.name, "description": w.description, "steps": w.steps })
+        ),
+        None => format!("Design a workflow, a reusable recipe of steps an AI assistant follows in order, for this:\n\n{request}"),
+    };
+    format!(
+        "{base}\n\nReply with only a JSON object, no prose and no code fence, with:\n\
+         - name: 1 to 4 words\n\
+         - description: one line saying what it is for\n\
+         - steps: 3 to 8 imperative steps, one action each, naming the tools to use when it \
+           matters (web_search, canvas, delegate, run_code, schedule_task…)\n\
+         Where a step needs something from the user each time it runs, write an input as \
+         {{{{name:type}}}} with type one of text, long, number, date, time, url, email, or a choice \
+         as {{{{name|option a|option b}}}}. Use inputs only for what changes between runs."
+    )
+}
+
+/// Reads a model's draft workflow.
+pub fn parse_draft(text: &str) -> Result<Workflow, String> {
+    let start = text.find('{').ok_or("The model did not return a workflow.")?;
+    let end = text.rfind('}').ok_or("The model did not return a workflow.")?;
+    let value: serde_json::Value = serde_json::from_str(&text[start..=end]).map_err(|_| "The model's draft was not valid JSON; try again.".to_string())?;
+    let field = |k: &str| value.get(k).and_then(|v| v.as_str()).unwrap_or_default().trim().to_string();
+    let steps: Vec<String> = value.get("steps").and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|v| v.as_str()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()).unwrap_or_default();
+    if field("name").is_empty() || steps.is_empty() {
+        return Err("The draft had no name or steps; try again.".into());
+    }
+    Ok(Workflow { id: String::new(), name: field("name"), description: field("description"), steps, builtin: false })
+}
+
+#[cfg(test)]
+mod draft_tests {
+    use super::*;
+
+    #[test]
+    fn drafts_read_and_production_shows() {
+        let w = parse_draft("Sure: {\"name\": \"Weekly report\", \"description\": \"Friday status\", \"steps\": [\"Gather {{week:number}} notes\", \" \", \"Write it\"]}").unwrap();
+        assert_eq!(w.steps, ["Gather {{week:number}} notes", "Write it"]);
+        assert!(parse_draft("{\"name\": \"x\", \"steps\": []}").is_err());
+        let prompt = draft_prompt("make it shorter", Some(&w));
+        assert!(prompt.contains("\"Weekly report\"") && prompt.contains("make it shorter") && prompt.contains("{{name:type}}"), "{prompt}");
+
+        let dir = tempfile::tempdir().unwrap();
+        let all = save(dir.path(), w).unwrap();
+        let mine = all.iter().find(|w| !w.builtin).unwrap().clone();
+        assert!(views(dir.path(), all.clone()).iter().all(|v| v.production.is_none()));
+        super::super::versions::set_production(dir.path(), "workflows", &mine.id, Some(serde_json::to_value(&mine).unwrap())).unwrap();
+        let mut edited = mine.clone();
+        edited.steps = vec!["Draft step".into()];
+        let all = save(dir.path(), edited).unwrap();
+        let view = views(dir.path(), all).into_iter().find(|v| v.workflow.id == mine.id).unwrap();
+        assert_eq!(view.workflow.steps, ["Draft step"], "the editor sees the draft");
+        assert_eq!(view.production.unwrap().steps, mine.steps, "runs use production");
+    }
+}

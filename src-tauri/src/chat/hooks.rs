@@ -7,7 +7,9 @@
 //! - `turn_end` runs when a reply finishes (to notify, format code, run tests…).
 //!
 //! A hook gets the event as JSON on its standard input, and `LUMO_EVENT`, `LUMO_TOOL` and
-//! `LUMO_CONVERSATION` in its environment. It runs in the chat's folder when it has one, for at
+//! `LUMO_CONVERSATION` in its environment. The input also carries Claude Code's names for the same
+//! things (`hook_event_name`, `tool_name`, `tool_input`, `tool_response`, `session_id`, `cwd`), so
+//! hooks that come with a Claude plugin run as they are. It runs in the chat's folder when it has one, for at
 //! most 60 seconds, with the user's shell.
 
 use std::path::{Path, PathBuf};
@@ -35,6 +37,9 @@ pub struct Hook {
     pub command: String,
     #[serde(default = "enabled")]
     pub enabled: bool,
+    /// The plugin a hook came with; importing the plugin again replaces its hooks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
 }
 
 fn enabled() -> bool {
@@ -122,7 +127,7 @@ pub async fn run_command(command: &str, event: &Value, workdir: Option<&Path>) -
 
 /// Runs the `before_tool` hooks for a call; `Some(reason)` when one of them blocks it.
 pub async fn before_tool(config_dir: &Path, conversation_id: &str, tool: &str, arguments: &Value, workdir: Option<&Path>) -> Option<String> {
-    let event = json!({ "event": "before_tool", "conversationId": conversation_id, "tool": tool, "arguments": arguments, "workdir": workdir });
+    let event = json!({ "event": "before_tool", "conversationId": conversation_id, "tool": tool, "arguments": arguments, "workdir": workdir, "hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": arguments, "session_id": conversation_id, "cwd": workdir });
     for hook in load(config_dir).iter().filter(|h| h.enabled && h.event == "before_tool" && matches(&h.matcher, tool)) {
         let ran = run_command(&hook.command, &event, workdir).await;
         if ran.code == Some(2) {
@@ -139,7 +144,8 @@ pub async fn before_tool(config_dir: &Path, conversation_id: &str, tool: &str, a
 
 /// Runs the `after_tool` hooks for a call; what they print, to add to the result.
 pub async fn after_tool(config_dir: &Path, conversation_id: &str, tool: &str, arguments: &Value, output: &str, is_error: bool, workdir: Option<&Path>) -> Vec<String> {
-    let event = json!({ "event": "after_tool", "conversationId": conversation_id, "tool": tool, "arguments": arguments, "output": output.chars().take(20_000).collect::<String>(), "isError": is_error, "workdir": workdir });
+    let output: String = output.chars().take(20_000).collect();
+    let event = json!({ "event": "after_tool", "conversationId": conversation_id, "tool": tool, "arguments": arguments, "output": output, "isError": is_error, "workdir": workdir, "hook_event_name": "PostToolUse", "tool_name": tool, "tool_input": arguments, "tool_response": output, "session_id": conversation_id, "cwd": workdir });
     let mut notes = Vec::new();
     for hook in load(config_dir).iter().filter(|h| h.enabled && h.event == "after_tool" && matches(&h.matcher, tool)) {
         let ran = run_command(&hook.command, &event, workdir).await;
@@ -152,7 +158,7 @@ pub async fn after_tool(config_dir: &Path, conversation_id: &str, tool: &str, ar
 
 /// Runs the `turn_end` hooks once a reply has finished.
 pub async fn turn_end(config_dir: &Path, conversation_id: &str, answer: &str, cancelled: bool, workdir: Option<&Path>) {
-    let event = json!({ "event": "turn_end", "conversationId": conversation_id, "answer": answer.chars().take(20_000).collect::<String>(), "cancelled": cancelled, "workdir": workdir });
+    let event = json!({ "event": "turn_end", "conversationId": conversation_id, "answer": answer.chars().take(20_000).collect::<String>(), "cancelled": cancelled, "workdir": workdir, "hook_event_name": "Stop", "session_id": conversation_id, "cwd": workdir });
     for hook in load(config_dir).iter().filter(|h| h.enabled && h.event == "turn_end") {
         let ran = run_command(&hook.command, &event, workdir).await;
         if ran.code != Some(0) {
@@ -161,9 +167,102 @@ pub async fn turn_end(config_dir: &Path, conversation_id: &str, answer: &str, ca
     }
 }
 
+/// A Claude Code tool matcher (`Write|Edit`, `Bash`, `*`) as Lumo tool names.
+pub fn claude_matcher(matcher: &str) -> String {
+    let mut out: Vec<&str> = Vec::new();
+    for part in matcher.split('|').map(str::trim) {
+        let mapped: &[&str] = match part {
+            "" | "*" | ".*" => return String::new(),
+            "Bash" => &["bash__run", "run_code"],
+            "Write" => &["filesystem__fs_write"],
+            "Edit" | "MultiEdit" => &["filesystem__fs_edit"],
+            "Read" => &["filesystem__fs_read"],
+            "Glob" | "Grep" | "LS" => &["filesystem__fs_search", "filesystem__list"],
+            "WebFetch" => &["browser__"],
+            "WebSearch" => &["web_search"],
+            "Task" => &["delegate"],
+            "TodoWrite" => &["update_plan"],
+            other => {
+                // `mcp__server__tool` is `server__tool` here (a server's id is its prefix).
+                let other = other.strip_prefix("mcp__").unwrap_or(other);
+                out.push(other);
+                continue;
+            }
+        };
+        out.extend_from_slice(mapped);
+    }
+    out.dedup();
+    out.join(", ")
+}
+
+/// Hooks from a Claude plugin's `hooks/hooks.json`, turned off until the user looks at them;
+/// also the events Lumo has no counterpart for. `${CLAUDE_PLUGIN_ROOT}` becomes `root`.
+pub fn from_claude(config: &Value, root: &Path, source: &str) -> (Vec<Hook>, Vec<String>) {
+    let root = root.to_string_lossy();
+    let mut hooks = Vec::new();
+    let mut skipped = Vec::new();
+    let events = config.get("hooks").unwrap_or(config);
+    for (event, groups) in events.as_object().into_iter().flatten() {
+        let ours = match event.as_str() {
+            "PreToolUse" => "before_tool",
+            "PostToolUse" => "after_tool",
+            "Stop" => "turn_end",
+            other => {
+                skipped.push(other.to_string());
+                continue;
+            }
+        };
+        for group in groups.as_array().into_iter().flatten() {
+            let matcher = if ours == "turn_end" { String::new() } else { claude_matcher(group["matcher"].as_str().unwrap_or_default()) };
+            for hook in group["hooks"].as_array().into_iter().flatten() {
+                let Some(command) = hook["command"].as_str().filter(|_| hook["type"].as_str().unwrap_or("command") == "command") else { continue };
+                hooks.push(Hook { event: ours.into(), matcher: matcher.clone(), command: command.replace("${CLAUDE_PLUGIN_ROOT}", &root), enabled: false, source: Some(source.to_string()) });
+            }
+        }
+    }
+    skipped.sort();
+    skipped.dedup();
+    (hooks, skipped)
+}
+
+/// Replaces the hooks that came with `source` by `hooks`.
+pub fn replace_from(config_dir: &Path, source: &str, hooks: Vec<Hook>) -> Result<(), String> {
+    let mut all: Vec<Hook> = load(config_dir).into_iter().filter(|h| h.source.as_deref() != Some(source)).collect();
+    all.extend(hooks);
+    save(config_dir, &all)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn claude_plugin_hooks_map_to_ours() {
+        assert_eq!(claude_matcher("Write|Edit|MultiEdit"), "filesystem__fs_write, filesystem__fs_edit");
+        assert_eq!(claude_matcher("Bash"), "bash__run, run_code");
+        assert_eq!(claude_matcher("*"), "");
+        assert_eq!(claude_matcher("mcp__github__create_issue"), "github__create_issue");
+        let config = json!({"hooks": {
+            "PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/scripts/guard.sh"}]}],
+            "PostToolUse": [{"matcher": "Write|Edit", "hooks": [{"type": "command", "command": "npx prettier --write"}, {"type": "prompt", "prompt": "x"}]}],
+            "Stop": [{"hooks": [{"type": "command", "command": "notify-send done"}]}],
+            "SessionStart": [{"hooks": [{"type": "command", "command": "echo hi"}]}]
+        }});
+        let (hooks, skipped) = from_claude(&config, Path::new("/data/plugins/kit"), "kit");
+        assert_eq!(skipped, ["SessionStart"]);
+        assert_eq!(hooks.len(), 3);
+        let before = hooks.iter().find(|h| h.event == "before_tool").unwrap();
+        assert_eq!(before, &Hook { event: "before_tool".into(), matcher: "bash__run, run_code".into(), command: "/data/plugins/kit/scripts/guard.sh".into(), enabled: false, source: Some("kit".into()) });
+        assert!(hooks.iter().any(|h| h.event == "after_tool" && h.command == "npx prettier --write"));
+        assert!(hooks.iter().any(|h| h.event == "turn_end"));
+        let dir = tempfile::tempdir().unwrap();
+        save(dir.path(), &[Hook { event: "turn_end".into(), matcher: String::new(), command: "mine".into(), enabled: true, source: None }]).unwrap();
+        replace_from(dir.path(), "kit", hooks.clone()).unwrap();
+        replace_from(dir.path(), "kit", vec![before.clone()]).unwrap();
+        let all = load(dir.path());
+        assert_eq!(all.len(), 2, "importing again replaces the plugin's hooks and keeps the user's");
+        assert_eq!(all[0].command, "mine");
+    }
 
     #[test]
     fn matchers() {
@@ -184,12 +283,12 @@ mod tests {
             &dir,
             &[
                 // Blocks deleting commands, says why.
-                Hook { event: "before_tool".into(), matcher: "run_code".into(), command: r#"grep -q 'rm -rf' && { echo "No recursive deletes here."; exit 2; } || exit 0"#.into(), enabled: true },
+                Hook { event: "before_tool".into(), matcher: "run_code".into(), command: r#"grep -q 'rm -rf' && { echo "No recursive deletes here."; exit 2; } || exit 0"#.into(), enabled: true, source: None },
                 // A broken hook does not block.
-                Hook { event: "before_tool".into(), matcher: String::new(), command: "exit 1".into(), enabled: true },
-                Hook { event: "after_tool".into(), matcher: String::new(), command: "echo \"checked $LUMO_TOOL\"".into(), enabled: true },
-                Hook { event: "after_tool".into(), matcher: String::new(), command: "echo off".into(), enabled: false },
-                Hook { event: "turn_end".into(), matcher: String::new(), command: format!("cat >> '{}'", log.display()), enabled: true },
+                Hook { event: "before_tool".into(), matcher: String::new(), command: "exit 1".into(), enabled: true, source: None },
+                Hook { event: "after_tool".into(), matcher: String::new(), command: "echo \"checked $LUMO_TOOL\"".into(), enabled: true, source: None },
+                Hook { event: "after_tool".into(), matcher: String::new(), command: "echo off".into(), enabled: false, source: None },
+                Hook { event: "turn_end".into(), matcher: String::new(), command: format!("cat >> '{}'", log.display()), enabled: true, source: None },
             ],
         )
         .unwrap();
@@ -202,7 +301,7 @@ mod tests {
         let logged: Value = serde_json::from_str(crate::chat::at_rest::read_to_string(&log).unwrap().trim()).unwrap();
         assert_eq!(logged["event"], "turn_end");
         assert_eq!(logged["answer"], "All done.");
-        assert!(save(&dir, &[Hook { event: "sometime".into(), matcher: String::new(), command: "x".into(), enabled: true }]).is_err());
+        assert!(save(&dir, &[Hook { event: "sometime".into(), matcher: String::new(), command: "x".into(), enabled: true, source: None }]).is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

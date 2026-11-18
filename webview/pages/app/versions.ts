@@ -33,7 +33,7 @@ function preview(value: Record<string, unknown>): string {
 }
 
 /** A History button for an editor; `load` fills the editor with the chosen version. */
-export function historyButton(kind: Kind, id: string, load: (value: Record<string, unknown>) => void): HTMLElement {
+export function historyButton(kind: Kind, id: string, load: (value: Record<string, unknown>) => void, extra?: { label: string; run: (value: Record<string, unknown>) => void }): HTMLElement {
   const button = h('button', { class: 'btn btn-ghost btn-sm', title: 'Earlier versions, kept each time you save a change' }, icon('clock', 14), 'History');
   button.addEventListener('click', () => {
     void modal((close) => {
@@ -52,6 +52,7 @@ export function historyButton(kind: Kind, id: string, load: (value: Record<strin
                     h(
                       'div',
                       { class: 'dialog-actions' },
+                      extra ? h('button', { class: 'btn btn-ghost btn-sm', on: { click: () => { extra.run(v.value); close(); } } }, extra.label) : null,
                       h('button', { class: 'btn btn-secondary btn-sm', on: { click: () => { load(v.value); close(); toast('Loaded into the editor. Save to bring it back; the current version is kept.'); } } }, 'Load this version')
                     )
                   )

@@ -54,21 +54,48 @@ export function newAgent(): Promise<void> {
   return modal((close) => {
     const text = h('textarea', { class: 'input textarea', rows: 4, placeholder: 'e.g. Every morning, check what my three competitors shipped and tell me what matters for us.' });
     const error = h('p', { class: 'error-text' });
+    // The builder is a conversation (LobeHub): after the first draft, each message revises it,
+    // and the draft so far shows beside the exchange until it goes to the editor.
+    let current: Agent | null = null;
+    const log = h('div', { class: 'builder-log' });
+    const preview = h('div', { class: 'builder-preview' });
+    const review = button({ variant: 'primary', label: 'Review and save', onClick: () => { if (current) { close(); void editAgent(null, current); } } });
+    review.hidden = true;
+    const showDraft = (agent: Agent) => {
+      clear(
+        preview,
+        h('div', { class: 'builder-head' }, avatar(agent), h('div', {}, h('strong', {}, agent.name), h('div', { class: 'muted small' }, agent.description))),
+        h('p', { class: 'builder-instructions' }, agent.instructions),
+        agent.tools.length ? h('div', { class: 'builder-tags' }, agent.tools.map((t) => h('span', { class: 'tag' }, t))) : null
+      );
+    };
     const draft = button({
       variant: 'primary',
       icon: 'sparkle',
       label: 'Draft agent',
       onClick: async () => {
+        const said = text.value.trim();
+        if (!said) return text.focus();
         draft.disabled = true;
-        draft.replaceChildren(h('span', { class: 'dots' }), 'Drafting…');
+        draft.replaceChildren(h('span', { class: 'dots' }), current ? 'Revising…' : 'Drafting…');
+        error.textContent = '';
         try {
-          const agent = await api.draftAgent(text.value);
-          close();
-          void editAgent(null, agent);
+          const agent = await api.draftAgent(said, current);
+          log.append(h('div', { class: 'builder-msg user' }, said), h('div', { class: 'builder-msg' }, current ? `Revised: ${agent.name}.` : `Drafted ${agent.name}. Ask for changes, or review and save it.`));
+          log.scrollTop = log.scrollHeight;
+          current = agent;
+          showDraft(agent);
+          text.value = '';
+          text.rows = 2;
+          text.placeholder = 'Ask for a change, e.g. “make it check Hacker News too” or “shorter reports”';
+          review.hidden = false;
         } catch (e) {
           error.textContent = String(e);
+        } finally {
           draft.disabled = false;
-          draft.replaceChildren(icon('sparkle', 15), 'Draft agent');
+          draft.replaceChildren(icon('sparkle', 15), current ? 'Revise' : 'Draft agent');
+          // Once there is a draft, saving it is the main action.
+          if (current) draft.className = 'btn btn-secondary';
         }
       },
     });
@@ -81,10 +108,10 @@ export function newAgent(): Promise<void> {
       'div',
       { class: 'dialog-small wide agent-editor' },
       modalHeader('New agent', close, { flush: true }),
-      h('p', { class: 'muted' }, 'Describe what the agent should do. You can review its name, instructions and tools before saving.'),
-      text,
+      h('p', { class: 'muted' }, 'Describe what the agent should do. Then ask for changes until it is right, and review its name, instructions and tools before saving.'),
+      h('div', { class: 'builder' }, h('div', { class: 'builder-chat' }, log, text), preview),
       error,
-      h('div', { class: 'dialog-actions' }, blank, h('span', { class: 'spacer' }), draft)
+      h('div', { class: 'dialog-actions' }, blank, h('span', { class: 'spacer' }), review, draft)
     );
   }, false);
 }

@@ -238,18 +238,49 @@ pub fn chat_delete_conversation(app: AppHandle, state: State<'_, ChatState>, id:
 }
 
 #[tauri::command]
-pub fn chat_workflows(app: AppHandle) -> Result<Vec<super::workflows::Workflow>, String> {
-    Ok(super::workflows::load(&config_dir(&app)?))
+pub fn chat_workflows(app: AppHandle) -> Result<Vec<super::workflows::WorkflowView>, String> {
+    let dir = config_dir(&app)?;
+    Ok(super::workflows::views(&dir, super::workflows::load(&dir)))
 }
 
 #[tauri::command]
-pub fn chat_save_workflow(app: AppHandle, workflow: super::workflows::Workflow) -> Result<Vec<super::workflows::Workflow>, String> {
-    super::workflows::save(&config_dir(&app)?, workflow)
+pub fn chat_save_workflow(app: AppHandle, workflow: super::workflows::Workflow) -> Result<Vec<super::workflows::WorkflowView>, String> {
+    let dir = config_dir(&app)?;
+    let all = super::workflows::save(&dir, workflow)?;
+    Ok(super::workflows::views(&dir, all))
 }
 
 #[tauri::command]
-pub fn chat_delete_workflow(app: AppHandle, id: String) -> Result<Vec<super::workflows::Workflow>, String> {
-    super::workflows::delete(&config_dir(&app)?, &id)
+pub fn chat_delete_workflow(app: AppHandle, id: String) -> Result<Vec<super::workflows::WorkflowView>, String> {
+    let dir = config_dir(&app)?;
+    let all = super::workflows::delete(&dir, &id)?;
+    let _ = super::versions::set_production(&dir, "workflows", &id, None);
+    Ok(super::workflows::views(&dir, all))
+}
+
+/// Marks a version of an agent, workflow or tool as production (`value`), or clears the mark.
+#[tauri::command]
+pub fn chat_set_production(app: AppHandle, kind: String, id: String, value: Option<serde_json::Value>) -> Result<Option<super::versions::Production>, String> {
+    super::versions::set_production(&config_dir(&app)?, &kind, &id, value)
+}
+
+/// Drafts a workflow from a description, or revises `current` as `request` asks.
+#[tauri::command]
+pub async fn chat_draft_workflow(app: AppHandle, request: String, current: Option<super::workflows::Workflow>) -> Result<super::workflows::Workflow, String> {
+    use rig_core::completion::CompletionRequest;
+    let dir = config_dir(&app)?;
+    if request.trim().len() < 4 {
+        return Err("Say what the workflow is for, or what to change.".into());
+    }
+    let reference = providers::load(&dir).default_model.ok_or("Choose a default model under Providers & models first.")?;
+    let prompt = super::workflows::draft_prompt(request.trim(), current.as_ref().filter(|w| !w.steps.is_empty() || !w.name.is_empty()));
+    let text = engine::ask_text(&dir, &reference, CompletionRequest::new(rig_core::completion::Message::user(prompt)), 120).await?;
+    let mut draft = super::workflows::parse_draft(&text)?;
+    if let Some(c) = current {
+        draft.id = c.id;
+        draft.builtin = c.builtin;
+    }
+    Ok(draft)
 }
 
 /// Whether code runs without asking each time.
@@ -1110,6 +1141,47 @@ pub async fn chat_import_skill(app: AppHandle) -> Result<Option<String>, String>
     super::skills::import(&config_dir(&app)?, &path).map(Some)
 }
 
+/// Adds files the user picks to a skill's folder (under `folder`, when given); returns the skills.
+#[tauri::command]
+pub async fn chat_skill_add_files(app: AppHandle, name: String, folder: Option<String>) -> Result<Vec<super::skills::Skill>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog().file().set_title("Add files to the skill").pick_files(move |paths| {
+        let _ = tx.send(paths);
+    });
+    let dir = config_dir(&app)?;
+    let folder = folder.map(|f| f.trim().trim_matches('/').to_string()).filter(|f| !f.is_empty());
+    for path in rx.await.map_err(|e| e.to_string())?.unwrap_or_default() {
+        let path = path.into_path().map_err(|e| e.to_string())?;
+        let file_name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let rel = folder.as_ref().map_or_else(|| file_name.clone(), |f| format!("{f}/{file_name}"));
+        let bytes = std::fs::read(&path).map_err(|e| format!("could not read {file_name}: {e}"))?;
+        super::skills::add_file(&dir, &name, &rel, &bytes)?;
+    }
+    Ok(super::skills::list(&dir))
+}
+
+/// A skill's supporting file, as text.
+#[tauri::command]
+pub fn chat_skill_read_file(app: AppHandle, name: String, path: String) -> Result<String, String> {
+    super::skills::read_file(&config_dir(&app)?, &name, &path)
+}
+
+/// Writes a text file into a skill's folder (a new file, or an edit).
+#[tauri::command]
+pub fn chat_skill_write_file(app: AppHandle, name: String, path: String, text: String) -> Result<Vec<super::skills::Skill>, String> {
+    let dir = config_dir(&app)?;
+    super::skills::add_file(&dir, &name, path.trim(), text.as_bytes())?;
+    Ok(super::skills::list(&dir))
+}
+
+#[tauri::command]
+pub fn chat_skill_remove_file(app: AppHandle, name: String, path: String) -> Result<Vec<super::skills::Skill>, String> {
+    let dir = config_dir(&app)?;
+    super::skills::remove_file(&dir, &name, &path)?;
+    Ok(super::skills::list(&dir))
+}
+
 /// Imports a skill from a link (a GitHub folder or a SKILL.md); returns its name.
 #[tauri::command]
 pub async fn chat_import_skill_url(app: AppHandle, url: String) -> Result<String, String> {
@@ -1494,6 +1566,35 @@ pub fn chat_open_app_window(app: AppHandle, id: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// Opens a conversation in a window of its own (LobeHub's "open in new window"), or brings its
+/// window forward when it is open already. The window runs the same page, told which chat to show.
+#[tauri::command]
+pub fn chat_open_chat_window(app: AppHandle, id: String) -> Result<(), String> {
+    use tauri::Manager as _;
+    if !store::valid_id(&id) {
+        return Err("invalid conversation id".into());
+    }
+    let conversation = store::load_conversation(&config_dir(&app)?, &id)?;
+    let label = format!("lumo-chat-{}", id.chars().filter(char::is_ascii_alphanumeric).take(32).collect::<String>());
+    if let Some(window) = app.get_webview_window(&label) {
+        let _ = window.unminimize();
+        return window.set_focus().map_err(|e| e.to_string());
+    }
+    let handle = app.clone();
+    let handle2 = app.clone();
+    tauri::WebviewWindowBuilder::new(&app, label, tauri::WebviewUrl::App(crate::webview::APP_PAGE.into()))
+        .title(if conversation.title.is_empty() { "Lumo".to_string() } else { conversation.title.clone() })
+        .inner_size(900.0, 780.0)
+        .min_inner_size(480.0, 420.0)
+        .initialization_script(format!("window.__LUMO_SOLO_CHAT = {};", serde_json::to_string(&id).map_err(|e| e.to_string())?))
+        .disable_drag_drop_handler()
+        .on_navigation(move |url| crate::webview::handle_navigation(&handle, url))
+        .on_new_window(move |url, _features| crate::webview::handle_new_window(&handle2, &url))
+        .build()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
 /// The local API's latest requests, newest first.
 #[tauri::command]
 pub fn chat_api_server_log() -> Vec<super::api_server::LogEntry> {
@@ -1685,10 +1786,10 @@ pub async fn chat_import_plugin(app: AppHandle, link: Option<String>) -> Result<
         let plugin = plugins::read_plugin(&files, &root);
         log::info!("importing the plugin {} ({})", plugin.name, plugin.description);
         plugins::install(&dir, &plugin, &mut out)?;
-        if plugin.servers.is_empty() {
+        if plugin.servers.is_empty() && plugin.hooks.is_none() {
             continue;
         }
-        // Servers can run the plugin's own scripts, so its files are kept on disk.
+        // Servers and hooks can run the plugin's own scripts, so its files are kept on disk.
         let kept = plugins::plugin_dir(&dir, &plugin.name);
         plugins::keep_files(&files, &plugin.root, &kept)?;
         for server in &plugin.servers {
@@ -2294,7 +2395,7 @@ pub fn chat_agent_spend(app: AppHandle) -> Result<std::collections::HashMap<Stri
 
 /// Drafts an agent from a description, with the default model.
 #[tauri::command]
-pub async fn chat_draft_agent(app: AppHandle, description: String) -> Result<super::agents::Agent, String> {
+pub async fn chat_draft_agent(app: AppHandle, description: String, current: Option<super::agents::Agent>) -> Result<super::agents::Agent, String> {
     use rig_core::completion::CompletionRequest;
     let dir = config_dir(&app)?;
     if description.trim().len() < 8 {
@@ -2303,9 +2404,18 @@ pub async fn chat_draft_agent(app: AppHandle, description: String) -> Result<sup
     let reference = providers::load(&dir).default_model.ok_or("Choose a default model under Providers & models first.")?;
     let tools: Vec<&str> = TOOL_CHOICES.to_vec();
     let skills: Vec<String> = super::skills::list(&dir).into_iter().filter(|s| s.enabled).map(|s| s.name).collect();
-    let request = CompletionRequest::new(rig_core::completion::Message::user(super::agents::draft_prompt(description.trim(), &tools, &skills)));
+    // With a draft already made, the description is a change to it (the builder is a conversation).
+    let prompt = match &current {
+        Some(agent) => super::agents::refine_prompt(agent, description.trim(), &tools, &skills),
+        None => super::agents::draft_prompt(description.trim(), &tools, &skills),
+    };
+    let request = CompletionRequest::new(rig_core::completion::Message::user(prompt));
     let text = engine::ask_text(&dir, &reference, request, 120).await?;
-    super::agents::parse_draft(&text, &tools, &skills)
+    let mut agent = super::agents::parse_draft(&text, &tools, &skills)?;
+    if let Some(c) = current {
+        agent.id = c.id;
+    }
+    Ok(agent)
 }
 
 /// The tool names an agent can be given, matching the editor's choices.

@@ -303,10 +303,14 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
     if skills::list(config_dir).iter().any(|s| s.enabled) {
         out.push(tool(
             USE_SKILL,
-            "Load a skill's instructions by name, then follow them.",
+            "Load a skill's instructions by name, then follow them. With `file`, read one of the \
+             skill's supporting files instead (they are listed when the skill loads).",
             json!({
                 "type": "object",
-                "properties": { "name": { "type": "string" } },
+                "properties": {
+                    "name": { "type": "string" },
+                    "file": { "type": "string", "description": "A supporting file's path, as listed with the skill." }
+                },
                 "required": ["name"]
             }),
         ));
@@ -568,7 +572,11 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
             }
         }
         USE_SKILL => match skills::find(config_dir, &str_arg("name")) {
-            Some(skill) if skill.enabled => ok(format!("# Skill: {}\n\n{}", skill.name, skill.body)),
+            Some(skill) if skill.enabled && !str_arg("file").trim().is_empty() => match skills::read_file(config_dir, &skill.name, str_arg("file").trim()) {
+                Ok(text) => ok(text),
+                Err(e) => err(format!("{e} Its files: {}.", if skill.files.is_empty() { "none".to_string() } else { skill.files.join(", ") })),
+            },
+            Some(skill) if skill.enabled => ok(skills::loaded(&skill)),
             Some(_) => err("That skill is turned off."),
             None => err("There is no skill with that name."),
         },

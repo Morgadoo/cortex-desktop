@@ -5,8 +5,7 @@
  */
 import { api } from './api';
 import { h, modal, clockHour12 } from './dom';
-
-const PATTERN = /\{\{\s*([A-Za-z_][\w ]{0,40}?)\s*(\|[^{}]*)?\}\}/g;
+import { invalid, substitute, variablesIn, type Variable } from './promptvars';
 
 /** Filled without asking. */
 export async function builtIns(): Promise<Record<string, string>> {
@@ -26,32 +25,7 @@ export async function builtIns(): Promise<Record<string, string>> {
   };
 }
 
-export interface Variable {
-  name: string;
-  /** A fixed set to pick from, when written as `{{name|a|b}}`. */
-  options: string[];
-}
-
-/** The variables in `text` the user must fill, each once, in order of appearance. */
-export function variablesIn(text: string, known: Record<string, string>): Variable[] {
-  const out: Variable[] = [];
-  for (const m of text.matchAll(PATTERN)) {
-    const name = m[1]!.trim();
-    if (name.toLowerCase() in known || out.some((v) => v.name === name)) continue;
-    const options = (m[2] ?? '').split('|').map((o) => o.trim()).filter(Boolean);
-    out.push({ name, options });
-  }
-  return out;
-}
-
-/** `text` with every variable replaced by its value. */
-export function substitute(text: string, values: Record<string, string>): string {
-  return text.replace(PATTERN, (whole, raw: string) => {
-    const name = raw.trim();
-    const value = values[name] ?? values[name.toLowerCase()];
-    return value === undefined ? whole : value;
-  });
-}
+export { substitute, variablesIn, type Variable } from './promptvars';
 
 /** Fills the variables in `text`, asking for the ones it cannot know; null if the user cancels. */
 export async function fillVariables(text: string): Promise<string | null> {
@@ -66,19 +40,33 @@ export async function fillVariables(text: string): Promise<string | null> {
 function askValues(wanted: Variable[]): Promise<Record<string, string> | null> {
   let result: Record<string, string> | null = null;
   return modal((close) => {
+    // Each input is the control for its type, and a value is checked before anything is sent.
     const inputs = wanted.map((v) => {
       const input = v.options.length
         ? h('select', { class: 'input' }, v.options.map((o) => h('option', { value: o }, o)))
-        : h('input', { class: 'input', placeholder: label(v.name) });
-      return { v, input: input as HTMLInputElement | HTMLSelectElement };
+        : v.type === 'long'
+          ? h('textarea', { class: 'input textarea short', rows: 3, placeholder: label(v.name) })
+          : h('input', { class: 'input', type: v.type === 'text' ? 'text' : v.type === 'number' ? 'number' : v.type, step: v.type === 'number' ? 'any' : undefined, placeholder: label(v.name) });
+      const error = h('small', { class: 'error-text' });
+      return { v, input: input as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement, error };
     });
     const submit = () => {
+      let ok = true;
+      for (const { v, input, error } of inputs) {
+        const why = invalid(v, input.value);
+        error.textContent = why ?? '';
+        if (why && ok) {
+          ok = false;
+          input.focus();
+        }
+      }
+      if (!ok) return;
       result = Object.fromEntries(inputs.map(({ v, input }) => [v.name, input.value.trim()]));
       close();
     };
     for (const { input } of inputs) {
       input.addEventListener('keydown', (e) => {
-        if ((e as KeyboardEvent).key === 'Enter') {
+        if ((e as KeyboardEvent).key === 'Enter' && !(input instanceof HTMLTextAreaElement && !(e as KeyboardEvent).ctrlKey)) {
           e.preventDefault();
           submit();
         }
@@ -90,7 +78,7 @@ function askValues(wanted: Variable[]): Promise<Record<string, string> | null> {
       { class: 'dialog-small wide' },
       h('h2', {}, 'Fill in the prompt'),
       h('p', { class: 'muted' }, 'This prompt has blanks to fill before it is sent.'),
-      inputs.map(({ v, input }) => h('label', { class: 'field' }, h('span', { class: 'field-label' }, label(v.name)), input)),
+      inputs.map(({ v, input, error }) => h('label', { class: 'field' }, h('span', { class: 'field-label' }, label(v.name), v.optional ? h('small', { class: 'muted' }, ' (optional)') : null), input, error)),
       h(
         'div',
         { class: 'dialog-actions' },
