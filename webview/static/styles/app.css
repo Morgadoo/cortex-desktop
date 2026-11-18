@@ -1727,3 +1727,7 @@ button.usage-meter:hover { background: var(--hover); }
 .flow-node.approval{border-color:color-mix(in srgb,#f59e0b 60%,transparent);background:color-mix(in srgb,#f59e0b 12%,transparent)}
 .flow-index{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;border-radius:10px;background:var(--bg-hover);font-size:11px;font-weight:700}
 .flow-arrow{margin-left:14px;height:14px;color:var(--text-muted,var(--muted));display:flex}
+/* Right-to-left languages: directional arrows mirror with the layout. */
+[dir="rtl"] .icon-dir{transform:scaleX(-1)}
+/* Messages take their direction from their own text, so English reads left to right inside an Arabic interface and the other way round. */
+.conv-title,.bubble-text,.markdown p,.markdown li,.markdown h1,.markdown h2,.markdown h3,.markdown td,.composer-input,.run-title,.chat-card-preview{unicode-bidi:plaintext}

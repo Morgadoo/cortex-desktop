@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 171 |
-| PARTIAL | 86 | 20 |
+| DONE | 58 | 172 |
+| PARTIAL | 86 | 19 |
 | MISSING | 48 | 1 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 42 / 3 / 0 / 9 · LibreChat 39 / 3 / 0 / 4 · LobeHub 27 / 2 / 0 / 5 · Onyx 18 / 3 / 0 / 5 · Osaurus 20 / 5 / 1 / 4 · OpenBot 25 / 4 / 0 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 42 / 3 / 0 / 9 · LibreChat 40 / 2 / 0 / 4 · LobeHub 27 / 2 / 0 / 5 · Onyx 18 / 3 / 0 / 5 · Osaurus 20 / 5 / 1 / 4 · OpenBot 25 / 4 / 0 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -110,7 +110,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 42 / 3 / 0 / 9
 | LibreChat | Temporary by default | PARTIAL | DONE | parity L281 |
 | LibreChat | Import from apps; export in several formats | PARTIAL | DONE | Import ChatGPT and Claude (parity L262); export Markdown, JSON (L297), web page (L202), everything (L264) |
 | LibreChat | Query parameters | MISSING | DONE | `lumo://new?prompt=…&model=…` (parity: Links into the app) |
-| LibreChat | UI scale, font size, RTL, clock format | MISSING | PARTIAL | Chat text size, interface zoom (parity: Readability) and clock format (parity: Clock format) done. Missing: right-to-left layout (no right-to-left interface language is offered yet) |
+| LibreChat | UI scale, font size, RTL, clock format | MISSING | DONE | Chat text size, interface zoom (parity: Readability), clock format, and right-to-left: Arabic (bundled, whole catalog) and Hebrew (translated by the user's model) mirror the layout, directional arrows flip, and messages take their direction from their own text (i18n.ts dir, app.css). Verified live in Arabic |
 | LibreChat | High-contrast theme | MISSING | DONE | High contrast in Settings → Appearance → Readability |
 | LibreChat | Multilingual UI | MISSING | DONE | parity: Interface languages (`i18n.ts`, `ui_language.rs`, `src-tauri/i18n/`; Settings → Appearance → Language). Verified live: Portuguese switched the whole interface (menus, composer, settings, greeting and numeric templates, toasts) while chat titles and project names stayed as written; Dutch, which does not ship, was translated by the chosen model (1787 strings in 15 requests) and applied |
 | LibreChat | Desktop notification and sound for finished replies | MISSING | DONE | Notification with an optional chime (parity: Sound and stream following) |

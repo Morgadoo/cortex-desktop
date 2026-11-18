@@ -222,7 +222,7 @@ items most likely to differ:
 Reviewed in November 2026 feature by feature against the docs of Open WebUI, LibreChat, LobeHub,
 Onyx, Osaurus and OpenBot (about 220 features). Every item of the review's shortlist is in the table
 below; every feature the review found missing or partial is tracked row by row, with evidence, in
-[review-coverage.md](review-coverage.md) (now 171 done, 20 partial, 1 missing, 31 out of scope).
+[review-coverage.md](review-coverage.md) (now 172 done, 19 partial, 1 missing, 31 out of scope).
 What was deliberately left out, and why:
 
 - **Team and enterprise features** (channels, comments, SSO, SCIM, tenants, admin plane, shared
@@ -328,6 +328,7 @@ What was deliberately left out, and why:
 | Export a chat as an image | LobeHub | Export as image in a chat's menu draws the conversation as one PNG in the current theme. Verified live | Done |
 | Agents message each other and share files | OpenBot | `message_agent`: the assistant or an agent writes to another agent, with up to five text files; the other agent answers in a chat of its own and its reply comes back. Verified live | Done |
 | Workflow flow view and approval steps | OpenBot | Workflows show as a flow of steps; a step that starts with "Approve:" stops the run until you approve, change or stop it. Verified live | Done |
+| Right-to-left interface | LibreChat | Arabic (shipped, whole interface) and Hebrew mirror the layout: the sidebar moves right, arrows flip, and each message takes its direction from its own text, so English reads correctly inside an Arabic interface. Verified live | Done |
 | Microsoft Fluent emoji (as in Teams) | LobeHub (Fluent emoji), the owner's choice | Every emoji in the interface (messages, titles, avatars, menus) is drawn with Microsoft's Fluent emoji (github.com/microsoft/fluentui-emoji, MIT), 3D as Teams shows them or flat; Settings → Appearance → Emoji picks the style or System. The pack (LobeHub's npm build of Microsoft's art, named by code point) is downloaded once, about 16 MB, checked against its published SHA-512, and kept in the local data folder. The emoji stays a character in the page, so copying and search still get it; a message of only one to three emoji shows them large. Verified live: download, avatars, shortcode menu, messages, switching 3D, flat and System | Done |
 | Library document preview and batch removal | open-webui (knowledge file view), onyx (document explorer), lobehub | Click a document in a library to read its indexed text, with find-in-text highlighting; tick documents (or all) and remove them together. Test-a-search already shows each passage's score. Verified live | Done |
 | Reranking library results | open-webui (reranking model), onyx (cross-encoder rerank) | Settings → Providers → Semantic search → Reranking: any Cohere/Jina-style `/rerank` server (llama.cpp, vLLM, Infinity, TEI, Jina, Cohere) orders a wider pool of keyword and semantic matches by how well they answer the question; on failure the search order stands, with a note. Verified live with a real cross-encoder (ms-marco-MiniLM-L-6-v2): the termination clause ranked first for "how can the contract be cancelled?" | Done |
@@ -436,7 +437,7 @@ What is not here, and why. Everything else in the Vibe tables is built and was r
 - **Coding agents and plugins from GitHub:** the Claude Code CLI ran for real; Codex and Gemini
   CLIs were run as stand-ins with the same command-line shape. Downloading a plugin ZIP from
   GitHub was blocked by this environment's network; reading the official marketplace worked.
-- **Interface translations:** Portuguese, Spanish, French and German were translated by a model
+- **Interface translations:** Portuguese, Spanish, French, German and Arabic were translated by a model
   and have not been reviewed by native speakers.
 - **Pull requests on unknown hosts:** a host that is not recognised and prints no link during the
   push gets the branch pushed, and the pull request is opened there by hand.

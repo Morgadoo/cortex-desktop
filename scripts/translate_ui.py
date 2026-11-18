@@ -19,7 +19,7 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent / "src-tauri" / "i18n"
-NAMES = {"pt": "European Portuguese", "es": "Spanish (Spain)", "fr": "French", "de": "German", "it": "Italian", "nl": "Dutch", "pl": "Polish", "ja": "Japanese", "zh": "Simplified Chinese"}
+NAMES = {"pt": "European Portuguese", "es": "Spanish (Spain)", "fr": "French", "de": "German", "it": "Italian", "nl": "Dutch", "pl": "Polish", "ja": "Japanese", "zh": "Simplified Chinese", "ar": "Modern Standard Arabic", "he": "Hebrew"}
 BATCH = 80
 
 

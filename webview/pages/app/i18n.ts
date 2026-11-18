@@ -176,6 +176,8 @@ function walk(root: Node) {
 /** Starts translating the page into `code` with `map`; English needs nothing. */
 export function start(code: string, map: Record<string, string>) {
   document.documentElement.lang = code || 'en';
+  // Arabic and Hebrew read right to left: the layout mirrors (LibreChat's RTL support).
+  document.documentElement.dir = ['ar', 'he', 'fa', 'ur'].includes(code) ? 'rtl' : 'ltr';
   if (!code || !Object.keys(map).length) return;
   load(map);
   if (active) return walk(document.body);

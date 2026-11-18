@@ -25,6 +25,8 @@ pub const LANGUAGES: &[(&str, &str)] = &[
     ("pl", "Polski"),
     ("ja", "日本語"),
     ("zh", "中文"),
+    ("ar", "العربية"),
+    ("he", "עברית"),
 ];
 
 /// Strings per request: enough to be quick, small enough for any model.
@@ -39,6 +41,7 @@ fn bundled(code: &str) -> Option<&'static str> {
         "es" => Some(include_str!("../../i18n/es.json")),
         "fr" => Some(include_str!("../../i18n/fr.json")),
         "de" => Some(include_str!("../../i18n/de.json")),
+        "ar" => Some(include_str!("../../i18n/ar.json")),
         _ => None,
     }
 }
@@ -181,7 +184,7 @@ mod tests {
     fn the_bundled_languages_cover_the_catalog() {
         let catalog = catalog();
         assert!(catalog.len() > 1000);
-        for code in ["pt", "es", "fr", "de"] {
+        for code in ["pt", "es", "fr", "de", "ar"] {
             let map: BTreeMap<String, String> = serde_json::from_str(bundled(code).unwrap()).unwrap();
             let covered = catalog.iter().filter(|s| map.contains_key(*s)).count();
             assert!(covered * 100 >= catalog.len() * 97, "{code}: {covered} of {}", catalog.len());

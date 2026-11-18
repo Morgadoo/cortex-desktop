@@ -135,6 +135,8 @@ const ICONS: Record<string, string> = {
   react: 'M12 10.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM12 7c5 0 9 2.2 9 5s-4 5-9 5-9-2.2-9-5 4-5 9-5zM7.7 9.5c2.5-4.3 6.3-6.8 8.7-5.4s2 6-.4 10.4-6.3 6.8-8.7 5.4-2-6 .4-10.4zM16.3 9.5c2.5 4.4 2.9 9 .4 10.4s-6.2-1.1-8.7-5.4-2.9-9-.4-10.4 6.2 1.1 8.7 5.4z',
 };
 
+const DIRECTIONAL = new Set(['back', 'forward', 'chevronRight', 'chevronLeft', 'arrowRight', 'arrowLeft', 'send']);
+
 export function icon(name: keyof typeof ICONS | string, size = 18): SVGSVGElement {
   const svg = document.createElementNS(SVG, 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
@@ -147,6 +149,8 @@ export function icon(name: keyof typeof ICONS | string, size = 18): SVGSVGElemen
   svg.setAttribute('stroke-linejoin', 'round');
   svg.setAttribute('aria-hidden', 'true');
   svg.classList.add('icon');
+  // Arrows that mean a direction turn around in right-to-left languages.
+  if (DIRECTIONAL.has(name)) svg.classList.add('icon-dir');
   const path = document.createElementNS(SVG, 'path');
   path.setAttribute('d', ICONS[name] ?? ICONS.sparkle!);
   svg.append(path);
