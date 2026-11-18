@@ -1423,6 +1423,9 @@ impl Runner<'_> {
         if name == media::GENERATE_IMAGE {
             return media::generate(self.config_dir, self.id, &arguments).await;
         }
+        if name == super::videogen::GENERATE_VIDEO {
+            return super::videogen::generate(self.config_dir, self.id, &arguments).await;
+        }
         if name == builtins::NOTIFY {
             let text = |k: &str| arguments.get(k).and_then(Value::as_str).unwrap_or_default().chars().take(240).collect::<String>();
             let title = text("title");

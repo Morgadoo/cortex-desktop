@@ -1806,3 +1806,6 @@ button.usage-meter:hover { background: var(--hover); }
 .pr-check{display:flex;align-items:center;gap:8px;padding:3px 0 3px 4px;color:var(--text)}
 .pr-check .dot{width:8px;height:8px;border-radius:50%;background:var(--text-muted)}
 .pr-check.passed .dot{background:#22c55e}.pr-check.failed .dot{background:#ef4444}.pr-check.running .dot,.pr-check.pending .dot{background:#f59e0b}
+.generated-video { display: block; width: 100%; max-height: 520px; background: #000; border-radius: 8px 8px 0 0; }
+.generated-video.portrait { width: auto; max-width: 100%; margin: 0 auto; }
+video.output-thumb { object-fit: cover; background: #000; }

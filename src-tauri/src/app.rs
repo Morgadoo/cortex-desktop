@@ -368,7 +368,7 @@ pub fn run() {
             }
             match crate::settings::get_config_dir(ctx.app_handle()) {
                 Ok(dir) => match request.uri().path().strip_prefix("/sandbox/") {
-                    Some(rest) => chat::sandbox::serve(&dir, rest),
+                    Some(rest) => chat::sandbox::serve_range(&dir, rest, request.headers().get("range").and_then(|v| v.to_str().ok())),
                     None => chat::canvas::serve(&dir, request.uri().path()),
                 },
                 Err(_) => tauri::http::Response::builder().status(500).body(Vec::new()).unwrap_or_default(),

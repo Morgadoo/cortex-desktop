@@ -21,6 +21,7 @@ pub struct Output {
 }
 
 const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "webp", "gif", "svg"];
+const VIDEO_EXTS: &[&str] = &["mp4", "webm", "mov"];
 /// Files listed per workspace.
 const MAX_FILES: usize = 300;
 
@@ -58,7 +59,7 @@ pub fn files(config_dir: &Path, conversation_id: &str) -> Vec<Output> {
             let ext = rel.rsplit('.').next().unwrap_or_default().to_lowercase();
             Output {
                 conversation_id: conversation_id.to_string(),
-                kind: if IMAGE_EXTS.contains(&ext.as_str()) { "image" } else { "file" }.into(),
+                kind: if IMAGE_EXTS.contains(&ext.as_str()) { "image" } else if VIDEO_EXTS.contains(&ext.as_str()) { "video" } else { "file" }.into(),
                 title: rel.rsplit('/').next().unwrap_or(&rel).to_string(),
                 id: rel,
                 bytes: meta.len(),

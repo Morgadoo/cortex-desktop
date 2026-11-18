@@ -21,6 +21,7 @@ const TOOL_CHOICES: { id: string; label: string }[] = [
   { id: 'use_skill', label: 'Skills' },
   { id: 'remember', label: 'Knowledge' },
   { id: 'generate_image', label: 'Image generation' },
+  { id: 'generate_video', label: 'Video generation' },
   { id: 'run_code', label: 'Run code' },
   { id: 'browser_view', label: 'Real browser' },
   { id: 'browser_act', label: 'Use web pages' },

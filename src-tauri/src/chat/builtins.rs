@@ -370,6 +370,7 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
     out.extend(super::webpage::definition());
     out.extend(super::webpage::act_definition());
     out.extend(super::media::definition(config_dir));
+    out.extend(super::videogen::definition(config_dir));
     out
 }
 
@@ -780,10 +781,10 @@ mod tests {
     #[test]
     fn definitions_follow_settings() {
         let dir = tempfile::tempdir().unwrap();
-        let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).filter(|n| n != super::super::sandbox::RUN_CODE && n != super::super::media::GENERATE_IMAGE && n != SAVE_SKILL && n != NOTIFY && n != super::super::webpage::BROWSER_VIEW && n != super::super::webpage::BROWSER_ACT && !n.starts_with("knowledge_")).collect();
+        let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).filter(|n| n != super::super::sandbox::RUN_CODE && n != super::super::media::GENERATE_IMAGE && n != super::super::videogen::GENERATE_VIDEO && n != SAVE_SKILL && n != NOTIFY && n != super::super::webpage::BROWSER_VIEW && n != super::super::webpage::BROWSER_ACT && !n.starts_with("knowledge_")).collect();
         assert_eq!(names, [WEB_SEARCH, UPDATE_PLAN, DELEGATE, CANVAS, SCHEDULE_TASK, SEARCH_CHATS, READ_CHAT, REMEMBER, FORGET, USE_SKILL]);
         memory::save(dir.path(), &memory::Memories { enabled: false, ..Default::default() }).unwrap();
-        let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).filter(|n| n != super::super::sandbox::RUN_CODE && n != super::super::media::GENERATE_IMAGE && n != SAVE_SKILL && n != NOTIFY && n != super::super::webpage::BROWSER_VIEW && n != super::super::webpage::BROWSER_ACT && !n.starts_with("knowledge_")).collect();
+        let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).filter(|n| n != super::super::sandbox::RUN_CODE && n != super::super::media::GENERATE_IMAGE && n != super::super::videogen::GENERATE_VIDEO && n != SAVE_SKILL && n != NOTIFY && n != super::super::webpage::BROWSER_VIEW && n != super::super::webpage::BROWSER_ACT && !n.starts_with("knowledge_")).collect();
         assert_eq!(names, [WEB_SEARCH, UPDATE_PLAN, DELEGATE, CANVAS, SCHEDULE_TASK, USE_SKILL]);
     }
 

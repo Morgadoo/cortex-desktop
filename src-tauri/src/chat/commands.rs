@@ -317,12 +317,14 @@ pub fn chat_set_media_models(
     image_model: Option<String>,
     speech_model: Option<String>,
     voice_model: Option<String>,
+    video_model: Option<String>,
 ) -> Result<super::media::MediaModels, String> {
     let dir = config_dir(&app)?;
     let mut file = super::providers::load(&dir);
     file.image_model = image_model.filter(|m| !m.trim().is_empty());
     file.speech_model = speech_model.filter(|m| !m.trim().is_empty());
     file.voice_model = voice_model.filter(|m| !m.trim().is_empty());
+    file.video_model = video_model.filter(|m| !m.trim().is_empty());
     super::providers::save(&dir, &file)?;
     Ok(super::media::models(&dir))
 }
@@ -2664,7 +2666,7 @@ pub async fn chat_draft_agent(app: AppHandle, description: String, current: Opti
 }
 
 /// The tool names an agent can be given, matching the editor's choices.
-const TOOL_CHOICES: &[&str] = &["web_search", "browser", "filesystem", "bash", "delegate", "update_plan", "canvas", "schedule_task", "use_skill", "remember", "run_code", "calendar_events", "find_contact", "search_chats", "knowledge_search", "notify", "generate_image", "browser_view", "browser_act", "message_agent"];
+const TOOL_CHOICES: &[&str] = &["web_search", "browser", "filesystem", "bash", "delegate", "update_plan", "canvas", "schedule_task", "use_skill", "remember", "run_code", "calendar_events", "find_contact", "search_chats", "knowledge_search", "notify", "generate_image", "generate_video", "browser_view", "browser_act", "message_agent"];
 
 /// Tokens and cost across all conversations this calendar month, for the usage gauge.
 #[tauri::command]

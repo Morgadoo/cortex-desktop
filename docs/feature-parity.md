@@ -222,7 +222,7 @@ items most likely to differ:
 Reviewed in November 2026 feature by feature against the docs of Open WebUI, LibreChat, LobeHub,
 Onyx, Osaurus and OpenBot (about 220 features). Every item of the review's shortlist is in the table
 below; every feature the review found missing or partial is tracked row by row, with evidence, in
-[review-coverage.md](review-coverage.md) (now 185 done, 6 partial, 1 missing, 31 out of scope).
+[review-coverage.md](review-coverage.md) (now 186 done, 5 partial, 1 missing, 31 out of scope).
 What was deliberately left out, and why:
 
 - **Team and enterprise features** (channels, comments, SSO, SCIM, tenants, admin plane, shared
@@ -409,6 +409,7 @@ What was deliberately left out, and why:
 | Document extraction servers | open-webui (Tika, Docling) | Settings → Providers → Document extraction: built-in readers, Apache Tika or Docling, used for library documents and attachments; the built-in reader takes over when the server fails. Verified live with a Tika stand-in | Done |
 | An environment per agent | osaurus (VM per agent) | Each agent's code runs with its own home folder (files and pip/npm user installs persist across its chats), its own network switch, and Reset on its page. Verified live | Done |
 | ACP agents as models | openbot.run | Settings → Providers → ACP agents: Claude Code, Codex, Gemini CLI or any Agent Client Protocol command becomes a model; its text, thinking and tool notices stream into the chat and its permission requests use Lumo's approval card. Verified live with a stand-in agent | Done |
+| Video generation as a tool | openbot.run (image and video steps), Grok | `generate_video`: a 1–15 second clip from a description, or an image brought to life (`reference`), through xAI Grok Imagine (Settings → Providers → Images, video and voice → Video model). The job is started and polled; the clip is saved in the workspace, plays in the chat and shows under Outputs → Videos. Tools menu → Video generation; agents can have it; the built-in "Image to video" workflow chains both tools. Verified live against a stand-in service | Done |
 
 ## Built for years of use
 
@@ -444,7 +445,7 @@ What is not here, and why. Everything else in the Vibe tables is built and was r
   and dictation anywhere were run with the microphone, hotkey and typing real and a stand-in
   transcription server. ElevenLabs needs keys this setup does not have.
 - **Coding agents and plugins from GitHub:** the Claude Code CLI ran for real; Codex and Gemini
-  CLIs were run as stand-ins with the same command-line shape. ACP agents were tested with a stand-in that speaks the protocol; the Tika and Docling clients were tested against stand-in servers. Downloading a plugin ZIP from
+  CLIs were run as stand-ins with the same command-line shape. ACP agents were tested with a stand-in that speaks the protocol; the Tika and Docling clients were tested against stand-in servers. Video generation was tested against a stand-in for xAI's video service (the account has no credit); in this Linux test machine WebKitGTK's media player refused to play any clip, so playback in the chat was not seen here. Downloading a plugin ZIP from
   GitHub was blocked by this environment's network; reading the official marketplace worked.
 - **Interface translations:** Portuguese, Spanish, French, German and Arabic were translated by a model
   and have not been reviewed by native speakers.

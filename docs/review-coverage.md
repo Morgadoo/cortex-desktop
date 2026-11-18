@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 185 |
-| PARTIAL | 86 | 6 |
+| DONE | 58 | 186 |
+| PARTIAL | 86 | 5 |
 | MISSING | 48 | 1 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 44 / 1 / 0 / 9 · LibreChat 42 / 0 / 0 / 4 · LobeHub 29 / 0 / 0 / 5 · Onyx 20 / 1 / 0 / 5 · Osaurus 23 / 2 / 1 / 4 · OpenBot 27 / 2 / 0 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 44 / 1 / 0 / 9 · LibreChat 42 / 0 / 0 / 4 · LobeHub 29 / 0 / 0 / 5 · Onyx 20 / 1 / 0 / 5 · Osaurus 23 / 2 / 1 / 4 · OpenBot 28 / 1 / 0 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -232,7 +232,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 44 / 1 / 0 / 9
 | OpenBot | Library views, favourites | PARTIAL | DONE | Libraries: favourite libraries (★, listed first) and documents (★), a document filter and sorting by favourites, newest, name or size, remembered on this device. Verified live |
 | OpenBot | Local dictation (Parakeet, Whisper) | PARTIAL | PARTIAL | Missing: a built-in model |
 | OpenBot | Pause length before sending; keeps listening | PARTIAL | DONE | Pause length 0.8–4.5 s in Settings → Audio; the mic stays open for the next turn |
-| OpenBot | Image and video workflow steps | PARTIAL | PARTIAL | Image through `generate_image`; video left out (parity L221) |
+| OpenBot | Image and video workflow steps | PARTIAL | DONE | generate_image and a new generate_video tool (xAI Grok Imagine: start, poll, download; text or an image brought to life) as tools any chat, agent or workflow step can use, with the built-in "Image to video" workflow; clips are saved in the workspace, play inline and in Outputs (Videos). Client unit-tested; verified live against a stand-in video service |
 | OpenBot | Sort by latest activity | MISSING | DONE | parity L284 |
 | OpenBot | Name and last message on hover | MISSING | DONE | main.ts:212–215 (chat rows) |
 | OpenBot | Agent templates, everything exports | PARTIAL | DONE | Agent export (parity L295), export everything (settings.ts:186) |

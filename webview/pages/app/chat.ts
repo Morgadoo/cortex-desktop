@@ -19,7 +19,7 @@ import { openInstructions } from './pages';
 import { closePanel, enableAskAboutSelection, openSidePanel, renderCanvasCard, setPanelHost, lineDiff } from './canvas';
 import { hostOf, previewFor, siteIcon } from './favicon';
 import './diagrams';
-import { renderCodeRun, renderImage } from './coderun';
+import { renderCodeRun, renderImage, renderVideo } from './coderun';
 import { startRecording, toBase64, type Recording } from './dictation';
 import { audioSettings, shortError, speakText, type Playback } from './audio';
 import { editWorkflow, liveWorkflow, workflowPrompt, workflowsApi } from './workflows';
@@ -99,6 +99,7 @@ const BUILTIN_ICONS: Record<string, string> = {
   knowledge_search: 'book',
   save_skill: 'skill',
   generate_image: 'sparkle',
+  generate_video: 'video',
   browser_view: 'globe',
   browser_act: 'globe',
 };
@@ -636,6 +637,11 @@ function renderParts(parts: Part[], live: boolean, key: string, durations: numbe
     if (part.kind === 'tool' && part.name === 'generate_image') {
       flush();
       out.push(renderImage(part, live, key.split(':')[0] ?? ''));
+      return;
+    }
+    if (part.kind === 'tool' && part.name === 'generate_video') {
+      flush();
+      out.push(renderVideo(part, live, key.split(':')[0] ?? ''));
       return;
     }
     // Knowledge read and written shows as pills in the answer (Vibe's knowledge pills).
@@ -1636,6 +1642,7 @@ async function send(text: string, conversationId: string | null, images: { media
 const TOOL_GROUPS: { label: string; icon: string; names: string[]; hint: string }[] = [
   { label: 'Web search', icon: 'globe', names: ['web_search'], hint: 'Search the web and cite sources' },
   { label: 'Image generation', icon: 'image', names: ['generate_image'], hint: 'Create and edit images' },
+  { label: 'Video generation', icon: 'video', names: ['generate_video'], hint: 'Short clips, or an image brought to life' },
   { label: 'Browser', icon: 'globe', names: ['browser_view', 'browser_act', 'browser'], hint: 'Open, read and use web pages' },
   { label: 'Canvas', icon: 'file', names: ['canvas'], hint: 'Documents, apps and sheets beside the chat' },
   { label: 'Run code', icon: 'terminal', names: ['run_code'], hint: 'Python and JavaScript in a sandbox' },

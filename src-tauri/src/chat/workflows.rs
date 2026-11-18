@@ -69,6 +69,17 @@ fn builtins() -> Vec<Workflow> {
             ],
         ),
         make(
+            "builtin-image-to-video",
+            "Image to video",
+            "Design a still, then bring it to life as a short clip.",
+            &[
+                "Write a detailed image prompt from the user's idea (subject, style, light, framing) and make it with generate_image.",
+                "Show the image and, if the user wants changes, edit it with generate_image using it as the reference.",
+                "Animate the chosen image with generate_video, passing it as the reference and describing the motion and camera.",
+                "Write a one-line caption and say where the image and the clip are saved.",
+            ],
+        ),
+        make(
             "builtin-data-analysis",
             "Analyze a dataset",
             "Load a CSV or spreadsheet, explore it and chart what matters.",

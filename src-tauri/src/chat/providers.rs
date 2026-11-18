@@ -71,6 +71,9 @@ pub struct ProvidersFile {
     pub default_model: Option<String>,
     /// `vendor/model` for `generate_image`; a default for the providers set up when unset.
     pub image_model: Option<String>,
+    /// `vendor/model` for `generate_video`; a default for the providers set up when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub video_model: Option<String>,
     /// `vendor/model` for voice input; a default for the providers set up when unset.
     pub speech_model: Option<String>,
     /// `vendor/model` for reading answers aloud; a default for the providers set up when unset.

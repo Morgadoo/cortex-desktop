@@ -59,6 +59,7 @@ pub mod knowledge;
 pub mod libraries;
 pub mod links;
 pub mod media;
+pub mod videogen;
 pub mod memory;
 pub mod privacy;
 pub mod providers;

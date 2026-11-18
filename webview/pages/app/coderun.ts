@@ -77,6 +77,52 @@ export function renderImage(part: Extract<Part, { kind: 'tool' }>, live: boolean
   );
 }
 
+/**
+ * A video from the workspace in a player. The Linux media player streams only http(s) and blob
+ * addresses, so the clip is fetched and played from a blob.
+ */
+export function workspaceVideo(src: string, attrs: Record<string, unknown>): HTMLVideoElement {
+  const video = h('video', attrs as never);
+  void fetch(src)
+    .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))))
+    .then((b) => {
+      video.src = URL.createObjectURL(b);
+    })
+    .catch(() => {
+      video.src = src;
+    });
+  return video;
+}
+
+/** A clip made by generate_video: a player while it is ready, a wait line while it is made. */
+export function renderVideo(part: Extract<Part, { kind: 'tool' }>, live: boolean, conversationId: string): HTMLElement {
+  const prompt = typeof part.arguments.prompt === 'string' ? part.arguments.prompt : '';
+  const running = live && part.output === null;
+  let file = '';
+  try {
+    file = part.output && !part.isError ? ((JSON.parse(part.output) as { file?: string }).file ?? '') : '';
+  } catch {
+    file = '';
+  }
+  const shape = typeof part.arguments.shape === 'string' ? part.arguments.shape : 'landscape';
+  const body = running
+    ? h('div', { class: 'image-wait' }, h('span', { class: 'dots' }), 'Making the video… this takes a minute or two.')
+    : file
+      ? workspaceVideo(workspaceUrl(conversationId, file), { class: `generated-video ${shape}`, controls: true, loop: true, playsinline: true, preload: 'metadata' })
+      : h('pre', { class: 'run-stderr' }, part.output ?? 'The video could not be made.');
+  const copy = iconButton({ icon: 'copy', title: 'Copy prompt', size: 'sm' });
+  copy.addEventListener('click', () => {
+    void navigator.clipboard.writeText(prompt);
+    toast('Prompt copied.');
+  });
+  return h(
+    'div',
+    { class: 'canvas-step' },
+    h('div', { class: 'canvas-label' }, running ? 'Creating a video…' : part.isError ? 'Could not create the video' : 'Created a video'),
+    h('div', { class: 'image-card' }, body, h('div', { class: 'image-caption' }, h('span', { class: 'muted' }, prompt), copy))
+  );
+}
+
 export function renderCodeRun(part: Extract<Part, { kind: 'tool' }>, live: boolean, conversationId: string): HTMLElement {
   const language = typeof part.arguments.language === 'string' ? part.arguments.language : 'python';
   const code = typeof part.arguments.code === 'string' ? part.arguments.code : '';

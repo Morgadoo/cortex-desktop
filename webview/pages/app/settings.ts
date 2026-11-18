@@ -620,6 +620,8 @@ interface MediaModels {
   imageVendors: string[];
   speechVendors: string[];
   imageServer?: string | null;
+  videoModel?: string | null;
+  videoVendors?: string[];
 }
 
 /** ACP agents (Agent Client Protocol): coding agents that answer as models, with their own tools. */
@@ -705,6 +707,7 @@ async function mediaCard(): Promise<HTMLElement> {
   const speech = h('input', { class: 'input', value: media.speechModel ?? '', placeholder: 'openai/gpt-4o-mini-transcribe, groq/whisper-large-v3-turbo' });
   const voice = h('input', { class: 'input', value: media.voiceModel ?? '', placeholder: 'xai/grok-tts, openai/gpt-4o-mini-tts' });
   const server = h('input', { class: 'input', value: media.imageServer ?? '', placeholder: 'http://127.0.0.1:7860' });
+  const video = h('input', { class: 'input', value: media.videoModel ?? '', placeholder: 'xai/grok-imagine-video' });
   const serverSave = button({ variant: 'secondary', label: 'Connect', onClick: async () => {
     try {
       const saved = await tauriInvoke<MediaModels>('chat_set_image_server', { url: server.value.trim() || null });
@@ -717,10 +720,11 @@ async function mediaCard(): Promise<HTMLElement> {
   const save = h('button', { class: 'btn btn-primary' }, 'Save');
   save.addEventListener('click', async () => {
     try {
-      const saved = await tauriInvoke<MediaModels>('chat_set_media_models', { imageModel: image.value.trim() || null, speechModel: speech.value.trim() || null, voiceModel: voice.value.trim() || null });
+      const saved = await tauriInvoke<MediaModels>('chat_set_media_models', { imageModel: image.value.trim() || null, speechModel: speech.value.trim() || null, voiceModel: voice.value.trim() || null, videoModel: video.value.trim() || null });
       image.value = saved.imageModel ?? '';
       speech.value = saved.speechModel ?? '';
       voice.value = saved.voiceModel ?? '';
+      video.value = saved.videoModel ?? '';
       toast(saved.imageModel || saved.speechModel ? 'Saved.' : 'Saved. No provider set up can serve these yet.');
     } catch (e) {
       toast(String(e), 'error');
@@ -729,14 +733,17 @@ async function mediaCard(): Promise<HTMLElement> {
   const note = (vendors: string[], what: string) =>
     h('small', { class: 'muted' }, vendors.length ? `Available from: ${vendors.join(', ')}. Leave empty for the default.` : `Set up a provider that offers ${what} to use this.`);
   return card(
-    h('h3', {}, 'Images and voice'),
-    h('p', { class: 'muted' }, 'The assistant creates images with the image model; the microphone in the composer transcribes with the speech model; the speaker under an answer reads it with the read-aloud model.'),
+    h('h3', {}, 'Images, video and voice'),
+    h('p', { class: 'muted' }, 'The assistant creates images with the image model and clips with the video model; the microphone in the composer transcribes with the speech model; the speaker under an answer reads it with the read-aloud model.'),
     h('label', { class: 'field-label' }, 'Image model'),
     image,
     note(media.imageVendors, 'image generation (OpenAI, xAI or Together)'),
     h('label', { class: 'field-label', title: 'Stable Diffusion WebUI (started with --api), Forge, SD.Next or Draw Things: images made on your own computer' }, 'Local image server'),
     h('div', { class: 'row-inline' }, server, serverSave),
     h('small', { class: 'muted' }, 'Its models show as sdwebui/<checkpoint>; with no other image model, it is used by itself.'),
+    h('label', { class: 'field-label' }, 'Video model'),
+    video,
+    note(media.videoVendors ?? [], 'video generation (xAI)'),
     h('label', { class: 'field-label' }, 'Speech-to-text model'),
     speech,
     note(media.speechVendors, 'speech-to-text (OpenAI or Groq)'),

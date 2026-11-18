@@ -39,6 +39,8 @@ pub struct MediaModels {
     pub speech_vendors: Vec<String>,
     pub voice_vendors: Vec<String>,
     pub image_server: Option<String>,
+    pub video_model: Option<String>,
+    pub video_vendors: Vec<String>,
 }
 
 fn dialect(vendor: &str) -> Option<&'static Dialect> {
@@ -52,7 +54,7 @@ fn dialect(vendor: &str) -> Option<&'static Dialect> {
 }
 
 /// Whether `vendor` is enabled and has a key (saved, or in the environment).
-fn usable(file: &ProvidersFile, vendor: &str) -> bool {
+pub(crate) fn usable(file: &ProvidersFile, vendor: &str) -> bool {
     file.providers
         .get(vendor)
         .is_some_and(|s| s.enabled && (s.has_key || providers::env_key(vendor).is_some()))
@@ -135,7 +137,7 @@ fn image_server(config_dir: &Path) -> Option<String> {
 }
 
 /// The base64 of a reference image, for img2img.
-fn image_b64(image: &rig_core::completion::message::Image) -> Option<String> {
+pub(crate) fn image_b64(image: &rig_core::completion::message::Image) -> Option<String> {
     match &image.data {
         rig_core::completion::message::DocumentSourceKind::Base64(b) => Some(b.clone()),
         _ => None,
@@ -161,6 +163,8 @@ pub fn models(config_dir: &Path) -> MediaModels {
         speech_vendors: vendors(SPEECH_DEFAULTS),
         voice_vendors: vendors(VOICE_DEFAULTS),
         image_server: file.image_server.clone(),
+        video_model: super::videogen::video_model(&file),
+        video_vendors: super::videogen::vendors(&file),
     }
 }
 
@@ -178,7 +182,7 @@ fn client(vendor: &str, settings: &ProviderSettings, key: Option<String>) -> Res
     Ok(config.client())
 }
 
-async fn connect(config_dir: &Path, reference: &str) -> Result<(OpenAI, String), String> {
+pub(crate) async fn connect(config_dir: &Path, reference: &str) -> Result<(OpenAI, String), String> {
     let (vendor, model) = providers::split_reference(reference).ok_or_else(|| format!("`{reference}` is not vendor/model"))?;
     let settings = providers::load(config_dir).providers.get(vendor).cloned().unwrap_or_default();
     let key = if settings.has_key { super::engine::api_key(vendor).await? } else { None };
@@ -245,7 +249,7 @@ pub async fn generate(config_dir: &Path, conversation_id: &str, args: &Value) ->
 }
 
 /// The image an edit starts from: the user's latest attachment, or an image in the workspace.
-fn reference_image(config_dir: &Path, conversation_id: &str, reference: &str) -> Result<rig_core::completion::message::Image, String> {
+pub(crate) fn reference_image(config_dir: &Path, conversation_id: &str, reference: &str) -> Result<rig_core::completion::message::Image, String> {
     use base64::Engine as _;
     use rig_core::completion::message::{DocumentSourceKind, Image, ImageMediaType, Message, UserContent};
     let (data, media_type) = if reference == "attached" {

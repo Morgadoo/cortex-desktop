@@ -388,6 +388,9 @@ fn content_type(name: &str) -> &'static str {
         Some("gif") => "image/gif",
         Some("webp") => "image/webp",
         Some("svg") => "image/svg+xml",
+        Some("mp4") => "video/mp4",
+        Some("webm") => "video/webm",
+        Some("mov") => "video/quicktime",
         Some("csv") => "text/csv; charset=utf-8",
         Some("json") => "application/json",
         Some("txt" | "md" | "log") => "text/plain; charset=utf-8",
@@ -398,6 +401,24 @@ fn content_type(name: &str) -> &'static str {
 /// Serves `lumoapp://localhost/sandbox/<conversation>/<file>` so the chat can show a run's
 /// charts. Only files inside that conversation's workspace are served.
 pub fn serve(config_dir: &Path, rest: &str) -> tauri::http::Response<Vec<u8>> {
+    serve_range(config_dir, rest, None)
+}
+
+/// The bytes a `Range: bytes=a-b` header asks for, within a file of `len` bytes.
+pub fn byte_range(header: &str, len: usize) -> Option<(usize, usize)> {
+    let spec = header.trim().strip_prefix("bytes=")?.split(',').next()?.trim();
+    let (a, b) = spec.split_once('-')?;
+    let (start, end) = match (a.trim(), b.trim()) {
+        ("", n) => (len.saturating_sub(n.parse().ok()?), len.checked_sub(1)?),
+        (s, "") => (s.parse().ok()?, len.checked_sub(1)?),
+        (s, e) => (s.parse().ok()?, e.parse::<usize>().ok()?.min(len.checked_sub(1)?)),
+    };
+    (start <= end && end < len).then_some((start, end))
+}
+
+/// Like `serve`, answering a byte range when one is asked for: the media player reads videos
+/// in pieces and will not play one served only whole.
+pub fn serve_range(config_dir: &Path, rest: &str, range: Option<&str>) -> tauri::http::Response<Vec<u8>> {
     let not_found = || {
         tauri::http::Response::builder().status(404).body(b"Not found".to_vec()).unwrap_or_default()
     };
@@ -414,8 +435,21 @@ pub fn serve(config_dir: &Path, rest: &str) -> tauri::http::Response<Vec<u8>> {
         return not_found();
     }
     match crate::chat::at_rest::read(&real) {
+        Ok(bytes) if range.is_some() => match byte_range(range.unwrap_or_default(), bytes.len()) {
+            Some((start, end)) => tauri::http::Response::builder()
+                .status(206)
+                .header("Content-Type", content_type(&file))
+                .header("Content-Range", format!("bytes {start}-{end}/{}", bytes.len()))
+                .header("Accept-Ranges", "bytes")
+                .header("X-Content-Type-Options", "nosniff")
+                .header("Cache-Control", "no-store")
+                .body(bytes[start..=end].to_vec())
+                .unwrap_or_default(),
+            None => tauri::http::Response::builder().status(416).header("Content-Range", format!("bytes */{}", bytes.len())).body(Vec::new()).unwrap_or_default(),
+        },
         Ok(bytes) => tauri::http::Response::builder()
             .status(200)
+            .header("Accept-Ranges", "bytes")
             .header("Content-Type", content_type(&file))
             // An SVG could carry script; it is shown as an image, never as a page.
             .header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'")
@@ -489,6 +523,16 @@ mod tests {
 
 #[cfg(test)]
 mod permission_tests {
+    #[test]
+    fn byte_ranges() {
+        assert_eq!(super::byte_range("bytes=0-", 100), Some((0, 99)));
+        assert_eq!(super::byte_range("bytes=10-19", 100), Some((10, 19)));
+        assert_eq!(super::byte_range("bytes=90-500", 100), Some((90, 99)));
+        assert_eq!(super::byte_range("bytes=-10", 100), Some((90, 99)));
+        assert_eq!(super::byte_range("bytes=200-", 100), None);
+        assert_eq!(super::byte_range("items=0-1", 100), None);
+    }
+
     use super::*;
 
     #[cfg(unix)]

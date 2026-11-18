@@ -4,6 +4,7 @@
  * text; images show as thumbnails; files can be saved anywhere.
  */
 import { tauriInvoke } from '../../shared/tauri';
+import { workspaceVideo } from './coderun';
 import { appFrame, closePanel, openAppPanel, openSidePanel } from './canvas';
 import { splitSheets } from './sheet';
 import { clear, h, icon, markdown, modal, toast, timeLabel } from './dom';
@@ -12,7 +13,7 @@ import { iconButton, modalHeader, pageHeader } from './ui';
 
 export interface Output {
   conversationId: string;
-  kind: 'document' | 'app' | 'sheet' | 'image' | 'file';
+  kind: 'document' | 'app' | 'sheet' | 'image' | 'video' | 'file';
   title: string;
   id: string;
   bytes: number;
@@ -25,6 +26,7 @@ const KINDS: [Output['kind'] | 'all', string, string][] = [
   ['app', 'Apps', 'apps'],
   ['sheet', 'Sheets', 'table'],
   ['image', 'Images', 'image'],
+  ['video', 'Videos', 'video'],
   ['file', 'Files', 'files'],
 ];
 
@@ -42,6 +44,10 @@ async function openOutput(o: Output, inPanel: boolean) {
   try {
     if (o.kind === 'image') {
       void modal((close) => h('div', { class: 'dialog-small wide' }, modalHeader(o.title, close, { flush: true }), h('img', { class: 'output-image-large', src: fileUrl(o.conversationId, o.id), alt: o.title })));
+      return;
+    }
+    if (o.kind === 'video') {
+      void modal((close) => h('div', { class: 'dialog-small wide' }, modalHeader(o.title, close, { flush: true }), workspaceVideo(fileUrl(o.conversationId, o.id), { class: 'output-image-large', controls: true, autoplay: true, loop: true })));
       return;
     }
     if (o.kind === 'file') {
@@ -76,7 +82,7 @@ function card(o: Output, showChat: boolean): HTMLElement {
   return h(
     'button',
     { class: `output-card kind-${o.kind}`, title: o.id, on: { click: () => void openOutput(o, !showChat) } },
-    o.kind === 'image' ? h('img', { class: 'output-thumb', src: fileUrl(o.conversationId, o.id), alt: '', loading: 'lazy' }) : h('div', { class: 'output-icon' }, icon(kind?.[2] ?? 'file', 22)),
+    o.kind === 'image' ? h('img', { class: 'output-thumb', src: fileUrl(o.conversationId, o.id), alt: '', loading: 'lazy' }) : o.kind === 'video' ? workspaceVideo(fileUrl(o.conversationId, o.id), { class: 'output-thumb', muted: true, preload: 'metadata' }) : h('div', { class: 'output-icon' }, icon(kind?.[2] ?? 'file', 22)),
     h('div', { class: 'output-meta' }, h('strong', { class: 'output-title' }, o.title || 'Untitled'), h('small', { class: 'muted' }, [kind?.[1].replace(/s$/, ''), size(o.bytes), o.at ? timeLabel(o.at) : ''].filter(Boolean).join(' · '))),
     showChat && chat
       ? h('span', { class: 'output-chat', on: { click: (e: MouseEvent) => { e.stopPropagation(); navigate({ kind: 'chat', id: chat.id }); } } }, icon('chat', 12), chat.title || 'Chat')
