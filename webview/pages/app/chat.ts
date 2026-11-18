@@ -2458,8 +2458,18 @@ export class HomeView {
               dismiss
             )
           : null;
+    // An agent's own conversation starters: one click asks it.
+    const starters = agent?.starters?.length
+      ? h(
+          'div',
+          { class: 'suggestions' },
+          agent.starters.map((text) =>
+            h('button', { class: 'suggestion', on: { click: () => { composer.setText(text); void composer.submit(); } } }, icon('sparkle', 17), text)
+          )
+        )
+      : null;
     const suggestions = code || agent
-      ? null
+      ? starters
       : h(
           'div',
           { class: 'suggestions' },

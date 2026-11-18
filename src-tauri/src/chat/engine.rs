@@ -217,6 +217,15 @@ pub fn preamble(context: &Context<'_>, tools: &[ChatTool]) -> String {
             out.push_str(agent.instructions.trim());
             out.push_str("\n\n");
         }
+        let own: Vec<&libraries::Library> = agent.libraries.iter().filter_map(|id| context.libraries.iter().find(|l| &l.id == id)).filter(|l| !l.documents.is_empty()).collect();
+        if !own.is_empty() {
+            let names: Vec<String> = own.iter().map(|l| format!("\"{}\" ({} documents)", l.name, l.documents.len())).collect();
+            out.push_str(&format!(
+                "Your reference material is in the {} {}; search it with `search_library` before answering questions it may cover, and cite what you use.\n\n",
+                if own.len() == 1 { "library" } else { "libraries" },
+                names.join(", ")
+            ));
+        }
     }
     out.push_str(
         "You are a helpful, accurate assistant running in a desktop app. Answer in the user's \

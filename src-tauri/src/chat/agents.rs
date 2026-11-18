@@ -46,6 +46,12 @@ pub struct Agent {
     /// US dollars this agent may spend in a calendar month; no limit when `None`.
     #[serde(default)]
     pub monthly_budget: Option<f64>,
+    /// Prompts offered on the agent's new-chat page (Open WebUI's prompt suggestions).
+    #[serde(default)]
+    pub starters: Vec<String>,
+    /// Libraries the agent searches before answering, by id.
+    #[serde(default)]
+    pub libraries: Vec<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -145,6 +151,10 @@ pub fn delete(config_dir: &Path, id: &str) -> Result<Vec<Agent>, String> {
 /// Whether `agent` may use the tool `name` (`connector__tool` or a built-in name).
 pub fn allows(agent: &Agent, name: &str) -> bool {
     if agent.tools.is_empty() {
+        return true;
+    }
+    // Libraries given to the agent come with the tools that read them.
+    if !agent.libraries.is_empty() && matches!(name, "search_library" | "read_document") {
         return true;
     }
     let connector = name.split_once("__").map_or(name, |(c, _)| c);
@@ -307,6 +317,8 @@ pub fn parse_draft(text: &str, tools: &[&str], skills: &[String]) -> Result<Agen
         think: value.get("think").and_then(|v| v.as_bool()).unwrap_or(false),
         fallback_model: None,
         monthly_budget: None,
+        starters: Vec::new(),
+        libraries: Vec::new(),
         created_at: Utc::now(),
         name,
     })
@@ -346,6 +358,8 @@ pub fn templates() -> Vec<Agent> {
         think: false,
         fallback_model: None,
         monthly_budget: None,
+        starters: Vec::new(),
+        libraries: Vec::new(),
         created_at: Utc::now(),
     };
     vec![
@@ -403,6 +417,8 @@ mod tests {
             think: false,
             fallback_model: None,
             monthly_budget: Some(5.0),
+            starters: Vec::new(),
+            libraries: Vec::new(),
             created_at: Utc::now(),
         };
         save(from.path(), agent).unwrap();
@@ -435,6 +451,9 @@ mod tests {
         assert!(allows(&agent, "web_search"));
         assert!(allows(&agent, "browser__navigate"));
         assert!(!allows(&agent, "bash__run"));
+        assert!(!allows(&agent, "search_library"));
+        agent.libraries = vec!["lib1".into()];
+        assert!(allows(&agent, "search_library") && allows(&agent, "read_document"), "its libraries come with the tools that read them");
         agent.tools.clear();
         assert!(allows(&agent, "bash__run"));
         assert!(save(dir.path(), Agent { name: " ".into(), ..agent.clone() }).is_err());

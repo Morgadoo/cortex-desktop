@@ -186,6 +186,10 @@ export interface Agent {
   think: boolean;
   fallbackModel: string | null;
   monthlyBudget: number | null;
+  /** Prompts offered on the agent's new-chat page. */
+  starters?: string[];
+  /** Libraries the agent searches, by id. */
+  libraries?: string[];
   createdAt: string;
 }
 

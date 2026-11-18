@@ -119,6 +119,32 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
       state.models.map((m) => h('option', { value: m.reference, selected: base?.fallbackModel === m.reference }, `${m.providerLabel} · ${m.name}`))
     );
     const budget = h('input', { class: 'input', type: 'number', min: '0', step: '0.5', value: base?.monthlyBudget ? String(base.monthlyBudget) : '', placeholder: 'No limit' });
+    // Conversation starters, one a line, shown on the agent's new-chat page.
+    const starters = h('textarea', { class: 'input textarea', rows: 3, placeholder: 'Summarise this week\'s notes\nDraft a reply to the last email' });
+    starters.value = (base?.starters ?? []).join('\n');
+    // Its own reference material: libraries it searches before answering.
+    const pickedLibraries = new Set(base?.libraries ?? []);
+    const libraryList = h('div', { class: 'tool-grid' }, h('small', { class: 'muted' }, 'Loading libraries…'));
+    void tauriInvoke<{ id: string; name: string; documents: unknown[] }[]>('chat_list_libraries')
+      .then((libs) =>
+        clear(
+          libraryList,
+          libs.length
+            ? libs.map((l) => {
+                const b = h('button', { class: `tool-toggle${pickedLibraries.has(l.id) ? ' allowed on' : ' blocked'}`, title: `${l.documents.length} documents` }, icon(pickedLibraries.has(l.id) ? 'check' : 'library', 14), l.name);
+                b.addEventListener('click', () => {
+                  if (pickedLibraries.has(l.id)) pickedLibraries.delete(l.id);
+                  else pickedLibraries.add(l.id);
+                  const on = pickedLibraries.has(l.id);
+                  b.className = `tool-toggle${on ? ' allowed on' : ' blocked'}`;
+                  b.replaceChildren(icon(on ? 'check' : 'library', 14), l.name);
+                });
+                return b;
+              })
+            : h('small', { class: 'muted' }, 'No libraries yet. Make one under Libraries to give this agent reference material.')
+        )
+      )
+      .catch(() => clear(libraryList));
     const error = h('p', { class: 'error-text' });
     const save = async () => {
       try {
@@ -135,6 +161,8 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
           think: think.checked,
           fallbackModel: fallback.value || null,
           monthlyBudget: Number(budget.value) > 0 ? Number(budget.value) : null,
+          starters: starters.value.split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 8),
+          libraries: [...pickedLibraries],
           createdAt: existing?.createdAt ?? new Date().toISOString(),
         });
         changed();
@@ -176,6 +204,10 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
       h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'All tools'), h('small', { class: 'muted' }, 'Click a tool to cycle: allowed, ask first, blocked. Turn off to block what you do not pick.')), allTools),
       toolGrid,
       h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Think longer'), h('small', { class: 'muted' }, 'Use extended reasoning by default, where the model supports it.')), think),
+      h('label', { class: 'field-label' }, 'Conversation starters (one a line)'),
+      starters,
+      h('label', { class: 'field-label', title: 'The agent searches these before answering and cites what it uses' }, 'Libraries'),
+      libraryList,
       error,
       h('div', { class: 'dialog-actions' }, remove, h('span', { class: 'spacer' }), h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, existing ? 'Save' : 'Create agent'))
     );
