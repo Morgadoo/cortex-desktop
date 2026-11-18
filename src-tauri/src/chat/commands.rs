@@ -1433,10 +1433,17 @@ pub async fn chat_save_embedding_settings(
     settings: super::embeddings::EmbeddingSettings,
     key: Option<String>,
     clear_key: bool,
+    rerank_key: Option<String>,
 ) -> Result<super::embeddings::EmbeddingSettings, String> {
     let dir = config_dir(&app)?;
     let mut settings = settings;
-    settings.has_key = super::embeddings::load(&dir).has_key;
+    let saved = super::embeddings::load(&dir);
+    settings.has_key = saved.has_key;
+    settings.has_rerank_key = saved.has_rerank_key;
+    if let Some(key) = rerank_key.map(|k| k.trim().to_string()).filter(|k| !k.is_empty()) {
+        secrets()?.store(super::embeddings::RERANK_SECRET, &key).await?;
+        settings.has_rerank_key = true;
+    }
     if clear_key {
         secrets()?.delete(super::embeddings::SECRET).await?;
         settings.has_key = false;

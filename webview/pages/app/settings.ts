@@ -28,7 +28,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Storage and backups', 'profile', 'backup restore damaged files recently deleted trash'],
   ['Providers and API keys', 'providers', 'key openai anthropic mistral xai ollama llama.cpp lm studio model default base url'],
   ['Web search', 'providers', 'searxng brave tavily engine internet'],
-  ['Semantic search', 'providers', 'embeddings libraries vector rag'],
+  ['Semantic search', 'providers', 'embeddings libraries vector rag rerank reranker reranking'],
   ['Images and voice', 'providers', 'image generation dall-e text to speech voice model'],
   ['Speech to text', 'audio', 'dictation microphone whisper transcription stt'],
   ['Text to speech', 'audio', 'read aloud voice tts elevenlabs'],
@@ -382,6 +382,9 @@ interface EmbeddingSettings {
   baseUrl: string;
   model: string;
   hasKey: boolean;
+  rerankUrl: string;
+  rerankModel: string;
+  hasRerankKey: boolean;
 }
 
 /** Semantic search for libraries: an OpenAI-compatible embedding model, fused with keyword search. */
@@ -401,17 +404,35 @@ async function embeddingCard(): Promise<HTMLElement> {
     { class: 'preset-row' },
     PRESETS.map(([label, url, m]) => h('button', { class: 'chip-btn', on: { click: () => { baseUrl.value = url; model.value = m; } } }, label))
   );
+  // Reranking: a model that orders the found passages by how well they answer the question.
+  const rerankUrl = h('input', { class: 'input', value: current.rerankUrl ?? '', placeholder: 'Off. For example http://localhost:8080/v1' });
+  const rerankModel = h('input', { class: 'input', value: current.rerankModel ?? '', placeholder: 'bge-reranker-v2-m3' });
+  const rerankKey = h('input', { class: 'input', type: 'password', placeholder: current.hasRerankKey ? 'Saved in the keychain' : 'Not needed for local servers' });
+  const RERANKERS: [string, string, string][] = [
+    ['llama.cpp (this computer)', 'http://localhost:8080/v1', 'bge-reranker-v2-m3'],
+    ['Jina', 'https://api.jina.ai/v1', 'jina-reranker-v2-base-multilingual'],
+    ['Cohere', 'https://api.cohere.com/v2', 'rerank-v3.5'],
+    ['Off', '', ''],
+  ];
+  const rerankPresets = h(
+    'div',
+    { class: 'preset-row' },
+    RERANKERS.map(([label, url, m]) => h('button', { class: 'chip-btn', on: { click: () => { rerankUrl.value = url; rerankModel.value = m; } } }, label))
+  );
   let enabled = current.enabled;
   const status = h('small', { class: 'muted' });
   const save = h('button', { class: 'btn btn-primary' }, 'Save');
   const indexNow = h('button', { class: 'btn btn-secondary' }, 'Embed documents now');
   const persist = async () => {
     current = await tauriInvoke<EmbeddingSettings>('chat_save_embedding_settings', {
-      settings: { enabled, baseUrl: baseUrl.value, model: model.value, hasKey: current.hasKey },
+      settings: { enabled, baseUrl: baseUrl.value, model: model.value, hasKey: current.hasKey, rerankUrl: rerankUrl.value, rerankModel: rerankModel.value, hasRerankKey: current.hasRerankKey },
       key: key.value.trim() || null,
       clearKey: false,
+      rerankKey: rerankKey.value.trim() || null,
     });
     key.value = '';
+    rerankKey.value = '';
+    rerankKey.placeholder = current.hasRerankKey ? 'Saved in the keychain' : 'Not needed for local servers';
     key.placeholder = current.hasKey ? 'Saved in the keychain' : 'Not needed for local servers';
   };
   save.addEventListener('click', async () => {
@@ -446,6 +467,15 @@ async function embeddingCard(): Promise<HTMLElement> {
     model,
     h('label', { class: 'field-label' }, 'API key'),
     key,
+    h('h4', { class: 'subhead' }, 'Reranking (optional)'),
+    h('p', { class: 'muted' }, 'A reranking model reads the question beside each passage found and puts the ones that answer it first. Any server with the Cohere or Jina rerank API works (llama.cpp, vLLM, Infinity, TEI, Jina, Cohere); it works with or without semantic search.'),
+    rerankPresets,
+    h('label', { class: 'field-label' }, 'Reranker base URL'),
+    rerankUrl,
+    h('label', { class: 'field-label' }, 'Reranking model'),
+    rerankModel,
+    h('label', { class: 'field-label' }, 'Reranker API key'),
+    rerankKey,
     status,
     h('div', { class: 'card-actions' }, indexNow, save)
   );

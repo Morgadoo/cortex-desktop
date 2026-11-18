@@ -8,6 +8,11 @@
 //! Any OpenAI-compatible `/embeddings` endpoint works: OpenAI, Mistral, Ollama, LM Studio,
 //! llama.cpp, vLLM, LocalAI. Passage vectors are cached next to each document's text, keyed by
 //! model, so documents are embedded once. The key lives in the keychain (`embeddings`).
+//!
+//! A reranker, when set up, reads the question beside each candidate passage and orders them by
+//! how well they answer it (Open WebUI's and Onyx's reranking step). Any server with the Cohere
+//! and Jina `/rerank` API works: Cohere, Jina, Voyage, llama.cpp's server, vLLM, Infinity, and
+//! Hugging Face TEI. Its key is `rerank` in the keychain.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -20,6 +25,7 @@ use super::libraries::{self, Passage};
 use super::store::write_json;
 
 pub const SECRET: &str = "embeddings";
+pub const RERANK_SECRET: &str = "rerank";
 /// Passages sent per request.
 const BATCH: usize = 64;
 /// Reciprocal rank fusion's damping constant; 60 is the usual choice.
@@ -34,6 +40,10 @@ pub struct EmbeddingSettings {
     pub model: String,
     /// Whether a key is saved in the keychain (never the key itself).
     pub has_key: bool,
+    /// The reranker's base URL (ending in `/v1` where the API has it); off when empty.
+    pub rerank_url: String,
+    pub rerank_model: String,
+    pub has_rerank_key: bool,
 }
 
 fn settings_path(config_dir: &Path) -> PathBuf {
@@ -48,6 +58,8 @@ pub fn save(config_dir: &Path, settings: &EmbeddingSettings) -> Result<(), Strin
     let mut s = settings.clone();
     s.base_url = s.base_url.trim().trim_end_matches('/').to_string();
     s.model = s.model.trim().to_string();
+    s.rerank_url = s.rerank_url.trim().trim_end_matches('/').to_string();
+    s.rerank_model = s.rerank_model.trim().to_string();
     write_json(&settings_path(config_dir), &s)
 }
 
@@ -178,18 +190,85 @@ async fn semantic(config_dir: &Path, settings: &EmbeddingSettings, only: &[Strin
 /// Library search: hybrid when semantic search is set up, keyword-only otherwise. The note says
 /// when semantic search was wanted but could not run.
 pub async fn search(config_dir: &Path, only: &[String], query: &str, k: usize) -> (Vec<Passage>, Option<String>) {
-    let keyword = libraries::search(config_dir, only, query, k * 3);
     let settings = load(config_dir);
-    if !ready(&settings) {
-        return (keyword.into_iter().take(k).collect(), None);
+    let reranking = !settings.rerank_url.is_empty() && !settings.rerank_model.is_empty();
+    // A reranker gets a wider pool to choose from.
+    let pool = if reranking { k * 4 } else { k };
+    let keyword = libraries::search(config_dir, only, query, pool * 3);
+    let (candidates, mut note) = if !ready(&settings) {
+        (keyword.into_iter().take(pool).collect::<Vec<_>>(), None)
+    } else {
+        match semantic(config_dir, &settings, only, query, pool * 3).await {
+            Ok(meaning) => (fuse(&[keyword, meaning], pool), None),
+            Err(e) => {
+                log::warn!("semantic search failed, keyword search only: {e}");
+                (keyword.into_iter().take(pool).collect(), Some(format!("Semantic search could not run ({e}); these are keyword matches.")))
+            }
+        }
+    };
+    if !reranking || candidates.len() <= 1 {
+        return (candidates.into_iter().take(k).collect(), note);
     }
-    match semantic(config_dir, &settings, only, query, k * 3).await {
-        Ok(meaning) => (fuse(&[keyword, meaning], k), None),
+    let key = rerank_key().await.unwrap_or_default();
+    match rerank(&settings, &key, query, &candidates, k).await {
+        Ok(order) => (order.into_iter().filter_map(|(i, score)| candidates.get(i).cloned().map(|p| Passage { score: (score * 1000.0).round() / 1000.0, ..p })).collect(), note),
         Err(e) => {
-            log::warn!("semantic search failed, keyword search only: {e}");
-            (keyword.into_iter().take(k).collect(), Some(format!("Semantic search could not run ({e}); these are keyword matches.")))
+            log::warn!("reranking failed: {e}");
+            note.get_or_insert_with(|| format!("Reranking could not run ({e}); these are in search order."));
+            (candidates.into_iter().take(k).collect(), note)
         }
     }
+}
+
+async fn rerank_key() -> Result<String, String> {
+    let account = crate::account::AccountId::parse(super::LOCAL_ACCOUNT)?;
+    Ok(crate::tools::auth::keychain_secrets(account).load(RERANK_SECRET).await?.unwrap_or_default())
+}
+
+/// The candidates' order by the reranker: `(index, relevance)`, best first, at most `k`.
+pub async fn rerank(settings: &EmbeddingSettings, key: &str, query: &str, candidates: &[Passage], k: usize) -> Result<Vec<(usize, f64)>, String> {
+    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(30)).build().map_err(|e| e.to_string())?;
+    let documents: Vec<&str> = candidates.iter().map(|p| p.text.as_str()).collect();
+    let url = format!("{}/rerank", settings.rerank_url.trim_end_matches('/'));
+    let mut request = client.post(&url).json(&serde_json::json!({
+        "model": settings.rerank_model,
+        "query": query,
+        "documents": documents,
+        // Hugging Face TEI reads `texts`.
+        "texts": documents,
+        "top_n": k,
+    }));
+    if !key.is_empty() {
+        request = request.bearer_auth(key);
+    }
+    let response = request.send().await.map_err(|e| e.to_string())?;
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.map_err(|e| format!("the reranker answered {status} without JSON: {e}"))?;
+    if !status.is_success() {
+        return Err(format!("the reranker answered {status}: {}", body.get("error").or_else(|| body.get("message")).map_or_else(|| body.to_string(), |e| e.to_string()).chars().take(200).collect::<String>()));
+    }
+    parse_rerank(&body, candidates.len(), k)
+}
+
+/// Reads `{"results": [{"index", "relevance_score"}]}` (Cohere, Jina, llama.cpp, vLLM) or
+/// `[{"index", "score"}]` (TEI).
+fn parse_rerank(body: &serde_json::Value, n: usize, k: usize) -> Result<Vec<(usize, f64)>, String> {
+    let items = body.get("results").or_else(|| body.get("data")).unwrap_or(body).as_array().ok_or("the reranker's answer has no results")?;
+    let mut out: Vec<(usize, f64)> = items
+        .iter()
+        .filter_map(|r| {
+            let index = r.get("index")?.as_u64()? as usize;
+            let score = r.get("relevance_score").or_else(|| r.get("score"))?.as_f64()?;
+            (index < n).then_some((index, score))
+        })
+        .collect();
+    if out.is_empty() {
+        return Err("the reranker returned no scores".into());
+    }
+    out.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    out.dedup_by_key(|(i, _)| *i);
+    out.truncate(k);
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -198,6 +277,39 @@ mod tests {
 
     fn p(document: &str, passage: usize) -> Passage {
         Passage { library: "L".into(), document: document.into(), passage, text: format!("{document} {passage}"), score: 0.0 }
+    }
+
+    #[test]
+    fn rerank_answers_in_both_shapes() {
+        let cohere = serde_json::json!({ "results": [{ "index": 2, "relevance_score": 0.91 }, { "index": 0, "relevance_score": 0.12 }, { "index": 9, "relevance_score": 0.99 }] });
+        assert_eq!(parse_rerank(&cohere, 3, 5).unwrap(), [(2, 0.91), (0, 0.12)], "out-of-range indexes are dropped");
+        let tei = serde_json::json!([{ "index": 0, "score": 0.2 }, { "index": 1, "score": 0.8 }]);
+        assert_eq!(parse_rerank(&tei, 2, 1).unwrap(), [(1, 0.8)]);
+        assert!(parse_rerank(&serde_json::json!({ "results": [] }), 2, 1).is_err());
+    }
+
+    #[tokio::test]
+    async fn a_reranker_reorders_passages() {
+        // A stand-in reranker that scores passages by how many times they say "termination".
+        let app = axum::Router::new().route(
+            "/v1/rerank",
+            axum::routing::post(|axum::Json(body): axum::Json<serde_json::Value>| async move {
+                let docs = body["documents"].as_array().cloned().unwrap_or_default();
+                let results: Vec<serde_json::Value> = docs
+                    .iter()
+                    .enumerate()
+                    .map(|(i, d)| serde_json::json!({ "index": i, "relevance_score": d.as_str().unwrap_or("").matches("termination").count() as f64 }))
+                    .collect();
+                axum::Json(serde_json::json!({ "results": results }))
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let settings = EmbeddingSettings { rerank_url: format!("http://{addr}/v1"), rerank_model: "bge-reranker".into(), ..Default::default() };
+        let candidates = vec![p("pricing", 0), Passage { text: "termination termination clause".into(), ..p("contract", 3) }, Passage { text: "termination notice".into(), ..p("faq", 1) }];
+        let order = rerank(&settings, "", "how do I cancel", &candidates, 2).await.unwrap();
+        assert_eq!(order.iter().map(|(i, _)| *i).collect::<Vec<_>>(), [1, 2]);
     }
 
     #[test]
@@ -227,7 +339,7 @@ mod tests {
     fn settings_round_trip_and_readiness() {
         let dir = tempfile::tempdir().unwrap();
         assert!(!ready(&load(dir.path())), "off until set up");
-        save(dir.path(), &EmbeddingSettings { enabled: true, base_url: " http://localhost:11434/v1/ ".into(), model: "nomic-embed-text".into(), has_key: false }).unwrap();
+        save(dir.path(), &EmbeddingSettings { enabled: true, base_url: " http://localhost:11434/v1/ ".into(), model: "nomic-embed-text".into(), has_key: false, ..Default::default() }).unwrap();
         let s = load(dir.path());
         assert_eq!(s.base_url, "http://localhost:11434/v1");
         assert!(ready(&s));

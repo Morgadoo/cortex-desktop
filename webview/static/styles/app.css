@@ -1459,3 +1459,4 @@ button.usage-meter:hover { background: var(--hover); }
 .doc-list .doc-row:not(.doc-head) { grid-template-columns: 18px 18px 1fr auto auto 30px; }
 .doc-list .doc-row.doc-head { display: flex; gap: 12px; }
 .doc-list .doc-row.doc-head .spacer { flex: 1; }
+.subhead { margin: 16px 0 4px; font-size: var(--fs-md); font-weight: 600; }
