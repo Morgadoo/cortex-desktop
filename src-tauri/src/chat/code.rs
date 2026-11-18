@@ -191,6 +191,49 @@ pub fn commit(dir: &str, message: &str) -> Result<String, String> {
     Ok(run(&["log", "-1", "--oneline", "--no-decorate"])?.trim().to_string())
 }
 
+/// A session's own copy of a repository (Vibe's worktrees): a git worktree beside it, on a new
+/// branch from the current commit, so the session's changes stay apart from the main checkout.
+/// Returns the worktree's folder and branch.
+pub fn create_worktree(dir: &str, name: &str) -> Result<(String, String), String> {
+    let path = Path::new(dir);
+    let top = git(path, &["rev-parse", "--show-toplevel"]).map(|t| t.trim().to_string()).ok_or("This folder is not a git repository.")?;
+    let top = Path::new(&top);
+    let repo = top.file_name().map_or_else(|| "repo".to_string(), |n| n.to_string_lossy().into_owned());
+    let mut slug: String = name
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|w| !w.is_empty())
+        .take(5)
+        .collect::<Vec<_>>()
+        .join("-");
+    if slug.is_empty() {
+        slug = chrono::Local::now().format("%Y%m%d-%H%M").to_string();
+    }
+    let parent = top.parent().ok_or("The repository has no parent folder for a worktree.")?;
+    let (mut folder, mut branch) = (parent.join(format!("{repo}-{slug}")), format!("lumo/{slug}"));
+    let mut n = 2;
+    while folder.exists() || git(top, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{branch}")]).is_some_and(|o| !o.trim().is_empty()) {
+        folder = parent.join(format!("{repo}-{slug}-{n}"));
+        branch = format!("lumo/{slug}-{n}");
+        n += 1;
+    }
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(top)
+        .args(["worktree", "add", "-b", &branch])
+        .arg(&folder)
+        .env("LC_ALL", "C")
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(format!("The worktree could not be made: {}", String::from_utf8_lossy(&out.stderr).trim()));
+    }
+    Ok((folder.to_string_lossy().into_owned(), branch))
+}
+
 #[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct PullRequest {
@@ -529,4 +572,30 @@ mod tests {
         assert_eq!(files[0].path, "src/new.rs");
         assert_eq!(files[0].status, "renamed");
     }
+
+    #[test]
+    fn worktrees_get_their_own_branch_and_folder() {
+        if Command::new("git").arg("--version").output().is_err() {
+            return;
+        }
+        let base = std::env::temp_dir().join(format!("lumo-wt-{}", std::process::id()));
+        let repo = base.join("app");
+        std::fs::create_dir_all(&repo).unwrap();
+        let run = |dir: &Path, args: &[&str]| assert!(Command::new("git").arg("-C").arg(dir).args(args).env("GIT_AUTHOR_NAME", "t").env("GIT_AUTHOR_EMAIL", "t@t").env("GIT_COMMITTER_NAME", "t").env("GIT_COMMITTER_EMAIL", "t@t").status().unwrap().success());
+        run(&repo, &["init", "-q"]);
+        std::fs::write(repo.join("a.txt"), "a").unwrap();
+        run(&repo, &["add", "."]);
+        run(&repo, &["commit", "-qm", "first"]);
+        let (folder, branch) = create_worktree(repo.to_str().unwrap(), "Add a login page!").unwrap();
+        assert_eq!(branch, "lumo/add-a-login-page");
+        assert!(folder.ends_with("app-add-a-login-page"));
+        assert!(Path::new(&folder).join("a.txt").exists());
+        // The same name again gets a second folder and branch.
+        let (second, branch2) = create_worktree(repo.to_str().unwrap(), "Add a login page").unwrap();
+        assert_eq!(branch2, "lumo/add-a-login-page-2");
+        assert!(second.ends_with("app-add-a-login-page-2"));
+        assert!(create_worktree(base.to_str().unwrap(), "x").is_err());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
 }

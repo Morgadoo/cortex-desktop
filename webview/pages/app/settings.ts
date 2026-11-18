@@ -41,6 +41,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['API tool servers (OpenAPI)', 'permissions', 'openapi swagger rest tools'],
   ['Privacy filter', 'permissions', 'redact personal data pii'],
   ['MCP servers', 'permissions', 'mcp connectors model context protocol'],
+  ['Hooks', 'permissions', 'hooks before after tool call command script block turn end'],
   ['Quick ask shortcut', 'general', 'global hotkey quick ask bar'],
   ['Launch at startup', 'general', 'autostart login'],
   ['Notify when a reply is ready', 'general', 'notification background alert'],
@@ -692,7 +693,74 @@ async function renderPermissions(content: HTMLElement) {
     await computerCard(),
     await customToolsCard(),
     mcpCard(),
+    await hooksCard(),
     await openApiCard()
+  );
+}
+
+interface HookDef {
+  event: 'before_tool' | 'after_tool' | 'turn_end';
+  matcher: string;
+  command: string;
+  enabled: boolean;
+}
+
+const HOOK_EVENTS: [HookDef['event'], string][] = [
+  ['before_tool', 'Before a tool call'],
+  ['after_tool', 'After a tool call'],
+  ['turn_end', 'When a reply finishes'],
+];
+
+/**
+ * Hooks (Vibe's and Claude Code's): commands of your own at points of a reply. A before-call hook
+ * that exits with code 2 blocks the call and tells the model why.
+ */
+async function hooksCard(): Promise<HTMLElement> {
+  let hooks = await tauriInvoke<HookDef[]>('chat_get_hooks').catch(() => [] as HookDef[]);
+  const list = h('div', { class: 'hook-list' });
+  const save = async () => {
+    try {
+      await tauriInvoke('chat_save_hooks', { hooks });
+    } catch (e) {
+      toast(String(e), 'error');
+    }
+  };
+  const render = () => {
+    clear(
+      list,
+      hooks.length
+        ? hooks.map((hook, i) => {
+            const toggle = switchInput(hook.enabled, (v) => { hook.enabled = v; void save(); });
+            const remove = h('button', { class: 'icon-btn small', title: 'Remove', on: { click: () => { hooks.splice(i, 1); void save(); render(); } } }, icon('trash', 15));
+            return h(
+              'div',
+              { class: 'hook-row' },
+              h('div', { class: 'hook-text' }, h('strong', {}, HOOK_EVENTS.find(([e]) => e === hook.event)?.[1] ?? hook.event, hook.matcher && hook.event !== 'turn_end' ? h('small', { class: 'muted' }, ` · ${hook.matcher}`) : null), h('code', {}, hook.command)),
+              toggle,
+              remove
+            );
+          })
+        : h('p', { class: 'muted small' }, 'No hooks yet.')
+    );
+  };
+  const event = h('select', { class: 'input select-sm' }, HOOK_EVENTS.map(([value, label]) => h('option', { value }, label)));
+  const matcher = h('input', { class: 'input', placeholder: 'Tools (empty for all), e.g. run_code, mcp-github' });
+  const command = h('input', { class: 'input mono', placeholder: 'Command, e.g. ./check.sh (the event comes as JSON on its input)' });
+  event.addEventListener('change', () => { matcher.disabled = event.value === 'turn_end'; });
+  const add = button({ variant: 'secondary', icon: 'plus', label: 'Add hook', onClick: () => {
+    if (!command.value.trim()) return toast('Write the command to run.', 'error');
+    hooks = [...hooks, { event: event.value as HookDef['event'], matcher: event.value === 'turn_end' ? '' : matcher.value.trim(), command: command.value.trim(), enabled: true }];
+    command.value = '';
+    matcher.value = '';
+    void save();
+    render();
+  } });
+  render();
+  return card(
+    h('h3', {}, 'Hooks'),
+    h('p', { class: 'muted' }, 'Your own commands at points of a reply: to check or log tool calls, format code after edits, or notify you when a reply is done. They get the event as JSON on their input and run in the chat\u2019s folder. A before-call hook that exits with code 2 blocks the call, and what it printed tells the assistant why; what an after-call hook prints is added to the result.'),
+    list,
+    h('div', { class: 'hook-add' }, event, matcher, command, add)
   );
 }
 

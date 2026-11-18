@@ -1334,6 +1334,25 @@ pub async fn chat_import_agent(app: AppHandle) -> Result<Option<String>, String>
     Ok(Some(if added.is_empty() { agent.name } else { format!("{} (with its tool servers {}; add their keys under Connectors)", agent.name, added.join(", ")) }))
 }
 
+/// Makes a git worktree of a repository on a new branch for a Code session; returns its folder
+/// and branch.
+#[tauri::command]
+pub fn chat_create_worktree(dir: String, name: String) -> Result<(String, String), String> {
+    super::code::create_worktree(&dir, &name)
+}
+
+/// The user's hooks.
+#[tauri::command]
+pub fn chat_get_hooks(app: AppHandle) -> Result<Vec<super::hooks::Hook>, String> {
+    Ok(super::hooks::load(&config_dir(&app)?))
+}
+
+/// Saves the user's hooks.
+#[tauri::command]
+pub fn chat_save_hooks(app: AppHandle, hooks: Vec<super::hooks::Hook>) -> Result<(), String> {
+    super::hooks::save(&config_dir(&app)?, &hooks)
+}
+
 /// The plugins of a Claude plugin marketplace on GitHub, to choose from; `None` when the link is
 /// a plugin rather than a marketplace.
 #[tauri::command]

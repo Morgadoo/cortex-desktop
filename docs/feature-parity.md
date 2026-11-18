@@ -175,7 +175,9 @@ equivalent, that is what is compared.
 | `/teleport` to Vibe Code Web (2.26.0) | No cloud sessions | N/A |
 | Plugins | Claude-format plugins and marketplaces import as skills, agents and tool servers (see Import Claude plugins) | Done |
 | Headless `-p` runs | The local API answers OpenAI, Anthropic and MCP clients without the window; agent programs (Claude Code, Codex, Gemini CLI) can also be used as models | Adapted |
-| Worktrees, hooks, `vibe config schema` | CLI and coding-agent configuration | N/A |
+| Hooks | Settings → Permissions → Hooks: commands of your own before a tool call (exit code 2 blocks it and tells the model why), after one (what it prints is added to the result) and when a reply finishes; they get the event as JSON and run in the chat's folder. Verified live: a hook blocked web search and the model said so; the reply-finished hook received the answer | Done |
+| Worktrees | Code mode: "In a new worktree, on its own branch" starts the session in a git worktree beside the repository (`<repo>-<task>` on `lumo/<task>`), so the main checkout stays as it is. Verified live: the session's edit landed only in the worktree | Done |
+| `vibe config schema` | CLI configuration | N/A |
 | Mobile apps, admin rollout, workspaces | Single-user desktop app | N/A |
 
 ### 13. From Mistral's docs, page by page (24 pages, about 300 items checked)

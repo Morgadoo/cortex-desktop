@@ -12,6 +12,7 @@
 
 pub mod agent_cli;
 pub mod agents;
+pub mod hooks;
 pub mod plugins;
 pub mod api_server;
 pub mod arena;

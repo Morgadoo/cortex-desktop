@@ -1456,7 +1456,21 @@ async function send(text: string, conversationId: string | null, images: { media
   const projectId = state.view.kind === 'home' ? state.view.projectId ?? null : null;
   const agentId = !conversationId && state.view.kind === 'home' ? state.view.agentId ?? null : null;
   const agent = agentId ? state.agents.find((a) => a.id === agentId) : undefined;
-  const workdir = !conversationId && state.mode === 'code' ? state.workdir : null;
+  let workdir = !conversationId && state.mode === 'code' ? state.workdir : null;
+  // A new Code session can work in its own git worktree, on a branch of its own.
+  if (workdir && worktreeNext()) {
+    try {
+      const [folder, branch] = await tauriInvoke<[string, string]>('chat_create_worktree', { dir: workdir, name: text.split('\n')[0]!.slice(0, 60) });
+      const settings = await api.appSettings();
+      if (!settings.filesystem_allowed_roots.includes(folder)) settings.filesystem_allowed_roots.push(folder);
+      await api.saveAppSettings(settings);
+      workdir = folder;
+      toast(`Working in a new worktree on ${branch}.`);
+    } catch (e) {
+      toast(String(e), 'error');
+      return false;
+    }
+  }
   const temporary = !conversationId && temporaryNext;
   if (conversationId) followUps.delete(conversationId);
   if (!conversationId) {
@@ -3017,6 +3031,19 @@ export class HomeView {
       : agent
         ? h('h1', { class: 'greeting' }, `What should ${agent.name} do?`)
         : h('h1', { class: 'greeting' }, project ? `${project.icon ? `${project.icon} ` : ''}New chat in ${project.name}` : greeting(state.instructions.name));
+    // Code sessions can each get their own git worktree (Vibe's worktrees).
+    const worktreeToggle = code && state.workdir
+      ? h(
+          'label',
+          { class: 'worktree-toggle', title: 'The session works in a git worktree beside the repository, on a branch of its own, so the main checkout stays as it is' },
+          (() => {
+            const box = h('input', { type: 'checkbox', checked: worktreeNext() });
+            box.addEventListener('change', () => setWorktreeNext(box.checked));
+            return box;
+          })(),
+          h('span', {}, 'In a new worktree, on its own branch')
+        )
+      : null;
     composer.attach(null, code ? 'What do you want to build?' : 'Type / for quick access');
     const dismiss = h('button', { class: 'icon-btn small', title: 'Dismiss' }, icon('close', 16));
     dismiss.addEventListener('click', () => {
@@ -3079,7 +3106,7 @@ export class HomeView {
     clear(
       this.el,
       code ? null : ghost,
-      h('div', { class: 'home-inner' }, agent ? h('span', { class: 'agent-avatar large' }, agent.avatar || agent.name.charAt(0)) : h('div', { class: 'brand-mark' }), title, h('div', { class: 'composer-wrap' }, banner, composer.el), suggestions)
+      h('div', { class: 'home-inner' }, agent ? h('span', { class: 'agent-avatar large' }, agent.avatar || agent.name.charAt(0)) : h('div', { class: 'brand-mark' }), title, h('div', { class: 'composer-wrap' }, banner, composer.el), worktreeToggle, suggestions)
     );
     setTimeout(() => composer.focus());
   }
@@ -3091,6 +3118,23 @@ export class HomeView {
   }
 
   private noModels = state.models.length === 0;
+}
+
+/** Whether the next Code session starts in a new git worktree. */
+function worktreeNext(): boolean {
+  try {
+    return localStorage.getItem('lumo.worktree') === 'on';
+  } catch {
+    return false;
+  }
+}
+
+function setWorktreeNext(on: boolean) {
+  try {
+    localStorage.setItem('lumo.worktree', on ? 'on' : 'off');
+  } catch {
+    /* per-device convenience only */
+  }
 }
 
 async function pickWorkdir() {

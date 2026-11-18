@@ -380,6 +380,24 @@ pub async fn run_turn(app: AppHandle, request: TurnRequest, cancel: watch::Recei
     emit(&app, ChatEvent::Started { conversation_id: id.clone() });
     let outcome = turn(&app, &request, cancel).await;
     app.state::<ChatState>().finish(&id);
+    if let Ok(cancelled) = outcome {
+        // The user's turn_end hooks, without holding up the next message.
+        if let Ok(dir) = config_dir(&app) {
+            if super::hooks::load(&dir).iter().any(|h| h.enabled && h.event == "turn_end") {
+                let id = id.clone();
+                tauri::async_runtime::spawn(async move {
+                    let Ok(c) = store::load_conversation(&dir, &id) else { return };
+                    let answer = store::turns(&c)
+                        .iter()
+                        .rev()
+                        .find(|t| t.role == "assistant")
+                        .map(|t| t.parts.iter().filter_map(|p| if let store::Part::Text { text } = p { Some(text.as_str()) } else { None }).collect::<Vec<_>>().join("\n"))
+                        .unwrap_or_default();
+                    super::hooks::turn_end(&dir, &id, &answer, cancelled, c.workdir.as_deref().map(std::path::Path::new)).await;
+                });
+            }
+        }
+    }
     match outcome {
         Ok(cancelled) => emit(&app, ChatEvent::Done { conversation_id: id, cancelled }),
         Err(message) => {
@@ -812,7 +830,7 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         // out of the sequential queue after it was kept out of the concurrent batch.
         let sequential: Vec<bool> = calls.iter().map(|c| waits_on_user(c)).collect();
         let mut outcomes: Vec<Option<tools::Outcome>> = (0..calls.len()).map(|_| None).collect();
-        let runner = Runner { app, config_dir: &config_dir, registry: &registry, offered: &offered, model: &model, request, id, agent: agent.as_ref() };
+        let runner = Runner { app, config_dir: &config_dir, registry: &registry, offered: &offered, model: &model, request, id, agent: agent.as_ref(), workdir: conversation.workdir.clone() };
         let concurrent = futures::future::join_all(
             calls.iter().enumerate().filter(|(i, _)| !sequential[*i]).map(|(i, c)| {
                 let runner = &runner;
@@ -938,10 +956,28 @@ struct Runner<'a> {
     request: &'a TurnRequest,
     id: &'a str,
     agent: Option<&'a agents::Agent>,
+    /// The chat's folder, where hooks run.
+    workdir: Option<String>,
 }
 
 impl Runner<'_> {
+    /// Runs a call between the user's `before_tool` and `after_tool` hooks.
     async fn run(&self, call: &ToolCall) -> tools::Outcome {
+        let name = call.function.name.as_str();
+        let arguments = Value::Object(call.function.arguments.clone());
+        let workdir = self.workdir.as_deref().map(std::path::Path::new);
+        if let Some(reason) = super::hooks::before_tool(self.config_dir, self.id, name, &arguments, workdir).await {
+            return tools::Outcome { text: format!("A hook blocked this call: {reason}"), is_error: true };
+        }
+        let mut outcome = self.run_inner(call).await;
+        let notes = super::hooks::after_tool(self.config_dir, self.id, name, &arguments, &outcome.text, outcome.is_error, workdir).await;
+        if !notes.is_empty() {
+            outcome.text.push_str(&format!("\n\n[From the user's hooks]\n{}", notes.join("\n")));
+        }
+        outcome
+    }
+
+    async fn run_inner(&self, call: &ToolCall) -> tools::Outcome {
         let name = call.function.name.as_str();
         let arguments = Value::Object(call.function.arguments.clone());
         if let Some(raw) = &call.function.invalid_arguments {
