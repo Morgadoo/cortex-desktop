@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 132 |
+| DONE | 58 | 133 |
 | PARTIAL | 86 | 54 |
-| MISSING | 48 | 6 |
+| MISSING | 48 | 5 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9 · LibreChat 33 / 8 / 1 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 15 / 6 / 0 / 5 · Osaurus 11 / 12 / 3 / 4 · OpenBot 18 / 9 / 2 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9 · LibreChat 33 / 8 / 1 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 15 / 6 / 0 / 5 · Osaurus 11 / 12 / 3 / 4 · OpenBot 19 / 9 / 1 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -228,7 +228,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9
 | OpenBot | Earlier-message lookup | MISSING | DONE | parity L271 |
 | OpenBot | Marketplace | MISSING | OUT OF SCOPE | Shared marketplaces (parity L217) |
 | OpenBot | Add skills from a GitHub link | MISSING | DONE | Skills → Import → From a link (parity: Skills from a link) |
-| OpenBot | Vault access per agent | MISSING | MISSING |  |
+| OpenBot | Vault access per agent | MISSING | DONE | parity: Vault (`vault.rs`; Settings → Permissions → Vault; agent editor → Secrets from the vault). Verified live: DEMO_TOKEN saved through Settings (value only in the keychain), granted to one agent; that agent's run_code saw it (length 20) while a plain chat's did not (False); a user tool that printed the key had it masked as [secret DEMO_TOKEN] everywhere in the saved chat |
 | OpenBot | Library views, favourites | PARTIAL | PARTIAL | Missing: views and favourites |
 | OpenBot | Local dictation (Parakeet, Whisper) | PARTIAL | PARTIAL | Missing: a built-in model |
 | OpenBot | Pause length before sending; keeps listening | PARTIAL | DONE | Pause length 0.8–4.5 s in Settings → Audio; the mic stays open for the next turn |

@@ -273,6 +273,8 @@ pub async fn run(config_dir: &Path, conversation_id: &str, args: &Value) -> Outc
             command.env(key, v);
         }
     }
+    // Vault secrets granted to the chat's agent (also reaching the user's own tools).
+    command.envs(super::vault::current());
 
     let started = Instant::now();
     let child = match command.spawn() {

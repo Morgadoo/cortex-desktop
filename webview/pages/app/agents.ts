@@ -147,6 +147,34 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
         )
       )
       .catch(() => clear(libraryList));
+    // Vault secrets it may use (Settings → Permissions → Vault); "everywhere" ones need no pick.
+    const pickedSecrets = new Set(base?.secrets ?? []);
+    const secretList = h('div', { class: 'tool-grid' }, h('small', { class: 'muted' }, 'Loading the vault…'));
+    void tauriInvoke<{ name: string; description: string; everywhere: boolean }[]>('chat_vault_list')
+      .then((all) =>
+        clear(
+          secretList,
+          all.length
+            ? all.map((s) => {
+                if (s.everywhere) return h('span', { class: 'tool-toggle allowed on', title: 'Every chat and agent can use this one' }, icon('check', 14), `${s.name} (everywhere)`);
+                const paint = (b: HTMLElement) => {
+                  const on = pickedSecrets.has(s.name);
+                  b.className = `tool-toggle${on ? ' allowed on' : ' blocked'}`;
+                  b.replaceChildren(icon(on ? 'check' : 'key', 14), s.name);
+                };
+                const b = h('button', { title: s.description || s.name });
+                paint(b);
+                b.addEventListener('click', () => {
+                  if (pickedSecrets.has(s.name)) pickedSecrets.delete(s.name);
+                  else pickedSecrets.add(s.name);
+                  paint(b);
+                });
+                return b;
+              })
+            : h('small', { class: 'muted' }, 'The vault is empty. Add API tokens under Settings → Permissions → Vault, then pick the ones this agent may use.')
+        )
+      )
+      .catch(() => clear(secretList));
     const error = h('p', { class: 'error-text' });
     const save = async () => {
       try {
@@ -166,6 +194,7 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
           starters: starters.value.split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 8),
           reminder: reminder.value.trim(),
           libraries: [...pickedLibraries],
+          secrets: [...pickedSecrets],
           createdAt: existing?.createdAt ?? new Date().toISOString(),
         });
         changed();
@@ -213,6 +242,8 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
       starters,
       h('label', { class: 'field-label', title: 'The agent searches these before answering and cites what it uses' }, 'Libraries'),
       libraryList,
+      h('label', { class: 'field-label', title: 'Given to its shell commands, code and your own tools as environment variables; the model sees only the names' }, 'Secrets from the vault'),
+      secretList,
       error,
       h(
         'div',

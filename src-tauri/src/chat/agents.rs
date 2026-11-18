@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use super::store::{chat_dir, valid_id, write_json};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Agent {
     pub id: String,
@@ -52,6 +52,9 @@ pub struct Agent {
     /// Libraries the agent searches before answering, by id.
     #[serde(default)]
     pub libraries: Vec<String>,
+    /// Vault secrets it may use, by name (besides those marked for everywhere).
+    #[serde(default)]
+    pub secrets: Vec<String>,
     /// A short reminder added to the newest message on every request (Onyx's per-turn
     /// reminder), for rules the agent must not drift from in long chats.
     #[serde(default)]
@@ -351,6 +354,7 @@ pub fn parse_draft(text: &str, tools: &[&str], skills: &[String]) -> Result<Agen
         monthly_budget: None,
         starters: Vec::new(),
         libraries: Vec::new(),
+        secrets: Vec::new(),
         reminder: String::new(),
         created_at: Utc::now(),
         name,
@@ -393,6 +397,7 @@ pub fn templates() -> Vec<Agent> {
         monthly_budget: None,
         starters: Vec::new(),
         libraries: Vec::new(),
+        secrets: Vec::new(),
         reminder: String::new(),
         created_at: Utc::now(),
     };
@@ -453,6 +458,7 @@ mod tests {
             monthly_budget: Some(5.0),
             starters: Vec::new(),
             libraries: Vec::new(),
+            secrets: Vec::new(),
             reminder: String::new(),
             created_at: Utc::now(),
         };

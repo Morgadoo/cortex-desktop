@@ -294,6 +294,8 @@ impl BashConnector {
         process.current_dir(&cwd);
         #[cfg(not(windows))]
         process.env("PATH", command_path::search_path().await);
+        // Vault secrets granted to the chat's agent, as environment variables.
+        process.envs(crate::chat::vault::current());
 
         // Match Command::output's stdio defaults while retaining the process wrappers.
         process

@@ -663,6 +663,9 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         &offered,
     );
     let mut system = system;
+    if let Some(secrets) = super::vault::prompt(&super::vault::granted(&super::vault::list(&config_dir), agent.as_ref())) {
+        system.push_str(&secrets);
+    }
     if !conversation.params.instructions.is_empty() {
         system.push_str(&format!("\n\n## Instructions for this conversation\n{}", conversation.params.instructions));
     }
@@ -1071,7 +1074,12 @@ impl Runner<'_> {
         if let Some(reason) = super::hooks::before_tool(self.config_dir, self.id, name, &arguments, workdir).await {
             return tools::Outcome { text: format!("A hook blocked this call: {reason}"), is_error: true };
         }
-        let mut outcome = self.run_inner(call).await;
+        // The agent's vault secrets reach the processes this call starts, and never the model.
+        let secrets = super::vault::env_for(self.config_dir, self.agent).await;
+        let mut outcome = super::vault::scope(secrets.clone(), self.run_inner(call)).await;
+        if !secrets.is_empty() {
+            outcome.text = super::vault::mask(&outcome.text, &secrets);
+        }
         let notes = super::hooks::after_tool(self.config_dir, self.id, name, &arguments, &outcome.text, outcome.is_error, workdir).await;
         if !notes.is_empty() {
             outcome.text.push_str(&format!("\n\n[From the user's hooks]\n{}", notes.join("\n")));

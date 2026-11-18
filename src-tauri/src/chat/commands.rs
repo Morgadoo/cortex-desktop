@@ -788,6 +788,29 @@ pub fn chat_update_memory(app: AppHandle, id: String, text: String) -> Result<su
     Ok(memories)
 }
 
+/// The vault's secrets (names and notes; values stay in the keychain).
+#[tauri::command]
+pub fn chat_vault_list(app: AppHandle) -> Result<Vec<super::vault::Secret>, String> {
+    Ok(super::vault::list(&config_dir(&app)?))
+}
+
+/// Adds or updates a vault secret; `value` is stored in the keychain when given.
+#[tauri::command]
+pub async fn chat_vault_save(app: AppHandle, secret: super::vault::Secret, value: Option<String>) -> Result<Vec<super::vault::Secret>, String> {
+    super::vault::save(&config_dir(&app)?, secret, value).await
+}
+
+/// Removes a vault secret, its stored value, and every agent's access to it.
+#[tauri::command]
+pub async fn chat_vault_delete(app: AppHandle, name: String) -> Result<Vec<super::vault::Secret>, String> {
+    let dir = config_dir(&app)?;
+    for mut agent in super::agents::load(&dir).into_iter().filter(|a| a.secrets.contains(&name)) {
+        agent.secrets.retain(|s| s != &name);
+        super::agents::save(&dir, agent)?;
+    }
+    super::vault::delete(&dir, &name).await
+}
+
 /// Vibe's "Sensitive data" switch for knowledge.
 #[tauri::command]
 pub fn chat_set_keep_sensitive_out(app: AppHandle, on: bool) -> Result<super::memory::Memories, String> {

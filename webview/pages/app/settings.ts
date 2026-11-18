@@ -34,6 +34,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Speech to text', 'audio', 'dictation microphone whisper transcription stt'],
   ['Text to speech', 'audio', 'read aloud voice tts elevenlabs'],
   ['Voice conversation', 'audio', 'pause silence turn hands-free call talk'],
+  ['Vault', 'permissions', 'secrets tokens api keys passwords agents environment variables keychain'],
   ['Dictation anywhere', 'audio', 'dictation hotkey shortcut system-wide global type speech any app whisper'],
   ['Files', 'permissions', 'edit files folders allow'],
   ['Terminal', 'permissions', 'shell commands run bash'],
@@ -725,7 +726,102 @@ async function renderPermissions(content: HTMLElement) {
     mcpCard(),
     await calendarCard(),
     await hooksCard(),
+    await vaultCard(),
     await openApiCard()
+  );
+}
+
+interface VaultSecret {
+  name: string;
+  description: string;
+  everywhere: boolean;
+}
+
+/**
+ * The vault (OpenBot): API tokens and passwords in the OS keychain, given to the agents that may
+ * use them as environment variables. The model only ever sees the names.
+ */
+async function vaultCard(): Promise<HTMLElement> {
+  let secrets = await tauriInvoke<VaultSecret[]>('chat_vault_list').catch(() => [] as VaultSecret[]);
+  const list = h('div', { class: 'hook-list' });
+  const users = (name: string) => state.agents.filter((a) => a.secrets?.includes(name)).map((a) => a.name);
+  const render = () =>
+    clear(
+      list,
+      secrets.length
+        ? secrets.map((s) =>
+            h(
+              'div',
+              { class: 'hook-row' },
+              icon('key', 16),
+              h(
+                'div',
+                { class: 'grow' },
+                h('strong', {}, s.name),
+                h('small', { class: 'muted', style: 'display:block' }, [s.description, s.everywhere ? 'Every chat and agent' : users(s.name).length ? `Agents: ${users(s.name).join(', ')}` : 'No agent yet: pick it in an agent’s settings'].filter(Boolean).join(' · '))
+              ),
+              h('button', { class: 'link-btn', on: { click: () => edit(s) } }, 'Edit'),
+              h('button', {
+                class: 'icon-btn small',
+                title: 'Delete',
+                on: {
+                  click: async () => {
+                    if (!(await confirmDialog(`Delete ${s.name}?`, 'Its value is removed from the keychain and no agent can use it any more.'))) return;
+                    try {
+                      secrets = await tauriInvoke<VaultSecret[]>('chat_vault_delete', { name: s.name });
+                      state.agents = await api.agents();
+                      render();
+                    } catch (e) {
+                      toast(String(e), 'error');
+                    }
+                  },
+                },
+              }, icon('trash', 14))
+            )
+          )
+        : h('p', { class: 'muted' }, 'Nothing stored yet.')
+    );
+  const edit = (existing?: VaultSecret) =>
+    void modal((close) => {
+      const name = h('input', { class: 'input', value: existing?.name ?? '', placeholder: 'GITHUB_TOKEN', disabled: !!existing, 'aria-label': 'Name' });
+      const description = h('input', { class: 'input', value: existing?.description ?? '', placeholder: 'GitHub token for the work repositories', 'aria-label': 'What it is for' });
+      const value = h('input', { class: 'input', type: 'password', autocomplete: 'off', placeholder: existing ? 'Leave empty to keep the stored value' : 'The token or password', 'aria-label': 'Value' });
+      let everywhere = existing?.everywhere ?? false;
+      const error = h('p', { class: 'error-text' });
+      const save = async () => {
+        try {
+          secrets = await tauriInvoke<VaultSecret[]>('chat_vault_save', {
+            secret: { name: name.value.trim().toUpperCase(), description: description.value.trim(), everywhere },
+            value: value.value || null,
+          });
+          render();
+          toast(existing ? 'Secret saved.' : `${name.value.trim().toUpperCase()} is in the vault. Pick it in an agent’s settings to let it use it.`);
+          close();
+        } catch (e) {
+          error.textContent = String(e);
+        }
+      };
+      return h(
+        'div',
+        { class: 'dialog-small' },
+        modalHeader(existing ? `Edit ${existing.name}` : 'Add a secret', close, { flush: true }),
+        h('label', { class: 'field-label' }, 'Name (the environment variable)'),
+        name,
+        h('label', { class: 'field-label' }, 'What it is for (the model sees this)'),
+        description,
+        h('label', { class: 'field-label' }, 'Value (stored in the keychain)'),
+        value,
+        row('Every chat and agent', 'Off: only the agents you pick can use it.', switchInput(everywhere, (v) => { everywhere = v; })),
+        error,
+        h('div', { class: 'dialog-actions' }, button({ variant: 'secondary', label: 'Cancel', onClick: close }), button({ variant: 'primary', label: 'Save', onClick: () => void save() }))
+      );
+    });
+  render();
+  return card(
+    h('h3', {}, 'Vault'),
+    h('p', { class: 'muted' }, 'API tokens and passwords for agents, kept in the OS keychain. An agent you allow gets them as environment variables in its shell commands, code and your own tools; the model only sees the names, and any value that shows up in a tool’s output is masked.'),
+    list,
+    h('div', { class: 'card-actions start' }, button({ variant: 'secondary', icon: 'plus', label: 'Add a secret', onClick: () => edit() }))
   );
 }
 
