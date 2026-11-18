@@ -872,6 +872,20 @@ pub async fn chat_install_catalog_skill(app: AppHandle, catalog: String, branch:
     Ok(serde_json::json!({ "name": done.name, "files": done.files, "note": done.note }))
 }
 
+/// Publishes skills as a catalogue folder the user chooses, to push to GitHub.
+#[tauri::command]
+pub async fn chat_export_skill_catalog(app: AppHandle, names: Vec<String>, title: String, author: String) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog().file().set_title("Where to write the catalogue").pick_folder(move |p| {
+        let _ = tx.send(p);
+    });
+    let Some(folder) = rx.await.map_err(|e| e.to_string())? else { return Ok(None) };
+    let folder = folder.into_path().map_err(|e| e.to_string())?;
+    super::skill_catalog::export(&config_dir(&app)?, &names, &folder, &title, &author)?;
+    Ok(Some(folder.to_string_lossy().into_owned()))
+}
+
 #[tauri::command]
 pub async fn chat_code_pr_status(app: AppHandle, conversation_id: String) -> Result<Option<super::code::PrStatus>, String> {
     let conversation = store::load_conversation(&config_dir(&app)?, &conversation_id)?;

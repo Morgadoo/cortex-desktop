@@ -239,6 +239,48 @@ pub async fn install(config_dir: &Path, catalog: &str, branch: &str, folder: &st
     Ok(Installed { name, files, note })
 }
 
+/// Publishes skills as a catalogue: writes `.claude-plugin/marketplace.json` and
+/// `skills/<name>/` (SKILL.md and its files) into `dest`, ready to push to a GitHub repository
+/// that others add by `owner/repo`. Returns how many skills were written.
+pub fn export(config_dir: &Path, names: &[String], dest: &Path, catalog_name: &str, author: &str) -> Result<usize, String> {
+    if names.is_empty() {
+        return Err("Choose at least one skill.".into());
+    }
+    let skills_root = dest.join("skills");
+    std::fs::create_dir_all(dest.join(".claude-plugin")).map_err(|e| e.to_string())?;
+    let mut paths = Vec::new();
+    for name in names {
+        let skill = super::skills::find(config_dir, name).ok_or_else(|| format!("There is no skill named {name}."))?;
+        let dir = skills_root.join(&skill.name);
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        std::fs::write(dir.join("SKILL.md"), super::skills::render(&skill.name, &skill.description, &skill.body)).map_err(|e| e.to_string())?;
+        for rel in &skill.files {
+            // Whole and exact (binaries too): read from the skill's folder, decrypted if kept sealed.
+            let bytes = super::at_rest::read(super::skills::skills_dir(config_dir).join(&skill.name).join(rel)).map_err(|e| e.to_string())?;
+            let target = dir.join(rel);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            std::fs::write(target, bytes).map_err(|e| e.to_string())?;
+        }
+        paths.push(format!("./skills/{}", skill.name));
+    }
+    let slug: String = catalog_name.trim().to_lowercase().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+    let slug = if slug.trim_matches('-').is_empty() { "my-skills".to_string() } else { slug.trim_matches('-').to_string() };
+    let market = serde_json::json!({
+        "name": slug,
+        "owner": { "name": if author.trim().is_empty() { "Lumo user" } else { author.trim() } },
+        "metadata": { "description": format!("Skills shared from Lumo: {}", names.join(", ")), "version": "1.0.0" },
+        "plugins": [{ "name": slug, "description": catalog_name.trim(), "source": "./", "strict": false, "skills": paths }]
+    });
+    std::fs::write(dest.join(".claude-plugin").join("marketplace.json"), serde_json::to_string_pretty(&market).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    let readme = format!("# {}\n\nSkills shared from Lumo. Add this catalogue in Lumo (Skills → Import → Browse skill catalogues → Add catalogue, then `owner/repo`), or with any app that reads `.claude-plugin/marketplace.json`.\n\n{}\n", catalog_name.trim(), names.iter().map(|n| format!("- {n}")).collect::<Vec<_>>().join("\n"));
+    if !dest.join("README.md").exists() {
+        std::fs::write(dest.join("README.md"), readme).map_err(|e| e.to_string())?;
+    }
+    Ok(names.len())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -262,6 +304,21 @@ mod tests {
             {"path": "skills/pdfx/other.md", "type": "blob"}
         ]});
         assert_eq!(files_in(&tree, "skills/pdf"), vec!["scripts/fill.py".to_string()]);
+    }
+
+    #[test]
+    fn exported_catalogues_read_back() {
+        let dir = tempfile::tempdir().unwrap();
+        super::super::skills::save(dir.path(), "trip-planner", "Use when planning a trip.", "1. Ask the dates.").unwrap();
+        super::super::skills::add_file(dir.path(), "trip-planner", "templates/day.md", b"# Day").unwrap();
+        let out = dir.path().join("published");
+        assert_eq!(export(dir.path(), &["trip-planner".into()], &out, "Travel skills", "Ana").unwrap(), 1);
+        let market: Value = serde_json::from_str(&std::fs::read_to_string(out.join(".claude-plugin/marketplace.json")).unwrap()).unwrap();
+        assert_eq!(skill_paths(&market), vec![("travel-skills".into(), "skills/trip-planner".into())]);
+        let md = std::fs::read_to_string(out.join("skills/trip-planner/SKILL.md")).unwrap();
+        assert_eq!(super::super::skills::parse(&md).unwrap().0, "trip-planner");
+        assert_eq!(std::fs::read_to_string(out.join("skills/trip-planner/templates/day.md")).unwrap(), "# Day");
+        assert!(export(dir.path(), &[], &out, "x", "").is_err());
     }
 
     /// Against the real public catalogue (`LUMO_TEST_NETWORK=1`).

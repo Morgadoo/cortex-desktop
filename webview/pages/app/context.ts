@@ -860,9 +860,52 @@ async function openSkillCatalog(onAdded: () => void) {
       modalHeader('Skill catalogues', close, { flush: true }),
       h('p', { class: 'muted' }, 'Skills others publish on GitHub, starting with Anthropic\'s. Adding one copies its instructions, and its scripts and files where GitHub lists them, into your skills, to read and change like your own.'),
       sources,
-      h('div', { class: 'row-inline' }, h('div', { class: 'grow' }, search), button({ variant: 'secondary', icon: 'retry', label: 'Refresh', onClick: () => void load(true) })),
+      h('div', { class: 'row-inline' }, h('div', { class: 'grow' }, search), button({ variant: 'secondary', icon: 'retry', label: 'Refresh', onClick: () => void load(true) }), button({ variant: 'secondary', icon: 'share', label: 'Publish my skills…', onClick: () => void publishSkills() })),
       count,
       grid
     );
   }, true);
+}
+
+/** Publishes the user's skills as a catalogue folder to push to GitHub, for others to add. */
+async function publishSkills() {
+  const mine = (await api.skills().catch(() => [] as Skill[])).filter((s) => s.origin === 'user');
+  if (!mine.length) return void toast('You have no skills of your own to publish yet.', 'error');
+  await modal((close) => {
+    const picked = new Set<string>();
+    const title = h('input', { class: 'input', value: 'My skills', 'aria-label': 'Catalogue name' });
+    const author = h('input', { class: 'input', placeholder: 'Your name (optional)', 'aria-label': 'Author' });
+    const list = h(
+      'div',
+      { class: 'hook-list' },
+      mine.map((s) => {
+        const box = h('input', { type: 'checkbox', 'aria-label': s.name });
+        box.addEventListener('change', () => (box.checked ? picked.add(s.name) : picked.delete(s.name)));
+        return h('label', { class: 'hook-row publish-row' }, box, h('div', { class: 'grow' }, h('strong', {}, s.name), h('small', { class: 'muted' }, s.description)));
+      })
+    );
+    const go = button({ variant: 'primary', label: 'Choose a folder and publish', onClick: async () => {
+      try {
+        const folder = await tauriInvoke<string | null>('chat_export_skill_catalog', { names: [...picked], title: title.value, author: author.value });
+        if (!folder) return;
+        close();
+        toast(`Written to ${folder}. Push that folder to a GitHub repository; anyone can then add it as a catalogue by owner/repo.`);
+      } catch (e) {
+        toast(String(e), 'error');
+      }
+    } });
+    return h(
+      'div',
+      { class: 'dialog-small' },
+      modalHeader('Publish skills', close, { flush: true }),
+      h('p', { class: 'muted' }, 'Lumo writes the chosen skills as a catalogue (a .claude-plugin/marketplace.json and a folder per skill). Put it in a GitHub repository, and others add it in Lumo, Claude Code or any app that reads that format.'),
+      h('label', { class: 'field-label' }, 'Catalogue name'),
+      title,
+      h('label', { class: 'field-label' }, 'Author'),
+      author,
+      h('label', { class: 'field-label' }, 'Skills'),
+      list,
+      h('div', { class: 'dialog-actions' }, h('span', { class: 'spacer' }), go)
+    );
+  });
 }
