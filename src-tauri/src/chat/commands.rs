@@ -1742,9 +1742,10 @@ pub fn chat_context_breakdown(app: AppHandle, id: String) -> Result<super::conte
 
 /// Branches a conversation into a new one that continues from the same point.
 #[tauri::command]
-pub fn chat_fork_conversation(app: AppHandle, id: String) -> Result<String, String> {
+pub fn chat_fork_conversation(app: AppHandle, id: String, upto: Option<usize>, without_files: Option<bool>) -> Result<String, String> {
     let dir = config_dir(&app)?;
     let mut c = store::load_conversation(&dir, &id)?;
+    store::branch_copy(&mut c, upto, without_files.unwrap_or(false))?;
     let title = if c.title.is_empty() { engine::fallback_title(&c) } else { c.title.clone() };
     c.id = uuid::Uuid::new_v4().to_string();
     c.title = format!("{title} (branch)");
@@ -1753,6 +1754,8 @@ pub fn chat_fork_conversation(app: AppHandle, id: String) -> Result<String, Stri
     c.temporary = false;
     c.archived = false;
     c.task_id = None;
+    // The branch has spent nothing yet; the original keeps what it cost (budgets count it once).
+    c.usage = Default::default();
     c.created_at = chrono::Utc::now();
     c.updated_at = c.created_at;
     store::save_conversation(&dir, &c)?;

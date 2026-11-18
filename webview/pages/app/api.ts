@@ -334,7 +334,7 @@ export const api = {
   storageHealth: () => call<StorageHealth>('chat_storage_health'),
   recoverConversation: (id: string) => call<string>('chat_recover_conversation', { id }),
   contextBreakdown: (id: string) => call<ContextBreakdown>('chat_context_breakdown', { id }),
-  forkConversation: (id: string) => call<string>('chat_fork_conversation', { id }),
+  forkConversation: (id: string, upto: number | null = null, withoutFiles = false) => call<string>('chat_fork_conversation', { id, upto, withoutFiles }),
   keepConversation: (id: string) => call<void>('chat_keep_conversation', { id }),
   exportConversation: (id: string) => call<boolean>('chat_export_conversation', { id }),
 

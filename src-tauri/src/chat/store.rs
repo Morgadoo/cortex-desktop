@@ -552,6 +552,71 @@ pub fn set_bookmark(conversation: &mut Conversation, index: usize, on: bool) -> 
     Ok(())
 }
 
+/// Keeps a branch of the conversation: the messages up to and including the turn ending at `upto`
+/// (all when `None`), optionally without attached files and images. Notes keyed to dropped
+/// messages go with them; other versions past the cut are not carried over.
+pub fn branch_copy(conversation: &mut Conversation, upto: Option<usize>, without_files: bool) -> Result<(), String> {
+    migrate(conversation);
+    if let Some(upto) = upto {
+        if upto >= conversation.messages.len() {
+            return Err("That message no longer exists.".into());
+        }
+        // The turn's tool results follow its last assistant message; keep them with it.
+        let mut end = upto + 1;
+        while conversation.messages.get(end).is_some_and(|m| matches!(m, Message::User { content } if content.iter().all(|c| matches!(c, UserContent::ToolResult(_))))) {
+            end += 1;
+        }
+        let len = conversation.messages.len();
+        conversation.messages.truncate(end);
+        if end < len {
+            shift_all(&mut conversation.times, end, len);
+            shift_all(&mut conversation.ratings, end, len);
+            shift_all(&mut conversation.rating_reasons, end, len);
+            shift_all(&mut conversation.bookmarks, end, len);
+            shift_all(&mut conversation.thought, end, len);
+            shift_all(&mut conversation.notices, end, len);
+            conversation.branches.retain(|v| v.start() < end);
+            conversation.versions = None;
+            if conversation.summary.as_ref().is_some_and(|s| s.upto > end) {
+                conversation.summary = None;
+            }
+        }
+    }
+    if without_files {
+        for message in &mut conversation.messages {
+            if let Message::User { content } = message {
+                content.retain(|c| !matches!(c, UserContent::Image(_)));
+                for c in content.iter_mut() {
+                    if let UserContent::Text(t) = c {
+                        t.text = strip_attachments(&t.text);
+                    }
+                }
+                if content.is_empty() {
+                    content.push(UserContent::text("(attachments removed)"));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// A message without its `<attachment …>…</attachment>` blocks.
+fn strip_attachments(text: &str) -> String {
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(start) = rest.find("<attachment name=\"") {
+        out.push_str(&rest[..start]);
+        match rest[start..].find("</attachment>") {
+            Some(end) => rest = &rest[start + end + "</attachment>".len()..],
+            None => {
+                rest = "";
+            }
+        }
+    }
+    out.push_str(rest);
+    out.trim_end().to_string()
+}
+
 /// Drops entries keyed inside `start..end` and moves later ones back.
 fn shift_all<T>(entries: &mut Vec<(usize, T)>, start: usize, end: usize) {
     entries.retain(|(i, _)| !(start..end).contains(i));
@@ -863,6 +928,29 @@ mod tests {
         assert_eq!(c.bookmarks, vec![(1, "Second answer".to_string())], "the deleted answer's bookmark goes, the later one moves back");
         set_bookmark(&mut c, 1, false).unwrap();
         assert!(c.bookmarks.is_empty());
+    }
+
+    #[test]
+    fn branches_keep_what_was_asked_for() {
+        let mut c = Conversation::new("c".into(), None, None);
+        c.messages = vec![
+            Message::user("Summarise this\n\n<attachment name=\"notes.txt\">\nsecret plans\n</attachment>"),
+            Message::assistant("A summary."),
+            Message::user("two"),
+            Message::assistant("2"),
+        ];
+        c.ratings = vec![(1, 1), (3, -1)];
+        c.bookmarks = vec![(3, "2".into())];
+        let mut upto = c.clone();
+        branch_copy(&mut upto, Some(1), false).unwrap();
+        assert_eq!(upto.messages.len(), 2);
+        assert_eq!((upto.ratings.clone(), upto.bookmarks.len()), (vec![(1, 1)], 0), "notes on later messages go with them");
+        assert!(super::super::context::message_text(&upto.messages[0]).contains("secret plans"));
+        let mut bare = c.clone();
+        branch_copy(&mut bare, None, true).unwrap();
+        assert_eq!(bare.messages.len(), 4);
+        assert_eq!(super::super::context::message_text(&bare.messages[0]), "Summarise this");
+        assert!(branch_copy(&mut c.clone(), Some(9), false).is_err());
     }
 
     #[test]

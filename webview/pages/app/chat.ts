@@ -759,6 +759,35 @@ function bookmarkButton(turn: Turn, conversationId: string, size = 16): HTMLElem
   return button;
 }
 
+/** A new chat that keeps this one up to here, with or without the files attached on the way. */
+function branchHereButton(turn: Turn, conversationId: string): HTMLElement {
+  const button = h('button', { class: 'icon-btn small', title: 'Branch from here' }, icon('branch', 16));
+  button.addEventListener('click', () => {
+    const go = async (withoutFiles: boolean) => {
+      close();
+      try {
+        const branch = await api.forkConversation(conversationId, turn.index, withoutFiles);
+        await refreshConversations();
+        navigate({ kind: 'chat', id: branch });
+        toast(withoutFiles ? 'Branched from that answer, without the attached files.' : 'Branched from that answer.');
+      } catch (e) {
+        toast(String(e), 'error');
+      }
+    };
+    const close = popover(
+      button,
+      h(
+        'div',
+        { class: 'menu' },
+        h('div', { class: 'menu-heading' }, 'New chat up to this answer'),
+        h('button', { class: 'menu-item', on: { click: () => void go(false) } }, icon('branch', 15), h('span', {}, 'With attached files')),
+        h('button', { class: 'menu-item', on: { click: () => void go(true) } }, icon('file', 15), h('span', {}, 'Without attached files'))
+      )
+    );
+  });
+  return button;
+}
+
 /** Scrolls to a turn by its index and flashes it. */
 export function scrollToTurn(index: number) {
   const target = document.querySelector<HTMLElement>(`.turn[data-index="${index}"]`);
@@ -1038,6 +1067,7 @@ function renderActions(conversation: Conversation, turn: Turn, isLast: boolean, 
     copy,
     bookmarkButton(turn, conversation.id),
     editAnswerButton(turn, conversation.id),
+    isLast ? null : branchHereButton(turn, conversation.id),
     translateButton(turn),
     readAloudButton(textOf(turn.parts)),
     h('span', { class: 'spacer' }),
