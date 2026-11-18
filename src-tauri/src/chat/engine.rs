@@ -966,6 +966,13 @@ impl Runner<'_> {
             return tools::Outcome { text: "Notification shown.".into(), is_error: false };
         }
         if builtins::is_builtin(name) {
+            let mut arguments = arguments;
+            // A follow-up in this chat: the task needs to know which one.
+            if name == builtins::SCHEDULE_TASK {
+                if let Some(map) = arguments.as_object_mut() {
+                    map.insert("reply_in".into(), Value::String(self.id.to_string()));
+                }
+            }
             return builtins::run(self.config_dir, name, &arguments).await;
         }
         match self.offered.iter().find(|t| t.name == name) {
@@ -1206,20 +1213,36 @@ pub async fn run_task(app: AppHandle, task: tasks::Task) {
         tasks::record(&config_dir, &task.id, "", "failed");
         return;
     };
-    let id = uuid::Uuid::new_v4().to_string();
-    let mut conversation = Conversation::new(id.clone(), None, Some(model.clone()));
-    conversation.title = task.title.clone();
-    conversation.agent_id = task.agent_id.clone();
-    conversation.task_id = Some(task.id.clone());
-    conversation.unread = true;
-    if let Err(e) = store::save_conversation(&config_dir, &conversation) {
-        warn!("could not start scheduled task {}: {e}", task.title);
-        return;
-    }
+    // A follow-up continues the chat it was asked in, while that chat still exists.
+    let follow_up = task.reply_in.as_ref().and_then(|id| store::load_conversation(&config_dir, id).ok()).filter(|c| !c.archived);
+    let id = match follow_up {
+        Some(mut conversation) => {
+            conversation.unread = true;
+            if let Err(e) = store::save_conversation(&config_dir, &conversation) {
+                warn!("could not continue a chat for {}: {e}", task.title);
+                return;
+            }
+            conversation.id
+        }
+        None => {
+            let id = uuid::Uuid::new_v4().to_string();
+            let mut conversation = Conversation::new(id.clone(), None, Some(model.clone()));
+            conversation.title = task.title.clone();
+            conversation.agent_id = task.agent_id.clone();
+            conversation.task_id = Some(task.id.clone());
+            conversation.unread = true;
+            if let Err(e) = store::save_conversation(&config_dir, &conversation) {
+                warn!("could not start scheduled task {}: {e}", task.title);
+                return;
+            }
+            id
+        }
+    };
+    let text = if task.reply_in.as_deref() == Some(id.as_str()) { format!("(Scheduled follow-up: {}) {}", task.title, task.prompt) } else { task.prompt.clone() };
     let Some(cancel) = app.state::<ChatState>().begin(&id) else { return };
     let request = TurnRequest {
         conversation_id: id.clone(),
-        text: task.prompt.clone(),
+        text,
         model,
         speed: if agent.as_ref().is_some_and(|a| a.think) { Speed::Think } else { Speed::Fast },
         approval: if task.allow_changes { ApprovalMode::Autonomous } else { ApprovalMode::Unattended },

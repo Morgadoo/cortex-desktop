@@ -73,6 +73,10 @@ pub struct Task {
     /// `NewFiles` tasks: the files already in the folder, so only newer ones start a run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seen: Option<Vec<String>>,
+    /// Runs continue this conversation instead of starting a new one (a follow-up the user asked
+    /// for in a chat: "check again tomorrow").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply_in: Option<String>,
 }
 
 fn yes() -> bool {
@@ -434,6 +438,7 @@ mod tests {
             last_status: None,
             next_run: None,
             seen: None,
+            reply_in: None,
         };
         let mut paused = base.clone();
         paused.id = "p".into();
@@ -469,6 +474,7 @@ mod tests {
             last_status: None,
             next_run: None,
             seen: None,
+            reply_in: None,
         };
         save(config.path(), task).unwrap();
         let later = std::time::SystemTime::now() + Duration::from_secs(60);
@@ -561,6 +567,7 @@ mod tests {
             last_status: None,
             next_run: None,
             seen: None,
+            reply_in: None,
         };
         save(dir.path(), task).unwrap();
         let next = load(dir.path())[0].next_run.unwrap();

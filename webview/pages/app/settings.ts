@@ -7,6 +7,7 @@ import { button, card, modalHeader, switchInput } from './ui';
 import { audioApi, refreshAudioSettings, speakText, type AudioView } from './audio';
 import { SHORTCUTS, bindingFor, comboOf, display, setBinding } from './shortcuts';
 import { ACCENTS, BACKGROUNDS, TEXT_SIZES, ZOOMS, accentHex, applyAppearance, readability, setAccent, setBackground, setReadability, storedAccent, storedBackground, type TextSize } from './appearance';
+import { setVoicePauseMs, voicePauseMs } from './dictation';
 
 export type Section = 'profile' | 'providers' | 'audio' | 'permissions' | 'general' | 'appearance';
 
@@ -30,6 +31,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Images and voice', 'providers', 'image generation dall-e text to speech voice model'],
   ['Speech to text', 'audio', 'dictation microphone whisper transcription stt'],
   ['Text to speech', 'audio', 'read aloud voice tts elevenlabs'],
+  ['Voice conversation', 'audio', 'pause silence turn hands-free call talk'],
   ['Files', 'permissions', 'edit files folders allow'],
   ['Terminal', 'permissions', 'shell commands run bash'],
   ['Your tools', 'permissions', 'custom tools python javascript script'],
@@ -1244,6 +1246,18 @@ async function renderAudio(content: HTMLElement) {
     h('p', { class: 'muted intro' }, 'Choose how voice input is transcribed and how answers are read aloud, with any compatible service or one running on your own machine. Keys stay in the OS keychain.'),
     card(h('h3', {}, 'Speech to text'), h('p', { class: 'muted' }, 'Used by the microphone in the composer.'), sttBody),
     card(h('h3', {}, 'Text to speech'), h('p', { class: 'muted' }, 'Used by the speaker under each answer.'), ttsBody),
-    h('div', { class: 'card-actions' }, test, save)
+    h('div', { class: 'card-actions' }, test, save),
+    card(
+      h('h3', {}, 'Voice conversation'),
+      row(
+        'Pause before your turn ends',
+        'How long you can stop speaking before your words are sent. Longer suits thinking aloud; shorter feels snappier. Saved straight away.',
+        select(
+          [['800', '0.8 seconds'], ['1300', '1.3 seconds (default)'], ['2000', '2 seconds'], ['3000', '3 seconds'], ['4500', '4.5 seconds']],
+          String(voicePauseMs()),
+          (v) => { setVoicePauseMs(Number(v)); toast('Saved.'); }
+        )
+      )
+    )
   );
 }

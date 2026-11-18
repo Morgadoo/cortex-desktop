@@ -664,6 +664,12 @@ function renderUserTurn(turn: Turn, conversationId: string, branch: HTMLElement 
     chips.push(h('span', { class: 'skill-chip' }, icon('forward', 14), 'Added while working'));
     rest = rest.slice(steered[0].length);
   }
+  // A follow-up the user scheduled from this chat, running here.
+  const followUp = rest.match(/^\(Scheduled follow-up: (.+?)\) /);
+  if (followUp) {
+    chips.push(h('span', { class: 'skill-chip' }, icon('clock', 14), `Scheduled: ${followUp[1]}`));
+    rest = rest.slice(followUp[0].length);
+  }
   const workflow = rest.match(/^Run the "(.+?)" workflow\. Go through these steps[\s\S]*?\n\n/);
   if (workflow) {
     chips.push(h('span', { class: 'skill-chip' }, icon('workflow', 14), workflow[1]!));

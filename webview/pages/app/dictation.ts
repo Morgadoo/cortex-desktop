@@ -24,6 +24,24 @@ export interface Listening {
   pauseMs?: number;
 }
 
+/** How long a pause ends a turn in a voice conversation (Settings → Audio), in milliseconds. */
+export function voicePauseMs(): number {
+  try {
+    const v = Number(localStorage.getItem('lumo.voicePauseMs'));
+    return v >= 500 && v <= 5000 ? v : 1300;
+  } catch {
+    return 1300;
+  }
+}
+
+export function setVoicePauseMs(ms: number) {
+  try {
+    localStorage.setItem('lumo.voicePauseMs', String(ms));
+  } catch {
+    // This session only.
+  }
+}
+
 /** RMS above this counts as sound. */
 const SPEECH_LEVEL = 0.02;
 /** Sound shorter than this in total (a click, a cough) is not speech. */
@@ -40,7 +58,7 @@ function pauseDetector(listening: Listening, sampleRate: number): (samples: Floa
     const level = Math.sqrt(sum / samples.length);
     listening.onLevel?.(Math.min(1, level * 8));
     const now = performance.now();
-    const pauseMs = listening.pauseMs ?? 1300;
+    const pauseMs = listening.pauseMs ?? voicePauseMs();
     if (level > SPEECH_LEVEL) {
       speechMs += (samples.length / sampleRate) * 1000;
       quietSince = 0;

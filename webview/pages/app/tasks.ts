@@ -128,6 +128,7 @@ export function editTask(existing: Task | null, onSaved: (tasks: Task[]) => void
             createdAt: existing?.createdAt ?? new Date().toISOString(),
             lastRun: existing?.lastRun ?? null,
             lastConversation: existing?.lastConversation ?? null,
+            replyIn: existing?.replyIn ?? null,
             lastStatus: existing?.lastStatus ?? null,
             nextRun: null,
           })
@@ -281,7 +282,7 @@ export class TasksPage {
       'div',
       { class: 'task-row', on: { click: () => void editTask(t, (tasks) => this.set(tasks)) } },
       agent ? h('span', { class: 'agent-avatar small' }, agent.avatar || agent.name.charAt(0)) : icon('clock', 17),
-      h('div', { class: 'task-text' }, h('strong', {}, t.title), h('span', { class: 'muted' }, `${t.schedule}${t.nextRun ? ` · next ${when(t.nextRun)}` : ''}`)),
+      h('div', { class: 'task-text' }, h('strong', {}, t.title), h('span', { class: 'muted' }, `${t.schedule}${t.nextRun ? ` · next ${when(t.nextRun)}` : ''}${t.replyIn ? ` · continues “${state.conversations.find((c) => c.id === t.replyIn)?.title ?? 'a chat'}”` : ''}`)),
       last,
       run,
       remove,

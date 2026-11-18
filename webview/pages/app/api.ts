@@ -219,6 +219,8 @@ export interface Task {
   createdAt: string;
   lastRun: string | null;
   lastConversation: string | null;
+  /** Runs continue this conversation (a follow-up asked for in a chat). */
+  replyIn?: string | null;
   lastStatus: string | null;
   nextRun: string | null;
   /** "Every Monday at 09:00". */

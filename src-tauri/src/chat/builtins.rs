@@ -130,8 +130,8 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
         SCHEDULE_TASK,
         "Schedule a prompt to run automatically, when the user asks for something recurring or \
          later (\"every Monday at 9, send me…\", \"tomorrow at 8 remind me…\"). Each run \
-         starts a new conversation with the prompt. Write the prompt so it stands alone. Times \
-         are the user's local time.",
+         starts a new conversation with the prompt (or, with `in_this_chat`, continues this \
+         one). Write the prompt so it stands alone. Times are the user's local time.",
         json!({
             "type": "object",
             "properties": {
@@ -143,7 +143,8 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
                 "month": { "type": "integer", "minimum": 1, "maximum": 12, "description": "For yearly: the month, 1–12." },
                 "day_of_month": { "type": "integer", "minimum": 1, "maximum": 31 },
                 "date": { "type": "string", "description": "Once: YYYY-MM-DD." },
-                "agent": { "type": "string", "description": "Name of an agent to run it as, if the user named one." }
+                "agent": { "type": "string", "description": "Name of an agent to run it as, if the user named one." },
+                "in_this_chat": { "type": "boolean", "description": "Run in this conversation, with its context, instead of a new one: for follow-ups on what is being discussed here (\"check this again tomorrow\")." }
             },
             "required": ["title", "prompt", "frequency", "time"]
         }),
@@ -466,6 +467,8 @@ fn schedule(config_dir: &Path, args: &Value) -> Outcome {
             None => return err(format!("There is no agent named {name}.")),
         },
     };
+    // The engine fills `reply_in` with this conversation's id when the model asked for it.
+    let reply_in = args.get("reply_in").and_then(Value::as_str).filter(|_| args.get("in_this_chat").and_then(Value::as_bool) == Some(true)).map(str::to_string);
     let task = tasks::Task {
         id: uuid::Uuid::new_v4().to_string(),
         title: s("title"),
@@ -481,6 +484,7 @@ fn schedule(config_dir: &Path, args: &Value) -> Outcome {
         last_status: None,
         next_run: None,
         seen: None,
+        reply_in,
     };
     let id = task.id.clone();
     match tasks::save(config_dir, task) {
@@ -562,6 +566,13 @@ mod tests {
         assert_eq!(super::super::tasks::load(dir.path()).len(), 1);
         let bad = run(dir.path(), SCHEDULE_TASK, &json!({"title": "x", "prompt": "y", "frequency": "hourly", "time": "09:00"})).await;
         assert!(bad.is_error);
+        // A follow-up in the chat it was asked in; `reply_in` is set by the engine, and only used
+        // when the model asked for it.
+        run(dir.path(), SCHEDULE_TASK, &json!({"title": "Check prices", "prompt": "Check again", "frequency": "once", "date": "2030-01-02", "time": "08:00", "in_this_chat": true, "reply_in": "conv-1"})).await;
+        run(dir.path(), SCHEDULE_TASK, &json!({"title": "Other", "prompt": "New chat", "frequency": "daily", "time": "08:00", "reply_in": "conv-1"})).await;
+        let tasks = super::super::tasks::load(dir.path());
+        assert_eq!(tasks.iter().find(|t| t.title == "Check prices").unwrap().reply_in.as_deref(), Some("conv-1"));
+        assert_eq!(tasks.iter().find(|t| t.title == "Other").unwrap().reply_in, None);
     }
 
     #[tokio::test]
