@@ -32,7 +32,7 @@ against the 5 that survived), and Mistral's documentation: docs.mistral.ai/vibe,
 | Logo and a greeting with the user's name | Same, using the name from Profile | Done |
 | "Work mode is better with your apps connected · Connect ×" banner | Same, dismissible, rotating app badge | Done |
 | Composer: "Type / for quick access", +, approval mode, Fast ▾, mic | Same; the mic takes the send button's place while the input is empty | Done |
-| Model picker | Vibe has none (Mistral only). Here it is any rig provider's model, plus "Compare models…" | Adapted |
+| Model picker | Vibe has none (Mistral only). Here it is any rig provider's model, Auto (a fast or strong model per message), coding agent programs, plus "Compare models…" | Extra |
 | Suggestions: set up and discover, state of AI, connect apps, "Discover more" | Same; "Discover more" reveals five more | Done |
 | Dashed bubble for a temporary chat (top right) | Same | Done |
 
@@ -168,7 +168,7 @@ equivalent, that is what is compared.
 | Footer: active model and thinking level; click to change (3.0.3) | Model and Fast / Think in the composer | Done |
 | Monthly usage gauge (3.1.0) | This month's tokens, cost and chats in the profile menu; also per conversation and per agent | Done |
 | Session PRs shown with links (3.0.3) | Changes view opens the pull request | Done |
-| Smart-approve: risky calls escalate to a prompt and say why (2.25.4) | Commands that are hard to undo (recursive deletes, sudo, force-push, piping a download into a shell, dropping tables…) and deleting tools always ask, in every mode, with the reason; scheduled runs refuse them. A fixed list, not a classifier | Adapted |
+| Smart-approve: risky calls escalate to a prompt and say why (2.25.4) | Two layers. Commands that are hard to undo (recursive deletes, sudo, force-push, piping a download into a shell, dropping tables…) and deleting tools always ask, in every mode, with the reason; scheduled runs refuse them. In Auto mode, everything else that Ask mode would confirm is judged by the model against the user's request (ALLOW, or ASK with a reason addressed to the user; an unclear answer asks). Verified live: listing /tmp ran on its own; posting the listing to example.com stopped with "Auto checked this and wants your OK: Do you want to post /tmp listing to external example.com? It can't be undone." | Done |
 | Sticky prompt pinned above the section being read (3.1.1) | Same; click it to jump back to the prompt | Done |
 | `/release-notes` (3.0.4) | "What's new" in the profile menu | Done |
 | Vim keybindings, mouse capture, cursor blink (3.0.2, 3.1.1) | Terminal-editor settings | N/A |
