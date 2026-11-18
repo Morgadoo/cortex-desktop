@@ -219,6 +219,12 @@
           "markdownDescription": "Answer a question the assistant asked."
         },
         {
+          "description": "Turn the local OpenAI-compatible API on or off and show its token.",
+          "type": "string",
+          "const": "allow-chat-api-server",
+          "markdownDescription": "Turn the local OpenAI-compatible API on or off and show its token."
+        },
+        {
           "description": "Read the audio settings.",
           "type": "string",
           "const": "allow-chat-audio-settings",

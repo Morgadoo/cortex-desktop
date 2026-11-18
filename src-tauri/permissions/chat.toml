@@ -512,3 +512,8 @@ commands.allow = ["chat_search_settings", "chat_save_search_settings"]
 identifier = "allow-chat-exchange-and-bundles"
 description = "Delete a message and its reply, export and import agents, export a conversation as JSON."
 commands.allow = ["chat_delete_exchange", "chat_export_agent", "chat_import_agent", "chat_export_conversation_json"]
+
+[[permission]]
+identifier = "allow-chat-api-server"
+description = "Turn the local OpenAI-compatible API on or off and show its token."
+commands.allow = ["chat_api_server", "chat_save_api_server"]

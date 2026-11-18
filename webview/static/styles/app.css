@@ -484,7 +484,7 @@ select.input { cursor: pointer; }
 .card-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .card-actions.start { justify-content: flex-start; }
 .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 14px 0; border-top: 1px solid var(--border); }
-.card > .setting-row:first-child { border-top: 0; padding-top: 0; }
+.card > .setting-row:first-child, .card > div:first-child > .setting-row:first-child { border-top: 0; padding-top: 0; }
 .setting-row > div { display: flex; flex-direction: column; }
 .setting-row small { font-size: var(--fs-sm); }
 .setting-row .input { max-width: 260px; }
@@ -1339,3 +1339,9 @@ button.usage-meter:hover { background: var(--hover); }
 .voice-heard { color: var(--text-secondary); min-height: 1.4em; }
 .voice-end { margin-top: 8px; }
 @media (prefers-reduced-motion: reduce) { .voice-orb { animation: none !important; transition: none; } }
+
+/* ------------------------------------------------------------------ local API */
+
+.copy-row { display: flex; align-items: center; gap: 10px; margin: 6px 0; min-width: 0; }
+.copy-row code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: var(--bg-hover); padding: 4px 8px; border-radius: var(--radius-sm); font-size: var(--fs-sm); }
+.api-example { background: var(--bg-hover); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px 12px; font-size: var(--fs-xs); white-space: pre-wrap; word-break: break-all; margin: 8px 0 0; }

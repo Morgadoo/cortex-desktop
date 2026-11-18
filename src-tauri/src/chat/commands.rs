@@ -1042,6 +1042,38 @@ pub async fn chat_export_conversation_json(app: AppHandle, id: String) -> Result
     Ok(true)
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiServerView {
+    settings: super::api_server::ApiServerSettings,
+    status: super::api_server::Status,
+    /// Shown so the user can paste it into other tools; only once the server was turned on.
+    token: Option<String>,
+}
+
+async fn api_server_view(app: &AppHandle) -> Result<ApiServerView, String> {
+    let settings = super::api_server::load(&config_dir(app)?);
+    let status = app.state::<super::api_server::ApiServer>().status();
+    let token = if settings.enabled { Some(super::api_server::token(false).await?) } else { None };
+    Ok(ApiServerView { settings, status, token })
+}
+
+#[tauri::command]
+pub async fn chat_api_server(app: AppHandle) -> Result<ApiServerView, String> {
+    api_server_view(&app).await
+}
+
+/// Saves the local API's settings and starts, restarts or stops it to match.
+#[tauri::command]
+pub async fn chat_save_api_server(app: AppHandle, settings: super::api_server::ApiServerSettings, regenerate_token: bool) -> Result<ApiServerView, String> {
+    super::api_server::save(&config_dir(&app)?, &settings)?;
+    if regenerate_token {
+        super::api_server::token(true).await?;
+    }
+    super::api_server::apply(&app).await;
+    api_server_view(&app).await
+}
+
 #[tauri::command]
 pub fn chat_search_settings(app: AppHandle) -> Result<super::search::SearchSettings, String> {
     Ok(super::search::load_settings(&config_dir(&app)?))
@@ -1395,6 +1427,11 @@ pub fn setup(app: &tauri::App) {
         std::thread::spawn(move || super::backup::daily(&dir));
     }
     super::tasks::start(app.handle().clone());
+    app.manage(super::api_server::ApiServer::default());
+    let handle = app.handle().clone();
+    tauri::async_runtime::spawn(async move {
+        super::api_server::apply(&handle).await;
+    });
 }
 
 #[cfg(test)]

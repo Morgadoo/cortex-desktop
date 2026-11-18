@@ -630,8 +630,58 @@ async function renderGeneral(content: HTMLElement) {
     ),
     card(
       row('Suggest follow-ups', 'After each answer, offer three next questions. Each takes one short extra request to the model.', switchInput(followUpsOn(), (v) => setFollowUps(v)))
-    )
+    ),
+    await apiServerCard()
   );
+}
+
+interface ApiServerView {
+  settings: { enabled: boolean; port: number };
+  status: { running: boolean; address: string | null; error: string | null };
+  token: string | null;
+}
+
+/** The local OpenAI-compatible API: other apps on this computer use the models set up here. */
+async function apiServerCard(): Promise<HTMLElement> {
+  const body = h('div', {});
+  const render = (view: ApiServerView) => {
+    const port = h('input', { class: 'input small', type: 'number', min: '1024', max: '65535', value: String(view.settings.port), style: { width: '110px' } });
+    const save = async (enabled: boolean, regenerateToken = false) => {
+      try {
+        render(await tauriInvoke<ApiServerView>('chat_save_api_server', { settings: { enabled, port: Number(port.value) || 8484 }, regenerateToken }));
+      } catch (e) {
+        toast(String(e), 'error');
+      }
+    };
+    port.addEventListener('change', () => void save(view.settings.enabled));
+    const copyable = (label: string, value: string) =>
+      h(
+        'div',
+        { class: 'copy-row' },
+        h('span', { class: 'muted' }, label),
+        h('code', {}, value),
+        h('button', { class: 'link-btn', on: { click: () => void navigator.clipboard.writeText(value).then(() => toast('Copied.')) } }, 'Copy')
+      );
+    const s = view.status;
+    const details = view.settings.enabled
+      ? [
+          s.running && s.address ? copyable('Base URL', s.address) : h('p', { class: 'error-text' }, s.error ?? 'Not running.'),
+          view.token ? copyable('API key', view.token) : null,
+          s.running && s.address && view.token
+            ? h('pre', { class: 'api-example' }, `curl ${s.address}/chat/completions \\\n  -H "Authorization: Bearer ${view.token.slice(0, 9)}…" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model": "${state.model ?? 'vendor/model'}", "messages": [{"role": "user", "content": "Hello"}]}'`)
+            : null,
+          h('div', { class: 'card-actions' }, h('button', { class: 'btn btn-secondary', on: { click: () => void save(true, true) } }, 'New API key')),
+        ]
+      : [];
+    clear(
+      body,
+      row('Local API', 'Lets scripts, editors and other apps on this computer use your models through an OpenAI-compatible API (/v1/chat/completions, /v1/models). Only this computer can reach it, and every request needs the API key.', switchInput(view.settings.enabled, (v) => void save(v))),
+      row('Port', '', port),
+      details
+    );
+  };
+  render(await tauriInvoke<ApiServerView>('chat_api_server'));
+  return card(body);
 }
 
 function renderAppearance(content: HTMLElement) {
