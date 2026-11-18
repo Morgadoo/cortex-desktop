@@ -1383,10 +1383,26 @@ impl Runner<'_> {
         }
         // The agent's vault secrets reach the processes this call starts, and never the model.
         let secrets = super::vault::env_for(self.config_dir, self.agent).await;
+        let started = std::time::Instant::now();
         let mut outcome = super::vault::scope(secrets.clone(), self.run_inner(call)).await;
         if !secrets.is_empty() {
             outcome.text = super::vault::mask(&outcome.text, &secrets);
         }
+        let shown_args = if secrets.is_empty() { arguments.to_string() } else { super::vault::mask(&arguments.to_string(), &secrets) };
+        super::audit::record(
+            self.config_dir,
+            super::audit::Entry {
+                at: Utc::now(),
+                kind: "tool".into(),
+                conversation: self.id.to_string(),
+                agent: self.agent.map(|a| a.name.clone()),
+                tool: name.to_string(),
+                arguments: super::audit::short(&shown_args),
+                outcome: if outcome.is_error { "error" } else { "ok" }.into(),
+                detail: super::audit::short(&outcome.text),
+                millis: started.elapsed().as_millis() as u64,
+            },
+        );
         let notes = super::hooks::after_tool(self.config_dir, self.id, name, &arguments, &outcome.text, outcome.is_error, workdir).await;
         if !notes.is_empty() {
             outcome.text.push_str(&format!("\n\n[From the user's hooks]\n{}", notes.join("\n")));

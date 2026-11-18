@@ -715,6 +715,40 @@ pub fn chat_live_events(state: State<'_, ChatState>, conversation_id: String) ->
     state.replay(&conversation_id)
 }
 
+/// The activity log: how many entries, and since when.
+#[tauri::command]
+pub fn chat_audit_summary(app: AppHandle) -> Result<serde_json::Value, String> {
+    let all = super::audit::entries(&config_dir(&app)?, None);
+    Ok(serde_json::json!({
+        "count": all.len(),
+        "since": all.first().map(|e| e.at),
+        "approvals": all.iter().filter(|e| e.kind == "approval").count(),
+        "denied": all.iter().filter(|e| e.outcome == "denied").count(),
+        "errors": all.iter().filter(|e| e.outcome == "error").count(),
+    }))
+}
+
+/// Saves the activity log (the last `days`, or all) as CSV or JSON where the user chooses.
+#[tauri::command]
+pub async fn chat_export_audit(app: AppHandle, format: String, days: Option<i64>) -> Result<bool, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let since = days.filter(|d| *d > 0).map(|d| chrono::Utc::now() - chrono::Duration::days(d));
+    let entries = super::audit::entries(&config_dir(&app)?, since);
+    let (text, ext) = if format == "json" { (serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?, "json") } else { (super::audit::to_csv(&entries), "csv") };
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog().file().set_file_name(format!("lumo-activity-{}.{ext}", chrono::Local::now().format("%Y-%m-%d"))).save_file(move |p| {
+        let _ = tx.send(p);
+    });
+    let Some(target) = rx.await.map_err(|e| e.to_string())? else { return Ok(false) };
+    std::fs::write(target.into_path().map_err(|e| e.to_string())?, text).map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub fn chat_clear_audit(app: AppHandle) -> Result<(), String> {
+    super::audit::clear(&config_dir(&app)?)
+}
+
 #[tauri::command]
 pub async fn chat_code_pr_status(app: AppHandle, conversation_id: String) -> Result<Option<super::code::PrStatus>, String> {
     let conversation = store::load_conversation(&config_dir(&app)?, &conversation_id)?;

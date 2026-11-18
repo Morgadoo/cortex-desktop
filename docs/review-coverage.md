@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 204 |
+| DONE | 58 | 205 |
 | PARTIAL | 86 | 0 |
 | MISSING | 48 | 1 |
-| OUT OF SCOPE | 31 | 18 |
+| OUT OF SCOPE | 31 | 17 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 49 / 0 / 0 / 5 · LibreChat 45 / 0 / 0 / 1 · LobeHub 32 / 0 / 0 / 2 · Onyx 23 / 0 / 0 / 3 · Osaurus 25 / 0 / 1 / 4 · OpenBot 30 / 0 / 0 / 3.
+Per app now (done / partial / missing / out of scope): Open WebUI 49 / 0 / 0 / 5 · LibreChat 45 / 0 / 0 / 1 · LobeHub 32 / 0 / 0 / 2 · Onyx 23 / 0 / 0 / 3 · Osaurus 25 / 0 / 1 / 4 · OpenBot 31 / 0 / 0 / 2.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -237,7 +237,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 49 / 0 / 0 / 5
 | OpenBot | Name and last message on hover | MISSING | DONE | main.ts:212–215 (chat rows) |
 | OpenBot | Agent templates, everything exports | PARTIAL | DONE | Agent export (parity L295), export everything (settings.ts:186) |
 | OpenBot | Import agents | MISSING | DONE | parity L295 |
-| OpenBot | Audit log export | MISSING | OUT OF SCOPE | Team |
+| OpenBot | Audit log export | MISSING | DONE | Settings → Profile → Activity log: every tool call (tool, arguments shortened, outcome, duration, chat, agent) and every approval decision (approved, approved always, declined), kept a year on this computer (encrypted when encryption is on, vault secrets masked), exported as CSV (spreadsheet-safe) or JSON for the last 7 or 30 days or everything; Clear. Unit-tested; verified live: a run_code approval and call recorded and exported as CSV |
 | OpenBot | Privacy-safe diagnostics export | PARTIAL | DONE | Export diagnostics: versions, platform, settings and counts, no content |
 | OpenBot | SSO, SCIM, tenants, governance | MISSING | OUT OF SCOPE | parity L257 |
 | OpenBot | Slack, Teams, mobile, servers | MISSING | OUT OF SCOPE | parity L256 |

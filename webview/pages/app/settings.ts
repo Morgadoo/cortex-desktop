@@ -43,6 +43,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Web search', 'providers', 'searxng brave tavily engine internet'],
   ['Semantic search', 'providers', 'embeddings libraries vector rag rerank reranker reranking'],
   ['ACP agents', 'providers', 'acp agent client protocol zed claude code codex gemini goose coding agents'],
+  ['Activity log', 'profile', 'audit log export tool calls approvals history csv'],
   ['Built-in models', 'providers', 'local offline download qwen llama whisper on device runtime'],
   ['Document extraction', 'providers', 'tika docling extraction ocr pdf documents parser engine'],
   ['Images and voice', 'providers', 'image generation dall-e text to speech voice model local image server stable diffusion automatic1111 forge draw things'],
@@ -342,7 +343,8 @@ function renderProfile(content: HTMLElement) {
     dataCard,
     encryptionCard(),
     syncCard(() => void renderData()),
-    sharedLinksCard()
+    sharedLinksCard(),
+    activityLogCard()
   );
   void renderData();
 }
@@ -833,6 +835,39 @@ async function mediaCard(): Promise<HTMLElement> {
     voice,
     note(media.voiceVendors, 'text-to-speech (OpenAI or xAI)'),
     h('div', { class: 'card-actions' }, save)
+  );
+}
+
+/** The activity log (OpenBot's audit log): every tool call and approval, exported on demand. */
+function activityLogCard(): HTMLElement {
+  const summary = h('p', { class: 'muted' }, 'Loading…');
+  const range = h('select', { class: 'input', 'aria-label': 'Period' }, h('option', { value: '30' }, 'Last 30 days'), h('option', { value: '7' }, 'Last 7 days'), h('option', { value: '0' }, 'Everything kept'));
+  const load = () =>
+    void tauriInvoke<{ count: number; since: string | null; approvals: number; denied: number; errors: number }>('chat_audit_summary')
+      .then((s) => {
+        summary.textContent = s.count
+          ? `${s.count} entries since ${new Date(s.since!).toLocaleDateString()}: ${s.count - s.approvals} tool calls (${s.errors} failed) and ${s.approvals} approval decisions (${s.denied} declined).`
+          : 'Nothing yet. Tool calls and approvals are recorded here as they happen.';
+      })
+      .catch((e) => (summary.textContent = String(e)));
+  const exportAs = (format: 'csv' | 'json') => async () => {
+    try {
+      if (await tauriInvoke<boolean>('chat_export_audit', { format, days: Number(range.value) || null })) toast('Activity log saved.');
+    } catch (e) {
+      toast(String(e), 'error');
+    }
+  };
+  const clearBtn = button({ variant: 'secondary', label: 'Clear', onClick: async () => {
+    if (!(await confirmDialog('Clear the activity log?', 'Every recorded tool call and approval is removed from this computer.', 'Clear'))) return;
+    await tauriInvoke('chat_clear_audit').catch((e) => toast(String(e), 'error'));
+    load();
+  } });
+  load();
+  return card(
+    h('h3', {}, 'Activity log'),
+    h('p', { class: 'muted' }, 'Every tool the assistant used and every approval you gave or declined: when, in which chat, for which agent, and how it ended. Kept on this computer for a year, encrypted when encryption is on; secrets from the vault are masked.'),
+    summary,
+    h('div', { class: 'card-actions' }, range, button({ variant: 'secondary', icon: 'download', label: 'Export CSV', onClick: exportAs('csv') }), button({ variant: 'secondary', icon: 'download', label: 'Export JSON', onClick: exportAs('json') }), clearBtn)
   );
 }
 

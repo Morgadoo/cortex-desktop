@@ -291,7 +291,7 @@ pub(crate) async fn request_approval_because(app: &AppHandle, tool: &ChatTool, i
             "reason": reason,
         }),
     );
-    match tokio::time::timeout(APPROVAL_WAIT, rx).await {
+    let decision = match tokio::time::timeout(APPROVAL_WAIT, rx).await {
         Ok(Ok(decision)) => decision,
         _ => {
             approvals::cancel(&request_id);
@@ -301,7 +301,29 @@ pub(crate) async fn request_approval_because(app: &AppHandle, tool: &ChatTool, i
             );
             ApprovalDecision::Deny
         }
+    };
+    if let Ok(dir) = crate::settings::get_config_dir(app) {
+        super::audit::record(
+            &dir,
+            super::audit::Entry {
+                at: chrono::Utc::now(),
+                kind: "approval".into(),
+                conversation: String::new(),
+                agent: None,
+                tool: tool.name.clone(),
+                arguments: super::audit::short(&input.to_string()),
+                outcome: match decision {
+                    ApprovalDecision::Deny => "denied",
+                    ApprovalDecision::Once => "approved",
+                    ApprovalDecision::Always => "approved always",
+                }
+                .into(),
+                detail: auto_reason.map(str::to_string).unwrap_or_default(),
+                millis: 0,
+            },
+        );
     }
+    decision
 }
 
 /// What a call returned, as text for the model, and whether it failed.
