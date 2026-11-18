@@ -261,6 +261,7 @@ items most likely to differ:
 | Run a code block from the message | open-webui, LibreChat | Python, JavaScript and shell blocks get a Run button: the block runs in the same sandbox as `run_code` (isolated when bubblewrap is present) and its output, errors and exit code show under it. Verified live, including a failing block | Done |
 | Slash commands | open-webui (built-in `/` commands), Vibe CLI | `/` lists app commands before skills: /new, /temporary, /model, /voice, /fork, /context, /settings, /export, /clear. Verified live (/context) | Done |
 | Hover preview and temporary by default | open-webui, LibreChat | Hovering a chat in the sidebar shows how it left off (from the index, no file read); Settings → General can make new chats temporary by default. Preview verified live | Done |
+| `@` to switch model | open-webui (@model), LibreChat | Typing `@` lists matching models (by name or id) above the skills; picking one switches the model. Verified live | Done |
 | Sort the chat list | LibreChat | The Chats heading's sort button: recent activity, newest first, A–Z or unread first, remembered. Verified live | Done |
 | Another chat as context | open-webui (Reference Chats) | + menu → Other chats: searchable list; the chosen conversation's text is attached as a file chip. Verified live | Done |
 | Mermaid diagrams as SVG or PNG | LibreChat | SVG and PNG buttons on each diagram, saved through the system's save dialog (PNG at twice the size). Verified live | Done |

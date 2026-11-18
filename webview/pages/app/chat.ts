@@ -1314,13 +1314,16 @@ class Composer {
     const skills = match ? state.skills.filter((s) => s.enabled && s.name.startsWith(match[2]!)).sort((a, b) => (uses[b.name] ?? 0) - (uses[a.name] ?? 0)) : [];
     // App commands come first after `/` (Open WebUI's built-in slash commands).
     const commands = match && match[1] === '/' ? SLASH_COMMANDS.filter((c) => c.name.startsWith(match[2]!) && (c.inChat ? Boolean(this.conversationId) : true)) : [];
-    if (!skills.length && !commands.length) {
+    // `@` also switches the model (Open WebUI's @model), matched on its name or id.
+    const key = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, '');
+    const models = match && match[1] === '@' ? state.models.filter((m) => key(m.name).startsWith(key(match[2]!)) || key(m.id).startsWith(key(match[2]!))).slice(0, 6) : [];
+    if (!skills.length && !commands.length && !models.length) {
       this.slashMenu?.close();
       this.slashMenu = null;
       return;
     }
     const list = h('div', { class: 'menu slash-menu' });
-    const items = [...commands.map((c) => `cmd:${c.name}`), ...skills.map((s) => s.name)];
+    const items = [...commands.map((c) => `cmd:${c.name}`), ...models.map((m) => `model:${m.reference}`), ...skills.map((s) => s.name)];
     const index = Math.min(this.slashMenu?.index ?? 0, items.length - 1);
     if (commands.length) list.append(h('div', { class: 'menu-heading' }, 'Commands'));
     commands.forEach((c, i) =>
@@ -1333,9 +1336,21 @@ class Composer {
         )
       )
     );
+    if (models.length) list.append(h('div', { class: 'menu-heading' }, 'Switch model'));
+    models.forEach((m, j) => {
+      const i = commands.length + j;
+      list.append(
+        h(
+          'button',
+          { class: `menu-item rich${i === index ? ' selected' : ''}`, on: { mousedown: (e: MouseEvent) => { e.preventDefault(); this.pickSkill(`model:${m.reference}`); } } },
+          icon('sparkle', 17),
+          h('span', {}, h('strong', {}, m.name), h('small', {}, m.providerLabel))
+        )
+      );
+    });
     if (skills.length) list.append(h('div', { class: 'menu-heading' }, 'Skills'));
     skills.forEach((skill, j) => {
-      const i = commands.length + j;
+      const i = commands.length + models.length + j;
       list.append(
         h(
           'button',
@@ -1371,6 +1386,15 @@ class Composer {
     if (name.startsWith('cmd:')) {
       this.setText('');
       return void this.runCommand(name.slice(4));
+    }
+    if (name.startsWith('model:')) {
+      const reference = name.slice(6);
+      state.model = reference;
+      void api.setDefaultModel(reference);
+      this.setText('');
+      this.renderBar();
+      toast(`Using ${state.models.find((m) => m.reference === reference)?.name ?? reference}.`);
+      return this.focus();
     }
     this.setText(`/${name} `);
     this.textarea.focus();
