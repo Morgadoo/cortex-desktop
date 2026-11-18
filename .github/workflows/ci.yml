@@ -94,12 +94,15 @@ jobs:
         ports:
           - 9998:9998
     env:
-      LUMO_TEST_MODELS: ${{ github.workspace }}/../lumo-test-models
-      LUMO_FETCH_MODELS: ${{ github.workspace }}/../lumo-test-models
       LUMO_TEST_QDRANT: http://localhost:6333
       LUMO_TEST_TIKA: http://localhost:9998
-      LUMO_TEST_WAV: ${{ github.workspace }}/../jfk.wav
     steps:
+      # Outside the checkout, in the home folder: the model cache keeps them between runs.
+      - name: Where the models and the recording go
+        run: |
+          echo "LUMO_TEST_MODELS=$HOME/lumo-test-models" >> "$GITHUB_ENV"
+          echo "LUMO_FETCH_MODELS=$HOME/lumo-test-models" >> "$GITHUB_ENV"
+          echo "LUMO_TEST_WAV=$HOME/jfk.wav" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - name: System libraries
         run: |
@@ -122,7 +125,7 @@ jobs:
       - name: Cache the models
         uses: actions/cache@v4
         with:
-          path: ${{ github.workspace }}/../lumo-test-models
+          path: ~/lumo-test-models
           key: lumo-test-models-v1
       - name: Download the models (with the app's own downloader)
         working-directory: src-tauri
