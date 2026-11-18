@@ -170,6 +170,7 @@ pub fn run() {
             chat::commands::chat_set_backup_model,
             chat::commands::chat_move_document,
             chat::commands::chat_get_defaults,
+            chat::commands::chat_version_texts,
             chat::commands::chat_set_defaults,
                 chat::commands::chat_custom_tools,
                 chat::commands::chat_save_custom_tool,

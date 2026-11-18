@@ -7,7 +7,7 @@ import { clear, confirmDialog, greeting, h, icon, markdown, modal, popover, prom
 import { changed, currentModel, followUpsOn, navigate, setMode, state, temporaryByDefault, type LiveTurn, followStreamOn } from './state';
 import { openSettings } from './settings';
 import { openInstructions } from './pages';
-import { closePanel, enableAskAboutSelection, openSidePanel, renderCanvasCard, setPanelHost } from './canvas';
+import { closePanel, enableAskAboutSelection, openSidePanel, renderCanvasCard, setPanelHost, lineDiff } from './canvas';
 import { hostOf, previewFor, siteIcon } from './favicon';
 import './diagrams';
 import { renderCodeRun, renderImage } from './coderun';
@@ -1136,7 +1136,66 @@ function versionSwitcher(conversationId: string, versions: { from: number; curre
   const next = iconButton({ icon: 'forward', title: 'Next answer', size: 'xs', onClick: go(versions.current + 1) });
   prev.disabled = versions.current === 0;
   next.disabled = versions.current >= versions.total - 1;
-  return h('span', { class: 'versions', title: versions.kind === 'prompt' ? 'Versions of this message and what followed' : 'Answers to this message' }, prev, h('span', { class: 'versions-label' }, `${versions.current + 1} / ${versions.total}`), next);
+  const compare = iconButton({ icon: 'columns', title: 'Compare two versions', size: 'xs', onClick: () => void compareVersions(conversationId, versions.from, versions.current) });
+  return h('span', { class: 'versions', title: versions.kind === 'prompt' ? 'Versions of this message and what followed' : 'Answers to this message' }, prev, h('span', { class: 'versions-label' }, `${versions.current + 1} / ${versions.total}`), next, compare);
+}
+
+/** Two versions of an answer side by side as one text, words removed and added marked (Open WebUI's Compare Text). */
+async function compareVersions(conversationId: string, from: number, current: number) {
+  let texts: string[];
+  try {
+    texts = await tauriInvoke<string[]>('chat_version_texts', { id: conversationId, from });
+  } catch (e) {
+    return void toast(String(e), 'error');
+  }
+  if (texts.length < 2) return;
+  void modal((close) => {
+    const pick = (value: number) => h('select', { class: 'input select-sm' }, texts.map((_, i) => h('option', { value: String(i), selected: i === value }, `Version ${i + 1}`)));
+    const left = pick(current > 0 ? current - 1 : 1);
+    const right = pick(current);
+    const out = h('div', { class: 'word-diff' });
+    const render = () => {
+      const a = texts[Number(left.value)] ?? '';
+      const b = texts[Number(right.value)] ?? '';
+      // Words, with line breaks kept as their own token; runs of one kind join into one mark.
+      const NL = '\u2028';
+      const tokens = (t: string) => t.replace(/\n+/g, ` ${NL} `).split(/[ \t]+/).filter((x) => x !== '');
+      const diff = lineDiff(tokens(a).join('\n'), tokens(b).join('\n'));
+      let removed = 0;
+      let added = 0;
+      const runs: { kind: string; words: string[] }[] = [];
+      for (const d of diff) {
+        if (d.text !== NL) {
+          if (d.kind === '-') removed++;
+          if (d.kind === '+') added++;
+        }
+        const last = runs[runs.length - 1];
+        if (last && last.kind === d.kind) last.words.push(d.text);
+        else runs.push({ kind: d.kind, words: [d.text] });
+      }
+      const show = (words: string[]) =>
+        words.join(' ').split(NL).flatMap((part, i) => (i ? [h('br'), part.trim()] : [part.trim()]));
+      clear(
+        out,
+        runs.flatMap((r, i) => {
+          const body = r.kind === ' ' ? show(r.words) : [h(r.kind === '-' ? 'del' : 'ins', {}, ...show(r.words))];
+          return i ? [' ', ...body] : body;
+        })
+      );
+      stats.textContent = `${removed} words removed, ${added} added`;
+    };
+    const stats = h('small', { class: 'muted' });
+    left.addEventListener('change', render);
+    right.addEventListener('change', render);
+    render();
+    return h(
+      'div',
+      { class: 'dialog-small wide' },
+      modalHeader('Compare versions', close, { flush: true }),
+      h('div', { class: 'freq-row' }, left, h('span', { class: 'muted' }, '\u2192'), right, h('span', { class: 'spacer' }), stats),
+      out
+    );
+  });
 }
 
 /** What is being read aloud, so starting another stops it. */

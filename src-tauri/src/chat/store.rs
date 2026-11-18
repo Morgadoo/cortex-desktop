@@ -710,6 +710,36 @@ pub fn keep_branch(conversation: &mut Conversation, from: usize, kind: &str) {
 }
 
 /// Shows branch `target` (0-based) at the branch point that starts at message `from`.
+/// The answer text of every version at a branch point, in switcher order, to compare them
+/// (Open WebUI's Compare Text).
+pub fn version_texts(conversation: &Conversation, from: usize) -> Result<Vec<String>, String> {
+    let mut conversation = conversation.clone();
+    migrate(&mut conversation);
+    let point = conversation.branches.iter().find(|v| v.start() == from).ok_or("There are no other versions here.")?;
+    let start = point.start();
+    let live: Vec<Message> = conversation.messages.get(start..).map(<[Message]>::to_vec).unwrap_or_default();
+    let mut all: Vec<Vec<Message>> = point.others.clone();
+    all.insert(point.current.min(all.len()), live);
+    Ok(all
+        .iter()
+        .map(|messages| {
+            // The reply: assistant text up to the next message the user typed.
+            let skip = usize::from(messages.first().is_some_and(is_prompt));
+            messages
+                .iter()
+                .skip(skip)
+                .take_while(|m| !is_prompt(m))
+                .filter_map(|m| match m {
+                    Message::Assistant(a) => Some(a.content.iter().filter_map(|c| if let AssistantContent::Text(t) = c { Some(t.text.as_str()) } else { None }).collect::<Vec<_>>().join("\n")),
+                    _ => None,
+                })
+                .filter(|t| !t.trim().is_empty())
+                .collect::<Vec<_>>()
+                .join("\n\n")
+        })
+        .collect())
+}
+
 pub fn select_version(conversation: &mut Conversation, from: usize, target: usize) -> Result<(), String> {
     migrate(conversation);
     let index = conversation
@@ -1026,6 +1056,16 @@ mod tests {
         assert_eq!(text(&c), "A2");
         assert!(select_version(&mut c, 0, 7).is_err());
         assert_eq!(text(&c), "A2", "a bad index leaves the answer as it was");
+        // Every version's answer, in switcher order, to compare.
+        let from = view(&c).versions[0].from;
+        assert_eq!(version_texts(&c, from).unwrap(), ["A1", "A2", "A3"]);
+        // Versions saved in the old single-point format compare the same way.
+        let mut old = c.clone();
+        old.branches.clear();
+        old.messages = vec![Message::user("Q"), Message::assistant("B2")];
+        old.versions = Some(Versions { from: 0, others: vec![vec![Message::assistant("B1")]], current: 1, ..Default::default() });
+        let from = view(&old).versions[0].from;
+        assert_eq!(version_texts(&old, from).unwrap(), ["B1", "B2"]);
         select_version(&mut c, 0, 2).unwrap();
         assert_eq!(text(&c), "A3");
         // The branch point survives later messages; they belong to the branch showing.

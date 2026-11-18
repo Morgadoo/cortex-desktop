@@ -351,7 +351,7 @@ commands.allow = ["chat_delete_knowledge_page"]
 [[permission]]
 identifier = "allow-chat-read-spreadsheet"
 description = "Read an uploaded workbook."
-commands.allow = ["chat_read_spreadsheet", "chat_read_document", "chat_notify", "chat_take_link", "chat_bookmark", "chat_versions", "chat_document_text", "chat_api_server_log", "chat_import_skill_url", "chat_add_web_page", "chat_diagnostics_prefs", "chat_set_diagnostics_prefs", "chat_export_diagnostics", "chat_backup_model", "chat_set_backup_model", "chat_move_document", "chat_get_defaults", "chat_set_defaults"]
+commands.allow = ["chat_read_spreadsheet", "chat_read_document", "chat_notify", "chat_take_link", "chat_bookmark", "chat_versions", "chat_document_text", "chat_api_server_log", "chat_import_skill_url", "chat_add_web_page", "chat_diagnostics_prefs", "chat_set_diagnostics_prefs", "chat_export_diagnostics", "chat_backup_model", "chat_set_backup_model", "chat_move_document", "chat_get_defaults", "chat_set_defaults", "chat_version_texts"]
 
 [[permission]]
 identifier = "allow-chat-terminal-list"

@@ -631,6 +631,12 @@ pub fn chat_set_params(app: AppHandle, id: String, params: store::ChatParams) ->
     Ok(conversation.params)
 }
 
+/// Every version's answer at a branch point, to compare them.
+#[tauri::command]
+pub fn chat_version_texts(app: AppHandle, id: String, from: usize) -> Result<Vec<String>, String> {
+    store::version_texts(&store::load_conversation(&config_dir(&app)?, &id)?, from)
+}
+
 /// The model settings every chat starts from.
 #[tauri::command]
 pub fn chat_get_defaults(app: AppHandle) -> Result<store::ChatParams, String> {
