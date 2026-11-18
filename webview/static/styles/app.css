@@ -1404,3 +1404,4 @@ button.usage-meter:hover { background: var(--hover); }
 .bubble-file pre { margin: 0; padding: 8px 10px; max-height: 320px; overflow: auto; font-size: var(--fs-xs); border-top: 1px solid var(--border); white-space: pre-wrap; }
 
 .composer.expanded .composer-input { max-height: none; }
+.menu-check-space { display: inline-block; width: 15px; }

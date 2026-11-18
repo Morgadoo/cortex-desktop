@@ -1308,19 +1308,34 @@ class Composer {
 
   /** Typing `/` (or `@`, as Vibe Work does) at the start lists the enabled skills; picking one inserts `/name `. */
   private updateSlashMenu() {
-    const match = this.textarea.value.match(/^[/@]([a-z0-9-]*)$/);
+    const match = this.textarea.value.match(/^([/@])([a-z0-9-]*)$/);
     // The skills used most come first: the menu learns from use.
     const uses = skillUses();
-    const skills = match ? state.skills.filter((s) => s.enabled && s.name.startsWith(match[1]!)).sort((a, b) => (uses[b.name] ?? 0) - (uses[a.name] ?? 0)) : [];
-    if (!skills.length) {
+    const skills = match ? state.skills.filter((s) => s.enabled && s.name.startsWith(match[2]!)).sort((a, b) => (uses[b.name] ?? 0) - (uses[a.name] ?? 0)) : [];
+    // App commands come first after `/` (Open WebUI's built-in slash commands).
+    const commands = match && match[1] === '/' ? SLASH_COMMANDS.filter((c) => c.name.startsWith(match[2]!) && (c.inChat ? Boolean(this.conversationId) : true)) : [];
+    if (!skills.length && !commands.length) {
       this.slashMenu?.close();
       this.slashMenu = null;
       return;
     }
-    const list = h('div', { class: 'menu slash-menu' }, h('div', { class: 'menu-heading' }, 'Skills'));
-    const items = skills.map((s) => s.name);
+    const list = h('div', { class: 'menu slash-menu' });
+    const items = [...commands.map((c) => `cmd:${c.name}`), ...skills.map((s) => s.name)];
     const index = Math.min(this.slashMenu?.index ?? 0, items.length - 1);
-    skills.forEach((skill, i) =>
+    if (commands.length) list.append(h('div', { class: 'menu-heading' }, 'Commands'));
+    commands.forEach((c, i) =>
+      list.append(
+        h(
+          'button',
+          { class: `menu-item rich${i === index ? ' selected' : ''}`, on: { mousedown: (e: MouseEvent) => { e.preventDefault(); this.pickSkill(`cmd:${c.name}`); } } },
+          icon(c.icon, 17),
+          h('span', {}, h('strong', {}, `/${c.name}`), h('small', {}, c.desc))
+        )
+      )
+    );
+    if (skills.length) list.append(h('div', { class: 'menu-heading' }, 'Skills'));
+    skills.forEach((skill, j) => {
+      const i = commands.length + j;
       list.append(
         h(
           'button',
@@ -1328,8 +1343,8 @@ class Composer {
           icon('skill', 17),
           h('span', {}, h('strong', {}, `/${skill.name}`), h('small', {}, skill.description))
         )
-      )
-    );
+      );
+    });
     this.slashMenu?.close();
     const close = popover(this.textarea, list, 'above');
     this.slashMenu = { close, items, index, list };
@@ -1353,8 +1368,49 @@ class Composer {
   private pickSkill(name: string) {
     this.slashMenu?.close();
     this.slashMenu = null;
+    if (name.startsWith('cmd:')) {
+      this.setText('');
+      return void this.runCommand(name.slice(4));
+    }
     this.setText(`/${name} `);
     this.textarea.focus();
+  }
+
+  /** The app commands of the `/` menu. */
+  private runCommand(name: string) {
+    const id = this.conversationId;
+    switch (name) {
+      case 'new':
+        return navigate({ kind: 'home' });
+      case 'temporary':
+        temporaryNext = true;
+        toast('The next new chat is temporary: it is not saved to your history.');
+        return navigate({ kind: 'home' });
+      case 'fork':
+        if (id) void api.forkConversation(id).then(async (branch) => { await refreshConversations(); navigate({ kind: 'chat', id: branch }); toast('Branched into a new chat.'); });
+        return;
+      case 'export':
+        if (id) void api.exportConversation(id).then((saved) => saved && toast('Conversation exported.'));
+        return;
+      case 'context':
+        if (id) void showContext(id);
+        return;
+      case 'settings':
+        if (id) void openChatSettings(id);
+        return;
+      case 'model': {
+        const btn = this.bar.querySelector<HTMLElement>('.model-btn');
+        if (btn) openModelPicker(btn, () => this.renderBar());
+        return;
+      }
+      case 'voice':
+        return this.startVoice();
+      case 'clear':
+        this.attachments = [];
+        this.renderChips();
+        this.renderBar();
+        return this.focus();
+    }
   }
 
   attach(conversationId: string | null, placeholder: string) {
@@ -3015,3 +3071,16 @@ function saveDraft(conversationId: string | null, text: string) {
     // Drafts are a convenience.
   }
 }
+
+/** The app's own `/` commands (Open WebUI's built-in slash commands). */
+const SLASH_COMMANDS: { name: string; desc: string; icon: string; inChat?: boolean }[] = [
+  { name: 'new', desc: 'Start a new chat', icon: 'plus' },
+  { name: 'temporary', desc: 'Start a chat that is not saved', icon: 'chatDashed' },
+  { name: 'model', desc: 'Choose the model', icon: 'sparkle' },
+  { name: 'voice', desc: 'Talk hands-free', icon: 'wave' },
+  { name: 'fork', desc: 'Branch this chat into a new one', icon: 'branch', inChat: true },
+  { name: 'context', desc: 'See what fills the context window', icon: 'book', inChat: true },
+  { name: 'settings', desc: 'Model settings for this chat', icon: 'settings', inChat: true },
+  { name: 'export', desc: 'Export this chat as Markdown', icon: 'download', inChat: true },
+  { name: 'clear', desc: 'Remove the attachments from the composer', icon: 'close' },
+];

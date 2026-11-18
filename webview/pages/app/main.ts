@@ -325,6 +325,42 @@ function editProject(id: string) {
   });
 }
 
+type ChatSort = 'recent' | 'created' | 'title' | 'unread';
+const CHAT_SORTS: Record<ChatSort, string> = { recent: 'Recent activity', created: 'Newest first', title: 'A–Z', unread: 'Unread first' };
+let chatSort: ChatSort = (() => {
+  try {
+    const v = localStorage.getItem('lumo.chatSort');
+    return v && v in CHAT_SORTS ? (v as ChatSort) : 'recent';
+  } catch {
+    return 'recent';
+  }
+})();
+
+function checkMark(on: boolean): SVGElement {
+  const mark = icon('check', 15);
+  if (!on) mark.style.visibility = 'hidden';
+  return mark;
+}
+
+function setChatSort(sort: ChatSort) {
+  chatSort = sort;
+  try {
+    localStorage.setItem('lumo.chatSort', sort);
+  } catch {
+    // A convenience only.
+  }
+  changed();
+}
+
+/** The sidebar's chats in the chosen order (the list arrives newest activity first). */
+function sortChats<T extends { title: string; createdAt: string; updatedAt: string; unread: boolean }>(list: T[]): T[] {
+  const out = [...list];
+  if (chatSort === 'created') out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  if (chatSort === 'title') out.sort((a, b) => (a.title || 'Untitled').localeCompare(b.title || 'Untitled', undefined, { sensitivity: 'base' }));
+  if (chatSort === 'unread') out.sort((a, b) => Number(b.unread) - Number(a.unread));
+  return out;
+}
+
 /** Chats listed before "Show more"; search (Ctrl+K) reaches all of them. */
 const SIDEBAR_LIMIT = 30;
 let sidebarExpanded = false;
@@ -334,12 +370,27 @@ function renderConversations(): HTMLElement {
   const section = h('div', { class: 'sidebar-section' });
   const all = state.conversations.filter((c) => !c.archived && !c.projectId && !c.agentId && Boolean(c.workdir) === code);
   const pinned = all.filter((c) => c.pinned);
-  const loose = all.filter((c) => !c.pinned);
+  const loose = sortChats(all.filter((c) => !c.pinned));
   if (pinned.length) {
     section.append(sectionHeading('Pinned'));
     for (const c of pinned) section.append(conversationLink(c.id, c.title, true));
   }
-  section.append(sectionHeading(code ? 'Sessions' : 'Chats'));
+  const sortBtn = h('button', { class: 'icon-btn tiny', title: `Sort: ${CHAT_SORTS[chatSort]}` }, icon('list', 14));
+  sortBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const close = popover(
+      sortBtn,
+      h(
+        'div',
+        { class: 'menu' },
+        h('div', { class: 'menu-heading' }, 'Sort chats'),
+        (Object.keys(CHAT_SORTS) as ChatSort[]).map((k) =>
+          h('button', { class: `menu-item${chatSort === k ? ' selected' : ''}`, on: { click: () => { close(); setChatSort(k); } } }, checkMark(chatSort === k), h('span', {}, CHAT_SORTS[k]))
+        )
+      )
+    );
+  });
+  section.append(sectionHeading(code ? 'Sessions' : 'Chats', sortBtn));
   if (!loose.length) section.append(h('p', { class: 'sidebar-empty' }, code ? 'No sessions yet' : 'No chats yet'));
   // A history of years stays a short list: the newest, the pinned and the open one, then more on request.
   const openId = state.view.kind === 'chat' ? state.view.id : null;
