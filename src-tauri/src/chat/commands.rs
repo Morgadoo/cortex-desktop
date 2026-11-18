@@ -788,6 +788,12 @@ pub fn chat_update_memory(app: AppHandle, id: String, text: String) -> Result<su
     Ok(memories)
 }
 
+/// Brings the main window forward (the wake word heard while Lumo was in the background).
+#[tauri::command]
+pub fn chat_show_window(app: AppHandle) -> Result<(), String> {
+    crate::main_window::show(&app)
+}
+
 /// The interface languages on offer, as (code, name).
 #[tauri::command]
 pub fn chat_ui_languages() -> Vec<(String, String)> {

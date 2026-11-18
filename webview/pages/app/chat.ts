@@ -2657,8 +2657,8 @@ class Composer {
   private transcribing = false;
   private startingDictation = false;
 
-  /** Records from the microphone; stopping sends the audio to the speech model. */
-  private startVoice() {
+  /** Starts a hands-free voice conversation in this chat. */
+  startVoice() {
     if (audioSettings?.stt.engine === 'off') {
       toast('Voice input is off. Choose a speech-to-text engine in Settings → Audio.', 'error');
       return void openSettings('audio');

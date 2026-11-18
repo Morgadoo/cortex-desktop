@@ -10,6 +10,7 @@ import { tauriInvoke } from '../../shared/tauri';
 import { ChatView, CompareView, HomeView, composer, conversationMenu, recordStepTimes, refreshConversations, scrollToTurn, turnEnded, viewCache } from './chat';
 import { clear, h, icon, modal, popover, promptText, confirmDialog, toast } from './dom';
 import { startUiLanguage } from './i18n';
+import { startWakeWord, stopWakeWord, wakePrefs } from './wakeword';
 import { ConnectorsPage, PlaceholderPage, openInstructions } from './pages';
 import { KnowledgePage, SkillsPage } from './context';
 import { AgentPage, AgentsPage, avatar, editAgent, newAgent, reloadAgents } from './agents';
@@ -245,6 +246,23 @@ async function takeLink() {
   composer.renderBar();
   setTimeout(() => composer.focus());
   if (link.prompt) toast('Opened from a link. Check the message, then send it.');
+}
+
+async function startWake() {
+  try {
+    await startWakeWord((request) => {
+      void tauriInvoke('chat_show_window').catch(() => undefined);
+      navigate({ kind: 'home' });
+      setTimeout(() => {
+        if (request) {
+          composer.setText(request);
+          void composer.submit();
+        } else composer.startVoice();
+      }, 100);
+    });
+  } catch (e) {
+    toast(`The wake word needs the microphone: ${String(e)}`, 'error');
+  }
 }
 
 function newChat() {
@@ -872,6 +890,12 @@ async function start() {
   });
   // Links into the app (lumo://new?prompt=…, lumo://chat/<id>): the prompt is typed, never sent.
   void listen('chat://link', () => void takeLink());
+  // The wake word: "Hey Lumo, …" asks in a new chat; "Hey Lumo" alone starts a voice conversation.
+  if (wakePrefs().enabled) void startWake();
+  window.addEventListener('lumo:wake-word-changed', () => {
+    stopWakeWord();
+    if (wakePrefs().enabled) void startWake();
+  });
   // Background sync brought changes from another device.
   void listen<string>('chat://synced', (summary) => {
     window.dispatchEvent(new Event('chat:conversations-changed'));

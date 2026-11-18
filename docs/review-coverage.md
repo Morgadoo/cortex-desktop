@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 135 |
+| DONE | 58 | 136 |
 | PARTIAL | 86 | 54 |
-| MISSING | 48 | 3 |
+| MISSING | 48 | 2 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9 · LibreChat 34 / 8 / 0 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 15 / 6 / 0 / 5 · Osaurus 12 / 12 / 2 / 4 · OpenBot 19 / 9 / 1 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9 · LibreChat 34 / 8 / 0 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 15 / 6 / 0 / 5 · Osaurus 13 / 12 / 1 / 4 · OpenBot 19 / 9 / 1 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -200,7 +200,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9
 | Osaurus | Bundles: agents, skills, MCP servers | MISSING | DONE | Agent files carry the agent, notebook, its skills and the MCP servers it uses, without secrets |
 | Osaurus | Developer tools, request log | PARTIAL | DONE | Recent requests log for the local API |
 | Osaurus | On-device transcription | PARTIAL | PARTIAL | Any OpenAI-compatible server (parity L238). Missing: a built-in model |
-| Osaurus | Wake word | MISSING | MISSING |  |
+| Osaurus | Wake word | MISSING | DONE | parity: Wake word (`wakeword.ts`, `wakematch.ts`; Settings → Audio). Verified live with a virtual microphone: an unrelated phrase was transcribed and ignored; "Hey Lumo, what is two plus two? …" opened a new chat that asked it (answer: 4); with the window hidden, "Hey Lumo" alone brought Lumo forward into a voice conversation |
 | Osaurus | System-wide dictation hotkey | MISSING | DONE | parity: Dictation anywhere (`dictation.rs`, `dictate.ts`; Settings → Audio). Verified live: Ctrl+Alt+D over an xterm opened the Listening pill, speech played into a virtual microphone was recorded (7.4 s WAV) and transcribed, and the text was typed into the xterm; changing the shortcut released the old one; auto-finish on pause and paste mode also ran |
 | Osaurus | On-device images | PARTIAL | PARTIAL | Cloud only (parity L233) |
 | Osaurus | Encrypted sync between devices | MISSING | DONE | parity: Sync between devices (`sync.rs`; Settings → Profile). Verified live with two configurations sharing one folder: device A sent 105 encrypted items (no plaintext in the folder); device B refused a wrong passphrase, then received A's 5 extra conversations and sent its renamed chat, which reached A; a chat deleted on A was moved to B's trash on B's next sync |

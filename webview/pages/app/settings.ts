@@ -5,10 +5,11 @@ import { clear, confirmDialog, h, icon, modal, toast } from './dom';
 import { historyButton } from './versions';
 import { autocompleteOn, changed, finishNotificationsOn, setAutocomplete, finishSoundOn, followStreamOn, followUpsOn, setFinishNotifications, setFinishSound, setFollowStream, setFollowUps, setTemporaryByDefault, state, temporaryByDefault } from './state';
 import { button, card, modalHeader, switchInput } from './ui';
-import { audioApi, refreshAudioSettings, speakText, type AudioView } from './audio';
+import { audioApi, audioSettings, refreshAudioSettings, speakText, type AudioView } from './audio';
 import { SHORTCUTS, bindingFor, comboOf, display, setBinding } from './shortcuts';
 import { ACCENTS, BACKDROPS, BACKGROUNDS, backdropVeil, setBackdrop, setBackdropImage, setBackdropVeil, storedBackdrop, TEXT_SIZES, ZOOMS, accentHex, applyAppearance, readability, setAccent, setBackground, setReadability, storedAccent, storedBackground, type TextSize } from './appearance';
 import { setVoicePauseMs, voicePauseMs } from './dictation';
+import { setWakePrefs, wakePrefs } from './wakeword';
 import { effectiveLanguage, setStoredLanguage, storedLanguage } from './i18n';
 
 export type Section = 'profile' | 'providers' | 'audio' | 'permissions' | 'general' | 'appearance';
@@ -37,6 +38,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Text to speech', 'audio', 'read aloud voice tts elevenlabs'],
   ['Voice conversation', 'audio', 'pause silence turn hands-free call talk'],
   ['Vault', 'permissions', 'secrets tokens api keys passwords agents environment variables keychain'],
+  ['Wake word', 'audio', 'hey lumo wake word hands-free always listening voice activation'],
   ['Dictation anywhere', 'audio', 'dictation hotkey shortcut system-wide global type speech any app whisper'],
   ['Files', 'permissions', 'edit files folders allow'],
   ['Terminal', 'permissions', 'shell commands run bash'],
@@ -1889,7 +1891,33 @@ async function renderAudio(content: HTMLElement) {
         )
       )
     ),
+    wakeWordCard(),
     await dictationCard()
+  );
+}
+
+/** The wake word (Osaurus): "Hey Lumo" from anywhere, while Lumo runs. */
+function wakeWordCard(): HTMLElement {
+  let prefs = wakePrefs();
+  const changed = (next: Partial<typeof prefs>) => {
+    prefs = { ...prefs, ...next };
+    setWakePrefs(prefs);
+    window.dispatchEvent(new Event('lumo:wake-word-changed'));
+  };
+  const phrase = h('input', { class: 'input', value: prefs.phrase, placeholder: 'Hey Lumo', 'aria-label': 'Wake phrase' });
+  phrase.addEventListener('change', () => {
+    changed({ phrase: phrase.value.trim() || 'Hey Lumo' });
+    toast('Saved.');
+  });
+  const local = audioSettings?.stt.engine === 'openai' && /localhost|127\.0\.0\.1|\[::1\]/.test(audioSettings.stt.baseUrl ?? '');
+  return card(
+    h('h3', {}, 'Wake word'),
+    h('p', { class: 'muted' }, 'Say the wake word and a question (“Hey Lumo, what’s on my calendar today?”) and Lumo comes forward and asks it in a new chat; say it alone to start a voice conversation. Works while Lumo is open or in the tray.'),
+    row('Listen for the wake word', local ? 'Short phrases go to your local speech-to-text, so nothing leaves this computer.' : 'Every short phrase said near the microphone goes to the speech-to-text above to be checked. Use a local engine (a Whisper server) to keep it on this computer.', switchInput(prefs.enabled, (v) => {
+      changed({ enabled: v });
+      toast(v ? `Listening for “${prefs.phrase}”.` : 'Wake word off.');
+    })),
+    row('Wake phrase', 'A greeting and a name work best; “Hi” or “OK” in place of “Hey” is understood too.', phrase)
   );
 }
 

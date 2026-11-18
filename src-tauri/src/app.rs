@@ -193,6 +193,7 @@ pub fn run() {
             chat::commands::chat_save_sync_settings,
             chat::commands::chat_sync_now,
             chat::commands::chat_ui_languages,
+            chat::commands::chat_show_window,
             chat::commands::chat_ui_translations,
             chat::commands::chat_ui_coverage,
             chat::commands::chat_translate_ui,
