@@ -9,6 +9,7 @@ import { tauriInvoke } from '../../shared/tauri';
 import { speakText, type Playback } from './audio';
 import { openMicrophone, toBase64, type Microphone } from './dictation';
 import { h, icon, toast } from './dom';
+import { createGlowOrb } from './orbgl';
 
 export interface VoiceHooks {
   /** Sends what was said; false when it could not be sent. */
@@ -43,6 +44,17 @@ export function startVoiceConversation(hooks: VoiceHooks) {
   let ended = false;
 
   const orb = h('button', { class: 'voice-orb', title: 'Tap to interrupt or pause' });
+  // The glowing glass orb, where WebGL is available; the CSS orb otherwise.
+  const canvas = h('canvas', { class: 'voice-orb-gl', 'aria-hidden': 'true' });
+  orb.append(canvas);
+  const glow = createGlowOrb(canvas);
+  if (glow) orb.classList.add('gl');
+  else canvas.remove();
+  const setLevel = (l: number) => {
+    orb.style.setProperty('--level', l.toFixed(2));
+    glow?.setLevel(l);
+  };
+  let speakingLoop = 0;
   const status = h('div', { class: 'voice-status' });
   const heard = h('div', { class: 'voice-heard' });
   const end = h('button', { class: 'btn btn-secondary voice-end' }, icon('close', 15), 'End');
@@ -52,6 +64,7 @@ export function startVoiceConversation(hooks: VoiceHooks) {
   const show = (next: Phase, line?: string) => {
     phase = next;
     overlay.dataset.phase = next;
+    glow?.setPhase(next);
     status.textContent = {
       listening: 'Listening… pause when you are done',
       transcribing: 'Got it…',
@@ -68,6 +81,8 @@ export function startVoiceConversation(hooks: VoiceHooks) {
     mic?.close();
     playback?.stop();
     waiting = null;
+    cancelAnimationFrame(speakingLoop);
+    glow?.destroy();
     overlay.remove();
     document.removeEventListener('keydown', onKey, true);
   };
@@ -92,7 +107,7 @@ export function startVoiceConversation(hooks: VoiceHooks) {
     if (ended) return;
     takeOpen = true;
     mic.listen({
-      onLevel: (level) => orb.style.setProperty('--level', level.toFixed(2)),
+      onLevel: (level) => setLevel(level),
       onPause: () => void finishListening(),
     });
   };
@@ -101,7 +116,7 @@ export function startVoiceConversation(hooks: VoiceHooks) {
     if (!mic || !takeOpen || ended) return;
     takeOpen = false;
     const audio = mic.take();
-    orb.style.setProperty('--level', '0');
+    setLevel(0);
     show('transcribing');
     let text = '';
     try {
@@ -122,7 +137,18 @@ export function startVoiceConversation(hooks: VoiceHooks) {
     show('speaking');
     try {
       playback = await speakText(answer);
+      // The orb follows the voice: measured where it can be, a gentle speech-like pulse otherwise.
+      const started = performance.now();
+      const follow = () => {
+        if (!playback) return;
+        const t = (performance.now() - started) / 1000;
+        setLevel(playback.level ? playback.level() : 0.25 + 0.2 * Math.abs(Math.sin(t * 7.3) * Math.sin(t * 2.1)));
+        speakingLoop = requestAnimationFrame(follow);
+      };
+      follow();
       await playback.done;
+      cancelAnimationFrame(speakingLoop);
+      setLevel(0);
     } catch (e) {
       toast(String(e), 'error');
     }
@@ -140,7 +166,7 @@ export function startVoiceConversation(hooks: VoiceHooks) {
     } else if (phase === 'listening') {
       takeOpen = false;
       mic?.idle();
-      orb.style.setProperty('--level', '0');
+      setLevel(0);
       show('paused');
     } else if (phase === 'paused') {
       void listen();

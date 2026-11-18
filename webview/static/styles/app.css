@@ -1856,3 +1856,7 @@ video.output-thumb { object-fit: cover; background: #000; }
 .video-fallback-actions { position: absolute; inset: auto 0 12px 0; display: flex; justify-content: center; }
 .video-fallback-box.output-thumb .video-fallback { min-height: 0; height: 100%; }
 .video-fallback-box.output-thumb img { height: 100%; object-fit: cover; }
+/* The WebGL glass orb: the button keeps its place and its clicks; the canvas, larger for the glow
+   around it, draws the orb. */
+.voice-orb.gl { position: relative; background: none; box-shadow: none; transform: none; animation: none !important; filter: none !important; overflow: visible; }
+.voice-orb-gl { position: absolute; left: 50%; top: 50%; width: 250px; height: 250px; transform: translate(-50%, -50%); pointer-events: none; }

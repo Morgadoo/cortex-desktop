@@ -16,6 +16,7 @@ import { setWakePrefs, wakePrefs } from './wakeword';
 import { setVimEnabled, vimEnabled } from './vim';
 import { sharedLinksCard } from './share';
 import { effectiveLanguage, setStoredLanguage, storedLanguage } from './i18n';
+import { setOrbColor, storedOrbColor, type OrbColor } from './orbgl';
 
 export type Section = 'profile' | 'providers' | 'audio' | 'permissions' | 'general' | 'appearance';
 
@@ -72,6 +73,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['New chats are temporary', 'general', 'temporary incognito history'],
   ['Keyboard shortcuts', 'general', 'hotkeys keys rebind'],
   ['Slack', 'general', 'slack bot socket mode workspace channel message agent'],
+  ['Voice orb colour', 'audio', 'voice orb colour color ember accent glow shader'],
   ['Telegram', 'general', 'telegram phone mobile bot channel message agent away remote'],
   ['Local API', 'general', 'openai compatible server port token curl mcp anthropic'],
   ['Defaults for every chat', 'general', 'temperature top-p top_p max tokens reply length model parameters'],
@@ -2475,7 +2477,12 @@ function wakeWordCard(): HTMLElement {
       changed({ enabled: v });
       toast(v ? `Listening for “${prefs.phrase}”.` : 'Wake word off.');
     })),
-    row('Wake phrase', 'A greeting and a name work best; “Hi” or “OK” in place of “Hey” is understood too.', phrase)
+    row('Wake phrase', 'A greeting and a name work best; “Hi” or “OK” in place of “Hey” is understood too.', phrase),
+    row('Voice orb colour', 'The glowing glass orb of a voice conversation: the warm ember, or your accent colour.', (() => {
+      const sel = h('select', { class: 'input', 'aria-label': 'Voice orb colour' }, h('option', { value: 'ember', selected: storedOrbColor() === 'ember' }, 'Ember'), h('option', { value: 'accent', selected: storedOrbColor() === 'accent' }, 'Accent colour'));
+      sel.addEventListener('change', () => setOrbColor(sel.value as OrbColor));
+      return sel;
+    })())
   );
 }
 

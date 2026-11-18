@@ -51,6 +51,34 @@ export async function refreshAudioSettings(): Promise<void> {
 export interface Playback {
   stop(): void;
   done: Promise<void>;
+  /** How loud it is now, 0–1, where the sound can be measured (audio from a provider). */
+  level?: () => number;
+}
+
+/** A meter on an audio element: its loudness, 0–1, read when asked. */
+function meter(audio: HTMLAudioElement): (() => number) | undefined {
+  try {
+    const Context = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const ctx = new Context();
+    const source = ctx.createMediaElementSource(audio);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 512;
+    source.connect(analyser);
+    analyser.connect(ctx.destination);
+    const data = new Uint8Array(analyser.fftSize);
+    // A context made before playback can start suspended, which would silence the voice.
+    void ctx.resume();
+    audio.addEventListener('ended', () => void ctx.close());
+    audio.addEventListener('pause', () => void ctx.close());
+    return () => {
+      analyser.getByteTimeDomainData(data);
+      let sum = 0;
+      for (const v of data) sum += ((v - 128) / 128) ** 2;
+      return Math.min(1, Math.sqrt(sum / data.length) * 4);
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 /** A provider error, made short and plain: what went wrong, not the service's JSON. */
@@ -89,12 +117,13 @@ export async function speakText(text: string): Promise<Playback> {
   }
   if (out.kind === 'audio') {
     const audio = new Audio(`data:${out.mime};base64,${out.data}`);
+    const level = meter(audio);
     const done = new Promise<void>((resolve) => {
       audio.addEventListener('ended', () => resolve());
       audio.addEventListener('pause', () => resolve());
     });
     await audio.play();
-    return { stop: () => audio.pause(), done };
+    return { stop: () => audio.pause(), done, level };
   }
   if (!('speechSynthesis' in window)) throw new Error('This system has no built-in voice. Choose another engine in Settings → Audio.');
   const utterance = new SpeechSynthesisUtterance(out.text);
