@@ -214,6 +214,60 @@ pub fn github_repo(remote: &str) -> Option<String> {
     (!owner.is_empty() && !repo.is_empty() && parts.next().is_none()).then(|| format!("{owner}/{repo}"))
 }
 
+/// Host and repository path of a remote URL (https, ssh or scp-style), e.g.
+/// `("gitlab.com", "group/sub/app")`.
+pub fn remote_location(remote: &str) -> Option<(String, String)> {
+    let remote = remote.trim().trim_end_matches('/').trim_end_matches(".git");
+    let rest = if let Some(r) = remote.strip_prefix("https://").or_else(|| remote.strip_prefix("http://")).or_else(|| remote.strip_prefix("ssh://")) {
+        r.to_string()
+    } else {
+        // scp-like `user@host:path`.
+        let (host, path) = remote.split_once(':')?;
+        if host.contains('/') || path.starts_with("//") {
+            return None;
+        }
+        format!("{host}/{path}")
+    };
+    let (host, path) = rest.split_once('/')?;
+    let host = host.rsplit('@').next()?.split(':').next()?.to_lowercase();
+    let path = path.trim_matches('/');
+    (!host.is_empty() && path.contains('/')).then(|| (host, path.to_string()))
+}
+
+/// The page that opens a pull (or merge) request on a known kind of host.
+pub fn compare_page(remote: &str, base: &str, branch: &str) -> Option<String> {
+    let (host, path) = remote_location(remote)?;
+    let enc = |s: &str| s.replace('%', "%25").replace(' ', "%20").replace('#', "%23").replace('&', "%26").replace('?', "%3F");
+    if host == "github.com" {
+        return github_repo(remote).map(|repo| format!("https://github.com/{repo}/compare/{}...{}?expand=1", enc(base), enc(branch)));
+    }
+    if host.contains("gitlab") {
+        return Some(format!(
+            "https://{host}/{path}/-/merge_requests/new?merge_request%5Bsource_branch%5D={}&merge_request%5Btarget_branch%5D={}",
+            enc(branch),
+            enc(base)
+        ));
+    }
+    if host == "bitbucket.org" {
+        return Some(format!("https://bitbucket.org/{path}/pull-requests/new?source={}&dest={}", enc(branch), enc(base)));
+    }
+    if host == "codeberg.org" || host.contains("gitea") || host.contains("forgejo") {
+        return Some(format!("https://{host}/{path}/compare/{}...{}", enc(base), enc(branch)));
+    }
+    None
+}
+
+/// The link a host prints while pushing a new branch ("To create a merge request…"): GitLab,
+/// Gitea, Forgejo and Bitbucket do this, self-hosted ones included.
+pub fn link_from_push(output: &str) -> Option<String> {
+    output.lines().find_map(|line| {
+        let line = line.trim_start_matches("remote:").trim();
+        let start = line.find("https://").or_else(|| line.find("http://"))?;
+        let url = line[start..].split_whitespace().next()?;
+        ["merge_requests/new", "pull-requests/new", "/compare/", "/pull/new/", "/pulls/new"].iter().any(|m| url.contains(m)).then(|| url.to_string())
+    })
+}
+
 /// A branch name from a title: `ai/` plus lowercase words joined by hyphens.
 fn branch_name(title: &str) -> String {
     let slug: String = title
@@ -230,8 +284,10 @@ fn branch_name(title: &str) -> String {
 }
 
 /// Pushes the current branch (creating one first when on the default branch) and opens a pull
-/// request for it: with the GitHub CLI when it is installed and signed in, otherwise by handing
-/// back GitHub's compare page, where the user finishes it in the browser.
+/// request for it: with the GitHub CLI (or GitLab's `glab`) when it is installed and signed in,
+/// otherwise by handing back the host's new-pull-request page, where the user finishes it. The
+/// page comes from the remote for GitHub, GitLab, Bitbucket, Codeberg, Gitea and Forgejo, or from
+/// the link the host printed during the push.
 pub fn open_pull_request(dir: &str, title: &str) -> Result<PullRequest, String> {
     let path = Path::new(dir);
     let run = |args: &[&str]| -> Result<String, String> {
@@ -252,7 +308,11 @@ pub fn open_pull_request(dir: &str, title: &str) -> Result<PullRequest, String> 
         branch = branch_name(title);
         run(&["switch", "-c", &branch])?;
     }
-    run(&["push", "-u", "origin", &branch]).map_err(|e| format!("Pushing {branch} failed: {e}"))?;
+    let push = Command::new("git").arg("-C").arg(path).args(["push", "-u", "origin", &branch]).env("LC_ALL", "C").output().map_err(|e| e.to_string())?;
+    let push_output = format!("{}\n{}", String::from_utf8_lossy(&push.stdout), String::from_utf8_lossy(&push.stderr));
+    if !push.status.success() {
+        return Err(format!("Pushing {branch} failed: {}", String::from_utf8_lossy(&push.stderr).trim()));
+    }
 
     let repo = github_repo(&remote);
     // The GitHub CLI, when it is installed and signed in, opens the pull request directly.
@@ -266,10 +326,19 @@ pub fn open_pull_request(dir: &str, title: &str) -> Result<PullRequest, String> 
             }
         }
     }
-    Ok(match repo {
-        Some(repo) => PullRequest { url: Some(format!("https://github.com/{repo}/compare/{default}...{branch}?expand=1")), branch, via: "browser".into() },
-        None => PullRequest { branch, url: None, via: "none".into() },
-    })
+    // GitLab's CLI does the same for GitLab remotes.
+    if remote_location(&remote).is_some_and(|(host, _)| host.contains("gitlab")) {
+        let mut glab = Command::new("glab");
+        glab.current_dir(path).args(["mr", "create", "--source-branch", &branch, "--target-branch", &default, "--title", title.trim(), "--fill", "--yes"]);
+        if let Ok(out) = glab.output() {
+            if out.status.success() {
+                let url = String::from_utf8_lossy(&out.stdout).split_whitespace().rev().find(|w| w.starts_with("https://")).map(str::to_string);
+                return Ok(PullRequest { branch, url, via: "cli".into() });
+            }
+        }
+    }
+    let url = compare_page(&remote, &default, &branch).or_else(|| link_from_push(&push_output));
+    Ok(PullRequest { via: if url.is_some() { "browser" } else { "none" }.into(), url, branch })
 }
 
 fn parse(numstat: &str, names: &str) -> Vec<ChangedFile> {
@@ -387,6 +456,31 @@ mod tests {
     }
 
     #[test]
+    fn finds_the_pull_request_page_on_other_hosts() {
+        assert_eq!(remote_location("git@gitlab.com:group/sub/app.git"), Some(("gitlab.com".into(), "group/sub/app".into())));
+        assert_eq!(remote_location("ssh://git@git.example.org:2222/team/app.git"), Some(("git.example.org".into(), "team/app".into())));
+        assert_eq!(remote_location("https://user@bitbucket.org/team/app.git"), Some(("bitbucket.org".into(), "team/app".into())));
+        assert_eq!(remote_location("/srv/git/app.git"), None);
+        assert_eq!(
+            compare_page("git@github.com:acme/app.git", "main", "ai/x").as_deref(),
+            Some("https://github.com/acme/app/compare/main...ai/x?expand=1")
+        );
+        assert_eq!(
+            compare_page("https://gitlab.example.com/group/app.git", "main", "ai/x").as_deref(),
+            Some("https://gitlab.example.com/group/app/-/merge_requests/new?merge_request%5Bsource_branch%5D=ai/x&merge_request%5Btarget_branch%5D=main")
+        );
+        assert_eq!(
+            compare_page("git@bitbucket.org:team/app.git", "main", "ai/x").as_deref(),
+            Some("https://bitbucket.org/team/app/pull-requests/new?source=ai/x&dest=main")
+        );
+        assert_eq!(compare_page("https://codeberg.org/me/app.git", "main", "ai/x").as_deref(), Some("https://codeberg.org/me/app/compare/main...ai/x"));
+        assert_eq!(compare_page("https://git.example.org/me/app.git", "main", "ai/x"), None);
+        let gitea = "remote: \nremote: Create a new pull request for 'ai/x':\nremote:   https://git.example.org/me/app/compare/main...ai/x\nremote: \nTo git.example.org:me/app.git";
+        assert_eq!(link_from_push(gitea).as_deref(), Some("https://git.example.org/me/app/compare/main...ai/x"));
+        assert_eq!(link_from_push("To /srv/git/app.git\n * [new branch] ai/x -> ai/x"), None);
+    }
+
+    #[test]
     fn pushes_a_new_branch_for_a_pull_request() {
         if Command::new("git").arg("--version").output().is_err() {
             return;
@@ -405,10 +499,26 @@ mod tests {
         std::fs::write(work.join("a.txt"), "two\n").unwrap();
         commit(work.to_str().unwrap(), "Second").unwrap();
 
-        // On the default branch: a branch is made from the title and pushed; a non-GitHub remote
-        // has no page to open.
+        // On the default branch: a branch is made from the title and pushed; a local remote has
+        // no page to open.
         let pr = open_pull_request(work.to_str().unwrap(), "Use two").unwrap();
         assert_eq!(pr, PullRequest { branch: "ai/use-two".into(), url: None, via: "none".into() });
+
+        // A host that prints a link while receiving a branch (as Gitea and GitLab do): that link
+        // is the page to finish the pull request on.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let hook = remote.join("hooks/post-receive");
+            std::fs::write(&hook, "#!/bin/sh\necho\necho \"Create a new pull request for 'ai/use-three':\"\necho \"  https://git.example.org/me/app/compare/main...ai/use-three\"\n").unwrap();
+            std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+            sh(&work, &["switch", "-q", "main"]);
+            std::fs::write(work.join("a.txt"), "three\n").unwrap();
+            commit(work.to_str().unwrap(), "Third").unwrap();
+            let pr = open_pull_request(work.to_str().unwrap(), "Use three").unwrap();
+            assert_eq!(pr.url.as_deref(), Some("https://git.example.org/me/app/compare/main...ai/use-three"));
+            assert_eq!(pr.via, "browser");
+        }
         let remote_branches = Command::new("git").arg("-C").arg(&remote).args(["branch", "--list"]).output().unwrap();
         assert!(String::from_utf8_lossy(&remote_branches.stdout).contains("ai/use-two"));
     }

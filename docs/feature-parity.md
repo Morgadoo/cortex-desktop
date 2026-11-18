@@ -118,7 +118,7 @@ against the 5 that survived), and Mistral's documentation: docs.mistral.ai/vibe,
 | File and terminal tools with approvals | Same; Accept edits lets file edits through | Done |
 | Knows the repository | Branch, uncommitted files, recent commits, and `AGENTS.md` / `CLAUDE.md` in the prompt | Done |
 | Review changes | Changes view: files with +/− and a coloured diff; edits appear as diffs in the timeline | Done |
-| Commit and open pull requests (docs) | Commit, then Pull request: branches off the default branch, pushes, and opens the PR with `gh` or GitHub's compare page | Done |
+| Commit and open pull requests (docs) | Commit, then Pull request: branches off the default branch, pushes, and opens the PR with `gh` (or `glab` for GitLab), else the host's new-request page: GitHub, GitLab (self-hosted too), Bitbucket, Codeberg, Gitea and Forgejo, or the link any host prints during the push. Tested against a real push whose server prints a Gitea-style link | Done |
 | Integrated terminal and background commands (Vibe Desktop, release notes Nov 2026) | Terminal panel in coding sessions: run long commands (dev servers, watchers) in the folder, live output, stop; the model starts, reads and stops them (`terminal_*`), starting asks for approval; stopping ends the whole process group; all stop when the app quits | Done |
 
 ### 10. Apps
@@ -321,5 +321,5 @@ below. What was deliberately left out, and why:
   xAI voice model spoke). ElevenLabs speech-to-text and ElevenLabs voices need keys this setup does
   not have.
 - **Computer use on macOS and Wayland input:** only Linux/X11 was run here; macOS uses screencapture and cliclick, and Wayland can take screenshots (grim) but not click.
-- **Pull requests to non-GitHub remotes:** the branch is pushed, and the pull request is opened on that host by hand.
+- **Pull requests on unknown hosts:** a host that is not recognised and prints no link during the push gets the branch pushed, and the pull request is opened there by hand.
 - **Branding:** the app still carries the Lumo name and logo; a new name is the owner's decision.

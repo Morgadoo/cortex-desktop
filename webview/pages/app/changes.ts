@@ -167,7 +167,7 @@ export function openChanges(conversationId: string, folder: string) {
       show(null, all);
     };
     refresh.addEventListener('click', () => void load());
-    // Push the session's branch and open a pull request: GitHub CLI when installed, else the browser.
+    // Push the session's branch and open a pull request: gh or glab when installed, else the host's page.
     const pullRequest = h('button', { class: 'btn btn-secondary btn-sm' }, icon('share', 14), 'Pull request');
     pullRequest.addEventListener('click', async () => {
       const title = await promptText('Pull request title', '', 'What these changes do');
@@ -177,11 +177,11 @@ export function openChanges(conversationId: string, folder: string) {
         const pr = await tauriInvoke<{ branch: string; url: string | null; via: string }>('chat_code_pull_request', { conversationId, title });
         if (pr.url) window.open(pr.url, '_blank', 'noopener');
         toast(
-          pr.via === 'gh'
+          pr.via === 'gh' || pr.via === 'cli'
             ? `Pull request opened from ${pr.branch}.`
             : pr.via === 'browser'
               ? `Pushed ${pr.branch}; finish the pull request in your browser.`
-              : `Pushed ${pr.branch}. The remote is not on GitHub, so open the pull request there.`
+              : `Pushed ${pr.branch}. This host has no known pull request page, so open it there.`
         );
         void load();
       } catch (e) {
