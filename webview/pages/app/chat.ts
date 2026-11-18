@@ -727,6 +727,44 @@ function renderUserTurn(turn: Turn, conversationId: string, branch: HTMLElement 
   );
 }
 
+const TRANSLATE_TO = ['English', 'Português', 'Español', 'Français', 'Deutsch', 'Italiano', '日本語', '中文'];
+
+/** Translates an answer below itself (LibreChat, LobeHub); the conversation keeps the original. */
+function translateButton(turn: Turn): HTMLElement {
+  const button = h('button', { class: 'icon-btn small', title: 'Translate' }, icon('globe', 16));
+  button.addEventListener('click', () => {
+    const show = async (language: string) => {
+      const host = button.closest('.turn');
+      if (!host || !state.model) return;
+      host.querySelector('.translation')?.remove();
+      const box = h('div', { class: 'translation' }, h('div', { class: 'translation-head' }, icon('globe', 14), `Translating into ${language}…`));
+      host.querySelector('.turn-actions')?.before(box);
+      try {
+        const text = await tauriInvoke<string>('chat_translate', { model: state.model, text: textOf(turn.parts), language });
+        clear(
+          box,
+          h('div', { class: 'translation-head' }, icon('globe', 14), language, h('span', { class: 'spacer' }), h('button', { class: 'link-btn', on: { click: () => box.remove() } }, 'Hide')),
+          h('div', { class: 'markdown' }, markdown(text))
+        );
+      } catch (e) {
+        box.remove();
+        toast(String(e), 'error');
+      }
+    };
+    const close = popover(
+      button,
+      h(
+        'div',
+        { class: 'menu' },
+        h('div', { class: 'menu-heading' }, 'Translate into'),
+        TRANSLATE_TO.map((l) => h('button', { class: 'menu-item', on: { click: () => { close(); void show(l); } } }, l)),
+        h('button', { class: 'menu-item', on: { click: async () => { close(); const other = await promptText('Translate into', '', 'Any language'); if (other) void show(other); } } }, 'Other…')
+      )
+    );
+  });
+  return button;
+}
+
 /** Removes a sent message and the reply to it, to tidy a conversation. */
 function deleteExchangeButton(turn: Turn, conversationId: string): HTMLElement {
   return h(
@@ -900,6 +938,7 @@ function renderActions(conversation: Conversation, turn: Turn, isLast: boolean, 
     h('button', { class: `icon-btn small${turn.rating < 0 ? ' active-bad' : ''}`, title: 'Bad reply', on: { click: rate(-1) } }, icon('thumbDown', 16)),
     isLast ? h('button', { class: 'icon-btn small', title: 'Regenerate', on: { click: () => void regenerate(conversation.id) } }, icon('retry', 16)) : null,
     copy,
+    translateButton(turn),
     readAloudButton(textOf(turn.parts)),
     h('span', { class: 'spacer' }),
     h('span', { class: 'turn-time' }, timeLabel(turn.time))

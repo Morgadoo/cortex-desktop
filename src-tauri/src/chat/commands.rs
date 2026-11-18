@@ -1235,6 +1235,27 @@ pub fn chat_snippet_languages() -> Vec<&'static str> {
     super::sandbox::languages()
 }
 
+/// An answer translated into `language`, Markdown kept; shown beside the original, not stored.
+#[tauri::command]
+pub async fn chat_translate(app: AppHandle, model: String, text: String, language: String) -> Result<String, String> {
+    let language: String = language.trim().chars().take(40).collect();
+    if language.is_empty() || text.trim().is_empty() {
+        return Err("Nothing to translate.".into());
+    }
+    let model = engine::connect_model(&config_dir(&app)?, &model).await?;
+    let prompt = format!(
+        "Translate the text below into {language}. Keep its Markdown, code blocks, links and numbers exactly; \
+         translate only the prose. Reply with the translation alone.\n\n{}",
+        text.chars().take(30_000).collect::<String>()
+    );
+    let request = rig_core::completion::CompletionRequest::new(rig_core::completion::message::Message::user(prompt)).max_tokens(8_000u64);
+    let response = tokio::time::timeout(std::time::Duration::from_secs(120), model.call(request))
+        .await
+        .map_err(|_| "The provider did not answer in time.".to_string())?
+        .map_err(|e| super::context::short_error(&e.to_string()))?;
+    Ok(response.text())
+}
+
 /// A conversation as plain text, to add to another one as context.
 #[tauri::command]
 pub fn chat_conversation_text(app: AppHandle, id: String) -> Result<String, String> {
