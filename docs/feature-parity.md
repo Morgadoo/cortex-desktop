@@ -213,7 +213,7 @@ items most likely to differ:
 Reviewed in November 2026 feature by feature against the docs of Open WebUI, LibreChat, LobeHub,
 Onyx, Osaurus and OpenBot (about 220 features). Every item of the review's shortlist is in the table
 below; every feature the review found missing or partial is tracked row by row, with evidence, in
-[review-coverage.md](review-coverage.md) (now 116 done, 53 partial, 23 missing, 31 out of scope).
+[review-coverage.md](review-coverage.md) (now 120 done, 54 partial, 18 missing, 31 out of scope).
 What was deliberately left out, and why:
 
 - **Team and enterprise features** (channels, comments, SSO, SCIM, tenants, admin plane, shared
@@ -329,6 +329,9 @@ What was deliberately left out, and why:
 | Recent files | LibreChat | + → Recent files lists the last 20 files attached (what was read from them, images included), to attach again without finding them on disk; the list can be cleared. Verified live | Done |
 | Select messages | LobeHub | Chat menu → Select messages: tick messages (or All), then copy them as text, forward them to a new chat or an agent as an attachment, or delete them; each deleted message goes with the question or answer it belongs to, and timestamps, ratings, bookmarks and branch points after it move with the rest. Verified live | Done |
 | Improve prompt | LobeHub | Ctrl+E (or + → Improve prompt) has the model rewrite what you typed into a clearer, fuller prompt before sending, keeping your language, details, placeholders and commands; Ctrl+Z puts yours back. Verified live | Done |
+| Coding agent programs as models | lobehub, Osaurus, OpenBot | Claude Code, Codex and Gemini CLI, when installed, show in the model picker under "Agent programs". A turn runs the program once, non-interactively, with the conversation so far, in the chat's folder (or a folder kept for that chat); its output streams in as the answer and Stop ends it. The program uses its own tools, login and permission settings. Verified live with stand-in programs (streaming, follow-up with history, Stop) | Done |
+| Import Claude plugins | Osaurus | Skills → Import → Claude plugin from a folder, or Claude plugins from GitHub (a plugin or a marketplace repository): `skills/` become skills, `commands/` become `/` skills (`$ARGUMENTS` explained), `agents/` become agents, `.mcp.json` servers become tool servers (the plugin's files are kept so `${CLAUDE_PLUGIN_ROOT}` works); hooks are reported as left out. Verified live from a folder: the plugin's MCP tool answered in a chat. GitHub downloads could not be tried from the test machine (blocked) | Done |
+| Tool servers start when added | Open WebUI, LibreChat | A tool server that needs no sign-in (a local command, or an address without auth) is started once when it is added, so its tools are offered in chats right away. Verified live | Done |
 | Translate an answer | LibreChat, lobehub | The globe under an answer translates it into a listed or any language, shown below the original (Markdown and code kept) without changing the conversation. Verified live | Done |
 | Quote a passage into the next message | LibreChat, lobehub | Selecting text in an answer (or a canvas) shows "Ask about this", which quotes it in the composer | Done |
 | Slash commands | open-webui (built-in `/` commands), Vibe CLI | `/` lists app commands before skills: /new, /temporary, /model, /voice, /fork, /context, /settings, /export, /clear. Verified live (/context) | Done |

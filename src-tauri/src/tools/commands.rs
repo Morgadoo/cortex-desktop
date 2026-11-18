@@ -478,12 +478,24 @@ pub async fn save_mcp_server(
     if transport_changed {
         registry.forget_success_history(&connector_id);
     }
+    use super::connectors::mcp::{HttpAuth, McpTransport};
+    // A server that needs no sign-in is started once now, so its tools are listed and offered
+    // in chats right away rather than after a manual connect.
+    let starts_alone = matches!(server.transport, McpTransport::Stdio { .. } | McpTransport::Http { auth: HttpAuth::None, .. });
     registry
         .replace(
             McpConnector::from_config(server, active_secret_store(&active)?, &app_handle, &account)
                 .await,
         )
         .await;
+    drop(_operation);
+    if starts_alone {
+        match registry.connect_attempt(&connector_id, None, Interactive::No, None).await {
+            Ok(()) => info!("{connector_id} started and listed its tools"),
+            Err(e) => warn!("{connector_id} could not be started yet: {}", e.kind()),
+        }
+        emit_connector_changed(&app_handle, &connector_id);
+    }
     Ok(())
 }
 

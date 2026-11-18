@@ -104,6 +104,37 @@ export class SkillsPage {
   private list = h('div', { class: 'skill-list' });
   private tabs: HTMLElement = h('div', { class: 'tabs' });
 
+  /**
+   * Claude plugins (or a marketplace of them): skills and commands become skills, subagents
+   * become agents, `.mcp.json` servers become tool servers under Connectors.
+   */
+  private async importPlugin(link: string | null) {
+    type Imported = { plugins: string[]; skills: string[]; agents: string[]; servers: string[]; skipped: string[] };
+    if (link) toast('Downloading…');
+    try {
+      const out = await tauriInvoke<Imported | null>('chat_import_plugin', { link });
+      if (!out) return;
+      await this.load();
+      const parts = [
+        out.skills.length ? `${out.skills.length} skill${out.skills.length === 1 ? '' : 's'} (${out.skills.slice(0, 6).map((n) => `/${n}`).join(', ')}${out.skills.length > 6 ? '…' : ''})` : '',
+        out.agents.length ? `${out.agents.length} agent${out.agents.length === 1 ? '' : 's'} (${out.agents.join(', ')})` : '',
+        out.servers.length ? `the tool server${out.servers.length === 1 ? '' : 's'} ${out.servers.join(', ')} under Connectors` : '',
+      ].filter(Boolean);
+      void modal((close) =>
+        h(
+          'div',
+          { class: 'dialog-small' },
+          modalHeader(`Imported ${out.plugins.join(', ')}`, close, { flush: true }),
+          h('p', {}, parts.length ? `Added ${parts.join('; ')}.` : 'Nothing could be added from it.'),
+          out.skipped.length ? h('p', { class: 'muted small' }, `Left out: ${out.skipped.join('; ')}.`) : null,
+          h('div', { class: 'dialog-actions' }, h('span', { class: 'spacer' }), button({ variant: 'primary', label: 'Done', onClick: close }))
+        )
+      );
+    } catch (e) {
+      toast(String(e), 'error');
+    }
+  }
+
   constructor() {
     // Import a SKILL.md from this computer, or from a link (a skill's folder on GitHub).
     const importBtn = h('button', { class: 'btn btn-secondary' }, 'Import', icon('chevron', 14));
@@ -135,6 +166,23 @@ export class SkillsPage {
             },
             icon('link', 15),
             h('span', {}, 'From a link (GitHub)…')
+          ),
+          h('div', { class: 'menu-sep' }),
+          h('button', { class: 'menu-item', on: { click: () => { close(); void this.importPlugin(null); } } }, icon('folder', 15), h('span', {}, 'Claude plugin from a folder…')),
+          h(
+            'button',
+            {
+              class: 'menu-item',
+              on: {
+                click: async () => {
+                  close();
+                  const link = await promptText('Import Claude plugins from GitHub', '', 'https://github.com/owner/repo (a plugin or a marketplace)');
+                  if (link) void this.importPlugin(link);
+                },
+              },
+            },
+            icon('plug', 15),
+            h('span', {}, 'Claude plugins from GitHub…')
           )
         )
       );

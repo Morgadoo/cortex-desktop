@@ -1288,6 +1288,78 @@ pub async fn chat_import_agent(app: AppHandle) -> Result<Option<String>, String>
     Ok(Some(if added.is_empty() { agent.name } else { format!("{} (with its tool servers {}; add their keys under Connectors)", agent.name, added.join(", ")) }))
 }
 
+/// Imports Claude plugins (or a marketplace of them) from a GitHub link, or from a folder the
+/// user picks when no link is given: their skills, commands, agents and tool servers.
+#[tauri::command]
+pub async fn chat_import_plugin(app: AppHandle, link: Option<String>) -> Result<Option<super::plugins::Imported>, String> {
+    use super::plugins;
+    let dir = config_dir(&app)?;
+    let files = match link.map(|l| l.trim().to_string()).filter(|l| !l.is_empty()) {
+        Some(link) => {
+            let (urls, folder) = plugins::github_sources(&link)?;
+            let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(120)).build().map_err(|e| e.to_string())?;
+            let mut last = "The repository could not be downloaded.".to_string();
+            let mut found = None;
+            for url in urls {
+                match client.get(&url).send().await {
+                    Ok(r) if r.status().is_success() => {
+                        let bytes = r.bytes().await.map_err(|e| e.to_string())?;
+                        found = Some(plugins::subfolder(plugins::from_zip(&bytes)?, &folder));
+                        break;
+                    }
+                    Ok(r) => last = format!("GitHub answered {} for {url}.", r.status()),
+                    Err(e) => last = e.to_string(),
+                }
+            }
+            found.ok_or(last)?
+        }
+        None => {
+            use tauri_plugin_dialog::DialogExt;
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            app.dialog().file().set_title("Choose a Claude plugin or marketplace folder").pick_folder(move |path| {
+                let _ = tx.send(path);
+            });
+            let Some(path) = rx.await.map_err(|e| e.to_string())? else { return Ok(None) };
+            let path = path.into_path().map_err(|e| e.to_string())?;
+            tokio::task::spawn_blocking(move || plugins::from_dir(&path)).await.map_err(|e| e.to_string())??
+        }
+    };
+    let roots = plugins::plugin_roots(&files);
+    if roots.is_empty() {
+        return Err("No Claude plugin was found there: it needs skills/, commands/, agents/, .mcp.json or .claude-plugin/.".into());
+    }
+    let account = crate::account::AccountId::parse(super::LOCAL_ACCOUNT)?;
+    let existing = crate::tools::connectors::load_mcp_servers(&app, &account).unwrap_or_default();
+    let mut out = plugins::Imported::default();
+    for root in roots {
+        let plugin = plugins::read_plugin(&files, &root);
+        log::info!("importing the plugin {} ({})", plugin.name, plugin.description);
+        plugins::install(&dir, &plugin, &mut out)?;
+        if plugin.servers.is_empty() {
+            continue;
+        }
+        // Servers can run the plugin's own scripts, so its files are kept on disk.
+        let kept = plugins::plugin_dir(&dir, &plugin.name);
+        plugins::keep_files(&files, &plugin.root, &kept)?;
+        for server in &plugin.servers {
+            let Some(config) = plugins::server_config(&plugin.name, server, &kept) else {
+                out.skipped.push(format!("tool server {}", server.name));
+                continue;
+            };
+            if existing.iter().any(|s| s.id == config.id) {
+                out.skipped.push(format!("tool server {} (already added)", server.name));
+                continue;
+            }
+            let name = config.display_name.clone();
+            match crate::tools::commands::save_mcp_server(config, app.clone(), app.state(), app.state()).await {
+                Ok(()) => out.servers.push(name),
+                Err(e) => out.skipped.push(format!("tool server {name}: {e}")),
+            }
+        }
+    }
+    Ok(Some(out))
+}
+
 /// Writes a conversation as JSON, every message and tool step included, to a file the user picks.
 #[tauri::command]
 pub async fn chat_export_conversation_json(app: AppHandle, id: String) -> Result<bool, String> {

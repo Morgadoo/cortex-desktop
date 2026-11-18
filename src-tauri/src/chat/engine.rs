@@ -467,6 +467,18 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
     conversation.updated_at = Utc::now();
     store::save_conversation(&config_dir, &conversation)?;
 
+    // A coding agent program (Claude Code, Codex, Gemini CLI) answers with its own tools.
+    if let Some(cli) = super::agent_cli::find(&request.model) {
+        let named = !conversation.title.is_empty();
+        let cancelled = super::agent_cli::run(app, &config_dir, conversation.clone(), cli, cancel).await?;
+        if !named {
+            let app = app.clone();
+            let reference = request.model.clone();
+            tauri::async_runtime::spawn(async move { name_conversation(app, reference, conversation).await });
+        }
+        return Ok(cancelled);
+    }
+
     let mut model = connect_model(&config_dir, &request.model).await?;
     let registry = app.state::<ToolRegistry>();
     let agent = conversation.agent_id.as_deref().and_then(|a| agents::find(&config_dir, a));

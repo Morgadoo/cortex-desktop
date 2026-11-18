@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 116 |
-| PARTIAL | 86 | 53 |
-| MISSING | 48 | 23 |
+| DONE | 58 | 120 |
+| PARTIAL | 86 | 54 |
+| MISSING | 48 | 18 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 36 / 8 / 1 / 9 · LibreChat 32 / 8 / 2 / 4 · LobeHub 15 / 10 / 4 / 5 · Onyx 12 / 6 / 3 / 5 · Osaurus 6 / 12 / 8 / 4 · OpenBot 15 / 9 / 5 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 36 / 8 / 1 / 9 · LibreChat 32 / 8 / 2 / 4 · LobeHub 16 / 10 / 3 / 5 · Onyx 12 / 6 / 3 / 5 · Osaurus 8 / 13 / 5 / 4 · OpenBot 16 / 9 / 4 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -126,7 +126,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 36 / 8 / 1 / 9
 | LobeHub | Agent market | MISSING | OUT OF SCOPE | Shared marketplaces (parity L217) |
 | LobeHub | Skills marketplace (browse, publish) | PARTIAL | OUT OF SCOPE | Shared marketplaces (parity L217); SKILL.md import exists (parity L82) |
 | LobeHub | Agent groups (sequential, parallel, debate…) | PARTIAL | PARTIAL | `delegate` to teammates (parity L251). Missing: group chat modes and an orchestrator setting |
-| LobeHub | External agents (Claude Code, Codex) | MISSING | MISSING |  |
+| LobeHub | External agents (Claude Code, Codex) | MISSING | DONE | parity: Coding agent programs as models (agent_cli.rs) |
 | LobeHub | Tasks with delegation, status, comments | PARTIAL | PARTIAL | Scheduled tasks, sub-agents (parity L165, L248). Missing: comments on tasks |
 | LobeHub | Agent builder as a chat | PARTIAL | PARTIAL | One-prompt draft (parity L249). Missing: a conversation that refines it |
 | LobeHub | Greeting and conversation starters per agent | MISSING | DONE | Conversation starters on the agent's new-chat page (parity: Agent conversation starters) |
@@ -185,7 +185,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 36 / 8 / 1 / 9
 | Osaurus | Inference runtime (scheduler, batching) | MISSING | OUT OF SCOPE | An inference server; the app uses Ollama or llama.cpp for that |
 | Osaurus | Orchestrator | PARTIAL | PARTIAL | The assistant delegates (parity L251). Missing: routing to agents by itself |
 | Osaurus | Built-in app agents | PARTIAL | PARTIAL | MCP connectors. Missing: ready-made specialist agents |
-| Osaurus | External agent runtimes | MISSING | MISSING |  |
+| Osaurus | External agent runtimes | MISSING | DONE | parity: Coding agent programs as models (Claude Code, Codex, Gemini CLI) |
 | Osaurus | Typed workflows, designer agent | PARTIAL | PARTIAL | `{{blank}}` inputs in workflows (parity L269). Missing: typed inputs, a designer agent |
 | Osaurus | Triggers: schedule, folder, webhook, feed | PARTIAL | PARTIAL | Schedule, new files (parity L274), webhook through the local API (L291). Missing: feeds |
 | Osaurus | VM per agent | PARTIAL | PARTIAL | bubblewrap sandbox (parity L231). Missing: a separate environment per agent |
@@ -193,8 +193,8 @@ Per app now (done / partial / missing / out of scope): Open WebUI 36 / 8 / 1 / 9
 | Osaurus | Computer use with rules per app | MISSING | PARTIAL | Computer use (parity L288). Missing: per-app rules |
 | Osaurus | Calendar, Mail, Contacts… integrations | MISSING | MISSING | Only through MCP connectors |
 | Osaurus | Agent channels | MISSING | OUT OF SCOPE | parity L256 |
-| Osaurus | Import Claude plugins | MISSING | MISSING |  |
-| Osaurus | Plugin registry | MISSING | MISSING |  |
+| Osaurus | Import Claude plugins | MISSING | DONE | parity: Import Claude plugins (plugins.rs: skills, commands, agents, MCP servers) |
+| Osaurus | Plugin registry | MISSING | PARTIAL | A Claude plugin marketplace repository can be imported (parity: Import Claude plugins). Missing: a browsable registry inside the app |
 | Osaurus | MCP server | MISSING | DONE | `/mcp` on the local API: search_libraries, ask, list_models, list_tasks, run_task (parity: Lumo as an MCP server) |
 | Osaurus | Agent run endpoint | MISSING | DONE | `POST /v1/tasks/{id}/run` and agents as models |
 | Osaurus | Bundles: agents, skills, MCP servers | MISSING | DONE | Agent files carry the agent, notebook, its skills and the MCP servers it uses, without secrets |
@@ -214,7 +214,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 36 / 8 / 1 / 9
 | OpenBot | Bubble colours from the avatar | MISSING | MISSING | Cosmetic |
 | OpenBot | Backdrop | MISSING | MISSING | Cosmetic |
 | OpenBot | Copy an error's details | PARTIAL | DONE | Copy details on a failed reply (parity: Copy error details) |
-| OpenBot | Codex, Claude Code, Gemini CLIs as providers | MISSING | MISSING |  |
+| OpenBot | Codex, Claude Code, Gemini CLIs as providers | MISSING | DONE | parity: Coding agent programs as models |
 | OpenBot | ACP agents as providers | PARTIAL | PARTIAL | OpenAI-compatible and Ollama. Missing: ACP |
 | OpenBot | Change provider, keep the agent | PARTIAL | DONE | An agent's model is editable (agents.rs:27–29); its notebook is kept per agent (`chat/agents/<id>/`) |
 | OpenBot | Models listed for a custom provider | PARTIAL | DONE | OpenAI-compatible local servers list their loaded models (parity: Local OpenAI-compatible servers) |

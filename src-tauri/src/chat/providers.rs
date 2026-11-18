@@ -311,6 +311,8 @@ pub async fn models(file: &ProvidersFile) -> Vec<ModelView> {
         }
         out.extend(models);
     }
+    // Coding agent programs installed on this computer.
+    out.extend(super::agent_cli::installed());
     out
 }
 
