@@ -77,6 +77,37 @@ pub struct Task {
     /// for in a chat: "check again tomorrow").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reply_in: Option<String>,
+    /// An address told when a run finishes (Open WebUI's webhooks): a JSON POST with the task,
+    /// its status and the answer, for a script, a chat app or an automation service.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub webhook: Option<String>,
+}
+
+/// What a webhook receives when a run finishes.
+pub fn webhook_payload(task: &Task, conversation_id: &str, status: &str, answer: &str) -> serde_json::Value {
+    let answer: String = answer.chars().take(20_000).collect();
+    serde_json::json!({
+        "event": "task.finished",
+        "task": { "id": task.id, "title": task.title },
+        "status": status,
+        "conversationId": conversation_id,
+        "answer": answer,
+        // Slack and Discord incoming webhooks read these fields.
+        "text": format!("{}: {}", task.title, answer.chars().take(3_000).collect::<String>()),
+        "content": format!("**{}**\n{}", task.title, answer.chars().take(1_900).collect::<String>()),
+        "finishedAt": chrono::Utc::now(),
+    })
+}
+
+/// Posts a finished run to the task's webhook, when it has one (http or https only).
+pub async fn notify_webhook(task: &Task, conversation_id: &str, status: &str, answer: &str) {
+    let Some(url) = task.webhook.as_deref().map(str::trim).filter(|u| u.starts_with("https://") || u.starts_with("http://")) else { return };
+    let Ok(client) = reqwest::Client::builder().timeout(std::time::Duration::from_secs(15)).build() else { return };
+    match client.post(url).json(&webhook_payload(task, conversation_id, status, answer)).send().await {
+        Ok(r) if r.status().is_success() => {}
+        Ok(r) => log::warn!("the webhook of {} answered {}", task.title, r.status()),
+        Err(e) => log::warn!("the webhook of {} failed: {e}", task.title),
+    }
 }
 
 fn yes() -> bool {
@@ -439,6 +470,7 @@ mod tests {
             next_run: None,
             seen: None,
             reply_in: None,
+            webhook: None,
         };
         let mut paused = base.clone();
         paused.id = "p".into();
@@ -475,6 +507,7 @@ mod tests {
             next_run: None,
             seen: None,
             reply_in: None,
+            webhook: None,
         };
         save(config.path(), task).unwrap();
         let later = std::time::SystemTime::now() + Duration::from_secs(60);
@@ -494,6 +527,32 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn webhooks_get_the_answer_in_shapes_chat_apps_read() {
+        let task = Task {
+            id: "t1".into(),
+            title: "Morning brief".into(),
+            prompt: "x".into(),
+            frequency: Frequency::Daily { time: "08:00".into() },
+            agent_id: None,
+            model: None,
+            enabled: true,
+            allow_changes: false,
+            created_at: chrono::Utc::now(),
+            last_run: None,
+            last_conversation: None,
+            last_status: None,
+            next_run: None,
+            seen: None,
+            reply_in: None,
+            webhook: Some("https://example.com/hook".into()),
+        };
+        let p = webhook_payload(&task, "c1", "ok", "Three items today.");
+        assert_eq!((p["event"].as_str(), p["status"].as_str(), p["conversationId"].as_str()), (Some("task.finished"), Some("ok"), Some("c1")));
+        assert_eq!(p["text"], "Morning brief: Three items today.");
+        assert!(p["content"].as_str().unwrap().starts_with("**Morning brief**"));
+    }
 
     fn at(y: i32, m: u32, d: u32, h: u32, min: u32) -> DateTime<Utc> {
         Local.with_ymd_and_hms(y, m, d, h, min, 0).single().unwrap().with_timezone(&Utc)
@@ -568,6 +627,7 @@ mod tests {
             next_run: None,
             seen: None,
             reply_in: None,
+            webhook: None,
         };
         save(dir.path(), task).unwrap();
         let next = load(dir.path())[0].next_run.unwrap();

@@ -113,6 +113,8 @@ export interface UsageTotals {
 export interface ChatParams {
   temperature: number | null;
   maxTokens: number | null;
+  /** Nucleus sampling, 0–1. */
+  topP?: number | null;
   instructions: string;
 }
 
@@ -223,6 +225,8 @@ export interface Task {
   lastConversation: string | null;
   /** Runs continue this conversation (a follow-up asked for in a chat). */
   replyIn?: string | null;
+  /** Told with a JSON POST when a run finishes. */
+  webhook?: string | null;
   lastStatus: string | null;
   nextRun: string | null;
   /** "Every Monday at 09:00". */
@@ -336,7 +340,7 @@ export const api = {
   storageHealth: () => call<StorageHealth>('chat_storage_health'),
   recoverConversation: (id: string) => call<string>('chat_recover_conversation', { id }),
   contextBreakdown: (id: string) => call<ContextBreakdown>('chat_context_breakdown', { id }),
-  forkConversation: (id: string, upto: number | null = null, withoutFiles = false) => call<string>('chat_fork_conversation', { id, upto, withoutFiles }),
+  forkConversation: (id: string, upto: number | null = null, withoutFiles = false, agentId: string | null = null) => call<string>('chat_fork_conversation', { id, upto, withoutFiles, agentId }),
   keepConversation: (id: string) => call<void>('chat_keep_conversation', { id }),
   exportConversation: (id: string) => call<boolean>('chat_export_conversation', { id }),
 

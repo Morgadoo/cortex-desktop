@@ -631,6 +631,17 @@ pub fn chat_set_params(app: AppHandle, id: String, params: store::ChatParams) ->
     Ok(conversation.params)
 }
 
+/// The model settings every chat starts from.
+#[tauri::command]
+pub fn chat_get_defaults(app: AppHandle) -> Result<store::ChatParams, String> {
+    Ok(store::chat_defaults(&config_dir(&app)?))
+}
+
+#[tauri::command]
+pub fn chat_set_defaults(app: AppHandle, params: store::ChatParams) -> Result<store::ChatParams, String> {
+    store::save_chat_defaults(&config_dir(&app)?, params)
+}
+
 /// Three short messages the user might send next, from the latest exchange (Open WebUI's
 /// follow-up prompts). Empty when the provider gives nothing usable.
 #[tauri::command]
@@ -1854,13 +1865,21 @@ pub fn chat_context_breakdown(app: AppHandle, id: String) -> Result<super::conte
 
 /// Branches a conversation into a new one that continues from the same point.
 #[tauri::command]
-pub fn chat_fork_conversation(app: AppHandle, id: String, upto: Option<usize>, without_files: Option<bool>) -> Result<String, String> {
+pub fn chat_fork_conversation(app: AppHandle, id: String, upto: Option<usize>, without_files: Option<bool>, agent_id: Option<String>) -> Result<String, String> {
     let dir = config_dir(&app)?;
     let mut c = store::load_conversation(&dir, &id)?;
     store::branch_copy(&mut c, upto, without_files.unwrap_or(false))?;
+    // Handed to an agent (LobeHub's forward to another assistant): it carries on from here.
+    let handed = agent_id.as_deref().is_some_and(|a| !a.is_empty());
+    if let Some(agent) = agent_id.filter(|a| !a.is_empty()) {
+        let found = super::agents::find(&dir, &agent).ok_or("There is no such agent.")?;
+        c.agent_id = Some(found.id);
+        c.project_id = None;
+        c.title = format!("{} ({})", if c.title.is_empty() { engine::fallback_title(&c) } else { c.title.clone() }, found.name);
+    }
     let title = if c.title.is_empty() { engine::fallback_title(&c) } else { c.title.clone() };
     c.id = uuid::Uuid::new_v4().to_string();
-    c.title = format!("{title} (branch)");
+    c.title = if handed { title } else { format!("{title} (branch)") };
     c.pinned = false;
     c.unread = false;
     c.temporary = false;

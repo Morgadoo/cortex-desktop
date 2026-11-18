@@ -48,6 +48,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['New chats are temporary', 'general', 'temporary incognito history'],
   ['Keyboard shortcuts', 'general', 'hotkeys keys rebind'],
   ['Local API', 'general', 'openai compatible server port token curl mcp anthropic'],
+  ['Defaults for every chat', 'general', 'temperature top-p top_p max tokens reply length model parameters'],
   ['Error reports and updates', 'general', 'privacy telemetry error reports crash sentry updates diagnostics'],
   ['Theme', 'appearance', 'dark light system mode'],
   ['Accent colour', 'appearance', 'color colour highlight'],
@@ -981,9 +982,38 @@ async function renderGeneral(content: HTMLElement) {
       row('Suggest follow-ups', 'After each answer, offer three next questions. Each takes one short extra request to the model.', switchInput(followUpsOn(), (v) => setFollowUps(v))),
       row('New chats are temporary', 'Chats are not saved to your history unless you turn this off for one (the ghost button on the new-chat page). Takes effect from the next new chat.', switchInput(temporaryByDefault(), (v) => setTemporaryByDefault(v)))
     ),
+    await chatDefaultsCard(),
     await apiServerCard(),
     await diagnosticsCard(),
     shortcutsCard()
+  );
+}
+
+/** Model settings every chat starts from; a chat's own settings win. */
+async function chatDefaultsCard(): Promise<HTMLElement> {
+  type Params = { temperature: number | null; maxTokens: number | null; topP?: number | null; instructions: string };
+  const current = await tauriInvoke<Params>('chat_get_defaults');
+  const field = (value: number | null | undefined, attrs: Record<string, string>) => h('input', { class: 'input select-sm', type: 'number', placeholder: 'Model default', value: value ?? '', ...attrs });
+  const temperature = field(current.temperature, { min: '0', max: '2', step: '0.1' });
+  const maxTokens = field(current.maxTokens, { min: '16', step: '1' });
+  const topP = field(current.topP, { min: '0.05', max: '1', step: '0.05' });
+  const number = (el: HTMLInputElement) => (el.value.trim() === '' || Number.isNaN(Number(el.value)) ? null : Number(el.value));
+  const persist = () =>
+    void tauriInvoke<Params>('chat_set_defaults', { params: { temperature: number(temperature), maxTokens: number(maxTokens), topP: number(topP), instructions: '' } })
+      .then((saved) => {
+        temperature.value = saved.temperature?.toString() ?? '';
+        maxTokens.value = saved.maxTokens?.toString() ?? '';
+        topP.value = saved.topP?.toString() ?? '';
+        toast('Saved. New replies use these unless a chat sets its own.');
+      })
+      .catch((e) => toast(String(e), 'error'));
+  [temperature, maxTokens, topP].forEach((el) => el.addEventListener('change', persist));
+  return card(
+    h('h3', {}, 'Defaults for every chat'),
+    h('p', { class: 'muted' }, 'Empty follows each model. A chat\'s own settings (its menu → Chat settings) win over these.'),
+    row('Temperature', '0 is focused and repeatable, 1 balanced, up to 2 inventive.', temperature),
+    row('Longest reply (tokens)', '', maxTokens),
+    row('Top-p', 'Lower keeps to the likeliest words.', topP)
   );
 }
 

@@ -188,6 +188,9 @@ pub struct ChatParams {
     /// The longest reply, in tokens.
     #[serde(default)]
     pub max_tokens: Option<u64>,
+    /// Nucleus sampling: only the likeliest words adding up to this share are considered (0–1).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f64>,
     /// Instructions for this conversation, added to the standing ones.
     #[serde(default)]
     pub instructions: String,
@@ -203,9 +206,35 @@ impl ChatParams {
         Self {
             temperature: self.temperature.filter(|t| t.is_finite()).map(|t| t.clamp(0.0, 2.0)),
             max_tokens: self.max_tokens.filter(|&n| n > 0).map(|n| n.clamp(16, 128_000)),
+            top_p: self.top_p.filter(|p| p.is_finite() && *p > 0.0).map(|p| p.min(1.0)),
             instructions: self.instructions.trim().chars().take(8_000).collect(),
         }
     }
+
+    /// This chat's settings, with the app-wide defaults filling what it leaves unset.
+    pub fn or_defaults(&self, defaults: &ChatParams) -> ChatParams {
+        ChatParams {
+            temperature: self.temperature.or(defaults.temperature),
+            max_tokens: self.max_tokens.or(defaults.max_tokens),
+            top_p: self.top_p.or(defaults.top_p),
+            instructions: self.instructions.clone(),
+        }
+    }
+}
+
+fn defaults_path(config_dir: &Path) -> PathBuf {
+    chat_dir(config_dir).join("chat-defaults.json")
+}
+
+/// Model settings every chat starts from (Open WebUI's global model defaults).
+pub fn chat_defaults(config_dir: &Path) -> ChatParams {
+    read_json(&defaults_path(config_dir)).unwrap_or_default()
+}
+
+pub fn save_chat_defaults(config_dir: &Path, params: ChatParams) -> Result<ChatParams, String> {
+    let params = ChatParams { instructions: String::new(), ..params.clamped() };
+    write_json(&defaults_path(config_dir), &params)?;
+    Ok(params)
 }
 
 pub fn load_conversation(config_dir: &Path, id: &str) -> Result<Conversation, String> {
@@ -951,6 +980,17 @@ mod tests {
         assert_eq!(bare.messages.len(), 4);
         assert_eq!(super::super::context::message_text(&bare.messages[0]), "Summarise this");
         assert!(branch_copy(&mut c.clone(), Some(9), false).is_err());
+    }
+
+    #[test]
+    fn chat_settings_fall_back_to_the_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(chat_defaults(dir.path()), ChatParams::default());
+        let saved = save_chat_defaults(dir.path(), ChatParams { temperature: Some(5.0), top_p: Some(0.9), instructions: "x".into(), ..Default::default() }).unwrap();
+        assert_eq!((saved.temperature, saved.top_p, saved.instructions.as_str()), (Some(2.0), Some(0.9), ""), "clamped, and no instructions in defaults");
+        let own = ChatParams { temperature: Some(0.2), ..Default::default() };
+        let effective = own.or_defaults(&chat_defaults(dir.path()));
+        assert_eq!((effective.temperature, effective.top_p), (Some(0.2), Some(0.9)), "a chat's own value wins; unset ones come from the defaults");
     }
 
     #[test]

@@ -213,7 +213,7 @@ items most likely to differ:
 Reviewed in November 2026 feature by feature against the docs of Open WebUI, LibreChat, LobeHub,
 Onyx, Osaurus and OpenBot (about 220 features). Every item of the review's shortlist is in the table
 below; every feature the review found missing or partial is tracked row by row, with evidence, in
-[review-coverage.md](review-coverage.md) (now 102 done, 61 partial, 29 missing, 31 out of scope).
+[review-coverage.md](review-coverage.md) (now 106 done, 57 partial, 29 missing, 31 out of scope).
 What was deliberately left out, and why:
 
 - **Team and enterprise features** (channels, comments, SSO, SCIM, tenants, admin plane, shared
@@ -315,6 +315,10 @@ What was deliberately left out, and why:
 | Move documents between libraries | lobehub | A document's move button, or Move to… for selected documents, takes them to another library, text and name kept | Done |
 | Filter saved facts | lobehub (memory filters) | Knowledge → Facts: find by words, by who saved it (you or the assistant) and by date. Verified live | Done |
 | Sound and stream following | LibreChat (notification sound), open-webui (auto-scroll setting) | A chime with the "reply ready" notification (Settings → General) and a switch to stop following answers down the page as they stream | Done |
+| Defaults for every chat, and top-p | open-webui (global model defaults, advanced params), LibreChat | Settings → General → Defaults for every chat: temperature, longest reply and top-p for all chats; a chat's own settings (now with top-p) win. Verified against a recording stub server: a reply went out with the default temperature 0.3 and top-p 0.8 | Done |
+| Webhooks when a task finishes | open-webui (webhooks), osaurus | A scheduled task can tell a webhook: a JSON POST with the task, its status, the conversation and the answer, plus `text` and `content` fields Slack and Discord incoming webhooks show as a message. Verified live: a run's result arrived at a local receiver | Done |
+| `#` adds context while typing | open-webui (`#`) | Typing `#` in the composer lists libraries (to search for this message) and other chats (attached in full); the `#word` leaves the message. Verified live | Done |
+| Continue a chat with an agent | lobehub (forward to another assistant) | Conversation menu → Continue with an agent: a copy the chosen agent carries on, filed under it. Verified live | Done |
 | Translate an answer | LibreChat, lobehub | The globe under an answer translates it into a listed or any language, shown below the original (Markdown and code kept) without changing the conversation. Verified live | Done |
 | Quote a passage into the next message | LibreChat, lobehub | Selecting text in an answer (or a canvas) shows "Ask about this", which quotes it in the composer | Done |
 | Slash commands | open-webui (built-in `/` commands), Vibe CLI | `/` lists app commands before skills: /new, /temporary, /model, /voice, /fork, /context, /settings, /export, /clear. Verified live (/context) | Done |

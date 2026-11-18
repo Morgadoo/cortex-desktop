@@ -87,6 +87,7 @@ export function editTask(existing: Task | null, onSaved: (tasks: Task[]) => void
       state.agents.map((a) => h('option', { value: a.id, selected: base?.agentId === a.id }, `${a.avatar} ${a.name}`))
     );
     const allowChanges = h('input', { type: 'checkbox', class: 'switch', checked: base?.allowChanges ?? false });
+    const webhook = h('input', { class: 'input', type: 'url', value: base?.webhook ?? '', placeholder: 'Optional: https://hooks.slack.com/… or any address that takes a JSON POST' });
     const error = h('p', { class: 'error-text' });
     const save = async () => {
       const t = time.value || '09:00';
@@ -125,6 +126,7 @@ export function editTask(existing: Task | null, onSaved: (tasks: Task[]) => void
             model: existing?.model ?? null,
             enabled: existing?.enabled ?? true,
             allowChanges: allowChanges.checked,
+            webhook: webhook.value.trim() || null,
             createdAt: existing?.createdAt ?? new Date().toISOString(),
             lastRun: existing?.lastRun ?? null,
             lastConversation: existing?.lastConversation ?? null,
@@ -151,6 +153,8 @@ export function editTask(existing: Task | null, onSaved: (tasks: Task[]) => void
       extra,
       h('label', { class: 'field-label' }, 'Run as'),
       agent,
+      h('label', { class: 'field-label', title: 'Gets a JSON POST with the task, its status and the answer when a run finishes; Slack and Discord incoming webhooks show it as a message' }, 'Tell a webhook when it finishes'),
+      webhook,
       h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Allow changes'), h('small', { class: 'muted' }, 'Let runs write files or run commands without asking. Off: runs only read and report.')), allowChanges),
       error,
       h('div', { class: 'dialog-actions' }, h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, existing ? 'Save' : 'Schedule'))

@@ -602,12 +602,16 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
                 .filter_map(ChatTool::definition);
             call = call.tools(definitions);
         }
-        // This conversation's own model settings.
-        if let Some(t) = conversation.params.temperature {
+        // This conversation's own model settings, then the app-wide defaults.
+        let params = conversation.params.or_defaults(&store::chat_defaults(&config_dir));
+        if let Some(t) = params.temperature {
             call = call.temperature(t);
         }
-        if let Some(n) = conversation.params.max_tokens {
+        if let Some(n) = params.max_tokens {
             call = call.max_tokens(n);
+        }
+        if let Some(p) = params.top_p {
+            call = call.top_p(p);
         }
         if reasoning && request.speed == Speed::Think {
             call = call.reasoning(Effort::High);
@@ -1278,6 +1282,8 @@ pub async fn run_task(app: AppHandle, task: tasks::Task) {
         .and_then(|c| c.messages.last())
         .is_some_and(|m| matches!(m, Message::Assistant(_)));
     tasks::record(&config_dir, &task.id, &id, if answered { "ok" } else { "failed" });
+    let answer = finished.as_ref().and_then(|c| c.messages.last()).map(super::context::message_text).unwrap_or_default();
+    tasks::notify_webhook(&task, &id, if answered { "ok" } else { "failed" }, &answer).await;
     notify(&app, &task.title, if answered { "Your scheduled task finished." } else { "Your scheduled task could not finish." });
 }
 

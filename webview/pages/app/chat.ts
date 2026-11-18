@@ -1583,8 +1583,58 @@ class Composer {
     });
   }
 
+  /** Library names for the `#` menu, loaded the first time it opens. */
+  private libraryNames: string[] | null = null;
+
+  /**
+   * `#` adds context where you type it (Open WebUI's `#`): a library to search, or another chat
+   * attached in full. The `#word` is taken out of the message.
+   */
+  private updateHashMenu(): boolean {
+    const before = this.textarea.value.slice(0, this.textarea.selectionStart);
+    const match = before.match(/(?:^|\s)#([^\s#]*)$/);
+    if (!match) return false;
+    if (this.libraryNames === null) {
+      this.libraryNames = [];
+      void tauriInvoke<{ name: string }[]>('chat_list_libraries').then((libs) => {
+        this.libraryNames = libs.map((l) => l.name);
+        this.updateSlashMenu();
+      }).catch(() => undefined);
+    }
+    const q = match[1]!.toLowerCase();
+    const libs = this.libraryNames.filter((n) => n.toLowerCase().includes(q)).slice(0, 5);
+    const chats = state.conversations.filter((c) => c.id !== this.conversationId && !c.archived && (c.title || '').toLowerCase().includes(q)).slice(0, 6);
+    if (!libs.length && !chats.length) {
+      this.slashMenu?.close();
+      this.slashMenu = null;
+      return true;
+    }
+    const items = [...libs.map((n) => `lib:${n}`), ...chats.map((c) => `chat:${c.id}`)];
+    const index = Math.min(this.slashMenu?.index ?? 0, items.length - 1);
+    const list = h('div', { class: 'menu slash-menu' });
+    if (libs.length) list.append(h('div', { class: 'menu-heading' }, 'Search a library'));
+    libs.forEach((n, i) => list.append(h('button', { class: `menu-item${i === index ? ' selected' : ''}`, on: { mousedown: (e: MouseEvent) => { e.preventDefault(); this.pickSkill(`lib:${n}`); } } }, icon('library', 16), h('span', {}, n))));
+    if (chats.length) list.append(h('div', { class: 'menu-heading' }, 'Add a chat as context'));
+    chats.forEach((c, j) => {
+      const i = libs.length + j;
+      list.append(h('button', { class: `menu-item${i === index ? ' selected' : ''}`, on: { mousedown: (e: MouseEvent) => { e.preventDefault(); this.pickSkill(`chat:${c.id}`); } } }, icon('chat', 16), h('span', {}, c.title || 'Untitled')));
+    });
+    this.slashMenu?.close();
+    const close = popover(this.textarea, list, 'above');
+    this.slashMenu = { close, items, index, list };
+    return true;
+  }
+
+  /** Takes the `#word` being typed out of the message. */
+  private dropHashWord() {
+    const caret = this.textarea.selectionStart;
+    const before = this.textarea.value.slice(0, caret).replace(/(^|\s)#[^\s#]*$/, '$1');
+    this.setText(before + this.textarea.value.slice(caret));
+  }
+
   /** Typing `/` (or `@`, as Vibe Work does) at the start lists the enabled skills; picking one inserts `/name `. */
   private updateSlashMenu() {
+    if (this.updateHashMenu()) return;
     const match = this.textarea.value.match(/^([/@])([a-z0-9-]*)$/);
     // The skills used most come first: the menu learns from use.
     const uses = skillUses();
@@ -1677,6 +1727,27 @@ class Composer {
     if (name.startsWith('cmd:')) {
       this.setText('');
       return void this.runCommand(name.slice(4));
+    }
+    if (name.startsWith('lib:')) {
+      this.dropHashWord();
+      this.library = name.slice(4);
+      this.renderChips();
+      this.renderBar();
+      return this.focus();
+    }
+    if (name.startsWith('chat:')) {
+      const chat = state.conversations.find((c) => c.id === name.slice(5));
+      this.dropHashWord();
+      if (chat) {
+        void tauriInvoke<string>('chat_conversation_text', { id: chat.id })
+          .then((text) => {
+            this.attachments.push({ name: `Chat: ${chat.title || 'Untitled'}`, text });
+            this.renderChips();
+            this.renderBar();
+          })
+          .catch((e) => toast(String(e), 'error'));
+      }
+      return this.focus();
     }
     if (name.startsWith('agent:')) {
       const agent = state.agents.find((a) => a.id === name.slice(6));
@@ -3193,6 +3264,35 @@ export function conversationMenu(anchor: HTMLElement, id: string, title: string,
         navigate({ kind: 'chat', id: branch });
         toast('Branched. This chat continues from the same point.');
       }),
+      ...(state.agents.length
+        ? [
+            item('sparkle', 'Continue with an agent…', () => {
+              // Hand the conversation to an agent (LobeHub's forward): a copy it carries on.
+              const close = popover(
+                anchor,
+                h(
+                  'div',
+                  { class: 'menu' },
+                  h('div', { class: 'menu-heading' }, 'Continue with'),
+                  state.agents.map((a) =>
+                    h('button', { class: 'menu-item', on: { click: async () => {
+                      close();
+                      try {
+                        const next = await api.forkConversation(id, null, false, a.id);
+                        await refreshConversations();
+                        state.mode = 'agents';
+                        navigate({ kind: 'chat', id: next });
+                        toast(`${a.name} has the conversation now.`);
+                      } catch (e) {
+                        toast(String(e), 'error');
+                      }
+                    } } }, h('span', { class: 'agent-avatar small' }, a.avatar || a.name.charAt(0)), h('span', {}, a.name))
+                  )
+                )
+              );
+            }),
+          ]
+        : []),
       item('download', 'Export as Markdown', () => void api.exportConversation(id).then((saved) => saved && toast('Conversation exported.'))),
       item('link', 'Copy link', () => void navigator.clipboard.writeText(`lumo://chat/${id}`).then(() => toast('Link copied. It opens this chat in Lumo on this computer.'))),
       item('download', 'Print or save as PDF', () => void printConversation(id, title)),
@@ -3319,11 +3419,12 @@ async function openChatSettings(id: string) {
   await modal((close) => {
     const temperature = h('input', { class: 'input', type: 'number', min: '0', max: '2', step: '0.1', placeholder: 'Model default', value: current.temperature ?? '' });
     const maxTokens = h('input', { class: 'input', type: 'number', min: '16', step: '1', placeholder: 'Model default', value: current.maxTokens ?? '' });
+    const topP = h('input', { class: 'input', type: 'number', min: '0.05', max: '1', step: '0.05', placeholder: 'Model default', value: current.topP ?? '' });
     const instructions = h('textarea', { class: 'input', rows: 5, placeholder: 'For example: answer in Portuguese; keep code in TypeScript.' }, current.instructions);
     const number = (el: HTMLInputElement) => (el.value.trim() === '' || Number.isNaN(Number(el.value)) ? null : Number(el.value));
     const save = async () => {
       try {
-        await api.setParams(id, { temperature: number(temperature), maxTokens: number(maxTokens), instructions: instructions.value });
+        await api.setParams(id, { temperature: number(temperature), maxTokens: number(maxTokens), topP: number(topP), instructions: instructions.value });
         close();
         toast('Saved. The next reply uses these settings.');
       } catch (e) {
@@ -3334,9 +3435,10 @@ async function openChatSettings(id: string) {
       'div',
       { class: 'dialog-small wide' },
       h('h2', {}, 'Chat settings'),
-      h('p', { class: 'muted' }, 'For this conversation only. Empty fields follow the model.'),
+      h('p', { class: 'muted' }, 'For this conversation only. Empty fields follow your defaults (Settings → General), then the model.'),
       h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Temperature'), temperature, h('span', { class: 'field-hint' }, '0 is focused and repeatable, 1 is balanced, up to 2 is inventive.')),
       h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Longest reply (tokens)'), maxTokens),
+      h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Top-p'), topP, h('span', { class: 'field-hint' }, 'Only the likeliest words adding up to this share are considered; lower is more predictable.')),
       h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Instructions for this chat'), instructions, h('span', { class: 'field-hint' }, 'Added to your standing instructions.')),
       h(
         'div',

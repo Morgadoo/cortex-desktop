@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 102 |
-| PARTIAL | 86 | 61 |
+| DONE | 58 | 106 |
+| PARTIAL | 86 | 57 |
 | MISSING | 48 | 29 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 27 / 14 / 4 / 9 · LibreChat 31 / 8 / 3 / 4 · LobeHub 12 / 11 / 6 / 5 · Onyx 11 / 7 / 3 / 5 · Osaurus 6 / 12 / 8 / 4 · OpenBot 15 / 9 / 5 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 30 / 11 / 4 / 9 · LibreChat 31 / 8 / 3 / 4 · LobeHub 13 / 10 / 6 / 5 · Onyx 11 / 7 / 3 / 5 · Osaurus 6 / 12 / 8 / 4 · OpenBot 15 / 9 / 5 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -23,19 +23,19 @@ Per app now (done / partial / missing / out of scope): Open WebUI 27 / 14 / 4 / 
 | Open WebUI | Follow-up prompts after each reply | MISSING | DONE | parity L268; `chat_follow_ups` command |
 | Open WebUI | Expand the message box | MISSING | DONE | parity L287 (expand button, tall editor) |
 | Open WebUI | Compare Text (prompt vs revision) | MISSING | MISSING | Nothing found; the only diff view is for canvas versions (canvas.ts:405) |
-| Open WebUI | Trigger characters `/ @ # $ :` | PARTIAL | PARTIAL | `/` commands and skills (parity L280), `@` models and skills (L282). Missing: `#` to add context in the composer (`#tag` works only in Ctrl+K, main.ts:590) and `:` emoji |
+| Open WebUI | Trigger characters `/ @ # $ :` | PARTIAL | PARTIAL | `/` commands and skills, `@` models and agents, `#` libraries and chats (parity: # adds context). Missing: `:` emoji |
 | Open WebUI | Built-in slash commands | PARTIAL | DONE | parity L280: /new, /temporary, /model, /voice, /fork, /context, /settings, /export, /clear |
 | Open WebUI | Default upload mode (search vs full) | MISSING | PARTIAL | Chat attachments always go in full (chat.ts:1694–1700); library documents are searched, with `read_document` for the whole text (parity L241). Missing: a per-file or default choice |
 | Open WebUI | LaTeX, tables, task lists, Mermaid | PARTIAL | DONE | LaTeX parity L275; GFM tables and task lists dom.ts:149; Mermaid parity L200 |
 | Open WebUI | `:::writing` blocks | MISSING | MISSING |  |
 | Open WebUI | Inline visualizations | PARTIAL | DONE | Apps preview inline in the reply with an Expand bar (parity L129); Mermaid drawn inline (L200) |
 | Open WebUI | Response auto-scroll | PARTIAL | DONE | Follows while at the bottom, and a setting turns following off (parity: Sound and stream following) |
-| Open WebUI | Chat parameters (prompt, params per chat/account/model) | PARTIAL | PARTIAL | Per chat: temperature, max tokens, instructions (parity L272; chat.ts:2886–2914). Missing: top_p and other parameters, and defaults per account or per model/agent |
+| Open WebUI | Chat parameters (prompt, params per chat/account/model) | PARTIAL | DONE | Per chat: temperature, length, top-p, instructions; defaults for every chat (parity: Defaults for every chat, and top-p) |
 | Open WebUI | `{{USER_NAME}}`, `{{CURRENT_DATE}}` | MISSING | DONE | parity L269 |
 | Open WebUI | Temporal awareness | MISSING | DONE | The prompt states the date in the user's time zone (e.g. Europe/Lisbon, UTC+01:00); clock time is left out so prompt caches stay warm; date math runs in `run_code` |
 | Open WebUI | URL parameters / deep links | MISSING | DONE | `lumo://new?prompt=&model=&mode=` and `lumo://chat/<id>`; Copy link in the chat menu (parity: Links into the app) |
 | Open WebUI | Rebindable shortcuts | PARTIAL | DONE | parity L283; shortcuts.ts:9–16 |
-| Open WebUI | Global defaults for every model | PARTIAL | PARTIAL | Default model only. Missing: default temperature, length, capabilities |
+| Open WebUI | Global defaults for every model | PARTIAL | DONE | Defaults for every chat: temperature, length, top-p (parity: Defaults for every chat) |
 | Open WebUI | Version history of model configs | MISSING | DONE | Agents, workflows and tools keep 30 earlier versions each, with History and Load (parity: Version history) |
 | Open WebUI | Evaluation: arena, leaderboard | PARTIAL | DONE | parity L230 (blind compare, Elo `/leaderboard`) |
 | Open WebUI | Open Terminal (shell, files, site preview) | PARTIAL | PARTIAL | Terminal and Files panels (parity L122, L208). Missing: live preview of a dev server |
@@ -47,7 +47,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 27 / 14 / 4 / 
 | Open WebUI | Skills with supporting files and versions | PARTIAL | PARTIAL | Versions done (parity L278). Missing: supporting files (a skill is name, description and body only, api.ts `Skill`) |
 | Open WebUI | Prompts with variables and versions | PARTIAL | DONE | Variables in prompts and workflows; skills and workflows keep versions |
 | Open WebUI | One-shot timer back into this chat | PARTIAL | DONE | `schedule_task` with `in_this_chat` continues the chat it was asked in (parity: Scheduled follow-ups) |
-| Open WebUI | Webhooks on completion; `notify` tool | MISSING | PARTIAL | `notify` tool (parity L276; engine.rs:937–944). Missing: outgoing webhooks |
+| Open WebUI | Webhooks on completion; `notify` tool | MISSING | DONE | `notify` tool and task webhooks with Slack/Discord-friendly fields (parity: Webhooks when a task finishes) |
 | Open WebUI | Save web search results to knowledge | MISSING | DONE | Each web source has Save to a library; Libraries has Add a web page (parity: Save web pages to a library) |
 | Open WebUI | Hybrid search with reranking | PARTIAL | DONE | BM25 + embeddings fused, then an optional Cohere/Jina-style reranker (parity: Reranking) |
 | Open WebUI | Choice of vector databases | MISSING | OUT OF SCOPE | Left out: "A choice of vector database" (parity L219) |
@@ -145,7 +145,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 27 / 14 / 4 / 
 | LobeHub | Sort and group chats | MISSING | DONE | Sort four ways and date groups Today, Yesterday, 7 and 30 days, months |
 | LobeHub | Smart rename / rename | PARTIAL | DONE | Automatic title (engine.rs:804–808), Rename (chat.ts:2790) |
 | LobeHub | Open in new tab, right panel, new window | MISSING | MISSING |  |
-| LobeHub | Duplicate, move, forward to another agent | MISSING | PARTIAL | Duplicate through branch (commands.rs:1655), move to project (chat.ts:2801). Missing: forward to another agent |
+| LobeHub | Duplicate, move, forward to another agent | MISSING | DONE | Branch (duplicate), move to project, Continue with an agent (parity: Continue a chat with an agent) |
 | LobeHub | Export as screenshot, text, PDF, JSON | PARTIAL | PARTIAL | Markdown, JSON and PDF (print) export. Missing: export as a screenshot image |
 | LobeHub | Share link | MISSING | OUT OF SCOPE | Server-only (parity L202) |
 | LobeHub | Memory categories, weight, confidence, links | MISSING | MISSING | A memory has text, date, source only (api.ts `Memory`) |

@@ -487,6 +487,7 @@ fn schedule(config_dir: &Path, args: &Value) -> Outcome {
         next_run: None,
         seen: None,
         reply_in,
+        webhook: None,
     };
     let id = task.id.clone();
     match tasks::save(config_dir, task) {
