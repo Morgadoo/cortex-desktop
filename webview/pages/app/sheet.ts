@@ -39,6 +39,11 @@ export function parseCsv(text: string): string[][] {
   return rows;
 }
 
+/** Tab-separated rows, as spreadsheets paste them into cells. */
+export function toTsv(rows: string[][]): string {
+  return rows.map((r) => r.map((c) => c.replace(/[\t\r\n]+/g, ' ')).join('\t')).join('\n');
+}
+
 export function toCsv(rows: string[][]): string {
   return rows.map((r) => r.map((v) => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)).join(',')).join('\n');
 }
@@ -147,6 +152,19 @@ export function renderSheetCard(part: Extract<Part, { kind: 'tool' }>, live: boo
       if (saved) toast('Sheet saved.');
     },
   });
+  // Google Sheets without an account link: the sheet goes on the clipboard as tab-separated
+  // rows, which Sheets pastes into cells, and a new spreadsheet opens in the browser.
+  const sheets_ = iconButton({
+    icon: 'share',
+    title: 'Open in Google Sheets',
+    size: 'sm',
+    onClick: async () => {
+      if (dirty) save.click();
+      await navigator.clipboard.writeText(toTsv(rows));
+      window.open('https://sheets.new', '_blank', 'noopener');
+      toast('The sheet is on your clipboard: paste it (Ctrl+V) into the new Google spreadsheet.');
+    },
+  });
   const created = typeof part.arguments.id !== 'string' || !part.arguments.id;
   const writing = live && part.output === null;
   return h(
@@ -156,7 +174,7 @@ export function renderSheetCard(part: Extract<Part, { kind: 'tool' }>, live: boo
     h(
       'div',
       { class: 'canvas-card sheet-card' },
-      h('div', { class: 'canvas-head' }, icon('apps', 16), h('span', { class: 'canvas-title' }, title), h('span', { class: 'muted sheet-size' }, sheets.length > 1 ? `${sheets.length} sheets` : `${Math.max(0, rows.length - 1)} rows × ${width()} columns`), h('span', { class: 'spacer' }), addRow, addCol, save, copy, download),
+      h('div', { class: 'canvas-head' }, icon('apps', 16), h('span', { class: 'canvas-title' }, title), h('span', { class: 'muted sheet-size' }, sheets.length > 1 ? `${sheets.length} sheets` : `${Math.max(0, rows.length - 1)} rows × ${width()} columns`), h('span', { class: 'spacer' }), addRow, addCol, save, copy, sheets_, download),
       grid,
       tabs
     )

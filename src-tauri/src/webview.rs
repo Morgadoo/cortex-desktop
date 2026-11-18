@@ -319,7 +319,7 @@ fn confirm_and_open(app_handle: &tauri::AppHandle, url: url::Url) {
     crate::dialog::branded::show(
         app_handle,
         "Open link in your browser?",
-        format!("This link goes to {host}, outside Proton.\n\n{shown}"),
+        format!("This link goes to {host}, outside Lumo.\n\n{shown}"),
         Some(("Open", "Cancel")),
         crate::dialog::branded::Layout::IconOnLeft,
         move |accepted| {

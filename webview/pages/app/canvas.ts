@@ -197,6 +197,8 @@ export function openAppPanel(app: AppInfo) {
   windowed.addEventListener('click', () => openAppWindow(app.id));
   const save = iconButton({ icon: 'download', title: 'Download as a web page', size: 'sm' });
   save.addEventListener('click', () => download(app.id));
+  const shared = iconButton({ icon: 'link', title: 'Share a link on your network', size: 'sm' });
+  shared.addEventListener('click', () => void import('./share').then((s) => s.shareLink(app.title, s.appPage(app.code, app.title), true)));
   openSidePanel(
     app.id,
     h(
@@ -208,7 +210,7 @@ export function openAppPanel(app: AppInfo) {
         h('div', { class: 'panel-tools' }, close, viewSwitch(app, body, 'panel-frame')),
         h('strong', { class: 'panel-title' }, app.title),
         h('span', { class: 'spacer' }),
-        h('div', { class: 'panel-tools' }, copy, full, windowed, save)
+        h('div', { class: 'panel-tools' }, copy, full, windowed, shared, save)
       ),
       body
     ),
@@ -244,12 +246,14 @@ function renderAppCard(part: Extract<Part, { kind: 'tool' }>, live: boolean): HT
   const body = h('div', { class: 'app-body' });
   const save = iconButton({ icon: 'download', title: 'Download as a web page', size: 'sm' });
   save.addEventListener('click', () => download(id));
+  const shared = iconButton({ icon: 'link', title: 'Share a link on your network', size: 'sm' });
+  shared.addEventListener('click', () => void import('./share').then((s) => s.shareLink(title, s.appPage(code, title), true)));
   const expand = h('button', { class: 'canvas-expand', on: { click: open } }, 'Expand');
   const card = h(
     'div',
     { class: `canvas-card app-card${panelId === id ? ' compact' : ''}`, 'data-canvas': id },
     chip,
-    h('div', { class: 'canvas-head' }, icon('react', 16), h('span', { class: 'canvas-title' }, title), h('span', { class: 'spacer' }), viewSwitch(app, body), save),
+    h('div', { class: 'canvas-head' }, icon('react', 16), h('span', { class: 'canvas-title' }, title), h('span', { class: 'spacer' }), viewSwitch(app, body), shared, save),
     body,
     expand
   );

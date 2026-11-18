@@ -53,7 +53,7 @@ pub fn secret_name(vendor: &str) -> String {
 }
 
 /// One provider's saved settings. The key itself is in the keychain.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ProviderSettings {
     pub enabled: bool,
@@ -63,7 +63,7 @@ pub struct ProviderSettings {
     pub custom_models: Vec<String>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ProvidersFile {
     pub providers: BTreeMap<String, ProviderSettings>,

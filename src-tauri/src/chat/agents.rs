@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use super::store::{chat_dir, valid_id, write_json};
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Agent {
     pub id: String,

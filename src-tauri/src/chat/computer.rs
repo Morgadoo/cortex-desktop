@@ -29,7 +29,7 @@ pub const TOOL: &str = "computer";
 /// Screenshots wider than this are scaled down for the model.
 pub const MAX_WIDTH: u32 = 1280;
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ComputerSettings {
     pub enabled: bool,

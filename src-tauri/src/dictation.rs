@@ -21,7 +21,7 @@ pub const LABEL: &str = "dictation";
 const WIDTH: f64 = 440.0;
 const HEIGHT: f64 = 84.0;
 
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum Insert {
     /// Typed key by key into the app that had focus.
@@ -33,7 +33,7 @@ pub enum Insert {
     Copy,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Prefs {
     pub enabled: bool,

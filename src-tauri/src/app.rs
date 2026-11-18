@@ -16,6 +16,10 @@ pub fn run() {
     if let Some(code) = crate::chat::headless::maybe_run() {
         std::process::exit(code);
     }
+    // `config schema | check | path` (Vibe's `vibe config schema`).
+    if let Some(code) = crate::chat::config_cli::maybe_run() {
+        std::process::exit(code);
+    }
     // The guard must outlive the event loop to prevent premature client shutdown.
     let _sentry = reporting::init();
     tauri::Builder::default()
@@ -193,6 +197,9 @@ pub fn run() {
             chat::commands::chat_sync_settings,
             chat::commands::chat_save_sync_settings,
             chat::commands::chat_sync_now,
+            chat::commands::chat_share_link,
+            chat::commands::chat_shared_links,
+            chat::commands::chat_stop_share,
             chat::commands::chat_ui_languages,
             chat::commands::chat_show_window,
             chat::commands::chat_record_start,
@@ -486,6 +493,7 @@ pub fn run() {
             }
             crate::dictation::startup(app.handle());
             chat::sync::start(app.handle().clone());
+            chat::share::start(app.handle());
             tray::create(app.handle())?;
             updater::startup(app.handle());
             Ok(())

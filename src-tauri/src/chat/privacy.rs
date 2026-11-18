@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use super::store::{chat_dir, write_json};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", default)]
 pub struct PrivacySettings {
     pub enabled: bool,

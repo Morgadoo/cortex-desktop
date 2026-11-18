@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use super::store::write_json;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Memory {
     pub id: String,
@@ -53,7 +53,7 @@ pub struct Filing {
     pub conversation: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Memories {
     /// Use what is known (memories and knowledge pages) in conversations.

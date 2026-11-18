@@ -14,6 +14,8 @@ pub mod agent_cli;
 pub mod agents;
 pub mod headless;
 pub mod recorder;
+pub mod config_cli;
+pub mod share;
 pub mod sync;
 pub mod ui_language;
 pub mod vault;

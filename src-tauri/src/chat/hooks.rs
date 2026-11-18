@@ -24,7 +24,7 @@ const TIMEOUT_SECS: u64 = 60;
 /// Characters of a hook's output kept.
 const MAX_OUTPUT: usize = 4_000;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Hook {
     pub event: String,

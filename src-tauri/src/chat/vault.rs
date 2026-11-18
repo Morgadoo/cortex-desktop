@@ -18,7 +18,7 @@ use super::LOCAL_ACCOUNT;
 use crate::account::AccountId;
 use crate::tools::auth::keychain_secrets;
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Secret {
     /// The environment variable's name, like `GITHUB_TOKEN`.

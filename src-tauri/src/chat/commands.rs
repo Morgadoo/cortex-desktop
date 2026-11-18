@@ -899,6 +899,22 @@ pub fn chat_reset_ui_translations(app: AppHandle, code: String) -> Result<(), St
     super::ui_language::reset(&config_dir(&app)?, &code)
 }
 
+/// Shares a page (a conversation, an app) at a link on this computer's network.
+#[tauri::command]
+pub async fn chat_share_link(app: AppHandle, title: String, html: String, is_app: Option<bool>) -> Result<super::share::SharedLink, String> {
+    super::share::share(&config_dir(&app)?, &title, &html, is_app.unwrap_or(false)).await
+}
+
+#[tauri::command]
+pub async fn chat_shared_links(app: AppHandle) -> Result<Vec<super::share::SharedLink>, String> {
+    Ok(super::share::links(&config_dir(&app)?).await)
+}
+
+#[tauri::command]
+pub fn chat_stop_share(app: AppHandle, token: String) -> Result<(), String> {
+    super::share::stop(&config_dir(&app)?, &token)
+}
+
 /// Sync between devices, as this device has it.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]

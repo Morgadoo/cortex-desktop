@@ -29,7 +29,7 @@ pub const STT_SECRET: &str = "audio-stt";
 pub const TTS_SECRET: &str = "audio-tts";
 const ELEVENLABS: &str = "https://api.elevenlabs.io";
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", default)]
 pub struct SttSettings {
     /// `provider`, `openai`, `elevenlabs` or `off`.
@@ -51,7 +51,7 @@ impl Default for SttSettings {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", default)]
 pub struct TtsSettings {
     /// `provider`, `openai`, `xai`, `elevenlabs`, `browser` or `off`.
@@ -72,7 +72,7 @@ impl Default for TtsSettings {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", default)]
 pub struct AudioSettings {
     pub stt: SttSettings,

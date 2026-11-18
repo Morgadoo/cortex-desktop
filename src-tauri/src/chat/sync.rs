@@ -36,7 +36,7 @@ const PASSPHRASE: &str = "sync:passphrase";
 const MAX_FILE: u64 = 25 * 1024 * 1024;
 
 /// Device settings (not synced).
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
     /// The folder the sync service mirrors; Lumo works in `<folder>/Lumo Sync`.

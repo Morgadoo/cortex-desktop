@@ -21,7 +21,7 @@ use tauri::AppHandle;
 
 use super::store::{chat_dir, valid_id, write_json};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Frequency {
     /// One run at a local date and time.
@@ -46,7 +46,7 @@ pub enum Frequency {
     NewFeedItems { url: String },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Task {
     pub id: String,

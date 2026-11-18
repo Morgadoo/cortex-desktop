@@ -5,6 +5,7 @@ import { tauriInvoke } from '../../shared/tauri';
 import { api, newId, type ApprovalMode, type ChatParams, type Conversation, type Part, type Turn, type UsageTotals } from './api';
 import { fillVariables } from './variables';
 import { startVoiceConversation, voiceActive, voiceTurnEnded } from './voice';
+import { attachVim } from './vim';
 import { clear, confirmDialog, greeting, h, icon, markdown, modal, popover, promptText, timeLabel, toast, clockHour12 } from './dom';
 import { changed, currentModel, followUpsOn, navigate, setMode, state, temporaryByDefault, type LiveTurn, followStreamOn } from './state';
 import { openSettings } from './settings';
@@ -1666,6 +1667,10 @@ class Composer {
 
   constructor() {
     this.textarea = h('textarea', { class: 'composer-input', rows: 1, placeholder: this.placeholder });
+    // Vim keys (Settings → General), ahead of the box's own keys; menus keep theirs.
+    attachVim(this.textarea, () => !!this.slashMenu || !!document.querySelector('.popover'), (mode) => {
+      this.el.dataset.vim = mode;
+    });
     this.textarea.addEventListener('input', () => {
       this.scheduleSuggestion();
       this.autosize();
@@ -3583,6 +3588,10 @@ export class ChatView {
         h(
           'div',
           { class: 'menu' },
+          item('link', 'Share a link', 'Anyone on your network with the link can open it', () => {
+            const shared = this.sharePage();
+            if (shared) void import('./share').then((s) => s.shareLink(shared.title, shared.page));
+          }),
           item('globe', 'Share as web page', 'One file anyone can open in a browser', () => void this.shareAsPage()),
           item('download', 'Export as Markdown', 'The text, for notes and documents', () => void api.exportConversation(this.id).then((saved) => saved && toast('Conversation exported.')))
         )
@@ -3643,9 +3652,10 @@ export class ChatView {
    * The conversation as one self-contained web page: what was asked and answered, rendered,
    * with code, citations and sources, readable in light or dark, loading nothing from elsewhere.
    */
-  private async shareAsPage() {
+  /** The conversation as one self-contained page. */
+  private sharePage(): { title: string; page: string } | null {
     const c = this.conversation;
-    if (!c) return;
+    if (!c) return null;
     const title = this.header.querySelector('.crumb-title')?.textContent?.trim() || 'Conversation';
     const body = document.createElement('div');
     for (const turn of c.turns) {
@@ -3691,6 +3701,13 @@ details > summary { display: none; } .footer { color: var(--muted); font-size: .
 ${body.innerHTML}
 <div class="footer">AI answers can contain mistakes. Check important information.</div>
 </main></body></html>`;
+    return { title, page };
+  }
+
+  private async shareAsPage() {
+    const shared = this.sharePage();
+    if (!shared) return;
+    const { title, page } = shared;
     try {
       if (await tauriInvoke<boolean>('chat_save_shared_page', { title, html: page })) toast('Saved as a web page. Send the file to share the conversation.');
     } catch (e) {

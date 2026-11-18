@@ -44,7 +44,7 @@ use super::store::write_json;
 pub const SECRET: &str = "api-server";
 pub const DEFAULT_PORT: u16 = 8484;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ApiServerSettings {
     pub enabled: bool,

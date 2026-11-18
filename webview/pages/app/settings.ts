@@ -10,6 +10,8 @@ import { SHORTCUTS, bindingFor, comboOf, display, setBinding } from './shortcuts
 import { ACCENTS, BACKDROPS, BACKGROUNDS, backdropVeil, setBackdrop, setBackdropImage, setBackdropVeil, storedBackdrop, TEXT_SIZES, ZOOMS, accentHex, applyAppearance, readability, setAccent, setBackground, setReadability, storedAccent, storedBackground, type TextSize } from './appearance';
 import { setVoicePauseMs, voicePauseMs } from './dictation';
 import { setWakePrefs, wakePrefs } from './wakeword';
+import { setVimEnabled, vimEnabled } from './vim';
+import { sharedLinksCard } from './share';
 import { effectiveLanguage, setStoredLanguage, storedLanguage } from './i18n';
 
 export type Section = 'profile' | 'providers' | 'audio' | 'permissions' | 'general' | 'appearance';
@@ -27,6 +29,7 @@ const SECTIONS: { id: Section; label: string; icon: string; group: string }[] = 
 const SETTINGS_INDEX: [string, Section, string][] = [
   ['Your profile', 'profile', 'name about instructions tone personality'],
   ['Your data', 'profile', 'export import backup delete history'],
+  ['Shared links', 'profile', 'share link network url stop sharing public page'],
   ['Sync between devices', 'profile', 'sync devices encrypted syncthing dropbox icloud nextcloud onedrive passphrase other computer'],
   ['Storage and backups', 'profile', 'backup restore damaged files recently deleted trash'],
   ['Backup model', 'providers', 'fallback failover failure credit down'],
@@ -61,6 +64,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Defaults for every chat', 'general', 'temperature top-p top_p max tokens reply length model parameters'],
   ['Error reports and updates', 'general', 'privacy telemetry error reports crash sentry updates diagnostics'],
   ['Language', 'appearance', 'language translate português español français deutsch interface locale'],
+  ['Vim keys', 'general', 'vim keybindings normal mode editor hjkl modal'],
   ['Clock', 'general', '12-hour 24-hour time format am pm'],
   ['Theme', 'appearance', 'dark light system mode'],
   ['Accent colour', 'appearance', 'color colour highlight'],
@@ -322,7 +326,8 @@ function renderProfile(content: HTMLElement) {
       )
     ),
     dataCard,
-    syncCard(() => void renderData())
+    syncCard(() => void renderData()),
+    sharedLinksCard()
   );
   void renderData();
 }
@@ -1371,6 +1376,7 @@ async function renderGeneral(content: HTMLElement) {
         });
         return row('Clock', 'How times are shown on messages, tasks and the calendar.', pick);
       })(),
+      row('Vim keys in the message box', 'Esc switches to Normal mode (h j k l, w b e, dd, cw, yy p, u…); i, a or o go back to typing. Enter sends in both modes.', switchInput(vimEnabled(), (v) => { setVimEnabled(v); toast(v ? 'Vim keys on: Esc for Normal mode.' : 'Vim keys off.'); })),
       row('Autocomplete as you type', 'When you pause while typing, suggest how the sentence goes on; Tab takes it, Esc dismisses it. Each pause is one short request to the model.', switchInput(autocompleteOn(), (v) => setAutocomplete(v))),
       row('New chats are temporary', 'Chats are not saved to your history unless you turn this off for one (the ghost button on the new-chat page). Takes effect from the next new chat.', switchInput(temporaryByDefault(), (v) => setTemporaryByDefault(v)))
     ),
