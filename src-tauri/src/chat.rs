@@ -46,6 +46,7 @@ pub mod subagents;
 pub mod tasks;
 pub mod terminal;
 pub mod tools;
+pub mod versions;
 pub mod workflows;
 
 use std::collections::HashMap;

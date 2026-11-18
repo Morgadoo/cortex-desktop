@@ -2,6 +2,7 @@
 import { tauriInvoke } from '../../shared/tauri';
 import type { Workflow } from './api';
 import { clear, confirmDialog, h, icon, modal, toast } from './dom';
+import { historyButton } from './versions';
 import { modalHeader, pageHeader } from './ui';
 
 export const workflowsApi = {
@@ -48,7 +49,20 @@ export function editWorkflow(workflow: Workflow | null, onSaved: (all: Workflow[
       description,
       h('label', { class: 'field-label' }, 'Steps'),
       steps,
-      h('div', { class: 'dialog-actions' }, h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Save'))
+      h(
+        'div',
+        { class: 'dialog-actions' },
+        workflow && !workflow.builtin
+          ? historyButton('workflows', workflow.id, (v) => {
+              name.value = typeof v.name === 'string' ? v.name : '';
+              description.value = typeof v.description === 'string' ? v.description : '';
+              steps.value = Array.isArray(v.steps) ? (v.steps as string[]).join('\n') : '';
+            })
+          : null,
+        h('span', { class: 'spacer' }),
+        h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'),
+        h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Save')
+      )
     );
   });
 }

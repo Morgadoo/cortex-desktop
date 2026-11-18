@@ -66,6 +66,9 @@ pub fn save(config_dir: &Path, tool: &CustomTool) -> Result<Vec<CustomTool>, Str
     if tool.parameters.get("type").and_then(Value::as_str) != Some("object") {
         return Err("The input schema must be a JSON object schema, like {\"type\": \"object\", \"properties\": {…}}.".into());
     }
+    if let Some(previous) = list(config_dir).into_iter().find(|t| t.name == tool.name) {
+        super::versions::keep(config_dir, "tools", &tool.name, &previous, tool)?;
+    }
     write_json(&dir(config_dir).join(&tool.name).join("tool.json"), tool)?;
     Ok(list(config_dir))
 }

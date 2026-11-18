@@ -2,6 +2,7 @@
 import { tauriInvoke } from '../../shared/tauri';
 import { api, type AppSettings, type Provider } from './api';
 import { clear, confirmDialog, h, icon, modal, toast } from './dom';
+import { historyButton } from './versions';
 import { changed, finishNotificationsOn, followUpsOn, setFinishNotifications, setFollowUps, setTemporaryByDefault, state, temporaryByDefault } from './state';
 import { button, card, modalHeader, switchInput } from './ui';
 import { audioApi, refreshAudioSettings, speakText, type AudioView } from './audio';
@@ -751,7 +752,22 @@ function editTool(existing: CustomTool | null, onSaved: (tools: CustomTool[]) =>
       h('label', { class: 'field-label' }, 'Try it with'),
       h('div', { class: 'freq-row' }, h('div', { class: 'grow' }, sample), h('button', { class: 'btn btn-secondary', on: { click: () => void test() } }, icon('play', 14), 'Test')),
       error,
-      h('div', { class: 'dialog-actions' }, remove, h('span', { class: 'spacer' }), h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save(true) } }, 'Save'))
+      h(
+        'div',
+        { class: 'dialog-actions' },
+        remove,
+        existing
+          ? historyButton('tools', existing.name, (v) => {
+              description.value = typeof v.description === 'string' ? v.description : '';
+              if (typeof v.language === 'string') language.value = v.language;
+              schema.value = JSON.stringify(v.parameters ?? {}, null, 2);
+              code.value = typeof v.code === 'string' ? v.code : '';
+            })
+          : null,
+        h('span', { class: 'spacer' }),
+        h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'),
+        h('button', { class: 'btn btn-primary', on: { click: () => void save(true) } }, 'Save')
+      )
     );
   });
 }

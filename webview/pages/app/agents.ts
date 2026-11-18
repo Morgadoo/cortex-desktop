@@ -2,6 +2,7 @@
 import { tauriInvoke } from '../../shared/tauri';
 import { api, newId, type Agent, type AgentSpend } from './api';
 import { clear, confirmDialog, h, icon, modal, timeLabel, toast } from './dom';
+import { historyButton } from './versions';
 import { changed, navigate, state } from './state';
 import { TasksPage } from './tasks';
 import { button, card, modalHeader } from './ui';
@@ -209,7 +210,25 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
       h('label', { class: 'field-label', title: 'The agent searches these before answering and cites what it uses' }, 'Libraries'),
       libraryList,
       error,
-      h('div', { class: 'dialog-actions' }, remove, h('span', { class: 'spacer' }), h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, existing ? 'Save' : 'Create agent'))
+      h(
+        'div',
+        { class: 'dialog-actions' },
+        remove,
+        existing
+          ? historyButton('agents', existing.id, (v) => {
+              const text = (k: string) => (typeof v[k] === 'string' ? (v[k] as string) : '');
+              name.value = text('name');
+              avatarInput.value = text('avatar');
+              description.value = text('description');
+              instructions.value = text('instructions');
+              starters.value = Array.isArray(v.starters) ? (v.starters as string[]).join('\n') : '';
+              think.checked = v.think === true;
+            })
+          : null,
+        h('span', { class: 'spacer' }),
+        h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'),
+        h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, existing ? 'Save' : 'Create agent')
+      )
     );
   }, false);
 }

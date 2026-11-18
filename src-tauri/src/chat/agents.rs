@@ -134,7 +134,10 @@ pub fn save(config_dir: &Path, agent: Agent) -> Result<Vec<Agent>, String> {
     }
     let mut agents = load(config_dir);
     match agents.iter_mut().find(|a| a.id == agent.id) {
-        Some(existing) => *existing = agent,
+        Some(existing) => {
+            super::versions::keep(config_dir, "agents", &agent.id, &*existing, &agent)?;
+            *existing = agent;
+        }
         None => agents.push(agent),
     }
     write_json(&path(config_dir), &agents)?;

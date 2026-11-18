@@ -1074,6 +1074,12 @@ pub fn chat_delete_exchange(app: AppHandle, state: State<'_, ChatState>, id: Str
     store::save_conversation(&dir, &conversation)
 }
 
+/// Earlier versions of an agent, workflow or tool, newest first.
+#[tauri::command]
+pub fn chat_versions(app: AppHandle, kind: String, id: String) -> Result<Vec<super::versions::Version>, String> {
+    super::versions::list(&config_dir(&app)?, &kind, &id)
+}
+
 /// The app link (lumo://…) waiting for the page, if any.
 #[tauri::command]
 pub fn chat_take_link(pending: State<'_, super::links::PendingLink>) -> Option<super::links::Link> {

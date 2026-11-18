@@ -114,7 +114,10 @@ pub fn save(config_dir: &Path, mut workflow: Workflow) -> Result<Vec<Workflow>, 
     workflow.builtin = false;
     let mut all = load(config_dir);
     match all.iter_mut().find(|w| w.id == workflow.id) {
-        Some(existing) => *existing = workflow,
+        Some(existing) => {
+            super::versions::keep(config_dir, "workflows", &workflow.id, &*existing, &workflow)?;
+            *existing = workflow;
+        }
         None => all.insert(0, workflow),
     }
     save_mine(config_dir, &all)?;
