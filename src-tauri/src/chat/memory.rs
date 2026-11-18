@@ -58,12 +58,23 @@ pub struct Filing {
 pub struct Memories {
     pub enabled: bool,
     pub items: Vec<Memory>,
+    /// Vibe's "Sensitive data" switch: when on, the assistant does not save card numbers, bank
+    /// accounts, passwords or keys to knowledge.
+    pub keep_sensitive_out: bool,
 }
 
 impl Default for Memories {
     fn default() -> Self {
-        Self { enabled: true, items: Vec::new() }
+        Self { enabled: true, items: Vec::new(), keep_sensitive_out: true }
     }
+}
+
+/// Why the assistant may not save `text`, when the user keeps sensitive data out.
+pub fn refuse_sensitive(memories: &Memories, text: &str) -> Option<String> {
+    let kinds = super::privacy::sensitive_kinds(text);
+    (memories.keep_sensitive_out && !kinds.is_empty()).then(|| {
+        format!("Not saved: it holds {}, and the user keeps sensitive data out of knowledge. Tell them you did not save it.", kinds.join(" and "))
+    })
 }
 
 /// More than this and the oldest assistant-made memories make room.

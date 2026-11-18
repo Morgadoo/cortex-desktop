@@ -376,6 +376,9 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
                 inferred: args.get("inferred").and_then(Value::as_bool).unwrap_or(false),
                 conversation: Some(str_arg("conversation")).filter(|c| !c.is_empty()),
             };
+            if let Some(reason) = memory::refuse_sensitive(&memories, &str_arg("fact")) {
+                return err(reason);
+            }
             match memory::add_filed(&mut memories, &str_arg("fact"), "assistant", filing) {
                 Ok(m) => match memory::save(config_dir, &memories) {
                     Ok(()) => ok(format!("Saved as {}.", &m.id[..8])),
@@ -403,6 +406,9 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
                 .map(|a| a.iter().filter_map(Value::as_str).map(String::from).collect())
                 .unwrap_or_default();
             let id = str_arg("id");
+            if let Some(reason) = memory::refuse_sensitive(&memory::load(config_dir), &format!("{}\n{}", str_arg("title"), str_arg("content"))) {
+                return err(reason);
+            }
             match super::knowledge::write(config_dir, (!id.is_empty()).then_some(id.as_str()), &str_arg("title"), &str_arg("content"), "assistant", &sources) {
                 Ok(page) => ok(json!({ "id": page.id, "title": page.title, "saved": true }).to_string()),
                 Err(e) => err(e),
@@ -701,6 +707,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let saved = run(dir.path(), REMEMBER, &json!({"fact": "Lives in Porto"})).await;
         assert!(!saved.is_error, "{}", saved.text);
+        // Sensitive data stays out while the switch is on (the default), in facts and pages.
+        let refused = run(dir.path(), REMEMBER, &json!({"fact": "The office wifi password is hunter22-blue"})).await;
+        assert!(refused.is_error && refused.text.contains("a password, key or token"), "{}", refused.text);
+        let page = run(dir.path(), KNOWLEDGE_WRITE, &json!({"title": "Payments", "content": "Card 4111 1111 1111 1111"})).await;
+        assert!(page.is_error && page.text.contains("a card number"), "{}", page.text);
         let memories = memory::load(dir.path());
         assert_eq!(memories.items.len(), 1);
         let short = &memories.items[0].id[..8];
@@ -724,7 +735,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).filter(|n| n != super::super::sandbox::RUN_CODE && n != super::super::media::GENERATE_IMAGE && n != SAVE_SKILL && n != NOTIFY && !n.starts_with("knowledge_")).collect();
         assert_eq!(names, [WEB_SEARCH, UPDATE_PLAN, DELEGATE, CANVAS, SCHEDULE_TASK, SEARCH_CHATS, READ_CHAT, REMEMBER, FORGET, USE_SKILL]);
-        memory::save(dir.path(), &memory::Memories { enabled: false, items: vec![] }).unwrap();
+        memory::save(dir.path(), &memory::Memories { enabled: false, ..Default::default() }).unwrap();
         let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).filter(|n| n != super::super::sandbox::RUN_CODE && n != super::super::media::GENERATE_IMAGE && n != SAVE_SKILL && n != NOTIFY && !n.starts_with("knowledge_")).collect();
         assert_eq!(names, [WEB_SEARCH, UPDATE_PLAN, DELEGATE, CANVAS, SCHEDULE_TASK, USE_SKILL]);
     }

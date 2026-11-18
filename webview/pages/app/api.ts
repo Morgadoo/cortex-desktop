@@ -173,6 +173,8 @@ export interface Memory {
 export interface Memories {
   enabled: boolean;
   items: Memory[];
+  /** Vibe's "Sensitive data" switch: card numbers, bank accounts, passwords and keys are not saved. */
+  keepSensitiveOut: boolean;
 }
 
 export interface Skill {

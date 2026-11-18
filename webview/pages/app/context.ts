@@ -395,7 +395,7 @@ function editKnowledgePage(page: KnowledgePageData | null, onSaved: (pages: Know
 export class KnowledgePage {
   readonly el = h('div', { class: 'page' });
   readonly key = 'page:knowledge';
-  private memories: Memories = { enabled: true, items: [] };
+  private memories: Memories = { enabled: true, items: [], keepSensitiveOut: true };
   private memoryQuery = '';
   private memorySource: 'all' | 'you' | 'assistant' = 'all';
   private memoryCategory = '';
@@ -457,6 +457,12 @@ export class KnowledgePage {
         { class: 'setting-row' },
         h('div', {}, h('strong', {}, 'Use knowledge'), h('small', { class: 'muted' }, 'Let the assistant save facts about you and use them in new conversations.')),
         switchInput(m.enabled, async (v) => this.set(await api.setMemoryEnabled(v)))
+      ),
+      h(
+        'div',
+        { class: 'setting-row' },
+        h('div', {}, h('strong', {}, 'Keep sensitive data out'), h('small', { class: 'muted' }, 'The assistant does not save card numbers, bank accounts, passwords, PINs or keys to knowledge, and tells you when it left something out.')),
+        switchInput(m.keepSensitiveOut ?? true, async (v) => this.set(await tauriInvoke<Memories>('chat_set_keep_sensitive_out', { on: v })))
       )
     );
     const input = h('input', { class: 'input', placeholder: 'Add something the assistant should know, e.g. “I work in renewable energy regulation”' });

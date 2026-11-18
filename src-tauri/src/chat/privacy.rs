@@ -56,6 +56,34 @@ fn patterns() -> &'static [(&'static str, Regex)] {
     })
 }
 
+/// The kinds of sensitive data in `text` that do not belong in saved knowledge: card numbers,
+/// bank accounts, and secrets (passwords, PINs, API keys and tokens).
+pub fn sensitive_kinds(text: &str) -> Vec<&'static str> {
+    static SECRET: OnceLock<Regex> = OnceLock::new();
+    let secret = SECRET.get_or_init(|| {
+        Regex::new(r"(?i)\b(password|passwd|passcode|pin|api[ _-]?key|secret|token|senha|palavra-passe)\b\s*(is|é|:|=)\s*\S{3,}|\b(sk|pk|rk)-[A-Za-z0-9_-]{16,}|\bgh[pousr]_[A-Za-z0-9]{20,}|\bAKIA[0-9A-Z]{16}\b|\bxox[abp]-[A-Za-z0-9-]{10,}").expect("secret")
+    });
+    let mut out = Vec::new();
+    for (kind, re) in patterns() {
+        let hit = re.find_iter(text).any(|m| match *kind {
+            "CARD" => m.as_str().chars().filter(char::is_ascii_digit).count() >= 13,
+            "IBAN" => true,
+            _ => false,
+        });
+        if hit {
+            out.push(if *kind == "CARD" { "a card number" } else { "a bank account number" });
+        }
+    }
+    // An IBAN's digits also read as a card number; it is one thing.
+    if out.contains(&"a bank account number") {
+        out.retain(|k| *k != "a card number");
+    }
+    if secret.is_match(text) {
+        out.push("a password, key or token");
+    }
+    out
+}
+
 /// The placeholders of one request, so the reply can be restored.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Redactions {
@@ -197,4 +225,15 @@ mod tests {
         assert_eq!(reply, Message::assistant("I'll write to jo@z.com."));
         assert!(!is_cloud("ollama") && is_cloud("openai"));
     }
+
+    #[test]
+    fn sensitive_data_is_recognised() {
+        assert_eq!(sensitive_kinds("My card is 4111 1111 1111 1111"), ["a card number"]);
+        assert_eq!(sensitive_kinds("Rent goes to PT50 0002 0123 1234 5678 9015 4"), ["a bank account number"]);
+        assert_eq!(sensitive_kinds("the wifi password is hunter22"), ["a password, key or token"]);
+        assert_eq!(sensitive_kinds("use key sk-abcdefghijklmnop1234 for the API"), ["a password, key or token"]);
+        assert!(sensitive_kinds("Rita's email is rita@acme.example, phone +351 912 345 678").is_empty());
+        assert!(sensitive_kinds("Prefers metric units; born in 1988").is_empty());
+    }
+
 }

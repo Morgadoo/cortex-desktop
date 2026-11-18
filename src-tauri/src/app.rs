@@ -187,6 +187,7 @@ pub fn run() {
             chat::commands::chat_save_hooks,
             chat::commands::chat_create_worktree,
             chat::commands::chat_file_memory,
+            chat::commands::chat_set_keep_sensitive_out,
             chat::commands::chat_router_models,
             chat::commands::chat_set_router_models,
             chat::commands::chat_complete_prompt,

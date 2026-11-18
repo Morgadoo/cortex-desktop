@@ -620,6 +620,12 @@ function renderParts(parts: Part[], live: boolean, key: string, durations: numbe
       out.push(renderImage(part, live, key.split(':')[0] ?? ''));
       return;
     }
+    // Knowledge read and written shows as pills in the answer (Vibe's knowledge pills).
+    if (part.kind === 'tool' && KNOWLEDGE_TOOLS.includes(part.name)) {
+      flush();
+      out.push(knowledgePill(part));
+      return;
+    }
     if (part.kind === 'tool' && part.name === 'run_code') {
       flush();
       out.push(renderCodeRun(part, live, key.split(':')[0] ?? ''));
@@ -645,6 +651,40 @@ function renderParts(parts: Part[], live: boolean, key: string, durations: numbe
   });
   flush();
   return out;
+}
+
+const KNOWLEDGE_TOOLS = ['remember', 'forget', 'knowledge_write', 'knowledge_read'];
+
+/** A knowledge read or write as a pill in the answer; it opens the Knowledge page. */
+function knowledgePill(part: Extract<Part, { kind: 'tool' }>): HTMLElement {
+  const arg = (k: string) => String(part.arguments[k] ?? '').trim();
+  const pending = part.output === null;
+  const label = (() => {
+    if (part.isError) return part.name === 'remember' || part.name === 'knowledge_write' ? `Not saved: ${(part.output ?? '').replace(/^Not saved: /, '').split('.')[0]}` : 'Could not read knowledge';
+    switch (part.name) {
+      case 'remember':
+        return `${pending ? 'Saving' : 'Saved'} to knowledge: ${arg('fact')}`;
+      case 'forget':
+        return pending ? 'Removing a fact' : 'Removed a fact from knowledge';
+      case 'knowledge_write':
+        return `${pending ? 'Writing' : arg('id') ? 'Updated' : 'Saved'} the knowledge page ${arg('title') ? `“${arg('title')}”` : ''}`.trim();
+      default: {
+        let title = arg('title') || arg('id');
+        try {
+          title = (JSON.parse(part.output ?? '{}') as { title?: string }).title ?? title;
+        } catch {
+          /* plain text output */
+        }
+        return `Read the knowledge page${title ? ` “${title}”` : ''}`;
+      }
+    }
+  })();
+  return h(
+    'button',
+    { class: `knowledge-pill${part.isError ? ' error' : ''}${pending ? ' pending' : ''}`, title: 'Open Knowledge', on: { click: () => navigate({ kind: 'page', page: 'knowledge' }) } },
+    icon('book', 13),
+    h('span', {}, label.length > 140 ? `${label.slice(0, 140)}…` : label)
+  );
 }
 
 function textOf(parts: Part[]): string {

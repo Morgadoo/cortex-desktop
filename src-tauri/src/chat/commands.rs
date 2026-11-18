@@ -788,6 +788,16 @@ pub fn chat_update_memory(app: AppHandle, id: String, text: String) -> Result<su
     Ok(memories)
 }
 
+/// Vibe's "Sensitive data" switch for knowledge.
+#[tauri::command]
+pub fn chat_set_keep_sensitive_out(app: AppHandle, on: bool) -> Result<super::memory::Memories, String> {
+    let dir = config_dir(&app)?;
+    let mut memories = super::memory::load(&dir);
+    memories.keep_sensitive_out = on;
+    super::memory::save(&dir, &memories)?;
+    Ok(memories)
+}
+
 /// Files a memory: its category, importance (1–3) and whether the user confirmed it.
 #[tauri::command]
 pub fn chat_file_memory(app: AppHandle, id: String, category: String, importance: u8, confirmed: bool) -> Result<super::memory::Memories, String> {
