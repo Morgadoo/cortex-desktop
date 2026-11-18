@@ -16,7 +16,7 @@ import { clear, confirmDialog, greeting, h, icon, markdown, modal, popover, prom
 import { changed, currentModel, followUpsOn, navigate, setMode, state, temporaryByDefault, type LiveTurn, followStreamOn } from './state';
 import { openSettings } from './settings';
 import { openInstructions } from './pages';
-import { closePanel, enableAskAboutSelection, openSidePanel, renderCanvasCard, setPanelHost, lineDiff } from './canvas';
+import { closePanel, enableAskAboutSelection, hasPanel, openSidePanel, renderCanvasCard, setPanelHost, lineDiff } from './canvas';
 import { hostOf, previewFor, siteIcon } from './favicon';
 import './diagrams';
 import { renderCodeRun, renderImage, renderVideo } from './coderun';
@@ -4252,6 +4252,7 @@ export function conversationMenu(anchor: HTMLElement, id: string, title: string,
       }),
       item('download', 'Export as Markdown', () => void api.exportConversation(id).then((saved) => saved && toast('Conversation exported.'))),
       item('link', 'Copy link', () => void navigator.clipboard.writeText(`lumo://chat/${id}`).then(() => toast('Link copied. It opens this chat in Lumo on this computer.'))),
+      ...(state.view.kind === 'chat' && state.view.id !== id ? [item('columns', 'Open beside this chat', () => openChatBeside(id))] : []),
       item('expand', 'Open in new window', () => void tauriInvoke('chat_open_chat_window', { id }).catch((e) => toast(String(e), 'error'))),
       item('download', 'Print or save as PDF', () => void printConversation(id, title)),
       item('image', 'Export as image', () => void exportImage(id)),
@@ -4591,6 +4592,57 @@ function openReader(url: string, fallbackTitle: string, back: () => void) {
       clear(body, h('article', { class: 'reader-article no-translate' }, h('h2', {}, a.title || fallbackTitle), h('div', { class: 'reader-meta muted small' }, meta), ...blocks));
     })
     .catch((e) => clear(body, h('p', { class: 'error-text' }, String(e)), button({ variant: 'secondary', icon: 'globe', label: 'Open in the browser', onClick: () => window.open(url, '_blank', 'noopener') })));
+}
+
+/**
+ * Another chat beside this one (Open WebUI's tabs): its conversation in a side-panel tab, kept
+ * up to date while it runs, with a way to swap the two.
+ */
+export function openChatBeside(id: string) {
+  if (!hasPanel() || state.view.kind !== 'chat') return void toast('Open a chat first; the other one opens beside it.');
+  if (state.view.id === id) return void toast('This chat is already open.');
+  const current = state.view.id;
+  const body = h('div', { class: 'chat-beside' }, h('p', { class: 'muted small' }, 'Loading…'));
+  const title = h('strong', { class: 'panel-title' }, state.conversations.find((c) => c.id === id)?.title || 'Chat');
+  const swap = iconButton({ icon: 'columns', title: 'Swap: this one in front, the current one beside', size: 'sm', onClick: () => {
+    closePanel();
+    navigate({ kind: 'chat', id });
+    setTimeout(() => openChatBeside(current), 500);
+  } });
+  const open = iconButton({ icon: 'expand', title: 'Open this chat', size: 'sm', onClick: () => navigate({ kind: 'chat', id }) });
+  const close = iconButton({ icon: 'close', title: 'Close', size: 'sm', onClick: closePanel });
+  const panel = h('div', { class: 'panel-inner' }, h('div', { class: 'panel-head' }, icon('chat', 15), title, h('span', { class: 'spacer' }), swap, open, close), body);
+  openSidePanel(`chat:${id}`, panel, state.conversations.find((c) => c.id === id)?.title || 'Chat');
+  let shown = '';
+  const draw = async () => {
+    if (!panel.isConnected && shown) return;
+    try {
+      const c = await api.conversation(id);
+      const key = `${c.turns.length}:${JSON.stringify(c.turns[c.turns.length - 1]?.parts ?? []).length}:${c.running}`;
+      if (key !== shown) {
+        const first = !shown;
+        shown = key;
+        title.textContent = c.title || 'Chat';
+        const atEnd = body.scrollHeight - body.scrollTop - body.clientHeight < 40;
+        clear(
+          body,
+          c.turns.length
+            ? c.turns.map((t) =>
+                t.role === 'user'
+                  ? h('div', { class: 'beside-user' }, t.parts.filter((p) => p.kind === 'text').map((p) => (p as { text: string }).text.replace(/<attachment[\s\S]*$/, '').trim()).join('\n'))
+                  : h('div', { class: 'beside-assistant' }, renderParts(t.parts, c.running && t === c.turns[c.turns.length - 1], `${id}:${t.index}`))
+              )
+            : h('p', { class: 'muted small' }, 'Nothing here yet.')
+        );
+        if (atEnd || first) body.scrollTop = body.scrollHeight;
+      }
+      // Kept up to date while it is open: often while it runs, now and then otherwise.
+      setTimeout(() => void draw(), c.running ? 1500 : 5000);
+    } catch (e) {
+      clear(body, h('p', { class: 'error-text' }, String(e)));
+    }
+  };
+  void draw();
 }
 
 function openSourcesPanel(sources: Source[]) {

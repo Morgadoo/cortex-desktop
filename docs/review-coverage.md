@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 187 |
-| PARTIAL | 86 | 4 |
+| DONE | 58 | 188 |
+| PARTIAL | 86 | 3 |
 | MISSING | 48 | 1 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 44 / 1 / 0 / 9 · LibreChat 42 / 0 / 0 / 4 · LobeHub 29 / 0 / 0 / 5 · Onyx 21 / 0 / 0 / 5 · Osaurus 23 / 2 / 1 / 4 · OpenBot 28 / 1 / 0 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 45 / 0 / 0 / 9 · LibreChat 42 / 0 / 0 / 4 · LobeHub 29 / 0 / 0 / 5 · Onyx 21 / 0 / 0 / 5 · Osaurus 23 / 2 / 1 / 4 · OpenBot 28 / 1 / 0 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -55,7 +55,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 44 / 1 / 0 / 9
 | Open WebUI | Always use full text | MISSING | DONE | parity L241 (`read_document`) |
 | Open WebUI | Knowledge file browser with preview | PARTIAL | DONE | Click a document to read its indexed text with find-in-text (parity: Library document preview) |
 | Open WebUI | Knowledge base sync of folders and repos | PARTIAL | DONE | parity L240 (Mirror a folder, incremental, every 10 min) |
-| Open WebUI | Tabs side panel, split panes | PARTIAL | PARTIAL | Apps, canvases and Sources as panel tabs (parity L200; canvas.ts:55). Missing: chats and files as tabs, split panes |
+| Open WebUI | Tabs side panel, split panes | PARTIAL | DONE | The side panel holds tabs: apps, canvases, sources, articles, Outputs, workspace files (Markdown, CSV as a table, text and code, images) and other chats (chat menu → Open beside this chat: kept up to date while it runs, with Swap and Open). Split shows two tabs side by side; a tab clicked while split goes in the other pane. Verified live: a chat, Outputs and a file as tabs, then a file and a chat split |
 | Open WebUI | Hands-free voice and video calls, realtime | PARTIAL | DONE | Hands-free call (parity L236). Video and realtime models are left out (L221) |
 | Open WebUI | Voice cloning | MISSING | OUT OF SCOPE | Left out (parity L221) |
 | Open WebUI | Image generation and editing, ComfyUI | PARTIAL | DONE | Cloud image models (OpenAI, xAI, Together) with editing by reference, and a local image server: Stable Diffusion WebUI, Forge, SD.Next or Draw Things through the AUTOMATIC1111 API (txt2img, img2img for edits), its checkpoints listed as image models. ComfyUI's own workflow API is not used. Verified live against an AUTOMATIC1111-compatible server |

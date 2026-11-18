@@ -42,6 +42,25 @@ function size(bytes: number): string {
 /** Opens what an output is: a canvas in the panel (or as text), an image large, a file saved. */
 async function openOutput(o: Output, inPanel: boolean) {
   try {
+    // In a chat, files open as side-panel tabs (Open WebUI's files beside the chat).
+    if (inPanel && (o.kind === 'image' || o.kind === 'file')) {
+      const ext = o.id.split('.').pop()?.toLowerCase() ?? '';
+      const save = iconButton({ icon: 'download', title: 'Save a copy', size: 'sm', onClick: () => void tauriInvoke<boolean>('chat_save_output', { conversationId: o.conversationId, path: o.id }).then((saved) => saved && toast('File saved.')) });
+      const head = h('div', { class: 'panel-head' }, icon(o.kind === 'image' ? 'image' : 'file', 15), h('strong', { class: 'panel-title' }, o.title), h('span', { class: 'spacer' }), save, iconButton({ icon: 'close', title: 'Close', size: 'sm', onClick: closePanel }));
+      let body: HTMLElement;
+      if (o.kind === 'image') body = h('img', { src: fileUrl(o.conversationId, o.id), alt: o.title });
+      else {
+        const text = await tauriInvoke<string>('chat_workspace_text', { conversationId: o.conversationId, path: o.id });
+        body =
+          ext === 'md' || ext === 'markdown'
+            ? h('div', { class: 'markdown' }, markdown(text))
+            : ext === 'csv' || ext === 'tsv'
+              ? h('div', { class: 'markdown' }, h('table', {}, text.trim().split(/\r?\n/).slice(0, 500).map((line, i) => h('tr', {}, line.split(ext === 'tsv' ? '\t' : ',').map((cell) => h(i ? 'td' : 'th', {}, cell.replace(/^"|"$/g, '')))))))
+              : h('pre', { class: 'no-translate' }, text);
+      }
+      openSidePanel(`file:${o.conversationId}:${o.id}`, h('div', { class: 'panel-inner' }, head, h('div', { class: 'file-tab-body' }, body)), o.title);
+      return;
+    }
     if (o.kind === 'image') {
       void modal((close) => h('div', { class: 'dialog-small wide' }, modalHeader(o.title, close, { flush: true }), h('img', { class: 'output-image-large', src: fileUrl(o.conversationId, o.id), alt: o.title })));
       return;

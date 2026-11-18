@@ -1809,3 +1809,23 @@ button.usage-meter:hover { background: var(--hover); }
 .generated-video { display: block; width: 100%; max-height: 520px; background: #000; border-radius: 8px 8px 0 0; }
 .generated-video.portrait { width: auto; max-width: 100%; margin: 0 auto; }
 video.output-thumb { object-fit: cover; background: #000; }
+.panel-tabs .spacer { flex: 1; }
+.panel-tab.beside { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.panel-split-btn { flex: none; padding: 4px 8px; }
+.panel-split { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-height: 0; }
+.panel-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.panel-pane > .panel-inner { flex: 1; min-height: 0; }
+.chat.panel-split-wide { --panel-w: 66%; }
+.chat-beside { display: flex; flex-direction: column; gap: 14px; padding: 4px 14px 14px; overflow-y: auto; }
+.chat-beside .beside-user { align-self: flex-end; max-width: 85%; background: var(--bubble, var(--surface-2)); border-radius: 14px; padding: 8px 12px; white-space: pre-wrap; }
+.chat-beside .beside-assistant { min-width: 0; }
+.file-tab-body { overflow: auto; padding: 4px 14px 14px; }
+.file-tab-body pre { white-space: pre-wrap; word-break: break-word; font-size: 12.5px; }
+.file-tab-body img { max-width: 100%; border-radius: 8px; }
+/* A narrow chat (a split side panel, a small window): the composer's controls wrap inside it. */
+.composer-bar { flex-wrap: wrap; row-gap: 4px; }
+.bar-right { flex-wrap: wrap; justify-content: flex-end; margin-left: auto; min-width: 0; }
+.chat.panel-split-wide .model-btn { max-width: 150px; }
+.chat-beside { overflow-x: hidden; }
+.chat-beside .beside-user, .chat-beside .beside-assistant { overflow-wrap: anywhere; }
+.chat-beside pre { white-space: pre-wrap; overflow-wrap: anywhere; }

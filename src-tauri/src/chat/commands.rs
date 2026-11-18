@@ -611,6 +611,24 @@ pub async fn chat_code_commit(app: AppHandle, conversation_id: String, message: 
 
 /// Pushes a coding session's branch and opens a pull request for it.
 /// The pull request of the chat folder's branch, with its review and CI checks.
+/// A text file from a chat's workspace, to show as a side-panel tab.
+#[tauri::command]
+pub fn chat_workspace_text(app: AppHandle, conversation_id: String, path: String) -> Result<String, String> {
+    let root = super::sandbox::workspace(&config_dir(&app)?, &conversation_id)?;
+    let real = root.join(&path).canonicalize().map_err(|_| format!("There is no file at {path}."))?;
+    if !real.starts_with(root.canonicalize().map_err(|e| e.to_string())?) {
+        return Err("Only files in this chat's workspace open here.".into());
+    }
+    let bytes = crate::chat::at_rest::read(&real).map_err(|e| e.to_string())?;
+    if bytes.len() > 2_000_000 {
+        return Err("The file is too large to show here; save it instead.".into());
+    }
+    if bytes.iter().take(8000).any(|b| *b == 0) {
+        return Err("This file is not text; save it to open it in another app.".into());
+    }
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
 #[tauri::command]
 pub async fn chat_code_pr_status(app: AppHandle, conversation_id: String) -> Result<Option<super::code::PrStatus>, String> {
     let conversation = store::load_conversation(&config_dir(&app)?, &conversation_id)?;

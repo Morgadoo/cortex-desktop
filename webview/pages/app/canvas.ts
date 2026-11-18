@@ -62,10 +62,13 @@ let panelHost: PanelHost | null = null;
 let panelId: string | null = null;
 /** What is open in the side panel, as tabs (Vibe opens several canvases as tabs). */
 let tabs: { id: string; title: string; content: HTMLElement }[] = [];
+/** Split panes: the tab shown beside the active one, when split. */
+let splitId: string | null = null;
 
 export function setPanelHost(host: PanelHost | null) {
   panelHost = host;
   panelId = null;
+  splitId = null;
   tabs = [];
 }
 
@@ -82,6 +85,14 @@ function showPanel() {
     markOpen();
     return;
   }
+  const beside = splitId && splitId !== panelId ? tabs.find((t) => t.id === splitId) : undefined;
+  if (!beside) splitId = null;
+  const splitBtn = h('button', { class: `panel-tab panel-split-btn${beside ? ' active' : ''}`, title: beside ? 'Show one tab' : 'Split: show two tabs side by side' }, icon('columns', 14));
+  splitBtn.addEventListener('click', () => {
+    // Beside the active tab goes the one used before it.
+    splitId = beside ? null : (tabs.filter((t) => t.id !== panelId).pop()?.id ?? null);
+    showPanel();
+  });
   const strip =
     tabs.length > 1
       ? h(
@@ -93,11 +104,22 @@ function showPanel() {
               e.stopPropagation();
               closeTab(t.id);
             });
-            return h('button', { class: `panel-tab${t.id === panelId ? ' active' : ''}`, title: t.title, on: { click: () => { panelId = t.id; showPanel(); } } }, h('span', { class: 'panel-tab-title' }, t.title), close);
-          })
+            const where = t.id === panelId ? ' active' : t.id === splitId ? ' beside' : '';
+            return h('button', { class: `panel-tab${where}`, title: t.title, on: { click: () => {
+              // Split: a tab clicked goes in the pane it is not already in.
+              if (splitId && t.id !== panelId && t.id !== splitId) splitId = t.id;
+              else if (t.id === splitId) [panelId, splitId] = [splitId, panelId];
+              else panelId = t.id;
+              showPanel();
+            } } }, h('span', { class: 'panel-tab-title' }, t.title), close);
+          }),
+          h('span', { class: 'spacer' }),
+          splitBtn
         )
       : null;
-  panelHost(h('div', { class: 'panel-shell' }, strip, active.content));
+  const body = beside ? h('div', { class: 'panel-split' }, h('div', { class: 'panel-pane' }, active.content), h('div', { class: 'panel-pane' }, beside.content)) : active.content;
+  panelHost(h('div', { class: `panel-shell${beside ? ' split' : ''}` }, strip, body));
+  document.querySelector('.chat')?.classList.toggle('panel-split-wide', Boolean(beside));
   markOpen();
 }
 
@@ -105,8 +127,17 @@ function closeTab(id: string) {
   const i = tabs.findIndex((t) => t.id === id);
   if (i < 0) return;
   tabs.splice(i, 1);
-  if (panelId === id) panelId = tabs[Math.min(i, tabs.length - 1)]?.id ?? null;
+  if (splitId === id) splitId = null;
+  if (panelId === id) {
+    panelId = splitId ?? tabs[Math.min(i, tabs.length - 1)]?.id ?? null;
+    if (panelId === splitId) splitId = null;
+  }
   showPanel();
+}
+
+/** Whether a chat is showing, with a side panel to open things in. */
+export function hasPanel(): boolean {
+  return panelHost !== null;
 }
 
 /** Shows `content` in the side panel as a tab; `id` marks what is open there. */
