@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 167 |
-| PARTIAL | 86 | 24 |
+| DONE | 58 | 171 |
+| PARTIAL | 86 | 20 |
 | MISSING | 48 | 1 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 42 / 3 / 0 / 9 · LibreChat 39 / 3 / 0 / 4 · LobeHub 25 / 4 / 0 / 5 · Onyx 18 / 3 / 0 / 5 · Osaurus 20 / 5 / 1 / 4 · OpenBot 23 / 6 / 0 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 42 / 3 / 0 / 9 · LibreChat 39 / 3 / 0 / 4 · LobeHub 27 / 2 / 0 / 5 · Onyx 18 / 3 / 0 / 5 · Osaurus 20 / 5 / 1 / 4 · OpenBot 25 / 4 / 0 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -141,12 +141,12 @@ Per app now (done / partial / missing / out of scope): Open WebUI 42 / 3 / 0 / 9
 | LobeHub | Image page (ratio, size, count, seed…) | PARTIAL | PARTIAL | `generate_image` with a reference (parity L234). Missing: a page with those controls |
 | LobeHub | Video generation | MISSING | OUT OF SCOPE | Left out (parity L221) |
 | LobeHub | Prompt Extend before generation | MISSING | DONE | parity: Improve prompt (Ctrl+E, Ctrl+Z undoes) |
-| LobeHub | Topic panel: status tabs, card/list views | PARTIAL | PARTIAL | Archive. Missing: status tabs and views |
+| LobeHub | Topic panel: status tabs, card/list views | PARTIAL | DONE | Archive, and the Chats page (grid button beside Chats in the sidebar): tabs All, Unread, Pinned, Scheduled runs, Archived with counts, a search, list or card view, archive/restore per chat (chatspage.ts). Verified live |
 | LobeHub | Sort and group chats | MISSING | DONE | Sort four ways and date groups Today, Yesterday, 7 and 30 days, months |
 | LobeHub | Smart rename / rename | PARTIAL | DONE | Automatic title (engine.rs:804–808), Rename (chat.ts:2790) |
 | LobeHub | Open in new tab, right panel, new window | MISSING | DONE | Apps and canvases in the right panel or their own window; any chat opens in a window of its own from its menu (chat_open_chat_window), sidebar folded, both windows streaming the same chat. Verified live |
 | LobeHub | Duplicate, move, forward to another agent | MISSING | DONE | Branch (duplicate), move to project, Continue with an agent (parity: Continue a chat with an agent) |
-| LobeHub | Export as screenshot, text, PDF, JSON | PARTIAL | PARTIAL | Markdown, JSON and PDF (print) export. Missing: export as a screenshot image |
+| LobeHub | Export as screenshot, text, PDF, JSON | PARTIAL | DONE | Markdown, JSON, PDF (print) and Export as image: the conversation drawn as one PNG in the current theme (chatimage.ts, chat_save_bytes). Verified live: a long briefing saved as a 1720×2020 PNG |
 | LobeHub | Share link | MISSING | OUT OF SCOPE | Server-only (parity L202) |
 | LobeHub | Memory categories, weight, confidence, links | MISSING | DONE | parity: Memory categories, importance, confidence, links (memory.rs `Filing`) |
 | LobeHub | Filter memories | PARTIAL | DONE | Find, by source and by date (parity: Filter saved facts) |
@@ -218,8 +218,8 @@ Per app now (done / partial / missing / out of scope): Open WebUI 42 / 3 / 0 / 9
 | OpenBot | ACP agents as providers | PARTIAL | PARTIAL | OpenAI-compatible and Ollama. Missing: ACP |
 | OpenBot | Change provider, keep the agent | PARTIAL | DONE | An agent's model is editable (agents.rs:27–29); its notebook is kept per agent (`chat/agents/<id>/`) |
 | OpenBot | Models listed for a custom provider | PARTIAL | DONE | OpenAI-compatible local servers list their loaded models (parity: Local OpenAI-compatible servers) |
-| OpenBot | Agents message each other, share files | PARTIAL | PARTIAL | `delegate` and reports. Missing: messages and files between agents |
-| OpenBot | Workflow canvas with approval steps | PARTIAL | PARTIAL | Step lists. Missing: canvas, approval steps |
+| OpenBot | Agents message each other, share files | PARTIAL | DONE | `delegate` and reports, and `message_agent`: the assistant or an agent writes to another agent by name, sharing up to 5 text files; the other agent answers in an unread chat of its own and its reply comes back (engine.rs message_agent, agents.rs). Verified live: a file sent to EU AI Brief, which restated it |
+| OpenBot | Workflow canvas with approval steps | PARTIAL | DONE | Workflows show as a flow of steps (Workflows page and a live preview in the editor); a step starting with Approve: stops the run and asks the user Approve / Change something / Stop before going on (workflows.ts isApproval, flowView). Verified live: the run paused at the approval and finished once approved |
 | OpenBot | Browser control, profiles | PARTIAL | PARTIAL | Missing: an app browser the agent drives, profiles |
 | OpenBot | Computer use | MISSING | DONE | parity L288 |
 | OpenBot | Routines: schedule or webhook | PARTIAL | DONE | parity L291, L196 |

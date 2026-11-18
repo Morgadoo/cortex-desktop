@@ -17,6 +17,7 @@ import { AgentPage, AgentsPage, avatar, editAgent, newAgent, pinnedAgents, reloa
 import { TasksPage } from './tasks';
 import { LibrariesPage } from './libraries';
 import { AppsPage } from './apps';
+import { ChatsPage } from './chatspage';
 import { WorkflowsPage } from './workflows';
 import { applyTheme, openSettings, reloadModels, setTheme, storedTheme } from './settings';
 import { stepZoom, applyBackdrop } from './appearance';
@@ -80,6 +81,8 @@ function renderMain() {
               ? new AppsPage()
             : v.page === 'workflows'
               ? new WorkflowsPage()
+            : v.page === 'chats'
+              ? new ChatsPage()
             : v.page === 'scheduled'
               ? new TasksPage()
           : v.page === 'knowledge'
@@ -542,7 +545,8 @@ function renderConversations(): HTMLElement {
     );
   });
   const tags = [...new Set(all.flatMap((c) => c.tags))].sort();
-  section.append(sectionHeading(code ? 'Sessions' : 'Chats', sortBtn));
+  const allBtn = h('button', { class: 'icon-btn tiny', title: 'All chats, by status', on: { click: () => navigate({ kind: 'page', page: 'chats' }) } }, icon('grid', 14));
+  section.append(sectionHeading(code ? 'Sessions' : 'Chats', h('span', { class: 'section-actions' }, allBtn, sortBtn)));
   if (!loose.length) {
     section.append(
       filtering()

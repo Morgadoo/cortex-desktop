@@ -1690,6 +1690,23 @@ pub fn chat_agent_files(app: AppHandle, id: String) -> Result<super::libraries::
     super::agents::files_library(&config_dir(&app)?, &id)
 }
 
+/// Saves bytes the page made (an image of a conversation) where the user picks.
+#[tauri::command]
+pub async fn chat_save_bytes(app: AppHandle, name: String, data: String) -> Result<bool, String> {
+    use base64::Engine as _;
+    use tauri_plugin_dialog::DialogExt;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(data.as_bytes()).map_err(|e| e.to_string())?;
+    let ext = name.rsplit('.').next().unwrap_or("bin").to_string();
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog().file().set_file_name(&name).add_filter(ext.to_uppercase(), &[ext.as_str()]).save_file(move |path| {
+        let _ = tx.send(path);
+    });
+    let Some(path) = rx.await.map_err(|e| e.to_string())? else { return Ok(false) };
+    let path = path.into_path().map_err(|e| e.to_string())?;
+    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
 /// The local API's latest requests, newest first.
 #[tauri::command]
 pub fn chat_api_server_log() -> Vec<super::api_server::LogEntry> {

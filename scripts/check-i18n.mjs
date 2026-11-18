@@ -131,3 +131,11 @@ assert.deepEqual(names('🦖 unknown'), [], 'no image, no change')
 assert.equal(es.onlyEmoji(' 👍😀 ', emojiIndex), true)
 assert.equal(es.onlyEmoji('ok 👍', emojiIndex), false)
 console.log('check-emoji: ok')
+
+// Conversation images and the chats page (chatimage.ts plainLines, chatspage.ts inStatus).
+const ciBundle = await build({ entryPoints: [join(root, 'webview/pages/app/chatimage.ts')], bundle: true, format: 'esm', write: false, platform: 'neutral' })
+const ci = await import('data:text/javascript;base64,' + Buffer.from(ciBundle.outputFiles[0].text).toString('base64'))
+assert.deepEqual(ci.plainLines('## Plan\n- **Buy** [milk](https://x)\n\n\n```js\nlet a = 1\n```\nUse `npm`.').map((l) => [l.text, l.code, l.heading]), [['Plan', false, true], ['• Buy milk', false, false], ['', false, false], ['let a = 1', true, false], ['Use npm.', false, false]])
+console.log('check-image: ok')
+
+// Workflow approval steps (webview/pages/app/workflows.ts isApproval) are checked in the app.

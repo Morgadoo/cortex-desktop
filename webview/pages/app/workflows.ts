@@ -14,6 +14,27 @@ export const workflowsApi = {
   draft: (request: string, current: Workflow | null) => tauriInvoke<Workflow>('chat_draft_workflow', { request, current }),
 };
 
+/** An approval step (OpenBot's workflow approvals): the run stops there until the user approves. */
+export function isApproval(step: string): boolean {
+  return /^\s*(approve|approval|\[approve\])\s*[:\-]/i.test(step);
+}
+
+export function approvalText(step: string): string {
+  return step.replace(/^\s*(approve|approval|\[approve\])\s*[:\-]\s*/i, '').trim() || 'Check the result so far';
+}
+
+/** The steps as a flow: one node per step, approvals marked, arrows between. */
+export function flowView(steps: string[]): HTMLElement {
+  return h(
+    'div',
+    { class: 'workflow-flow' },
+    steps.flatMap((s, i) => [
+      i ? h('div', { class: 'flow-arrow' }, icon('chevron', 14)) : null,
+      h('div', { class: `flow-node${isApproval(s) ? ' approval' : ''}` }, h('span', { class: 'flow-index' }, isApproval(s) ? icon('check', 13) : String(i + 1)), h('span', {}, isApproval(s) ? `Your approval: ${approvalText(s)}` : s)),
+    ])
+  );
+}
+
 /** What runs: the production version when one is marked, else the workflow as saved. */
 export function liveWorkflow(workflow: Workflow): { name: string; steps: string[] } {
   return workflow.production ?? workflow;
@@ -22,16 +43,23 @@ export function liveWorkflow(workflow: Workflow): { name: string; steps: string[
 /** The message that runs `workflow` on the user's request. */
 export function workflowPrompt(workflow: Workflow, request: string): string {
   const live = liveWorkflow(workflow);
-  const steps = live.steps.map((s, i) => `${i + 1}. ${s}`).join('\n');
-  return `Run the "${live.name}" workflow. Go through these steps in order, tracking them with update_plan, then give a short summary of the result:\n${steps}\n\n${request || 'Start with what you have; ask me for anything missing.'}`;
+  const steps = live.steps.map((s, i) => `${i + 1}. ${isApproval(s) ? `[APPROVAL] ${approvalText(s)}` : s}`).join('\n');
+  const gate = live.steps.some(isApproval)
+    ? '\nAt each [APPROVAL] step, stop: show what you have so far and ask me with ask_user whether to go on (Approve / Change something / Stop). Continue only once I approve; if I ask for changes, make them and ask again.'
+    : '';
+  return `Run the "${live.name}" workflow. Go through these steps in order, tracking them with update_plan, then give a short summary of the result:\n${steps}${gate}\n\n${request || 'Start with what you have; ask me for anything missing.'}`;
 }
 
 export function editWorkflow(workflow: Workflow | null, onSaved: (all: Workflow[]) => void) {
   void modal((close) => {
     const name = h('input', { class: 'input', value: workflow?.name ?? '', placeholder: 'Weekly report' });
     const description = h('input', { class: 'input', value: workflow?.description ?? '', placeholder: 'What it is for' });
-    const steps = h('textarea', { class: 'input textarea', rows: 8, placeholder: 'One step per line. Ask for something each run with {{topic}}, {{count:number}}, {{due:date}}, {{notes?:long}} or {{tone|formal|casual}}.' });
+    const steps = h('textarea', { class: 'input textarea', rows: 8, placeholder: 'One step per line. Ask for something each run with {{topic}}, {{count:number}}, {{due:date}}, {{notes?:long}} or {{tone|formal|casual}}. Start a line with “Approve:” to stop there until you approve.' });
     steps.value = (workflow?.steps ?? []).join('\n');
+    const flowPreview = h('div', {});
+    const drawFlow = () => clear(flowPreview, steps.value.trim() ? flowView(steps.value.split('\n').map((s) => s.trim()).filter(Boolean)) : null);
+    steps.addEventListener('input', drawFlow);
+    drawFlow();
     const current = (): Workflow => ({
       id: workflow?.id ?? '',
       name: name.value,
@@ -112,6 +140,7 @@ export function editWorkflow(workflow: Workflow | null, onSaved: (all: Workflow[
       description,
       h('label', { class: 'field-label' }, 'Steps'),
       steps,
+      flowPreview,
       h(
         'div',
         { class: 'dialog-actions' },
@@ -164,7 +193,7 @@ export class WorkflowsPage {
           'div',
           { class: 'skill-row' },
           h('div', { class: 'skill-icon' }, icon('workflow', 18)),
-          h('div', { class: 'grow' }, h('div', { class: 'skill-name' }, w.name, w.builtin ? h('span', { class: 'tag' }, 'built-in') : null, w.production ? h('span', { class: 'tag tag-production', title: 'The marked version runs; differences below are a draft' }, JSON.stringify(w.production.steps) === JSON.stringify(w.steps) && w.production.name === w.name ? 'Production' : 'Production · draft changes') : null), h('div', { class: 'muted small' }, w.description || `${w.steps.length} steps`), h('ol', { class: 'workflow-steps' }, w.steps.map((s) => h('li', {}, s)))),
+          h('div', { class: 'grow' }, h('div', { class: 'skill-name' }, w.name, w.builtin ? h('span', { class: 'tag' }, 'built-in') : null, w.production ? h('span', { class: 'tag tag-production', title: 'The marked version runs; differences below are a draft' }, JSON.stringify(w.production.steps) === JSON.stringify(w.steps) && w.production.name === w.name ? 'Production' : 'Production · draft changes') : null), h('div', { class: 'muted small' }, w.description || `${w.steps.length} steps`), flowView(w.steps)),
           edit,
           remove
         );

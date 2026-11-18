@@ -3,6 +3,7 @@ import { emojiFor, findEmoji } from './emoji';
 import { autocompleteOn } from './state';
 import { tauriInvoke } from '../../shared/tauri';
 import { api, newId, type ApprovalMode, type ChatParams, type Conversation, type Part, type Turn, type UsageTotals } from './api';
+import { conversationPng } from './chatimage';
 import { searchInstead } from './uploads';
 import { agentPanel } from './agentpanel';
 import { fillVariables } from './variables';
@@ -868,6 +869,21 @@ function bookmarkButton(turn: Turn, conversationId: string, size = 16): HTMLElem
  * Prints the open conversation as it reads on screen (Markdown, code, math, diagrams), without the
  * app around it; the system print dialog can save it as a PDF.
  */
+/** The conversation as one PNG (LobeHub's screenshot export). */
+async function exportImage(id: string) {
+  try {
+    const c = await api.conversation(id);
+    const messages = c.turns.map((t) => ({ role: t.role, text: textOf(t.parts) })).filter((m) => m.text.trim());
+    const png = await conversationPng(c.title, messages);
+    let binary = '';
+    for (let i = 0; i < png.length; i += 0x8000) binary += String.fromCharCode(...png.subarray(i, i + 0x8000));
+    const name = `${(c.title || 'conversation').replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 60) || 'conversation'}.png`;
+    if (await tauriInvoke<boolean>('chat_save_bytes', { name, data: btoa(binary) })) toast('Image saved.');
+  } catch (e) {
+    toast(String(e), 'error');
+  }
+}
+
 async function printConversation(id: string, title: string) {
   if (viewCache.chat?.key !== `chat:${id}`) {
     navigate({ kind: 'chat', id });
@@ -4109,6 +4125,7 @@ export function conversationMenu(anchor: HTMLElement, id: string, title: string,
       item('link', 'Copy link', () => void navigator.clipboard.writeText(`lumo://chat/${id}`).then(() => toast('Link copied. It opens this chat in Lumo on this computer.'))),
       item('expand', 'Open in new window', () => void tauriInvoke('chat_open_chat_window', { id }).catch((e) => toast(String(e), 'error'))),
       item('download', 'Print or save as PDF', () => void printConversation(id, title)),
+      item('image', 'Export as image', () => void exportImage(id)),
       item('code', 'Export as JSON', () => void tauriInvoke<boolean>('chat_export_conversation_json', { id }).then((saved) => saved && toast('Conversation exported.')).catch((e) => toast(String(e), 'error'))),
       item('settings', 'Chat settings…', () => void openChatSettings(id)),
       item('dot', 'Mark as unread', async () => {

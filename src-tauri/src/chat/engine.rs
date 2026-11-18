@@ -463,6 +463,101 @@ pub async fn run_turn(app: AppHandle, request: TurnRequest, cancel: watch::Recei
     }
 }
 
+type QueuedTurn = (AppHandle, TurnRequest, watch::Receiver<bool>, tokio::sync::oneshot::Sender<()>);
+
+/// Runs a turn from inside another one (an agent messaging an agent). The turn goes through a
+/// queue to a task of its own, since a turn cannot spawn its own kind directly.
+fn queue_turn(app: &AppHandle, request: TurnRequest, cancel: watch::Receiver<bool>) -> tokio::sync::oneshot::Receiver<()> {
+    static QUEUE: std::sync::OnceLock<tokio::sync::mpsc::UnboundedSender<QueuedTurn>> = std::sync::OnceLock::new();
+    let queue = QUEUE.get_or_init(|| {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<QueuedTurn>();
+        tauri::async_runtime::spawn(async move {
+            while let Some((app, request, cancel, done)) = rx.recv().await {
+                tauri::async_runtime::spawn(async move {
+                    run_turn(app, request, cancel).await;
+                    let _ = done.send(());
+                });
+            }
+        });
+        tx
+    });
+    let (done, wait) = tokio::sync::oneshot::channel();
+    let _ = queue.send((app.clone(), request, cancel, done));
+    wait
+}
+
+static MESSAGE_DEPTH: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// `message_agent`: the receiving agent answers in a new chat of its own (unread, so the user
+/// sees it), and its reply comes back as the tool's result.
+async fn message_agent(app: &AppHandle, config_dir: &std::path::Path, from_chat: &str, from: Option<&agents::Agent>, arguments: &Value, workdir: Option<&str>) -> tools::Outcome {
+    use std::sync::atomic::Ordering;
+    let fail = |text: String| tools::Outcome { text, is_error: true };
+    let s = |k: &str| arguments.get(k).and_then(Value::as_str).unwrap_or_default().trim().to_string();
+    let team = agents::load(config_dir);
+    let Some(target) = agents::by_name(&team, &s("agent")).cloned() else {
+        let names: Vec<&str> = team.iter().map(|a| a.name.as_str()).collect();
+        return fail(format!("There is no agent by that name. The agents are: {}.", names.join(", ")));
+    };
+    if from.is_some_and(|f| f.id == target.id) {
+        return fail("An agent cannot message itself.".into());
+    }
+    if s("message").is_empty() {
+        return fail("Write the message.".into());
+    }
+    let paths: Vec<String> = arguments.get("files").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default();
+    let files = match agents::read_shared(&paths, workdir.map(std::path::Path::new)) {
+        Ok(f) => f,
+        Err(e) => return fail(e),
+    };
+    if MESSAGE_DEPTH.fetch_add(1, Ordering::SeqCst) >= agents::MAX_MESSAGE_DEPTH {
+        MESSAGE_DEPTH.fetch_sub(1, Ordering::SeqCst);
+        return fail("Messages are already going back and forth; answer with what you have.".into());
+    }
+    let sender = from.map_or_else(|| "the assistant".to_string(), |a| a.name.clone());
+    let model = target.model.clone().or_else(|| store::load_conversation(config_dir, from_chat).ok().and_then(|c| c.model)).or(providers::load(config_dir).default_model);
+    let result = async {
+        let model = model.ok_or("No model to run the other agent on.")?;
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut c = Conversation::new(id.clone(), None, Some(model.clone()));
+        c.title = format!("From {sender}: {}", s("message").chars().take(50).collect::<String>());
+        c.agent_id = Some(target.id.clone());
+        c.unread = true;
+        store::save_conversation(config_dir, &c)?;
+        let cancel = app.state::<ChatState>().begin(&id).ok_or("That chat is busy.")?;
+        let request = TurnRequest {
+            conversation_id: id.clone(),
+            text: agents::message_text(&sender, &s("message"), &files),
+            model,
+            speed: if target.think { Speed::Think } else { Speed::Fast },
+            approval: ApprovalMode::Unattended,
+            project_id: None,
+            agent_id: Some(target.id.clone()),
+            images: Vec::new(),
+            edit_index: None,
+            temporary: false,
+            resume: false,
+            workdir: None,
+            connectors: None,
+            route_note: None,
+        };
+        // A turn of its own, so the other agent's events stream to its chat as usual.
+        queue_turn(app, request, cancel).await.map_err(|_| "The other agent's turn stopped.".to_string())?;
+        let done = store::load_conversation(config_dir, &id)?;
+        let reply = done.messages.last().filter(|m| matches!(m, Message::Assistant(_))).map(super::context::message_text).unwrap_or_default();
+        if reply.trim().is_empty() {
+            return Err(format!("{} could not answer.", target.name));
+        }
+        Ok::<String, String>(format!("{} replied:\n\n{reply}\n\n(The exchange is kept in a chat under {} in the sidebar.)", target.name, target.name))
+    }
+    .await;
+    MESSAGE_DEPTH.fetch_sub(1, Ordering::SeqCst);
+    match result {
+        Ok(text) => tools::Outcome { text, is_error: false },
+        Err(e) => fail(e),
+    }
+}
+
 /// Skills from work (learning.rs): after an agent's turn with several tool steps, a reflection
 /// may turn the procedure into a skill, saved turned off; the chat says so.
 async fn learn_from_turn(app: &AppHandle, id: &str) {
@@ -1241,6 +1336,9 @@ impl Runner<'_> {
                 }
                 Err(e) => tools::Outcome { text: e, is_error: true },
             };
+        }
+        if name == agents::MESSAGE_AGENT {
+            return message_agent(self.app, self.config_dir, self.id, self.agent, &arguments, self.workdir.as_deref()).await;
         }
         if name == deferred::FIND_TOOLS {
             return tools::Outcome { text: deferred::find(self.offered, &arguments).0, is_error: false };

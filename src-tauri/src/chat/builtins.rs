@@ -348,6 +348,24 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             "required": ["title", "body"]
         }),
     ));
+    if !super::agents::load(config_dir).is_empty() {
+        out.push(tool(
+            super::agents::MESSAGE_AGENT,
+            "Write to one of the user's agents by name and get its reply. It works on the message in a chat \
+             of its own, with its own instructions, tools and memory; the user can open that chat. Share files \
+             with `files` (paths in this chat's folder, or full paths). Use it when another agent owns the \
+             subject; use delegate for quick parallel research.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "agent": { "type": "string", "description": "The agent's name." },
+                    "message": { "type": "string", "description": "What you need, standing alone: the agent sees nothing of this chat." },
+                    "files": { "type": "array", "items": { "type": "string" }, "maxItems": 5, "description": "Text files to share." }
+                },
+                "required": ["agent", "message"]
+            }),
+        ));
+    }
     out.extend(super::sandbox::definition());
     out.extend(super::media::definition(config_dir));
     out

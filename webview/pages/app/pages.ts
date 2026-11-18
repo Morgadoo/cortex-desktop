@@ -353,6 +353,7 @@ export class ConnectorsPage {
 /** Sections that exist in the navigation but have no local implementation yet. */
 const PLACEHOLDERS: Record<Page, { title: string; subtitle: string; icon: string; empty: string; body: string }> = {
   connectors: { title: 'Connectors', subtitle: '', icon: 'plug', empty: '', body: '' },
+  chats: { title: 'Chats', subtitle: '', icon: 'chat', empty: '', body: '' },
   skills: {
     title: 'Skills',
     subtitle: 'Reusable instructions the assistant can follow. Set them up once, use them whenever you need.',

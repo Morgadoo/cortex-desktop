@@ -73,6 +73,7 @@ const ICONS: Record<string, string> = {
   tag: 'M4 4h7l9 9-7 7-9-9zM8 8h.01',
   speaker: 'M4 9v6h4l5 4V5L8 9zM16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11',
   archive: 'M4 5h16v4H4zM5 9v10h14V9M10 13h4',
+  grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
   chatDashed: 'M5 8V5h3M11 5h2M16 5h3v3M19 11v1M19 15h-3M13 15h-2M9 15l-4 4v-3M5 12v-1',
   more: 'M6 12h.01M12 12h.01M18 12h.01',
   close: 'M6 6l12 12M18 6L6 18',

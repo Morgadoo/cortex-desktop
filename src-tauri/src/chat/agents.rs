@@ -279,6 +279,39 @@ pub fn team_prompt(agents: &[Agent], except: Option<&str>) -> Option<String> {
     ))
 }
 
+/// The tool an agent (or the assistant) uses to write to another agent (OpenBot's messages
+/// between agents): the other agent answers in a chat of its own, which the user can open.
+pub const MESSAGE_AGENT: &str = "message_agent";
+/// Messages in flight inside messages: an agent writing to one that writes back stops here.
+pub const MAX_MESSAGE_DEPTH: usize = 2;
+/// Characters of each shared file passed along.
+const SHARED_FILE_CHARS: usize = 60_000;
+
+/// What the receiving agent gets: who wrote, the message, and the shared files' text.
+pub fn message_text(from: &str, message: &str, files: &[(String, String)]) -> String {
+    let mut out = format!("Message from {from}:\n\n{}", message.trim());
+    for (name, text) in files {
+        let text: String = text.chars().take(SHARED_FILE_CHARS).collect();
+        out.push_str(&format!("\n\n<attachment name=\"{name}\">\n{text}\n</attachment>"));
+    }
+    out.push_str("\n\nReply to them directly; your reply is passed back.");
+    out
+}
+
+/// Reads the files an agent shares: paths inside its folder (or absolute), text only.
+pub fn read_shared(paths: &[String], workdir: Option<&Path>) -> Result<Vec<(String, String)>, String> {
+    let mut out = Vec::new();
+    for p in paths.iter().take(5) {
+        let path = Path::new(p);
+        let full = if path.is_absolute() { path.to_path_buf() } else { workdir.ok_or("Relative paths need the chat's folder; give a full path.")?.join(path) };
+        let bytes = std::fs::read(&full).map_err(|e| format!("could not read {p}: {e}"))?;
+        let text = String::from_utf8(bytes).map_err(|_| format!("{p} is not a text file."))?;
+        let name = full.file_name().map_or_else(|| p.clone(), |n| n.to_string_lossy().into_owned());
+        out.push((name, text));
+    }
+    Ok(out)
+}
+
 /// The agent's own files: a library named for it, made and given to it on first use.
 pub fn files_library(config_dir: &Path, id: &str) -> Result<super::libraries::Library, String> {
     let mut agent = find(config_dir, id).ok_or("No such agent.")?;
@@ -585,6 +618,18 @@ pub fn templates() -> Vec<Agent> {
 #[cfg(test)]
 mod group_tests {
     use super::*;
+
+    #[test]
+    fn messages_carry_shared_files() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("notes.md"), "Budget: 40k").unwrap();
+        let files = read_shared(&["notes.md".into()], Some(dir.path())).unwrap();
+        assert_eq!(files, [("notes.md".to_string(), "Budget: 40k".to_string())]);
+        assert!(read_shared(&["notes.md".into()], None).is_err());
+        assert!(read_shared(&["missing.md".into()], Some(dir.path())).is_err());
+        let text = message_text("Researcher", "Check the budget.", &files);
+        assert!(text.starts_with("Message from Researcher:") && text.contains("<attachment name=\"notes.md\">\nBudget: 40k") && text.ends_with("passed back."));
+    }
 
     #[test]
     fn agents_get_their_own_files_library() {
