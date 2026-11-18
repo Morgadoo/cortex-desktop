@@ -79,6 +79,102 @@ pub fn check(config_dir: &Path) -> Vec<(&'static str, Result<&'static str, Strin
         .collect()
 }
 
+/// Edit distance, for "did you mean".
+fn distance(a: &str, b: &str) -> usize {
+    let b: Vec<char> = b.chars().collect();
+    let mut row: Vec<usize> = (0..=b.len()).collect();
+    for (i, ca) in a.chars().enumerate() {
+        let mut prev = row[0];
+        row[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let cur = row[j + 1];
+            row[j + 1] = (prev + usize::from(ca != *cb)).min(row[j] + 1).min(cur + 1);
+            prev = cur;
+        }
+    }
+    row[b.len()]
+}
+
+/// Follows `{"$ref": "#/$defs/Name"}` within `root`.
+fn resolve<'a>(schema: &'a Value, root: &'a Value) -> &'a Value {
+    match schema.get("$ref").and_then(Value::as_str).and_then(|r| r.strip_prefix("#/$defs/")) {
+        Some(name) => root.get("$defs").and_then(|d| d.get(name)).unwrap_or(schema),
+        None => schema,
+    }
+}
+
+/// Settings in `value` that `schema` does not know (a typo, or one an older or newer version
+/// used), with the closest known name when one is near.
+fn unknown_settings(value: &Value, schema: &Value, root: &Value, at: &str, out: &mut Vec<String>) {
+    let schema = resolve(schema, root);
+    match value {
+        Value::Object(map) => {
+            let Some(props) = schema.get("properties").and_then(Value::as_object) else {
+                // Maps keyed by user names (providers by vendor) check their values.
+                if let Some(values) = schema.get("additionalProperties").filter(|v| v.is_object()) {
+                    for (k, v) in map {
+                        unknown_settings(v, values, root, &format!("{at}{k}."), out);
+                    }
+                }
+                return;
+            };
+            for (key, v) in map {
+                match props.get(key) {
+                    Some(s) => unknown_settings(v, s, root, &format!("{at}{key}."), out),
+                    None => {
+                        let near = props.keys().map(|k| (distance(&key.to_lowercase(), &k.to_lowercase()), k)).filter(|(d, _)| *d <= 3).min();
+                        out.push(match near {
+                            Some((_, k)) => format!("unknown setting `{at}{key}` (did you mean `{k}`?)"),
+                            None => format!("unknown setting `{at}{key}`"),
+                        });
+                    }
+                }
+            }
+        }
+        Value::Array(items) => {
+            if let Some(item) = schema.get("items") {
+                for (i, v) in items.iter().enumerate() {
+                    unknown_settings(v, item, root, &format!("{at}[{i}]."), out);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Unknown settings across the settings files, as `file: message`.
+pub fn warnings(config_dir: &Path) -> Vec<String> {
+    let mut out = Vec::new();
+    for f in FILES {
+        let Ok(text) = std::fs::read_to_string(config_dir.join(f.path)) else { continue };
+        let Ok(value) = serde_json::from_str::<Value>(&text) else { continue };
+        let schema = serde_json::to_value((f.schema)()).unwrap_or(Value::Null);
+        let mut found = Vec::new();
+        unknown_settings(&value, &schema, &schema, "", &mut found);
+        out.extend(found.into_iter().map(|w| format!("{}: {}", f.path, w.replace(".`", "`"))));
+    }
+    out
+}
+
+/// At start: unknown settings are logged; with `LUMO_STRICT_CONFIG=1` (Vibe's `strict_config`)
+/// the app refuses to start on them, or on a file it cannot read.
+pub fn startup_check() -> Option<i32> {
+    let dir = crate::reporting::early_config_dir()?;
+    let problems: Vec<String> = check(&dir).into_iter().filter_map(|(p, s)| s.err().map(|e| format!("{p}: cannot be read: {e}"))).chain(warnings(&dir)).collect();
+    for p in &problems {
+        log::warn!("settings: {p}");
+    }
+    let strict = std::env::var("LUMO_STRICT_CONFIG").is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    if strict && !problems.is_empty() {
+        eprintln!("lumo: LUMO_STRICT_CONFIG is set and the settings have problems:");
+        for p in &problems {
+            eprintln!("  {p}");
+        }
+        return Some(1);
+    }
+    None
+}
+
 /// Runs `config …` when asked; `None` to start the app.
 pub fn maybe_run() -> Option<i32> {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -113,6 +209,7 @@ pub fn run(args: &[String], out: &mut impl std::io::Write) -> i32 {
                 return 1;
             };
             let mut bad = 0;
+            let warned = warnings(&dir);
             for (path, state) in check(&dir) {
                 match state {
                     Ok(s) => {
@@ -123,6 +220,9 @@ pub fn run(args: &[String], out: &mut impl std::io::Write) -> i32 {
                         let _ = writeln!(out, "{path}: cannot be read: {e}");
                     }
                 }
+            }
+            for w in &warned {
+                let _ = writeln!(out, "warning: {w}");
             }
             i32::from(bad > 0)
         }
@@ -166,5 +266,19 @@ mod tests {
         assert_eq!(run(&["schema".into(), "vault".into()], &mut out), 0);
         assert!(String::from_utf8(out).unwrap().contains("everywhere"));
         assert_eq!(run(&["schema".into(), "nope".into()], &mut Vec::new()), 2);
+    }
+
+    #[test]
+    fn unknown_settings_are_named_with_a_suggestion() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("chat")).unwrap();
+        std::fs::write(dir.path().join("chat/providers.json"), r#"{"defaultModle": "x/y", "providers": {"xai": {"enabled": true, "baseURL": "u"}}, "colour": 1}"#).unwrap();
+        std::fs::write(dir.path().join("chat/hooks.json"), r#"[{"event": "turn_end", "command": "echo", "enabld": true}]"#).unwrap();
+        let w = warnings(dir.path());
+        assert!(w.contains(&"chat/providers.json: unknown setting `defaultModle` (did you mean `defaultModel`?)".to_string()), "{w:?}");
+        assert!(w.iter().any(|x| x.contains("providers.xai.baseURL") && x.contains("baseUrl")), "{w:?}");
+        assert!(w.iter().any(|x| x.ends_with("unknown setting `colour`")), "{w:?}");
+        assert!(w.iter().any(|x| x.contains("[0].enabld") && x.contains("`enabled`")), "{w:?}");
+        assert_eq!(distance("kitten", "sitting"), 3);
     }
 }

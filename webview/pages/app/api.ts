@@ -248,7 +248,7 @@ export interface Task {
   schedule: string;
 }
 
-export type Speed = 'fast' | 'think';
+export type Speed = 'fast' | 'low' | 'think' | 'deep';
 export type ApprovalMode = 'ask' | 'accept_edits' | 'plan' | 'auto';
 
 export type ChatEvent =

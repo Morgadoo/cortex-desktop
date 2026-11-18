@@ -18,6 +18,7 @@ pub mod recorder;
 pub mod config_cli;
 pub mod share;
 pub mod sync;
+pub mod terminal_chat;
 pub mod ui_language;
 pub mod vault;
 pub mod hooks;

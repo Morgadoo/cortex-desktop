@@ -17,7 +17,14 @@ pub fn run() {
         std::process::exit(code);
     }
     // `config schema | check | path` (Vibe's `vibe config schema`).
+    // `chat`: a conversation in the terminal (Vibe Code's CLI), saved to the app's history.
+    if let Some(code) = crate::chat::terminal_chat::maybe_run() {
+        std::process::exit(code);
+    }
     if let Some(code) = crate::chat::config_cli::maybe_run() {
+        std::process::exit(code);
+    }
+    if let Some(code) = crate::chat::config_cli::startup_check() {
         std::process::exit(code);
     }
     // The guard must outlive the event loop to prevent premature client shutdown.

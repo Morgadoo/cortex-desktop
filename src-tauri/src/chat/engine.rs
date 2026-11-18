@@ -109,13 +109,31 @@ pub fn user_message(text: &str, images: &[ImageInput]) -> Result<Message, String
     Ok(Message::User { content })
 }
 
-/// The composer's speed setting.
+/// The composer's speed setting: how much the model reasons (Vibe's thinking levels).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Speed {
+    /// No extended reasoning.
     #[default]
     Fast,
+    /// A little reasoning.
+    Low,
+    /// Reasoning for complex tasks.
     Think,
+    /// The most the model offers short of its maximum.
+    Deep,
+}
+
+impl Speed {
+    /// The reasoning effort asked of the model, if any.
+    pub fn effort(self) -> Option<Effort> {
+        match self {
+            Speed::Fast => None,
+            Speed::Low => Some(Effort::Low),
+            Speed::Think => Some(Effort::High),
+            Speed::Deep => Some(Effort::XHigh),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -770,8 +788,8 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         if let Some(p) = params.top_p {
             call = call.top_p(p);
         }
-        if reasoning && request.speed == Speed::Think {
-            call = call.reasoning(Effort::High);
+        if let Some(effort) = request.speed.effort().filter(|_| reasoning) {
+            call = call.reasoning(effort);
         }
 
         // Transient failures (dropped connections, rate limits, overloaded servers) are retried

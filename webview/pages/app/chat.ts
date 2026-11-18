@@ -17,7 +17,7 @@ import { renderCodeRun, renderImage } from './coderun';
 import { startRecording, toBase64, type Recording } from './dictation';
 import { audioSettings, shortError, speakText, type Playback } from './audio';
 import { editWorkflow, workflowPrompt, workflowsApi } from './workflows';
-import type { Workflow } from './api';
+import type { Speed, Workflow } from './api';
 import { diffLines, loadChanges, openChanges, openFiles, openDebug } from './changes';
 import { openTerminal } from './terminal';
 import { button, chip, iconButton, modalHeader, trigger } from './ui';
@@ -2599,9 +2599,10 @@ class Composer {
     });
 
     const model = currentModel();
-    const speed = trigger({ label: state.speed === 'fast' ? 'Fast' : 'Think', title: 'Response mode' });
+    const SPEED_NAMES: Record<Speed, string> = { fast: 'Fast', low: 'Think a little', think: 'Think', deep: 'Think harder' };
+    const speed = trigger({ label: SPEED_NAMES[state.speed] ?? 'Fast', title: 'Thinking level' });
     speed.addEventListener('click', () => {
-      const option = (value: 'fast' | 'think', name: string, desc: string, ic: string) =>
+      const option = (value: Speed, name: string, desc: string, ic: string) =>
         h(
           'button',
           { class: `menu-item rich${state.speed === value ? ' selected' : ''}`, on: { click: () => { state.speed = value; close(); this.renderBar(); } } },
@@ -2613,8 +2614,14 @@ class Composer {
         h(
           'div',
           { class: 'menu' },
-          option('fast', 'Fast', 'Quick answers', 'bolt'),
-          option('think', 'Think', model && !model.reasoning ? 'This model does not reason; replies are unchanged' : 'Reasons longer for complex tasks', 'brain')
+          option('fast', 'Fast', 'Quick answers, no extended reasoning', 'bolt'),
+          ...(model && !model.reasoning
+            ? [option('think', 'Think', 'This model does not reason; replies are unchanged', 'brain')]
+            : [
+                option('low', 'Think a little', 'A short reasoning pass', 'brain'),
+                option('think', 'Think', 'Reasons longer for complex tasks', 'brain'),
+                option('deep', 'Think harder', 'The most reasoning, for the hardest problems; slower and costlier', 'brain'),
+              ])
         ),
         'above'
       );
