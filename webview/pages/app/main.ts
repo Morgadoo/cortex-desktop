@@ -16,6 +16,7 @@ import { LibrariesPage } from './libraries';
 import { AppsPage } from './apps';
 import { WorkflowsPage } from './workflows';
 import { applyTheme, openSettings, reloadModels, setTheme, storedTheme } from './settings';
+import { stepZoom } from './appearance';
 import { applyEvent, back, changed, finishNotificationsOn, forward, navigate, state, subscribe, type Page } from './state';
 import { button, emptyState, iconButton, modalHeader } from './ui';
 import { refreshAudioSettings } from './audio';
@@ -848,6 +849,12 @@ async function start() {
         state.sidebarCollapsed = !state.sidebarCollapsed;
         changed();
       } else switchMode(action);
+      return;
+    }
+    // Zoom the interface: Ctrl+= (or Ctrl++), Ctrl+-, Ctrl+0.
+    if (mod && !e.altKey && (e.key === '=' || e.key === '+' || e.key === '-' || (e.key === '0' && !e.shiftKey))) {
+      e.preventDefault();
+      stepZoom(e.key === '0' ? 0 : e.key === '-' ? -1 : 1);
       return;
     }
     if (mod && e.shiftKey && e.key.toLowerCase() === 'o') {

@@ -309,7 +309,7 @@ button.crumb:hover { background: var(--bg-hover); color: var(--text); }
 .transcript { display: flex; flex-direction: column; gap: 26px; }
 
 .turn-user { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
-.bubble { background: var(--bg-bubble); padding: 10px 16px; border-radius: var(--radius-xl); font-size: var(--fs-base); border: 1px solid var(--border); max-width: 78%; white-space: pre-wrap; word-wrap: break-word; }
+.bubble { background: var(--bg-bubble); padding: 10px 16px; border-radius: var(--radius-xl); font-size: var(--chat-fs, var(--fs-base)); border: 1px solid var(--border); max-width: 78%; white-space: pre-wrap; word-wrap: break-word; }
 .user-actions { opacity: 0; transition: opacity var(--dur-fast) var(--ease); }
 .turn-user:hover .user-actions { opacity: 1; }
 .turn-assistant { display: flex; flex-direction: column; gap: 12px; }
@@ -383,7 +383,7 @@ button.question-option:hover .icon { opacity: 1; }
 
 /* ------------------------------------------------------------------ markdown */
 
-.markdown { font-size: var(--fs-base); line-height: 1.65; word-wrap: break-word; }
+.markdown { font-size: var(--chat-fs, var(--fs-base)); line-height: 1.65; word-wrap: break-word; }
 .markdown > :first-child { margin-top: 0; }
 .markdown > :last-child { margin-bottom: 0; }
 .markdown p { margin: 0 0 12px; }
@@ -1436,3 +1436,12 @@ button.usage-meter:hover { background: var(--hover); }
 .header-actions .badge-count { font-size: 10px; margin-left: 2px; color: var(--text-muted); }
 .bookmarks-menu { max-width: 380px; max-height: 60vh; overflow-y: auto; }
 .bookmarks-menu .menu-item span { white-space: normal; line-height: 1.35; }
+
+/* Reduce motion (Settings → Appearance), on top of the system's own setting. */
+:root[data-motion="reduced"] *, :root[data-motion="reduced"] *::before, :root[data-motion="reduced"] *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+/* High contrast: focus is always visible. */
+:root[data-contrast="high"] :focus-visible { outline: 2px solid var(--accent) !important; outline-offset: 2px; }
+:root[data-contrast="high"] .markdown a { text-decoration: underline; }
+.settings-search { margin: 4px 0 8px; height: 32px; font-size: var(--fs-sm); }
+.settings-hit small { display: inline; }
+.card.flash, .setting-row.flash { animation: turn-flash 1.6s ease-out; }

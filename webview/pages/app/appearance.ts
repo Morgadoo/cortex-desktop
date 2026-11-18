@@ -4,6 +4,8 @@
  * The choice is a per-device preference kept in localStorage, like the theme.
  */
 
+import { tauriInvoke } from '../../shared/tauri';
+
 export interface AccentPreset {
   id: string;
   label: string;
@@ -172,6 +174,80 @@ export function applyAppearance() {
     ['--border-strong', surface.borderStrong],
   ];
   for (const [name, value] of set) root.style.setProperty(name, value);
+  applyReadability(root, dark, surface.borderStrong);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Readability: text size, zoom, contrast and motion (Open WebUI's and LobeHub's display settings).
+
+export type TextSize = 'small' | 'default' | 'large' | 'larger';
+export const TEXT_SIZES: { id: TextSize; label: string; px: number }[] = [
+  { id: 'small', label: 'Small', px: 14 },
+  { id: 'default', label: 'Default', px: 15 },
+  { id: 'large', label: 'Large', px: 17 },
+  { id: 'larger', label: 'Larger', px: 19 },
+];
+export const ZOOMS = [0.8, 0.9, 1, 1.1, 1.25, 1.5];
+
+export interface Readability {
+  textSize: TextSize;
+  zoom: number;
+  highContrast: boolean;
+  reduceMotion: boolean;
+}
+
+const READABILITY_KEY = 'lumo.readability';
+const DEFAULT_READABILITY: Readability = { textSize: 'default', zoom: 1, highContrast: false, reduceMotion: false };
+
+export function readability(): Readability {
+  try {
+    return { ...DEFAULT_READABILITY, ...(JSON.parse(localStorage.getItem(READABILITY_KEY) ?? '{}') as Partial<Readability>) };
+  } catch {
+    return { ...DEFAULT_READABILITY };
+  }
+}
+
+export function setReadability(change: Partial<Readability>) {
+  const next = { ...readability(), ...change };
+  next.zoom = Math.min(1.5, Math.max(0.8, Math.round(next.zoom * 100) / 100));
+  try {
+    localStorage.setItem(READABILITY_KEY, JSON.stringify(next));
+  } catch {
+    // Applied for this session only.
+  }
+  applyAppearance();
+}
+
+/** One step bigger or smaller (Ctrl+= and Ctrl+-), or back to 100% (Ctrl+0). */
+export function stepZoom(direction: 1 | -1 | 0) {
+  const zoom = readability().zoom;
+  if (direction === 0) return setReadability({ zoom: 1 });
+  const next = direction > 0 ? ZOOMS.find((z) => z > zoom + 0.001) : [...ZOOMS].reverse().find((z) => z < zoom - 0.001);
+  if (next) setReadability({ zoom: next });
+}
+
+let appliedZoom = 1;
+
+function applyReadability(root: HTMLElement, dark: boolean, borderStrong: string) {
+  const r = readability();
+  root.style.setProperty('--chat-fs', `${TEXT_SIZES.find((t) => t.id === r.textSize)?.px ?? 15}px`);
+  root.dataset.motion = r.reduceMotion ? 'reduced' : 'full';
+  root.dataset.contrast = r.highContrast ? 'high' : 'normal';
+  if (r.highContrast) {
+    // Secondary and muted text close to the main text, and borders that stand out.
+    root.style.setProperty('--text-secondary', dark ? '#e4e4e8' : '#26241f');
+    root.style.setProperty('--text-muted', dark ? '#c9c9cf' : '#3f3c36');
+    root.style.setProperty('--border', borderStrong);
+    root.style.setProperty('--border-strong', dark ? '#9a9aa3' : '#5c5850');
+  } else {
+    root.style.removeProperty('--text-secondary');
+    root.style.removeProperty('--text-muted');
+  }
+  // The whole interface, at the webview's own zoom so layout and pointer positions agree.
+  if (r.zoom !== appliedZoom) {
+    appliedZoom = r.zoom;
+    void tauriInvoke('plugin:webview|set_webview_zoom', { value: r.zoom }).catch(() => undefined);
+  }
 }
 
 export function setAccent(choice: string) {

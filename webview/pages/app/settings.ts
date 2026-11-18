@@ -6,7 +6,7 @@ import { changed, finishNotificationsOn, followUpsOn, setFinishNotifications, se
 import { button, card, modalHeader, switchInput } from './ui';
 import { audioApi, refreshAudioSettings, speakText, type AudioView } from './audio';
 import { SHORTCUTS, bindingFor, comboOf, display, setBinding } from './shortcuts';
-import { ACCENTS, BACKGROUNDS, accentHex, applyAppearance, setAccent, setBackground, storedAccent, storedBackground } from './appearance';
+import { ACCENTS, BACKGROUNDS, TEXT_SIZES, ZOOMS, accentHex, applyAppearance, readability, setAccent, setBackground, setReadability, storedAccent, storedBackground, type TextSize } from './appearance';
 
 export type Section = 'profile' | 'providers' | 'audio' | 'permissions' | 'general' | 'appearance';
 
@@ -17,6 +17,37 @@ const SECTIONS: { id: Section; label: string; icon: string; group: string }[] = 
   { id: 'permissions', label: 'Permissions', icon: 'shield', group: 'App settings' },
   { id: 'general', label: 'General', icon: 'monitor', group: 'App settings' },
   { id: 'appearance', label: 'Appearance', icon: 'palette', group: 'App settings' },
+];
+
+/** What the settings search finds: a setting's name, its section, and other words for it. */
+const SETTINGS_INDEX: [string, Section, string][] = [
+  ['Your profile', 'profile', 'name about instructions tone personality'],
+  ['Your data', 'profile', 'export import backup delete history'],
+  ['Storage and backups', 'profile', 'backup restore damaged files recently deleted trash'],
+  ['Providers and API keys', 'providers', 'key openai anthropic mistral xai ollama llama.cpp lm studio model default base url'],
+  ['Web search', 'providers', 'searxng brave tavily engine internet'],
+  ['Semantic search', 'providers', 'embeddings libraries vector rag'],
+  ['Images and voice', 'providers', 'image generation dall-e text to speech voice model'],
+  ['Speech to text', 'audio', 'dictation microphone whisper transcription stt'],
+  ['Text to speech', 'audio', 'read aloud voice tts elevenlabs'],
+  ['Files', 'permissions', 'edit files folders allow'],
+  ['Terminal', 'permissions', 'shell commands run bash'],
+  ['Your tools', 'permissions', 'custom tools python javascript script'],
+  ['Computer use', 'permissions', 'screen mouse keyboard screenshot click'],
+  ['API tool servers (OpenAPI)', 'permissions', 'openapi swagger rest tools'],
+  ['Privacy filter', 'permissions', 'redact personal data pii'],
+  ['MCP servers', 'permissions', 'mcp connectors model context protocol'],
+  ['Quick ask shortcut', 'general', 'global hotkey quick ask bar'],
+  ['Launch at startup', 'general', 'autostart login'],
+  ['Notify when a reply is ready', 'general', 'notification background alert'],
+  ['Suggest follow-ups', 'general', 'follow up questions suggestions'],
+  ['New chats are temporary', 'general', 'temporary incognito history'],
+  ['Keyboard shortcuts', 'general', 'hotkeys keys rebind'],
+  ['Local API', 'general', 'openai compatible server port token curl'],
+  ['Theme', 'appearance', 'dark light system mode'],
+  ['Accent colour', 'appearance', 'color colour highlight'],
+  ['Background and palette', 'appearance', 'background colours palette'],
+  ['Readability', 'appearance', 'text size font zoom scale contrast motion animation accessibility'],
 ];
 
 export type Theme = 'light' | 'dark' | 'system';
@@ -61,15 +92,52 @@ export function openSettings(section: Section = 'profile'): Promise<void> {
     const nav = h('nav', { class: 'settings-nav' });
     const body = h('div', { class: 'settings-body' });
     const name = state.instructions.name || 'You';
+    // Search: matching settings replace the section list; choosing one opens it there.
+    const search = h('input', { class: 'input settings-search', type: 'search', placeholder: 'Search settings' });
+    let query = '';
+    let focusLabel: string | null = null;
+    search.addEventListener('input', () => {
+      query = search.value.trim().toLowerCase();
+      renderNav();
+    });
+    search.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') (list.querySelector('.settings-hit') as HTMLButtonElement | null)?.click();
+      if (e.key === 'Escape' && query) {
+        e.stopPropagation();
+        search.value = '';
+        query = '';
+        renderNav();
+      }
+    });
+    // The profile line and the search box stay; only the list below them changes.
+    const list = h('div', { class: 'settings-nav-list' });
+    nav.append(h('div', { class: 'settings-user' }, h('span', { class: 'avatar' }, initials(name)), h('div', {}, h('strong', {}, name), h('small', { class: 'muted' }, 'Local profile'))), search, list);
     const renderNav = () => {
-      clear(nav, h('div', { class: 'settings-user' }, h('span', { class: 'avatar' }, initials(name)), h('div', {}, h('strong', {}, name), h('small', { class: 'muted' }, 'Local profile'))));
+      clear(list);
+      if (query) {
+        const words = query.split(/\s+/);
+        const hits = SETTINGS_INDEX.filter(([label, , keys]) => words.every((w) => `${label} ${keys}`.toLowerCase().includes(w)));
+        list.append(h('div', { class: 'nav-heading' }, hits.length ? 'Settings' : 'Nothing found'));
+        for (const [label, section] of hits) {
+          const where = SECTIONS.find((x) => x.id === section)!;
+          list.append(
+            h(
+              'button',
+              { class: 'nav-item settings-hit', on: { click: () => { current = section; focusLabel = label; void renderBody(); } } },
+              icon(where.icon, 16),
+              h('span', { class: 'grow' }, label, h('small', { class: 'muted' }, ` · ${where.label}`))
+            )
+          );
+        }
+        return;
+      }
       let group = '';
       for (const s of SECTIONS) {
         if (s.group !== group) {
           group = s.group;
-          nav.append(h('div', { class: 'nav-heading' }, group));
+          list.append(h('div', { class: 'nav-heading' }, group));
         }
-        nav.append(h('button', { class: `nav-item${s.id === current ? ' active' : ''}`, on: { click: () => { current = s.id; renderNav(); void renderBody(); } } }, icon(s.icon, 16), s.label));
+        list.append(h('button', { class: `nav-item${s.id === current ? ' active' : ''}`, on: { click: () => { current = s.id; renderNav(); void renderBody(); } } }, icon(s.icon, 16), s.label));
       }
     };
     const renderBody = async () => {
@@ -86,6 +154,18 @@ export function openSettings(section: Section = 'profile'): Promise<void> {
         if (current === 'appearance') renderAppearance(content);
       } catch (e) {
         content.append(h('p', { class: 'error-text' }, String(e)));
+      }
+      // From a search: bring the setting into view and flash its card.
+      if (focusLabel) {
+        const wanted = focusLabel.toLowerCase();
+        focusLabel = null;
+        const target = [...content.querySelectorAll<HTMLElement>('h3, .setting-row strong')].find((el) => (el.textContent ?? '').toLowerCase().startsWith(wanted.split(' (')[0]!));
+        const box = target?.closest<HTMLElement>('.card, .setting-row') ?? target;
+        if (box) {
+          box.scrollIntoView({ block: 'center' });
+          box.classList.add('flash');
+          setTimeout(() => box.classList.remove('flash'), 1600);
+        }
       }
     };
     renderNav();
@@ -941,6 +1021,22 @@ function renderAppearance(content: HTMLElement) {
       label
     );
   content.append(card(h('h3', {}, 'Theme'), h('div', { class: 'theme-options' }, option('light', 'Light', 'sun'), option('dark', 'Dark', 'moon'), option('system', 'System', 'monitor'))));
+
+  // Readability: chat text size, the zoom of the whole interface, contrast and motion.
+  const r = readability();
+  const sizeSelect = h('select', { class: 'input select-sm' }, TEXT_SIZES.map((t) => h('option', { value: t.id, selected: t.id === r.textSize }, `${t.label} (${t.px}px)`)));
+  sizeSelect.addEventListener('change', () => setReadability({ textSize: sizeSelect.value as TextSize }));
+  const zoomSelect = h('select', { class: 'input select-sm' }, ZOOMS.map((z) => h('option', { value: String(z), selected: Math.abs(z - r.zoom) < 0.001 }, `${Math.round(z * 100)}%`)));
+  zoomSelect.addEventListener('change', () => setReadability({ zoom: Number(zoomSelect.value) }));
+  content.append(
+    card(
+      h('h3', {}, 'Readability'),
+      row('Chat text size', 'Messages and answers; the rest of the interface keeps its size.', sizeSelect),
+      row('Interface zoom', 'Everything, larger or smaller. Ctrl+= and Ctrl+- step it, Ctrl+0 resets.', zoomSelect),
+      row('High contrast', 'Stronger text, borders and focus rings, and underlined links.', switchInput(r.highContrast, (v) => setReadability({ highContrast: v }))),
+      row('Reduce motion', 'Turns off animations and smooth scrolling, also when the system does not ask for it.', switchInput(r.reduceMotion, (v) => setReadability({ reduceMotion: v })))
+    )
+  );
 
   const rerender = () => {
     content.replaceChildren();
