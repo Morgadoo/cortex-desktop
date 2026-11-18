@@ -326,6 +326,35 @@ pub async fn connect_model(config_dir: &std::path::Path, reference: &str) -> Res
     providers::connect(reference, &settings, key)
 }
 
+/// One request for a text, for the app's own errands (titles, follow-ups, translations,
+/// rewrites): when the model fails or does not answer in time, the backup model set under
+/// Providers is tried once, as chats do. The error is the first model's, in plain words.
+pub async fn ask_text(config_dir: &std::path::Path, reference: &str, request: CompletionRequest, secs: u64) -> Result<String, String> {
+    let attempt = |reference: String, request: CompletionRequest| async move {
+        let model = connect_model(config_dir, &reference).await?;
+        let response = tokio::time::timeout(std::time::Duration::from_secs(secs), model.call(request))
+            .await
+            .map_err(|_| "The provider did not answer in time.".to_string())?
+            .map_err(|e| super::context::short_error(&e.to_string()))?;
+        let text = response.text();
+        // A thinking model can spend a small budget on thought and say nothing.
+        if text.trim().is_empty() {
+            return Err("The model gave no text back.".to_string());
+        }
+        Ok::<String, String>(text)
+    };
+    match attempt(reference.to_string(), request.clone()).await {
+        Ok(text) => Ok(text),
+        Err(first) => match providers::load(config_dir).backup_model.filter(|b| b != reference) {
+            Some(backup) => {
+                log::warn!("{reference} failed ({first}); trying the backup model {backup}");
+                attempt(backup, request).await.map_err(|_| first)
+            }
+            None => Err(first),
+        },
+    }
+}
+
 fn config_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
     crate::settings::get_config_dir(app)
 }
@@ -1341,21 +1370,17 @@ pub fn fallback_title(conversation: &Conversation) -> String {
 async fn name_conversation(app: AppHandle, reference: String, mut conversation: Conversation) {
     let Ok(config_dir) = config_dir(&app) else { return };
     let mut title = fallback_title(&conversation);
-    if let Ok(model) = connect_model(&config_dir, &reference).await {
-        let prompt = format!(
-            "Write a title of at most 6 words for a conversation that starts with the message \
-             below, in the message's language. Reply with the title only, no quotes.\n\n{}",
-            title
-        );
-        let request = CompletionRequest::new(Message::user(prompt)).max_tokens(32u64);
-        if let Ok(Ok(response)) =
-            tokio::time::timeout(std::time::Duration::from_secs(20), model.call(request)).await
-        {
-            let text = response.text();
-            let text = text.trim().trim_matches(['"', '\'', '*', '#']).trim();
-            if !text.is_empty() && text.chars().count() <= 80 {
-                title = text.to_string();
-            }
+    let prompt = format!(
+        "Write a title of at most 6 words for a conversation that starts with the message \
+         below, in the message's language. Reply with the title only, no quotes.\n\n{}",
+        title
+    );
+    // Room for models that think before they answer; the title itself is a few words.
+    let request = CompletionRequest::new(Message::user(prompt)).max_tokens(600u64);
+    if let Ok(text) = ask_text(&config_dir, &reference, request, 20).await {
+        let text = text.trim().trim_matches(['"', '\'', '*', '#']).trim();
+        if !text.is_empty() && text.chars().count() <= 80 {
+            title = text.to_string();
         }
     }
     // The conversation may have moved on while the title was written; only the title changes.

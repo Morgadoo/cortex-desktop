@@ -662,14 +662,9 @@ pub async fn chat_follow_ups(app: AppHandle, id: String, model: String) -> Resul
         return Ok(Vec::new());
     };
     let question = turns.iter().rev().find(|t| t.role == "user").map(text_of).unwrap_or_default();
-    let model = engine::connect_model(&dir, &model).await?;
     let request = rig_core::completion::CompletionRequest::new(rig_core::completion::message::Message::user(follow_up_prompt(&question, &answer)))
-        .max_tokens(200u64);
-    let response = tokio::time::timeout(std::time::Duration::from_secs(30), model.call(request))
-        .await
-        .map_err(|_| "The provider did not answer in time.".to_string())?
-        .map_err(|e| e.to_string())?;
-    Ok(parse_follow_ups(&response.text()))
+        .max_tokens(1_000u64);
+    Ok(parse_follow_ups(&engine::ask_text(&dir, &model, request, 30).await?))
 }
 
 fn follow_up_prompt(question: &str, answer: &str) -> String {
@@ -1045,13 +1040,10 @@ async fn ocr(config_dir: &std::path::Path, path: &std::path::Path, media_type: &
     };
     let image = engine::ImageInput { media_type: media_type.into(), data: base64::engine::general_purpose::STANDARD.encode(bytes) };
     let message = engine::user_message(OCR_PROMPT, &[image])?;
-    let model = engine::connect_model(config_dir, &reference).await?;
     let request = rig_core::completion::CompletionRequest::new(message).max_tokens(8_000u64);
-    let response = tokio::time::timeout(std::time::Duration::from_secs(180), model.call(request))
+    let text = engine::ask_text(config_dir, &reference, request, 180)
         .await
-        .map_err(|_| "The model did not answer in time.".to_string())?
-        .map_err(|e| format!("{} could not read it ({}); it needs a model that can see images.", reference, super::context::short_error(&e.to_string())))?;
-    let text = response.text();
+        .map_err(|e| format!("{reference} could not read it ({e}); it needs a model that can see images."))?;
     if text.trim().eq_ignore_ascii_case("NO TEXT") {
         return Err("no text was found in the image.".into());
     }
@@ -1458,18 +1450,13 @@ pub async fn chat_translate(app: AppHandle, model: String, text: String, languag
     if language.is_empty() || text.trim().is_empty() {
         return Err("Nothing to translate.".into());
     }
-    let model = engine::connect_model(&config_dir(&app)?, &model).await?;
     let prompt = format!(
         "Translate the text below into {language}. Keep its Markdown, code blocks, links and numbers exactly; \
          translate only the prose. Reply with the translation alone.\n\n{}",
         text.chars().take(30_000).collect::<String>()
     );
     let request = rig_core::completion::CompletionRequest::new(rig_core::completion::message::Message::user(prompt)).max_tokens(8_000u64);
-    let response = tokio::time::timeout(std::time::Duration::from_secs(120), model.call(request))
-        .await
-        .map_err(|_| "The provider did not answer in time.".to_string())?
-        .map_err(|e| super::context::short_error(&e.to_string()))?;
-    Ok(response.text())
+    engine::ask_text(&config_dir(&app)?, &model, request, 120).await
 }
 
 /// Rewrites `text` as asked (shorter, clearer, fixed grammar, …) for editing in place. `context`
@@ -1481,7 +1468,6 @@ pub async fn chat_improve_text(app: AppHandle, model: String, text: String, inst
         return Err("Nothing to improve.".into());
     }
     let instruction = if instruction.is_empty() { "Improve the writing: clearer and tighter, same meaning.".to_string() } else { instruction };
-    let model = engine::connect_model(&config_dir(&app)?, &model).await?;
     let context = context
         .filter(|c| !c.trim().is_empty())
         .map(|c| format!("\n\nThe text around it, for reference only (do not repeat it):\n<context>\n{}\n</context>", c.chars().take(12_000).collect::<String>()))
@@ -1493,11 +1479,7 @@ pub async fn chat_improve_text(app: AppHandle, model: String, text: String, inst
         text.chars().take(30_000).collect::<String>()
     );
     let request = rig_core::completion::CompletionRequest::new(rig_core::completion::message::Message::user(prompt)).max_tokens(8_000u64);
-    let response = tokio::time::timeout(std::time::Duration::from_secs(120), model.call(request))
-        .await
-        .map_err(|_| "The provider did not answer in time.".to_string())?
-        .map_err(|e| super::context::short_error(&e.to_string()))?;
-    let out = response.text();
+    let out = engine::ask_text(&config_dir(&app)?, &model, request, 120).await?;
     let out = out.trim().trim_start_matches("<text>").trim_end_matches("</text>").trim();
     if out.is_empty() {
         return Err("The model gave no text back.".into());
@@ -1805,12 +1787,11 @@ pub async fn chat_draft_agent(app: AppHandle, description: String) -> Result<sup
         return Err("Describe the agent in a sentence or two.".into());
     }
     let reference = providers::load(&dir).default_model.ok_or("Choose a default model under Providers & models first.")?;
-    let model = engine::connect_model(&dir, &reference).await?;
     let tools: Vec<&str> = TOOL_CHOICES.to_vec();
     let skills: Vec<String> = super::skills::list(&dir).into_iter().filter(|s| s.enabled).map(|s| s.name).collect();
     let request = CompletionRequest::new(rig_core::completion::Message::user(super::agents::draft_prompt(description.trim(), &tools, &skills)));
-    let response = model.call(request).await.map_err(|e| e.to_string())?;
-    super::agents::parse_draft(&response.text(), &tools, &skills)
+    let text = engine::ask_text(&dir, &reference, request, 120).await?;
+    super::agents::parse_draft(&text, &tools, &skills)
 }
 
 /// The tool names an agent can be given, matching the editor's choices.
