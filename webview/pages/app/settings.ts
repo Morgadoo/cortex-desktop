@@ -3,7 +3,7 @@ import { tauriInvoke } from '../../shared/tauri';
 import { api, type AppSettings, type Provider } from './api';
 import { clear, confirmDialog, h, icon, modal, toast } from './dom';
 import { historyButton } from './versions';
-import { changed, finishNotificationsOn, finishSoundOn, followStreamOn, followUpsOn, setFinishNotifications, setFinishSound, setFollowStream, setFollowUps, setTemporaryByDefault, state, temporaryByDefault } from './state';
+import { autocompleteOn, changed, finishNotificationsOn, setAutocomplete, finishSoundOn, followStreamOn, followUpsOn, setFinishNotifications, setFinishSound, setFollowStream, setFollowUps, setTemporaryByDefault, state, temporaryByDefault } from './state';
 import { button, card, modalHeader, switchInput } from './ui';
 import { audioApi, refreshAudioSettings, speakText, type AudioView } from './audio';
 import { SHORTCUTS, bindingFor, comboOf, display, setBinding } from './shortcuts';
@@ -46,6 +46,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Launch at startup', 'general', 'autostart login'],
   ['Notify when a reply is ready', 'general', 'notification background alert'],
   ['Suggest follow-ups', 'general', 'follow up questions suggestions'],
+  ['Autocomplete as you type', 'general', 'autocomplete suggest complete typing tab continuation'],
   ['New chats are temporary', 'general', 'temporary incognito history'],
   ['Keyboard shortcuts', 'general', 'hotkeys keys rebind'],
   ['Local API', 'general', 'openai compatible server port token curl mcp anthropic'],
@@ -1074,6 +1075,7 @@ async function renderGeneral(content: HTMLElement) {
       row('Play a sound with it', 'A short chime with the notification.', switchInput(finishSoundOn(), (v) => setFinishSound(v))),
       row('Follow answers as they stream', 'Keep the newest text in view while an answer is written; off leaves the page where you put it.', switchInput(followStreamOn(), (v) => setFollowStream(v))),
       row('Suggest follow-ups', 'After each answer, offer three next questions. Each takes one short extra request to the model.', switchInput(followUpsOn(), (v) => setFollowUps(v))),
+      row('Autocomplete as you type', 'When you pause while typing, suggest how the sentence goes on; Tab takes it, Esc dismisses it. Each pause is one short request to the model.', switchInput(autocompleteOn(), (v) => setAutocomplete(v))),
       row('New chats are temporary', 'Chats are not saved to your history unless you turn this off for one (the ghost button on the new-chat page). Takes effect from the next new chat.', switchInput(temporaryByDefault(), (v) => setTemporaryByDefault(v)))
     ),
     await chatDefaultsCard(),

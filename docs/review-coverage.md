@@ -8,18 +8,18 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 127 |
+| DONE | 58 | 128 |
 | PARTIAL | 86 | 54 |
-| MISSING | 48 | 11 |
+| MISSING | 48 | 10 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 36 / 8 / 1 / 9 · LibreChat 33 / 8 / 1 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 13 / 6 / 2 / 5 · Osaurus 9 / 12 / 5 / 4 · OpenBot 18 / 9 / 2 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9 · LibreChat 33 / 8 / 1 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 13 / 6 / 2 / 5 · Osaurus 9 / 12 / 5 / 4 · OpenBot 18 / 9 / 2 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
 | Open WebUI | Message queue (send after the reply) | PARTIAL | DONE | parity L270; chat.ts:1521–1528 (Alt+Enter queues) |
-| Open WebUI | Autocomplete as you type | MISSING | MISSING | No model completion in the composer |
+| Open WebUI | Autocomplete as you type | MISSING | DONE | parity: Autocomplete as you type (chat_complete_prompt; composer hint, Tab accepts) |
 | Open WebUI | Follow-up prompts after each reply | MISSING | DONE | parity L268; `chat_follow_ups` command |
 | Open WebUI | Expand the message box | MISSING | DONE | parity L287 (expand button, tall editor) |
 | Open WebUI | Compare Text (prompt vs revision) | MISSING | DONE | parity: Compare answer versions (word diff between any two versions of a reply, from a regenerated answer or an edited prompt) |

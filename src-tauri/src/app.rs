@@ -185,6 +185,7 @@ pub fn run() {
             chat::commands::chat_file_memory,
             chat::commands::chat_router_models,
             chat::commands::chat_set_router_models,
+            chat::commands::chat_complete_prompt,
             chat::commands::chat_import_archive,
             chat::commands::chat_open_app_window,
             chat::commands::chat_set_defaults,

@@ -1681,6 +1681,36 @@ pub fn chat_forget_recent_file(app: AppHandle, index: Option<usize>) -> Result<V
     super::recent_files::forget(&config_dir(&app)?, index)
 }
 
+/// A continuation for the message being typed (Open WebUI's autocomplete): a few words, or
+/// nothing when the message reads as finished.
+#[tauri::command]
+pub async fn chat_complete_prompt(app: AppHandle, model: String, text: String) -> Result<String, String> {
+    let text: String = text.chars().rev().take(2_000).collect::<Vec<_>>().into_iter().rev().collect();
+    if text.trim().chars().count() < 8 {
+        return Ok(String::new());
+    }
+    let prompt = format!(
+        "The user is typing a message to an AI assistant. Suggest how their sentence most likely \
+         continues: at most 12 words, in their language and voice, continuing exactly where the text \
+         stops (start with a space when the next word is new). Reply with the continuation only, no \
+         quotes. If the message already reads as complete, reply with nothing.\n\n<typed>{text}</typed>"
+    );
+    let request = rig_core::completion::CompletionRequest::new(rig_core::completion::message::Message::user(prompt)).max_tokens(600u64);
+    let out = match engine::ask_text(&config_dir(&app)?, &model, request, 10).await {
+        Ok(out) => out,
+        Err(e) if e.contains("no text") => return Ok(String::new()),
+        Err(e) => return Err(e),
+    };
+    let out = out.trim_end().trim_start_matches(['"', '\'']).trim_end_matches(['"', '\'']).to_string();
+    // A continuation, not a new message: keep it short and on one line.
+    let out: String = out.lines().next().unwrap_or_default().split_whitespace().take(14).collect::<Vec<_>>().join(" ");
+    if out.is_empty() {
+        return Ok(String::new());
+    }
+    let joined = if text.ends_with(' ') || out.starts_with([',', '.', '?', '!', ';', ':']) { out } else { format!(" {out}") };
+    Ok(joined)
+}
+
 /// A conversation as plain text, to add to another one as context.
 #[tauri::command]
 pub fn chat_conversation_text(app: AppHandle, id: String) -> Result<String, String> {

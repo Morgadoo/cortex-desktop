@@ -1,5 +1,6 @@
 /** The home screen, a conversation, and the composer they share. */
 import { emojiFor, findEmoji } from './emoji';
+import { autocompleteOn } from './state';
 import { tauriInvoke } from '../../shared/tauri';
 import { api, newId, type ApprovalMode, type ChatParams, type Conversation, type Part, type Turn, type UsageTotals } from './api';
 import { fillVariables } from './variables';
@@ -1626,6 +1627,7 @@ class Composer {
   constructor() {
     this.textarea = h('textarea', { class: 'composer-input', rows: 1, placeholder: this.placeholder });
     this.textarea.addEventListener('input', () => {
+      this.scheduleSuggestion();
       this.autosize();
       this.renderBar();
       this.updateSlashMenu();
@@ -1634,6 +1636,17 @@ class Composer {
       if (this.slashMenu && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === 'Tab' || e.key === 'Escape')) {
         e.preventDefault();
         this.slashKey(e.key);
+        return;
+      }
+      // Autocomplete: Tab takes the suggestion, Esc dismisses it.
+      if (this.suggestion && e.key === 'Tab' && !e.shiftKey) {
+        e.preventDefault();
+        this.acceptSuggestion();
+        return;
+      }
+      if (this.suggestion && e.key === 'Escape') {
+        e.preventDefault();
+        this.clearSuggestion();
         return;
       }
       // Shift+Tab cycles the modes, as in Claude. GTK names it ISO_Left_Tab, so match the code too.
@@ -1702,7 +1715,8 @@ class Composer {
     });
     this.chips = h('div', { class: 'chips' });
     this.bar = h('div', { class: 'composer-bar' });
-    this.el = h('div', { class: 'composer' }, h('div', { class: 'composer-box' }, this.chips, this.textarea, this.bar));
+    this.hint.addEventListener('mousedown', (e) => { e.preventDefault(); this.acceptSuggestion(); });
+    this.el = h('div', { class: 'composer' }, h('div', { class: 'composer-box' }, this.chips, this.hint, this.textarea, this.bar));
     // Files dropped on the composer are attached like picked ones.
     let depth = 0;
     const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
@@ -1790,6 +1804,45 @@ class Composer {
       this.extending = false;
       this.el.classList.remove('extending');
     }
+  }
+
+  /** The suggested continuation of what is typed, shown above the composer (Open WebUI's autocomplete). */
+  private suggestion = '';
+  private suggestionTimer = 0;
+  private suggestionSeq = 0;
+  private readonly hint = h('button', { class: 'autocomplete-hint', type: 'button', hidden: true, title: 'Tab to add it, Esc to dismiss' });
+
+  private clearSuggestion() {
+    this.suggestion = '';
+    this.suggestionSeq++;
+    this.hint.hidden = true;
+  }
+
+  private acceptSuggestion() {
+    const text = this.textarea.value + this.suggestion;
+    this.clearSuggestion();
+    this.setText(text);
+    this.textarea.setSelectionRange(text.length, text.length);
+    this.focus();
+  }
+
+  private scheduleSuggestion() {
+    window.clearTimeout(this.suggestionTimer);
+    this.clearSuggestion();
+    const typed = this.textarea.value;
+    if (!autocompleteOn() || !state.model || this.slashMenu || typed.trim().length < 8 || typed.startsWith('/') || this.textarea.selectionStart !== typed.length) return;
+    this.suggestionTimer = window.setTimeout(() => {
+      const seq = ++this.suggestionSeq;
+      void tauriInvoke<string>('chat_complete_prompt', { model: state.model, text: typed })
+        .then((continuation) => {
+          // Only while the text is as it was when asked.
+          if (seq !== this.suggestionSeq || this.textarea.value !== typed || !continuation.trim()) return;
+          this.suggestion = continuation;
+          clear(this.hint, h('span', { class: 'muted' }, '…' + typed.slice(-24).trimStart()), h('strong', {}, continuation), h('kbd', {}, 'Tab'));
+          this.hint.hidden = false;
+        })
+        .catch(() => undefined);
+    }, 700);
   }
 
   /** Ctrl+R: search earlier prompts and put one in the composer. */
@@ -2220,6 +2273,8 @@ class Composer {
     }
     const images = this.attachments.flatMap((a) => (a.image ? [a.image] : []));
     // Sent text is no longer a draft (sending from home moves to the new chat right away).
+    this.clearSuggestion();
+    window.clearTimeout(this.suggestionTimer);
     const unsent = this.textarea.value;
     const unsentFiles = this.attachments;
     this.textarea.value = '';

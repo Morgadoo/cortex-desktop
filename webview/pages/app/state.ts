@@ -278,6 +278,23 @@ export function followUpsOn(): boolean {
   }
 }
 
+/** Suggest how the message being typed continues (off unless turned on: each pause is a request). */
+export function autocompleteOn(): boolean {
+  try {
+    return localStorage.getItem('lumo.autocomplete') === 'on';
+  } catch {
+    return false;
+  }
+}
+
+export function setAutocomplete(on: boolean) {
+  try {
+    localStorage.setItem('lumo.autocomplete', on ? 'on' : 'off');
+  } catch {
+    /* per-device convenience only */
+  }
+}
+
 /** Follow an answer down the page as it streams (on unless turned off). */
 export function followStreamOn(): boolean {
   try {
