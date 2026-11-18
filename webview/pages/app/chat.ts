@@ -759,6 +759,35 @@ function bookmarkButton(turn: Turn, conversationId: string, size = 16): HTMLElem
   return button;
 }
 
+/**
+ * Prints the open conversation as it reads on screen (Markdown, code, math, diagrams), without the
+ * app around it; the system print dialog can save it as a PDF.
+ */
+async function printConversation(id: string, title: string) {
+  if (viewCache.chat?.key !== `chat:${id}`) {
+    navigate({ kind: 'chat', id });
+    await new Promise((r) => setTimeout(r, 600));
+  }
+  // Let the menu that started this close first.
+  await new Promise((r) => setTimeout(r, 120));
+  const transcript = document.querySelector<HTMLElement>('.chat .transcript');
+  if (!transcript) return void toast('Open the conversation first.', 'error');
+  // Long messages are shown whole on paper.
+  const folded = [...transcript.querySelectorAll<HTMLElement>('.folded')];
+  folded.forEach((el) => el.classList.remove('folded'));
+  const head = h('div', {}, h('h1', { class: 'print-title' }, title || 'Conversation'), h('p', { class: 'print-meta' }, `Lumo · ${new Date().toLocaleString()}`));
+  transcript.before(head);
+  try {
+    window.print();
+  } finally {
+    // Printing returns once the dialog closes.
+    setTimeout(() => {
+      head.remove();
+      folded.forEach((el) => el.classList.add('folded'));
+    }, 500);
+  }
+}
+
 /** A new chat that keeps this one up to here, with or without the files attached on the way. */
 function branchHereButton(turn: Turn, conversationId: string): HTMLElement {
   const button = h('button', { class: 'icon-btn small', title: 'Branch from here' }, icon('branch', 16));
@@ -3087,6 +3116,7 @@ export function conversationMenu(anchor: HTMLElement, id: string, title: string,
       }),
       item('download', 'Export as Markdown', () => void api.exportConversation(id).then((saved) => saved && toast('Conversation exported.'))),
       item('link', 'Copy link', () => void navigator.clipboard.writeText(`lumo://chat/${id}`).then(() => toast('Link copied. It opens this chat in Lumo on this computer.'))),
+      item('download', 'Print or save as PDF', () => void printConversation(id, title)),
       item('code', 'Export as JSON', () => void tauriInvoke<boolean>('chat_export_conversation_json', { id }).then((saved) => saved && toast('Conversation exported.')).catch((e) => toast(String(e), 'error'))),
       item('settings', 'Chat settings…', () => void openChatSettings(id)),
       item('dot', 'Mark as unread', async () => {

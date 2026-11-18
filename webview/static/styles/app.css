@@ -1467,3 +1467,25 @@ button.usage-meter:hover { background: var(--hover); }
 .data-table .mono { font-family: ui-monospace, monospace; }
 .queued-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 2px 8px; font-size: var(--fs-sm); }
 .queued-head .spacer { flex: 1; }
+
+/* Print or save as PDF (conversation menu): the transcript alone, on white, page by page. */
+@media print {
+  :root { --bg: #fff; --text: #111; --text-secondary: #333; --text-muted: #555; --bg-bubble: #f2f2f4; --bg-code: #f5f5f7; --border: #ddd; }
+  html, body { background: #fff !important; color: #111 !important; height: auto !important; overflow: visible !important; }
+  .app { display: block !important; height: auto !important; }
+  .sidebar, .composer, .composer-wrap, .turn-actions, .header-actions, .follow-ups, .sticky-prompt, .toast, .toasts, .jump-bottom, .plan-panel, .side-panel, .modal-backdrop, .temp-toggle, .error-actions button { display: none !important; }
+  .main, .chat, .chat-scroll { display: block !important; height: auto !important; overflow: visible !important; position: static !important; }
+  .chat-scroll { padding: 0 !important; }
+  .print-title { display: block !important; font-size: 20px; font-weight: 600; margin: 0 0 4px; }
+  .print-meta { display: block !important; color: #555; font-size: 12px; margin: 0 0 18px; }
+  .turn { break-inside: avoid-page; }
+  pre, .bubble { white-space: pre-wrap !important; overflow: visible !important; }
+  details:not([open]) > *:not(summary) { display: none; }
+  .chat-header, .popover { display: none !important; }
+  /* The theme's colours are inline on <html>; paper gets its own. */
+  .bubble, .bubble-file, .bubble-quote { background: #f2f2f4 !important; color: #111 !important; border-color: #ddd !important; }
+  .markdown, .markdown * { color: #111 !important; }
+  .markdown pre, .markdown code, .code-block { background: #f5f5f7 !important; color: #111 !important; }
+  .muted, .turn-time, .step-label, .thought-toggle { color: #555 !important; }
+}
+.print-title, .print-meta { display: none; }
