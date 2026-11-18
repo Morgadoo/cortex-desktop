@@ -26,6 +26,8 @@ pub const KNOWLEDGE_SEARCH: &str = "knowledge_search";
 pub const SEARCH_CHATS: &str = "search_chats";
 pub const READ_CHAT: &str = "read_chat";
 pub const NOTIFY: &str = "notify";
+pub const CALENDAR_EVENTS: &str = "calendar_events";
+pub const FIND_CONTACT: &str = "find_contact";
 
 fn tool(name: &str, description: &str, parameters: Value) -> ChatTool {
     ChatTool {
@@ -169,6 +171,39 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             }),
         ));
     }
+    let sources = super::calendar::load(config_dir);
+    if !sources.calendars.is_empty() {
+        let names: Vec<&str> = sources.calendars.iter().map(|c| c.name.as_str()).collect();
+        out.push(tool(
+            CALENDAR_EVENTS,
+            &format!(
+                "Read the user's calendars ({}): the events between two dates, in their local time, \
+                 repeating events included. Use it for their schedule, free time, deadlines and \
+                 meetings. Read-only.",
+                names.join(", ")
+            ),
+            json!({
+                "type": "object",
+                "properties": {
+                    "from": { "type": "string", "description": "First day, YYYY-MM-DD. Default: today." },
+                    "to": { "type": "string", "description": "Last day, YYYY-MM-DD. Default: a week after `from`." },
+                    "query": { "type": "string", "description": "Only events whose title, place or notes contain this." }
+                }
+            }),
+        ));
+    }
+    if !sources.contacts.is_empty() {
+        out.push(tool(
+            FIND_CONTACT,
+            "Look up people in the user's contacts by name, email, company or role: their emails, \
+             phones, organization, birthday and address. Read-only.",
+            json!({
+                "type": "object",
+                "properties": { "query": { "type": "string", "description": "A name, email, company or role." } },
+                "required": ["query"]
+            }),
+        ));
+    }
     if libraries.iter().any(|l| !l.documents.is_empty()) {
         out.push(tool(
             READ_DOCUMENT,
@@ -300,7 +335,7 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
 }
 
 pub fn is_builtin(name: &str) -> bool {
-    matches!(name, WEB_SEARCH | REMEMBER | FORGET | USE_SKILL | UPDATE_PLAN | SCHEDULE_TASK | SEARCH_LIBRARY | READ_DOCUMENT | SAVE_SKILL | KNOWLEDGE_WRITE | KNOWLEDGE_READ | KNOWLEDGE_SEARCH | SEARCH_CHATS | READ_CHAT)
+    matches!(name, WEB_SEARCH | CALENDAR_EVENTS | FIND_CONTACT | REMEMBER | FORGET | USE_SKILL | UPDATE_PLAN | SCHEDULE_TASK | SEARCH_LIBRARY | READ_DOCUMENT | SAVE_SKILL | KNOWLEDGE_WRITE | KNOWLEDGE_READ | KNOWLEDGE_SEARCH | SEARCH_CHATS | READ_CHAT)
 }
 
 fn ok(text: impl Into<String>) -> Outcome {
@@ -421,6 +456,55 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
             Ok(()) => ok(format!("Saved the skill `{}`. The user can call it with /{}.", str_arg("name"), str_arg("name"))),
             Err(e) => err(e),
         },
+        CALENDAR_EVENTS => {
+            let today = chrono::Local::now().date_naive();
+            let date = |key: &str| chrono::NaiveDate::parse_from_str(&str_arg(key), "%Y-%m-%d").ok();
+            let from_day = date("from").unwrap_or(today);
+            let to_day = date("to").unwrap_or(from_day + chrono::Duration::days(7)).max(from_day);
+            if (to_day - from_day).num_days() > 366 {
+                return err("Ask for at most a year at a time.");
+            }
+            let local = |d: chrono::NaiveDate, end: bool| {
+                use chrono::TimeZone as _;
+                let t = if end { d.and_hms_opt(23, 59, 59) } else { d.and_hms_opt(0, 0, 0) }.unwrap_or_default();
+                chrono::Local.from_local_datetime(&t).earliest().map_or_else(chrono::Utc::now, |t| t.with_timezone(&chrono::Utc))
+            };
+            let (from, to) = (local(from_day, false), local(to_day, true));
+            let mut events = Vec::new();
+            let mut problems = Vec::new();
+            for cal in super::calendar::load(config_dir).calendars {
+                match super::calendar::fetch(&cal.location).await {
+                    Ok(text) => events.extend(super::calendar::occurrences(&cal.name, &super::calendar::parse_ics(&text), from, to, &str_arg("query"))),
+                    Err(e) => problems.push(format!("{}: {e}", cal.name)),
+                }
+            }
+            events.sort_by_key(|e| e.at);
+            let shown: Vec<_> = events.iter().take(80).collect();
+            ok(serde_json::to_string_pretty(&json!({
+                "from": from_day.to_string(),
+                "to": to_day.to_string(),
+                "events": shown,
+                "more": events.len().saturating_sub(shown.len()),
+                "unreadable": problems,
+            }))
+            .unwrap_or_default())
+        }
+        FIND_CONTACT => {
+            let query = str_arg("query");
+            if query.is_empty() {
+                return err("Give a name, email or company to look up.");
+            }
+            let mut all = Vec::new();
+            let mut problems = Vec::new();
+            for book in super::calendar::load(config_dir).contacts {
+                match super::calendar::fetch(&book.location).await {
+                    Ok(text) => all.extend(super::calendar::parse_vcards(&text)),
+                    Err(e) => problems.push(format!("{}: {e}", book.name)),
+                }
+            }
+            let found = super::calendar::find(&all, &query);
+            ok(serde_json::to_string_pretty(&json!({ "query": query, "contacts": found, "unreadable": problems })).unwrap_or_default())
+        }
         SEARCH_LIBRARY => {
             let query = str_arg("query");
             if query.is_empty() {

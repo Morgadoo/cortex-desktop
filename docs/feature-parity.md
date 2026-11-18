@@ -217,7 +217,7 @@ items most likely to differ:
 Reviewed in November 2026 feature by feature against the docs of Open WebUI, LibreChat, LobeHub,
 Onyx, Osaurus and OpenBot (about 220 features). Every item of the review's shortlist is in the table
 below; every feature the review found missing or partial is tracked row by row, with evidence, in
-[review-coverage.md](review-coverage.md) (now 130 done, 54 partial, 8 missing, 31 out of scope).
+[review-coverage.md](review-coverage.md) (now 131 done, 54 partial, 7 missing, 31 out of scope).
 What was deliberately left out, and why:
 
 - **Team and enterprise features** (channels, comments, SSO, SCIM, tenants, admin plane, shared
@@ -345,6 +345,7 @@ What was deliberately left out, and why:
 | Autocomplete as you type | Open WebUI | Settings → General → Autocomplete as you type (off by default: each pause is one short request). When you pause at the end of what you are typing, the model suggests how the sentence goes on, shown above the text; Tab or a click takes it, Esc dismisses it, and typing on drops it. Verified live | Done |
 | Time cutoff for library search | Onyx | `search_library` takes `since` (a date, or 30d / 6m / 1y back): only documents changed since then are searched (a mirrored file's own change time, else when it was added), and the model hears when nothing that recent matched. Verified live: the model searched since today (nothing), then the last 30 days (found) | Done |
 | Search mode | Onyx | Ctrl+Shift+F (or "Search everything…" in the palette): one query over libraries, knowledge pages, earlier chats and, if switched on, the web, as numbered cards that open their source. "Answer from these" writes a short answer from the cards alone, citing them by number (a number jumps to its card); "Ask in a new chat" starts a chat with them attached. Verified live | Done |
+| Calendars and contacts | Osaurus | Settings → Permissions → Calendars and contacts: a calendar's private ICS link (Google, Proton, Outlook, iCloud) or an .ics file, and .vcf contact files. The assistant reads them with `calendar_events` (events between two dates in local time; repeating events by day, week with weekdays, month and year, with interval, count, end date and exceptions; day-long events; time zones) and `find_contact` (name, email, company or role). Read-only. Mail goes through the Proton Mail connector. Verified live: a week's schedule (a repeating stand-up with one exception skipped) and a contact's email in one answer | Done |
 | Translate an answer | LibreChat, lobehub | The globe under an answer translates it into a listed or any language, shown below the original (Markdown and code kept) without changing the conversation. Verified live | Done |
 | Quote a passage into the next message | LibreChat, lobehub | Selecting text in an answer (or a canvas) shows "Ask about this", which quotes it in the composer | Done |
 | Slash commands | open-webui (built-in `/` commands), Vibe CLI | `/` lists app commands before skills: /new, /temporary, /model, /voice, /fork, /context, /settings, /export, /clear. Verified live (/context) | Done |

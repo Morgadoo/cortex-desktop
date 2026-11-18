@@ -1728,6 +1728,49 @@ pub async fn chat_answer_from_results(app: AppHandle, model: String, query: Stri
     engine::ask_text(&config_dir(&app)?, &model, request, 90).await
 }
 
+/// Picks a calendar (.ics) or contacts (.vcf) file; returns its path.
+#[tauri::command]
+pub async fn chat_pick_calendar_file(app: AppHandle, contacts: bool) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let dialog = app.dialog().file();
+    let dialog = if contacts { dialog.set_title("Choose a contacts file").add_filter("Contacts", &["vcf", "vcard"]) } else { dialog.set_title("Choose a calendar file").add_filter("Calendar", &["ics", "ical"]) };
+    dialog.pick_file(move |path| {
+        let _ = tx.send(path);
+    });
+    Ok(rx.await.map_err(|e| e.to_string())?.and_then(|p| p.into_path().ok()).map(|p| p.to_string_lossy().into_owned()))
+}
+
+/// The calendars and contact files the assistant can read.
+#[tauri::command]
+pub fn chat_calendar_sources(app: AppHandle) -> Result<super::calendar::Settings, String> {
+    Ok(super::calendar::load(&config_dir(&app)?))
+}
+
+/// Saves the calendars and contact files, after checking each one reads.
+#[tauri::command]
+pub async fn chat_set_calendar_sources(app: AppHandle, settings: super::calendar::Settings) -> Result<Vec<String>, String> {
+    let mut report = Vec::new();
+    for cal in &settings.calendars {
+        let text = super::calendar::fetch(&cal.location).await.map_err(|e| format!("{}: {e}", cal.name))?;
+        let events = super::calendar::parse_ics(&text);
+        if events.is_empty() && !text.contains("BEGIN:VCALENDAR") {
+            return Err(format!("{} is not a calendar (no ICS data there).", cal.name));
+        }
+        report.push(format!("{}: {} events", cal.name, events.len()));
+    }
+    for book in &settings.contacts {
+        let text = super::calendar::fetch(&book.location).await.map_err(|e| format!("{}: {e}", book.name))?;
+        let contacts = super::calendar::parse_vcards(&text);
+        if contacts.is_empty() {
+            return Err(format!("{} has no contacts (a .vcf file is needed).", book.name));
+        }
+        report.push(format!("{}: {} contacts", book.name, contacts.len()));
+    }
+    super::calendar::save(&config_dir(&app)?, &settings)?;
+    Ok(report)
+}
+
 /// A conversation as plain text, to add to another one as context.
 #[tauri::command]
 pub fn chat_conversation_text(app: AppHandle, id: String) -> Result<String, String> {

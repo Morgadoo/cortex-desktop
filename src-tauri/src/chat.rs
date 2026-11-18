@@ -25,6 +25,7 @@ pub mod openapi;
 pub mod embeddings;
 mod backup;
 pub mod builtins;
+pub mod calendar;
 pub mod canvas;
 pub mod code;
 pub mod commands;

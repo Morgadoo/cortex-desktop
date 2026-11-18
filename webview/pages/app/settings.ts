@@ -41,6 +41,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['API tool servers (OpenAPI)', 'permissions', 'openapi swagger rest tools'],
   ['Privacy filter', 'permissions', 'redact personal data pii'],
   ['MCP servers', 'permissions', 'mcp connectors model context protocol'],
+  ['Calendars and contacts', 'permissions', 'calendar ics ical contacts vcard vcf google proton outlook icloud schedule agenda'],
   ['Hooks', 'permissions', 'hooks before after tool call command script block turn end'],
   ['Quick ask shortcut', 'general', 'global hotkey quick ask bar'],
   ['Launch at startup', 'general', 'autostart login'],
@@ -720,8 +721,82 @@ async function renderPermissions(content: HTMLElement) {
     await computerCard(),
     await customToolsCard(),
     mcpCard(),
+    await calendarCard(),
     await hooksCard(),
     await openApiCard()
+  );
+}
+
+interface CalendarSource {
+  name: string;
+  location: string;
+}
+
+/**
+ * Calendars and contacts (Osaurus): private ICS links or .ics files, and .vcf contact files,
+ * that the assistant reads with calendar_events and find_contact.
+ */
+async function calendarCard(): Promise<HTMLElement> {
+  let settings = await tauriInvoke<{ calendars: CalendarSource[]; contacts: CalendarSource[] }>('chat_calendar_sources').catch(() => ({ calendars: [], contacts: [] }));
+  const list = h('div', { class: 'hook-list' });
+  const save = async (next: typeof settings) => {
+    try {
+      const report = await tauriInvoke<string[]>('chat_set_calendar_sources', { settings: next });
+      settings = next;
+      render();
+      if (report.length) toast(`Read ${report.join(', ')}.`);
+    } catch (e) {
+      toast(String(e), 'error');
+    }
+  };
+  const render = () => {
+    const rows = [
+      ...settings.calendars.map((c, i) => ({ c, kind: 'calendar' as const, i })),
+      ...settings.contacts.map((c, i) => ({ c, kind: 'contacts' as const, i })),
+    ];
+    clear(
+      list,
+      rows.length
+        ? rows.map(({ c, kind, i }) =>
+            h(
+              'div',
+              { class: 'hook-row' },
+              icon(kind === 'calendar' ? 'calendar' : 'user', 16),
+              h('div', { class: 'hook-text' }, h('strong', {}, c.name), h('code', {}, c.location.replace(/(https?:\/\/[^/]+\/).{12,}/, '$1…'))),
+              h('button', {
+                class: 'icon-btn small',
+                title: 'Remove',
+                on: { click: () => void save(kind === 'calendar' ? { ...settings, calendars: settings.calendars.filter((_, j) => j !== i) } : { ...settings, contacts: settings.contacts.filter((_, j) => j !== i) }) },
+              }, icon('trash', 15))
+            )
+          )
+        : h('p', { class: 'muted small' }, 'None yet.')
+    );
+  };
+  const kind = h('select', { class: 'input select-sm' }, h('option', { value: 'calendar' }, 'Calendar'), h('option', { value: 'contacts' }, 'Contacts'));
+  const name = h('input', { class: 'input', placeholder: 'Name, e.g. Work' });
+  const location = h('input', { class: 'input', placeholder: 'Private ICS link (https:// or webcal://) or a file' });
+  const browse = button({ variant: 'subtle', size: 'sm', label: 'File…', onClick: async () => {
+    const path = await tauriInvoke<string | null>('chat_pick_calendar_file', { contacts: kind.value === 'contacts' }).catch(() => null);
+    if (path) {
+      location.value = path;
+      if (!name.value) name.value = path.split(/[\\/]/).pop()!.replace(/\.[^.]+$/, '');
+    }
+  } });
+  const add = button({ variant: 'secondary', icon: 'plus', label: 'Add', onClick: () => {
+    const entry = { name: name.value.trim() || (kind.value === 'calendar' ? 'Calendar' : 'Contacts'), location: location.value.trim() };
+    if (!entry.location) return toast('Paste a link or choose a file.', 'error');
+    void save(kind.value === 'calendar' ? { ...settings, calendars: [...settings.calendars, entry] } : { ...settings, contacts: [...settings.contacts, entry] }).then(() => {
+      name.value = '';
+      location.value = '';
+    });
+  } });
+  render();
+  return card(
+    h('h3', {}, 'Calendars and contacts'),
+    h('p', { class: 'muted' }, 'Let the assistant read your schedule and look people up. Add a calendar\u2019s private ICS link (Google, Proton, Outlook and iCloud all offer one) or an .ics file, and a .vcf contacts export. It only reads them; links are fetched when it asks.'),
+    list,
+    h('div', { class: 'calendar-add' }, kind, name, location, browse, add)
   );
 }
 

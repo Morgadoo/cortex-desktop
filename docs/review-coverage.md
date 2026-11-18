@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 130 |
+| DONE | 58 | 131 |
 | PARTIAL | 86 | 54 |
-| MISSING | 48 | 8 |
+| MISSING | 48 | 7 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9 · LibreChat 33 / 8 / 1 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 15 / 6 / 0 / 5 · Osaurus 9 / 12 / 5 / 4 · OpenBot 18 / 9 / 2 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9 · LibreChat 33 / 8 / 1 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 15 / 6 / 0 / 5 · Osaurus 10 / 12 / 4 / 4 · OpenBot 18 / 9 / 2 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -191,7 +191,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9
 | Osaurus | VM per agent | PARTIAL | PARTIAL | bubblewrap sandbox (parity L231). Missing: a separate environment per agent |
 | Osaurus | Browser session per agent | PARTIAL | PARTIAL | Missing: per-agent sessions |
 | Osaurus | Computer use with rules per app | MISSING | PARTIAL | Computer use (parity L288). Missing: per-app rules |
-| Osaurus | Calendar, Mail, Contacts… integrations | MISSING | MISSING | Only through MCP connectors |
+| Osaurus | Calendar, Mail, Contacts… integrations | MISSING | DONE | parity: Calendars and contacts (calendar.rs: ICS links/files with repeat rules, vCard); mail through the Proton Mail connector |
 | Osaurus | Agent channels | MISSING | OUT OF SCOPE | parity L256 |
 | Osaurus | Import Claude plugins | MISSING | DONE | parity: Import Claude plugins (plugins.rs: skills, commands, agents, MCP servers) |
 | Osaurus | Plugin registry | MISSING | DONE | A Claude plugin marketplace on GitHub lists its plugins in the app to tick and import (parity: Import Claude plugins); verified with Anthropic's official marketplace |
