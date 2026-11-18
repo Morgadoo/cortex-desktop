@@ -96,3 +96,11 @@ assert.equal(md.format('- a', 0, 3, 'h2').text, '## a', 'another line mark is re
 assert.equal(md.format('see docs', 4, 8, 'link').text, 'see [docs](https://)')
 assert.equal(md.format('x', 1, 1, 'codeblock').text, 'x\n```\n\n```\n')
 console.log('check-mdformat: ok')
+
+// The Terminal panel's dev-server preview (webview/pages/app/devsite.ts).
+const siteBundle = await build({ entryPoints: [join(root, 'webview/pages/app/devsite.ts')], bundle: true, format: 'esm', write: false, platform: 'neutral' })
+const site = await import('data:text/javascript;base64,' + Buffer.from(siteBundle.outputFiles[0].text).toString('base64'))
+assert.equal(site.localSite('  VITE ready\n  \x1b[32m➜\x1b[0m  Local:   http://localhost:5173/\n'), 'http://localhost:5173/')
+assert.equal(site.localSite('Listening on http://0.0.0.0:8000.'), 'http://localhost:8000')
+assert.equal(site.localSite('see https://example.com'), null)
+console.log('check-preview: ok')

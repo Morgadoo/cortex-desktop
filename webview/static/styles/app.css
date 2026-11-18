@@ -1646,3 +1646,6 @@ button.usage-meter:hover { background: var(--hover); }
 .md-btn:hover{background:var(--card);color:var(--text);border-color:var(--border)}
 .md-italic{font-style:italic}.md-strike{text-decoration:line-through}.md-code,.md-codeblock{font-family:var(--font-mono,monospace)}
 .usage-row{grid-template-columns:minmax(120px,1.3fr) 1fr 104px 56px 64px}.usage-row>span:nth-child(n+3){text-align:right}
+
+.sources-heading{margin:10px 0 4px}
+.source-entry.found{opacity:.85}

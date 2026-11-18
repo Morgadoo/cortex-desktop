@@ -2327,6 +2327,17 @@ pub fn chat_usage_month(app: AppHandle) -> Result<super::agents::Spend, String> 
     Ok(total)
 }
 
+/// Opens a local dev server's page in Lumo's browser window (the Terminal panel's preview).
+#[tauri::command]
+pub fn chat_open_preview(app: AppHandle, url: String) -> Result<(), String> {
+    let parsed: url::Url = url.parse().map_err(|_| "That is not a web address.".to_string())?;
+    let local = matches!(parsed.host_str(), Some("localhost" | "127.0.0.1" | "[::1]" | "::1"));
+    if !local || !matches!(parsed.scheme(), "http" | "https") {
+        return Err("Only pages served on this computer open as a preview.".into());
+    }
+    crate::inapp_browser::open(&app, &parsed)
+}
+
 /// Adds a comment to a scheduled task, or removes one (`remove`, its index).
 #[tauri::command]
 pub fn chat_task_comment(app: AppHandle, id: String, text: Option<String>, remove: Option<usize>) -> Result<Vec<super::tasks::Task>, String> {

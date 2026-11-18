@@ -211,6 +211,7 @@ pub fn run() {
             chat::commands::chat_share_link,
             chat::commands::chat_usage_breakdown,
             chat::commands::chat_task_comment,
+            chat::commands::chat_open_preview,
             chat::commands::chat_read_article,
             chat::commands::chat_folder_files,
             chat::commands::chat_read_video,

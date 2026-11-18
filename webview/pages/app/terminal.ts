@@ -2,6 +2,7 @@
 import { tauriInvoke } from '../../shared/tauri';
 import { clear, h, icon, modal, toast } from './dom';
 import { button, emptyState, iconButton, modalHeader } from './ui';
+import { localSite } from './devsite';
 
 interface CommandView {
   id: string;
@@ -45,10 +46,13 @@ export function openTerminal(conversationId: string, folder: string) {
           pre.textContent = c.output || '(no output yet)';
           if (atBottom) pre.scrollTop = pre.scrollHeight;
           const open = c.id === selected;
+          // A dev server's address in the output (Open WebUI's site preview): open it beside the chat.
+          const site = c.status === 'running' ? localSite(c.output) : null;
+          const preview = site ? iconButton({ icon: 'globe', title: `Preview ${site}`, size: 'sm', onClick: (e) => { e.stopPropagation(); void tauriInvoke('chat_open_preview', { url: site }).catch((err) => toast(String(err), 'error')); } }) : null;
           return h(
             'section',
             { class: `term-item${open ? ' open' : ''}` },
-            h('button', { class: 'term-head', on: { click: () => { selected = open ? null : c.id; void render(); } } }, icon('terminal', 15), h('code', {}, c.command), h('span', { class: 'spacer' }), status, stop),
+            h('button', { class: 'term-head', on: { click: () => { selected = open ? null : c.id; void render(); } } }, icon('terminal', 15), h('code', {}, c.command), h('span', { class: 'spacer' }), preview, status, stop),
             open ? pre : null
           );
         })
@@ -80,3 +84,4 @@ export function openTerminal(conversationId: string, folder: string) {
     );
   }, true);
 }
+

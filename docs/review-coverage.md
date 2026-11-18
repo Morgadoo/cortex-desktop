@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 153 |
-| PARTIAL | 86 | 38 |
+| DONE | 58 | 155 |
+| PARTIAL | 86 | 36 |
 | MISSING | 48 | 1 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 38 / 7 / 0 / 9 · LibreChat 37 / 5 / 0 / 4 · LobeHub 21 / 8 / 0 / 5 · Onyx 17 / 4 / 0 / 5 · Osaurus 18 / 7 / 1 / 4 · OpenBot 22 / 7 / 0 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 39 / 6 / 0 / 9 · LibreChat 37 / 5 / 0 / 4 · LobeHub 21 / 8 / 0 / 5 · Onyx 18 / 3 / 0 / 5 · Osaurus 18 / 7 / 1 / 4 · OpenBot 22 / 7 / 0 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -38,7 +38,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 38 / 7 / 0 / 9
 | Open WebUI | Global defaults for every model | PARTIAL | DONE | Defaults for every chat: temperature, length, top-p (parity: Defaults for every chat) |
 | Open WebUI | Version history of model configs | MISSING | DONE | Agents, workflows and tools keep 30 earlier versions each, with History and Load (parity: Version history) |
 | Open WebUI | Evaluation: arena, leaderboard | PARTIAL | DONE | parity L230 (blind compare, Elo `/leaderboard`) |
-| Open WebUI | Open Terminal (shell, files, site preview) | PARTIAL | PARTIAL | Terminal and Files panels (parity L122, L208). Missing: live preview of a dev server |
+| Open WebUI | Open Terminal (shell, files, site preview) | PARTIAL | DONE | Terminal and Files panels (parity L122, L208); a running command that prints a local address gets a preview button that opens the page in Lumo's browser window (terminal.ts, devsite.ts, chat_open_preview). Verified live with python -m http.server |
 | Open WebUI | Custom tools with editor, versions, Tool Search | PARTIAL | DONE | Editor with Test, `find_tools`, and versions (parity: Version history) |
 | Open WebUI | Filters (Functions) | MISSING | OUT OF SCOPE | Left out: "Filters and pipes" (parity L223) |
 | Open WebUI | Actions: custom message-toolbar buttons | MISSING | DONE | parity: Answer actions (your own prompts under each answer, editable) |
@@ -166,7 +166,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 38 / 7 / 0 / 9
 | Onyx | Connectors indexed and synced | PARTIAL | PARTIAL | Folders are indexed (parity L240). Missing: MCP connectors indexed into a library |
 | Onyx | Search mode with source cards | MISSING | DONE | parity: Search mode (searchmode.ts, search_all.rs) |
 | Onyx | Time range / source filter | MISSING | DONE | `web_search` recency (parity: Recent results only) and `sites` (parity: Web search on chosen sites) |
-| Onyx | Cited vs found sources; add one in full | PARTIAL | PARTIAL | Sources panel; falls back to search results when nothing is cited (chat.ts:889–895). Missing: a separate Found list, add in full |
+| Onyx | Cited vs found sources; add one in full | PARTIAL | DONE | Sources panel lists Cited, then Also found (search results the answer did not use); + attaches the page's full article text to the next message (chat.ts sourcesOf/openSourcesPanel). Verified live |
 | Onyx | Web search providers | PARTIAL | DONE | parity L294 |
 | Onyx | Document sets | PARTIAL | DONE | Libraries per project (`Project.libraryId`) and per agent (agent editor → Libraries, `Agent.libraries`, searched before answering) |
 | Onyx | Share a Craft app | MISSING | OUT OF SCOPE | Server-only (parity L202) |

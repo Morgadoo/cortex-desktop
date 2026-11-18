@@ -1202,6 +1202,8 @@ interface Source {
   url: string;
   title: string;
   snippet: string;
+  /** Linked in the answer or read; false for search results it did not use (Onyx's "found"). */
+  cited: boolean;
 }
 
 /** What an answer drew on: the pages it links to, then any it opened; search hits when it cites none. */
@@ -1218,13 +1220,13 @@ function sourcesOf(parts: Part[]): Source[] {
       // Not JSON: no snippets from this search.
     }
   }
-  const add = (url: string, title: string) => {
+  const add = (url: string, title: string, cited = true) => {
     if (!/^https?:/.test(url)) return;
     // A search engine's results page is how a source was found, not a source.
     if (/(^|\.)(duckduckgo\.com|bing\.com|search\.brave\.com)$/.test(hostOf(url)) || /google\.[a-z.]+\/search/.test(url)) return;
     const key = url.replace(/\/$/, '');
     const known = snippets.get(key);
-    if (!found.has(key)) found.set(key, { url, title: known?.title || title || host(url), snippet: known?.snippet ?? '' });
+    if (!found.has(key)) found.set(key, { url, title: known?.title || title || host(url), snippet: known?.snippet ?? '', cited });
   };
   for (const part of parts) {
     if (part.kind === 'text') {
@@ -1236,22 +1238,24 @@ function sourcesOf(parts: Part[]): Source[] {
       add(part.arguments.url, resultRows(part)?.rows[0]?.title ?? '');
     }
   }
-  if (!found.size) {
-    for (const part of parts) {
-      if (part.kind === 'tool' && part.name === 'web_search') {
-        for (const row of resultRows(part)?.rows.slice(0, 5) ?? []) if (row.href) add(row.href, row.title);
-      }
+  // Search results the answer did not use are listed apart; with nothing cited, the top ones
+  // stand in as its sources, as before.
+  const nothingCited = !found.size;
+  for (const part of parts) {
+    if (part.kind === 'tool' && part.name === 'web_search') {
+      for (const [i, row] of (resultRows(part)?.rows ?? []).slice(0, 10).entries()) if (row.href) add(row.href, row.title, nothingCited && i < 5);
     }
   }
   return [...found.values()];
 }
 
-function renderSources(sources: Source[]): HTMLElement | null {
+function renderSources(all: Source[]): HTMLElement | null {
+  const sources = all.filter((s) => s.cited);
   if (!sources.length) return null;
   // The sites' icons, overlapping, as on Vibe's Sources chip.
   const distinct = [...new Map(sources.map((s) => [hostOf(s.url), s])).values()];
   const chip = h('button', { class: 'sources-chip' }, 'Sources', h('span', { class: 'source-dots' }, distinct.slice(0, 3).map((s) => siteIcon(s.url, 'source-dot'))));
-  chip.addEventListener('click', () => openSourcesPanel(sources));
+  chip.addEventListener('click', () => openSourcesPanel(all));
   return h('div', { class: 'sources-row' }, chip);
 }
 
@@ -3806,7 +3810,7 @@ export class ChatView {
       for (const part of turn.parts) if (part.kind === 'text') answer.append(markdown(part.text));
       // Frames, buttons and hover-only bits do not travel; links and text do.
       answer.querySelectorAll('iframe, button, .code-head, .preview-head, script, .cite-icon, .site-icon').forEach((el) => el.remove());
-      const sources = sourcesOf(turn.parts);
+      const sources = sourcesOf(turn.parts).filter((s) => s.cited);
       body.append(
         h(
           'section',
@@ -4430,7 +4434,7 @@ function openSourcesPanel(sources: Source[]) {
       h(
         'div',
         { class: 'sources-list' },
-        sources.map((s) => {
+        [...sources.filter((s) => s.cited), ...sources.filter((s) => !s.cited)].map((s, i, list) => {
           const snippet = h('p', { class: 'source-snippet' }, s.snippet);
           const title = h('strong', { class: 'source-title' }, s.title);
           // A title that is only the site's name ("RTP"), or no description: the page's own, fetched once.
@@ -4454,13 +4458,27 @@ function openSourcesPanel(sources: Source[]) {
             e.stopPropagation();
             openReader(s.url, s.title, () => openSourcesPanel(sources));
           });
-          return h(
+          // Add in full (Onyx): the page's article text goes with the next message.
+          const full = h('button', { class: 'icon-btn tiny source-save', title: 'Add the whole page to your next message' }, icon('plus', 14));
+          full.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            void tauriInvoke<{ title: string; blocks: { text: string }[] }>('chat_read_article', { url: s.url })
+              .then((a) => {
+                composer.attachText(`Page: ${a.title || s.title}`, `${a.title}\n${s.url}\n\n${a.blocks.map((b) => b.text).join('\n\n')}`);
+                toast('The page is attached to your next message.');
+              })
+              .catch((err) => toast(String(err), 'error'));
+          });
+          const heading = i === 0 && s.cited ? h('div', { class: 'menu-heading sources-heading' }, 'Cited') : !s.cited && (i === 0 || list[i - 1]!.cited) ? h('div', { class: 'menu-heading sources-heading' }, 'Also found') : null;
+          const entry = h(
             'a',
-            { class: 'source-entry', href: s.url, target: '_blank', rel: 'noopener noreferrer' },
-            h('div', { class: 'source-site' }, siteIcon(s.url), h('span', { class: 'grow' }, host(s.url)), read, save),
+            { class: `source-entry${s.cited ? '' : ' found'}`, href: s.url, target: '_blank', rel: 'noopener noreferrer' },
+            h('div', { class: 'source-site' }, siteIcon(s.url), h('span', { class: 'grow' }, host(s.url)), read, full, save),
             title,
             snippet
           );
+          return heading ? h('div', {}, heading, entry) : entry;
         })
       )
     ),
