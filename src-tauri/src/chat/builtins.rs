@@ -18,6 +18,7 @@ pub const DELEGATE: &str = "delegate";
 pub const CANVAS: &str = "canvas";
 pub const SCHEDULE_TASK: &str = "schedule_task";
 pub const SEARCH_LIBRARY: &str = "search_library";
+pub const READ_DOCUMENT: &str = "read_document";
 pub const SAVE_SKILL: &str = "save_skill";
 pub const KNOWLEDGE_WRITE: &str = "knowledge_write";
 pub const KNOWLEDGE_READ: &str = "knowledge_read";
@@ -164,6 +165,23 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             }),
         ));
     }
+    if libraries.iter().any(|l| !l.documents.is_empty()) {
+        out.push(tool(
+            READ_DOCUMENT,
+            "Read a whole library document, when passages from search_library are not enough \
+             (a contract to check end to end, a report to summarize). Long documents come in parts: \
+             ask for the next part with `part`.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "document": { "type": "string", "description": "The document's name as search_library shows it." },
+                    "library": { "type": "string", "description": "The library, when names repeat." },
+                    "part": { "type": "integer", "minimum": 1, "default": 1 }
+                },
+                "required": ["document"]
+            }),
+        ));
+    }
     if memory::load(config_dir).enabled {
         out.push(tool(
             KNOWLEDGE_WRITE,
@@ -273,7 +291,7 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
 }
 
 pub fn is_builtin(name: &str) -> bool {
-    matches!(name, WEB_SEARCH | REMEMBER | FORGET | USE_SKILL | UPDATE_PLAN | SCHEDULE_TASK | SEARCH_LIBRARY | SAVE_SKILL | KNOWLEDGE_WRITE | KNOWLEDGE_READ | KNOWLEDGE_SEARCH | SEARCH_CHATS | READ_CHAT)
+    matches!(name, WEB_SEARCH | REMEMBER | FORGET | USE_SKILL | UPDATE_PLAN | SCHEDULE_TASK | SEARCH_LIBRARY | READ_DOCUMENT | SAVE_SKILL | KNOWLEDGE_WRITE | KNOWLEDGE_READ | KNOWLEDGE_SEARCH | SEARCH_CHATS | READ_CHAT)
 }
 
 fn ok(text: impl Into<String>) -> Outcome {
@@ -347,6 +365,15 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
                 .map(|(p, _)| json!({ "id": &p.id[..8], "title": p.title, "excerpt": p.body.chars().take(400).collect::<String>() }))
                 .collect();
             if hits.is_empty() { ok("No knowledge page matches.") } else { ok(serde_json::to_string_pretty(&hits).unwrap_or_default()) }
+        }
+        READ_DOCUMENT => {
+            let wanted = str_arg("document");
+            let in_library = str_arg("library");
+            let part = args.get("part").and_then(Value::as_u64).unwrap_or(1).max(1) as usize;
+            match super::libraries::read_document(config_dir, &in_library, &wanted, part) {
+                Ok(text) => ok(text),
+                Err(e) => err(e),
+            }
         }
         SEARCH_CHATS => {
             let query = str_arg("query");

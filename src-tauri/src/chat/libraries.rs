@@ -235,6 +235,34 @@ pub fn remove(config_dir: &Path, library_id: &str, document_id: &str) -> Result<
     Ok(library)
 }
 
+/// Characters of a document `read_document` returns per part.
+const READ_PART: usize = 40_000;
+
+/// A whole document (or one part of a long one), found by name, for `read_document`.
+pub fn read_document(config_dir: &Path, library: &str, name: &str, part: usize) -> Result<String, String> {
+    let wanted = name.trim().to_lowercase();
+    let found = list(config_dir).into_iter().filter(|l| library.trim().is_empty() || l.name.eq_ignore_ascii_case(library.trim())).find_map(|l| {
+        let doc = l
+            .documents
+            .iter()
+            .find(|d| d.name.to_lowercase() == wanted)
+            .or_else(|| l.documents.iter().find(|d| d.name.to_lowercase().contains(&wanted)))
+            .cloned()?;
+        Some((l, doc))
+    });
+    let Some((library, doc)) = found else {
+        return Err(format!("No library document is named {name}; use a name from search_library."));
+    };
+    let text = std::fs::read_to_string(docs_dir(config_dir, &library.id)?.join(format!("{}.txt", doc.id))).map_err(|e| e.to_string())?;
+    let chars: Vec<char> = text.chars().collect();
+    let parts = chars.len().div_ceil(READ_PART).max(1);
+    if part > parts {
+        return Err(format!("{} has {parts} part(s).", doc.name));
+    }
+    let slice: String = chars[(part - 1) * READ_PART..(part * READ_PART).min(chars.len())].iter().collect();
+    Ok(format!("# {} ({}), part {part} of {parts}\n\n{slice}", doc.name, library.name))
+}
+
 /// File types a mirrored folder indexes.
 const SYNC_EXTENSIONS: &[&str] = &["pdf", "md", "markdown", "txt", "html", "htm", "csv", "json", "yaml", "yml", "xml", "rs", "py", "js", "ts", "go", "java", "c", "cpp", "h", "sql", "log", "rst", "org", "tex"];
 /// Files indexed per folder, and how deep a folder is walked.
@@ -506,7 +534,8 @@ pub fn prompt(libraries: &[Library]) -> Option<String> {
     }
     let mut out = String::from(
         "\n\nThe user's libraries (search them with `search_library` when a question may be answered \
-         by their documents, and cite the document name like [Doc name]):",
+         by their documents, read a whole document with `read_document` when passages are not enough, and cite \
+         the document name like [Doc name]):",
     );
     for l in useful {
         out.push_str(&format!("\n- {} ({} documents){}", l.name, l.documents.len(), if l.description.is_empty() { String::new() } else { format!(": {}", l.description) }));
@@ -516,6 +545,19 @@ pub fn prompt(libraries: &[Library]) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn whole_documents_are_read_in_parts() {
+        let config = tempfile::tempdir().unwrap();
+        let lib = create(config.path(), "Contracts", "").unwrap();
+        add_text(config.path(), &lib.id, "lease.md", &"clause ".repeat(12_000)).unwrap();
+        let first = read_document(config.path(), "", "LEASE", 1).unwrap();
+        assert!(first.starts_with("# lease.md (Contracts), part 1 of 3"), "{}", &first[..60]);
+        assert!(read_document(config.path(), "Contracts", "lease", 3).is_ok());
+        assert!(read_document(config.path(), "", "lease.md", 4).is_err());
+        assert!(read_document(config.path(), "", "missing", 1).is_err());
+    }
+
 
     #[test]
     fn folders_are_mirrored() {
