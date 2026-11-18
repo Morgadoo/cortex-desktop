@@ -1429,6 +1429,8 @@ class Composer {
       }
       case 'voice':
         return this.startVoice();
+      case 'leaderboard':
+        return void openLeaderboard();
       case 'clear':
         this.attachments = [];
         this.renderChips();
@@ -2313,19 +2315,31 @@ export class CompareView {
   private grid = h('div', { class: 'compare-grid' });
   private top = h('div', {});
   private saved = new Map<string, Turn | null>();
+  private blind = blindCompare();
 
   constructor(
     private prompt: string,
     private columns: { id: string; model: string }[]
   ) {
     this.key = `compare:${columns.map((c) => c.id).join(',')}`;
+    // Blind: model names stay hidden until an answer is kept (an arena, as in Open WebUI).
+    const blindToggle = h('button', { class: `btn btn-secondary${this.blind ? ' active' : ''}`, title: 'Hide which model wrote which answer until you choose' }, icon('eye', 15), this.blind ? 'Blind' : 'Names shown');
+    blindToggle.addEventListener('click', () => {
+      this.blind = !this.blind;
+      setBlindCompare(this.blind);
+      blindToggle.lastChild!.textContent = this.blind ? 'Blind' : 'Names shown';
+      blindToggle.classList.toggle('active', this.blind);
+      this.render();
+    });
+    const board = h('button', { class: 'btn btn-secondary' }, icon('list', 15), 'Leaderboard');
+    board.addEventListener('click', () => void openLeaderboard());
     const discard = h('button', { class: 'btn btn-secondary' }, icon('trash', 15), 'Discard all');
     discard.addEventListener('click', async () => {
       await Promise.allSettled(this.columns.map((c) => api.deleteConversation(c.id)));
       navigate({ kind: 'home' });
     });
     this.el.append(
-      h('header', { class: 'chat-header' }, h('span', { class: 'chat-title-static' }, `Comparing ${columns.length} models`), h('span', { class: 'spacer' }), discard),
+      h('header', { class: 'chat-header' }, h('span', { class: 'chat-title-static' }, `Comparing ${columns.length} models`), h('span', { class: 'spacer' }), blindToggle, board, discard),
       h('div', { class: 'chat-scroll' }, h('div', { class: 'compare-column-wrap' }, h('div', { class: 'turn turn-user' }, h('div', { class: 'bubble' }, prompt)), this.top, this.grid))
     );
     this.update();
@@ -2343,6 +2357,12 @@ export class CompareView {
   }
 
   private async keep(id: string) {
+    // The kept answer's model wins against the others, for the leaderboard.
+    const winner = this.columns.find((c) => c.id === id)?.model;
+    if (winner) {
+      void tauriInvoke('chat_arena_record', { winner, losers: this.columns.filter((c) => c.id !== id).map((c) => c.model) }).catch(() => undefined);
+      if (this.blind) toast(`You chose ${modelName(winner)}.`);
+    }
     await api.keepConversation(id);
     await Promise.allSettled(this.columns.filter((c) => c.id !== id).map((c) => api.deleteConversation(c.id)));
     compareModels = [];
@@ -2373,7 +2393,7 @@ export class CompareView {
         return h(
           'section',
           { class: 'compare-col' },
-          h('div', { class: 'compare-head' }, h('strong', {}, modelName(c.model)), h('span', { class: 'spacer' }), keep),
+          h('div', { class: 'compare-head' }, h('strong', {}, this.blind ? `Answer ${String.fromCharCode(65 + this.columns.indexOf(c))}` : modelName(c.model)), h('span', { class: 'spacer' }), keep),
           body
         );
       })
@@ -3106,5 +3126,45 @@ const SLASH_COMMANDS: { name: string; desc: string; icon: string; inChat?: boole
   { name: 'context', desc: 'See what fills the context window', icon: 'book', inChat: true },
   { name: 'settings', desc: 'Model settings for this chat', icon: 'settings', inChat: true },
   { name: 'export', desc: 'Export this chat as Markdown', icon: 'download', inChat: true },
+  { name: 'leaderboard', desc: 'Your models ranked by your comparisons', icon: 'list' },
   { name: 'clear', desc: 'Remove the attachments from the composer', icon: 'close' },
 ];
+
+function blindCompare(): boolean {
+  try {
+    return localStorage.getItem('lumo.blindCompare') === 'on';
+  } catch {
+    return false;
+  }
+}
+
+function setBlindCompare(on: boolean) {
+  try {
+    localStorage.setItem('lumo.blindCompare', on ? 'on' : 'off');
+  } catch {
+    // A convenience only.
+  }
+}
+
+/** Your models ranked by the comparisons you decided (Elo). */
+export async function openLeaderboard() {
+  const board = await tauriInvoke<{ model: string; rating: number; wins: number; losses: number }[]>('chat_arena_board').catch(() => []);
+  await modal((close) => {
+    const reset = h('button', { class: 'btn btn-secondary', on: { click: async () => { if (await confirmDialog('Reset the leaderboard?', 'Every recorded comparison is forgotten.', 'Reset')) { await tauriInvoke('chat_arena_reset'); close(); toast('Leaderboard reset.'); } } } }, 'Reset');
+    return h(
+      'div',
+      { class: 'dialog-small wide' },
+      h('h2', {}, 'Model leaderboard'),
+      h('p', { class: 'muted' }, 'From your own comparisons: the answer you keep wins against the others. Ratings are Elo, starting at 1000.'),
+      board.length
+        ? h(
+            'table',
+            { class: 'leaderboard' },
+            h('thead', {}, h('tr', {}, h('th', {}, '#'), h('th', {}, 'Model'), h('th', {}, 'Rating'), h('th', {}, 'Won'), h('th', {}, 'Lost'))),
+            h('tbody', {}, board.map((s, i) => h('tr', {}, h('td', {}, String(i + 1)), h('td', {}, modelName(s.model)), h('td', {}, String(s.rating)), h('td', {}, String(s.wins)), h('td', {}, String(s.losses)))))
+          )
+        : h('p', { class: 'muted' }, 'No comparisons decided yet. Compare 2–3 models from a new chat and keep the best answer.'),
+      h('div', { class: 'dialog-actions' }, board.length ? reset : null, h('span', { class: 'spacer' }), h('button', { class: 'btn btn-primary', on: { click: close } }, 'Close'))
+    );
+  });
+}

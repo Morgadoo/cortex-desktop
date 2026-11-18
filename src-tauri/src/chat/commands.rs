@@ -1267,6 +1267,22 @@ pub fn chat_restore_skill(app: AppHandle, name: String, version: String) -> Resu
     Ok(super::skills::list(&dir))
 }
 
+/// Records which model's answer was kept in a comparison.
+#[tauri::command]
+pub fn chat_arena_record(app: AppHandle, winner: String, losers: Vec<String>) -> Result<(), String> {
+    super::arena::record(&config_dir(&app)?, &winner, &losers)
+}
+
+#[tauri::command]
+pub fn chat_arena_board(app: AppHandle) -> Result<Vec<super::arena::Standing>, String> {
+    Ok(super::arena::standings(&super::arena::load(&config_dir(&app)?)))
+}
+
+#[tauri::command]
+pub fn chat_arena_reset(app: AppHandle) -> Result<(), String> {
+    super::arena::reset(&config_dir(&app)?)
+}
+
 #[tauri::command]
 pub fn chat_search_settings(app: AppHandle) -> Result<super::search::SearchSettings, String> {
     Ok(super::search::load_settings(&config_dir(&app)?))

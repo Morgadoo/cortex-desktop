@@ -225,6 +225,12 @@
           "markdownDescription": "Turn the local OpenAI-compatible API on or off and show its token."
         },
         {
+          "description": "Record comparison results and show the model leaderboard.",
+          "type": "string",
+          "const": "allow-chat-arena",
+          "markdownDescription": "Record comparison results and show the model leaderboard."
+        },
+        {
           "description": "Read the audio settings.",
           "type": "string",
           "const": "allow-chat-audio-settings",

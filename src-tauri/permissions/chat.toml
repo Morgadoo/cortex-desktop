@@ -547,3 +547,8 @@ commands.allow = ["chat_add_library_folder", "chat_remove_library_folder", "chat
 identifier = "allow-chat-skill-history"
 description = "List and restore earlier versions of a skill."
 commands.allow = ["chat_skill_history", "chat_restore_skill"]
+
+[[permission]]
+identifier = "allow-chat-arena"
+description = "Record comparison results and show the model leaderboard."
+commands.allow = ["chat_arena_record", "chat_arena_board", "chat_arena_reset"]

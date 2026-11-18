@@ -227,6 +227,7 @@ below. What was deliberately left out, and why:
 |---|---|---|---|
 | Any provider, local models | open-webui, LibreChat, lobehub, osaurus | 15 rig providers, Ollama, llama.cpp, custom base URLs | Done |
 | Side-by-side model comparison | open-webui, LibreChat | Compare 2–3 models, keep the best answer | Done |
+| Arena: blind comparisons and a leaderboard | open-webui (Evaluation) | A comparison can hide model names until you keep an answer ("You chose …"); each kept answer wins against the others, and `/leaderboard` (or the comparison's Leaderboard button) ranks your models by Elo with wins and losses, resettable. Verified live | Done |
 | Code interpreter | open-webui, LibreChat | `run_code`: Python, JS, Bash in a sandboxed workspace (bubblewrap) | Done |
 | Artifacts / runnable apps | LibreChat, lobehub | Mini apps and canvases | Done |
 | Image generation | open-webui, LibreChat, lobehub | `generate_image` via rig (OpenAI, xAI, Together) | Done |

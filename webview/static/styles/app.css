@@ -1413,3 +1413,7 @@ button.usage-meter:hover { background: var(--hover); }
 
 .shortcut-key { min-width: 110px; padding: 4px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-family: ui-monospace, monospace; font-size: var(--fs-sm); background: var(--bg-hover); }
 .shortcut-key.shortcut-recording { border-color: var(--accent); color: var(--accent); }
+
+.leaderboard { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.leaderboard th, .leaderboard td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.leaderboard th { color: var(--text-muted); font-weight: 600; }
