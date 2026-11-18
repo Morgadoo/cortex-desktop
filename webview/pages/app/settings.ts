@@ -46,7 +46,8 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Suggest follow-ups', 'general', 'follow up questions suggestions'],
   ['New chats are temporary', 'general', 'temporary incognito history'],
   ['Keyboard shortcuts', 'general', 'hotkeys keys rebind'],
-  ['Local API', 'general', 'openai compatible server port token curl'],
+  ['Local API', 'general', 'openai compatible server port token curl mcp anthropic'],
+  ['Error reports and updates', 'general', 'privacy telemetry error reports crash sentry updates diagnostics'],
   ['Theme', 'appearance', 'dark light system mode'],
   ['Accent colour', 'appearance', 'color colour highlight'],
   ['Background and palette', 'appearance', 'background colours palette'],
@@ -958,7 +959,29 @@ async function renderGeneral(content: HTMLElement) {
       row('New chats are temporary', 'Chats are not saved to your history unless you turn this off for one (the ghost button on the new-chat page). Takes effect from the next new chat.', switchInput(temporaryByDefault(), (v) => setTemporaryByDefault(v)))
     ),
     await apiServerCard(),
+    await diagnosticsCard(),
     shortcutsCard()
+  );
+}
+
+/** What the app sends about itself, and a diagnostics file for bug reports that holds no content. */
+async function diagnosticsCard(): Promise<HTMLElement> {
+  type Prefs = { errorReports: boolean; updateChecks: boolean };
+  const view = await tauriInvoke<{ prefs: Prefs; reportingBuilt: boolean }>('chat_diagnostics_prefs');
+  const prefs = view.prefs;
+  const persist = () => void tauriInvoke('chat_set_diagnostics_prefs', { prefs }).then(() => toast('Saved. Takes effect at the next start.')).catch((e) => toast(String(e), 'error'));
+  const exportBtn = h('button', { class: 'btn btn-secondary' }, icon('download', 14), 'Export diagnostics');
+  exportBtn.addEventListener('click', () => void tauriInvoke<boolean>('chat_export_diagnostics').then((saved) => saved && toast('Diagnostics saved.')).catch((e) => toast(String(e), 'error')));
+  return card(
+    h('h3', {}, 'Error reports and updates'),
+    h('p', { class: 'muted' }, 'Lumo sends nothing about you or your use. Conversations, files and keys stay on this computer; requests go only to the providers and services you set up.'),
+    row(
+      'Error reports',
+      view.reportingBuilt ? 'Send crash and error reports (no conversation content) to help fix problems. Off unless you turn it on.' : 'This build has no error reporting in it, so nothing is ever sent.',
+      switchInput(prefs.errorReports && view.reportingBuilt, (v) => { prefs.errorReports = v; persist(); })
+    ),
+    row('Check for updates at start', 'Asks the update server whether a newer version exists. Help → Check for updates works either way.', switchInput(prefs.updateChecks, (v) => { prefs.updateChecks = v; persist(); })),
+    row('Diagnostics for a bug report', 'A file with the app version, platform, settings and counts, without anything said, typed or stored.', exportBtn)
   );
 }
 

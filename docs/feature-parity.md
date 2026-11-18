@@ -213,7 +213,7 @@ items most likely to differ:
 Reviewed in November 2026 feature by feature against the docs of Open WebUI, LibreChat, LobeHub,
 Onyx, Osaurus and OpenBot (about 220 features). Every item of the review's shortlist is in the table
 below; every feature the review found missing or partial is tracked row by row, with evidence, in
-[review-coverage.md](review-coverage.md) (now 91 done, 67 partial, 34 missing, 31 out of scope).
+[review-coverage.md](review-coverage.md) (now 93 done, 66 partial, 33 missing, 31 out of scope).
 What was deliberately left out, and why:
 
 - **Team and enterprise features** (channels, comments, SSO, SCIM, tenants, admin plane, shared
@@ -303,6 +303,7 @@ What was deliberately left out, and why:
 | Save web pages to a library | onyx (web connector), open-webui (add a webpage to knowledge) | Each web source of an answer has Save to a library, and Libraries has Add a web page: the page's readable text (scripts and styles dropped) is saved under its title with its address, then searched and cited like any document. Verified live: a Wikipedia source saved (35,000 characters) | Done |
 | Agents travel with their tool servers | osaurus (bundles with MCP servers), lobehub | An exported agent file also carries the MCP servers its tool list names (environment values blanked; keys and sign-ins never leave the keychain), and importing adds any this computer lacks, ready for their keys under Connectors. Verified live: an agent using Linear exported, Linear removed, the import brought it back | Done |
 | Lumo as an MCP server | onyx (MCP server), osaurus (MCP server) | The local API serves MCP at `/mcp` (Streamable HTTP, answered as JSON, same key): `search_libraries`, `ask` (any model or agent), `list_models`, `list_tasks` and `run_task`, so an editor or a coding agent on this computer can use your libraries and agents. Settings shows the `claude mcp add` line. Verified with the official MCP Python client: handshake, tool list, a library search, the task list and an answer | Done |
+| Error reports and update checks under the user's control; diagnostics without content | osaurus (telemetry toggles), openbot.run (privacy-safe diagnostics) | Settings → General → Error reports and updates: crash reports are off unless turned on (and absent from builds made without a reporting key, as open-source builds are); the update check at start can be turned off; Export diagnostics saves versions, platform, settings and counts, never conversations, files or keys. Verified live | Done |
 | Translate an answer | LibreChat, lobehub | The globe under an answer translates it into a listed or any language, shown below the original (Markdown and code kept) without changing the conversation. Verified live | Done |
 | Quote a passage into the next message | LibreChat, lobehub | Selecting text in an answer (or a canvas) shows "Ask about this", which quotes it in the composer | Done |
 | Slash commands | open-webui (built-in `/` commands), Vibe CLI | `/` lists app commands before skills: /new, /temporary, /model, /voice, /fork, /context, /settings, /export, /clear. Verified live (/context) | Done |

@@ -1080,6 +1080,59 @@ pub fn chat_delete_exchange(app: AppHandle, state: State<'_, ChatState>, id: Str
     store::save_conversation(&dir, &conversation)
 }
 
+/// What the app may send about itself, and whether this build can send error reports at all.
+#[tauri::command]
+pub fn chat_diagnostics_prefs(app: AppHandle) -> Result<serde_json::Value, String> {
+    let dir = crate::settings::get_config_dir(&app)?;
+    Ok(serde_json::json!({ "prefs": crate::reporting::load_prefs(&dir), "reportingBuilt": crate::reporting::compiled_in() }))
+}
+
+#[tauri::command]
+pub fn chat_set_diagnostics_prefs(app: AppHandle, prefs: crate::reporting::DiagnosticsPrefs) -> Result<(), String> {
+    crate::reporting::save_prefs(&crate::settings::get_config_dir(&app)?, &prefs)
+}
+
+/// A diagnostics file for a bug report: versions, platform, settings and counts, never what was
+/// said, typed or stored. Saved where the user picks.
+#[tauri::command]
+pub async fn chat_export_diagnostics(app: AppHandle) -> Result<bool, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let dir = config_dir(&app)?;
+    let providers = super::providers::load(&dir);
+    let enabled: Vec<&String> = providers.providers.iter().filter(|(_, p)| p.enabled).map(|(k, _)| k).collect();
+    let report = serde_json::json!({
+        "app": { "name": "Lumo", "version": env!("CARGO_PKG_VERSION") },
+        "platform": { "os": std::env::consts::OS, "arch": std::env::consts::ARCH, "family": std::env::consts::FAMILY },
+        "providersEnabled": enabled,
+        "defaultModel": providers.default_model,
+        "counts": {
+            "conversations": store::list_conversations(&dir).len(),
+            "libraries": super::libraries::list(&dir).len(),
+            "agents": super::agents::load(&dir).len(),
+            "tasks": super::tasks::load(&dir).len(),
+            "customTools": super::custom_tools::list(&dir).len(),
+        },
+        "features": {
+            "semanticSearch": super::embeddings::ready(&super::embeddings::load(&dir)),
+            "localApi": super::api_server::load(&dir).enabled,
+            "computerUse": super::computer::load(&dir).enabled,
+            "sandboxLanguages": super::sandbox::languages(),
+        },
+        "localApiRecent": super::api_server::recent().into_iter().take(20).map(|e| serde_json::json!({ "endpoint": e.endpoint, "status": e.status, "ms": e.ms })).collect::<Vec<_>>(),
+        "createdAt": chrono::Utc::now(),
+    });
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog().file().set_file_name("lumo-diagnostics.json").add_filter("JSON", &["json"]).save_file(move |path| {
+        let _ = tx.send(path);
+    });
+    let Some(path) = rx.await.map_err(|e| e.to_string())? else {
+        return Ok(false);
+    };
+    let path = path.into_path().map_err(|e| e.to_string())?;
+    std::fs::write(path, serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
 /// Saves a web page's text into a library.
 #[tauri::command]
 pub async fn chat_add_web_page(app: AppHandle, library_id: String, url: String) -> Result<super::libraries::Library, String> {

@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 91 |
-| PARTIAL | 86 | 67 |
-| MISSING | 48 | 34 |
+| DONE | 58 | 93 |
+| PARTIAL | 86 | 66 |
+| MISSING | 48 | 33 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 25 / 15 / 5 / 9 · LibreChat 28 / 10 / 4 / 4 · LobeHub 9 / 13 / 7 / 5 · Onyx 10 / 7 / 4 / 5 · Osaurus 5 / 12 / 9 / 4 · OpenBot 14 / 10 / 5 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 25 / 15 / 5 / 9 · LibreChat 28 / 10 / 4 / 4 · LobeHub 9 / 13 / 7 / 5 · Onyx 10 / 7 / 4 / 5 · Osaurus 6 / 12 / 8 / 4 · OpenBot 15 / 9 / 5 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -206,7 +206,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 25 / 15 / 5 / 
 | Osaurus | Encrypted sync between devices | MISSING | MISSING |  |
 | Osaurus | Workspaces | MISSING | OUT OF SCOPE | Team (parity L217) |
 | Osaurus | Encryption at rest | PARTIAL | PARTIAL | Local files, keys in the keychain. Missing: encrypted data |
-| Osaurus | Telemetry toggles | MISSING | MISSING | No telemetry found in the code, so there is nothing to toggle |
+| Osaurus | Telemetry toggles | MISSING | DONE | Error reports opt-in (absent from builds without a reporting key), update check at start can be turned off (parity: Error reports and update checks) |
 | Osaurus | Agent identity, encrypted relay | MISSING | OUT OF SCOPE | Team |
 | OpenBot | FIFO queue: pause, resume, cancel, survives a crash | PARTIAL | DONE | Queue kept across restarts, paused and resumed, cleared |
 | OpenBot | Pinned messages | MISSING | DONE | Bookmarked messages, listed per chat and in search (parity: Bookmark messages) |
@@ -238,6 +238,6 @@ Per app now (done / partial / missing / out of scope): Open WebUI 25 / 15 / 5 / 
 | OpenBot | Agent templates, everything exports | PARTIAL | DONE | Agent export (parity L295), export everything (settings.ts:186) |
 | OpenBot | Import agents | MISSING | DONE | parity L295 |
 | OpenBot | Audit log export | MISSING | OUT OF SCOPE | Team |
-| OpenBot | Privacy-safe diagnostics export | PARTIAL | PARTIAL | Debug panel per chat. Missing: an app-wide diagnostics export |
+| OpenBot | Privacy-safe diagnostics export | PARTIAL | DONE | Export diagnostics: versions, platform, settings and counts, no content |
 | OpenBot | SSO, SCIM, tenants, governance | MISSING | OUT OF SCOPE | parity L257 |
 | OpenBot | Slack, Teams, mobile, servers | MISSING | OUT OF SCOPE | parity L256 |
