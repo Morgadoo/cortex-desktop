@@ -225,7 +225,7 @@ below; every feature the review found missing or partial is tracked row by row, 
 [review-coverage.md](review-coverage.md) (now 211 done, 0 partial, 0 missing, 12 out of scope).
 What was deliberately left out, and why:
 
-- **Owner's decision (18 November 2026):** Lumo stays a personal desktop app. Multi-user and
+- **Owner's decision (18 November 2026):** see [live-checks.md](live-checks.md) for the real-account checks. Lumo stays a personal desktop app. Multi-user and
   team features, a Microsoft Teams bot and macOS App Intents (Shortcuts, Siri) are not planned.
   Integrations tested here only against stand-ins (Telegram, Slack, Discord, video generation,
   Qdrant, Tika, ACP, PR status) are left for the owner to try with real accounts.
