@@ -28,7 +28,8 @@ from Vibe's changelog and documentation, and with Open WebUI, LibreChat, LobeHub
 
 **Work, Code and Agents**
 - **Work**: chat, research and documents, with Fast or Think, a Claude-style mode menu (Auto, Accept edits,
-  Plan, Ask; Shift+Tab), steering while a task runs, and Stop.
+  Plan, Ask; Shift+Tab), steering while a task runs (Enter) or queueing for after (Alt+Enter), Stop,
+  suggested follow-ups, `/` commands, prompt `{{variables}}`, per-chat model settings, and LaTeX.
 - **Code**: sessions bound to a folder. The model knows the branch, uncommitted files and `AGENTS.md`; Files,
   Changes (unified or split diff), Terminal (background commands) and Debug panels; commit and open a pull
   request.
@@ -38,7 +39,11 @@ from Vibe's changelog and documentation, and with Open WebUI, LibreChat, LobeHub
 
 **Grounded answers**
 - Web search with site favicons, hover cards (image, title, description) and a Sources panel.
-- Libraries: local BM25 retrieval over your documents, cited with numbered footnotes.
+- Libraries: keyword (BM25) retrieval, plus semantic search with any OpenAI-compatible embedding model
+  (Ollama, LM Studio, OpenAI, Mistral), fused by rank; folders mirrored and kept in sync; photos and scans
+  read by your model (OCR); cited with numbered footnotes.
+- Web search keyless by default, or through SearXNG, Brave Search or Tavily.
+- The assistant searches and reads your earlier chats; any chat can be attached to another as context.
 - Knowledge: facts and pages the model saves and recalls when relevant; you can edit both.
 - Deep research with parallel sub-agents, whose every step you can open.
 
@@ -46,12 +51,18 @@ from Vibe's changelog and documentation, and with Open WebUI, LibreChat, LobeHub
 - Canvases with versions, a Changes view and restore; mini apps that run sandboxed in a side panel with
   tabs; spreadsheets with several sheets (Excel in and out); Mermaid diagrams and Marp slides; a Preview /
   Code switch on all of them.
-- Code interpreter (`run_code`: Python, JavaScript, Bash in a bubblewrap sandbox), image generation, and voice:
-  dictation and read-aloud with any OpenAI-compatible, ElevenLabs or xAI speech service, or the system voice.
+- Code interpreter (`run_code`: Python, JavaScript, Bash in a bubblewrap sandbox; code blocks in answers have
+  Run and Download buttons), image generation, and voice: dictation, read-aloud and a hands-free voice
+  conversation with any OpenAI-compatible, ElevenLabs or xAI speech service, or the system voice.
 
 **Context and control**
 - Skills (`/` or `@`), Workflows, Projects with shared context, Connectors to any MCP server (tools load on
-  demand past 30), Instructions, Scheduled tasks.
+  demand past 30), OpenAPI tool servers (each operation a tool), Instructions.
+- Scheduled tasks on a timer or when new files arrive in a folder, with a calendar of planned and past runs.
+- Computer use (off by default): the assistant sees the screen and clicks and types, each action under the
+  approval mode.
+- A local OpenAI-compatible API (off by default, this computer only, key required) so scripts and other apps
+  can use the models set up here.
 - Approvals that explain why they ask; hard-to-undo commands always ask; unattended runs cannot change
   anything unless allowed; an optional personal-data filter before cloud models.
 - Context engineering: old tool results are cleared, long chats are summarized at 60% of the window, and a
@@ -60,7 +71,9 @@ from Vibe's changelog and documentation, and with Open WebUI, LibreChat, LobeHub
 **Built to be used for years**
 - Search everything ever said (Ctrl+K, which is also a command palette), pinned chats, archive, tags, branches.
 - Daily backups, a 30-day trash, damage detection with restore, and an index that keeps a long history fast.
-- Import from ChatGPT and Claude; export everything; share a conversation as a single web page.
+- Import from ChatGPT and Claude; export everything, a chat as Markdown or JSON, or as a single web page.
+- Agents export and import as one file with their notebook and skills.
+- Drafts stay with their chat across restarts; long pastes become attachments; messages can be deleted.
 
 <p align="center">
   <img src="docs/screenshots/sources-panel.png" alt="Sources panel" width="420">
@@ -80,6 +93,8 @@ from Vibe's changelog and documentation, and with Open WebUI, LibreChat, LobeHub
 | Shift+Tab | Next mode (Auto, Accept edits, Plan, Ask) |
 | Up / Down, Ctrl+R | Earlier prompts, search earlier prompts |
 | Ctrl+O | Fold or unfold all activity |
+| Enter / Alt+Enter while a task runs | Steer it now / queue the message for after |
+| `/` | Commands (/new, /temporary, /model, /voice, /fork, /context, /settings, /export) and skills |
 
 ## Providers and keys
 
@@ -109,6 +124,9 @@ src-tauri/src/tools/ connector registry: files, shell, browser, MCP; approvals; 
 | `code.rs`, `terminal.rs` | Coding sessions: git, Changes, Files, background commands |
 | `favicon.rs`, `preview.rs` | Site icons and link previews, fetched and cached for the page's strict CSP |
 | `skills.rs`, `workflows.rs`, `import.rs`, `privacy.rs` | Skills, workflows, ChatGPT and Claude import, the personal-data filter |
+| `embeddings.rs` | Semantic search: embeddings, cached vectors, reciprocal rank fusion with BM25 |
+| `openapi.rs`, `computer.rs` | OpenAPI tool servers; computer use (screenshots, mouse, keyboard) |
+| `api_server.rs` | The local OpenAI-compatible API (axum, 127.0.0.1, bearer key) |
 
 ## Hosted mode (the original Lumo Desktop)
 
