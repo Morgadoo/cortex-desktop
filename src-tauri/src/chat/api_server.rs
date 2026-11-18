@@ -14,6 +14,10 @@
 //! are: an editor or a coding agent on this computer can search your libraries, ask a model or an
 //! agent, and list or start scheduled tasks, with the same key.
 //!
+//! Clients made for other servers work too: OpenAI's Responses API (`POST /v1/responses`) and
+//! Ollama's (`/api/tags`, `/api/chat`, `/api/generate`, `/api/version`; streamed as NDJSON by
+//! default, as Ollama does), with the same key.
+//!
 //! Off by default. When on, it listens on 127.0.0.1 only and every request needs the bearer
 //! token shown in Settings (kept in the keychain as `api-server`). It sends no CORS headers, so
 //! web pages cannot call it.
@@ -207,6 +211,11 @@ fn router(ctx: Ctx) -> Router {
         .route("/mcp", post(mcp).get(mcp_no_stream))
         .route("/v1/tasks", get(list_tasks))
         .route("/v1/tasks/{id}/run", post(run_task))
+        .route("/v1/responses", post(responses))
+        .route("/api/version", get(ollama_version))
+        .route("/api/tags", get(ollama_tags))
+        .route("/api/chat", post(ollama_chat))
+        .route("/api/generate", post(ollama_generate))
         .with_state(ctx)
 }
 
@@ -727,6 +736,257 @@ async fn mcp_call(ctx: &Ctx, name: &str, args: &Value) -> Value {
     }
 }
 
+// ---- OpenAI Responses API --------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+pub struct ResponsesBody {
+    pub model: String,
+    /// A string, or a list of messages (`{role, content}` with text or `input_text` parts).
+    pub input: Value,
+    #[serde(default)]
+    pub instructions: Option<String>,
+    #[serde(default)]
+    pub temperature: Option<f64>,
+    #[serde(default)]
+    pub max_output_tokens: Option<u64>,
+    #[serde(default)]
+    pub stream: bool,
+}
+
+/// The same request as the Chat Completions shape.
+pub fn chat_body_of_responses(body: &ResponsesBody) -> ChatBody {
+    let mut messages = Vec::new();
+    if let Some(i) = body.instructions.as_ref().filter(|i| !i.trim().is_empty()) {
+        messages.push(json!({ "role": "system", "content": i }));
+    }
+    match &body.input {
+        Value::String(s) => messages.push(json!({ "role": "user", "content": s })),
+        Value::Array(items) => {
+            for item in items {
+                let role = item.get("role").and_then(Value::as_str).unwrap_or("user");
+                messages.push(json!({ "role": role, "content": content_text(item.get("content").unwrap_or(&Value::Null)) }));
+            }
+        }
+        _ => {}
+    }
+    ChatBody { model: body.model.clone(), messages, temperature: body.temperature, max_tokens: body.max_output_tokens, stream: body.stream }
+}
+
+async fn responses(State(ctx): State<Ctx>, headers: HeaderMap, body: Result<Json<ResponsesBody>, axum::extract::rejection::JsonRejection>) -> Response {
+    let started = std::time::Instant::now();
+    let model_name = body.as_ref().map(|b| b.model.clone()).unwrap_or_default();
+    let response = async {
+        if !authorized(&headers, &ctx.token) {
+            return error(StatusCode::UNAUTHORIZED, "Missing or wrong bearer token.");
+        }
+        let Ok(Json(body)) = body else {
+            return error(StatusCode::BAD_REQUEST, "The body must be JSON with `model` and `input`.");
+        };
+        let request = match request_of(&chat_body_of_responses(&body)) {
+            Ok(r) => r,
+            Err(e) => return error(StatusCode::BAD_REQUEST, &e),
+        };
+        let (model, agent) = match resolve(&ctx.config_dir, &body.model).await {
+            Ok(m) => m,
+            Err(e) => return error(StatusCode::BAD_REQUEST, &format!("{e} Use an id from /v1/models.")),
+        };
+        let request = with_agent(request, agent);
+        let id = format!("resp_{}", uuid::Uuid::new_v4().simple());
+        let created = chrono::Utc::now().timestamp();
+        let (response_id, model_id) = (id.clone(), body.model.clone());
+        let finished = move |text: &str, input: u64, output: u64| {
+            json!({
+                "id": response_id, "object": "response", "created_at": created, "status": "completed", "model": model_id,
+                "output": [{ "type": "message", "id": format!("msg_{}", &response_id[5..]), "status": "completed", "role": "assistant", "content": [{ "type": "output_text", "text": text, "annotations": [] }] }],
+                "output_text": text,
+                "usage": { "input_tokens": input, "output_tokens": output, "total_tokens": input + output },
+            })
+        };
+        if !body.stream {
+            return match model.call(request).await {
+                Ok(r) => Json(finished(&r.text(), r.usage.input_tokens.unwrap_or(0), r.usage.output_tokens.unwrap_or(0))).into_response(),
+                Err(e) => error(StatusCode::BAD_GATEWAY, &super::context::short_error(&e.to_string())),
+            };
+        }
+        let mut stream = match model.stream(request) {
+            Ok(s) => s,
+            Err(e) => return error(StatusCode::BAD_GATEWAY, &e.to_string()),
+        };
+        let (tx, rx) = tokio::sync::mpsc::channel::<Event>(64);
+        let shell = json!({ "id": id, "object": "response", "created_at": created, "status": "in_progress", "model": body.model, "output": [] });
+        tauri::async_runtime::spawn(async move {
+            let event = |kind: &str, data: Value| Event::default().event(kind).data(data.to_string());
+            let _ = tx.send(event("response.created", json!({ "type": "response.created", "response": shell }))).await;
+            let mut text = String::new();
+            while let Some(item) = stream.next().await {
+                match item {
+                    Ok(Item::Event(StreamEvent::Text { text: delta, .. })) if !delta.is_empty() => {
+                        text.push_str(&delta);
+                        if tx.send(event("response.output_text.delta", json!({ "type": "response.output_text.delta", "output_index": 0, "content_index": 0, "delta": delta }))).await.is_err() {
+                            return;
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(_) => break,
+                }
+            }
+            let _ = tx.send(event("response.output_text.done", json!({ "type": "response.output_text.done", "output_index": 0, "content_index": 0, "text": text }))).await;
+            let _ = tx.send(event("response.completed", json!({ "type": "response.completed", "response": finished(&text, 0, 0) }))).await;
+        });
+        let events = futures::stream::unfold(rx, |mut rx| async move { rx.recv().await.map(|e| (Ok::<_, std::convert::Infallible>(e), rx)) });
+        Sse::new(events).keep_alive(KeepAlive::default()).into_response()
+    }
+    .await;
+    record("responses", &model_name, response.status(), started);
+    response
+}
+
+// ---- Ollama API --------------------------------------------------------------------------------
+
+fn ollama_error(status: StatusCode, message: &str) -> Response {
+    (status, Json(json!({ "error": message }))).into_response()
+}
+
+async fn ollama_version(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
+    if !authorized(&headers, &ctx.token) {
+        return ollama_error(StatusCode::UNAUTHORIZED, "missing or wrong bearer token");
+    }
+    Json(json!({ "version": env!("CARGO_PKG_VERSION") })).into_response()
+}
+
+async fn ollama_tags(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
+    if !authorized(&headers, &ctx.token) {
+        return ollama_error(StatusCode::UNAUTHORIZED, "missing or wrong bearer token");
+    }
+    let now = chrono::Utc::now().to_rfc3339();
+    let file = super::providers::load(&ctx.config_dir);
+    let entry = |name: String, family: &str| json!({ "name": name, "model": name, "modified_at": now, "size": 0, "digest": "", "details": { "format": "remote", "family": family, "families": [family], "parameter_size": "", "quantization_level": "" } });
+    let models: Vec<Value> = super::providers::models(&file)
+        .await
+        .into_iter()
+        .map(|m| entry(m.reference, &m.vendor))
+        .chain(super::agents::load(&ctx.config_dir).into_iter().map(|a| entry(format!("{AGENT_PREFIX}{}", a.id), "lumo-agent")))
+        .collect();
+    Json(json!({ "models": models })).into_response()
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OllamaBody {
+    pub model: String,
+    #[serde(default)]
+    pub messages: Vec<Value>,
+    #[serde(default)]
+    pub prompt: Option<String>,
+    #[serde(default)]
+    pub system: Option<String>,
+    /// Ollama streams unless told not to.
+    #[serde(default = "yes")]
+    pub stream: bool,
+    #[serde(default)]
+    pub options: Option<Value>,
+}
+
+fn yes() -> bool {
+    true
+}
+
+/// The Chat Completions shape of an Ollama `/api/chat` or `/api/generate` body.
+pub fn chat_body_of_ollama(body: &OllamaBody) -> ChatBody {
+    let mut messages = Vec::new();
+    if let Some(s) = body.system.as_ref().filter(|s| !s.trim().is_empty()) {
+        messages.push(json!({ "role": "system", "content": s }));
+    }
+    messages.extend(body.messages.iter().map(|m| json!({ "role": m.get("role").cloned().unwrap_or(json!("user")), "content": m.get("content").cloned().unwrap_or(json!("")) })));
+    if let Some(p) = &body.prompt {
+        messages.push(json!({ "role": "user", "content": p }));
+    }
+    let option = |k: &str| body.options.as_ref().and_then(|o| o.get(k)).cloned();
+    ChatBody {
+        model: body.model.clone(),
+        messages,
+        temperature: option("temperature").and_then(|v| v.as_f64()),
+        max_tokens: option("num_predict").and_then(|v| v.as_u64()),
+        stream: body.stream,
+    }
+}
+
+// Ollama reads the body as JSON whatever its content type (its own `curl -d` examples send none).
+async fn ollama_chat(State(ctx): State<Ctx>, headers: HeaderMap, body: axum::body::Bytes) -> Response {
+    ollama(ctx, headers, serde_json::from_slice(&body), true).await
+}
+
+async fn ollama_generate(State(ctx): State<Ctx>, headers: HeaderMap, body: axum::body::Bytes) -> Response {
+    ollama(ctx, headers, serde_json::from_slice(&body), false).await
+}
+
+/// `/api/chat` answers with `message`, `/api/generate` with `response`; both stream NDJSON lines
+/// and end with `done: true`.
+async fn ollama(ctx: Ctx, headers: HeaderMap, body: Result<OllamaBody, serde_json::Error>, chat: bool) -> Response {
+    let started = std::time::Instant::now();
+    let endpoint = if chat { "api/chat" } else { "api/generate" };
+    let model_name = body.as_ref().map(|b| b.model.clone()).unwrap_or_default();
+    let response = async {
+        if !authorized(&headers, &ctx.token) {
+            return ollama_error(StatusCode::UNAUTHORIZED, "missing or wrong bearer token");
+        }
+        let Ok(body) = body else {
+            return ollama_error(StatusCode::BAD_REQUEST, "the body must be JSON with `model` and `messages` (or `prompt`)");
+        };
+        let request = match request_of(&chat_body_of_ollama(&body)) {
+            Ok(r) => r,
+            Err(e) => return ollama_error(StatusCode::BAD_REQUEST, &e),
+        };
+        let (model, agent) = match resolve(&ctx.config_dir, &body.model).await {
+            Ok(m) => m,
+            Err(e) => return ollama_error(StatusCode::NOT_FOUND, &format!("{e} Use a name from /api/tags.")),
+        };
+        let request = with_agent(request, agent);
+        let name = body.model.clone();
+        let line = move |text: &str, done: bool| {
+            let mut v = json!({ "model": name, "created_at": chrono::Utc::now().to_rfc3339(), "done": done });
+            if chat {
+                v["message"] = json!({ "role": "assistant", "content": text });
+            } else {
+                v["response"] = json!(text);
+            }
+            if done {
+                v["done_reason"] = json!("stop");
+            }
+            v
+        };
+        if !body.stream {
+            return match model.call(request).await {
+                Ok(r) => Json(line(&r.text(), true)).into_response(),
+                Err(e) => ollama_error(StatusCode::BAD_GATEWAY, &super::context::short_error(&e.to_string())),
+            };
+        }
+        let mut stream = match model.stream(request) {
+            Ok(s) => s,
+            Err(e) => return ollama_error(StatusCode::BAD_GATEWAY, &e.to_string()),
+        };
+        let (tx, rx) = tokio::sync::mpsc::channel::<Result<String, std::convert::Infallible>>(64);
+        tauri::async_runtime::spawn(async move {
+            while let Some(item) = stream.next().await {
+                match item {
+                    Ok(Item::Event(StreamEvent::Text { text, .. })) if !text.is_empty() => {
+                        if tx.send(Ok(format!("{}\n", line(&text, false)))).await.is_err() {
+                            return;
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(_) => break,
+                }
+            }
+            let _ = tx.send(Ok(format!("{}\n", line("", true)))).await;
+        });
+        let lines = futures::stream::unfold(rx, |mut rx| async move { rx.recv().await.map(|l| (l, rx)) });
+        Response::builder().header("content-type", "application/x-ndjson").body(axum::body::Body::from_stream(lines)).unwrap_or_else(|_| ollama_error(StatusCode::INTERNAL_SERVER_ERROR, "could not stream"))
+    }
+    .await;
+    record(endpoint, &model_name, response.status(), started);
+    response
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -814,5 +1074,24 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(load(dir.path()), ApiServerSettings { enabled: false, port: DEFAULT_PORT });
         assert!(save(dir.path(), &ApiServerSettings { enabled: true, port: 80 }).is_err());
+    }
+
+    #[test]
+    fn responses_and_ollama_bodies_become_chat_requests() {
+        let r: ResponsesBody = serde_json::from_value(json!({ "model": "m", "instructions": "Be brief.", "input": [{ "role": "user", "content": [{ "type": "input_text", "text": "Hi" }] }] })).unwrap();
+        let c = chat_body_of_responses(&r);
+        assert_eq!(c.messages, vec![json!({ "role": "system", "content": "Be brief." }), json!({ "role": "user", "content": "Hi" })]);
+        assert!(request_of(&c).is_ok());
+        let r: ResponsesBody = serde_json::from_value(json!({ "model": "m", "input": "Hello", "max_output_tokens": 50 })).unwrap();
+        assert_eq!(chat_body_of_responses(&r).max_tokens, Some(50));
+
+        let o: OllamaBody = serde_json::from_value(json!({ "model": "m", "messages": [{ "role": "user", "content": "Hi" }], "options": { "temperature": 0.2, "num_predict": 64 } })).unwrap();
+        assert!(o.stream, "Ollama streams unless asked not to");
+        let c = chat_body_of_ollama(&o);
+        assert_eq!((c.temperature, c.max_tokens), (Some(0.2), Some(64)));
+        let g: OllamaBody = serde_json::from_value(json!({ "model": "m", "prompt": "Why is the sky blue?", "system": "Short.", "stream": false })).unwrap();
+        let c = chat_body_of_ollama(&g);
+        assert_eq!(c.messages.len(), 2);
+        assert!(!c.stream && request_of(&c).is_ok());
     }
 }

@@ -4,7 +4,7 @@
  */
 
 import { tauriInvoke } from '../../shared/tauri';
-import { clear, h, icon, modal, toast } from './dom';
+import { clear, h, icon, modal, toast, clockHour12 } from './dom';
 import { modalHeader } from './ui';
 
 type Kind = 'agents' | 'workflows' | 'tools';
@@ -18,7 +18,7 @@ function when(id: string): string {
   const m = id.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/);
   if (!m) return id;
   const d = new Date(Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!, +m[6]!));
-  return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short', hour12: clockHour12() });
 }
 
 /** The fields worth reading in a version, as text. */

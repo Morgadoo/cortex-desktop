@@ -1,7 +1,7 @@
 /** The settings dialog: profile, providers, permissions, general and appearance. */
 import { tauriInvoke } from '../../shared/tauri';
 import { api, type AppSettings, type Provider } from './api';
-import { clear, confirmDialog, h, icon, modal, toast } from './dom';
+import { clear, confirmDialog, h, icon, modal, toast, clockHour12, setClock } from './dom';
 import { historyButton } from './versions';
 import { autocompleteOn, changed, finishNotificationsOn, setAutocomplete, finishSoundOn, followStreamOn, followUpsOn, setFinishNotifications, setFinishSound, setFollowStream, setFollowUps, setTemporaryByDefault, state, temporaryByDefault } from './state';
 import { button, card, modalHeader, switchInput } from './ui';
@@ -61,6 +61,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Defaults for every chat', 'general', 'temperature top-p top_p max tokens reply length model parameters'],
   ['Error reports and updates', 'general', 'privacy telemetry error reports crash sentry updates diagnostics'],
   ['Language', 'appearance', 'language translate português español français deutsch interface locale'],
+  ['Clock', 'general', '12-hour 24-hour time format am pm'],
   ['Theme', 'appearance', 'dark light system mode'],
   ['Accent colour', 'appearance', 'color colour highlight'],
   ['Background and palette', 'appearance', 'background colours palette'],
@@ -357,7 +358,7 @@ function syncCard(onSynced: () => void): HTMLElement {
       { class: 'input', 'aria-label': 'How often' },
       ...[[0, 'Only when I press Sync now'], [5, 'Every 5 minutes'], [15, 'Every 15 minutes'], [60, 'Every hour']].map(([v, label]) => h('option', { value: String(v), selected: view.everyMinutes === v }, String(label)))
     );
-    const status = h('p', { class: 'muted small' }, view.lastSync ? `Last sync ${new Date(view.lastSync).toLocaleString()}: ${view.lastReport}` : view.folder ? 'Not synced yet.' : '');
+    const status = h('p', { class: 'muted small' }, view.lastSync ? `Last sync ${new Date(view.lastSync).toLocaleString(undefined, { hour12: clockHour12() })}: ${view.lastReport}` : view.folder ? 'Not synced yet.' : '');
     const save = async () => {
       if (!folder) return toast('Choose the folder your sync service mirrors.', 'error');
       try {
@@ -1356,6 +1357,20 @@ async function renderGeneral(content: HTMLElement) {
         }).catch(() => undefined);
         return row('Open links in Lumo\u2019s browser', 'Links from answers open in a Lumo window beside the chat; its Page menu goes back, reloads, copies the link or opens it in your usual browser. Off: links ask, then open in your usual browser.', sw);
       })(),
+      (() => {
+        const stored = clockHour12();
+        const current = stored === undefined ? 'auto' : stored ? '12' : '24';
+        const pick = h(
+          'select',
+          { class: 'input', 'aria-label': 'Clock' },
+          ...[['auto', 'Like my system'], ['24', '24-hour (14:30)'], ['12', '12-hour (2:30 PM)']].map(([v, label]) => h('option', { value: v, selected: v === current }, label))
+        );
+        pick.addEventListener('change', () => {
+          setClock(pick.value as 'auto' | '12' | '24');
+          toast('Saved. Times change as each page is shown again.');
+        });
+        return row('Clock', 'How times are shown on messages, tasks and the calendar.', pick);
+      })(),
       row('Autocomplete as you type', 'When you pause while typing, suggest how the sentence goes on; Tab takes it, Esc dismisses it. Each pause is one short request to the model.', switchInput(autocompleteOn(), (v) => setAutocomplete(v))),
       row('New chats are temporary', 'Chats are not saved to your history unless you turn this off for one (the ghost button on the new-chat page). Takes effect from the next new chat.', switchInput(temporaryByDefault(), (v) => setTemporaryByDefault(v)))
     ),
@@ -1526,7 +1541,7 @@ function logButton(): HTMLElement {
                       h(
                         'tr',
                         {},
-                        h('td', {}, new Date(e.at).toLocaleTimeString()),
+                        h('td', {}, new Date(e.at).toLocaleTimeString(undefined, { hour12: clockHour12() })),
                         h('td', {}, e.endpoint),
                         h('td', { class: 'mono' }, e.model || '—'),
                         h('td', { class: e.status >= 400 ? 'error-text' : '' }, String(e.status)),

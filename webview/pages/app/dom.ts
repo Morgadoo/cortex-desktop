@@ -350,7 +350,7 @@ export function markdown(text: string, options: { breaks?: boolean } = {}): Docu
 export function timeLabel(iso: string | null): string {
   if (!iso) return '';
   const date = new Date(iso);
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: clockHour12() });
 }
 
 export function greeting(name: string): string {
@@ -471,5 +471,24 @@ export async function saveFile(name: string, blob: Blob): Promise<void> {
     if (await tauriInvoke<boolean>('chat_save_file', { name, data: btoa(binary) })) toast('Saved.');
   } catch (e) {
     toast(String(e), 'error');
+  }
+}
+
+/** The clock the user chose (Settings → General): undefined follows the system's language. */
+export function clockHour12(): boolean | undefined {
+  try {
+    const v = localStorage.getItem('lumo.clock');
+    return v === '12' ? true : v === '24' ? false : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function setClock(v: 'auto' | '12' | '24') {
+  try {
+    if (v === 'auto') localStorage.removeItem('lumo.clock');
+    else localStorage.setItem('lumo.clock', v);
+  } catch {
+    /* this session only */
   }
 }

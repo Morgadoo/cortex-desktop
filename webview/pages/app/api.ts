@@ -172,6 +172,8 @@ export interface Memory {
 
 export interface Memories {
   enabled: boolean;
+  /** Whether the assistant may save and change what it knows. */
+  update?: boolean;
   items: Memory[];
   /** Vibe's "Sensitive data" switch: card numbers, bank accounts, passwords and keys are not saved. */
   keepSensitiveOut: boolean;

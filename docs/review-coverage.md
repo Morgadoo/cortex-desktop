@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 137 |
-| PARTIAL | 86 | 54 |
+| DONE | 58 | 140 |
+| PARTIAL | 86 | 51 |
 | MISSING | 48 | 1 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9 · LibreChat 34 / 8 / 0 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 15 / 6 / 0 / 5 · Osaurus 13 / 12 / 1 / 4 · OpenBot 20 / 9 / 0 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9 · LibreChat 34 / 8 / 0 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 17 / 4 / 0 / 5 · Osaurus 14 / 11 / 1 / 4 · OpenBot 20 / 9 / 0 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -110,7 +110,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9
 | LibreChat | Temporary by default | PARTIAL | DONE | parity L281 |
 | LibreChat | Import from apps; export in several formats | PARTIAL | DONE | Import ChatGPT and Claude (parity L262); export Markdown, JSON (L297), web page (L202), everything (L264) |
 | LibreChat | Query parameters | MISSING | DONE | `lumo://new?prompt=…&model=…` (parity: Links into the app) |
-| LibreChat | UI scale, font size, RTL, clock format | MISSING | PARTIAL | Chat text size and interface zoom done (parity: Readability). Missing: right-to-left layout, clock format |
+| LibreChat | UI scale, font size, RTL, clock format | MISSING | PARTIAL | Chat text size, interface zoom (parity: Readability) and clock format (parity: Clock format) done. Missing: right-to-left layout (no right-to-left interface language is offered yet) |
 | LibreChat | High-contrast theme | MISSING | DONE | High contrast in Settings → Appearance → Readability |
 | LibreChat | Multilingual UI | MISSING | DONE | parity: Interface languages (`i18n.ts`, `ui_language.rs`, `src-tauri/i18n/`; Settings → Appearance → Language). Verified live: Portuguese switched the whole interface (menus, composer, settings, greeting and numeric templates, toasts) while chat titles and project names stayed as written; Dutch, which does not ship, was translated by the chosen model (1787 strings in 15 requests) and applied |
 | LibreChat | Desktop notification and sound for finished replies | MISSING | DONE | Notification with an optional chime (parity: Sound and stream following) |
@@ -168,12 +168,12 @@ Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9
 | Onyx | Time range / source filter | MISSING | DONE | `web_search` recency (parity: Recent results only) and `sites` (parity: Web search on chosen sites) |
 | Onyx | Cited vs found sources; add one in full | PARTIAL | PARTIAL | Sources panel; falls back to search results when nothing is cited (chat.ts:889–895). Missing: a separate Found list, add in full |
 | Onyx | Web search providers | PARTIAL | DONE | parity L294 |
-| Onyx | Document sets | PARTIAL | PARTIAL | Libraries; a project can have one (api.ts `Project.libraryId`). Missing: per agent |
+| Onyx | Document sets | PARTIAL | DONE | Libraries per project (`Project.libraryId`) and per agent (agent editor → Libraries, `Agent.libraries`, searched before answering) |
 | Onyx | Share a Craft app | MISSING | OUT OF SCOPE | Server-only (parity L202) |
 | Onyx | Auto-send on pause | PARTIAL | DONE | parity L236 |
 | Onyx | Read, then listen again | PARTIAL | DONE | parity L236 |
 | Onyx | Collaboration | MISSING | OUT OF SCOPE | Team (parity L217) |
-| Onyx | Memory reference / update switches | PARTIAL | PARTIAL | One on/off (`chat_set_memory_enabled`). Missing: separate use vs update |
+| Onyx | Memory reference / update switches | PARTIAL | DONE | Context → Knowledge: Use knowledge and Save new facts are separate (`Memories.update`); with saving off, knowledge is read but remember, forget and knowledge_write are neither offered nor run (test `knowledge_can_be_used_without_being_changed`) |
 | Onyx | Enterprise features | MISSING | OUT OF SCOPE | parity L217 |
 | Onyx | Custom code for PII and query rejection | PARTIAL | OUT OF SCOPE | Filters left out (parity L223); personal-data filter exists (L265) |
 | Onyx | Served as an MCP server | MISSING | DONE | `/mcp` on the local API: search_libraries, ask, list_models, list_tasks, run_task (parity: Lumo as an MCP server) |
@@ -181,7 +181,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9
 | Osaurus | Global hotkey | MISSING | DONE | parity L293 |
 | Osaurus | App Intents (Shortcuts, Spotlight, Siri) | MISSING | MISSING |  |
 | Osaurus | Built-in local runtime, model downloads | PARTIAL | PARTIAL | Ollama, llama.cpp (parity L228). Missing: built-in runtime, downloads |
-| Osaurus | Local API: OpenAI, Responses, Anthropic, Ollama | MISSING | PARTIAL | OpenAI-style `/v1/chat/completions` and Anthropic-style `/v1/messages`. Missing: Responses and Ollama-style endpoints |
+| Osaurus | Local API: OpenAI, Responses, Anthropic, Ollama | MISSING | DONE | `/v1/chat/completions`, `/v1/responses` (plain and streamed events), `/v1/messages`, and Ollama's `/api/tags`, `/api/chat` (NDJSON stream), `/api/generate`, `/api/version`; verified live with curl against claude-haiku-5-5 (streamed chat counted 1–5, generate answered Lisbon, Responses answered Paris and streamed created/delta/done/completed events; no token → refused) |
 | Osaurus | Inference runtime (scheduler, batching) | MISSING | OUT OF SCOPE | An inference server; the app uses Ollama or llama.cpp for that |
 | Osaurus | Orchestrator | PARTIAL | PARTIAL | The assistant delegates (parity L251). Missing: routing to agents by itself |
 | Osaurus | Built-in app agents | PARTIAL | PARTIAL | MCP connectors. Missing: ready-made specialist agents |

@@ -56,7 +56,10 @@ pub struct Filing {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Memories {
+    /// Use what is known (memories and knowledge pages) in conversations.
     pub enabled: bool,
+    /// Let the assistant save and change memories and knowledge pages.
+    pub update: bool,
     pub items: Vec<Memory>,
     /// Vibe's "Sensitive data" switch: when on, the assistant does not save card numbers, bank
     /// accounts, passwords or keys to knowledge.
@@ -65,7 +68,7 @@ pub struct Memories {
 
 impl Default for Memories {
     fn default() -> Self {
-        Self { enabled: true, items: Vec::new(), keep_sensitive_out: true }
+        Self { enabled: true, update: true, items: Vec::new(), keep_sensitive_out: true }
     }
 }
 
@@ -151,12 +154,15 @@ pub fn prompt(memories: &Memories) -> Option<String> {
     if !memories.enabled {
         return None;
     }
-    let mut out = String::from(
+    let mut out = String::from(if memories.update {
         "\n\nMemory: you can save lasting facts about the user with `remember` (preferences, \
          their work, people and projects they mention, how they like answers) and remove wrong \
          ones with `forget`. Save only what will help in future conversations, never secrets. \
-         Use what you know naturally; do not recite it.",
-    );
+         Use what you know naturally; do not recite it."
+    } else {
+        "\n\nMemory: what you know about the user is below. The user has turned off saving new \
+         facts, so do not offer to remember anything. Use what you know naturally; do not recite it."
+    });
     if memories.items.is_empty() {
         out.push_str(" You know nothing about the user yet.");
     } else {

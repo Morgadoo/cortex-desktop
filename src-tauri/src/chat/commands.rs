@@ -1010,6 +1010,16 @@ pub fn chat_delete_memory(app: AppHandle, id: Option<String>) -> Result<super::m
     Ok(memories)
 }
 
+/// Whether the assistant may save and change memories and knowledge pages (Onyx's "update").
+#[tauri::command]
+pub fn chat_set_memory_update(app: AppHandle, update: bool) -> Result<super::memory::Memories, String> {
+    let dir = config_dir(&app)?;
+    let mut memories = super::memory::load(&dir);
+    memories.update = update;
+    super::memory::save(&dir, &memories)?;
+    Ok(memories)
+}
+
 #[tauri::command]
 pub fn chat_set_memory_enabled(app: AppHandle, enabled: bool) -> Result<super::memory::Memories, String> {
     let dir = config_dir(&app)?;

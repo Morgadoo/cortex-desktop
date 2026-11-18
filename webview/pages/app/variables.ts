@@ -4,7 +4,7 @@
  * typed prompts and workflows, so a saved prompt becomes a small form.
  */
 import { api } from './api';
-import { h, modal } from './dom';
+import { h, modal, clockHour12 } from './dom';
 
 const PATTERN = /\{\{\s*([A-Za-z_][\w ]{0,40}?)\s*(\|[^{}]*)?\}\}/g;
 
@@ -19,8 +19,8 @@ export async function builtIns(): Promise<Record<string, string>> {
   }
   return {
     current_date: now.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }),
-    current_time: now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }),
-    current_datetime: now.toLocaleString(),
+    current_time: now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: clockHour12() }),
+    current_datetime: now.toLocaleString(undefined, { hour12: clockHour12() }),
     current_weekday: now.toLocaleDateString(undefined, { weekday: 'long' }),
     user_name: name,
   };

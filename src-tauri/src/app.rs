@@ -188,6 +188,7 @@ pub fn run() {
             chat::commands::chat_create_worktree,
             chat::commands::chat_file_memory,
             chat::commands::chat_set_keep_sensitive_out,
+            chat::commands::chat_set_memory_update,
             chat::commands::chat_vault_list,
             chat::commands::chat_sync_settings,
             chat::commands::chat_save_sync_settings,

@@ -1,6 +1,6 @@
 /** Libraries: document collections the assistant searches, with a search box to test them. */
 import { tauriInvoke } from '../../shared/tauri';
-import { clear, confirmDialog, h, icon, modal, popover, promptText, toast } from './dom';
+import { clear, confirmDialog, h, icon, modal, popover, promptText, toast, clockHour12 } from './dom';
 import { modalHeader } from './ui';
 
 interface Doc {
@@ -185,7 +185,7 @@ export class LibrariesPage {
               { class: 'doc-row' },
               icon('folder', 16),
               h('span', { class: 'doc-name' }, f),
-              h('span', { class: 'muted' }, lib.syncedAt ? `synced ${new Date(lib.syncedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}` : ''),
+              h('span', { class: 'muted' }, lib.syncedAt ? `synced ${new Date(lib.syncedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: clockHour12() })}` : ''),
               h('button', { class: 'link-btn', on: { click: async () => { report(await tauriInvoke<SyncReport>('chat_sync_library', { id: lib.id }).catch((e) => (toast(String(e), 'error'), null))); await this.load(); } } }, 'Sync now'),
               h('button', { class: 'icon-btn small', title: 'Stop mirroring (its documents leave the library)', on: { click: async () => { report(await tauriInvoke<SyncReport>('chat_remove_library_folder', { id: lib.id, folder: f })); await this.load(); } } }, icon('close', 15))
             )

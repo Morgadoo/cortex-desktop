@@ -1,7 +1,7 @@
 /** Scheduled tasks: the list, its tabs and the task editor. */
 import { api, newId, type Frequency, type Task } from './api';
 import { tauriInvoke } from '../../shared/tauri';
-import { clear, confirmDialog, h, icon, modal, toast } from './dom';
+import { clear, confirmDialog, h, icon, modal, toast, clockHour12 } from './dom';
 import { navigate, state } from './state';
 import { modalHeader } from './ui';
 
@@ -18,7 +18,7 @@ const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 function when(iso: string | null): string {
   if (!iso) return '';
-  return new Date(iso).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return new Date(iso).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: clockHour12() });
 }
 
 /** The editor for a new or existing task; `preset` fills a new one. */
@@ -430,8 +430,8 @@ class TaskCalendar {
       const chips = items.slice(0, 3).map((e) =>
         h(
           'div',
-          { class: `cal-chip${e.conversationId ? ' ran' : ''}`, style: { '--chip': colorOf(e.task) }, title: `${e.task.title} · ${e.at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}` },
-          h('span', { class: 'cal-time' }, e.at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })),
+          { class: `cal-chip${e.conversationId ? ' ran' : ''}`, style: { '--chip': colorOf(e.task) }, title: `${e.task.title} · ${e.at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: clockHour12() })}` },
+          h('span', { class: 'cal-time' }, e.at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: clockHour12() })),
           h('span', { class: 'cal-title' }, e.task.title)
         )
       );
@@ -470,7 +470,7 @@ class TaskCalendar {
                 on: { click: () => (e.conversationId ? navigate({ kind: 'chat', id: e.conversationId }) : this.onEdit(e.task)) },
               },
               h('span', { class: 'cal-dot', style: { background: colorOf(e.task) } }),
-              h('span', { class: 'cal-entry-time' }, e.at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })),
+              h('span', { class: 'cal-entry-time' }, e.at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: clockHour12() })),
               h('strong', {}, e.task.title),
               h('span', { class: 'muted' }, e.conversationId ? 'Ran: open the result' : describe(e.task.frequency)),
               h('span', { class: `cal-badge${e.conversationId ? ' ran' : ''}` }, e.conversationId ? 'Ran' : 'Planned')

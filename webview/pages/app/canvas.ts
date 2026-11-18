@@ -1,7 +1,7 @@
 /** Canvas cards in the conversation, their editor, and quoting a selection into the composer. */
 import { tauriInvoke } from '../../shared/tauri';
 import type { Part } from './api';
-import { clear, h, icon, markdown, modal, toast } from './dom';
+import { clear, h, icon, markdown, modal, toast, clockHour12 } from './dom';
 import { button, iconButton, modalHeader } from './ui';
 import { improveButton } from './improve';
 import { renderSheetCard } from './sheet';
@@ -339,7 +339,7 @@ export function renderCanvasCard(part: Extract<Part, { kind: 'tool' }>, live: bo
       clear(
         historyBar,
         prev,
-        h('span', { class: 'history-label' }, `Version ${at + 1} of ${canvas.versions.length}`, h('small', { class: 'muted' }, ` · by ${who}, ${new Date(version.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`)),
+        h('span', { class: 'history-label' }, `Version ${at + 1} of ${canvas.versions.length}`, h('small', { class: 'muted' }, ` · by ${who}, ${new Date(version.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: clockHour12() })}`)),
         next,
         h('span', { class: 'spacer' }),
         changes,

@@ -225,7 +225,10 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             }),
         ));
     }
-    if memory::load(config_dir).enabled {
+    let memories = memory::load(config_dir);
+    if memories.enabled {
+        // "Save new facts" off: knowledge is used but not changed.
+        if memories.update {
         out.push(tool(
             KNOWLEDGE_WRITE,
             "Create or update a knowledge page: lasting, detailed context worth keeping across \
@@ -242,6 +245,7 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
                 "required": ["title", "content"]
             }),
         ));
+        }
         out.push(tool(
             KNOWLEDGE_READ,
             "Read a knowledge page in full, by id or title.",
@@ -270,6 +274,7 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             "Read an earlier conversation's messages, by the id search_chats returned.",
             json!({ "type": "object", "properties": { "id": { "type": "string" } }, "required": ["id"] }),
         ));
+        if memories.update {
         out.push(tool(
             REMEMBER,
             "Save one lasting fact about the user for future conversations.",
@@ -293,6 +298,7 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
                 "required": ["id"]
             }),
         ));
+        }
     }
     if skills::list(config_dir).iter().any(|s| s.enabled) {
         out.push(tool(
@@ -352,6 +358,9 @@ fn err(text: impl Into<String>) -> Outcome {
 
 pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
     let str_arg = |key: &str| args.get(key).and_then(Value::as_str).unwrap_or_default().trim().to_string();
+    if matches!(name, REMEMBER | FORGET | KNOWLEDGE_WRITE) && !memory::load(config_dir).update {
+        return err("The user has turned off saving to knowledge; nothing was changed.");
+    }
     match name {
         WEB_SEARCH => {
             let query = str_arg("query");
@@ -742,6 +751,19 @@ mod tests {
         memory::save(dir.path(), &memory::Memories { enabled: false, ..Default::default() }).unwrap();
         let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).filter(|n| n != super::super::sandbox::RUN_CODE && n != super::super::media::GENERATE_IMAGE && n != SAVE_SKILL && n != NOTIFY && !n.starts_with("knowledge_")).collect();
         assert_eq!(names, [WEB_SEARCH, UPDATE_PLAN, DELEGATE, CANVAS, SCHEDULE_TASK, USE_SKILL]);
+    }
+
+    #[tokio::test]
+    async fn knowledge_can_be_used_without_being_changed() {
+        let dir = tempfile::tempdir().unwrap();
+        memory::save(dir.path(), &memory::Memories { update: false, ..Default::default() }).unwrap();
+        let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).collect();
+        assert!(names.iter().any(|n| n == KNOWLEDGE_READ) && names.iter().any(|n| n == KNOWLEDGE_SEARCH));
+        assert!(!names.iter().any(|n| n == REMEMBER || n == FORGET || n == KNOWLEDGE_WRITE));
+        let refused = run(dir.path(), REMEMBER, &json!({"fact": "Lives in Porto"})).await;
+        assert!(refused.is_error && memory::load(dir.path()).items.is_empty());
+        let prompt = memory::prompt(&memory::load(dir.path())).unwrap();
+        assert!(prompt.contains("turned off saving") && !prompt.contains("`remember`"));
     }
 
     #[tokio::test]

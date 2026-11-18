@@ -1,7 +1,7 @@
 /** Context pages: Skills and Knowledge. */
 import { tauriInvoke } from '../../shared/tauri';
 import { api, type Memories, type Skill } from './api';
-import { clear, confirmDialog, h, icon, markdown, modal, popover, promptText, toast } from './dom';
+import { clear, confirmDialog, h, icon, markdown, modal, popover, promptText, toast, clockHour12 } from './dom';
 import { improveButton } from './improve';
 import { navigate, state } from './state';
 import { button, emptyState, iconButton, modalHeader, pageHeader, switchInput, tabs } from './ui';
@@ -56,7 +56,7 @@ export function editSkill(skill: Skill | null, onSaved: (skills: Skill[]) => voi
                 if (!versions.length) return void toast('No earlier versions yet: each save keeps the one it replaces.');
                 const when = (id: string) => {
                   const m = id.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/);
-                  return m ? new Date(Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!, +m[6]!)).toLocaleString() : id;
+                  return m ? new Date(Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!, +m[6]!)).toLocaleString(undefined, { hour12: clockHour12() }) : id;
                 };
                 void modal((closeHistory) =>
                   h(
@@ -456,8 +456,14 @@ export class KnowledgePage {
       h(
         'div',
         { class: 'setting-row' },
-        h('div', {}, h('strong', {}, 'Use knowledge'), h('small', { class: 'muted' }, 'Let the assistant save facts about you and use them in new conversations.')),
+        h('div', {}, h('strong', {}, 'Use knowledge'), h('small', { class: 'muted' }, 'Let the assistant use the facts and pages below in new conversations.')),
         switchInput(m.enabled, async (v) => this.set(await api.setMemoryEnabled(v)))
+      ),
+      h(
+        'div',
+        { class: 'setting-row' },
+        h('div', {}, h('strong', {}, 'Save new facts'), h('small', { class: 'muted' }, 'Let the assistant add, change and remove facts and pages as you talk. Off: it uses what is here but changes nothing; you can still edit it yourself.')),
+        switchInput(m.update ?? true, async (v) => this.set(await tauriInvoke<Memories>('chat_set_memory_update', { update: v })))
       ),
       h(
         'div',

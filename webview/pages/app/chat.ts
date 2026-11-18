@@ -5,7 +5,7 @@ import { tauriInvoke } from '../../shared/tauri';
 import { api, newId, type ApprovalMode, type ChatParams, type Conversation, type Part, type Turn, type UsageTotals } from './api';
 import { fillVariables } from './variables';
 import { startVoiceConversation, voiceActive, voiceTurnEnded } from './voice';
-import { clear, confirmDialog, greeting, h, icon, markdown, modal, popover, promptText, timeLabel, toast } from './dom';
+import { clear, confirmDialog, greeting, h, icon, markdown, modal, popover, promptText, timeLabel, toast, clockHour12 } from './dom';
 import { changed, currentModel, followUpsOn, navigate, setMode, state, temporaryByDefault, type LiveTurn, followStreamOn } from './state';
 import { openSettings } from './settings';
 import { openInstructions } from './pages';
@@ -833,7 +833,7 @@ async function printConversation(id: string, title: string) {
   // Long messages are shown whole on paper.
   const folded = [...transcript.querySelectorAll<HTMLElement>('.folded')];
   folded.forEach((el) => el.classList.remove('folded'));
-  const head = h('div', {}, h('h1', { class: 'print-title' }, title || 'Conversation'), h('p', { class: 'print-meta' }, `Lumo · ${new Date().toLocaleString()}`));
+  const head = h('div', {}, h('h1', { class: 'print-title' }, title || 'Conversation'), h('p', { class: 'print-meta' }, `Lumo · ${new Date().toLocaleString(undefined, { hour12: clockHour12() })}`));
   transcript.before(head);
   try {
     window.print();
