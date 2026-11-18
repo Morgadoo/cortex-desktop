@@ -66,6 +66,7 @@ pub mod agent_market;
 pub mod animation;
 pub mod audit;
 pub mod telegram;
+pub mod slack;
 pub mod memory;
 pub mod privacy;
 pub mod providers;

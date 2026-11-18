@@ -71,6 +71,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Autocomplete as you type', 'general', 'autocomplete suggest complete typing tab continuation'],
   ['New chats are temporary', 'general', 'temporary incognito history'],
   ['Keyboard shortcuts', 'general', 'hotkeys keys rebind'],
+  ['Slack', 'general', 'slack bot socket mode workspace channel message agent'],
   ['Telegram', 'general', 'telegram phone mobile bot channel message agent away remote'],
   ['Local API', 'general', 'openai compatible server port token curl mcp anthropic'],
   ['Defaults for every chat', 'general', 'temperature top-p top_p max tokens reply length model parameters'],
@@ -1738,6 +1739,7 @@ async function renderGeneral(content: HTMLElement) {
     await chatDefaultsCard(),
     await apiServerCard(),
     await telegramCard(),
+    await slackCard(),
     await diagnosticsCard(),
     shortcutsCard()
   );
@@ -1904,6 +1906,66 @@ async function telegramCard(): Promise<HTMLElement> {
   };
   draw();
   return card(h('h3', {}, 'Telegram'), h('p', { class: 'muted' }, 'Ask your assistant or one of your agents from your phone. Lumo fetches the messages from Telegram itself, so nothing reaches this computer from outside; each Telegram chat becomes a chat here.'), body);
+}
+
+interface SlackSettings {
+  enabled: boolean;
+  agentId: string | null;
+  paired: string[];
+  pairingCode: string | null;
+  allowChanges: boolean;
+  team?: string | null;
+  hasTokens: boolean;
+}
+
+/** Talk to your assistant or an agent from Slack, through an app of your own in Socket Mode. */
+async function slackCard(): Promise<HTMLElement> {
+  const body = h('div', {});
+  let s = await tauriInvoke<SlackSettings>('chat_slack');
+  const update = async (patch: Partial<{ enabled: boolean; agentId: string | null; allowChanges: boolean; openPairing: boolean; unpair: string }>) => {
+    try {
+      s = await tauriInvoke<SlackSettings>('chat_update_slack', { enabled: patch.enabled ?? s.enabled, agentId: patch.agentId !== undefined ? patch.agentId : s.agentId, allowChanges: patch.allowChanges ?? s.allowChanges, openPairing: patch.openPairing ?? false, unpair: patch.unpair ?? null });
+      draw();
+    } catch (e) {
+      toast(String(e), 'error');
+    }
+  };
+  const draw = () => {
+    const appToken = h('input', { class: 'input mono', type: 'password', placeholder: s.hasTokens ? 'Saved; paste to change' : 'xapp-… (App-Level Token, connections:write)', autocomplete: 'off' });
+    const botToken = h('input', { class: 'input mono', type: 'password', placeholder: s.hasTokens ? 'Saved; paste to change' : 'xoxb-… (Bot User OAuth Token)', autocomplete: 'off' });
+    const connect = button({ variant: 'secondary', label: s.hasTokens ? 'Replace' : 'Connect', onClick: async () => {
+      try {
+        s = await tauriInvoke<SlackSettings>('chat_set_slack_tokens', { appToken: appToken.value, botToken: botToken.value });
+        toast(s.team ? `Connected to ${s.team}.` : 'Tokens removed.');
+        draw();
+      } catch (e) {
+        toast(String(e), 'error');
+      }
+    } });
+    const agent = h('select', { class: 'input', 'aria-label': 'Who answers' }, h('option', { value: '' }, 'The assistant'), state.agents.map((a) => h('option', { value: a.id, selected: a.id === s.agentId }, a.name)));
+    agent.addEventListener('change', () => void update({ agentId: agent.value || null }));
+    clear(
+      body,
+      h('label', { class: 'field-label' }, 'App-level token'),
+      appToken,
+      h('label', { class: 'field-label' }, 'Bot token'),
+      h('div', { class: 'row-inline' }, h('div', { class: 'grow' }, botToken), connect),
+      h('small', { class: 'muted' }, s.team ? `Workspace: ${s.team}` : 'At api.slack.com/apps: create an app, turn on Socket Mode, add the bot scopes chat:write, im:history and app_mentions:read, subscribe to message.im and app_mention, install it, then paste both tokens.'),
+      s.hasTokens
+        ? [
+            h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Answer messages'), h('small', { class: 'muted' }, 'Direct messages to the app, and mentions of it in channels (answered in a thread), while Lumo runs.')), switchInput(s.enabled, (v) => void update({ enabled: v }))),
+            h('label', { class: 'field-label' }, 'Who answers'),
+            agent,
+            h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Allow changes'), h('small', { class: 'muted' }, 'Off: it reads and searches; anything that would change something is refused.')), switchInput(s.allowChanges, (v) => void update({ allowChanges: v }))),
+            h('label', { class: 'field-label' }, 'Paired members'),
+            s.paired.length ? h('div', { class: 'hook-list' }, s.paired.map((id) => h('div', { class: 'hook-row' }, icon('user', 15), h('span', { class: 'grow mono' }, id), h('button', { class: 'link-btn', on: { click: () => void update({ unpair: id }) } }, 'Unpair')))) : h('p', { class: 'muted small' }, 'Nobody yet. Only paired members are answered.'),
+            s.pairingCode ? h('p', {}, 'Send this to the app in Slack: ', h('code', { class: 'pair-code' }, `pair ${s.pairingCode}`)) : button({ variant: 'secondary', icon: 'plus', label: 'Pair my Slack account', onClick: () => void update({ openPairing: true }) }),
+          ]
+        : null
+    );
+  };
+  draw();
+  return card(h('h3', {}, 'Slack'), h('p', { class: 'muted' }, 'Ask your assistant or an agent from Slack. The app connects with Socket Mode, so Slack needs no address for this computer; each Slack conversation becomes a chat here.'), body);
 }
 
 async function apiServerCard(): Promise<HTMLElement> {

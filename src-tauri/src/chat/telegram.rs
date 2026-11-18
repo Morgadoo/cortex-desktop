@@ -151,48 +151,67 @@ pub fn decide(settings: &Settings, user_id: i64, user_name: &str, text: &str) ->
 
 /// Runs one turn for a Telegram chat and returns the answer.
 async fn ask(app: &AppHandle, config_dir: &Path, settings: &mut Settings, chat_id: i64, text: &str) -> Result<String, String> {
+    let existing = settings.chats.iter().find(|(c, _)| *c == chat_id).map(|(_, id)| id.clone());
+    let (id, answer) = run_message(app, config_dir, settings.agent_id.clone(), settings.allow_changes, existing, "Telegram", text).await;
+    if let Some(id) = id {
+        if !settings.chats.iter().any(|(c, i)| *c == chat_id && *i == id) {
+            settings.chats.retain(|(c, _)| *c != chat_id);
+            settings.chats.push((chat_id, id));
+            save(config_dir, settings)?;
+        }
+    }
+    answer
+}
+
+/// Runs a message from a channel (Telegram, Slack) as a turn in a Lumo chat: the chat
+/// `existing` when it still exists, else a new one titled `title`. Returns the chat's id and the
+/// answer. Unattended unless `allow_changes`: nobody can approve from the channel.
+pub async fn run_message(app: &AppHandle, config_dir: &Path, agent_id: Option<String>, allow_changes: bool, existing: Option<String>, title: &str, text: &str) -> (Option<String>, Result<String, String>) {
     use super::engine::{run_turn, TurnRequest};
-    let agent = settings.agent_id.as_deref().and_then(|a| super::agents::find(config_dir, a));
-    let model = agent.as_ref().and_then(|a| a.model.clone()).or(super::providers::load(config_dir).default_model).ok_or("Choose a default model in Lumo first.")?;
-    let existing = settings.chats.iter().find(|(c, _)| *c == chat_id).map(|(_, id)| id.clone()).filter(|id| super::store::load_conversation(config_dir, id).is_ok());
-    let id = match existing {
+    let agent = agent_id.as_deref().and_then(|a| super::agents::find(config_dir, a));
+    let Some(model) = agent.as_ref().and_then(|a| a.model.clone()).or(super::providers::load(config_dir).default_model) else {
+        return (None, Err("Choose a default model in Lumo first.".into()));
+    };
+    let id = match existing.filter(|id| super::store::load_conversation(config_dir, id).is_ok()) {
         Some(id) => id,
         None => {
             let id = uuid::Uuid::new_v4().to_string();
             let mut c = super::store::Conversation::new(id.clone(), None, Some(model.clone()));
-            c.agent_id = settings.agent_id.clone();
-            c.title = "Telegram".into();
-            super::store::save_conversation(config_dir, &c)?;
-            settings.chats.retain(|(c, _)| *c != chat_id);
-            settings.chats.push((chat_id, id.clone()));
-            save(config_dir, settings)?;
+            c.agent_id = agent_id.clone();
+            c.title = title.into();
+            if let Err(e) = super::store::save_conversation(config_dir, &c) {
+                return (None, Err(e));
+            }
             id
         }
     };
-    let Some(cancel) = app.state::<super::ChatState>().begin(&id) else { return Err("I am still answering your last message.".into()) };
+    let Some(cancel) = app.state::<super::ChatState>().begin(&id) else { return (Some(id), Err("I am still answering your last message.".into())) };
     let request = TurnRequest {
         conversation_id: id.clone(),
         text: text.to_string(),
         model,
         speed: if agent.as_ref().is_some_and(|a| a.think) { super::engine::Speed::Think } else { super::engine::Speed::Fast },
-        approval: if settings.allow_changes { super::tools::ApprovalMode::Autonomous } else { super::tools::ApprovalMode::Unattended },
+        approval: if allow_changes { super::tools::ApprovalMode::Autonomous } else { super::tools::ApprovalMode::Unattended },
         project_id: None,
-        agent_id: settings.agent_id.clone(),
+        agent_id,
         images: Vec::new(),
         edit_index: None,
         temporary: false,
         resume: false,
         workdir: None,
         connectors: None,
-        route_note: Some("Sent from Telegram".into()),
+        route_note: Some(format!("Sent from {title}")),
         tools_off: Vec::new(),
     };
     run_turn(app.clone(), request, cancel).await;
-    let c = super::store::load_conversation(config_dir, &id)?;
-    match c.messages.last() {
-        Some(m @ rig_core::completion::Message::Assistant(_)) => Ok(super::context::message_text(m)),
-        _ => Err("I could not answer that; see the chat in Lumo for what went wrong.".into()),
-    }
+    let answer = match super::store::load_conversation(config_dir, &id) {
+        Ok(c) => match c.messages.last() {
+            Some(m @ rig_core::completion::Message::Assistant(_)) => Ok(super::context::message_text(m)),
+            _ => Err("I could not answer that; see the chat in Lumo for what went wrong.".into()),
+        },
+        Err(e) => Err(e),
+    };
+    (Some(id), answer)
 }
 
 static RUNNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);

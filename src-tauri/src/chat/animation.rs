@@ -109,12 +109,6 @@ pub fn check_html(source: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// The last progress line HyperFrames printed (`@hf-progress {...}`), as a percentage.
-pub fn progress(line: &str) -> Option<u64> {
-    let rest = line.trim().strip_prefix("@hf-progress ")?;
-    serde_json::from_str::<Value>(rest).ok()?.get("pct")?.as_u64()
-}
-
 /// The command that renders `dir` into `out`.
 fn command(engine: &str, dir: &Path, out: &Path, format: &str) -> Result<tokio::process::Command, String> {
     match engine {
@@ -212,14 +206,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn names_checks_and_progress() {
+    fn names_and_checks() {
         assert_eq!(slug("Q3 Sales — chart!"), "q3-sales-chart");
         assert!(slug("  ").starts_with("animation-"));
         assert!(check_html("<div data-composition-id=\"main\" data-duration=\"5\"></div><script>window.__timelines['main']=tl</script>").is_ok());
         assert!(check_html("<div data-duration=\"5\"></div>").unwrap_err().contains("data-composition-id"));
         assert!(check_html("<div data-composition-id=\"main\" data-duration=\"5\"></div>").unwrap_err().contains("__timelines"));
-        assert_eq!(progress(r#"@hf-progress {"code":"assemble","done":3,"total":3,"pct":99}"#), Some(99));
-        assert_eq!(progress("Rendering…"), None);
     }
 
     /// With Node.js and network (`LUMO_TEST_ANIMATION=1`): a real HyperFrames render.

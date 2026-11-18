@@ -803,6 +803,52 @@ pub async fn chat_update_telegram(app: AppHandle, enabled: bool, agent_id: Optio
 }
 
 #[tauri::command]
+pub async fn chat_slack(app: AppHandle) -> Result<super::slack::Settings, String> {
+    let mut s = super::slack::load(&config_dir(&app)?);
+    s.has_tokens = super::slack::tokens().await.is_some();
+    Ok(s)
+}
+
+/// Saves the app-level and bot tokens after checking them with Slack; empty removes them.
+#[tauri::command]
+pub async fn chat_set_slack_tokens(app: AppHandle, app_token: String, bot_token: String) -> Result<super::slack::Settings, String> {
+    let dir = config_dir(&app)?;
+    let mut s = super::slack::load(&dir);
+    if app_token.trim().is_empty() && bot_token.trim().is_empty() {
+        super::slack::set_tokens("", "").await?;
+        s.enabled = false;
+        s.team = None;
+    } else {
+        s.team = Some(super::slack::check(app_token.trim(), bot_token.trim()).await?);
+        super::slack::set_tokens(&app_token, &bot_token).await?;
+    }
+    super::slack::save(&dir, &s)?;
+    chat_slack(app).await
+}
+
+#[tauri::command]
+pub async fn chat_update_slack(app: AppHandle, enabled: bool, agent_id: Option<String>, allow_changes: bool, open_pairing: bool, unpair: Option<String>) -> Result<super::slack::Settings, String> {
+    let dir = config_dir(&app)?;
+    let mut s = super::slack::load(&dir);
+    s.enabled = enabled;
+    s.agent_id = agent_id.filter(|a| !a.is_empty());
+    s.allow_changes = allow_changes;
+    if open_pairing {
+        let mut b = [0u8; 4];
+        rand::fill(&mut b);
+        s.pairing_code = Some(format!("{:06}", u32::from_le_bytes(b) % 1_000_000));
+    }
+    if let Some(id) = unpair {
+        s.paired.retain(|p| *p != id);
+    }
+    super::slack::save(&dir, &s)?;
+    if s.enabled {
+        super::slack::start(&app);
+    }
+    chat_slack(app).await
+}
+
+#[tauri::command]
 pub async fn chat_code_pr_status(app: AppHandle, conversation_id: String) -> Result<Option<super::code::PrStatus>, String> {
     let conversation = store::load_conversation(&config_dir(&app)?, &conversation_id)?;
     let dir = conversation.workdir.ok_or("This conversation has no folder.")?;

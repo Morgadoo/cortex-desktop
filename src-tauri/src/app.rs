@@ -212,6 +212,9 @@ pub fn run() {
             chat::commands::chat_usage_breakdown,
             chat::commands::chat_task_comment,
             chat::commands::chat_open_preview,
+            chat::commands::chat_slack,
+            chat::commands::chat_set_slack_tokens,
+            chat::commands::chat_update_slack,
             chat::commands::chat_telegram,
             chat::commands::chat_set_telegram_token,
             chat::commands::chat_update_telegram,
@@ -576,6 +579,7 @@ pub fn run() {
             chat::sync::start(app.handle().clone());
             chat::share::start(app.handle());
             chat::telegram::start(app.handle());
+            chat::slack::start(app.handle());
             tray::create(app.handle())?;
             updater::startup(app.handle());
             Ok(())
