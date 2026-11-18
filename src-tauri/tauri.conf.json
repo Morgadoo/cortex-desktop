@@ -34,7 +34,7 @@
     },
     "deep-link": {
       "desktop": {
-        "schemes": ["proton-lumo"]
+        "schemes": ["proton-lumo", "lumo"]
       }
     }
   },

@@ -40,7 +40,7 @@ pub const PROVIDERS: &[ProviderInfo] = &[
     ProviderInfo { vendor: "moonshot", label: "Moonshot (Kimi)", key_url: "https://platform.moonshot.ai/console/api-keys", local: false },
     ProviderInfo { vendor: "zai", label: "Z.ai (GLM)", key_url: "https://z.ai/manage-apikey/apikey-list", local: false },
     ProviderInfo { vendor: "ollama", label: "Ollama", key_url: "", local: true },
-    ProviderInfo { vendor: "llamacpp", label: "llama.cpp", key_url: "", local: true },
+    ProviderInfo { vendor: "llamacpp", label: "llama.cpp, LM Studio or vLLM", key_url: "", local: true },
 ];
 
 pub fn info(vendor: &str) -> Option<&'static ProviderInfo> {
@@ -253,6 +253,25 @@ async fn ollama_models(base_url: &str) -> Vec<String> {
     }
 }
 
+/// Model ids an OpenAI-compatible server lists at `/v1/models` (llama.cpp's server, LM Studio,
+/// vLLM, LocalAI, Jan): the models actually loaded there.
+async fn openai_compatible_models(base_url: &str) -> Vec<String> {
+    #[derive(Deserialize)]
+    struct List {
+        data: Vec<Entry>,
+    }
+    #[derive(Deserialize)]
+    struct Entry {
+        id: String,
+    }
+    let root = base_url.trim_end_matches('/').trim_end_matches("/v1");
+    let Ok(client) = reqwest::Client::builder().timeout(Duration::from_secs(2)).build() else { return Vec::new() };
+    match client.get(format!("{root}/v1/models")).send().await {
+        Ok(response) => response.json::<List>().await.map(|l| l.data.into_iter().map(|e| e.id).filter(|id| !id.is_empty()).collect()).unwrap_or_default(),
+        Err(_) => Vec::new(),
+    }
+}
+
 /// Every model of every ready provider. A local server's own listing replaces the catalog's,
 /// which names models the user may not have pulled.
 pub async fn models(file: &ProvidersFile) -> Vec<ModelView> {
@@ -276,7 +295,8 @@ pub async fn models(file: &ProvidersFile) -> Vec<ModelView> {
                 .map(|id| custom_model(provider.vendor, id))
                 .collect()
         } else if provider.local {
-            Vec::new()
+            let base = settings.base_url.clone().or_else(|| default_base_url(provider.vendor)).unwrap_or_default();
+            openai_compatible_models(&base).await.iter().map(|id| custom_model(provider.vendor, id)).collect()
         } else {
             catalog_models(provider.vendor)
         };
@@ -338,6 +358,21 @@ pub fn supports_reasoning(reference: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn local_openai_compatible_servers_list_their_models() {
+        let app = axum::Router::new().route(
+            "/v1/models",
+            axum::routing::get(|| async { axum::Json(serde_json::json!({ "object": "list", "data": [{ "id": "qwen3-8b-q4" }, { "id": "llama-3.2-3b" }] })) }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        // With or without /v1 in the address the user typed.
+        assert_eq!(openai_compatible_models(&format!("http://{addr}/v1")).await, ["qwen3-8b-q4", "llama-3.2-3b"]);
+        assert_eq!(openai_compatible_models(&format!("http://{addr}")).await.len(), 2);
+        assert!(openai_compatible_models("http://127.0.0.1:9").await.is_empty(), "a server that is off lists nothing");
+    }
 
     #[test]
     fn curated_providers_are_known_to_rig() {

@@ -57,6 +57,7 @@ const SVG = 'http://www.w3.org/2000/svg';
 /** Stroke icons on a 24-unit grid. */
 const ICONS: Record<string, string> = {
   plus: 'M12 5v14M5 12h14',
+  link: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1',
   menu: 'M4 6h16M4 12h16M4 18h16',
   sidebar: 'M4 5h16v14H4zM9 5v14',
   back: 'M15 6l-6 6 6 6',

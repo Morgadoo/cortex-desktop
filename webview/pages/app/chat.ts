@@ -1112,11 +1112,36 @@ function renderLiveTurn(conversationId: string, live: LiveTurn): HTMLElement {
         { class: 'error-card' },
         icon('close', 16),
         h('div', { class: 'grow' }, h('strong', {}, 'The reply failed'), h('div', {}, live.error), h('p', { class: 'hint' }, 'Continue picks up from the work already done.')),
-        resume
+        h('div', { class: 'error-actions' }, copyErrorButton(live.error, conversationId), resume)
       )
     );
   }
   return el;
+}
+
+/** Copies what a bug report needs: the error, the model, the app version and the platform. */
+function copyErrorButton(error: string, conversationId: string): HTMLElement {
+  const button = h('button', { class: 'btn btn-ghost btn-sm', title: 'Copy the error with the model, app version and platform, for a bug report' }, icon('copy', 14), 'Copy details');
+  button.addEventListener('click', async () => {
+    let version = '';
+    try {
+      version = await tauriInvoke<string>('plugin:app|version');
+    } catch {
+      version = 'unknown';
+    }
+    const details = [
+      `Error: ${error}`,
+      `Model: ${state.model ?? 'none'}`,
+      `Mode: ${state.approval}, speed: ${state.speed}`,
+      `App: Lumo ${version}`,
+      `Platform: ${navigator.platform} (${navigator.userAgent.match(/AppleWebKit\/[\d.]+/)?.[0] ?? 'webview'})`,
+      `Conversation: ${conversationId}`,
+      `Time: ${new Date().toISOString()}`,
+    ].join('\n');
+    await navigator.clipboard.writeText(details);
+    toast('Error details copied.');
+  });
+  return button;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -2913,6 +2938,7 @@ export function conversationMenu(anchor: HTMLElement, id: string, title: string,
         toast('Branched. This chat continues from the same point.');
       }),
       item('download', 'Export as Markdown', () => void api.exportConversation(id).then((saved) => saved && toast('Conversation exported.'))),
+      item('link', 'Copy link', () => void navigator.clipboard.writeText(`lumo://chat/${id}`).then(() => toast('Link copied. It opens this chat in Lumo on this computer.'))),
       item('code', 'Export as JSON', () => void tauriInvoke<boolean>('chat_export_conversation_json', { id }).then((saved) => saved && toast('Conversation exported.')).catch((e) => toast(String(e), 'error'))),
       item('settings', 'Chat settings…', () => void openChatSettings(id)),
       item('dot', 'Mark as unread', async () => {

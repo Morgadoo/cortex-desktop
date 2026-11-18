@@ -1,5 +1,5 @@
 use log::{error, info, warn};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
@@ -156,6 +156,7 @@ pub fn run() {
             chat::commands::chat_read_document,
             chat::commands::chat_notify,
             chat::commands::chat_rewrite_message,
+            chat::commands::chat_take_link,
                 chat::commands::chat_custom_tools,
                 chat::commands::chat_save_custom_tool,
                 chat::commands::chat_delete_custom_tool,
@@ -313,14 +314,34 @@ pub fn run() {
 
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
+                app.manage(chat::links::PendingLink::default());
+                // Links into the app (lumo://new?prompt=…): kept until the page takes them, and
+                // announced in case it is already open.
+                let open_link = |handle: &tauri::AppHandle, link: chat::links::Link| {
+                    handle.state::<chat::links::PendingLink>().put(link);
+                    if let Err(e) = main_window::show(handle) {
+                        warn!("could not show the window for a link: {e}");
+                    }
+                    let _ = handle.emit("chat://link", ());
+                };
                 let handle = app.handle().clone();
                 app.deep_link().on_open_url(move |event| {
                     for url in event.urls() {
-                        if !tools::oauth::handle_deep_link(&url) {
+                        if let Some(link) = chat::links::parse(&url) {
+                            open_link(&handle, link);
+                        } else if !tools::oauth::handle_deep_link(&url) {
                             browser_login::handle_deep_link(&handle, std::slice::from_ref(&url));
                         }
                     }
                 });
+                // A link that launched the app.
+                if let Ok(Some(urls)) = app.deep_link().get_current() {
+                    for url in urls {
+                        if let Some(link) = chat::links::parse(&url) {
+                            app.state::<chat::links::PendingLink>().put(link);
+                        }
+                    }
+                }
             }
 
             let registry = ToolRegistry::new();

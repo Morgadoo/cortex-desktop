@@ -32,6 +32,7 @@ mod index;
 mod preview;
 pub mod knowledge;
 pub mod libraries;
+pub mod links;
 pub mod media;
 pub mod memory;
 pub mod privacy;

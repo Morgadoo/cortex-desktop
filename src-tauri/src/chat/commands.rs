@@ -1074,6 +1074,12 @@ pub fn chat_delete_exchange(app: AppHandle, state: State<'_, ChatState>, id: Str
     store::save_conversation(&dir, &conversation)
 }
 
+/// The app link (lumo://…) waiting for the page, if any.
+#[tauri::command]
+pub fn chat_take_link(pending: State<'_, super::links::PendingLink>) -> Option<super::links::Link> {
+    pending.take()
+}
+
 /// Rewrites a message (yours or an answer) in place, without asking for a new reply.
 #[tauri::command]
 pub fn chat_rewrite_message(app: AppHandle, state: State<'_, ChatState>, id: String, index: usize, text: String) -> Result<(), String> {

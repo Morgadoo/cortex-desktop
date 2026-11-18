@@ -190,6 +190,34 @@ function switchMode(mode: 'work' | 'code' | 'agents') {
   navigate(mode === 'agents' ? { kind: 'page', page: 'agents' } : { kind: 'home' });
 }
 
+type AppLink = { kind: 'new'; prompt: string; model: string | null; mode: 'work' | 'code' | null } | { kind: 'open'; conversationId: string };
+
+/** Applies a link that opened the app or arrived while it ran. */
+async function takeLink() {
+  const link = await tauriInvoke<AppLink | null>('chat_take_link').catch(() => null);
+  if (!link) return;
+  if (link.kind === 'open') {
+    if (!state.conversations.some((c) => c.id === link.conversationId)) await refreshConversations();
+    const found = state.conversations.find((c) => c.id === link.conversationId);
+    if (found) {
+      state.mode = found.workdir ? 'code' : 'work';
+      navigate({ kind: 'chat', id: link.conversationId });
+    }
+    else toast('That conversation is not here.', 'error');
+    return;
+  }
+  if (link.mode) state.mode = link.mode;
+  navigate({ kind: 'home' });
+  if (link.model) {
+    if (state.models.some((m) => m.reference === link.model)) state.model = link.model;
+    else toast(`The link asks for ${link.model}, which is not set up here; using ${state.model ?? 'your default'}.`);
+  }
+  composer.setText(link.prompt);
+  composer.renderBar();
+  setTimeout(() => composer.focus());
+  if (link.prompt) toast('Opened from a link. Check the message, then send it.');
+}
+
 function newChat() {
   navigate({ kind: 'home' });
   composer.setText('');
@@ -364,6 +392,52 @@ function sortChats<T extends { title: string; createdAt: string; updatedAt: stri
   return out;
 }
 
+/** What the sidebar's chat list shows (LibreChat's and Open WebUI's filters). */
+type ChatFilter = { unread: boolean; tag: string | null; within: 0 | 1 | 7 | 30; hideRuns: boolean };
+const NO_FILTER: ChatFilter = { unread: false, tag: null, within: 0, hideRuns: false };
+let chatFilter: ChatFilter = (() => {
+  try {
+    return { ...NO_FILTER, ...(JSON.parse(localStorage.getItem('lumo.chatFilter') ?? '{}') as Partial<ChatFilter>) };
+  } catch {
+    return { ...NO_FILTER };
+  }
+})();
+
+function setChatFilter(change: Partial<ChatFilter>) {
+  chatFilter = { ...chatFilter, ...change };
+  try {
+    localStorage.setItem('lumo.chatFilter', JSON.stringify(chatFilter));
+  } catch {
+    // A convenience only.
+  }
+  changed();
+}
+
+const filtering = () => chatFilter.unread || chatFilter.tag !== null || chatFilter.within !== 0 || chatFilter.hideRuns;
+
+function filterChats<T extends { unread: boolean; tags: string[]; updatedAt: string; taskId: string | null }>(list: T[]): T[] {
+  const since = chatFilter.within ? Date.now() - chatFilter.within * 86_400_000 : 0;
+  return list.filter(
+    (c) =>
+      (!chatFilter.unread || c.unread) &&
+      (!chatFilter.tag || c.tags.includes(chatFilter.tag)) &&
+      (!since || Date.parse(c.updatedAt) >= since) &&
+      (!chatFilter.hideRuns || !c.taskId)
+  );
+}
+
+/** "Today", "Yesterday", "Previous 7 days", "Previous 30 days", then month and year. */
+function dateGroup(iso: string, now = new Date()): string {
+  const d = new Date(iso);
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const t = d.getTime();
+  if (t >= startOfToday) return 'Today';
+  if (t >= startOfToday - 86_400_000) return 'Yesterday';
+  if (t >= startOfToday - 7 * 86_400_000) return 'Previous 7 days';
+  if (t >= startOfToday - 30 * 86_400_000) return 'Previous 30 days';
+  return d.toLocaleDateString(undefined, { month: 'long', ...(d.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }) });
+}
+
 /** Chats listed before "Show more"; search (Ctrl+K) reaches all of them. */
 const SIDEBAR_LIMIT = 30;
 let sidebarExpanded = false;
@@ -373,12 +447,12 @@ function renderConversations(): HTMLElement {
   const section = h('div', { class: 'sidebar-section' });
   const all = state.conversations.filter((c) => !c.archived && !c.projectId && !c.agentId && Boolean(c.workdir) === code);
   const pinned = all.filter((c) => c.pinned);
-  const loose = sortChats(all.filter((c) => !c.pinned));
+  const loose = sortChats(filterChats(all.filter((c) => !c.pinned)));
   if (pinned.length) {
     section.append(sectionHeading('Pinned'));
     for (const c of pinned) section.append(conversationLink(c.id, c.title, true));
   }
-  const sortBtn = h('button', { class: 'icon-btn tiny', title: `Sort: ${CHAT_SORTS[chatSort]}` }, icon('list', 14));
+  const sortBtn = h('button', { class: `icon-btn tiny${filtering() ? ' active' : ''}`, title: `Sort: ${CHAT_SORTS[chatSort]}${filtering() ? ' · filtered' : ''}` }, icon('list', 14));
   sortBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     const close = popover(
@@ -389,16 +463,47 @@ function renderConversations(): HTMLElement {
         h('div', { class: 'menu-heading' }, 'Sort chats'),
         (Object.keys(CHAT_SORTS) as ChatSort[]).map((k) =>
           h('button', { class: `menu-item${chatSort === k ? ' selected' : ''}`, on: { click: () => { close(); setChatSort(k); } } }, checkMark(chatSort === k), h('span', {}, CHAT_SORTS[k]))
-        )
+        ),
+        h('div', { class: 'menu-sep' }),
+        h('div', { class: 'menu-heading' }, 'Show'),
+        h('button', { class: 'menu-item', on: { click: () => { close(); setChatFilter({ unread: !chatFilter.unread }); } } }, checkMark(chatFilter.unread), h('span', {}, 'Unread only')),
+        h('button', { class: 'menu-item', on: { click: () => { close(); setChatFilter({ hideRuns: !chatFilter.hideRuns }); } } }, checkMark(chatFilter.hideRuns), h('span', {}, 'Hide scheduled runs')),
+        ([[0, 'Any time'], [1, 'Last 24 hours'], [7, 'Last 7 days'], [30, 'Last 30 days']] as [ChatFilter['within'], string][]).map(([days, label]) =>
+          h('button', { class: 'menu-item', on: { click: () => { close(); setChatFilter({ within: days }); } } }, checkMark(chatFilter.within === days), h('span', {}, label))
+        ),
+        tags.length ? h('div', { class: 'menu-heading' }, 'Tag') : null,
+        tags.map((t) =>
+          h('button', { class: 'menu-item', on: { click: () => { close(); setChatFilter({ tag: chatFilter.tag === t ? null : t }); } } }, checkMark(chatFilter.tag === t), h('span', {}, `#${t}`))
+        ),
+        filtering() ? h('div', { class: 'menu-sep' }) : null,
+        filtering() ? h('button', { class: 'menu-item', on: { click: () => { close(); setChatFilter({ ...NO_FILTER }); } } }, icon('close', 15), h('span', {}, 'Clear filters')) : null
       )
     );
   });
+  const tags = [...new Set(all.flatMap((c) => c.tags))].sort();
   section.append(sectionHeading(code ? 'Sessions' : 'Chats', sortBtn));
-  if (!loose.length) section.append(h('p', { class: 'sidebar-empty' }, code ? 'No sessions yet' : 'No chats yet'));
+  if (!loose.length) {
+    section.append(
+      filtering()
+        ? h('p', { class: 'sidebar-empty' }, 'No chats match the filters. ', h('button', { class: 'link-btn', on: { click: () => setChatFilter({ ...NO_FILTER }) } }, 'Clear'))
+        : h('p', { class: 'sidebar-empty' }, code ? 'No sessions yet' : 'No chats yet')
+    );
+  }
   // A history of years stays a short list: the newest, the pinned and the open one, then more on request.
   const openId = state.view.kind === 'chat' ? state.view.id : null;
   const shown = sidebarExpanded ? loose : loose.filter((c, i) => i < SIDEBAR_LIMIT || c.id === openId);
-  for (const c of shown) section.append(conversationLink(c.id, c.title, c.pinned));
+  // By recent activity, chats sit under date headings, as in ChatGPT, LibreChat and Open WebUI.
+  let group = '';
+  for (const c of shown) {
+    if (chatSort === 'recent' || chatSort === 'created') {
+      const g = dateGroup(chatSort === 'recent' ? c.updatedAt : c.createdAt);
+      if (g !== group) {
+        group = g;
+        section.append(h('div', { class: 'sidebar-date' }, g));
+      }
+    }
+    section.append(conversationLink(c.id, c.title, c.pinned));
+  }
   if (loose.length > shown.length || (sidebarExpanded && loose.length > SIDEBAR_LIMIT)) {
     section.append(
       h(
@@ -690,6 +795,8 @@ async function start() {
   void listen('chat://open-settings', () => {
     if (!document.querySelector('.modal .settings')) void openSettings();
   });
+  // Links into the app (lumo://new?prompt=…, lumo://chat/<id>): the prompt is typed, never sent.
+  void listen('chat://link', () => void takeLink());
   void listen<string>('chat://quick-ask', (query) => {
     navigate({ kind: 'home' });
     composer.setText(query);
@@ -738,6 +845,7 @@ async function start() {
   state.skills = await api.skills().catch(() => []);
   await reloadAgents().catch(() => undefined);
   await reloadModels().catch((e) => toast(String(e), 'error'));
+  void takeLink();
   changed();
   if (!state.models.length) void openSettings('providers');
 }
