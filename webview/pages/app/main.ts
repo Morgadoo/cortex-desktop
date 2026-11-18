@@ -9,6 +9,7 @@ import { api, listen, type ApprovalRequest, type ChatEvent } from './api';
 import { tauriInvoke } from '../../shared/tauri';
 import { ChatView, CompareView, HomeView, composer, conversationMenu, recordStepTimes, refreshConversations, scrollToTurn, turnEnded, viewCache } from './chat';
 import { clear, h, icon, modal, popover, promptText, confirmDialog, toast } from './dom';
+import { startUiLanguage } from './i18n';
 import { ConnectorsPage, PlaceholderPage, openInstructions } from './pages';
 import { KnowledgePage, SkillsPage } from './context';
 import { AgentPage, AgentsPage, avatar, editAgent, newAgent, reloadAgents } from './agents';
@@ -798,6 +799,8 @@ declare global {
 }
 
 async function start() {
+  // The interface language first, so the first frame is already translated.
+  await startUiLanguage();
   void refreshAudioSettings();
   applyTheme(storedTheme());
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme(storedTheme()));

@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 134 |
+| DONE | 58 | 135 |
 | PARTIAL | 86 | 54 |
-| MISSING | 48 | 4 |
+| MISSING | 48 | 3 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9 · LibreChat 33 / 8 / 1 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 15 / 6 / 0 / 5 · Osaurus 12 / 12 / 2 / 4 · OpenBot 19 / 9 / 1 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9 · LibreChat 34 / 8 / 0 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 15 / 6 / 0 / 5 · Osaurus 12 / 12 / 2 / 4 · OpenBot 19 / 9 / 1 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -112,7 +112,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9
 | LibreChat | Query parameters | MISSING | DONE | `lumo://new?prompt=…&model=…` (parity: Links into the app) |
 | LibreChat | UI scale, font size, RTL, clock format | MISSING | PARTIAL | Chat text size and interface zoom done (parity: Readability). Missing: right-to-left layout, clock format |
 | LibreChat | High-contrast theme | MISSING | DONE | High contrast in Settings → Appearance → Readability |
-| LibreChat | Multilingual UI | MISSING | MISSING |  |
+| LibreChat | Multilingual UI | MISSING | DONE | parity: Interface languages (`i18n.ts`, `ui_language.rs`, `src-tauri/i18n/`; Settings → Appearance → Language). Verified live: Portuguese switched the whole interface (menus, composer, settings, greeting and numeric templates, toasts) while chat titles and project names stayed as written; Dutch, which does not ship, was translated by the chosen model (1787 strings in 15 requests) and applied |
 | LibreChat | Desktop notification and sound for finished replies | MISSING | DONE | Notification with an optional chime (parity: Sound and stream following) |
 | LibreChat | Every shortcut rebindable | PARTIAL | PARTIAL | Seven actions rebindable (shortcuts.ts:9–16). Missing: Ctrl+1–9, Shift+Tab, Ctrl+O, Ctrl+R |
 | LibreChat | Settings search | MISSING | DONE | Search box at the top of Settings (parity: Search settings) |

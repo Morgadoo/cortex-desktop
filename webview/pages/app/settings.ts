@@ -9,6 +9,7 @@ import { audioApi, refreshAudioSettings, speakText, type AudioView } from './aud
 import { SHORTCUTS, bindingFor, comboOf, display, setBinding } from './shortcuts';
 import { ACCENTS, BACKDROPS, BACKGROUNDS, backdropVeil, setBackdrop, setBackdropImage, setBackdropVeil, storedBackdrop, TEXT_SIZES, ZOOMS, accentHex, applyAppearance, readability, setAccent, setBackground, setReadability, storedAccent, storedBackground, type TextSize } from './appearance';
 import { setVoicePauseMs, voicePauseMs } from './dictation';
+import { effectiveLanguage, setStoredLanguage, storedLanguage } from './i18n';
 
 export type Section = 'profile' | 'providers' | 'audio' | 'permissions' | 'general' | 'appearance';
 
@@ -57,6 +58,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Local API', 'general', 'openai compatible server port token curl mcp anthropic'],
   ['Defaults for every chat', 'general', 'temperature top-p top_p max tokens reply length model parameters'],
   ['Error reports and updates', 'general', 'privacy telemetry error reports crash sentry updates diagnostics'],
+  ['Language', 'appearance', 'language translate português español français deutsch interface locale'],
   ['Theme', 'appearance', 'dark light system mode'],
   ['Accent colour', 'appearance', 'color colour highlight'],
   ['Background and palette', 'appearance', 'background colours palette'],
@@ -332,7 +334,7 @@ function syncCard(onSynced: () => void): HTMLElement {
   const box = card();
   const render = () => {
     let folder = view.folder ?? '';
-    const folderLabel = h('span', { class: 'grow mono root-path' }, folder || 'No folder chosen');
+    const folderLabel = h('span', { class: folder ? 'grow mono root-path' : 'grow muted' }, folder || 'No folder chosen');
     const choose = button({
       variant: 'secondary',
       size: 'sm',
@@ -343,6 +345,7 @@ function syncCard(onSynced: () => void): HTMLElement {
         if (dir) {
           folder = dir;
           folderLabel.textContent = dir;
+          folderLabel.className = 'grow mono root-path';
         }
       },
     });
@@ -1540,6 +1543,61 @@ function logButton(): HTMLElement {
   return button;
 }
 
+/**
+ * The interface language (LibreChat's multilingual UI). Portuguese, Spanish, French and German
+ * ship complete; the others are translated by the chosen model once, then kept.
+ */
+function languageCard(): HTMLElement {
+  const box = card(h('h3', {}, 'Language'));
+  void (async () => {
+    const languages = await tauriInvoke<[string, string][]>('chat_ui_languages').catch(() => [] as [string, string][]);
+    const stored = storedLanguage();
+    const current = effectiveLanguage(languages.map(([c]) => c));
+    const select = h(
+      'select',
+      { class: 'input', 'aria-label': 'Interface language' },
+      h('option', { value: 'auto', selected: stored === 'auto' }, 'Automatic (the system’s language)'),
+      h('option', { value: '', selected: stored === '' }, 'English'),
+      ...languages.map(([code, name]) => h('option', { value: code, selected: stored === code, class: 'no-translate' }, name))
+    );
+    select.addEventListener('change', () => {
+      setStoredLanguage(select.value);
+      location.reload();
+    });
+    const extra = h('div', {});
+    if (current) {
+      const cov = await tauriInvoke<{ known: number; total: number }>('chat_ui_coverage', { code: current }).catch(() => null);
+      if (cov && cov.known < cov.total) {
+        const missing = cov.total - cov.known;
+        const status = h('p', { class: 'muted small' }, `${cov.known} of ${cov.total} interface texts are translated.`);
+        const go = button({
+          variant: 'secondary',
+          icon: 'sparkle',
+          label: 'Translate the rest with your model',
+          title: `${missing} texts, in a few requests to ${state.model ?? 'your default model'}`,
+          onClick: async () => {
+            if (!state.model) return toast('Choose a model first.', 'error');
+            clear(status, h('span', { class: 'dots' }), ` Translating ${missing} texts…`);
+            try {
+              const after = await tauriInvoke<{ known: number; total: number }>('chat_translate_ui', { model: state.model, code: current });
+              toast(`${after.known} of ${after.total} translated. Reloading…`);
+              setTimeout(() => location.reload(), 900);
+            } catch (e) {
+              clear(status, String(e));
+            }
+          },
+        });
+        extra.append(status, h('div', { class: 'card-actions start' }, go));
+      }
+    }
+    box.append(
+      row('Interface language', 'Menus, buttons and settings. Answers follow the language you write in. Only the app’s own text is translated, never your chats.', select),
+      extra
+    );
+  })();
+  return box;
+}
+
 function renderAppearance(content: HTMLElement) {
   const current = storedTheme();
   const option = (theme: Theme, label: string, ic: string) =>
@@ -1558,6 +1616,7 @@ function renderAppearance(content: HTMLElement) {
       icon(ic, 22),
       label
     );
+  content.append(languageCard());
   content.append(card(h('h3', {}, 'Theme'), h('div', { class: 'theme-options' }, option('light', 'Light', 'sun'), option('dark', 'Dark', 'moon'), option('system', 'System', 'monitor'))));
 
   // Readability: chat text size, the zoom of the whole interface, contrast and motion.

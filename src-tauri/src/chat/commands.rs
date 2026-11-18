@@ -788,6 +788,35 @@ pub fn chat_update_memory(app: AppHandle, id: String, text: String) -> Result<su
     Ok(memories)
 }
 
+/// The interface languages on offer, as (code, name).
+#[tauri::command]
+pub fn chat_ui_languages() -> Vec<(String, String)> {
+    super::ui_language::LANGUAGES.iter().map(|(c, n)| (c.to_string(), n.to_string())).collect()
+}
+
+/// Every translation of interface text known for `code`.
+#[tauri::command]
+pub fn chat_ui_translations(app: AppHandle, code: String) -> Result<std::collections::BTreeMap<String, String>, String> {
+    Ok(super::ui_language::translations(&config_dir(&app)?, &code))
+}
+
+/// How much of the interface `code` covers.
+#[tauri::command]
+pub fn chat_ui_coverage(app: AppHandle, code: String) -> Result<super::ui_language::Coverage, String> {
+    Ok(super::ui_language::coverage(&config_dir(&app)?, &code))
+}
+
+/// Translates the interface text still missing for `code` with `model`.
+#[tauri::command]
+pub async fn chat_translate_ui(app: AppHandle, model: String, code: String) -> Result<super::ui_language::Coverage, String> {
+    super::ui_language::translate(&config_dir(&app)?, &model, &code).await
+}
+
+#[tauri::command]
+pub fn chat_reset_ui_translations(app: AppHandle, code: String) -> Result<(), String> {
+    super::ui_language::reset(&config_dir(&app)?, &code)
+}
+
 /// Sync between devices, as this device has it.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
