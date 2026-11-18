@@ -919,7 +919,7 @@ pub async fn chat_add_documents(app: AppHandle, id: String) -> Result<Option<Add
     app.dialog()
         .file()
         .set_title("Add documents")
-        .add_filter("Documents", &["pdf", "md", "txt", "html", "htm", "csv", "json", "yaml", "yml", "xml", "rs", "py", "js", "ts", "go", "java", "c", "cpp", "h", "sql", "log"])
+        .add_filter("Documents", &["pdf", "md", "txt", "html", "htm", "csv", "json", "yaml", "yml", "xml", "rs", "py", "js", "ts", "go", "java", "c", "cpp", "h", "sql", "log", "png", "jpg", "jpeg", "webp", "gif"])
         .pick_files(move |paths| {
             let _ = tx.send(paths);
         });
@@ -930,6 +930,19 @@ pub async fn chat_add_documents(app: AppHandle, id: String) -> Result<Option<Add
     let mut errors = Vec::new();
     for path in paths {
         let Ok(path) = path.into_path() else { continue };
+        // Photos and scans of documents: the default model reads their text.
+        if let Some(media_type) = super::libraries::is_image(&path) {
+            let name = path.file_name().map_or_else(|| "image".into(), |n| n.to_string_lossy().into_owned());
+            match ocr(&dir, &path, media_type).await {
+                Ok(text) => {
+                    if let Err(e) = super::libraries::add_text(&dir, &id, &name, &text) {
+                        errors.push(e);
+                    }
+                }
+                Err(e) => errors.push(format!("{name}: {e}")),
+            }
+            continue;
+        }
         if let Err(e) = tokio::task::spawn_blocking({
             let dir = dir.clone();
             let id = id.clone();
@@ -943,6 +956,34 @@ pub async fn chat_add_documents(app: AppHandle, id: String) -> Result<Option<Add
     }
     Ok(Some(AddResult { library: super::libraries::load(&dir, &id)?, errors }))
 }
+
+/// The text in an image, read by the default model: OCR with any model that can see.
+async fn ocr(config_dir: &std::path::Path, path: &std::path::Path, media_type: &str) -> Result<String, String> {
+    use base64::Engine as _;
+    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    let file = providers::load(config_dir);
+    let reference = match file.default_model.clone() {
+        Some(r) => r,
+        None => providers::models(&file).await.first().map(|m| m.reference.clone()).ok_or("Set up a model first.")?,
+    };
+    let image = engine::ImageInput { media_type: media_type.into(), data: base64::engine::general_purpose::STANDARD.encode(bytes) };
+    let message = engine::user_message(OCR_PROMPT, &[image])?;
+    let model = engine::connect_model(config_dir, &reference).await?;
+    let request = rig_core::completion::CompletionRequest::new(message).max_tokens(8_000u64);
+    let response = tokio::time::timeout(std::time::Duration::from_secs(180), model.call(request))
+        .await
+        .map_err(|_| "The model did not answer in time.".to_string())?
+        .map_err(|e| format!("{} could not read it ({}); it needs a model that can see images.", reference, super::context::short_error(&e.to_string())))?;
+    let text = response.text();
+    if text.trim().eq_ignore_ascii_case("NO TEXT") {
+        return Err("no text was found in the image.".into());
+    }
+    Ok(text)
+}
+
+const OCR_PROMPT: &str = "Transcribe all the text in this image exactly, in reading order, keeping headings, lists and \
+    table rows (as Markdown). Describe charts, photos and diagrams in one short line each, in square brackets. \
+    Output only the transcription. If there is no text at all, reply NO TEXT.";
 
 #[tauri::command]
 pub fn chat_remove_document(app: AppHandle, library_id: String, document_id: String) -> Result<super::libraries::Library, String> {

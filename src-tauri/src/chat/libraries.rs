@@ -141,7 +141,11 @@ pub fn extract(path: &Path) -> Result<String, String> {
     };
     let text: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if text.trim().is_empty() {
-        return Err(format!("{} has no readable text.", path.display()));
+        return Err(if ext == "pdf" {
+            format!("{} has no text layer (a scan?). Add its pages as images instead; they are read by your model.", path.display())
+        } else {
+            format!("{} has no readable text.", path.display())
+        });
     }
     if text.chars().count() > MAX_DOC_CHARS {
         return Err(format!("{} is too large to index.", path.display()));
@@ -151,11 +155,35 @@ pub fn extract(path: &Path) -> Result<String, String> {
 
 /// Adds a file's text to a library.
 pub fn add(config_dir: &Path, library_id: &str, path: &Path) -> Result<Library, String> {
-    let mut library = load(config_dir, library_id)?;
     let text = extract(path)?;
+    let name = path.file_name().map_or_else(|| "document".into(), |n| n.to_string_lossy().into_owned());
+    add_text(config_dir, library_id, &name, &text)
+}
+
+/// Image files, whose text is read by a model that can see (`ocr`).
+pub fn is_image(path: &Path) -> Option<&'static str> {
+    match path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase().as_str() {
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "webp" => Some("image/webp"),
+        "gif" => Some("image/gif"),
+        _ => None,
+    }
+}
+
+/// Adds text already extracted (from a file, or read from an image) as a document.
+pub fn add_text(config_dir: &Path, library_id: &str, name: &str, text: &str) -> Result<Library, String> {
+    let mut library = load(config_dir, library_id)?;
+    let text: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if text.trim().is_empty() {
+        return Err(format!("{name} has no readable text."));
+    }
+    if text.chars().count() > MAX_DOC_CHARS {
+        return Err(format!("{name} is too large to index."));
+    }
     let doc = Document {
         id: uuid::Uuid::new_v4().to_string(),
-        name: path.file_name().map_or_else(|| "document".into(), |n| n.to_string_lossy().into_owned()),
+        name: name.to_string(),
         chars: text.chars().count(),
         added_at: Utc::now(),
     };
