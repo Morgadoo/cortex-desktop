@@ -278,6 +278,62 @@ export function followUpsOn(): boolean {
   }
 }
 
+/** Follow an answer down the page as it streams (on unless turned off). */
+export function followStreamOn(): boolean {
+  try {
+    return localStorage.getItem('lumo.followStream') !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+export function setFollowStream(on: boolean) {
+  try {
+    localStorage.setItem('lumo.followStream', on ? 'on' : 'off');
+  } catch {
+    // Remembering is a convenience.
+  }
+}
+
+/** A short chime with the "reply ready" notification (off unless turned on). */
+export function finishSoundOn(): boolean {
+  try {
+    return localStorage.getItem('lumo.finishSound') === 'on';
+  } catch {
+    return false;
+  }
+}
+
+export function setFinishSound(on: boolean) {
+  try {
+    localStorage.setItem('lumo.finishSound', on ? 'on' : 'off');
+  } catch {
+    // Remembering is a convenience.
+  }
+}
+
+/** Two soft notes, made on the spot (no sound file). */
+export function playChime() {
+  try {
+    const ctx = new AudioContext();
+    [660, 880].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = freq;
+      const t = ctx.currentTime + i * 0.14;
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.18, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.4);
+    });
+    setTimeout(() => void ctx.close(), 1000);
+  } catch {
+    // No audio output: the notification is enough.
+  }
+}
+
 /** Notify when a reply finishes while the window is in the background (on unless turned off). */
 export function finishNotificationsOn(): boolean {
   try {

@@ -489,6 +489,8 @@ pub async fn chat_read_document(name: String, data: String) -> Result<String, St
             text?
         } else if super::libraries::OFFICE_EXTENSIONS.contains(&ext.as_str()) {
             super::libraries::office_text(&bytes, &ext)?
+        } else if ext == "zip" {
+            super::libraries::zip_text(&bytes, 400_000)?
         } else {
             return Err("Only PDF, Word, PowerPoint and OpenDocument files are read this way.".to_string());
         };
@@ -1074,6 +1076,12 @@ pub async fn chat_sync_library(app: AppHandle, id: String) -> Result<super::libr
 #[tauri::command]
 pub fn chat_remove_document(app: AppHandle, library_id: String, document_id: String) -> Result<super::libraries::Library, String> {
     super::libraries::remove(&config_dir(&app)?, &library_id, &document_id)
+}
+
+/// Moves a document to another library.
+#[tauri::command]
+pub fn chat_move_document(app: AppHandle, library_id: String, document_id: String, to: String) -> Result<(), String> {
+    super::libraries::move_document(&config_dir(&app)?, &library_id, &document_id, &to)
 }
 
 #[tauri::command]

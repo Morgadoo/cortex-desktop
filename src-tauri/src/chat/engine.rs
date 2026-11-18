@@ -581,7 +581,17 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         if last_step {
             step_system.push_str("\n\nYou have used every tool step available for this request. Answer now from what you have found, and say what you could not finish.");
         }
-        let mut call = CompletionRequest::new(prompt.clone())
+        // An agent's reminder rides on the newest message the user typed, every request; it is
+        // not saved with the conversation.
+        let mut prompt = prompt.clone();
+        if let Some(reminder) = agent.as_ref().map(|a| a.reminder.trim()).filter(|r| !r.is_empty()) {
+            if let Message::User { content } = &mut prompt {
+                if let Some(rig_core::completion::message::UserContent::Text(t)) = content.iter_mut().find(|c| matches!(c, rig_core::completion::message::UserContent::Text(_))) {
+                    t.text = format!("{}\n\n(Reminder: {reminder})", t.text);
+                }
+            }
+        }
+        let mut call = CompletionRequest::new(prompt)
             .messages(history.iter().cloned())
             .preamble(step_system);
         if !last_step {

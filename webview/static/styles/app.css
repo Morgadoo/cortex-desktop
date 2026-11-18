@@ -1504,3 +1504,6 @@ button.usage-meter:hover { background: var(--hover); }
 .menu-item > .agent-avatar.small { flex: 0 0 auto; width: 22px; height: 22px; font-size: 12px; display: inline-flex; align-items: center; justify-content: center; }
 .search-results .menu-item > span.agent-avatar.small { flex: 0 0 22px; }
 .search-results .menu-item > span.agent-avatar.small + span { flex: 1; }
+.memory-filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 10px 0 8px; }
+.memory-filters .memory-find { flex: 1 1 200px; }
+.chip-btn.active { background: var(--accent-soft); color: var(--accent-strong); border-color: var(--accent); }

@@ -240,6 +240,72 @@ fn decode_entities(s: &str) -> String {
     out
 }
 
+/// The text files in a ZIP archive, each under its path, until `budget` characters (OpenBot's ZIP
+/// attachments). Office documents inside are read too; binaries are listed but skipped.
+pub fn zip_text(bytes: &[u8], budget: usize) -> Result<String, String> {
+    use std::io::Read as _;
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|_| "That is not a ZIP archive.".to_string())?;
+    let mut out = String::new();
+    let mut skipped = Vec::new();
+    let names: Vec<String> = zip.file_names().map(str::to_string).collect();
+    let mut names: Vec<String> = names.into_iter().filter(|n| !n.ends_with('/') && !n.starts_with("__MACOSX/") && !n.split('/').any(|p| p.starts_with('.'))).collect();
+    names.sort();
+    for name in &names {
+        if out.len() >= budget {
+            skipped.push(name.clone());
+            continue;
+        }
+        let mut file = match zip.by_name(name) {
+            Ok(f) if f.size() <= 20 * 1024 * 1024 => f,
+            _ => {
+                skipped.push(name.clone());
+                continue;
+            }
+        };
+        let mut data = Vec::new();
+        if file.read_to_end(&mut data).is_err() {
+            skipped.push(name.clone());
+            continue;
+        }
+        let ext = std::path::Path::new(name).extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
+        let text = if OFFICE_EXTENSIONS.contains(&ext.as_str()) {
+            office_text(&data, &ext).ok()
+        } else if data.iter().take(8000).any(|b| *b == 0) {
+            None
+        } else {
+            Some(String::from_utf8_lossy(&data).into_owned())
+        };
+        match text {
+            Some(t) if !t.trim().is_empty() => {
+                let room = budget.saturating_sub(out.len());
+                let t: String = t.chars().take(room).collect();
+                out.push_str(&format!("--- {name} ---\n{}\n\n", t.trim_end()));
+            }
+            _ => skipped.push(name.clone()),
+        }
+    }
+    if out.is_empty() {
+        return Err("The archive has no readable text files.".into());
+    }
+    if !skipped.is_empty() {
+        out.push_str(&format!("(Not read: {})", skipped.iter().take(30).cloned().collect::<Vec<_>>().join(", ")));
+    }
+    Ok(out)
+}
+
+/// Moves a document to another library, its text and name kept.
+pub fn move_document(config_dir: &Path, from: &str, document_id: &str, to: &str) -> Result<(), String> {
+    if from == to {
+        return Ok(());
+    }
+    let source = load(config_dir, from)?;
+    let doc = source.documents.iter().find(|d| d.id == document_id).ok_or("That document is gone.")?.clone();
+    let text = std::fs::read_to_string(docs_dir(config_dir, from)?.join(format!("{}.txt", doc.id))).map_err(|e| e.to_string())?;
+    load(config_dir, to)?;
+    add_text(config_dir, to, &doc.name, &text)?;
+    remove(config_dir, from, document_id).map(|_| ())
+}
+
 /// The text of a file with its line breaks, by its kind: PDF, Office, HTML or plain text.
 pub fn read_text(path: &Path) -> Result<String, String> {
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
@@ -770,6 +836,15 @@ mod tests {
         }
         zip.finish().unwrap();
         buf.into_inner()
+    }
+
+    #[test]
+    fn zip_archives_are_read_file_by_file() {
+        let archive = zipped(&[("notes/a.md", "# Alpha\nfirst"), ("b.txt", "second"), ("img.png", "\u{0}\u{1}binary"), ("__MACOSX/x", "junk")]);
+        let text = zip_text(&archive, 10_000).unwrap();
+        assert!(text.contains("--- b.txt ---\nsecond") && text.contains("--- notes/a.md ---\n# Alpha"), "{text}");
+        assert!(text.ends_with("(Not read: img.png)"), "{text}");
+        assert!(zip_text(b"nope", 100).is_err());
     }
 
     #[test]

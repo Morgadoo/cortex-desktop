@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 96 |
-| PARTIAL | 86 | 67 |
+| DONE | 58 | 102 |
+| PARTIAL | 86 | 61 |
 | MISSING | 48 | 29 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 26 / 15 / 4 / 9 · LibreChat 29 / 10 / 3 / 4 · LobeHub 10 / 13 / 6 / 5 · Onyx 10 / 8 / 3 / 5 · Osaurus 6 / 12 / 8 / 4 · OpenBot 15 / 9 / 5 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 27 / 14 / 4 / 9 · LibreChat 31 / 8 / 3 / 4 · LobeHub 12 / 11 / 6 / 5 · Onyx 11 / 7 / 3 / 5 · Osaurus 6 / 12 / 8 / 4 · OpenBot 15 / 9 / 5 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -29,7 +29,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 26 / 15 / 4 / 
 | Open WebUI | LaTeX, tables, task lists, Mermaid | PARTIAL | DONE | LaTeX parity L275; GFM tables and task lists dom.ts:149; Mermaid parity L200 |
 | Open WebUI | `:::writing` blocks | MISSING | MISSING |  |
 | Open WebUI | Inline visualizations | PARTIAL | DONE | Apps preview inline in the reply with an Expand bar (parity L129); Mermaid drawn inline (L200) |
-| Open WebUI | Response auto-scroll | PARTIAL | PARTIAL | Follows the stream while at the bottom, stops when you scroll up (chat.ts:2469–2487, 2659). Missing: a setting to turn following off |
+| Open WebUI | Response auto-scroll | PARTIAL | DONE | Follows while at the bottom, and a setting turns following off (parity: Sound and stream following) |
 | Open WebUI | Chat parameters (prompt, params per chat/account/model) | PARTIAL | PARTIAL | Per chat: temperature, max tokens, instructions (parity L272; chat.ts:2886–2914). Missing: top_p and other parameters, and defaults per account or per model/agent |
 | Open WebUI | `{{USER_NAME}}`, `{{CURRENT_DATE}}` | MISSING | DONE | parity L269 |
 | Open WebUI | Temporal awareness | MISSING | DONE | The prompt states the date in the user's time zone (e.g. Europe/Lisbon, UTC+01:00); clock time is left out so prompt caches stay warm; date math runs in `run_code` |
@@ -78,7 +78,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 26 / 15 / 4 / 
 | LibreChat | Quote a passage into the next message | PARTIAL | DONE | parity L279 (answers and canvases) |
 | LibreChat | Enter: Queue, Steer or Interrupt | PARTIAL | DONE | parity L270 (Enter steers, Alt+Enter queues), Stop (L191) |
 | LibreChat | Queue list: send now, edit, reorder, new chat, remove | MISSING | DONE | Queued messages: send now, edit, move up/down, remove, pause, resume, clear, send next (parity: A queue that lasts) |
-| LibreChat | `@` switches model, preset or agent | PARTIAL | PARTIAL | `@` lists models and skills (parity L282). Missing: agents |
+| LibreChat | `@` switches model, preset or agent | PARTIAL | DONE | `@` lists models and agents; an agent opens a new chat with it (parity: @ starts a chat with an agent) |
 | LibreChat | Switch model mid-chat | PARTIAL | DONE | `@model` and `/model` (parity L280, L282); the conversation stores its model (api.ts `Conversation.model`) |
 | LibreChat | Drafts saved locally | MISSING | DONE | parity L276 (text and attachments, across restarts) |
 | LibreChat | Collapse long user messages | MISSING | DONE | parity L276; chat.ts:710–720 |
@@ -92,10 +92,10 @@ Per app now (done / partial / missing / out of scope): Open WebUI 26 / 15 / 4 / 
 | LibreChat | Run a code block | PARTIAL | DONE | parity L277 |
 | LibreChat | Copy as rich text | MISSING | DONE | parity L287; chat.ts:921–928 |
 | LibreChat | Agent marketplace | MISSING | OUT OF SCOPE | Shared marketplaces left out (parity L217) |
-| LibreChat | Agent plugins (skills, MCP, hooks in one package) | MISSING | PARTIAL | Agent bundle with notebook and skills (parity L295; agents.rs:92). Missing: MCP servers and hooks in the package |
+| LibreChat | Agent plugins (skills, MCP, hooks in one package) | MISSING | PARTIAL | Agent files carry notebook, skills and MCP servers (parity: Agents travel with their tool servers). Missing: hooks |
 | LibreChat | Agents API | MISSING | DONE | Agents answer through the local API as `agent/<id>` (parity: Agents in the local API) |
 | LibreChat | Prompt variables | MISSING | DONE | parity L269 |
-| LibreChat | Prompt versions with Production | MISSING | PARTIAL | Skill versions (parity L278). Missing: workflow versions, a "production" marker |
+| LibreChat | Prompt versions with Production | MISSING | PARTIAL | Skills, workflows, agents and tools keep versions (parity: Version history). Missing: a "production" marker |
 | LibreChat | PR status and CI for a chat's workspace | PARTIAL | PARTIAL | PR opened (parity L121). Missing: PR status and CI checks |
 | LibreChat | Jina / Cohere reranking | MISSING | DONE | Any Cohere/Jina-style `/rerank` server (parity: Reranking) |
 | LibreChat | Upload files as text | PARTIAL | DONE | Chat attachments go in full as text (chat.ts:1694–1700) |
@@ -113,7 +113,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 26 / 15 / 4 / 
 | LibreChat | UI scale, font size, RTL, clock format | MISSING | PARTIAL | Chat text size and interface zoom done (parity: Readability). Missing: right-to-left layout, clock format |
 | LibreChat | High-contrast theme | MISSING | DONE | High contrast in Settings → Appearance → Readability |
 | LibreChat | Multilingual UI | MISSING | MISSING |  |
-| LibreChat | Desktop notification and sound for finished replies | MISSING | PARTIAL | Desktop notification when a reply finishes in the background (parity: Notify when an answer is ready). Missing: a sound |
+| LibreChat | Desktop notification and sound for finished replies | MISSING | DONE | Notification with an optional chime (parity: Sound and stream following) |
 | LibreChat | Every shortcut rebindable | PARTIAL | PARTIAL | Seven actions rebindable (shortcuts.ts:9–16). Missing: Ctrl+1–9, Shift+Tab, Ctrl+O, Ctrl+R |
 | LibreChat | Settings search | MISSING | DONE | Search box at the top of Settings (parity: Search settings) |
 | LibreChat | Security / admin | MISSING | OUT OF SCOPE | Team/enterprise (parity L217) |
@@ -134,7 +134,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 26 / 15 / 4 / 
 | LobeHub | Export or copy an agent | MISSING | DONE | parity L295 |
 | LobeHub | Resource library (uploads, images, drafts) | PARTIAL | PARTIAL | Libraries hold documents; Apps page lists apps (apps.ts). Missing: generated images and canvases in one store |
 | LobeHub | Semantic search | MISSING | DONE | parity L243 |
-| LobeHub | Batch operations (folder upload, move, delete) | MISSING | PARTIAL | Remove several library documents at once; folders mirrored. Missing: moving documents between libraries |
+| LobeHub | Batch operations (folder upload, move, delete) | MISSING | DONE | Folders mirrored, several documents removed or moved at once (parity: Move documents between libraries) |
 | LobeHub | Relevance scores, excerpt preview | PARTIAL | DONE | Passage scores in Test a search; document preview (parity: Library document preview) |
 | LobeHub | Notion ZIP import | MISSING | MISSING |  |
 | LobeHub | Pages: long documents with a page list | PARTIAL | PARTIAL | Canvas documents. Missing: a list of all documents (the Apps page lists apps only) |
@@ -149,13 +149,13 @@ Per app now (done / partial / missing / out of scope): Open WebUI 26 / 15 / 4 / 
 | LobeHub | Export as screenshot, text, PDF, JSON | PARTIAL | PARTIAL | Markdown, JSON and PDF (print) export. Missing: export as a screenshot image |
 | LobeHub | Share link | MISSING | OUT OF SCOPE | Server-only (parity L202) |
 | LobeHub | Memory categories, weight, confidence, links | MISSING | MISSING | A memory has text, date, source only (api.ts `Memory`) |
-| LobeHub | Filter memories | PARTIAL | PARTIAL | Pages and facts listed. Missing: filters by category, date, source |
+| LobeHub | Filter memories | PARTIAL | DONE | Find, by source and by date (parity: Filter saved facts) |
 | LobeHub | Memory agent | PARTIAL | PARTIAL | `sanitize-my-knowledge` skill (parity L60). Missing: an automatic reviewer |
 | LobeHub | Multi-user, SSO, PWA, IM channels | MISSING | OUT OF SCOPE | parity L256–257 |
 | Onyx | Auto model router | MISSING | MISSING |  |
 | Onyx | Reasoning level and temperature | PARTIAL | DONE | Fast/Think (parity L74), temperature per chat (L272) |
 | Onyx | Agents with starters and knowledge | PARTIAL | DONE | Agents carry starters and libraries they search and cite (parity: Agent conversation starters and libraries) |
-| Onyx | Per-turn reminder; system prompt replaced | MISSING | PARTIAL | Agent instructions replace the persona (agents.rs:24). Missing: a reminder sent every turn |
+| Onyx | Per-turn reminder; system prompt replaced | MISSING | DONE | Agent instructions replace the persona; "Reminder on every turn" rides on each request (parity: A reminder on every turn) |
 | Onyx | Knowledge cutoff date | MISSING | MISSING |  |
 | Onyx | MCP and OpenAPI actions | PARTIAL | DONE | parity L290 |
 | Onyx | Craft: Outputs / Files / Apps tabs | PARTIAL | PARTIAL | Canvases, apps, Files panel. Missing: an outputs tab per session |
@@ -210,7 +210,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 26 / 15 / 4 / 
 | Osaurus | Agent identity, encrypted relay | MISSING | OUT OF SCOPE | Team |
 | OpenBot | FIFO queue: pause, resume, cancel, survives a crash | PARTIAL | DONE | Queue kept across restarts, paused and resumed, cleared |
 | OpenBot | Pinned messages | MISSING | DONE | Bookmarked messages, listed per chat and in search (parity: Bookmark messages) |
-| OpenBot | Audio, video, ZIP attachments | PARTIAL | PARTIAL | Text, images and spreadsheets (chat.ts:1671–1700). Missing: audio, video, ZIP. PDFs are also refused as attachments in chat |
+| OpenBot | Audio, video, ZIP attachments | PARTIAL | PARTIAL | Audio transcribed, ZIP read file by file, PDFs and Office read (parity: Audio and ZIP attachments). Missing: video |
 | OpenBot | Bubble colours from the avatar | MISSING | MISSING | Cosmetic |
 | OpenBot | Backdrop | MISSING | MISSING | Cosmetic |
 | OpenBot | Copy an error's details | PARTIAL | DONE | Copy details on a failed reply (parity: Copy error details) |

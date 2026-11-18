@@ -3,7 +3,7 @@ import { tauriInvoke } from '../../shared/tauri';
 import { api, type AppSettings, type Provider } from './api';
 import { clear, confirmDialog, h, icon, modal, toast } from './dom';
 import { historyButton } from './versions';
-import { changed, finishNotificationsOn, followUpsOn, setFinishNotifications, setFollowUps, setTemporaryByDefault, state, temporaryByDefault } from './state';
+import { changed, finishNotificationsOn, finishSoundOn, followStreamOn, followUpsOn, setFinishNotifications, setFinishSound, setFollowStream, setFollowUps, setTemporaryByDefault, state, temporaryByDefault } from './state';
 import { button, card, modalHeader, switchInput } from './ui';
 import { audioApi, refreshAudioSettings, speakText, type AudioView } from './audio';
 import { SHORTCUTS, bindingFor, comboOf, display, setBinding } from './shortcuts';
@@ -976,6 +976,8 @@ async function renderGeneral(content: HTMLElement) {
     ),
     card(
       row('Notify when a reply is ready', 'A desktop notification when an answer finishes (or fails) while Lumo is in the background. Scheduled tasks always notify.', switchInput(finishNotificationsOn(), (v) => setFinishNotifications(v))),
+      row('Play a sound with it', 'A short chime with the notification.', switchInput(finishSoundOn(), (v) => setFinishSound(v))),
+      row('Follow answers as they stream', 'Keep the newest text in view while an answer is written; off leaves the page where you put it.', switchInput(followStreamOn(), (v) => setFollowStream(v))),
       row('Suggest follow-ups', 'After each answer, offer three next questions. Each takes one short extra request to the model.', switchInput(followUpsOn(), (v) => setFollowUps(v))),
       row('New chats are temporary', 'Chats are not saved to your history unless you turn this off for one (the ghost button on the new-chat page). Takes effect from the next new chat.', switchInput(temporaryByDefault(), (v) => setTemporaryByDefault(v)))
     ),

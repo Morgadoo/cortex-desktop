@@ -52,6 +52,10 @@ pub struct Agent {
     /// Libraries the agent searches before answering, by id.
     #[serde(default)]
     pub libraries: Vec<String>,
+    /// A short reminder added to the newest message on every request (Onyx's per-turn
+    /// reminder), for rules the agent must not drift from in long chats.
+    #[serde(default)]
+    pub reminder: String,
     pub created_at: DateTime<Utc>,
 }
 
@@ -347,6 +351,7 @@ pub fn parse_draft(text: &str, tools: &[&str], skills: &[String]) -> Result<Agen
         monthly_budget: None,
         starters: Vec::new(),
         libraries: Vec::new(),
+        reminder: String::new(),
         created_at: Utc::now(),
         name,
     })
@@ -388,6 +393,7 @@ pub fn templates() -> Vec<Agent> {
         monthly_budget: None,
         starters: Vec::new(),
         libraries: Vec::new(),
+        reminder: String::new(),
         created_at: Utc::now(),
     };
     vec![
@@ -447,6 +453,7 @@ mod tests {
             monthly_budget: Some(5.0),
             starters: Vec::new(),
             libraries: Vec::new(),
+            reminder: String::new(),
             created_at: Utc::now(),
         };
         save(from.path(), agent).unwrap();

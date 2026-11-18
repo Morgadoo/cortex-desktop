@@ -1,6 +1,6 @@
 /** Libraries: document collections the assistant searches, with a search box to test them. */
 import { tauriInvoke } from '../../shared/tauri';
-import { clear, confirmDialog, h, icon, modal, promptText, toast } from './dom';
+import { clear, confirmDialog, h, icon, modal, popover, promptText, toast } from './dom';
 import { modalHeader } from './ui';
 
 interface Doc {
@@ -189,7 +189,10 @@ export class LibrariesPage {
     // Select documents to remove several at once.
     const selected = new Set<string>();
     const removeSelected = h('button', { class: 'btn btn-danger btn-sm', hidden: true });
+    const moveSelected = h('button', { class: 'btn btn-secondary btn-sm', hidden: true }, 'Move to…');
+    moveSelected.addEventListener('click', () => void this.moveDocs(moveSelected, lib.id, [...selected]));
     const syncSelection = () => {
+      moveSelected.hidden = selected.size === 0 || this.libraries.length < 2;
       removeSelected.hidden = selected.size === 0;
       removeSelected.textContent = `Remove ${selected.size} selected`;
     };
@@ -210,7 +213,7 @@ export class LibrariesPage {
       ? h(
           'div',
           { class: 'doc-list' },
-          h('div', { class: 'doc-row doc-head' }, selectAll, h('span', { class: 'doc-name muted' }, `${lib.documents.length} documents`), h('span', { class: 'spacer' }), removeSelected),
+          h('div', { class: 'doc-row doc-head' }, selectAll, h('span', { class: 'doc-name muted' }, `${lib.documents.length} documents`), h('span', { class: 'spacer' }), moveSelected, removeSelected),
           lib.documents.map((d) => {
             const box = h('input', { type: 'checkbox', class: 'doc-select' });
             box.addEventListener('change', () => {
@@ -226,6 +229,7 @@ export class LibrariesPage {
               h('button', { class: 'doc-name link-like', title: 'Preview its text', on: { click: () => previewDocument(lib.id, d.id, d.name) } }, d.name),
               h('span', { class: 'muted' }, size(d.chars)),
               h('span', { class: 'muted' }, new Date(d.addedAt).toLocaleDateString()),
+              h('button', { class: 'icon-btn small', title: 'Move to another library', on: { click: (e: MouseEvent) => void this.moveDocs(e.currentTarget as HTMLElement, lib.id, [d.id]) } }, icon('forward', 15)),
               h('button', { class: 'icon-btn small', title: 'Remove', on: { click: async () => { await api.removeDoc(lib.id, d.id); await this.load(); } } }, icon('trash', 15))
             );
           })
@@ -253,6 +257,28 @@ export class LibrariesPage {
       h('div', { class: 'section-title' }, 'Test a search'),
       h('div', { class: 'search-wrap' }, icon('search', 16), query),
       results
+    );
+  }
+
+  /** Moves documents to a library chosen from a menu. */
+  private async moveDocs(anchor: HTMLElement, from: string, ids: string[]) {
+    const others = this.libraries.filter((l) => l.id !== from);
+    if (!others.length) return void toast('Make another library first.');
+    const close = popover(
+      anchor,
+      h(
+        'div',
+        { class: 'menu' },
+        h('div', { class: 'menu-heading' }, ids.length > 1 ? `Move ${ids.length} documents to` : 'Move to'),
+        others.map((l) =>
+          h('button', { class: 'menu-item', on: { click: async () => {
+            close();
+            for (const id of ids) await tauriInvoke('chat_move_document', { libraryId: from, documentId: id, to: l.id }).catch((e) => toast(String(e), 'error'));
+            toast(`Moved to ${l.name}.`);
+            await this.load();
+          } } }, icon('library', 15), h('span', {}, l.name))
+        )
+      )
     );
   }
 

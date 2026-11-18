@@ -4,7 +4,7 @@ import { api, newId, type ApprovalMode, type ChatParams, type Conversation, type
 import { fillVariables } from './variables';
 import { startVoiceConversation, voiceActive, voiceTurnEnded } from './voice';
 import { clear, confirmDialog, greeting, h, icon, markdown, modal, popover, promptText, timeLabel, toast } from './dom';
-import { changed, currentModel, followUpsOn, navigate, setMode, state, temporaryByDefault, type LiveTurn } from './state';
+import { changed, currentModel, followUpsOn, navigate, setMode, state, temporaryByDefault, type LiveTurn, followStreamOn } from './state';
 import { openSettings } from './settings';
 import { openInstructions } from './pages';
 import { closePanel, enableAskAboutSelection, openSidePanel, renderCanvasCard, setPanelHost } from './canvas';
@@ -1594,13 +1594,15 @@ class Composer {
     // `@` also switches the model (Open WebUI's @model), matched on its name or id.
     const key = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, '');
     const models = match && match[1] === '@' ? state.models.filter((m) => key(m.name).startsWith(key(match[2]!)) || key(m.id).startsWith(key(match[2]!))).slice(0, 6) : [];
-    if (!skills.length && !commands.length && !models.length) {
+    // And `@` starts a chat with one of your agents (LibreChat's @agent).
+    const agents = match && match[1] === '@' ? state.agents.filter((a) => key(a.name).startsWith(key(match[2]!))).slice(0, 5) : [];
+    if (!skills.length && !commands.length && !models.length && !agents.length) {
       this.slashMenu?.close();
       this.slashMenu = null;
       return;
     }
     const list = h('div', { class: 'menu slash-menu' });
-    const items = [...commands.map((c) => `cmd:${c.name}`), ...models.map((m) => `model:${m.reference}`), ...skills.map((s) => s.name)];
+    const items = [...commands.map((c) => `cmd:${c.name}`), ...models.map((m) => `model:${m.reference}`), ...agents.map((a) => `agent:${a.id}`), ...skills.map((s) => s.name)];
     const index = Math.min(this.slashMenu?.index ?? 0, items.length - 1);
     if (commands.length) list.append(h('div', { class: 'menu-heading' }, 'Commands'));
     commands.forEach((c, i) =>
@@ -1625,9 +1627,21 @@ class Composer {
         )
       );
     });
+    if (agents.length) list.append(h('div', { class: 'menu-heading' }, 'Chat with an agent'));
+    agents.forEach((a, j) => {
+      const i = commands.length + models.length + j;
+      list.append(
+        h(
+          'button',
+          { class: `menu-item rich${i === index ? ' selected' : ''}`, on: { mousedown: (e: MouseEvent) => { e.preventDefault(); this.pickSkill(`agent:${a.id}`); } } },
+          h('span', { class: 'agent-avatar small' }, a.avatar || a.name.charAt(0)),
+          h('span', {}, h('strong', {}, a.name), h('small', {}, a.description))
+        )
+      );
+    });
     if (skills.length) list.append(h('div', { class: 'menu-heading' }, 'Skills'));
     skills.forEach((skill, j) => {
-      const i = commands.length + models.length + j;
+      const i = commands.length + models.length + agents.length + j;
       list.append(
         h(
           'button',
@@ -1663,6 +1677,15 @@ class Composer {
     if (name.startsWith('cmd:')) {
       this.setText('');
       return void this.runCommand(name.slice(4));
+    }
+    if (name.startsWith('agent:')) {
+      const agent = state.agents.find((a) => a.id === name.slice(6));
+      this.setText('');
+      if (!agent) return;
+      state.mode = 'agents';
+      navigate({ kind: 'home', agentId: agent.id });
+      toast(`New chat with ${agent.name}.`);
+      return void setTimeout(() => this.focus());
     }
     if (name.startsWith('model:')) {
       const reference = name.slice(6);
@@ -1965,8 +1988,23 @@ class Composer {
           this.attachments.push({ name: file.name, text: '', image: await readImage(file) });
           continue;
         }
-        // PDFs and Office documents are read into text, as libraries read them.
-        if (/\.(pdf|docx|pptx|odt|odp)$/i.test(file.name)) {
+        // Recordings are transcribed with the speech-to-text model, and the transcript attached.
+        if (file.type.startsWith('audio/') || /\.(mp3|m4a|wav|ogg|oga|opus|flac|webm)$/i.test(file.name)) {
+          try {
+            if (file.size > 25 * 1024 * 1024) throw new Error(`${file.name} is larger than 25 MB.`);
+            toast(`Transcribing ${file.name}…`);
+            const bytes = new Uint8Array(await file.arrayBuffer());
+            let binary = '';
+            for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+            const text = await tauriInvoke<string>('chat_transcribe', { audio: btoa(binary), mime: file.type || 'audio/mpeg' });
+            this.attachments.push({ name: `${file.name} (transcript)`, text });
+          } catch (e) {
+            toast(`${file.name}: ${String(e)}`, 'error');
+          }
+          continue;
+        }
+        // PDFs, Office documents and ZIP archives are read into text, as libraries read them.
+        if (/\.(pdf|docx|pptx|odt|odp|zip)$/i.test(file.name)) {
           try {
             const bytes = new Uint8Array(await file.arrayBuffer());
             let binary = '';
@@ -3006,7 +3044,7 @@ export class ChatView {
     clear(this.overlay, approval, question);
     composer.el.classList.toggle('hidden', Boolean(question));
     composer.renderBar();
-    if (this.stickToBottom) this.scrollToBottom(false);
+    if (this.stickToBottom && followStreamOn()) this.scrollToBottom(false);
   }
 
   private updateSticky() {

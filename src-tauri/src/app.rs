@@ -168,6 +168,7 @@ pub fn run() {
             chat::commands::chat_export_diagnostics,
             chat::commands::chat_backup_model,
             chat::commands::chat_set_backup_model,
+            chat::commands::chat_move_document,
                 chat::commands::chat_custom_tools,
                 chat::commands::chat_save_custom_tool,
                 chat::commands::chat_delete_custom_tool,

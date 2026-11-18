@@ -213,7 +213,7 @@ items most likely to differ:
 Reviewed in November 2026 feature by feature against the docs of Open WebUI, LibreChat, LobeHub,
 Onyx, Osaurus and OpenBot (about 220 features). Every item of the review's shortlist is in the table
 below; every feature the review found missing or partial is tracked row by row, with evidence, in
-[review-coverage.md](review-coverage.md) (now 96 done, 67 partial, 29 missing, 31 out of scope).
+[review-coverage.md](review-coverage.md) (now 102 done, 61 partial, 29 missing, 31 out of scope).
 What was deliberately left out, and why:
 
 - **Team and enterprise features** (channels, comments, SSO, SCIM, tenants, admin plane, shared
@@ -309,6 +309,12 @@ What was deliberately left out, and why:
 | Fold a long answer | lobehub | Answers over 2,500 characters get a fold button that shrinks them to a few lines, and back. Verified live | Done |
 | Pinned chats and agents in the palette | LibreChat (favorites) | Ctrl+K opens with your pinned chats and agents (chat with one) first, then bookmarks and actions. Verified live | Done |
 | A backup model for every chat; plain error messages | LibreChat, lobehub (fallback models), onyx | Settings → Providers → Backup model: when a reply's model fails before answering, the reply continues once with it and says why ("The provider account is out of credit; continuing with …"); an agent's own backup comes first. Provider errors read as what they mean (key refused, out of credit, rate limited, no access, conversation too long) with the HTTP status, and automatic read-aloud pauses after a failure instead of failing on every answer. Verified live with an account out of credit | Done |
+| Audio and ZIP attachments | openbot.run | A recording attached in chat (mp3, m4a, wav, ogg, flac, webm) is transcribed with the speech-to-text model and attached as its transcript; a ZIP archive's text and Office files are read file by file (binaries listed, not read). Verified live: a WAV question and a ZIP's budget answered from their attachments | Done |
+| `@` starts a chat with an agent | LibreChat (@agent) | Typing `@` lists your agents beside the models; choosing one opens a new chat with it. Verified live | Done |
+| A reminder on every turn | onyx (per-turn reminder) | An agent's "Reminder on every turn" is added to the newest message on each request (not saved), so long chats keep its rules | Done |
+| Move documents between libraries | lobehub | A document's move button, or Move to… for selected documents, takes them to another library, text and name kept | Done |
+| Filter saved facts | lobehub (memory filters) | Knowledge → Facts: find by words, by who saved it (you or the assistant) and by date. Verified live | Done |
+| Sound and stream following | LibreChat (notification sound), open-webui (auto-scroll setting) | A chime with the "reply ready" notification (Settings → General) and a switch to stop following answers down the page as they stream | Done |
 | Translate an answer | LibreChat, lobehub | The globe under an answer translates it into a listed or any language, shown below the original (Markdown and code kept) without changing the conversation. Verified live | Done |
 | Quote a passage into the next message | LibreChat, lobehub | Selecting text in an answer (or a canvas) shows "Ask about this", which quotes it in the composer | Done |
 | Slash commands | open-webui (built-in `/` commands), Vibe CLI | `/` lists app commands before skills: /new, /temporary, /model, /voice, /fork, /context, /settings, /export, /clear. Verified live (/context) | Done |

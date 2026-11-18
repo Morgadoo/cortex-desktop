@@ -260,6 +260,9 @@ export class KnowledgePage {
   readonly el = h('div', { class: 'page' });
   readonly key = 'page:knowledge';
   private memories: Memories = { enabled: true, items: [] };
+  private memoryQuery = '';
+  private memorySource: 'all' | 'you' | 'assistant' = 'all';
+  private memoryDays = 0;
   private pages: KnowledgePageData[] = [];
   private tab: 'pages' | 'facts' = 'pages';
   private body = h('div', { class: 'knowledge' });
@@ -332,11 +335,37 @@ export class KnowledgePage {
       if (e.key === 'Enter') void add();
     });
     const adder = h('div', { class: 'memory-add' }, input, h('button', { class: 'btn btn-primary', on: { click: () => void add() } }, 'Add'));
+    // Filters (LobeHub): who saved a fact, when, and words in it.
+    const query = h('input', { class: 'input small memory-find', type: 'search', placeholder: 'Find a fact', value: this.memoryQuery });
+    query.addEventListener('input', () => {
+      this.memoryQuery = query.value;
+      this.render();
+      const again = this.el.querySelector<HTMLInputElement>('.memory-find');
+      again?.focus();
+      again?.setSelectionRange(again.value.length, again.value.length);
+    });
+    const chip = (value: 'all' | 'you' | 'assistant', label: string) =>
+      h('button', { class: `chip-btn${this.memorySource === value ? ' active' : ''}`, on: { click: () => { this.memorySource = value; this.render(); } } }, label);
+    const sinceChip = (days: number, label: string) =>
+      h('button', { class: `chip-btn${this.memoryDays === days ? ' active' : ''}`, on: { click: () => { this.memoryDays = days; this.render(); } } }, label);
+    const filters = m.items.length > 3
+      ? h('div', { class: 'memory-filters' }, query, chip('all', 'All'), chip('you', 'Added by you'), chip('assistant', 'Saved by the assistant'), sinceChip(0, 'Any time'), sinceChip(30, 'Last 30 days'))
+      : null;
+    const since = this.memoryDays ? Date.now() - this.memoryDays * 86_400_000 : 0;
+    const words = this.memoryQuery.toLowerCase().split(/\s+/).filter(Boolean);
+    const shown = m.items.filter(
+      (i) =>
+        (this.memorySource === 'all' || (this.memorySource === 'assistant') === (i.source === 'assistant')) &&
+        (!since || Date.parse(i.createdAt) >= since) &&
+        words.every((w) => i.text.toLowerCase().includes(w))
+    );
     const list = m.items.length
       ? h(
           'div',
           { class: 'memory-list' },
-          [...m.items].reverse().map((item) => {
+          filters,
+          shown.length ? null : h('p', { class: 'muted' }, 'No fact matches.'),
+          [...shown].reverse().map((item) => {
             const text = h('div', { class: 'memory-text' }, item.text);
             const edit = h('button', { class: 'icon-btn small', title: 'Edit' }, icon('edit', 15));
             edit.addEventListener('click', () => {

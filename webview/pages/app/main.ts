@@ -17,7 +17,7 @@ import { AppsPage } from './apps';
 import { WorkflowsPage } from './workflows';
 import { applyTheme, openSettings, reloadModels, setTheme, storedTheme } from './settings';
 import { stepZoom } from './appearance';
-import { applyEvent, back, changed, finishNotificationsOn, forward, navigate, state, subscribe, type Page } from './state';
+import { applyEvent, back, changed, finishNotificationsOn, finishSoundOn, forward, navigate, playChime, state, subscribe, type Page } from './state';
 import { button, emptyState, iconButton, modalHeader } from './ui';
 import { refreshAudioSettings } from './audio';
 
@@ -795,6 +795,7 @@ async function start() {
     const plain = text.replace(/```[\s\S]*?```/g, ' [code] ').replace(/[#*_`>|]/g, '').replace(/\s+/g, ' ').trim();
     const body = failed ? `The reply could not finish${live?.error ? `: ${live.error}` : '.'}` : plain || 'Your answer is ready.';
     void tauriInvoke('chat_notify', { title: summary?.title || 'Lumo', body }).catch(() => undefined);
+    if (finishSoundOn()) playChime();
   };
   void listen<ChatEvent>('chat://event', (event) => {
     const id = event.conversationId;

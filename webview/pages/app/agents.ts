@@ -121,6 +121,7 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
     );
     const budget = h('input', { class: 'input', type: 'number', min: '0', step: '0.5', value: base?.monthlyBudget ? String(base.monthlyBudget) : '', placeholder: 'No limit' });
     // Conversation starters, one a line, shown on the agent's new-chat page.
+    const reminder = h('input', { class: 'input', value: base?.reminder ?? '', placeholder: 'Always answer in Portuguese; never give legal advice' });
     const starters = h('textarea', { class: 'input textarea', rows: 3, placeholder: 'Summarise this week\'s notes\nDraft a reply to the last email' });
     starters.value = (base?.starters ?? []).join('\n');
     // Its own reference material: libraries it searches before answering.
@@ -163,6 +164,7 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
           fallbackModel: fallback.value || null,
           monthlyBudget: Number(budget.value) > 0 ? Number(budget.value) : null,
           starters: starters.value.split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 8),
+          reminder: reminder.value.trim(),
           libraries: [...pickedLibraries],
           createdAt: existing?.createdAt ?? new Date().toISOString(),
         });
@@ -205,6 +207,8 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
       h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'All tools'), h('small', { class: 'muted' }, 'Click a tool to cycle: allowed, ask first, blocked. Turn off to block what you do not pick.')), allTools),
       toolGrid,
       h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Think longer'), h('small', { class: 'muted' }, 'Use extended reasoning by default, where the model supports it.')), think),
+      h('label', { class: 'field-label', title: 'Added to your newest message on every request, so long chats do not drift from it' }, 'Reminder on every turn'),
+      reminder,
       h('label', { class: 'field-label' }, 'Conversation starters (one a line)'),
       starters,
       h('label', { class: 'field-label', title: 'The agent searches these before answering and cites what it uses' }, 'Libraries'),

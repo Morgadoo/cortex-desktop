@@ -190,6 +190,8 @@ export interface Agent {
   starters?: string[];
   /** Libraries the agent searches, by id. */
   libraries?: string[];
+  /** Added to the newest message on every request. */
+  reminder?: string;
   createdAt: string;
 }
 
