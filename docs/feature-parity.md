@@ -320,6 +320,6 @@ below. What was deliberately left out, and why:
   a real speech-to-text model (Whisper tiny.en behind an OpenAI-compatible endpoint, fed speech the
   xAI voice model spoke). ElevenLabs speech-to-text and ElevenLabs voices need keys this setup does
   not have.
-- **Computer use on macOS and Wayland input:** only Linux/X11 was run here; macOS uses screencapture and cliclick, and Wayland can take screenshots (grim) but not click.
+- **Computer use on macOS and Wayland:** only Linux/X11 was run here. macOS uses screencapture and cliclick (no scrolling); Wayland uses grim for screenshots and ydotool (with ydotoold) for the mouse and keys, or wtype for typing. The Wayland commands are unit-tested, not run against a compositor.
 - **Pull requests on unknown hosts:** a host that is not recognised and prints no link during the push gets the branch pushed, and the pull request is opened there by hand.
 - **Branding:** the app still carries the Lumo name and logo; a new name is the owner's decision.

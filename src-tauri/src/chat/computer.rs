@@ -7,9 +7,9 @@
 //! so the model sees what happened. Screenshots go to the model scaled to at most
 //! [`MAX_WIDTH`] pixels wide as JPEG; coordinates it sends back are in that scaled space.
 //!
-//! Uses the platform's own tools: on Linux `xdotool` with ImageMagick `import` (X11) or `grim`
-//! (Wayland, screenshots only); on macOS `screencapture` and `cliclick`. When one is missing the
-//! tool says what to install.
+//! Uses the platform's own tools: on Linux `xdotool` with ImageMagick `import` (X11), or `grim`
+//! with `ydotool` (and `wtype` for typing when ydotool is missing) on Wayland; on macOS
+//! `screencapture` and `cliclick`. When one is missing the tool says what to install.
 
 use std::collections::HashMap;
 use std::io::Cursor;
@@ -111,10 +111,141 @@ fn install_hint() -> &'static str {
     if cfg!(target_os = "macos") {
         "Computer use on macOS needs cliclick (brew install cliclick) and screen-recording and accessibility permission for this app."
     } else if cfg!(target_os = "linux") {
-        "Computer use on Linux needs xdotool and ImageMagick (X11), or grim for screenshots on Wayland."
+        "Computer use on Linux needs xdotool and ImageMagick on X11; on Wayland, grim for screenshots and ydotool (with ydotoold running) for the mouse and keys, or wtype for typing."
     } else {
         "Computer use is available on Linux and macOS."
     }
+}
+
+/// A Wayland session without X11 (where xdotool cannot reach other windows).
+fn wayland() -> bool {
+    cfg!(target_os = "linux") && std::env::var_os("WAYLAND_DISPLAY").is_some() && std::env::var_os("DISPLAY").is_none()
+}
+
+/// Linux input event codes (`linux/input-event-codes.h`) for the keys a model names, for ydotool.
+fn key_code(name: &str) -> Option<u16> {
+    let n = name.trim().to_lowercase();
+    const LETTERS: [u16; 26] = [30, 48, 46, 32, 18, 33, 34, 35, 23, 36, 37, 38, 50, 49, 24, 25, 16, 19, 31, 20, 22, 47, 17, 45, 21, 44];
+    if n.len() == 1 {
+        let c = n.chars().next()?;
+        if c.is_ascii_lowercase() {
+            return Some(LETTERS[(c as u8 - b'a') as usize]);
+        }
+        if c.is_ascii_digit() {
+            return Some(if c == '0' { 11 } else { u16::from(c as u8 - b'0') + 1 });
+        }
+    }
+    if let Some(f) = n.strip_prefix('f').and_then(|d| d.parse::<u16>().ok()) {
+        return match f {
+            1..=10 => Some(58 + f),
+            11 => Some(87),
+            12 => Some(88),
+            _ => None,
+        };
+    }
+    Some(match n.as_str() {
+        "ctrl" | "control" | "control_l" => 29,
+        "shift" | "shift_l" => 42,
+        "alt" | "alt_l" | "option" => 56,
+        "super" | "super_l" | "meta" | "cmd" | "win" => 125,
+        "return" | "enter" => 28,
+        "escape" | "esc" => 1,
+        "tab" => 15,
+        "backspace" => 14,
+        "space" => 57,
+        "delete" | "del" => 111,
+        "home" => 102,
+        "end" => 107,
+        "page_up" | "pageup" | "prior" => 104,
+        "page_down" | "pagedown" | "next" => 109,
+        "up" => 103,
+        "down" => 108,
+        "left" => 105,
+        "right" => 106,
+        "minus" | "-" => 12,
+        "equal" | "=" => 13,
+        "comma" | "," => 51,
+        "period" | "." => 52,
+        "slash" | "/" => 53,
+        _ => return None,
+    })
+}
+
+/// ydotool's `key` arguments for a chord like `ctrl+shift+t`: every key down in order, then up in reverse.
+fn ydotool_keys(keys: &str) -> Result<Vec<String>, String> {
+    let codes = keys.split('+').map(|k| key_code(k).ok_or_else(|| format!("The key {} is not known; use names like ctrl, shift, Return, Tab, a, F5.", k.trim()))).collect::<Result<Vec<_>, _>>()?;
+    let mut out: Vec<String> = codes.iter().map(|c| format!("{c}:1")).collect();
+    out.extend(codes.iter().rev().map(|c| format!("{c}:0")));
+    Ok(out)
+}
+
+/// wtype's arguments for a chord: modifiers held with -M, the key with -k, released with -m.
+fn wtype_keys(keys: &str) -> Vec<String> {
+    let parts: Vec<&str> = keys.split('+').map(str::trim).filter(|k| !k.is_empty()).collect();
+    let Some((key, mods)) = parts.split_last() else { return Vec::new() };
+    let modifier = |m: &str| match m.to_lowercase().as_str() {
+        "control" | "control_l" => "ctrl".to_string(),
+        "super_l" | "meta" | "cmd" | "win" => "logo".to_string(),
+        "super" => "logo".to_string(),
+        other => other.to_string(),
+    };
+    let mut out = Vec::new();
+    for m in mods {
+        out.extend(["-M".to_string(), modifier(m)]);
+    }
+    out.extend(["-k".to_string(), (*key).to_string()]);
+    for m in mods.iter().rev() {
+        out.extend(["-m".to_string(), modifier(m)]);
+    }
+    out
+}
+
+/// The commands for one action on Wayland: ydotool for the pointer and keys.
+fn wayland_plan(action: &str, at: Option<(i64, i64)>, input: &Value) -> Result<Vec<Vec<String>>, String> {
+    let owned = |v: &[&str]| v.iter().map(|s| (*s).to_string()).collect::<Vec<String>>();
+    let mut plan = Vec::new();
+    if let Some((x, y)) = at {
+        plan.push(owned(&["ydotool", "mousemove", "--absolute", "-x", &x.to_string(), "-y", &y.to_string()]));
+    }
+    match action {
+        "click" => plan.push(owned(&["ydotool", "click", "0xC0"])),
+        "double_click" => plan.push(owned(&["ydotool", "click", "--repeat", "2", "0xC0"])),
+        "right_click" => plan.push(owned(&["ydotool", "click", "0xC1"])),
+        "move" => {}
+        "type" => plan.push(owned(&["ydotool", "type", "--", input.get("text").and_then(Value::as_str).unwrap_or_default()])),
+        "key" => {
+            let mut cmd = owned(&["ydotool", "key"]);
+            cmd.extend(ydotool_keys(input.get("keys").and_then(Value::as_str).unwrap_or_default())?);
+            plan.push(cmd);
+        }
+        "scroll" => {
+            let amount = input.get("amount").and_then(Value::as_i64).unwrap_or(3).clamp(1, 20);
+            let down = input.get("direction").and_then(Value::as_str) != Some("up");
+            plan.push(owned(&["ydotool", "mousemove", "--wheel", "-x", "0", "-y", &(if down { -amount } else { amount }).to_string()]));
+        }
+        other => return Err(format!("Unknown action {other}.")),
+    }
+    Ok(plan)
+}
+
+/// Runs a Wayland action; typing and keys fall back to wtype when ydotool is missing.
+async fn wayland_act(action: &str, at: Option<(i64, i64)>, input: &Value) -> Result<(), String> {
+    for cmd in wayland_plan(action, at, input)? {
+        let args: Vec<&str> = cmd[1..].iter().map(String::as_str).collect();
+        match output(&cmd[0], &args).await {
+            Ok(_) => {}
+            Err(e) if e.contains("is not installed") && matches!(action, "type" | "key") && at.is_none() => {
+                let wtype: Vec<String> = if action == "type" {
+                    vec!["--".into(), input.get("text").and_then(Value::as_str).unwrap_or_default().to_string()]
+                } else {
+                    wtype_keys(input.get("keys").and_then(Value::as_str).unwrap_or_default())
+                };
+                output("wtype", &wtype.iter().map(String::as_str).collect::<Vec<_>>()).await?;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
 }
 
 /// The screen as PNG bytes.
@@ -128,7 +259,7 @@ async fn capture() -> Result<Vec<u8>, String> {
         return bytes;
     }
     if cfg!(target_os = "linux") {
-        if std::env::var_os("WAYLAND_DISPLAY").is_some() && std::env::var_os("DISPLAY").is_none() {
+        if wayland() {
             return output("grim", &["-t", "png", "-"]).await;
         }
         return output("import", &["-window", "root", "png:-"]).await;
@@ -170,6 +301,21 @@ fn point(conversation_id: &str, input: &Value) -> Result<(i64, i64), String> {
 async fn act(conversation_id: &str, action: &str, input: &Value) -> Result<String, String> {
     let mac = cfg!(target_os = "macos");
     let text = |k: &str| input.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
+    if wayland() {
+        let needs_point = matches!(action, "click" | "double_click" | "right_click" | "move") || (action == "scroll" && input.get("x").is_some());
+        let at = if needs_point { Some(point(conversation_id, input)?) } else { None };
+        if action == "type" && text("text").is_empty() {
+            return Err("Give the text to type.".into());
+        }
+        if action == "key" && text("keys").is_empty() {
+            return Err("Give the keys, like ctrl+s.".into());
+        }
+        wayland_act(action, at, input).await?;
+        return Ok(match at {
+            Some((x, y)) => format!("{action} at {x},{y} (screen pixels)."),
+            None => format!("Done: {action}."),
+        });
+    }
     match action {
         "click" | "double_click" | "right_click" | "move" => {
             let (x, y) = point(conversation_id, input)?;
@@ -261,5 +407,23 @@ mod tests {
         assert_eq!(point("c", &json!({ "x": 100, "y": 50 })).unwrap(), (200, 100));
         assert!(point("c", &json!({ "x": 1 })).is_err());
         assert!(is_screenshot(&json!({ "action": "screenshot" })) && !is_screenshot(&json!({ "action": "click" })));
+    }
+
+    #[test]
+    fn wayland_actions_become_ydotool_and_wtype_commands() {
+        let plan = wayland_plan("double_click", Some((200, 100)), &json!({})).unwrap();
+        assert_eq!(plan[0], ["ydotool", "mousemove", "--absolute", "-x", "200", "-y", "100"]);
+        assert_eq!(plan[1], ["ydotool", "click", "--repeat", "2", "0xC0"]);
+        let keys = wayland_plan("key", None, &json!({ "keys": "ctrl+shift+t" })).unwrap();
+        assert_eq!(keys[0], ["ydotool", "key", "29:1", "42:1", "20:1", "20:0", "42:0", "29:0"]);
+        assert_eq!(ydotool_keys("Return").unwrap(), ["28:1", "28:0"]);
+        assert_eq!(ydotool_keys("alt+F4").unwrap(), ["56:1", "62:1", "62:0", "56:0"]);
+        assert_eq!(ydotool_keys("ctrl+1").unwrap(), ["29:1", "2:1", "2:0", "29:0"]);
+        assert!(ydotool_keys("ctrl+nosuchkey").is_err());
+        let scroll = wayland_plan("scroll", None, &json!({ "direction": "down", "amount": 5 })).unwrap();
+        assert_eq!(scroll[0], ["ydotool", "mousemove", "--wheel", "-x", "0", "-y", "-5"]);
+        assert_eq!(wayland_plan("type", None, &json!({ "text": "hi there" })).unwrap()[0], ["ydotool", "type", "--", "hi there"]);
+        assert_eq!(wtype_keys("ctrl+shift+t"), ["-M", "ctrl", "-M", "shift", "-k", "t", "-m", "shift", "-m", "ctrl"]);
+        assert_eq!(wtype_keys("Return"), ["-k", "Return"]);
     }
 }
