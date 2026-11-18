@@ -1828,6 +1828,36 @@ mod tests {
         assert!(text.contains("Lisbon"), "{text}");
     }
 
+    /// Downloads the models the live tests use into `LUMO_FETCH_MODELS` (as `LUMO_TEST_MODELS`
+    /// expects them), through the app's own downloader; `LUMO_FETCH_MODEL_IDS` narrows the list.
+    /// Models already there are kept.
+    #[tokio::test]
+    #[ignore]
+    async fn fetch_models_for_live_tests() {
+        let Ok(dir) = std::env::var("LUMO_FETCH_MODELS") else {
+            return;
+        };
+        let root = Path::new(&dir).join("models");
+        let ids = std::env::var("LUMO_FETCH_MODEL_IDS")
+            .unwrap_or_else(|_| "qwen2.5-0.5b,minilm-l6,whisper-tiny".into());
+        for id in ids.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+            if installed(&root, id) {
+                eprintln!("{id}: already downloaded");
+                continue;
+            }
+            let mut last = 0;
+            download(&root, id, |done, total| {
+                if done >= last + 50_000_000 || done == total {
+                    eprintln!("{id}: {} of {} MB", done / 1_000_000, total / 1_000_000);
+                    last = done;
+                }
+            })
+            .await
+            .unwrap();
+            assert!(installed(&root, id), "{id} is complete");
+        }
+    }
+
     /// With Whisper downloaded (`LUMO_TEST_MODELS`) and a recording (`LUMO_TEST_WAV`).
     #[test]
     #[ignore]

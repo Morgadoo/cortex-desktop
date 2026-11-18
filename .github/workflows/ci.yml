@@ -1,0 +1,145 @@
+name: CI
+
+# Validates every change: the webview (types, build, translations), the Rust core (format,
+# lints, unit and integration tests), and live tests against real servers and real models that
+# no unit test can stand in for: Qdrant and Apache Tika as service containers, and the built-in
+# chat, speech and embedding models downloaded from Hugging Face.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  # Compiled into the app; the public Lumo address is fine for tests.
+  LUMO_URL: https://lumo.proton.me
+
+jobs:
+  webview:
+    name: Webview (types, build, translations)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Type check
+        run: npm run typecheck
+      - name: Build
+        run: npm run build:webview
+      - name: Every interface string is translated
+        run: npm run check:i18n
+
+  rust:
+    name: Rust (format, lints, tests)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config cmake libssl-dev \
+            libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
+            libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev libxdo-dev ffmpeg
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          shared-key: lumo
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # The app embeds the built webview, so it is built first.
+      - run: npm ci && npm run build:webview
+      - name: Format
+        working-directory: src-tauri
+        run: cargo fmt --check
+      - name: Lints
+        working-directory: src-tauri
+        run: cargo clippy --features test-utils --all-targets -- -D warnings
+      - name: Unit and integration tests
+        working-directory: src-tauri
+        run: cargo test --features test-utils
+
+  live:
+    name: Live (Qdrant, Tika, built-in models)
+    needs: rust
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    services:
+      qdrant:
+        image: qdrant/qdrant:v1.12.4
+        ports:
+          - 6333:6333
+      tika:
+        image: apache/tika:latest
+        ports:
+          - 9998:9998
+    env:
+      LUMO_TEST_MODELS: ${{ github.workspace }}/../lumo-test-models
+      LUMO_FETCH_MODELS: ${{ github.workspace }}/../lumo-test-models
+      LUMO_TEST_QDRANT: http://localhost:6333
+      LUMO_TEST_TIKA: http://localhost:9998
+      LUMO_TEST_WAV: ${{ github.workspace }}/../jfk.wav
+    steps:
+      - uses: actions/checkout@v4
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config cmake libssl-dev \
+            libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
+            libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev libxdo-dev ffmpeg
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          shared-key: lumo
+          save-if: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci && npm run build:webview
+      - name: Cache the models
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/../lumo-test-models
+          key: lumo-test-models-v1
+      - name: Download the models (with the app's own downloader)
+        working-directory: src-tauri
+        run: cargo test --features test-utils --lib fetch_models_for_live_tests -- --ignored --nocapture
+      - name: A speech recording (whisper.cpp's sample, "ask not what your country can do for you")
+        run: curl -sSfL -o "$LUMO_TEST_WAV" https://github.com/ggml-org/whisper.cpp/raw/master/samples/jfk.wav
+      - name: Wait for Qdrant and Tika
+        run: |
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:6333/collections >/dev/null && curl -sf http://localhost:9998/version >/dev/null && exit 0
+            sleep 2
+          done
+          echo "Qdrant or Tika did not start" >&2
+          exit 1
+      - name: Live tests
+        working-directory: src-tauri
+        # One at a time: the batching test measures timing, and the models share the CPU.
+        run: >-
+          cargo test --features test-utils --lib -- --ignored --nocapture --test-threads=1
+          a_qdrant_server a_tika_server a_downloaded padding_is_neutral waiting_requests_are_batched
