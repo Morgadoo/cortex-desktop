@@ -177,9 +177,28 @@ pub fn parse(text: &str) -> Option<(String, String, String)> {
     let body = body.trim_start_matches("\n---").trim().to_string();
     let mut name = None;
     let mut description = None;
-    for line in front.lines() {
+    let lines: Vec<&str> = front.lines().collect();
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
+        i += 1;
+        // Top-level keys only; indented lines belong to the value before them.
+        if line.starts_with([' ', '\t']) {
+            continue;
+        }
         let Some((key, value)) = line.split_once(':') else { continue };
-        let value = value.trim().trim_matches(['"', '\'']).to_string();
+        let raw = value.trim();
+        // YAML block scalars (`>` folds lines, `|` keeps them): the indented lines that follow.
+        let value = if raw.starts_with('>') || raw.starts_with('|') {
+            let mut block = Vec::new();
+            while i < lines.len() && (lines[i].starts_with([' ', '\t']) || lines[i].trim().is_empty()) {
+                block.push(lines[i].trim());
+                i += 1;
+            }
+            if raw.starts_with('>') { block.iter().filter(|l| !l.is_empty()).copied().collect::<Vec<_>>().join(" ") } else { block.join("\n").trim().to_string() }
+        } else {
+            raw.trim_matches(['"', '\'']).to_string()
+        };
         match key.trim() {
             "name" => name = Some(value),
             "description" => description = Some(value),
@@ -595,6 +614,16 @@ mod link_tests {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn block_scalar_descriptions_are_read() {
+        let text = "---\nname: guide\ndescription: >\n  Use this when\n  asked about courses.\nlicense: MIT\n---\nBody";
+        let (name, description, body) = super::parse(text).unwrap();
+        assert_eq!((name.as_str(), description.as_str(), body.as_str()), ("guide", "Use this when asked about courses.", "Body"));
+        let kept = super::parse("---\nname: k\ndescription: |\n  line one\n  line two\n---\nB").unwrap();
+        assert_eq!(kept.1, "line one\nline two");
+        assert_eq!(super::parse("---\nname: plain\ndescription: \"quoted: yes\"\n---\nx").unwrap().1, "quoted: yes");
+    }
+
 
     #[test]
     fn skills_keep_their_versions() {

@@ -464,11 +464,6 @@ impl Drop for Place {
     }
 }
 
-/// How many requests are waiting for or using the built-in runtime.
-pub fn queued() -> usize {
-    QUEUED.load(std::sync::atomic::Ordering::SeqCst)
-}
-
 async fn completions(axum::Json(body): axum::Json<Value>) -> axum::response::Response {
     let Ok(root) = root() else { return error_response(500, "The model folder is not set up.") };
     let Some(place) = Place::take() else {
@@ -924,9 +919,7 @@ mod tests {
         if held.len() == QUEUE_LIMIT {
             assert!(Place::take().is_none(), "full");
         }
-        let before = queued();
         drop(held);
-        assert!(queued() < before.max(1) || before == 0);
         assert!(Place::take().is_some());
     }
 

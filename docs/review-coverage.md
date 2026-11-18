@@ -9,12 +9,12 @@ platform-only features, explained there under "deliberately left out".
 | Status | At the re-audit | Now |
 |---|---|---|
 | DONE | 58 | 206 |
-| PARTIAL | 86 | 2 |
+| PARTIAL | 86 | 3 |
 | MISSING | 48 | 1 |
-| OUT OF SCOPE | 31 | 14 |
+| OUT OF SCOPE | 31 | 13 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 49 / 0 / 0 / 5 · LibreChat 45 / 0 / 0 / 1 · LobeHub 32 / 0 / 0 / 2 · Onyx 23 / 0 / 0 / 3 · Osaurus 26 / 1 / 1 / 2 · OpenBot 31 / 1 / 0 / 1.
+Per app now (done / partial / missing / out of scope): Open WebUI 49 / 0 / 0 / 5 · LibreChat 45 / 0 / 0 / 1 · LobeHub 32 / 1 / 0 / 1 · Onyx 23 / 0 / 0 / 3 · Osaurus 26 / 1 / 1 / 2 · OpenBot 31 / 1 / 0 / 1.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -124,7 +124,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 49 / 0 / 0 / 5
 | LobeHub | Delete a message | MISSING | DONE | parity L296 |
 | LobeHub | Select several messages, delete or forward | MISSING | DONE | parity: Select messages (copy, forward to a chat or agent, delete with re-keyed history) |
 | LobeHub | Agent market | MISSING | DONE | Agents → Browse community agents reads LobeHub's own public agent index; search, categories, Add. Verified live against the public catalog |
-| LobeHub | Skills marketplace (browse, publish) | PARTIAL | OUT OF SCOPE | Shared marketplaces (parity L217); SKILL.md import exists (parity L82) |
+| LobeHub | Skills marketplace (browse, publish) | PARTIAL | PARTIAL | Browse: Skills → Import → Browse skill catalogues lists Anthropic's public skills (anthropics/skills, 19 skills) and any repository with .claude-plugin/marketplace.json added by owner/repo; search, then Add copies the instructions, and the scripts and files where GitHub lists the folder. Verified live against the real catalogue: 19 listed, pdf added. SKILL.md descriptions written as YAML blocks (> or |) are now read. Not here: publishing your own skills to a shared marketplace |
 | LobeHub | Agent groups (sequential, parallel, debate…) | PARTIAL | DONE | An agent can host a group: members picked in order in the agent editor, and a mode (parallel, sequential, debate). The host hands each request to them with `delegate` and answers from their reports; sequential members see the earlier reports, a debate adds a second round where each answers the others (subagents.rs Mode, agents.rs group_prompt). Verified live: a two-member debate ran both rounds and the host summed up |
 | LobeHub | External agents (Claude Code, Codex) | MISSING | DONE | parity: Coding agent programs as models (agent_cli.rs) |
 | LobeHub | Tasks with delegation, status, comments | PARTIAL | DONE | Scheduled tasks and sub-agents (parity L165, L248), and comments on a task (the speech-bubble on its row): every run gets them as notes to follow, newest last (`tasks::run_prompt`). Verified live: a comment was saved on a task; unit test checks the run prompt |

@@ -848,6 +848,30 @@ pub async fn chat_update_slack(app: AppHandle, enabled: bool, agent_id: Option<S
     chat_slack(app).await
 }
 
+/// The skill catalogues' skills (Anthropic's, and any added).
+#[tauri::command]
+pub async fn chat_skill_catalog(app: AppHandle, refresh: Option<bool>) -> Result<serde_json::Value, String> {
+    let b = super::skill_catalog::browse(&config_dir(&app)?, refresh.unwrap_or(false)).await?;
+    Ok(serde_json::json!({ "catalogs": b.catalogs, "listings": b.listings, "errors": b.errors }))
+}
+
+#[tauri::command]
+pub async fn chat_add_skill_catalog(app: AppHandle, repo: String) -> Result<(), String> {
+    super::skill_catalog::add_catalog(&config_dir(&app)?, &repo).await
+}
+
+#[tauri::command]
+pub fn chat_remove_skill_catalog(app: AppHandle, repo: String) -> Result<(), String> {
+    super::skill_catalog::remove_catalog(&config_dir(&app)?, &repo)
+}
+
+/// Adds a catalogue skill; says how many of its files came along.
+#[tauri::command]
+pub async fn chat_install_catalog_skill(app: AppHandle, catalog: String, branch: String, path: String) -> Result<serde_json::Value, String> {
+    let done = super::skill_catalog::install(&config_dir(&app)?, &catalog, &branch, &path).await?;
+    Ok(serde_json::json!({ "name": done.name, "files": done.files, "note": done.note }))
+}
+
 #[tauri::command]
 pub async fn chat_code_pr_status(app: AppHandle, conversation_id: String) -> Result<Option<super::code::PrStatus>, String> {
     let conversation = store::load_conversation(&config_dir(&app)?, &conversation_id)?;

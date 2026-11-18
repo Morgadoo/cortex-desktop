@@ -67,6 +67,7 @@ pub mod animation;
 pub mod audit;
 pub mod telegram;
 pub mod slack;
+pub mod skill_catalog;
 pub mod memory;
 pub mod privacy;
 pub mod providers;
