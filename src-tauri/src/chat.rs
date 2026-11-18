@@ -65,6 +65,7 @@ pub mod functions;
 pub mod agent_market;
 pub mod animation;
 pub mod audit;
+pub mod telegram;
 pub mod memory;
 pub mod privacy;
 pub mod providers;

@@ -749,6 +749,59 @@ pub fn chat_clear_audit(app: AppHandle) -> Result<(), String> {
     super::audit::clear(&config_dir(&app)?)
 }
 
+/// Telegram settings, with whether a token is saved.
+#[tauri::command]
+pub async fn chat_telegram(app: AppHandle) -> Result<super::telegram::Settings, String> {
+    let mut s = super::telegram::load(&config_dir(&app)?);
+    s.has_token = super::telegram::token().await.is_some();
+    Ok(s)
+}
+
+/// Saves a bot token after checking it with Telegram; empty removes it.
+#[tauri::command]
+pub async fn chat_set_telegram_token(app: AppHandle, token: String) -> Result<super::telegram::Settings, String> {
+    let dir = config_dir(&app)?;
+    let mut s = super::telegram::load(&dir);
+    if token.trim().is_empty() {
+        super::telegram::set_token("").await?;
+        s.enabled = false;
+        s.bot_name = None;
+    } else {
+        s.bot_name = Some(super::telegram::check(token.trim()).await?);
+        super::telegram::set_token(&token).await?;
+    }
+    super::telegram::save(&dir, &s)?;
+    chat_telegram(app).await
+}
+
+/// Changes the Telegram settings: on/off, agent, changes allowed; opens pairing or unpairs.
+#[tauri::command]
+pub async fn chat_update_telegram(app: AppHandle, enabled: bool, agent_id: Option<String>, allow_changes: bool, open_pairing: bool, unpair: Option<i64>) -> Result<super::telegram::Settings, String> {
+    let dir = config_dir(&app)?;
+    let mut s = super::telegram::load(&dir);
+    s.enabled = enabled;
+    s.agent_id = agent_id.filter(|a| !a.is_empty());
+    s.allow_changes = allow_changes;
+    if open_pairing {
+        let mut b = [0u8; 4];
+        rand::fill(&mut b);
+        s.pairing_code = Some(format!("{:06}", u32::from_le_bytes(b) % 1_000_000));
+    }
+    if let Some(id) = unpair {
+        if let Some(i) = s.paired.iter().position(|p| *p == id) {
+            s.paired.remove(i);
+            if i < s.paired_names.len() {
+                s.paired_names.remove(i);
+            }
+        }
+    }
+    super::telegram::save(&dir, &s)?;
+    if s.enabled {
+        super::telegram::start(&app);
+    }
+    chat_telegram(app).await
+}
+
 #[tauri::command]
 pub async fn chat_code_pr_status(app: AppHandle, conversation_id: String) -> Result<Option<super::code::PrStatus>, String> {
     let conversation = store::load_conversation(&config_dir(&app)?, &conversation_id)?;

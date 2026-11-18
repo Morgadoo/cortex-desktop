@@ -212,6 +212,9 @@ pub fn run() {
             chat::commands::chat_usage_breakdown,
             chat::commands::chat_task_comment,
             chat::commands::chat_open_preview,
+            chat::commands::chat_telegram,
+            chat::commands::chat_set_telegram_token,
+            chat::commands::chat_update_telegram,
             chat::commands::chat_playable_video,
             chat::commands::chat_audit_summary,
             chat::commands::chat_export_audit,
@@ -572,6 +575,7 @@ pub fn run() {
             crate::dictation::startup(app.handle());
             chat::sync::start(app.handle().clone());
             chat::share::start(app.handle());
+            chat::telegram::start(app.handle());
             tray::create(app.handle())?;
             updater::startup(app.handle());
             Ok(())

@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 205 |
-| PARTIAL | 86 | 0 |
+| DONE | 58 | 206 |
+| PARTIAL | 86 | 1 |
 | MISSING | 48 | 1 |
-| OUT OF SCOPE | 31 | 17 |
+| OUT OF SCOPE | 31 | 15 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 49 / 0 / 0 / 5 · LibreChat 45 / 0 / 0 / 1 · LobeHub 32 / 0 / 0 / 2 · Onyx 23 / 0 / 0 / 3 · Osaurus 25 / 0 / 1 / 4 · OpenBot 31 / 0 / 0 / 2.
+Per app now (done / partial / missing / out of scope): Open WebUI 49 / 0 / 0 / 5 · LibreChat 45 / 0 / 0 / 1 · LobeHub 32 / 0 / 0 / 2 · Onyx 23 / 0 / 0 / 3 · Osaurus 26 / 0 / 1 / 3 · OpenBot 31 / 1 / 0 / 1.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -192,7 +192,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 49 / 0 / 0 / 5
 | Osaurus | Browser session per agent | PARTIAL | DONE | Each agent has a browser profile of its own (chat/browser-profiles/<agent>): cookies and logins stay apart; the agent's Browser row opens it visibly to sign in, or forgets it (webpage.rs, agentpanel.ts). Verified live |
 | Osaurus | Computer use with rules per app | MISSING | DONE | Settings → Permissions → Computer use: never act in these apps, and only act in these apps, matched in the front window's title; a refused action tells the model to ask the user (`computer::app_allowed`, tested) |
 | Osaurus | Calendar, Mail, Contacts… integrations | MISSING | DONE | parity: Calendars and contacts (calendar.rs: ICS links/files with repeat rules, vCard); mail through the Proton Mail connector |
-| Osaurus | Agent channels | MISSING | OUT OF SCOPE | parity L256 |
+| Osaurus | Agent channels | MISSING | DONE | Settings → General → Telegram: your own bot (token from @BotFather, kept in the keychain) answers from the chosen agent or the assistant while Lumo runs; Lumo long-polls Telegram, so nothing reaches the computer from outside. Only accounts paired with a one-time code are answered; runs are unattended (changes refused unless allowed); each Telegram chat is a chat in Lumo; /new starts afresh; long answers are split. Unit-tested; verified live against a stand-in for Telegram's Bot API (no real bot token here): a stranger refused, pairing, and a real model's answer sent back |
 | Osaurus | Import Claude plugins | MISSING | DONE | parity: Import Claude plugins (plugins.rs: skills, commands, agents, MCP servers) |
 | Osaurus | Plugin registry | MISSING | DONE | A Claude plugin marketplace on GitHub lists its plugins in the app to tick and import (parity: Import Claude plugins); verified with Anthropic's official marketplace |
 | Osaurus | MCP server | MISSING | DONE | `/mcp` on the local API: search_libraries, ask, list_models, list_tasks, run_task (parity: Lumo as an MCP server) |
@@ -240,4 +240,4 @@ Per app now (done / partial / missing / out of scope): Open WebUI 49 / 0 / 0 / 5
 | OpenBot | Audit log export | MISSING | DONE | Settings → Profile → Activity log: every tool call (tool, arguments shortened, outcome, duration, chat, agent) and every approval decision (approved, approved always, declined), kept a year on this computer (encrypted when encryption is on, vault secrets masked), exported as CSV (spreadsheet-safe) or JSON for the last 7 or 30 days or everything; Clear. Unit-tested; verified live: a run_code approval and call recorded and exported as CSV |
 | OpenBot | Privacy-safe diagnostics export | PARTIAL | DONE | Export diagnostics: versions, platform, settings and counts, no content |
 | OpenBot | SSO, SCIM, tenants, governance | MISSING | OUT OF SCOPE | parity L257 |
-| OpenBot | Slack, Teams, mobile, servers | MISSING | OUT OF SCOPE | parity L256 |
+| OpenBot | Slack, Teams, mobile, servers | MISSING | PARTIAL | Mobile: Telegram on the phone reaches your agents (Settings → General → Telegram), tested against a stand-in Bot API. Not here: Slack and Teams apps (they need a public endpoint or workspace app review) and server deployment |

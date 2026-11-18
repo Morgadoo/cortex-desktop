@@ -71,6 +71,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Autocomplete as you type', 'general', 'autocomplete suggest complete typing tab continuation'],
   ['New chats are temporary', 'general', 'temporary incognito history'],
   ['Keyboard shortcuts', 'general', 'hotkeys keys rebind'],
+  ['Telegram', 'general', 'telegram phone mobile bot channel message agent away remote'],
   ['Local API', 'general', 'openai compatible server port token curl mcp anthropic'],
   ['Defaults for every chat', 'general', 'temperature top-p top_p max tokens reply length model parameters'],
   ['Error reports and updates', 'general', 'privacy telemetry error reports crash sentry updates diagnostics'],
@@ -1736,6 +1737,7 @@ async function renderGeneral(content: HTMLElement) {
     ),
     await chatDefaultsCard(),
     await apiServerCard(),
+    await telegramCard(),
     await diagnosticsCard(),
     shortcutsCard()
   );
@@ -1836,6 +1838,74 @@ interface ApiServerView {
 }
 
 /** The local OpenAI-compatible API: other apps on this computer use the models set up here. */
+interface TelegramSettings {
+  enabled: boolean;
+  agentId: string | null;
+  paired: number[];
+  pairedNames: string[];
+  pairingCode: string | null;
+  allowChanges: boolean;
+  botName?: string | null;
+  hasToken: boolean;
+}
+
+/** Talk to your assistant or an agent from Telegram on your phone, through a bot of your own. */
+async function telegramCard(): Promise<HTMLElement> {
+  const body = h('div', {});
+  let s = await tauriInvoke<TelegramSettings>('chat_telegram');
+  const update = async (patch: Partial<{ enabled: boolean; agentId: string | null; allowChanges: boolean; openPairing: boolean; unpair: number }>) => {
+    try {
+      s = await tauriInvoke<TelegramSettings>('chat_update_telegram', {
+        enabled: patch.enabled ?? s.enabled,
+        agentId: patch.agentId !== undefined ? patch.agentId : s.agentId,
+        allowChanges: patch.allowChanges ?? s.allowChanges,
+        openPairing: patch.openPairing ?? false,
+        unpair: patch.unpair ?? null,
+      });
+      draw();
+    } catch (e) {
+      toast(String(e), 'error');
+    }
+  };
+  const draw = () => {
+    const token = h('input', { class: 'input mono', type: 'password', placeholder: s.hasToken ? 'Saved in the keychain; paste a new one to change' : '123456789:AA… from @BotFather', autocomplete: 'off' });
+    const saveToken = button({ variant: 'secondary', label: s.hasToken ? 'Replace' : 'Connect', onClick: async () => {
+      try {
+        s = await tauriInvoke<TelegramSettings>('chat_set_telegram_token', { token: token.value });
+        toast(s.botName ? `Connected to @${s.botName}.` : 'Token removed.');
+        draw();
+      } catch (e) {
+        toast(String(e), 'error');
+      }
+    } });
+    const agent = h('select', { class: 'input', 'aria-label': 'Who answers' }, h('option', { value: '' }, 'The assistant'), state.agents.map((a) => h('option', { value: a.id, selected: a.id === s.agentId }, a.name)));
+    agent.addEventListener('change', () => void update({ agentId: agent.value || null }));
+    clear(
+      body,
+      h('label', { class: 'field-label' }, 'Bot token'),
+      h('div', { class: 'row-inline' }, h('div', { class: 'grow' }, token), saveToken),
+      h('small', { class: 'muted' }, s.botName ? `Bot: @${s.botName}` : 'In Telegram, message @BotFather, send /newbot, and paste the token it gives you.'),
+      s.hasToken
+        ? [
+            h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Answer messages'), h('small', { class: 'muted' }, 'While Lumo runs, messages to your bot are answered here and the answer sent back.')), switchInput(s.enabled, (v) => void update({ enabled: v }))),
+            h('label', { class: 'field-label' }, 'Who answers'),
+            agent,
+            h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Allow changes'), h('small', { class: 'muted' }, 'Off: it reads and searches, but anything that would change something (send, write, delete) is refused, since you cannot approve it from Telegram.')), switchInput(s.allowChanges, (v) => void update({ allowChanges: v }))),
+            h('label', { class: 'field-label' }, 'Paired accounts'),
+            s.paired.length
+              ? h('div', { class: 'hook-list' }, s.paired.map((id, i) => h('div', { class: 'hook-row' }, icon('user', 15), h('span', { class: 'grow' }, s.pairedNames[i] ?? String(id)), h('button', { class: 'link-btn', on: { click: () => void update({ unpair: id }) } }, 'Unpair'))))
+              : h('p', { class: 'muted small' }, 'Nobody yet. Only paired accounts are answered.'),
+            s.pairingCode
+              ? h('p', {}, 'Send this to your bot from your phone: ', h('code', { class: 'pair-code' }, `/pair ${s.pairingCode}`))
+              : button({ variant: 'secondary', icon: 'plus', label: 'Pair my phone', onClick: () => void update({ openPairing: true }) }),
+          ]
+        : null
+    );
+  };
+  draw();
+  return card(h('h3', {}, 'Telegram'), h('p', { class: 'muted' }, 'Ask your assistant or one of your agents from your phone. Lumo fetches the messages from Telegram itself, so nothing reaches this computer from outside; each Telegram chat becomes a chat here.'), body);
+}
+
 async function apiServerCard(): Promise<HTMLElement> {
   const body = h('div', {});
   const render = (view: ApiServerView) => {
