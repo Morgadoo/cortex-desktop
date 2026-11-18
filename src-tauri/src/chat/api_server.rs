@@ -273,6 +273,16 @@ fn with_agent(request: CompletionRequest, agent: Option<String>) -> CompletionRe
     }
 }
 
+/// The status to answer with when the model behind a request failed: a busy or rate-limited
+/// model is 429 (so clients wait and retry), anything else 502.
+fn upstream_status(error: &str) -> StatusCode {
+    if error.contains("429") || error.contains("rate limit") || error.contains("is busy") {
+        StatusCode::TOO_MANY_REQUESTS
+    } else {
+        StatusCode::BAD_GATEWAY
+    }
+}
+
 async fn models(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
     if !authorized(&headers, &ctx.token) {
         return error(StatusCode::UNAUTHORIZED, "Missing or wrong bearer token.");
@@ -282,6 +292,7 @@ async fn models(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
         .await
         .into_iter()
         .map(|m| json!({ "id": m.reference, "object": "model", "owned_by": m.vendor, "name": m.name }))
+        .chain(super::local_models::root().map(|r| super::local_models::models(&r)).unwrap_or_default().into_iter().map(|m| json!({ "id": m.reference, "object": "model", "owned_by": "lumo-built-in", "name": m.name })))
         .chain(super::agents::load(&ctx.config_dir).into_iter().map(|a| json!({ "id": format!("{AGENT_PREFIX}{}", a.id), "object": "model", "owned_by": "lumo-agent", "name": a.name })))
         .collect();
     Json(json!({ "object": "list", "data": data })).into_response()
@@ -423,7 +434,7 @@ async fn chat_inner(ctx: Ctx, headers: HeaderMap, body: Result<Json<ChatBody>, a
                 },
             }))
             .into_response(),
-            Err(e) => error(StatusCode::BAD_GATEWAY, &super::context::short_error(&e.to_string())),
+            Err(e) => error(upstream_status(&e.to_string()), &super::context::short_error(&e.to_string())),
         };
     }
     let mut stream = match model.stream(request) {
@@ -528,7 +539,7 @@ async fn messages_inner(ctx: Ctx, headers: HeaderMap, body: Result<Json<Messages
                 "usage": { "input_tokens": response.usage.input_tokens.unwrap_or(0), "output_tokens": response.usage.output_tokens.unwrap_or(0) },
             }))
             .into_response(),
-            Err(e) => anthropic_error(StatusCode::BAD_GATEWAY, &super::context::short_error(&e.to_string())),
+            Err(e) => anthropic_error(upstream_status(&e.to_string()), &super::context::short_error(&e.to_string())),
         };
     }
     let mut stream = match model.stream(request) {
@@ -805,7 +816,7 @@ async fn responses(State(ctx): State<Ctx>, headers: HeaderMap, body: Result<Json
         if !body.stream {
             return match model.call(request).await {
                 Ok(r) => Json(finished(&r.text(), r.usage.input_tokens.unwrap_or(0), r.usage.output_tokens.unwrap_or(0))).into_response(),
-                Err(e) => error(StatusCode::BAD_GATEWAY, &super::context::short_error(&e.to_string())),
+                Err(e) => error(upstream_status(&e.to_string()), &super::context::short_error(&e.to_string())),
             };
         }
         let mut stream = match model.stream(request) {
@@ -957,7 +968,7 @@ async fn ollama(ctx: Ctx, headers: HeaderMap, body: Result<OllamaBody, serde_jso
         if !body.stream {
             return match model.call(request).await {
                 Ok(r) => Json(line(&r.text(), true)).into_response(),
-                Err(e) => ollama_error(StatusCode::BAD_GATEWAY, &super::context::short_error(&e.to_string())),
+                Err(e) => ollama_error(upstream_status(&e.to_string()), &super::context::short_error(&e.to_string())),
             };
         }
         let mut stream = match model.stream(request) {
@@ -1013,6 +1024,12 @@ mod tests {
         assert!(request_of(&bad).is_err());
         let tool: ChatBody = serde_json::from_value(json!({ "model": "x/y", "messages": [{ "role": "tool", "content": "{}" }] })).unwrap();
         assert!(request_of(&tool).is_err());
+    }
+
+    #[test]
+    fn busy_models_answer_429() {
+        assert_eq!(super::upstream_status("HTTP 429: The built-in runtime is busy"), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(super::upstream_status("connection refused"), StatusCode::BAD_GATEWAY);
     }
 
     #[test]

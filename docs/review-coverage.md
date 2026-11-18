@@ -9,12 +9,12 @@ platform-only features, explained there under "deliberately left out".
 | Status | At the re-audit | Now |
 |---|---|---|
 | DONE | 58 | 206 |
-| PARTIAL | 86 | 1 |
+| PARTIAL | 86 | 2 |
 | MISSING | 48 | 1 |
-| OUT OF SCOPE | 31 | 15 |
+| OUT OF SCOPE | 31 | 14 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 49 / 0 / 0 / 5 · LibreChat 45 / 0 / 0 / 1 · LobeHub 32 / 0 / 0 / 2 · Onyx 23 / 0 / 0 / 3 · Osaurus 26 / 0 / 1 / 3 · OpenBot 31 / 1 / 0 / 1.
+Per app now (done / partial / missing / out of scope): Open WebUI 49 / 0 / 0 / 5 · LibreChat 45 / 0 / 0 / 1 · LobeHub 32 / 0 / 0 / 2 · Onyx 23 / 0 / 0 / 3 · Osaurus 26 / 1 / 1 / 2 · OpenBot 31 / 1 / 0 / 1.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -182,7 +182,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 49 / 0 / 0 / 5
 | Osaurus | App Intents (Shortcuts, Spotlight, Siri) | MISSING | MISSING |  |
 | Osaurus | Built-in local runtime, model downloads | PARTIAL | DONE | Settings → Providers → Built-in models: Qwen 2.5 (0.5B–7B) and Llama 3.2 (1B, 3B) run inside Lumo with candle (pure Rust, 4-bit GGUF), downloaded from Hugging Face with progress and cancel, then offline. They appear in the model menu as Built-in; the engine reaches them through an OpenAI-compatible endpoint on 127.0.0.1 started on first use, with a short brief and no tools so a processor answers in seconds. Verified live: downloaded, chatted (title and follow-ups made locally too) |
 | Osaurus | Local API: OpenAI, Responses, Anthropic, Ollama | MISSING | DONE | `/v1/chat/completions`, `/v1/responses` (plain and streamed events), `/v1/messages`, and Ollama's `/api/tags`, `/api/chat` (NDJSON stream), `/api/generate`, `/api/version`; verified live with curl against claude-haiku-5-5 (streamed chat counted 1–5, generate answered Lisbon, Responses answered Paris and streamed created/delta/done/completed events; no token → refused) |
-| Osaurus | Inference runtime (scheduler, batching) | MISSING | OUT OF SCOPE | An inference server; the app uses Ollama or llama.cpp for that |
+| Osaurus | Inference runtime (scheduler, batching) | MISSING | PARTIAL | The built-in runtime (candle, in the app) serves chat models to Lumo and, through the local API (/v1/models lists them as local/<id>), to other apps on this computer. A scheduler runs requests one at a time in arrival order (a fair lock) with a queue of 8; past that a request gets 429 with Retry-After. Verified live with the real Qwen 0.5B model: 10 requests at once, 8 answered in order about 2 s apart, 2 told to retry. Not here: batching several requests into one forward pass |
 | Osaurus | Orchestrator | PARTIAL | DONE | Route new chats to agents (Agents page): a new chat that clearly fits an agent goes to it, decided by the fast model from the agents' descriptions, and the chat says so; general questions stay with the assistant (engine.rs route_to_agent). Groups orchestrate their members. Verified live both ways |
 | Osaurus | Built-in app agents | PARTIAL | DONE | MCP connectors, and ready-made specialist agents for the apps and data on this computer: Calendar Assistant (calendar and contacts), Data Analyst (run_code, sheets), Code Reviewer (read-only), Translator and Meeting Prep, besides Researcher, News Briefer, File Assistant and Writer |
 | Osaurus | External agent runtimes | MISSING | DONE | parity: Coding agent programs as models (Claude Code, Codex, Gemini CLI) |

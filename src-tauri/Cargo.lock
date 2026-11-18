@@ -3661,6 +3661,7 @@ dependencies = [
  "notify-rust",
  "objc",
  "open",
+ "parking_lot",
  "process-wrap",
  "qrcode",
  "rand 0.9.5",

@@ -38,6 +38,7 @@ axum = { version = "0.8", default-features = false, features = ["http1", "json",
 # The built-in model runtime: chat models (GGUF) and Whisper run in-process, in pure Rust.
 # QR codes for share links.
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+parking_lot = "0.12"
 candle-core = "0.11"
 candle-nn = "0.11"
 candle-transformers = "0.11"

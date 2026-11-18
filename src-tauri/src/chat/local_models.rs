@@ -248,14 +248,15 @@ struct Loaded {
     stop: Vec<u32>,
 }
 
-fn loaded() -> &'static Mutex<Option<Loaded>> {
-    static L: OnceLock<Mutex<Option<Loaded>>> = OnceLock::new();
-    L.get_or_init(|| Mutex::new(None))
+/// The model in memory. A fair lock: waiting requests run in the order they came.
+fn loaded() -> &'static parking_lot::FairMutex<Option<Loaded>> {
+    static L: OnceLock<parking_lot::FairMutex<Option<Loaded>>> = OnceLock::new();
+    L.get_or_init(|| parking_lot::FairMutex::new(None))
 }
 
 /// Frees a model's memory (when it is deleted).
 pub fn unload(id: &str) {
-    if let Ok(mut l) = loaded().try_lock() {
+    if let Some(mut l) = loaded().try_lock() {
         if l.as_ref().is_some_and(|m| m.id == id) {
             *l = None;
         }
@@ -342,7 +343,7 @@ pub struct Usage {
 /// Writes an answer to `messages`, giving each new piece of text to `on_text`; `on_text`
 /// returning false stops it (the reader went away). Runs on the calling thread.
 pub fn generate(root: &Path, id: &str, messages: &[Value], params: &Params, mut on_text: impl FnMut(&str) -> bool) -> Result<Usage, String> {
-    let mut guard = loaded().lock().map_err(|e| e.to_string())?;
+    let mut guard = loaded().lock();
     if guard.as_ref().is_none_or(|m| m.id != id) {
         *guard = None;
         *guard = Some(load(root, id)?);
@@ -432,8 +433,48 @@ fn error_response(status: u16, message: &str) -> axum::response::Response {
     axum::response::Response::builder().status(status).header("content-type", "application/json").body(axum::body::Body::from(body)).unwrap_or_default()
 }
 
+/// Requests waiting for or using the processor. One model runs at a time; the rest wait in
+/// arrival order (the model's lock is fair), and past `QUEUE_LIMIT` a request is told to retry.
+static QUEUED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+pub const QUEUE_LIMIT: usize = 8;
+
+/// Holds a place in the queue for as long as it lives.
+pub struct Place;
+
+impl Place {
+    /// A place, or `None` when the queue is full.
+    pub fn take() -> Option<Place> {
+        use std::sync::atomic::Ordering;
+        let mut now = QUEUED.load(Ordering::SeqCst);
+        loop {
+            if now >= QUEUE_LIMIT {
+                return None;
+            }
+            match QUEUED.compare_exchange(now, now + 1, Ordering::SeqCst, Ordering::SeqCst) {
+                Ok(_) => return Some(Place),
+                Err(actual) => now = actual,
+            }
+        }
+    }
+}
+
+impl Drop for Place {
+    fn drop(&mut self) {
+        QUEUED.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// How many requests are waiting for or using the built-in runtime.
+pub fn queued() -> usize {
+    QUEUED.load(std::sync::atomic::Ordering::SeqCst)
+}
+
 async fn completions(axum::Json(body): axum::Json<Value>) -> axum::response::Response {
     let Ok(root) = root() else { return error_response(500, "The model folder is not set up.") };
+    let Some(place) = Place::take() else {
+        let body = json!({ "error": { "message": format!("The built-in runtime is busy ({QUEUE_LIMIT} requests waiting); try again shortly.", ), "type": "rate_limit_error" } }).to_string();
+        return axum::response::Response::builder().status(429).header("content-type", "application/json").header("retry-after", "5").body(axum::body::Body::from(body)).unwrap_or_default();
+    };
     let id = body.get("model").and_then(Value::as_str).unwrap_or_default().trim_start_matches("local/").to_string();
     if !installed(&root, &id) {
         return error_response(404, &format!("The model `{id}` is not downloaded."));
@@ -451,6 +492,7 @@ async fn completions(axum::Json(body): axum::Json<Value>) -> axum::response::Res
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Result<String, String>>();
     let model_id = id.clone();
     let task = tokio::task::spawn_blocking(move || {
+        let _place = place;
         let tx_text = tx.clone();
         let result = generate(&root, &model_id, &messages, &params, |piece| tx_text.send(Ok(piece.to_string())).is_ok());
         result.inspect_err(|e| {
@@ -873,6 +915,19 @@ mod tests {
         let text = transcribe(&root, "whisper-tiny", &samples, "").unwrap();
         eprintln!("{:.1} s of audio in {:?}: {text}", samples.len() as f64 / 16_000.0, started.elapsed());
         assert!(text.to_lowercase().contains("country"), "{text}");
+    }
+
+    #[test]
+    fn the_queue_has_a_limit_and_frees_places() {
+        let held: Vec<Place> = (0..QUEUE_LIMIT).map_while(|_| Place::take()).collect();
+        assert!(held.len() <= QUEUE_LIMIT);
+        if held.len() == QUEUE_LIMIT {
+            assert!(Place::take().is_none(), "full");
+        }
+        let before = queued();
+        drop(held);
+        assert!(queued() < before.max(1) || before == 0);
+        assert!(Place::take().is_some());
     }
 
     #[test]
