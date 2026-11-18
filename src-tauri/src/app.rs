@@ -218,6 +218,9 @@ pub fn run() {
             chat::commands::chat_add_skill_catalog,
             chat::commands::chat_remove_skill_catalog,
             chat::commands::chat_install_catalog_skill,
+            chat::commands::chat_discord,
+            chat::commands::chat_set_discord_token,
+            chat::commands::chat_update_discord,
             chat::commands::chat_slack,
             chat::commands::chat_set_slack_tokens,
             chat::commands::chat_update_slack,
@@ -588,6 +591,7 @@ pub fn run() {
             chat::share::start(app.handle());
             chat::telegram::start(app.handle());
             chat::slack::start(app.handle());
+            chat::discord::start(app.handle());
             tray::create(app.handle())?;
             updater::startup(app.handle());
             Ok(())

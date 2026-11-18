@@ -92,15 +92,20 @@ pub async fn check(token: &str) -> Result<String, String> {
 
 /// Splits an answer into Telegram-sized messages, at paragraph or line breaks where it can.
 pub fn chunks(text: &str) -> Vec<String> {
+    chunks_of(text, MAX_MESSAGE)
+}
+
+/// Splits text into pieces of at most `max` characters, at line breaks where it can.
+pub fn chunks_of(text: &str, max: usize) -> Vec<String> {
     let mut out = Vec::new();
     let mut current = String::new();
     for line in text.split_inclusive('\n') {
-        if current.chars().count() + line.chars().count() > MAX_MESSAGE && !current.is_empty() {
+        if current.chars().count() + line.chars().count() > max && !current.is_empty() {
             out.push(std::mem::take(&mut current));
         }
-        if line.chars().count() > MAX_MESSAGE {
+        if line.chars().count() > max {
             let chars: Vec<char> = line.chars().collect();
-            for piece in chars.chunks(MAX_MESSAGE) {
+            for piece in chars.chunks(max) {
                 out.push(piece.iter().collect());
             }
         } else {

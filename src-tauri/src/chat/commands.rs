@@ -803,6 +803,52 @@ pub async fn chat_update_telegram(app: AppHandle, enabled: bool, agent_id: Optio
 }
 
 #[tauri::command]
+pub async fn chat_discord(app: AppHandle) -> Result<super::discord::Settings, String> {
+    let mut s = super::discord::load(&config_dir(&app)?);
+    s.has_token = super::discord::token().await.is_some();
+    Ok(s)
+}
+
+/// Saves the bot token after checking it with Discord; empty removes it.
+#[tauri::command]
+pub async fn chat_set_discord_token(app: AppHandle, token: String) -> Result<super::discord::Settings, String> {
+    let dir = config_dir(&app)?;
+    let mut s = super::discord::load(&dir);
+    if token.trim().is_empty() {
+        super::discord::set_token("").await?;
+        s.enabled = false;
+        s.bot_name = None;
+    } else {
+        s.bot_name = Some(super::discord::check(token.trim()).await?);
+        super::discord::set_token(&token).await?;
+    }
+    super::discord::save(&dir, &s)?;
+    chat_discord(app).await
+}
+
+#[tauri::command]
+pub async fn chat_update_discord(app: AppHandle, enabled: bool, agent_id: Option<String>, allow_changes: bool, open_pairing: bool, unpair: Option<String>) -> Result<super::discord::Settings, String> {
+    let dir = config_dir(&app)?;
+    let mut s = super::discord::load(&dir);
+    s.enabled = enabled;
+    s.agent_id = agent_id.filter(|a| !a.is_empty());
+    s.allow_changes = allow_changes;
+    if open_pairing {
+        let mut b = [0u8; 4];
+        rand::fill(&mut b);
+        s.pairing_code = Some(format!("{:06}", u32::from_le_bytes(b) % 1_000_000));
+    }
+    if let Some(id) = unpair {
+        s.paired.retain(|p| *p != id);
+    }
+    super::discord::save(&dir, &s)?;
+    if s.enabled {
+        super::discord::start(&app);
+    }
+    chat_discord(app).await
+}
+
+#[tauri::command]
 pub async fn chat_slack(app: AppHandle) -> Result<super::slack::Settings, String> {
     let mut s = super::slack::load(&config_dir(&app)?);
     s.has_tokens = super::slack::tokens().await.is_some();

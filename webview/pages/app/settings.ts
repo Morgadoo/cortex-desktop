@@ -73,6 +73,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['New chats are temporary', 'general', 'temporary incognito history'],
   ['Keyboard shortcuts', 'general', 'hotkeys keys rebind'],
   ['Slack', 'general', 'slack bot socket mode workspace channel message agent'],
+  ['Discord', 'general', 'discord bot server gateway channel direct message agent'],
   ['Voice orb colour', 'audio', 'voice orb colour color ember accent glow shader'],
   ['Telegram', 'general', 'telegram phone mobile bot channel message agent away remote'],
   ['Local API', 'general', 'openai compatible server port token curl mcp anthropic'],
@@ -1775,6 +1776,7 @@ async function renderGeneral(content: HTMLElement) {
     await apiServerCard(),
     await telegramCard(),
     await slackCard(),
+    await discordCard(),
     await diagnosticsCard(),
     shortcutsCard()
   );
@@ -2001,6 +2003,63 @@ async function slackCard(): Promise<HTMLElement> {
   };
   draw();
   return card(h('h3', {}, 'Slack'), h('p', { class: 'muted' }, 'Ask your assistant or an agent from Slack. The app connects with Socket Mode, so Slack needs no address for this computer; each Slack conversation becomes a chat here.'), body);
+}
+
+interface DiscordSettings {
+  enabled: boolean;
+  agentId: string | null;
+  paired: string[];
+  pairingCode: string | null;
+  allowChanges: boolean;
+  botName?: string | null;
+  hasToken: boolean;
+}
+
+/** Talk to your assistant or an agent from Discord, through a bot of your own. */
+async function discordCard(): Promise<HTMLElement> {
+  const body = h('div', {});
+  let s = await tauriInvoke<DiscordSettings>('chat_discord');
+  const update = async (patch: Partial<{ enabled: boolean; agentId: string | null; allowChanges: boolean; openPairing: boolean; unpair: string }>) => {
+    try {
+      s = await tauriInvoke<DiscordSettings>('chat_update_discord', { enabled: patch.enabled ?? s.enabled, agentId: patch.agentId !== undefined ? patch.agentId : s.agentId, allowChanges: patch.allowChanges ?? s.allowChanges, openPairing: patch.openPairing ?? false, unpair: patch.unpair ?? null });
+      draw();
+    } catch (e) {
+      toast(String(e), 'error');
+    }
+  };
+  const draw = () => {
+    const token = h('input', { class: 'input mono', type: 'password', placeholder: s.hasToken ? 'Saved; paste to change' : 'Bot token (Developer Portal → Bot → Reset Token)', autocomplete: 'off' });
+    const connect = button({ variant: 'secondary', label: s.hasToken ? 'Replace' : 'Connect', onClick: async () => {
+      try {
+        s = await tauriInvoke<DiscordSettings>('chat_set_discord_token', { token: token.value });
+        toast(s.botName ? `Connected as ${s.botName}.` : 'Token removed.');
+        draw();
+      } catch (e) {
+        toast(String(e), 'error');
+      }
+    } });
+    const agent = h('select', { class: 'input', 'aria-label': 'Who answers' }, h('option', { value: '' }, 'The assistant'), state.agents.map((a) => h('option', { value: a.id, selected: a.id === s.agentId }, a.name)));
+    agent.addEventListener('change', () => void update({ agentId: agent.value || null }));
+    clear(
+      body,
+      h('label', { class: 'field-label' }, 'Bot token'),
+      h('div', { class: 'row-inline' }, h('div', { class: 'grow' }, token), connect),
+      h('small', { class: 'muted' }, s.botName ? `Bot: ${s.botName}` : 'At discord.com/developers: create an application, add a bot and copy its token; invite it to your server with the bot scope and the Send Messages permission.'),
+      s.hasToken
+        ? [
+            h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Answer messages'), h('small', { class: 'muted' }, 'Direct messages to the bot, and messages that mention it in a server, while Lumo runs.')), switchInput(s.enabled, (v) => void update({ enabled: v }))),
+            h('label', { class: 'field-label' }, 'Who answers'),
+            agent,
+            h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Allow changes'), h('small', { class: 'muted' }, 'Off: it reads and searches; anything that would change something is refused.')), switchInput(s.allowChanges, (v) => void update({ allowChanges: v }))),
+            h('label', { class: 'field-label' }, 'Paired users'),
+            s.paired.length ? h('div', { class: 'hook-list' }, s.paired.map((id) => h('div', { class: 'hook-row' }, icon('user', 15), h('span', { class: 'grow mono' }, id), h('button', { class: 'link-btn', on: { click: () => void update({ unpair: id }) } }, 'Unpair')))) : h('p', { class: 'muted small' }, 'Nobody yet. Only paired users are answered.'),
+            s.pairingCode ? h('p', {}, 'Send this to the bot in Discord: ', h('code', { class: 'pair-code' }, `pair ${s.pairingCode}`)) : button({ variant: 'secondary', icon: 'plus', label: 'Pair my Discord account', onClick: () => void update({ openPairing: true }) }),
+          ]
+        : null
+    );
+  };
+  draw();
+  return card(h('h3', {}, 'Discord'), h('p', { class: 'muted' }, 'Ask your assistant or an agent from Discord. The bot connects out to Discord, so this computer needs no public address; each Discord channel or direct message becomes a chat here.'), body);
 }
 
 async function apiServerCard(): Promise<HTMLElement> {
