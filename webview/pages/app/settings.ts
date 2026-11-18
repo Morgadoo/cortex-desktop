@@ -756,7 +756,7 @@ async function apiServerCard(): Promise<HTMLElement> {
       : [];
     clear(
       body,
-      row('Local API', 'Lets scripts, editors and other apps on this computer use your models through an OpenAI-compatible API (/v1/chat/completions, /v1/models). Only this computer can reach it, and every request needs the API key.', switchInput(view.settings.enabled, (v) => void save(v))),
+      row('Local API', 'Lets scripts, editors and other apps on this computer use your models through an OpenAI-compatible API (/v1/chat/completions, /v1/models), and start scheduled tasks like webhooks (GET /v1/tasks, POST /v1/tasks/{id}/run with an optional input). Only this computer can reach it, and every request needs the API key.', switchInput(view.settings.enabled, (v) => void save(v))),
       row('Port', '', port),
       details
     );

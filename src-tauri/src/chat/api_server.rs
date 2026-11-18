@@ -2,6 +2,10 @@
 //! computer can use the models set up here (any provider, keys stay in the keychain) through the
 //! usual `/v1/chat/completions` and `/v1/models` endpoints.
 //!
+//! It also starts scheduled tasks from outside, as OpenBot's webhook routines: `GET /v1/tasks`
+//! lists them and `POST /v1/tasks/{id}/run` runs one now, with optional `input` added to its
+//! prompt (a script, a cron job or another tool on this computer can trigger it).
+//!
 //! Off by default. When on, it listens on 127.0.0.1 only and every request needs the bearer
 //! token shown in Settings (kept in the keychain as `api-server`). It sends no CORS headers, so
 //! web pages cannot call it.
@@ -9,7 +13,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use axum::extract::State;
+use axum::extract::{Path as UrlPath, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
@@ -136,7 +140,7 @@ pub async fn apply(app: &AppHandle) -> Status {
     if let Ok(mut s) = server.stop.lock() {
         *s = Some(stop);
     }
-    let router = router(Ctx { config_dir, token: Arc::new(token) });
+    let router = router(Ctx { config_dir, token: Arc::new(token), app: app.clone() });
     tauri::async_runtime::spawn(async move {
         let _ = axum::serve(listener, router)
             .with_graceful_shutdown(async move {
@@ -153,12 +157,15 @@ pub async fn apply(app: &AppHandle) -> Status {
 struct Ctx {
     config_dir: PathBuf,
     token: Arc<String>,
+    app: AppHandle,
 }
 
 fn router(ctx: Ctx) -> Router {
     Router::new()
         .route("/v1/models", get(models))
         .route("/v1/chat/completions", post(chat))
+        .route("/v1/tasks", get(list_tasks))
+        .route("/v1/tasks/{id}/run", post(run_task))
         .with_state(ctx)
 }
 
@@ -190,6 +197,43 @@ async fn models(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
         .map(|m| json!({ "id": m.reference, "object": "model", "owned_by": m.vendor, "name": m.name }))
         .collect();
     Json(json!({ "object": "list", "data": data })).into_response()
+}
+
+async fn list_tasks(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
+    if !authorized(&headers, &ctx.token) {
+        return error(StatusCode::UNAUTHORIZED, "Missing or wrong bearer token.");
+    }
+    let data: Vec<Value> = super::tasks::load(&ctx.config_dir)
+        .into_iter()
+        .map(|t| json!({ "id": t.id, "title": t.title, "enabled": t.enabled, "schedule": super::tasks::describe(&t.frequency), "lastRun": t.last_run, "lastStatus": t.last_status }))
+        .collect();
+    Json(json!({ "object": "list", "data": data })).into_response()
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct RunBody {
+    /// Added to the task's prompt for this run (what the event was about).
+    #[serde(default)]
+    input: String,
+}
+
+/// Runs a scheduled task now, like a webhook routine; its result arrives as a new conversation.
+async fn run_task(State(ctx): State<Ctx>, headers: HeaderMap, UrlPath(id): UrlPath<String>, body: Option<Json<RunBody>>) -> Response {
+    if !authorized(&headers, &ctx.token) {
+        return error(StatusCode::UNAUTHORIZED, "Missing or wrong bearer token.");
+    }
+    let Some(mut task) = super::tasks::load(&ctx.config_dir).into_iter().find(|t| t.id == id) else {
+        return error(StatusCode::NOT_FOUND, "No task with that id; list them at /v1/tasks.");
+    };
+    let input: String = body.map(|b| b.0.input).unwrap_or_default().chars().take(20_000).collect();
+    if !input.trim().is_empty() {
+        task.prompt = format!("{}\n\nThis run was started from outside the app with this input:\n{}", task.prompt, input.trim());
+    }
+    super::tasks::record(&ctx.config_dir, &task.id, task.last_conversation.as_deref().unwrap_or_default(), "running");
+    let app = ctx.app.clone();
+    let title = task.title.clone();
+    tauri::async_runtime::spawn(async move { super::engine::run_task(app, task).await });
+    (StatusCode::ACCEPTED, Json(json!({ "started": true, "task": title }))).into_response()
 }
 
 #[derive(Debug, Deserialize)]
