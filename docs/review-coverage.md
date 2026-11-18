@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 181 |
-| PARTIAL | 86 | 10 |
+| DONE | 58 | 185 |
+| PARTIAL | 86 | 6 |
 | MISSING | 48 | 1 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 43 / 2 / 0 / 9 · LibreChat 41 / 1 / 0 / 4 · LobeHub 29 / 0 / 0 / 5 · Onyx 20 / 1 / 0 / 5 · Osaurus 22 / 3 / 1 / 4 · OpenBot 26 / 3 / 0 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 44 / 1 / 0 / 9 · LibreChat 42 / 0 / 0 / 4 · LobeHub 29 / 0 / 0 / 5 · Onyx 20 / 1 / 0 / 5 · Osaurus 23 / 2 / 1 / 4 · OpenBot 27 / 2 / 0 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -51,7 +51,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 43 / 2 / 0 / 9
 | Open WebUI | Save web search results to knowledge | MISSING | DONE | Each web source has Save to a library; Libraries has Add a web page (parity: Save web pages to a library) |
 | Open WebUI | Hybrid search with reranking | PARTIAL | DONE | BM25 + embeddings fused, then an optional Cohere/Jina-style reranker (parity: Reranking) |
 | Open WebUI | Choice of vector databases | MISSING | OUT OF SCOPE | Left out: "A choice of vector database" (parity L219) |
-| Open WebUI | Extraction engines (Tika, Docling, OCR…) | MISSING | PARTIAL | PDF, Word, PowerPoint, OpenDocument, HTML, text and OCR of images by a vision model. Missing: Tika or Docling as engines |
+| Open WebUI | Extraction engines (Tika, Docling, OCR…) | MISSING | DONE | Settings → Providers → Document extraction: built-in readers, Apache Tika (PUT /tika, OCR when the server has Tesseract) or Docling (Markdown with tables), for library documents and chat attachments; falls back to the built-in reader when the server fails. Client tested against stand-in servers; verified live with a Tika stand-in |
 | Open WebUI | Always use full text | MISSING | DONE | parity L241 (`read_document`) |
 | Open WebUI | Knowledge file browser with preview | PARTIAL | DONE | Click a document to read its indexed text with find-in-text (parity: Library document preview) |
 | Open WebUI | Knowledge base sync of folders and repos | PARTIAL | DONE | parity L240 (Mirror a folder, incremental, every 10 min) |
@@ -96,7 +96,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 43 / 2 / 0 / 9
 | LibreChat | Agents API | MISSING | DONE | Agents answer through the local API as `agent/<id>` (parity: Agents in the local API) |
 | LibreChat | Prompt variables | MISSING | DONE | parity L269 |
 | LibreChat | Prompt versions with Production | MISSING | DONE | Workflows (Lumo's saved prompts) keep versions, and one can be marked production: that version runs from the + menu while saved edits stay a draft (versions.rs set_production, workflows.rs views). Verified live: a 5th step added after marking stayed out of the sent run |
-| LibreChat | PR status and CI for a chat's workspace | PARTIAL | PARTIAL | PR opened (parity L121). Missing: PR status and CI checks |
+| LibreChat | PR status and CI for a chat's workspace | PARTIAL | DONE | The Changes view shows the branch's pull request (number, title, state, review decision) and its CI checks (passing, failing, running, each linking to its run), through gh or glab; refreshed with the diff. Parsers unit-tested; verified live |
 | LibreChat | Jina / Cohere reranking | MISSING | DONE | Any Cohere/Jina-style `/rerank` server (parity: Reranking) |
 | LibreChat | Upload files as text | PARTIAL | DONE | Chat attachments go in full as text (chat.ts:1694–1700) |
 | LibreChat | OCR | MISSING | DONE | parity L242 |
@@ -188,7 +188,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 43 / 2 / 0 / 9
 | Osaurus | External agent runtimes | MISSING | DONE | parity: Coding agent programs as models (Claude Code, Codex, Gemini CLI) |
 | Osaurus | Typed workflows, designer agent | PARTIAL | DONE | Inputs typed as {{name:number}} (or date, time, url, email, long), optional with ?, choices as {{name&#124;a&#124;b}}, each with its own control and checked before sending (promptvars.ts); a designer in the workflow editor drafts or revises the workflow from a description (chat_draft_workflow). Verified live |
 | Osaurus | Triggers: schedule, folder, webhook, feed | PARTIAL | DONE | Schedules, new files (parity L274), webhooks through the local API (L291) and feeds: a task can start when an RSS or Atom feed has new items (`Frequency::NewFeedItems`, `parse_feed`). Verified live: the first check recorded the feed's two posts; after a third was added, one run started with its title and link in the prompt |
-| Osaurus | VM per agent | PARTIAL | PARTIAL | bubblewrap sandbox (parity L231). Missing: a separate environment per agent |
+| Osaurus | VM per agent | PARTIAL | DONE | Each agent gets its own environment: a home folder bound into the bubblewrap sandbox for its code, where files and pip/npm user installs persist across its chats; network per agent (Internet for its code); Reset on the agent's page. Verified live: a file written in one chat was read in another, then Reset removed it |
 | Osaurus | Browser session per agent | PARTIAL | DONE | Each agent has a browser profile of its own (chat/browser-profiles/<agent>): cookies and logins stay apart; the agent's Browser row opens it visibly to sign in, or forgets it (webpage.rs, agentpanel.ts). Verified live |
 | Osaurus | Computer use with rules per app | MISSING | DONE | Settings → Permissions → Computer use: never act in these apps, and only act in these apps, matched in the front window's title; a refused action tells the model to ask the user (`computer::app_allowed`, tested) |
 | Osaurus | Calendar, Mail, Contacts… integrations | MISSING | DONE | parity: Calendars and contacts (calendar.rs: ICS links/files with repeat rules, vCard); mail through the Proton Mail connector |
@@ -215,7 +215,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 43 / 2 / 0 / 9
 | OpenBot | Backdrop | MISSING | DONE | parity: Backdrop (appearance.ts `applyBackdrop`) |
 | OpenBot | Copy an error's details | PARTIAL | DONE | Copy details on a failed reply (parity: Copy error details) |
 | OpenBot | Codex, Claude Code, Gemini CLIs as providers | MISSING | DONE | parity: Coding agent programs as models |
-| OpenBot | ACP agents as providers | PARTIAL | PARTIAL | OpenAI-compatible and Ollama. Missing: ACP |
+| OpenBot | ACP agents as providers | PARTIAL | DONE | Settings → Providers → ACP agents: any Agent Client Protocol agent (Claude Code, Codex, Gemini CLI, or a command you give) appears as a model; Lumo drives it over JSON-RPC (initialize, session/new, session/prompt), streams its text, thoughts and tool notices, and asks you before it acts (session/request_permission). Verified live with a stand-in ACP agent |
 | OpenBot | Change provider, keep the agent | PARTIAL | DONE | An agent's model is editable (agents.rs:27–29); its notebook is kept per agent (`chat/agents/<id>/`) |
 | OpenBot | Models listed for a custom provider | PARTIAL | DONE | OpenAI-compatible local servers list their loaded models (parity: Local OpenAI-compatible servers) |
 | OpenBot | Agents message each other, share files | PARTIAL | DONE | `delegate` and reports, and `message_agent`: the assistant or an agent writes to another agent by name, sharing up to 5 text files; the other agent answers in an unread chat of its own and its reply comes back (engine.rs message_agent, agents.rs). Verified live: a file sent to EU AI Brief, which restated it |

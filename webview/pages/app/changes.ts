@@ -184,17 +184,40 @@ export function openChanges(conversationId: string, folder: string) {
               : `Pushed ${pr.branch}. This host has no known pull request page, so open it there.`
         );
         void load();
+        setTimeout(() => void loadPr(), 1500);
       } catch (e) {
         toast(String(e), 'error');
       } finally {
         pullRequest.removeAttribute('disabled');
       }
     });
+    // The branch's pull request, its review and CI checks (gh or glab), refreshed with the rest.
+    const prBar = h('div', { class: 'pr-bar' });
+    type Pr = { number: number; title: string; url: string; state: string; review: string; checks: { name: string; state: string; url: string }[] };
+    const loadPr = async () => {
+      const pr = await tauriInvoke<Pr | null>('chat_code_pr_status', { conversationId }).catch(() => null);
+      if (!pr) return void clear(prBar);
+      const count = (s: string) => pr.checks.filter((c) => c.state === s).length;
+      const summary = pr.checks.length
+        ? count('failed') ? `${count('failed')} failing` : count('running') + count('pending') ? `${count('running') + count('pending')} running` : `${count('passed')} passing`
+        : 'no checks';
+      clear(
+        prBar,
+        h('a', { class: 'pr-link', href: pr.url, target: '_blank', rel: 'noopener noreferrer' }, icon('share', 14), `#${pr.number} ${pr.title}`),
+        h('span', { class: `pr-state ${pr.state}` }, pr.state),
+        pr.review ? h('span', { class: `pr-review ${pr.review.replace(/\s/g, '-')}` }, pr.review) : null,
+        h('details', { class: 'pr-checks' }, h('summary', { class: count('failed') ? 'failed' : count('running') + count('pending') ? 'running' : 'passed' }, summary),
+          pr.checks.map((c) => h('a', { class: `pr-check ${c.state}`, href: c.url || pr.url, target: '_blank', rel: 'noopener noreferrer' }, h('span', { class: 'dot' }), c.name, h('small', { class: 'muted' }, c.state))))
+      );
+    };
+    refresh.addEventListener('click', () => void loadPr());
     void load();
+    void loadPr();
     return h(
       'div',
       { class: 'changes-modal' },
       modalHeader(h('div', { class: 'modal-title' }, h('h2', {}, 'Changes'), title), close, { actions: [layoutSwitch, pullRequest, refresh] }),
+      prBar,
       h('div', { class: 'changes-body' }, list, view)
     );
   }, true);

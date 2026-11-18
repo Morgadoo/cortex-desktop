@@ -783,6 +783,17 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
     }
     store::save_conversation(&config_dir, &conversation)?;
 
+    // An ACP agent answers over the Agent Client Protocol, with its own tools.
+    if let Some(acp_agent) = super::acp::find(&config_dir, &request.model) {
+        let named = !conversation.title.is_empty();
+        let cancelled = super::acp::run(app, &config_dir, conversation.clone(), &acp_agent, cancel).await?;
+        if !named {
+            let app = app.clone();
+            let reference = request.model.clone();
+            tauri::async_runtime::spawn(async move { name_conversation(app, reference, conversation).await });
+        }
+        return Ok(cancelled);
+    }
     // A coding agent program (Claude Code, Codex, Gemini CLI) answers with its own tools.
     if let Some(cli) = super::agent_cli::find(&request.model) {
         let named = !conversation.title.is_empty();
@@ -1597,7 +1608,9 @@ impl Runner<'_> {
                 }
             }
         }
-        sandbox::run(self.config_dir, self.id, arguments).await
+        // An agent's code runs in its own environment (home, packages), kept across its chats.
+        let env = self.agent.and_then(|a| sandbox::agent_env(self.config_dir, &a.id, a.code_network).ok());
+        sandbox::run_in(self.config_dir, self.id, arguments, env.as_ref()).await
     }
 }
 

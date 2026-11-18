@@ -165,6 +165,7 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
     allTools.addEventListener('change', renderTools);
     renderTools();
     const think = h('input', { type: 'checkbox', class: 'switch', checked: base?.think ?? false });
+    const codeNetwork = h('input', { type: 'checkbox', class: 'switch', checked: base?.codeNetwork ?? false });
     const fallback = h(
       'select',
       { class: 'input' },
@@ -289,6 +290,7 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
           secrets: [...pickedSecrets],
           members: pickedMembers.filter((id) => state.agents.some((a) => a.id === id)),
           groupMode: pickedMembers.length ? groupMode.value : '',
+          codeNetwork: codeNetwork.checked,
           createdAt: existing?.createdAt ?? new Date().toISOString(),
         });
         changed();
@@ -330,6 +332,7 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
       h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'All tools'), h('small', { class: 'muted' }, 'Click a tool to cycle: allowed, ask first, blocked. Turn off to block what you do not pick.')), allTools),
       toolGrid,
       h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Think longer'), h('small', { class: 'muted' }, 'Use extended reasoning by default, where the model supports it.')), think),
+      h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Internet for its code'), h('small', { class: 'muted' }, 'Its code runs in an environment of its own, kept across its chats. Allow the network there to install packages (pip, npm) or download data.')), codeNetwork),
       h('label', { class: 'field-label', title: 'Added to your newest message on every request, so long chats do not drift from it' }, 'Reminder on every turn'),
       reminder,
       h('label', { class: 'field-label' }, 'Conversation starters (one a line)'),

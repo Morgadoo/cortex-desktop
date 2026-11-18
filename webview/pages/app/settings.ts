@@ -42,6 +42,8 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Providers and API keys', 'providers', 'key openai anthropic mistral xai ollama llama.cpp lm studio model default base url'],
   ['Web search', 'providers', 'searxng brave tavily engine internet'],
   ['Semantic search', 'providers', 'embeddings libraries vector rag rerank reranker reranking'],
+  ['ACP agents', 'providers', 'acp agent client protocol zed claude code codex gemini goose coding agents'],
+  ['Document extraction', 'providers', 'tika docling extraction ocr pdf documents parser engine'],
   ['Images and voice', 'providers', 'image generation dall-e text to speech voice model local image server stable diffusion automatic1111 forge draw things'],
   ['Speech to text', 'audio', 'dictation microphone whisper transcription stt'],
   ['Text to speech', 'audio', 'read aloud voice tts elevenlabs'],
@@ -448,6 +450,8 @@ async function renderProviders(content: HTMLElement) {
   content.append(await backupModelCard());
   content.append(await autoModelCard());
   content.append(await mediaCard());
+  content.append(await extractionCard());
+  content.append(await acpCard());
   content.append(await searchCard());
   content.append(await embeddingCard());
 }
@@ -616,6 +620,82 @@ interface MediaModels {
   imageVendors: string[];
   speechVendors: string[];
   imageServer?: string | null;
+}
+
+/** ACP agents (Agent Client Protocol): coding agents that answer as models, with their own tools. */
+async function acpCard(): Promise<HTMLElement> {
+  type Acp = { id: string; name: string; command: string; args: string[] };
+  let all = await tauriInvoke<Acp[]>('chat_acp_agents', { agents: null }).catch(() => [] as Acp[]);
+  const list = h('div', { class: 'hook-list' });
+  const own = () => all.filter((a) => !['claude-code', 'codex', 'gemini'].includes(a.id) || a.command.includes('/'));
+  const save = async (next: Acp[]) => {
+    try {
+      all = await tauriInvoke<Acp[]>('chat_acp_agents', { agents: next });
+      render();
+      await reloadModels();
+    } catch (e) {
+      toast(String(e), 'error');
+    }
+  };
+  const render = () =>
+    clear(
+      list,
+      all.length
+        ? all.map((a) =>
+            h(
+              'div',
+              { class: 'hook-row' },
+              h('div', { class: 'hook-text' }, h('strong', {}, a.name), h('code', {}, [a.command, ...a.args].join(' '))),
+              own().some((o) => o.id === a.id) ? h('button', { class: 'icon-btn small', title: 'Remove', on: { click: () => void save(own().filter((o) => o.id !== a.id)) } }, icon('trash', 15)) : h('small', { class: 'muted' }, 'found on this computer')
+            )
+          )
+        : h('p', { class: 'muted small' }, 'None found. Install claude-code-acp, codex-acp or the Gemini CLI, or add an agent below.')
+    );
+  render();
+  const name = h('input', { class: 'input', placeholder: 'Name, e.g. Goose' });
+  const command = h('input', { class: 'input mono', placeholder: 'Command, e.g. goose acp' });
+  const add = button({ variant: 'secondary', icon: 'plus', label: 'Add', onClick: () => {
+    const parts = command.value.trim().split(/\s+/).filter(Boolean);
+    if (!name.value.trim() || !parts.length) return toast('Give the agent a name and its command.', 'error');
+    const id = name.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'agent';
+    void save([...own().filter((o) => o.id !== id), { id, name: name.value.trim(), command: parts[0]!, args: parts.slice(1) }]);
+    name.value = '';
+    command.value = '';
+  } });
+  return card(
+    h('h3', {}, 'ACP agents'),
+    h('p', { class: 'muted' }, 'Coding agents that speak the Agent Client Protocol answer as models in the model menu: they work in the chat’s folder with their own tools, stream their answer and thoughts, and ask you before acting.'),
+    list,
+    h('div', { class: 'hook-add' }, name, command, add)
+  );
+}
+
+/** Which engine reads documents: the built-in readers, Apache Tika or Docling (Open WebUI's extraction engines). */
+async function extractionCard(): Promise<HTMLElement> {
+  type Extraction = { engine: string; url: string };
+  const now = await tauriInvoke<Extraction>('chat_extraction', { change: null }).catch(() => ({ engine: 'builtin', url: '' }));
+  const engine = h('select', { class: 'input select-sm' }, [['builtin', 'Built-in readers'], ['tika', 'Apache Tika'], ['docling', 'Docling']].map(([v, l]) => h('option', { value: v, selected: (now.engine || 'builtin') === v }, l)));
+  const url = h('input', { class: 'input', value: now.url, placeholder: 'http://localhost:9998 (Tika) or http://localhost:5001 (Docling)' });
+  const sync = () => { url.disabled = engine.value === 'builtin'; };
+  engine.addEventListener('change', () => {
+    if (!url.value) url.value = engine.value === 'tika' ? 'http://localhost:9998' : engine.value === 'docling' ? 'http://localhost:5001' : '';
+    sync();
+  });
+  sync();
+  const save = button({ variant: 'primary', label: 'Save', onClick: async () => {
+    try {
+      await tauriInvoke('chat_extraction', { change: { engine: engine.value, url: url.value.trim() } });
+      toast(engine.value === 'builtin' ? 'Documents are read by the built-in readers.' : `Documents are read by ${engine.value === 'tika' ? 'Tika' : 'Docling'}, with the built-in readers as a fallback.`);
+    } catch (e) {
+      toast(String(e), 'error');
+    }
+  } });
+  return card(
+    h('h3', {}, 'Document extraction'),
+    h('p', { class: 'muted' }, 'How text is taken from files you add to libraries or attach in chat. Tika (with OCR) and Docling (layouts and tables, as Markdown) run as servers on your machine; if one fails, the built-in readers take over.'),
+    h('div', { class: 'row-inline' }, engine, url),
+    h('div', { class: 'card-actions' }, save)
+  );
 }
 
 /** Which models make images and transcribe voice input. */

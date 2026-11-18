@@ -214,6 +214,8 @@ export interface Agent {
   members?: string[];
   /** How a group's members work: parallel, sequential or debate. */
   groupMode?: string;
+  /** Its code may reach the internet, to install packages into its own environment. */
+  codeNetwork?: boolean;
   createdAt: string;
 }
 

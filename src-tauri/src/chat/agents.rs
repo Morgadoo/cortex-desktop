@@ -66,6 +66,9 @@ pub struct Agent {
     /// How the members work: `parallel`, `sequential` or `debate`.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub group_mode: String,
+    /// Its code may reach the internet (to install packages into its own environment).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub code_network: bool,
     pub created_at: DateTime<Utc>,
 }
 
@@ -491,6 +494,7 @@ pub fn parse_draft(text: &str, tools: &[&str], skills: &[String]) -> Result<Agen
         reminder: String::new(),
         members: Vec::new(),
         group_mode: String::new(),
+        code_network: false,
         created_at: Utc::now(),
         name,
     })
@@ -536,6 +540,7 @@ pub fn templates() -> Vec<Agent> {
         reminder: String::new(),
         members: Vec::new(),
         group_mode: String::new(),
+        code_network: false,
         created_at: Utc::now(),
     };
     vec![
@@ -701,6 +706,7 @@ mod tests {
             reminder: String::new(),
             members: Vec::new(),
             group_mode: String::new(),
+            code_network: false,
             created_at: Utc::now(),
         };
         save(from.path(), agent).unwrap();

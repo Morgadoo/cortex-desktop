@@ -82,8 +82,11 @@ pub struct ModelList {
 
 #[tauri::command]
 pub async fn chat_list_models(app: AppHandle) -> Result<ModelList, String> {
-    let file = providers::load(&config_dir(&app)?);
-    let models = providers::models(&file).await;
+    let dir = config_dir(&app)?;
+    let file = providers::load(&dir);
+    let mut models = providers::models(&file).await;
+    // ACP agents (Agent Client Protocol), installed or added by the user.
+    models.extend(super::acp::models(&dir));
     let default_model = file
         .default_model
         .clone()
@@ -548,11 +551,18 @@ pub fn chat_notify(app: AppHandle, title: String, body: String) {
 
 /// The text of an attached PDF or Office document, with its line breaks.
 #[tauri::command]
-pub async fn chat_read_document(name: String, data: String) -> Result<String, String> {
+pub async fn chat_read_document(app: AppHandle, name: String, data: String) -> Result<String, String> {
     use base64::Engine as _;
     let bytes = base64::engine::general_purpose::STANDARD.decode(data.as_bytes()).map_err(|e| e.to_string())?;
     if bytes.len() > 50 * 1024 * 1024 {
         return Err("That document is too large.".into());
+    }
+    let engine = super::extraction::load(&config_dir(&app)?);
+    if engine.external() {
+        match super::extraction::convert(&engine, &name, bytes.clone()).await {
+            Ok(text) => return Ok(text),
+            Err(e) => log::warn!("{name}: {e}; using the built-in reader"),
+        }
     }
     let ext = std::path::Path::new(&name).extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
     tokio::task::spawn_blocking(move || {
@@ -598,6 +608,14 @@ pub async fn chat_code_commit(app: AppHandle, conversation_id: String, message: 
 }
 
 /// Pushes a coding session's branch and opens a pull request for it.
+/// The pull request of the chat folder's branch, with its review and CI checks.
+#[tauri::command]
+pub async fn chat_code_pr_status(app: AppHandle, conversation_id: String) -> Result<Option<super::code::PrStatus>, String> {
+    let conversation = store::load_conversation(&config_dir(&app)?, &conversation_id)?;
+    let dir = conversation.workdir.ok_or("This conversation has no folder.")?;
+    tokio::task::spawn_blocking(move || super::code::pr_status(&dir)).await.map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn chat_code_pull_request(app: AppHandle, conversation_id: String, title: String) -> Result<super::code::PullRequest, String> {
     let conversation = store::load_conversation(&config_dir(&app)?, &conversation_id)?;
@@ -1394,6 +1412,22 @@ pub async fn chat_add_documents(app: AppHandle, id: String) -> Result<Option<Add
             }
             continue;
         }
+        // A Tika or Docling server reads the file when one is set; the built-in readers otherwise.
+        let engine = super::extraction::load(&dir);
+        if engine.external() {
+            let name = path.file_name().map_or_else(|| "document".into(), |n| n.to_string_lossy().into_owned());
+            if let Ok(bytes) = std::fs::read(&path) {
+                match super::extraction::convert(&engine, &name, bytes).await {
+                    Ok(text) => {
+                        if let Err(e) = super::libraries::add_text(&dir, &id, &name, &text) {
+                            errors.push(e);
+                        }
+                        continue;
+                    }
+                    Err(e) => log::warn!("{name}: {e}; using the built-in reader"),
+                }
+            }
+        }
         if let Err(e) = tokio::task::spawn_blocking({
             let dir = dir.clone();
             let id = id.clone();
@@ -1778,6 +1812,32 @@ pub fn chat_agent_browser(app: AppHandle, agent_id: Option<String>, url: Option<
         return super::webpage::clear_profile(&dir, agent_id.as_deref());
     }
     super::webpage::open_profile(&dir, agent_id.as_deref(), url.as_deref().unwrap_or_default())
+}
+
+/// The document extraction engine (built-in, Tika or Docling); `change` sets it.
+#[tauri::command]
+pub fn chat_extraction(app: AppHandle, change: Option<super::extraction::Extraction>) -> Result<super::extraction::Extraction, String> {
+    let dir = config_dir(&app)?;
+    if let Some(e) = change {
+        super::extraction::save(&dir, &e)?;
+    }
+    Ok(super::extraction::load(&dir))
+}
+
+/// Forgets an agent's code environment (its files and installed packages).
+#[tauri::command]
+pub fn chat_reset_agent_env(app: AppHandle, id: String) -> Result<(), String> {
+    super::sandbox::reset_agent_env(&config_dir(&app)?, &id)
+}
+
+/// The user's ACP agents; `agents` replaces them. Returns every one that can start.
+#[tauri::command]
+pub fn chat_acp_agents(app: AppHandle, agents: Option<Vec<super::acp::AcpAgent>>) -> Result<Vec<super::acp::AcpAgent>, String> {
+    let dir = config_dir(&app)?;
+    if let Some(list) = agents {
+        super::acp::save(&dir, &list)?;
+    }
+    Ok(super::acp::all(&dir))
 }
 
 /// The local API's latest requests, newest first.

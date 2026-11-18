@@ -244,6 +244,116 @@ pub struct PullRequest {
     pub via: String,
 }
 
+/// The pull request for a branch, as its host reports it (LibreChat's PR status for a workspace).
+#[derive(Debug, Clone, Serialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PrStatus {
+    pub number: u64,
+    pub title: String,
+    pub url: String,
+    /// `open`, `draft`, `merged` or `closed`.
+    pub state: String,
+    /// `approved`, `changes requested`, `review required`, or empty.
+    pub review: String,
+    pub checks: Vec<Check>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Check {
+    pub name: String,
+    /// `passed`, `failed`, `running`, `skipped` or `pending`.
+    pub state: String,
+    pub url: String,
+}
+
+/// A check's outcome from `gh`'s `statusCheckRollup` entry (a check run or a commit status).
+fn check_state(v: &serde_json::Value) -> String {
+    let s = |k: &str| v.get(k).and_then(serde_json::Value::as_str).unwrap_or_default().to_ascii_uppercase();
+    match (s("status").as_str(), s("conclusion").as_str(), s("state").as_str()) {
+        (_, "SUCCESS", _) | (_, _, "SUCCESS") => "passed",
+        (_, "FAILURE" | "TIMED_OUT" | "CANCELLED" | "ACTION_REQUIRED" | "STARTUP_FAILURE", _) | (_, _, "FAILURE" | "ERROR") => "failed",
+        (_, "SKIPPED" | "NEUTRAL", _) => "skipped",
+        ("IN_PROGRESS" | "QUEUED" | "WAITING" | "PENDING" | "REQUESTED", _, _) => "running",
+        (_, _, "PENDING" | "EXPECTED") => "pending",
+        _ => "pending",
+    }
+    .into()
+}
+
+/// Reads `gh pr view --json …` output.
+pub fn parse_gh_pr(json: &str) -> Option<PrStatus> {
+    let v: serde_json::Value = serde_json::from_str(json).ok()?;
+    let state = match (v["state"].as_str().unwrap_or_default(), v["isDraft"].as_bool().unwrap_or(false)) {
+        ("OPEN", true) => "draft",
+        ("OPEN", false) => "open",
+        ("MERGED", _) => "merged",
+        _ => "closed",
+    };
+    let review = match v["reviewDecision"].as_str().unwrap_or_default() {
+        "APPROVED" => "approved",
+        "CHANGES_REQUESTED" => "changes requested",
+        "REVIEW_REQUIRED" => "review required",
+        _ => "",
+    };
+    let checks = v["statusCheckRollup"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|c| Check {
+            name: c["name"].as_str().or(c["context"].as_str()).unwrap_or("check").to_string(),
+            state: check_state(c),
+            url: c["detailsUrl"].as_str().or(c["targetUrl"].as_str()).unwrap_or_default().to_string(),
+        })
+        .collect();
+    Some(PrStatus { number: v["number"].as_u64()?, title: v["title"].as_str().unwrap_or_default().into(), url: v["url"].as_str().unwrap_or_default().into(), state: state.into(), review: review.into(), checks })
+}
+
+/// Reads `glab mr view -F json` output.
+pub fn parse_glab_mr(json: &str) -> Option<PrStatus> {
+    let v: serde_json::Value = serde_json::from_str(json).ok()?;
+    let state = match (v["state"].as_str().unwrap_or_default(), v["draft"].as_bool().unwrap_or(false)) {
+        ("opened", true) => "draft",
+        ("opened", false) => "open",
+        ("merged", _) => "merged",
+        _ => "closed",
+    };
+    let pipeline = &v["head_pipeline"];
+    let checks = if pipeline.is_object() {
+        let st = match pipeline["status"].as_str().unwrap_or_default() {
+            "success" => "passed",
+            "failed" | "canceled" => "failed",
+            "running" => "running",
+            "skipped" => "skipped",
+            _ => "pending",
+        };
+        vec![Check { name: "Pipeline".into(), state: st.into(), url: pipeline["web_url"].as_str().unwrap_or_default().into() }]
+    } else {
+        Vec::new()
+    };
+    Some(PrStatus { number: v["iid"].as_u64()?, title: v["title"].as_str().unwrap_or_default().into(), url: v["web_url"].as_str().unwrap_or_default().into(), state: state.into(), review: if v["approved"].as_bool() == Some(true) { "approved".into() } else { String::new() }, checks })
+}
+
+/// The pull request of the folder's current branch, through `gh` or `glab`; `None` when there is
+/// none or neither tool is installed and signed in. `tools` names the programs (tests swap them).
+pub fn pr_status_with(dir: &str, gh: &str, glab: &str) -> Option<PrStatus> {
+    let out = Command::new(gh)
+        .current_dir(dir)
+        .args(["pr", "view", "--json", "number,title,url,state,isDraft,reviewDecision,statusCheckRollup"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success());
+    if let Some(pr) = out.and_then(|o| parse_gh_pr(&String::from_utf8_lossy(&o.stdout))) {
+        return Some(pr);
+    }
+    let out = Command::new(glab).current_dir(dir).args(["mr", "view", "-F", "json"]).output().ok().filter(|o| o.status.success())?;
+    parse_glab_mr(&String::from_utf8_lossy(&out.stdout))
+}
+
+pub fn pr_status(dir: &str) -> Option<PrStatus> {
+    pr_status_with(dir, "gh", "glab")
+}
+
 /// `owner/repo` of a GitHub remote URL (https or ssh), if it is one.
 pub fn github_repo(remote: &str) -> Option<String> {
     let remote = remote.trim().trim_end_matches('/').trim_end_matches(".git");
@@ -424,6 +534,32 @@ fn parse(numstat: &str, names: &str) -> Vec<ChangedFile> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pull_request_status_and_checks() {
+        let gh = r#"{"number":42,"title":"Use two","url":"https://github.com/me/app/pull/42","state":"OPEN","isDraft":false,"reviewDecision":"CHANGES_REQUESTED","statusCheckRollup":[
+            {"__typename":"CheckRun","name":"test","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://x/1"},
+            {"__typename":"CheckRun","name":"lint","status":"COMPLETED","conclusion":"FAILURE","detailsUrl":"https://x/2"},
+            {"__typename":"CheckRun","name":"build","status":"IN_PROGRESS","conclusion":""},
+            {"__typename":"StatusContext","context":"ci/legacy","state":"PENDING","targetUrl":"https://x/3"}]}"#;
+        let pr = parse_gh_pr(gh).unwrap();
+        assert_eq!((pr.number, pr.state.as_str(), pr.review.as_str()), (42, "open", "changes requested"));
+        let states: Vec<(&str, &str)> = pr.checks.iter().map(|c| (c.name.as_str(), c.state.as_str())).collect();
+        assert_eq!(states, [("test", "passed"), ("lint", "failed"), ("build", "running"), ("ci/legacy", "pending")]);
+        let mr = parse_glab_mr(r#"{"iid":7,"title":"T","web_url":"https://gitlab.com/me/app/-/merge_requests/7","state":"merged","head_pipeline":{"status":"success","web_url":"https://gl/p"}}"#).unwrap();
+        assert_eq!((mr.number, mr.state.as_str(), mr.checks[0].state.as_str()), (7, "merged", "passed"));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            let dir = tempfile::tempdir().unwrap();
+            let fake = dir.path().join("gh");
+            std::fs::write(&fake, format!("#!/bin/sh\ncat <<'EOF'\n{gh}\nEOF\n")).unwrap();
+            std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+            let got = pr_status_with(dir.path().to_str().unwrap(), fake.to_str().unwrap(), "/nonexistent/glab").unwrap();
+            assert_eq!(got.checks.len(), 4);
+            assert!(pr_status_with(dir.path().to_str().unwrap(), "/nonexistent/gh", "/nonexistent/glab").is_none());
+        }
+    }
 
     #[test]
     fn lists_and_reads_files_inside_the_folder_only() {

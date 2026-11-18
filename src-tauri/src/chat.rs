@@ -40,6 +40,8 @@ pub mod uploads;
 pub mod learning;
 pub mod outputs;
 pub mod webpage;
+pub mod extraction;
+pub mod acp;
 mod backup;
 pub mod builtins;
 pub mod calendar;

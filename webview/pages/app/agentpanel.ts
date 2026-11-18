@@ -5,7 +5,7 @@
  */
 import { tauriInvoke } from '../../shared/tauri';
 import { api, type Agent } from './api';
-import { clear, h, icon, modal, toast, timeLabel } from './dom';
+import { clear, confirmDialog, h, icon, modal, toast, timeLabel } from './dom';
 import { changed, state } from './state';
 import { editTask } from './tasks';
 import { button, modalHeader } from './ui';
@@ -124,6 +124,17 @@ function viewMemory(agent: Agent) {
   });
 }
 
+/** Forgets the files and packages the agent's code kept. */
+async function resetEnv(agent: Agent) {
+  if (!(await confirmDialog(`Reset ${agent.name}'s environment?`, 'Its files and installed packages are removed; its chats stay.', 'Reset'))) return;
+  try {
+    await tauriInvoke('chat_reset_agent_env', { id: agent.id });
+    toast(`${agent.name} starts from a fresh environment.`);
+  } catch (e) {
+    toast(String(e), 'error');
+  }
+}
+
 /** The agent's own browser profile: sign it in to sites, or forget its session. */
 function browserSession(agent: Agent) {
   void modal((close) => {
@@ -179,6 +190,7 @@ export function agentPanel(agentId: string): HTMLElement {
       row('files', 'Context', files ? `${files} ${files === 1 ? 'file' : 'files'}` : '', files ? 'View' : 'Add', () => viewFiles(agent, again)),
       row('brain', 'Memory', notebook.trim() ? `${notebook.trim().split('\n').filter(Boolean).length} notes` : '', 'View', () => viewMemory(agent)),
       row('globe', 'Browser', 'its own logins', 'Sign in', () => void browserSession(agent)),
+      row('terminal', 'Environment', agent.codeNetwork ? 'its own files and packages · online' : 'its own files and packages', 'Reset', () => void resetEnv(agent)),
       row('clock', 'Scheduled', tasks ? `${tasks} ${tasks === 1 ? 'task' : 'tasks'}` : '', 'Add', () => void editTask(null, () => { again(); changed(); }, { agentId: agent.id }))
     );
   };

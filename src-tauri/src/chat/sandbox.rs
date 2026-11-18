@@ -197,7 +197,43 @@ fn tail(text: &[u8]) -> String {
 }
 
 /// Runs `code`, returning a JSON report of its exit, output and files.
+/// An agent's own environment (Osaurus's machine per agent): a home folder that keeps its files
+/// and installed packages across all its chats, apart from other agents', and, when the user
+/// allows it, the network (to install packages).
+#[derive(Debug, Clone, PartialEq)]
+pub struct AgentEnv {
+    pub home: PathBuf,
+    pub network: bool,
+}
+
+/// The environment of agent `id`, made on first use.
+pub fn agent_env(config_dir: &Path, id: &str, network: bool) -> Result<AgentEnv, String> {
+    if !valid_id(id) {
+        return Err("invalid agent id".into());
+    }
+    let home = chat_dir(config_dir).join("agent-envs").join(id);
+    std::fs::create_dir_all(home.join(".local").join("bin")).map_err(|e| e.to_string())?;
+    Ok(AgentEnv { home, network })
+}
+
+/// Forgets an agent's environment: its files and packages.
+pub fn reset_agent_env(config_dir: &Path, id: &str) -> Result<(), String> {
+    if !valid_id(id) {
+        return Err("invalid agent id".into());
+    }
+    match std::fs::remove_dir_all(chat_dir(config_dir).join("agent-envs").join(id)) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 pub async fn run(config_dir: &Path, conversation_id: &str, args: &Value) -> Outcome {
+    run_in(config_dir, conversation_id, args, None).await
+}
+
+/// Runs code in the conversation's workspace, inside an agent's environment when given.
+pub async fn run_in(config_dir: &Path, conversation_id: &str, args: &Value, env: Option<&AgentEnv>) -> Outcome {
     let err = |text: String| Outcome { text, is_error: true };
     let language = args.get("language").and_then(Value::as_str).unwrap_or("python").to_ascii_lowercase();
     let language = match language.as_str() {
@@ -243,7 +279,14 @@ pub async fn run(config_dir: &Path, conversation_id: &str, args: &Value) -> Outc
                 }
             }
             c.arg("--bind").arg(&dir).arg(&dir).arg("--chdir").arg(&dir);
-            c.args(["--unshare-all", "--die-with-parent", "--new-session", "--"]);
+            if let Some(env) = env {
+                c.arg("--bind").arg(&env.home).arg(&env.home);
+            }
+            c.args(["--unshare-all", "--die-with-parent", "--new-session"]);
+            if env.is_some_and(|e| e.network) {
+                c.arg("--share-net");
+            }
+            c.arg("--");
             c.arg(program).arg(&script);
             c
         }
@@ -253,10 +296,24 @@ pub async fn run(config_dir: &Path, conversation_id: &str, args: &Value) -> Outc
             c
         }
     };
+    let home = env.map_or_else(|| dir.clone(), |e| e.home.clone());
+    let path = match env {
+        // The agent's own installed commands come first.
+        Some(e) => {
+            let mut p = std::ffi::OsString::from(e.home.join(".local").join("bin"));
+            p.push(if cfg!(windows) { ";" } else { ":" });
+            p.push(std::env::var_os("PATH").unwrap_or_default());
+            p
+        }
+        None => std::env::var_os("PATH").unwrap_or_default(),
+    };
     command
         .env_clear()
-        .env("PATH", std::env::var_os("PATH").unwrap_or_default())
-        .env("HOME", &dir)
+        .env("PATH", path)
+        .env("HOME", &home)
+        .env("PYTHONUSERBASE", home.join(".local"))
+        .env("PIP_USER", if env.is_some() { "1" } else { "0" })
+        .env("NPM_CONFIG_PREFIX", home.join(".local"))
         .env("TMPDIR", if isolated { PathBuf::from("/tmp") } else { std::env::temp_dir() })
         .env("LANG", "C.UTF-8")
         .env("MPLBACKEND", "Agg")
@@ -433,6 +490,28 @@ mod tests {
 #[cfg(test)]
 mod permission_tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn agents_keep_their_own_environment() {
+        if !interpreters().contains_key("bash") {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let a = agent_env(dir.path(), "agent-a", false).unwrap();
+        let b = agent_env(dir.path(), "agent-b", false).unwrap();
+        let write = json!({"language": "bash", "code": "echo kept > \"$HOME/note.txt\"; echo $PYTHONUSERBASE"});
+        let out = run_in(dir.path(), "chat-1", &write, Some(&a)).await;
+        assert!(!out.is_error, "{}", out.text);
+        assert!(out.text.contains("agent-a/.local"), "{}", out.text);
+        // Another chat of the same agent sees the file; another agent does not.
+        let read = json!({"language": "bash", "code": "cat \"$HOME/note.txt\" 2>/dev/null || echo missing"});
+        assert!(run_in(dir.path(), "chat-2", &read, Some(&a)).await.text.contains("kept"));
+        assert!(run_in(dir.path(), "chat-3", &read, Some(&b)).await.text.contains("missing"));
+        reset_agent_env(dir.path(), "agent-a").unwrap();
+        assert!(!a.home.exists());
+        assert!(agent_env(dir.path(), "../x", false).is_err());
+    }
 
     #[test]
     fn always_allow_is_saved() {

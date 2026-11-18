@@ -222,7 +222,7 @@ items most likely to differ:
 Reviewed in November 2026 feature by feature against the docs of Open WebUI, LibreChat, LobeHub,
 Onyx, Osaurus and OpenBot (about 220 features). Every item of the review's shortlist is in the table
 below; every feature the review found missing or partial is tracked row by row, with evidence, in
-[review-coverage.md](review-coverage.md) (now 181 done, 10 partial, 1 missing, 31 out of scope).
+[review-coverage.md](review-coverage.md) (now 185 done, 6 partial, 1 missing, 31 out of scope).
 What was deliberately left out, and why:
 
 - **Team and enterprise features** (channels, comments, SSO, SCIM, tenants, admin plane, shared
@@ -405,6 +405,10 @@ What was deliberately left out, and why:
 | Delete a message and its reply | LibreChat, lobehub | Trash under a sent message removes it and the reply; refused inside the summarized part or where other versions branch off. Verified live | Done |
 | Export a conversation as JSON | open-webui, LibreChat | Conversation menu → Export as JSON: every turn, tool step and the usage totals | Done |
 | Continue a cut-off reply | LibreChat, lobehub | Continue on a stopped or failed reply picks up from the work already done | Done |
+| Pull request status and CI | LibreChat | The Changes view shows the branch's pull request (state, review decision) and each CI check with its state and a link to the run, through `gh` or `glab`. Verified live | Done |
+| Document extraction servers | open-webui (Tika, Docling) | Settings → Providers → Document extraction: built-in readers, Apache Tika or Docling, used for library documents and attachments; the built-in reader takes over when the server fails. Verified live with a Tika stand-in | Done |
+| An environment per agent | osaurus (VM per agent) | Each agent's code runs with its own home folder (files and pip/npm user installs persist across its chats), its own network switch, and Reset on its page. Verified live | Done |
+| ACP agents as models | openbot.run | Settings → Providers → ACP agents: Claude Code, Codex, Gemini CLI or any Agent Client Protocol command becomes a model; its text, thinking and tool notices stream into the chat and its permission requests use Lumo's approval card. Verified live with a stand-in agent | Done |
 
 ## Built for years of use
 
@@ -440,7 +444,7 @@ What is not here, and why. Everything else in the Vibe tables is built and was r
   and dictation anywhere were run with the microphone, hotkey and typing real and a stand-in
   transcription server. ElevenLabs needs keys this setup does not have.
 - **Coding agents and plugins from GitHub:** the Claude Code CLI ran for real; Codex and Gemini
-  CLIs were run as stand-ins with the same command-line shape. Downloading a plugin ZIP from
+  CLIs were run as stand-ins with the same command-line shape. ACP agents were tested with a stand-in that speaks the protocol; the Tika and Docling clients were tested against stand-in servers. Downloading a plugin ZIP from
   GitHub was blocked by this environment's network; reading the official marketplace worked.
 - **Interface translations:** Portuguese, Spanish, French, German and Arabic were translated by a model
   and have not been reviewed by native speakers.

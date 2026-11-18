@@ -1794,3 +1794,15 @@ button.usage-meter:hover { background: var(--hover); }
 .material-swatch{display:block;width:100%;height:46px;border-radius:12px;margin-bottom:8px}
 .material-swatch.solid{background:var(--bg-elevated);border:1px solid var(--border-strong)}
 .material-swatch.glass{background:linear-gradient(180deg,rgba(255,255,255,.35),rgba(255,255,255,.06)),radial-gradient(80px 50px at 20% 20%,rgba(120,90,255,.8),transparent),radial-gradient(90px 60px at 85% 80%,rgba(255,90,160,.7),transparent),radial-gradient(70px 50px at 70% 10%,rgba(0,190,255,.7),transparent);border:1px solid rgba(255,255,255,.4);box-shadow:inset 0 1px 0 rgba(255,255,255,.7)}
+/* A branch's pull request and CI checks, in the Changes view. */
+.pr-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:6px 18px 10px;font-size:13px}
+.pr-bar:empty{display:none}
+.pr-link{display:inline-flex;align-items:center;gap:6px;font-weight:600;color:var(--text)}
+.pr-state,.pr-review{padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600;background:var(--bg-hover);text-transform:capitalize}
+.pr-state.open{background:color-mix(in srgb,#22c55e 20%,transparent);color:#22c55e}.pr-state.merged{background:color-mix(in srgb,#a855f7 22%,transparent);color:#a855f7}.pr-state.closed{color:#ef4444}
+.pr-review.changes-requested{color:#f59e0b}.pr-review.approved{color:#22c55e}
+.pr-checks summary{cursor:pointer;font-weight:600}.pr-checks summary.failed{color:#ef4444}.pr-checks summary.passed{color:#22c55e}.pr-checks summary.running{color:#f59e0b}
+.pr-checks[open]{flex-basis:100%}
+.pr-check{display:flex;align-items:center;gap:8px;padding:3px 0 3px 4px;color:var(--text)}
+.pr-check .dot{width:8px;height:8px;border-radius:50%;background:var(--text-muted)}
+.pr-check.passed .dot{background:#22c55e}.pr-check.failed .dot{background:#ef4444}.pr-check.running .dot,.pr-check.pending .dot{background:#f59e0b}
