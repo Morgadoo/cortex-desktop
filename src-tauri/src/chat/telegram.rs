@@ -229,8 +229,7 @@ pub fn start(app: &AppHandle) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let mut offset: i64 = 0;
-        loop {
-            let Ok(config_dir) = crate::settings::get_config_dir(&app) else { break };
+        while let Ok(config_dir) = crate::settings::get_config_dir(&app) {
             let settings = load(&config_dir);
             let Some(token) = (if settings.enabled { token().await } else { None }) else {
                 break;

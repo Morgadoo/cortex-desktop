@@ -216,7 +216,7 @@ pub fn stop(id: &str) -> Result<(), String> {
 /// The commands of a conversation, newest first.
 pub fn list(conversation_id: &str) -> Vec<CommandView> {
     let mut out: Vec<CommandView> = lock().values().filter(|r| r.view.conversation_id == conversation_id).map(|r| r.view.clone()).collect();
-    out.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+    out.sort_by_key(|a| std::cmp::Reverse(a.started_at));
     out
 }
 

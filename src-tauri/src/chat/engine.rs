@@ -1231,7 +1231,7 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         };
         // Decided once: an approval given during the step ("Always allow") must not move a call
         // out of the sequential queue after it was kept out of the concurrent batch.
-        let sequential: Vec<bool> = calls.iter().map(|c| waits_on_user(c)).collect();
+        let sequential: Vec<bool> = calls.iter().map(waits_on_user).collect();
         let mut outcomes: Vec<Option<tools::Outcome>> = (0..calls.len()).map(|_| None).collect();
         let runner = Runner { app, config_dir: &config_dir, registry: &registry, offered: &offered, model: &model, request, id, agent: agent.as_ref(), workdir: conversation.workdir.clone() };
         let concurrent = futures::future::join_all(
@@ -1244,13 +1244,10 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
             _ = cancelled(&mut cancel) => None,
             done = concurrent => Some(done),
         };
-        match finished {
-            Some(done) => {
-                for (i, outcome) in done {
-                    outcomes[i] = Some(outcome);
-                }
+        if let Some(done) = finished {
+            for (i, outcome) in done {
+                outcomes[i] = Some(outcome);
             }
-            None => {}
         }
         for (i, call) in calls.iter().enumerate() {
             if outcomes[i].is_some() || !sequential[i] || *cancel.borrow() {
@@ -1934,6 +1931,24 @@ async fn name_conversation(app: AppHandle, reference: String, mut conversation: 
     }
 }
 
+/// Replaces screenshots in earlier tool results with a note: only the latest view matters, and
+/// each one costs many tokens.
+fn drop_old_screenshots(messages: &mut [Message]) {
+    use rig_core::completion::message::UserContent;
+    for message in messages.iter_mut() {
+        let Message::User { content } = message else { continue };
+        for item in content.iter_mut() {
+            if let UserContent::ToolResult(result) = item {
+                let has_image = result.content.iter().any(|c| matches!(c, ToolResultContent::Image(_)));
+                if has_image {
+                    let kept: Vec<ToolResultContent> = result.content.iter().filter(|c| !matches!(c, ToolResultContent::Image(_))).cloned().chain(std::iter::once(ToolResultContent::text("[earlier screenshot removed]"))).collect();
+                    result.content = kept;
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1993,7 +2008,7 @@ mod tests {
     #[test]
     fn images_ride_with_the_message() {
         let png = ImageInput { media_type: "image/png".into(), data: "iVBORw0KGgo=".into() };
-        let m = user_message("look", &[png.clone()]).unwrap();
+        let m = user_message("look", std::slice::from_ref(&png)).unwrap();
         let Message::User { content } = m else { panic!() };
         assert_eq!(content.len(), 2);
         assert!(user_message("x", &[ImageInput { media_type: "image/tiff".into(), data: "AA==".into() }]).is_err());
@@ -2044,23 +2059,5 @@ mod tests {
             serde_json::to_value(event).unwrap(),
             serde_json::json!({"type": "toolEnd", "conversationId": "c", "callId": "1", "output": "ok", "isError": false})
         );
-    }
-}
-
-/// Replaces screenshots in earlier tool results with a note: only the latest view matters, and
-/// each one costs many tokens.
-fn drop_old_screenshots(messages: &mut [Message]) {
-    use rig_core::completion::message::UserContent;
-    for message in messages.iter_mut() {
-        let Message::User { content } = message else { continue };
-        for item in content.iter_mut() {
-            if let UserContent::ToolResult(result) = item {
-                let has_image = result.content.iter().any(|c| matches!(c, ToolResultContent::Image(_)));
-                if has_image {
-                    let kept: Vec<ToolResultContent> = result.content.iter().filter(|c| !matches!(c, ToolResultContent::Image(_))).cloned().chain(std::iter::once(ToolResultContent::text("[earlier screenshot removed]"))).collect();
-                    result.content = kept;
-                }
-            }
-        }
     }
 }

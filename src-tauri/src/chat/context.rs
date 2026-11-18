@@ -260,7 +260,7 @@ pub fn breakdown(messages: &[Message], summary: Option<&Summary>, measured: u64,
     .filter(|(_, tokens)| *tokens > 0)
     .map(|(label, tokens)| Slice { label: label.into(), tokens })
     .collect();
-    slices.sort_by(|a, b| b.tokens.cmp(&a.tokens));
+    slices.sort_by_key(|a| std::cmp::Reverse(a.tokens));
     Breakdown { window, measured, slices, summarized_messages: summary.map_or(0, |s| s.upto.min(messages.len())), cleared_results }
 }
 
@@ -319,6 +319,32 @@ pub fn transcript(messages: &[Message]) -> String {
         }
     }
     out
+}
+
+/// The text of a message: the user's typed words, or the assistant's reply.
+pub fn message_text(message: &Message) -> String {
+    use rig_core::completion::message::{AssistantContent, UserContent};
+    match message {
+        Message::User { content } => content
+            .iter()
+            .filter_map(|c| match c {
+                UserContent::Text(t) => Some(t.text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        Message::Assistant(a) => a
+            .content
+            .iter()
+            .filter_map(|c| match c {
+                AssistantContent::Text(t) => Some(t.text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    }
+
 }
 
 #[cfg(test)]
@@ -427,30 +453,4 @@ mod tests {
         assert!(view.slices.iter().any(|s| s.label == "Your messages"));
         assert_eq!((view.window, view.measured, view.summarized_messages), (128_000, 50_000, 0));
     }
-}
-
-/// The text of a message: the user's typed words, or the assistant's reply.
-pub fn message_text(message: &Message) -> String {
-    use rig_core::completion::message::{AssistantContent, UserContent};
-    match message {
-        Message::User { content } => content
-            .iter()
-            .filter_map(|c| match c {
-                UserContent::Text(t) => Some(t.text.as_str()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join("\n"),
-        Message::Assistant(a) => a
-            .content
-            .iter()
-            .filter_map(|c| match c {
-                AssistantContent::Text(t) => Some(t.text.as_str()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join("\n"),
-        _ => String::new(),
-    }
-
 }

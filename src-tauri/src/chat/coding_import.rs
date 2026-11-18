@@ -87,6 +87,9 @@ fn is_noise(text: &str) -> bool {
     t.is_empty() || t.starts_with("<system-reminder>") || t.starts_with("<command-") || t.starts_with("<local-command") || t.starts_with("Caveat: The messages below")
 }
 
+/// A coding agent's session folder: its name, where it is, how deep sessions sit, which files are sessions.
+type Source<'a> = (&'a str, PathBuf, usize, &'a dyn Fn(&str) -> bool);
+
 /// Reads a session file of either agent, line by line.
 pub fn read(path: &Path) -> Result<Session, String> {
     let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
@@ -181,7 +184,7 @@ fn id_for(path: &Path) -> String {
 pub fn find(config_dir: &Path, home_dir: Option<&Path>) -> Vec<Found> {
     let Some(home) = home_dir.map(Path::to_path_buf).or_else(home) else { return Vec::new() };
     let mut out = Vec::new();
-    let sources: [(&str, PathBuf, usize, &dyn Fn(&str) -> bool); 2] = [
+    let sources: [Source; 2] = [
         ("claude-code", home.join(".claude").join("projects"), 1, &|n: &str| n.ends_with(".jsonl")),
         ("codex", home.join(".codex").join("sessions"), 4, &|n: &str| n.starts_with("rollout-") && n.ends_with(".jsonl")),
     ];
@@ -203,7 +206,7 @@ pub fn find(config_dir: &Path, home_dir: Option<&Path>) -> Vec<Found> {
             });
         }
     }
-    out.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    out.sort_by_key(|a| std::cmp::Reverse(a.updated_at));
     out
 }
 

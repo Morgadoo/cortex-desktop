@@ -1856,7 +1856,7 @@ pub fn chat_library_connectors(app: AppHandle, id: String) -> Result<Vec<Library
         .into_iter()
         .map(|c| LibraryConnector { mirrored: library.connectors.contains(&c.id().to_string()), id: c.id().to_string(), name: c.descriptor().display_name })
         .collect();
-    list.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    list.sort_by_key(|a| a.name.to_lowercase());
     Ok(list)
 }
 

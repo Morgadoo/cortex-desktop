@@ -500,7 +500,7 @@ fn parse(numstat: &str, names: &str) -> Vec<ChangedFile> {
         .filter_map(|line| {
             let mut parts = line.split('\t');
             let code = parts.next()?;
-            let path = parts.last()?;
+            let path = parts.next_back()?;
             let status = match code.chars().next()? {
                 'A' => "added",
                 'D' => "deleted",

@@ -151,8 +151,7 @@ pub fn start(app: &AppHandle) {
     }
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        loop {
-            let Ok(config_dir) = crate::settings::get_config_dir(&app) else { break };
+        while let Ok(config_dir) = crate::settings::get_config_dir(&app) {
             if !load(&config_dir).enabled {
                 break;
             }

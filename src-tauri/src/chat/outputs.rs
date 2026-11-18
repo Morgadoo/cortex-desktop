@@ -83,7 +83,7 @@ fn canvases(list: Vec<super::canvas::Canvas>) -> Vec<Output> {
 }
 
 fn newest_first(mut out: Vec<Output>) -> Vec<Output> {
-    out.sort_by(|a, b| b.at.cmp(&a.at));
+    out.sort_by_key(|a| std::cmp::Reverse(a.at));
     out
 }
 

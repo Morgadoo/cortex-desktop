@@ -156,7 +156,9 @@ fn sha256(bytes: &[u8]) -> String {
 /// The key from the passphrase and salt (Argon2id), kept for the session: deriving is slow on
 /// purpose.
 fn derive(passphrase: &str, salt: &[u8]) -> Result<[u8; 32], String> {
-    static CACHE: Mutex<Option<(String, Vec<u8>, [u8; 32])>> = Mutex::new(None);
+    /// The last key derived: (passphrase, salt, key).
+    type Derived = (String, Vec<u8>, [u8; 32]);
+    static CACHE: Mutex<Option<Derived>> = Mutex::new(None);
     let hashed = sha256(passphrase.as_bytes());
     if let Some((p, s, k)) = CACHE.lock().unwrap().as_ref() {
         if *p == hashed && s == salt {

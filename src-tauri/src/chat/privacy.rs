@@ -17,15 +17,11 @@ use super::store::{chat_dir, write_json};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", default)]
+#[derive(Default)]
 pub struct PrivacySettings {
     pub enabled: bool,
 }
 
-impl Default for PrivacySettings {
-    fn default() -> Self {
-        Self { enabled: false }
-    }
-}
 
 fn path(config_dir: &Path) -> PathBuf {
     chat_dir(config_dir).join("privacy.json")

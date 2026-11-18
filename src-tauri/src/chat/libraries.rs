@@ -82,7 +82,7 @@ pub fn list(config_dir: &Path) -> Vec<Library> {
         .filter_map(|e| crate::chat::at_rest::read_to_string(e.path().join("library.json")).ok())
         .filter_map(|t| serde_json::from_str(&t).ok())
         .collect();
-    out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    out.sort_by_key(|a| a.name.to_lowercase());
     out
 }
 
@@ -1095,7 +1095,7 @@ mod connector_tests {
         set_connector(dir.path(), &lib.id, "wiki", true).unwrap();
         let r = sync_connectors(dir.path(), &lib.id, &connectors).await.unwrap();
         assert_eq!((r.added, r.updated, r.removed), (2, 0, 0));
-        assert!(search(dir.path(), &[lib.id.clone()], "who orders laptops", 3).iter().any(|p| p.text.contains("Rita")));
+        assert!(search(dir.path(), std::slice::from_ref(&lib.id), "who orders laptops", 3).iter().any(|p| p.text.contains("Rita")));
         // Nothing changed: nothing to do; a folder sync leaves connector documents alone.
         let r = sync_connectors(dir.path(), &lib.id, &connectors).await.unwrap();
         assert_eq!((r.added, r.updated, r.removed), (0, 0, 0));
@@ -1105,7 +1105,7 @@ mod connector_tests {
         *wiki.pages.lock().unwrap() = vec![("wiki://onboarding".into(), "Laptops are ordered by Tomas.".into())];
         let r = sync_connectors(dir.path(), &lib.id, &connectors).await.unwrap();
         assert_eq!((r.added, r.updated, r.removed), (0, 1, 1));
-        assert!(search(dir.path(), &[lib.id.clone()], "laptops ordered", 3).iter().any(|p| p.text.contains("Tomas")));
+        assert!(search(dir.path(), std::slice::from_ref(&lib.id), "laptops ordered", 3).iter().any(|p| p.text.contains("Tomas")));
         // Offline: its documents stay.
         *wiki.down.lock().unwrap() = true;
         let r = sync_connectors(dir.path(), &lib.id, &connectors).await.unwrap();
@@ -1156,7 +1156,7 @@ mod tests {
         assert_eq!((r.added, r.updated, r.removed), (2, 0, 0));
         let names: Vec<String> = load(config.path(), &lib.id).unwrap().documents.iter().map(|d| d.name.clone()).collect();
         assert!(names.contains(&"a.md".to_string()) && names.iter().any(|n| n.ends_with("b.txt")), "{names:?}");
-        assert_eq!(search(config.path(), &[lib.id.clone()], "budget", 3)[0].document, names.iter().find(|n| n.ends_with("b.txt")).unwrap().clone());
+        assert_eq!(search(config.path(), std::slice::from_ref(&lib.id), "budget", 3)[0].document, names.iter().find(|n| n.ends_with("b.txt")).unwrap().clone());
         // Nothing changed: nothing to do.
         assert_eq!(sync(config.path(), &lib.id).unwrap(), SyncReport::default());
         // A change, a deletion and a new file.
@@ -1166,7 +1166,7 @@ mod tests {
         crate::chat::at_rest::write(folder.path().join("c.csv"), "item,cost\nchairs,300").unwrap();
         let r = sync(config.path(), &lib.id).unwrap();
         assert_eq!((r.added, r.updated, r.removed), (1, 1, 1));
-        assert!(!search(config.path(), &[lib.id.clone()], "March", 3).is_empty());
+        assert!(!search(config.path(), std::slice::from_ref(&lib.id), "March", 3).is_empty());
         // Unmirrored: its documents leave.
         let r = remove_folder(config.path(), &lib.id, &folder.path().to_string_lossy()).unwrap();
         assert_eq!(r.removed, 2);

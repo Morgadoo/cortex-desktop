@@ -84,7 +84,7 @@ pub fn list(config_dir: &Path) -> Vec<Upload> {
         .filter_map(|s| store::load_conversation(config_dir, &s.id).ok())
         .flat_map(|c| in_conversation(&c))
         .collect();
-    out.sort_by(|a, b| b.at.cmp(&a.at));
+    out.sort_by_key(|a| std::cmp::Reverse(a.at));
     out
 }
 

@@ -281,7 +281,7 @@ pub struct FeedItem {
 }
 
 /// The text of the first `<tag>` in `xml` (CDATA and entities undone), if any.
-fn element<'a>(xml: &'a str, tag: &str) -> Option<String> {
+fn element(xml: &str, tag: &str) -> Option<String> {
     let open = format!("<{tag}");
     let mut from = 0;
     loop {
@@ -590,7 +590,7 @@ pub fn start(app: AppHandle) {
         let mut ticks: u64 = 0;
         loop {
             // Mirrored library folders: at start, then every 10 minutes.
-            if ticks % 20 == 0 {
+            if ticks.is_multiple_of(20) {
                 if let Ok(config_dir) = crate::settings::get_config_dir(&app) {
                     let dir = config_dir.clone();
                     let _ = tokio::task::spawn_blocking(move || super::libraries::sync_all(&dir)).await;
