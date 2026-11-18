@@ -542,3 +542,8 @@ commands.allow = ["chat_conversation_text", "chat_rate_reason", "chat_save_file"
 identifier = "allow-chat-library-folders"
 description = "Mirror folders into libraries and sync them."
 commands.allow = ["chat_add_library_folder", "chat_remove_library_folder", "chat_sync_library"]
+
+[[permission]]
+identifier = "allow-chat-skill-history"
+description = "List and restore earlier versions of a skill."
+commands.allow = ["chat_skill_history", "chat_restore_skill"]

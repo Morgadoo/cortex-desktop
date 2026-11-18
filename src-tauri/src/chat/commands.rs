@@ -1256,6 +1256,18 @@ pub fn chat_rate_reason(app: AppHandle, id: String, index: usize, reason: String
 }
 
 #[tauri::command]
+pub fn chat_skill_history(app: AppHandle, name: String) -> Result<Vec<super::skills::Version>, String> {
+    super::skills::history(&config_dir(&app)?, &name)
+}
+
+#[tauri::command]
+pub fn chat_restore_skill(app: AppHandle, name: String, version: String) -> Result<Vec<super::skills::Skill>, String> {
+    let dir = config_dir(&app)?;
+    super::skills::restore(&dir, &name, &version)?;
+    Ok(super::skills::list(&dir))
+}
+
+#[tauri::command]
 pub fn chat_search_settings(app: AppHandle) -> Result<super::search::SearchSettings, String> {
     Ok(super::search::load_settings(&config_dir(&app)?))
 }

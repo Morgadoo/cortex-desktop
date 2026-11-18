@@ -227,7 +227,73 @@ pub fn save(config_dir: &Path, name: &str, description: &str, body: &str) -> Res
     }
     let dir = skills_dir(config_dir).join(name);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    std::fs::write(dir.join("SKILL.md"), render(name, description, body)).map_err(|e| e.to_string())
+    let next = render(name, description, body);
+    // The version being replaced is kept, so any earlier one can come back.
+    if let Ok(previous) = std::fs::read_to_string(dir.join("SKILL.md")) {
+        if previous != next {
+            let history = dir.join("history");
+            std::fs::create_dir_all(&history).map_err(|e| e.to_string())?;
+            let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%S%3fZ").to_string();
+            // Two saves in the same millisecond still keep both.
+            let mut file = history.join(format!("{stamp}.md"));
+            let mut n = 1;
+            while file.exists() {
+                file = history.join(format!("{stamp}-{n}.md"));
+                n += 1;
+            }
+            std::fs::write(file, previous).map_err(|e| e.to_string())?;
+            prune_history(&history);
+        }
+    }
+    std::fs::write(dir.join("SKILL.md"), next).map_err(|e| e.to_string())
+}
+
+/// Versions kept per skill.
+const KEEP_VERSIONS: usize = 30;
+
+fn prune_history(history: &Path) {
+    let mut files: Vec<_> = std::fs::read_dir(history).into_iter().flatten().flatten().map(|e| e.path()).collect();
+    files.sort();
+    let extra = files.len().saturating_sub(KEEP_VERSIONS);
+    for old in files.into_iter().take(extra) {
+        let _ = std::fs::remove_file(old);
+    }
+}
+
+/// An earlier version of a skill.
+#[derive(Debug, Clone, serde::Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Version {
+    /// When it was replaced (its file name, sortable).
+    pub id: String,
+    pub description: String,
+    pub body: String,
+}
+
+/// A skill's earlier versions, newest first.
+pub fn history(config_dir: &Path, name: &str) -> Result<Vec<Version>, String> {
+    if !valid_name(name) {
+        return Err("invalid skill name".into());
+    }
+    let dir = skills_dir(config_dir).join(name).join("history");
+    let mut out: Vec<Version> = std::fs::read_dir(&dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| {
+            let id = e.path().file_stem()?.to_string_lossy().into_owned();
+            let (_, description, body) = parse(&std::fs::read_to_string(e.path()).ok()?)?;
+            Some(Version { id, description, body })
+        })
+        .collect();
+    out.sort_by(|a, b| b.id.cmp(&a.id));
+    Ok(out)
+}
+
+/// Brings an earlier version back (the current one joins the history).
+pub fn restore(config_dir: &Path, name: &str, version: &str) -> Result<(), String> {
+    let found = history(config_dir, name)?.into_iter().find(|v| v.id == version).ok_or("That version is gone.")?;
+    save(config_dir, name, &found.description, &found.body)
 }
 
 pub fn delete(config_dir: &Path, name: &str) -> Result<(), String> {
@@ -276,6 +342,22 @@ pub fn prompt(skills: &[Skill]) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn skills_keep_their_versions() {
+        let dir = tempfile::tempdir().unwrap();
+        save(dir.path(), "report", "Use when reporting.", "1. Draft.").unwrap();
+        save(dir.path(), "report", "Use when reporting.", "1. Draft.").unwrap();
+        assert!(history(dir.path(), "report").unwrap().is_empty(), "saving the same text keeps no copy");
+        save(dir.path(), "report", "Use when reporting weekly.", "1. Draft.\n2. Send.").unwrap();
+        let versions = history(dir.path(), "report").unwrap();
+        assert_eq!(versions.len(), 1);
+        assert_eq!(versions[0].body.trim(), "1. Draft.");
+        restore(dir.path(), "report", &versions[0].id).unwrap();
+        assert_eq!(find(dir.path(), "report").unwrap().body.trim(), "1. Draft.");
+        assert_eq!(history(dir.path(), "report").unwrap().len(), 2, "the replaced version is kept too");
+    }
+
     use super::*;
 
     #[test]

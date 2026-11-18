@@ -44,6 +44,39 @@ export function editSkill(skill: Skill | null, onSaved: (skills: Skill[]) => voi
             },
           }, 'Delete')
         : null;
+    // Earlier versions of the user's own skill, newest first, each restorable.
+    const historyBtn =
+      skill && !builtin
+        ? h('button', {
+            class: 'btn btn-secondary',
+            on: {
+              click: async () => {
+                const versions = await tauriInvoke<{ id: string; description: string; body: string }[]>('chat_skill_history', { name: skill.name });
+                if (!versions.length) return void toast('No earlier versions yet: each save keeps the one it replaces.');
+                const when = (id: string) => {
+                  const m = id.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/);
+                  return m ? new Date(Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!, +m[6]!)).toLocaleString() : id;
+                };
+                void modal((closeHistory) =>
+                  h(
+                    'div',
+                    { class: 'dialog-small wide' },
+                    modalHeader(`Versions of ${skill.name}`, closeHistory, { flush: true }),
+                    versions.map((v) =>
+                      h(
+                        'details',
+                        { class: 'bubble-file' },
+                        h('summary', {}, icon('clock', 14), h('span', {}, when(v.id)), h('small', { class: 'muted' }, v.description.slice(0, 60))),
+                        h('pre', {}, v.body),
+                        h('div', { class: 'dialog-actions' }, h('button', { class: 'btn btn-secondary btn-sm', on: { click: async () => { onSaved(await tauriInvoke('chat_restore_skill', { name: skill.name, version: v.id })); toast('Restored. The version it replaced is kept.'); closeHistory(); close(); } } }, 'Restore this version'))
+                      )
+                    )
+                  )
+                );
+              },
+            },
+          }, 'History')
+        : null;
     return h(
       'div',
       { class: 'dialog-small wide skill-editor' },
@@ -56,7 +89,7 @@ export function editSkill(skill: Skill | null, onSaved: (skills: Skill[]) => voi
       h('label', { class: 'field-label' }, 'Instructions'),
       body,
       error,
-      h('div', { class: 'dialog-actions' }, remove, h('span', { class: 'spacer' }), h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Save'))
+      h('div', { class: 'dialog-actions' }, remove, historyBtn, h('span', { class: 'spacer' }), h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Save'))
     );
   });
 }

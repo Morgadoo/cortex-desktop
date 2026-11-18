@@ -153,6 +153,8 @@ pub fn run() {
                 chat::commands::chat_favicon,
                 chat::commands::chat_link_preview,
                 chat::commands::chat_debug,
+                chat::commands::chat_skill_history,
+                chat::commands::chat_restore_skill,
                 chat::commands::chat_add_library_folder,
                 chat::commands::chat_remove_library_folder,
                 chat::commands::chat_sync_library,

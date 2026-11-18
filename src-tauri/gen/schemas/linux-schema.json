@@ -741,6 +741,12 @@
           "markdownDescription": "Turn a skill on or off."
         },
         {
+          "description": "List and restore earlier versions of a skill.",
+          "type": "string",
+          "const": "allow-chat-skill-history",
+          "markdownDescription": "List and restore earlier versions of a skill."
+        },
+        {
           "description": "Read an answer aloud.",
           "type": "string",
           "const": "allow-chat-speak",
