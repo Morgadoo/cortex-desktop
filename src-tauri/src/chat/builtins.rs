@@ -24,6 +24,7 @@ pub const KNOWLEDGE_READ: &str = "knowledge_read";
 pub const KNOWLEDGE_SEARCH: &str = "knowledge_search";
 pub const SEARCH_CHATS: &str = "search_chats";
 pub const READ_CHAT: &str = "read_chat";
+pub const NOTIFY: &str = "notify";
 
 fn tool(name: &str, description: &str, parameters: Value) -> ChatTool {
     ChatTool {
@@ -251,6 +252,19 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
                 "instructions": { "type": "string", "description": "Numbered steps in Markdown." }
             },
             "required": ["name", "description", "instructions"]
+        }),
+    ));
+    out.push(tool(
+        NOTIFY,
+        "Show the user a desktop notification: when a long task finishes, needs their attention, or a \
+         scheduled run found something they asked to be told about. Keep it short.",
+        json!({
+            "type": "object",
+            "properties": {
+                "title": { "type": "string", "description": "A few words." },
+                "body": { "type": "string", "description": "One or two sentences." }
+            },
+            "required": ["title", "body"]
         }),
     ));
     out.extend(super::sandbox::definition());
@@ -549,10 +563,10 @@ mod tests {
     #[test]
     fn definitions_follow_settings() {
         let dir = tempfile::tempdir().unwrap();
-        let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).filter(|n| n != super::super::sandbox::RUN_CODE && n != super::super::media::GENERATE_IMAGE && n != SAVE_SKILL && !n.starts_with("knowledge_")).collect();
+        let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).filter(|n| n != super::super::sandbox::RUN_CODE && n != super::super::media::GENERATE_IMAGE && n != SAVE_SKILL && n != NOTIFY && !n.starts_with("knowledge_")).collect();
         assert_eq!(names, [WEB_SEARCH, UPDATE_PLAN, DELEGATE, CANVAS, SCHEDULE_TASK, SEARCH_CHATS, READ_CHAT, REMEMBER, FORGET, USE_SKILL]);
         memory::save(dir.path(), &memory::Memories { enabled: false, items: vec![] }).unwrap();
-        let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).filter(|n| n != super::super::sandbox::RUN_CODE && n != super::super::media::GENERATE_IMAGE && n != SAVE_SKILL && !n.starts_with("knowledge_")).collect();
+        let names: Vec<String> = definitions(dir.path()).into_iter().map(|t| t.name).filter(|n| n != super::super::sandbox::RUN_CODE && n != super::super::media::GENERATE_IMAGE && n != SAVE_SKILL && n != NOTIFY && !n.starts_with("knowledge_")).collect();
         assert_eq!(names, [WEB_SEARCH, UPDATE_PLAN, DELEGATE, CANVAS, SCHEDULE_TASK, USE_SKILL]);
     }
 

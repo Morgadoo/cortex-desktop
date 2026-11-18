@@ -1,5 +1,6 @@
 /** A small element builder, an icon set, and safe Markdown rendering for the chat page. */
 import DOMPurify from 'dompurify';
+import katex from 'katex';
 import { marked } from 'marked';
 
 type Child = Node | string | null | undefined | false;
@@ -79,6 +80,7 @@ const ICONS: Record<string, string> = {
   send: 'M12 19V5M6 11l6-6 6 6',
   stop: 'M7 7h10v10H7z',
   mic: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3',
+  dot: 'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
   wave: 'M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4',
   bolt: 'M13 3L5 14h6l-1 7 8-11h-6z',
   brain: 'M9 4a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 6 0V5a2 2 0 0 0-3-1zM15 4a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-6 0',
@@ -159,15 +161,78 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
 /** Run on every rendered Markdown fragment; favicon.ts adds icons and hover cards to citations. */
 export const markdownHooks: ((root: DocumentFragment) => void)[] = [];
 
+/**
+ * LaTeX in answers: `$$…$$` and `\[…\]` as blocks, `\(…\)` and `$…$` inline (a `$` amount like
+ * "$5 and $10" is left alone). Math inside code is untouched. Each formula is swapped for a
+ * placeholder before Markdown runs, then rendered as MathML, which WebKit draws natively.
+ */
+function extractMath(text: string): { text: string; formulas: { tex: string; display: boolean }[] } {
+  const formulas: { tex: string; display: boolean }[] = [];
+  const keep = (tex: string, display: boolean) => {
+    formulas.push({ tex: tex.trim(), display });
+    return `@@MATH${formulas.length - 1}@@`;
+  };
+  // Code fences and inline code pass through as they are.
+  const parts = text.split(/(```[\s\S]*?(?:```|$)|`[^`\n]+`)/g);
+  const out = parts.map((part, i) => {
+    if (i % 2 === 1) return part;
+    return part
+      .replace(/\$\$([\s\S]+?)\$\$/g, (_, tex: string) => keep(tex, true))
+      .replace(/\\\[([\s\S]+?)\\\]/g, (_, tex: string) => keep(tex, true))
+      .replace(/\\\(([\s\S]+?)\\\)/g, (_, tex: string) => keep(tex, false))
+      .replace(/(^|[^\\$\w])\$(?!\s)([^$\n]+?)(?<!\s)\$(?![\w$])/g, (whole, lead: string, tex: string) =>
+        // Plain amounts ("$5") are not math: a formula has a letter, a backslash or an operator.
+        /^[\d.,\s]+$/.test(tex) ? whole : `${lead}${keep(tex, false)}`
+      );
+  });
+  return { text: out.join(''), formulas };
+}
+
+function renderMath(root: DocumentFragment, formulas: { tex: string; display: boolean }[]) {
+  if (!formulas.length) return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes: Text[] = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode as Text);
+  for (const node of nodes) {
+    const value = node.nodeValue ?? '';
+    if (!value.includes('@@MATH')) continue;
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    for (const m of value.matchAll(/@@MATH(\d+)@@/g)) {
+      frag.append(value.slice(last, m.index));
+      const f = formulas[Number(m[1])];
+      if (f) {
+        const html = katex.renderToString(f.tex, { displayMode: f.display, output: 'mathml', throwOnError: false });
+        const holder = document.createElement(f.display ? 'div' : 'span');
+        holder.className = f.display ? 'math-block' : 'math-inline';
+        holder.title = f.tex;
+        holder.innerHTML = DOMPurify.sanitize(html, { USE_PROFILES: { mathMl: true } });
+        frag.append(holder);
+      }
+      last = (m.index ?? 0) + m[0].length;
+    }
+    frag.append(value.slice(last));
+    node.replaceWith(frag);
+  }
+}
+
+const EXTENSIONS: Record<string, string> = {
+  python: 'py', py: 'py', javascript: 'js', js: 'js', typescript: 'ts', ts: 'ts', rust: 'rs', go: 'go', java: 'java',
+  c: 'c', cpp: 'cpp', csharp: 'cs', ruby: 'rb', php: 'php', swift: 'swift', kotlin: 'kt', bash: 'sh', sh: 'sh', shell: 'sh',
+  html: 'html', css: 'css', json: 'json', yaml: 'yaml', yml: 'yml', toml: 'toml', sql: 'sql', markdown: 'md', md: 'md', xml: 'xml', csv: 'csv',
+};
+
 export function markdown(text: string, options: { breaks?: boolean } = {}): DocumentFragment {
+  const math = extractMath(text);
   // `breaks` keeps single line breaks, for documents where lines matter (poems, notes, canvases).
-  const html = marked.parse(text, { async: false, breaks: options.breaks ?? false }) as string;
+  const html = marked.parse(math.text, { async: false, breaks: options.breaks ?? false }) as string;
   const clean = DOMPurify.sanitize(html, {
     FORBID_TAGS: ['style', 'form', 'input', 'button', 'iframe'],
     FORBID_ATTR: ['style'],
   });
   const template = document.createElement('template');
   template.innerHTML = clean;
+  renderMath(template.content, math.formulas);
   // Library citations arrive as [document.ext]; show them as pills like web citations.
   const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT);
   const texts: Text[] = [];
@@ -201,7 +266,16 @@ export function markdown(text: string, options: { breaks?: boolean } = {}): Docu
       copy.replaceChildren(icon('check', 14));
       setTimeout(() => copy.replaceChildren(icon('copy', 14)), 1200);
     });
-    const head = h('div', { class: 'code-head' }, h('span', {}, lang || 'code'), copy);
+    // Save the block as a file, named by its language.
+    const save = h('button', { class: 'code-copy', title: 'Download as a file' }, icon('download', 14));
+    save.addEventListener('click', () => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([code?.textContent ?? ''], { type: 'text/plain' }));
+      a.download = `snippet.${EXTENSIONS[lang.toLowerCase()] ?? 'txt'}`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    });
+    const head = h('div', { class: 'code-head' }, h('span', {}, lang || 'code'), h('span', { class: 'code-actions' }, save, copy));
     pre.before(head);
     const wrap = h('div', { class: 'code-block' });
     head.before(wrap);

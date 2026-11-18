@@ -933,6 +933,15 @@ impl Runner<'_> {
         if name == media::GENERATE_IMAGE {
             return media::generate(self.config_dir, self.id, &arguments).await;
         }
+        if name == builtins::NOTIFY {
+            let text = |k: &str| arguments.get(k).and_then(Value::as_str).unwrap_or_default().chars().take(240).collect::<String>();
+            let title = text("title");
+            if title.trim().is_empty() {
+                return tools::Outcome { text: "Give the notification a title.".into(), is_error: true };
+            }
+            notify(self.app, &title, &text("body"));
+            return tools::Outcome { text: "Notification shown.".into(), is_error: false };
+        }
         if builtins::is_builtin(name) {
             return builtins::run(self.config_dir, name, &arguments).await;
         }

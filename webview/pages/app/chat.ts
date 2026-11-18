@@ -699,7 +699,26 @@ function renderUserTurn(turn: Turn, conversationId: string, branch: HTMLElement 
   const gallery = images.length
     ? h('div', { class: 'bubble-images' }, images.map((i) => h('img', { src: `data:${i.mediaType};base64,${i.data}`, alt: 'Attached image' })))
     : null;
-  const bubble = h('div', { class: 'bubble' }, gallery, quoteEl, chips, rest);
+  // Attached text files read as file chips that open in place, not as raw markup.
+  const files: HTMLElement[] = [];
+  rest = rest.replace(/\n*<attachment name="([^"]*)">\n?([\s\S]*?)\n?<\/attachment>/g, (_, name: string, body: string) => {
+    files.push(h('details', { class: 'bubble-file' }, h('summary', {}, icon('file', 14), h('span', {}, name), h('small', { class: 'muted' }, `${body.split('\n').length} lines`)), h('pre', {}, body)));
+    return '';
+  }).trim();
+  const body = h('div', { class: 'bubble-text' }, rest);
+  const bubble = h('div', { class: 'bubble' }, gallery, quoteEl, chips, body, files.length ? h('div', { class: 'bubble-files' }, files) : null);
+  // Long messages (pasted documents, logs) fold to a few lines, with Show more.
+  const long = rest.length > 1200 || rest.split('\n').length > 16;
+  let toggle: HTMLElement | null = null;
+  if (long) {
+    body.classList.add('folded');
+    toggle = h('button', { class: 'fold-toggle' }, 'Show more');
+    toggle.addEventListener('click', () => {
+      const folded = body.classList.toggle('folded');
+      toggle!.textContent = folded ? 'Show more' : 'Show less';
+    });
+    bubble.append(toggle);
+  }
   return h(
     'div',
     { class: 'turn turn-user' },
@@ -1206,6 +1225,17 @@ class Composer {
       }
     });
     this.textarea.addEventListener('paste', async (e) => {
+      // A long paste goes in as an attachment, keeping the message readable (LibreChat).
+      const pasted = e.clipboardData?.getData('text/plain') ?? '';
+      if (pasted.length > 2500) {
+        e.preventDefault();
+        const lines = pasted.split('\n').length;
+        this.attachments.push({ name: `Pasted text (${lines} lines)`, text: pasted });
+        this.renderChips();
+        this.renderBar();
+        toast('Long paste added as an attachment.');
+        return;
+      }
       // WebKitGTK exposes pasted images through `items` only; other engines through `files` too.
       const fromItems = Array.from(e.clipboardData?.items ?? [])
         .filter((i) => i.kind === 'file' && IMAGE_TYPES.includes(i.type))
@@ -1317,6 +1347,15 @@ class Composer {
   }
 
   attach(conversationId: string | null, placeholder: string) {
+    // Unsent text stays with its conversation (and the home composer), across restarts.
+    if (conversationId !== this.conversationId) {
+      saveDraft(this.conversationId, this.textarea.value);
+      this.textarea.value = drafts()[conversationId ?? 'home'] ?? '';
+      // Attachments stay with their conversation too (in memory: images can be large).
+      draftAttachments.set(this.conversationId ?? 'home', this.attachments);
+      this.attachments = draftAttachments.get(conversationId ?? 'home') ?? [];
+      draftAttachments.delete(conversationId ?? 'home');
+    }
     this.conversationId = conversationId;
     this.placeholder = placeholder;
     this.textarea.placeholder = placeholder;
@@ -1393,7 +1432,18 @@ class Composer {
       text += `\n\n<attachment name="${file.name}">\n${file.text}\n</attachment>`;
     }
     const images = this.attachments.flatMap((a) => (a.image ? [a.image] : []));
+    // Sent text is no longer a draft (sending from home moves to the new chat right away).
+    const unsent = this.textarea.value;
+    const unsentFiles = this.attachments;
+    this.textarea.value = '';
+    this.attachments = [];
+    saveDraft(this.conversationId, '');
     const ok = await send(text.trim(), this.conversationId, images);
+    if (!ok && !this.textarea.value) {
+      this.textarea.value = unsent;
+      this.attachments = unsentFiles;
+      this.renderChips();
+    }
     if (ok) {
       if (typed) rememberPrompt(typed);
       this.historyIndex = -1;
@@ -2429,7 +2479,8 @@ export class ChatView {
     this.sticky.classList.toggle('visible', show);
     if (show && current !== this.stickyTarget) {
       this.stickyTarget = current;
-      const text = current!.querySelector('.bubble')?.textContent?.trim() ?? '';
+      // The message itself: not its file chips or the Show more button.
+      const text = (current!.querySelector('.bubble-text') ?? current!.querySelector('.bubble'))?.textContent?.trim() ?? '';
       clear(this.sticky, h('span', {}, text.length > 160 ? `${text.slice(0, 160)}…` : text));
     }
   }
@@ -2565,6 +2616,11 @@ export function conversationMenu(anchor: HTMLElement, id: string, title: string,
       item('download', 'Export as Markdown', () => void api.exportConversation(id).then((saved) => saved && toast('Conversation exported.'))),
       item('code', 'Export as JSON', () => void tauriInvoke<boolean>('chat_export_conversation_json', { id }).then((saved) => saved && toast('Conversation exported.')).catch((e) => toast(String(e), 'error'))),
       item('settings', 'Chat settings…', () => void openChatSettings(id)),
+      item('dot', 'Mark as unread', async () => {
+        await api.updateConversation({ id, unread: true });
+        await refreshConversations();
+        if (state.view.kind === 'chat' && state.view.id === id) navigate({ kind: 'home' });
+      }),
       item('tag', 'Tags…', async () => {
         const current = state.conversations.find((c) => c.id === id)?.tags ?? [];
         const next = await promptText('Tags (comma separated)', current.join(', '));
@@ -2878,4 +2934,31 @@ function numberLibraryCitations(el: HTMLElement, parts: Part[]) {
   }
   const lastText = [...el.querySelectorAll('.markdown')].pop();
   (lastText ?? el).after(h('div', { class: 'footnotes-wrap' }, h('div', { class: 'step-label' }, 'Library sources'), notes));
+}
+
+/** Unsent attachments by conversation, for this session. */
+const draftAttachments = new Map<string, Attachment[]>();
+
+/** Unsent text by conversation (`home` for a new chat), kept on this device. */
+function drafts(): Record<string, string> {
+  try {
+    return JSON.parse(localStorage.getItem('lumo.drafts') ?? '{}') as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+function saveDraft(conversationId: string | null, text: string) {
+  try {
+    const all = drafts();
+    const key = conversationId ?? 'home';
+    if (text.trim()) all[key] = text;
+    else delete all[key];
+    // A few dozen drafts at most; the oldest go first.
+    const keys = Object.keys(all);
+    for (const k of keys.slice(0, Math.max(0, keys.length - 50))) delete all[k];
+    localStorage.setItem('lumo.drafts', JSON.stringify(all));
+  } catch {
+    // Drafts are a convenience.
+  }
 }
