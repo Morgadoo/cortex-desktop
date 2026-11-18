@@ -710,7 +710,7 @@ select.input { cursor: pointer; }
 /* ------------------------------------------------------------------ libraries, editing, temporary chats */
 
 .libraries { display: flex; flex-direction: column; gap: 14px; }
-.library-actions { display: flex; gap: 8px; align-items: center; }
+.library-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .doc-list { display: flex; flex-direction: column; }
 .doc-row { display: grid; grid-template-columns: 18px 1fr auto auto 30px; gap: 12px; align-items: center; padding: 9px 6px; border-bottom: 1px solid var(--border); }
 .doc-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }

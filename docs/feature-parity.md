@@ -222,7 +222,7 @@ items most likely to differ:
 Reviewed in November 2026 feature by feature against the docs of Open WebUI, LibreChat, LobeHub,
 Onyx, Osaurus and OpenBot (about 220 features). Every item of the review's shortlist is in the table
 below; every feature the review found missing or partial is tracked row by row, with evidence, in
-[review-coverage.md](review-coverage.md) (now 186 done, 5 partial, 1 missing, 31 out of scope).
+[review-coverage.md](review-coverage.md) (now 187 done, 4 partial, 1 missing, 31 out of scope).
 What was deliberately left out, and why:
 
 - **Team and enterprise features** (channels, comments, SSO, SCIM, tenants, admin plane, shared
@@ -410,6 +410,7 @@ What was deliberately left out, and why:
 | An environment per agent | osaurus (VM per agent) | Each agent's code runs with its own home folder (files and pip/npm user installs persist across its chats), its own network switch, and Reset on its page. Verified live | Done |
 | ACP agents as models | openbot.run | Settings → Providers → ACP agents: Claude Code, Codex, Gemini CLI or any Agent Client Protocol command becomes a model; its text, thinking and tool notices stream into the chat and its permission requests use Lumo's approval card. Verified live with a stand-in agent | Done |
 | Video generation as a tool | openbot.run (image and video steps), Grok | `generate_video`: a 1–15 second clip from a description, or an image brought to life (`reference`), through xAI Grok Imagine (Settings → Providers → Images, video and voice → Video model). The job is started and polled; the clip is saved in the workspace, plays in the chat and shows under Outputs → Videos. Tools menu → Video generation; agents can have it; the built-in "Image to video" workflow chains both tools. Verified live against a stand-in service | Done |
+| Connectors indexed into a library | onyx (connectors), open-webui | Libraries → Mirror a connector: an MCP connector's resources (pages, files, tickets) become library documents, searched and cited like any other, and kept in step every 10 minutes or on Sync now (added, re-read when changed, removed when gone; kept while the connector is unreachable). Verified live with an MCP wiki server: indexed, then a page changed, one removed and one added on the next sync | Done |
 
 ## Built for years of use
 

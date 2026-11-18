@@ -592,7 +592,17 @@ pub fn start(app: AppHandle) {
             // Mirrored library folders: at start, then every 10 minutes.
             if ticks % 20 == 0 {
                 if let Ok(config_dir) = crate::settings::get_config_dir(&app) {
-                    let _ = tokio::task::spawn_blocking(move || super::libraries::sync_all(&config_dir)).await;
+                    let dir = config_dir.clone();
+                    let _ = tokio::task::spawn_blocking(move || super::libraries::sync_all(&dir)).await;
+                    // Connector documents: the connectors answer slower, so after the folders.
+                    let connectors = super::commands::registry_connectors(&app);
+                    for library in super::libraries::list(&config_dir).into_iter().filter(|l| !l.connectors.is_empty()) {
+                        match super::libraries::sync_connectors(&config_dir, &library.id, &connectors).await {
+                            Ok(r) if r.added + r.updated + r.removed > 0 => log::info!("synced connectors of library {}: +{} ~{} -{}", library.name, r.added, r.updated, r.removed),
+                            Ok(_) => {}
+                            Err(e) => log::warn!("could not sync connectors of library {}: {e}", library.name),
+                        }
+                    }
                 }
             }
             ticks += 1;

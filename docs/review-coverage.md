@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 186 |
-| PARTIAL | 86 | 5 |
+| DONE | 58 | 187 |
+| PARTIAL | 86 | 4 |
 | MISSING | 48 | 1 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 44 / 1 / 0 / 9 · LibreChat 42 / 0 / 0 / 4 · LobeHub 29 / 0 / 0 / 5 · Onyx 20 / 1 / 0 / 5 · Osaurus 23 / 2 / 1 / 4 · OpenBot 28 / 1 / 0 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 44 / 1 / 0 / 9 · LibreChat 42 / 0 / 0 / 4 · LobeHub 29 / 0 / 0 / 5 · Onyx 21 / 0 / 0 / 5 · Osaurus 23 / 2 / 1 / 4 · OpenBot 28 / 1 / 0 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -163,7 +163,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 44 / 1 / 0 / 9
 | Onyx | User library across sessions | PARTIAL | DONE | Libraries usable from any chat (parity L49, L86) |
 | Onyx | Sandboxed browser with screenshots | PARTIAL | DONE | browser_view: pages open headless in the user's own Chrome, Chromium, Edge or Brave, after their scripts run; the screenshot shows in the chat and the rendered text goes to the model (webpage.rs). Verified live: rust-lang.org screenshotted and read; a unit test checks script-made text and a PNG with a real browser |
 | Onyx | Agentic hybrid RAG | PARTIAL | DONE | parity L243, L241 |
-| Onyx | Connectors indexed and synced | PARTIAL | PARTIAL | Folders are indexed (parity L240). Missing: MCP connectors indexed into a library |
+| Onyx | Connectors indexed and synced | PARTIAL | DONE | Libraries → Mirror a connector: the documents an MCP connector offers as resources (wiki pages, drive files, tickets) are read into the library and kept in step every 10 minutes and on Sync now: new ones added, changed ones re-read, gone ones removed; an unreachable connector keeps its documents. Unit-tested; verified live with an MCP server offering wiki pages |
 | Onyx | Search mode with source cards | MISSING | DONE | parity: Search mode (searchmode.ts, search_all.rs) |
 | Onyx | Time range / source filter | MISSING | DONE | `web_search` recency (parity: Recent results only) and `sites` (parity: Web search on chosen sites) |
 | Onyx | Cited vs found sources; add one in full | PARTIAL | DONE | Sources panel lists Cited, then Also found (search results the answer did not use); + attaches the page's full article text to the next message (chat.ts sourcesOf/openSourcesPanel). Verified live |

@@ -6,6 +6,7 @@ import { modalHeader } from './ui';
 interface Doc {
   id: string;
   name: string;
+  source?: string;
   chars: number;
   addedAt: string;
 }
@@ -18,6 +19,8 @@ interface Library {
   documents: Doc[];
   /** Folders mirrored into the library. */
   folders: string[];
+  /** Connectors whose documents (MCP resources) are mirrored into the library. */
+  connectors?: string[];
   syncedAt?: string;
 }
 
@@ -222,6 +225,53 @@ export class LibrariesPage {
       }
       await this.load();
     });
+    const addConnector = h('button', { class: 'btn btn-secondary' }, icon('plug', 15), 'Mirror a connector');
+    addConnector.addEventListener('click', async () => {
+      const list = await tauriInvoke<{ id: string; name: string; mirrored: boolean }[]>('chat_library_connectors', { id: lib.id }).catch(() => []);
+      const close = popover(
+        addConnector,
+        h(
+          'div',
+          { class: 'menu' },
+          h('div', { class: 'menu-heading' }, 'Index the documents of'),
+          list.length
+            ? list.map((c) =>
+                h('button', { class: 'menu-item', disabled: c.mirrored, on: { click: async () => {
+                  close();
+                  addConnector.textContent = 'Indexing…';
+                  try {
+                    report(await tauriInvoke<SyncReport>('chat_set_library_connector', { id: lib.id, connectorId: c.id, on: true }));
+                  } catch (e) {
+                    toast(String(e), 'error');
+                  }
+                  await this.load();
+                } } }, icon('plug', 15), h('span', {}, c.name), c.mirrored ? h('small', { class: 'muted' }, 'mirrored') : null)
+              )
+            : h('div', { class: 'menu-empty muted' }, 'No connectors yet. Add one in Settings → Connectors.')
+        )
+      );
+    });
+    const connectorRows = (lib.connectors ?? []).map((id) => {
+      const count = lib.documents.filter((d) => d.source?.startsWith(`mcp:${id}:`)).length;
+      return h(
+        'div',
+        { class: 'doc-row' },
+        icon('plug', 16),
+        h('span', { class: 'doc-name', dataset: { connector: id } }, id),
+        h('span', { class: 'muted' }, `${count} ${count === 1 ? 'document' : 'documents'}`),
+        h('button', { class: 'link-btn', on: { click: async () => { report(await tauriInvoke<SyncReport>('chat_sync_library', { id: lib.id }).catch((e) => (toast(String(e), 'error'), null))); await this.load(); } } }, 'Sync now'),
+        h('button', { class: 'icon-btn small', title: 'Stop mirroring (its documents leave the library)', on: { click: async () => { report(await tauriInvoke<SyncReport>('chat_set_library_connector', { id: lib.id, connectorId: id, on: false }).catch((e) => (toast(String(e), 'error'), null))); await this.load(); } } }, icon('close', 15))
+      );
+    });
+    const connectors = connectorRows.length ? h('div', { class: 'folder-list' }, connectorRows) : null;
+    if (connectors) {
+      // Their names, once the list of connectors answers.
+      void tauriInvoke<{ id: string; name: string }[]>('chat_library_connectors', { id: lib.id }).then((all) => {
+        connectors.querySelectorAll<HTMLElement>('[data-connector]').forEach((el) => {
+          el.textContent = all.find((c) => c.id === el.dataset.connector)?.name ?? el.textContent;
+        });
+      }).catch(() => undefined);
+    }
     const folders = lib.folders.length
       ? h(
           'div',
@@ -334,8 +384,9 @@ export class LibrariesPage {
     clear(
       this.body,
       tabs,
-      h('div', { class: 'library-actions' }, add, addFolder, addPage, importZip, h('span', { class: 'spacer' }), remove),
+      h('div', { class: 'library-actions' }, add, addFolder, addConnector, addPage, importZip, h('span', { class: 'spacer' }), remove),
       folders,
+      connectors,
       docs,
       h('div', { class: 'section-title' }, 'Test a search'),
       h('div', { class: 'search-wrap' }, icon('search', 16), query),

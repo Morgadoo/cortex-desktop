@@ -41,6 +41,9 @@ pub struct Library {
     /// Folders the library mirrors: their files are added, updated and removed as they change.
     #[serde(default)]
     pub folders: Vec<String>,
+    /// Connectors whose documents (MCP resources) the library mirrors, by connector id.
+    #[serde(default)]
+    pub connectors: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub synced_at: Option<DateTime<Utc>>,
 }
@@ -104,6 +107,7 @@ pub fn create(config_dir: &Path, name: &str, description: &str) -> Result<Librar
         created_at: Utc::now(),
         documents: Vec::new(),
         folders: Vec::new(),
+        connectors: Vec::new(),
         synced_at: None,
     };
     save(config_dir, &library)?;
@@ -696,7 +700,8 @@ pub fn sync(config_dir: &Path, library_id: &str) -> Result<SyncReport, String> {
     // Gone, or changed: the old copy goes.
     let mut keep = Vec::new();
     for doc in std::mem::take(&mut library.documents) {
-        let Some(source) = doc.source.clone() else {
+        // Documents from connectors are kept in step by `sync_connectors`.
+        let Some(source) = doc.source.clone().filter(|s| !s.starts_with(CONNECTOR_SOURCE)) else {
             keep.push(doc);
             continue;
         };
@@ -705,15 +710,7 @@ pub fn sync(config_dir: &Path, library_id: &str) -> Result<SyncReport, String> {
             keep.push(doc);
             continue;
         }
-        let _ = std::fs::remove_file(docs.join(format!("{}.txt", doc.id)));
-        if let Ok(entries) = std::fs::read_dir(&docs) {
-            for entry in entries.flatten() {
-                let name = entry.file_name().to_string_lossy().into_owned();
-                if name.starts_with(&format!("{}.", doc.id)) && name.ends_with(".vec.json") {
-                    let _ = std::fs::remove_file(entry.path());
-                }
-            }
-        }
+        drop_document_files(&docs, &doc.id);
         if changed {
             report.updated += 1;
         } else {
@@ -756,6 +753,137 @@ pub fn sync(config_dir: &Path, library_id: &str) -> Result<SyncReport, String> {
     library.synced_at = Some(Utc::now());
     save(config_dir, &library)?;
     Ok(report)
+}
+
+/// Removes a document's text and its embeddings.
+fn drop_document_files(docs: &Path, id: &str) {
+    let _ = std::fs::remove_file(docs.join(format!("{id}.txt")));
+    if let Ok(entries) = std::fs::read_dir(docs) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with(&format!("{id}.")) && name.ends_with(".vec.json") {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Connectors indexed into a library (Onyx's connectors): the documents an MCP server offers as
+// resources (pages of a wiki, files of a drive, tickets) are read into the library and kept in
+// step: new ones added, changed ones re-read, gone ones removed.
+
+/// `source` of a document read from a connector: `mcp:<connector id>:<resource uri>`.
+pub const CONNECTOR_SOURCE: &str = "mcp:";
+/// Documents read per connector, at most.
+const CONNECTOR_MAX_DOCS: usize = 500;
+
+/// A fingerprint of a document's text, to see that it changed.
+pub fn text_fingerprint(text: &str) -> i64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut h);
+    h.finish() as i64
+}
+
+/// Brings the documents a library mirrors from its connectors in line with what they offer.
+/// A connector that cannot be reached keeps its documents until it answers again.
+pub async fn sync_connectors(config_dir: &Path, library_id: &str, connectors: &[std::sync::Arc<dyn crate::tools::registry::Connector>]) -> Result<SyncReport, String> {
+    let mut library = load(config_dir, library_id)?;
+    let docs = docs_dir(config_dir, library_id)?;
+    std::fs::create_dir_all(&docs).map_err(|e| e.to_string())?;
+    let mut report = SyncReport::default();
+    // What each connector offers now; `None` for one that did not answer.
+    let mut offered: std::collections::HashMap<String, Option<Vec<(String, String)>>> = std::collections::HashMap::new();
+    for id in &library.connectors {
+        let Some(connector) = connectors.iter().find(|c| c.id() == id) else {
+            report.errors.push(format!("{id} is not connected."));
+            offered.insert(id.clone(), None);
+            continue;
+        };
+        match connector.resources().await {
+            Ok(list) => {
+                let items = list
+                    .iter()
+                    .filter_map(|r| {
+                        let uri = r.get("uri")?.as_str()?.to_string();
+                        let name = r.get("title").or_else(|| r.get("name")).and_then(|n| n.as_str()).unwrap_or(&uri).to_string();
+                        Some((uri, name))
+                    })
+                    .take(CONNECTOR_MAX_DOCS)
+                    .collect();
+                offered.insert(id.clone(), Some(items));
+            }
+            Err(e) => {
+                report.errors.push(format!("{}: {e}", connector.descriptor().display_name));
+                offered.insert(id.clone(), None);
+            }
+        }
+    }
+    let source_of = |connector: &str, uri: &str| format!("{CONNECTOR_SOURCE}{connector}:{uri}");
+    // Documents of connectors no longer mirrored, or no longer offered, leave.
+    let mut keep = Vec::new();
+    for doc in std::mem::take(&mut library.documents) {
+        let Some(source) = doc.source.clone().filter(|s| s.starts_with(CONNECTOR_SOURCE)) else {
+            keep.push(doc);
+            continue;
+        };
+        let still = library.connectors.iter().any(|c| match offered.get(c) {
+            Some(None) => source.starts_with(&source_of(c, "")),
+            Some(Some(items)) => items.iter().any(|(uri, _)| source == source_of(c, uri)),
+            None => false,
+        });
+        if still {
+            keep.push(doc);
+        } else {
+            drop_document_files(&docs, &doc.id);
+            report.removed += 1;
+        }
+    }
+    library.documents = keep;
+    for (connector_id, items) in &offered {
+        let (Some(items), Some(connector)) = (items, connectors.iter().find(|c| c.id() == connector_id)) else { continue };
+        for (uri, name) in items {
+            let source = source_of(connector_id, uri);
+            let text = match connector.read_resource(uri).await {
+                Ok(t) if !t.trim().is_empty() => t,
+                Ok(_) => continue,
+                Err(e) => {
+                    report.errors.push(format!("{name}: {e}"));
+                    continue;
+                }
+            };
+            let text: String = text.chars().take(MAX_DOC_CHARS).collect();
+            let fingerprint = text_fingerprint(&text);
+            if let Some(i) = library.documents.iter().position(|d| d.source.as_deref() == Some(source.as_str())) {
+                if library.documents[i].modified == Some(fingerprint) {
+                    continue;
+                }
+                let old = library.documents.remove(i);
+                drop_document_files(&docs, &old.id);
+                report.updated += 1;
+            } else {
+                report.added += 1;
+            }
+            let doc = Document { id: uuid::Uuid::new_v4().to_string(), name: name.clone(), chars: text.chars().count(), added_at: Utc::now(), source: Some(source), modified: Some(fingerprint) };
+            crate::chat::at_rest::write(docs.join(format!("{}.txt", doc.id)), &text).map_err(|e| e.to_string())?;
+            library.documents.push(doc);
+        }
+    }
+    library.synced_at = Some(Utc::now());
+    save(config_dir, &library)?;
+    Ok(report)
+}
+
+/// Mirrors a connector's documents into a library.
+pub fn set_connector(config_dir: &Path, library_id: &str, connector_id: &str, on: bool) -> Result<Library, String> {
+    let mut library = load(config_dir, library_id)?;
+    library.connectors.retain(|c| c != connector_id);
+    if on {
+        library.connectors.push(connector_id.to_string());
+    }
+    save(config_dir, &library)?;
+    Ok(library)
 }
 
 /// Mirrors a folder into a library and syncs it.
@@ -913,6 +1041,89 @@ pub fn prompt(libraries: &[Library]) -> Option<String> {
         out.push_str(&format!("\n- {} ({} documents){}", l.name, l.documents.len(), if l.description.is_empty() { String::new() } else { format!(": {}", l.description) }));
     }
     Some(out)
+}
+
+#[cfg(test)]
+mod connector_tests {
+    use super::*;
+    use crate::tools::auth::{AuthMechanism, Readiness};
+    use crate::tools::error::ToolError;
+    use crate::tools::registry::{Connector, ConnectorDescriptor, ToolDefinition};
+    use serde_json::{json, Value};
+    use std::sync::{Arc, Mutex};
+
+    /// A connector offering documents, which the test changes between syncs.
+    struct Wiki {
+        pages: Mutex<Vec<(String, String)>>,
+        down: Mutex<bool>,
+    }
+
+    #[async_trait::async_trait]
+    impl Connector for Wiki {
+        fn id(&self) -> &str {
+            "wiki"
+        }
+        fn descriptor(&self) -> ConnectorDescriptor {
+            ConnectorDescriptor { id: "wiki".into(), display_name: "Team wiki".into(), description: None, version: "1".into(), icon: None, auth: AuthMechanism::None }
+        }
+        fn tools(&self) -> Vec<ToolDefinition> {
+            Vec::new()
+        }
+        fn readiness(&self) -> Readiness {
+            Readiness::Ready
+        }
+        async fn invoke(&self, _: &str, _: Value) -> Result<Value, ToolError> {
+            Ok(Value::Null)
+        }
+        async fn resources(&self) -> Result<Vec<Value>, ToolError> {
+            if *self.down.lock().unwrap() {
+                return Err(ToolError::Unreachable("offline".into()));
+            }
+            Ok(self.pages.lock().unwrap().iter().map(|(uri, _)| json!({"uri": uri, "name": uri.rsplit('/').next()})).collect())
+        }
+        async fn read_resource(&self, uri: &str) -> Result<String, ToolError> {
+            self.pages.lock().unwrap().iter().find(|(u, _)| u == uri).map(|(_, t)| t.clone()).ok_or_else(|| ToolError::ExecutionFailed("gone".into()))
+        }
+    }
+
+    #[tokio::test]
+    async fn connector_documents_are_mirrored_and_kept_in_step() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = create(dir.path(), "Wiki", "").unwrap();
+        let wiki = Arc::new(Wiki { pages: Mutex::new(vec![("wiki://onboarding".into(), "Laptops are ordered by Rita.".into()), ("wiki://holidays".into(), "We close on 24 December.".into())]), down: Mutex::new(false) });
+        let connectors: Vec<Arc<dyn Connector>> = vec![wiki.clone()];
+        set_connector(dir.path(), &lib.id, "wiki", true).unwrap();
+        let r = sync_connectors(dir.path(), &lib.id, &connectors).await.unwrap();
+        assert_eq!((r.added, r.updated, r.removed), (2, 0, 0));
+        assert!(search(dir.path(), &[lib.id.clone()], "who orders laptops", 3).iter().any(|p| p.text.contains("Rita")));
+        // Nothing changed: nothing to do; a folder sync leaves connector documents alone.
+        let r = sync_connectors(dir.path(), &lib.id, &connectors).await.unwrap();
+        assert_eq!((r.added, r.updated, r.removed), (0, 0, 0));
+        sync(dir.path(), &lib.id).unwrap();
+        assert_eq!(load(dir.path(), &lib.id).unwrap().documents.len(), 2);
+        // A page changes and one is deleted.
+        *wiki.pages.lock().unwrap() = vec![("wiki://onboarding".into(), "Laptops are ordered by Tomas.".into())];
+        let r = sync_connectors(dir.path(), &lib.id, &connectors).await.unwrap();
+        assert_eq!((r.added, r.updated, r.removed), (0, 1, 1));
+        assert!(search(dir.path(), &[lib.id.clone()], "laptops ordered", 3).iter().any(|p| p.text.contains("Tomas")));
+        // Offline: its documents stay.
+        *wiki.down.lock().unwrap() = true;
+        let r = sync_connectors(dir.path(), &lib.id, &connectors).await.unwrap();
+        assert_eq!(r.removed, 0);
+        assert!(!r.errors.is_empty());
+        assert_eq!(load(dir.path(), &lib.id).unwrap().documents.len(), 1);
+        // No longer mirrored: its documents leave.
+        set_connector(dir.path(), &lib.id, "wiki", false).unwrap();
+        let r = sync_connectors(dir.path(), &lib.id, &connectors).await.unwrap();
+        assert_eq!(r.removed, 1);
+        assert!(load(dir.path(), &lib.id).unwrap().documents.is_empty());
+    }
+
+    #[test]
+    fn resource_text_joins_text_parts() {
+        let v = json!({"contents": [{"uri": "a", "text": "one"}, {"uri": "b", "blob": "AA=="}, {"uri": "c", "text": "two"}]});
+        assert_eq!(crate::tools::connectors::mcp::resource_text(&v), "one\n\ntwo");
+    }
 }
 
 #[cfg(test)]

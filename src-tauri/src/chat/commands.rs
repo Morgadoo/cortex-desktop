@@ -1494,7 +1494,56 @@ pub async fn chat_remove_library_folder(app: AppHandle, id: String, folder: Stri
 #[tauri::command]
 pub async fn chat_sync_library(app: AppHandle, id: String) -> Result<super::libraries::SyncReport, String> {
     let dir = config_dir(&app)?;
-    tokio::task::spawn_blocking(move || super::libraries::sync(&dir, &id)).await.map_err(|e| e.to_string())?
+    let (d, i) = (dir.clone(), id.clone());
+    let mut report = tokio::task::spawn_blocking(move || super::libraries::sync(&d, &i)).await.map_err(|e| e.to_string())??;
+    if !super::libraries::load(&dir, &id)?.connectors.is_empty() {
+        let more = super::libraries::sync_connectors(&dir, &id, &registry_connectors(&app)).await?;
+        report.added += more.added;
+        report.updated += more.updated;
+        report.removed += more.removed;
+        report.errors.extend(more.errors);
+    }
+    Ok(report)
+}
+
+/// The connectors set up, as the library sync takes them.
+pub(crate) fn registry_connectors(app: &AppHandle) -> Vec<std::sync::Arc<dyn crate::tools::registry::Connector>> {
+    app.state::<crate::tools::registry::ToolRegistry>().connectors().into_iter().map(|c| c as std::sync::Arc<dyn crate::tools::registry::Connector>).collect()
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LibraryConnector {
+    id: String,
+    name: String,
+    mirrored: bool,
+}
+
+/// The connectors a library can mirror documents from.
+#[tauri::command]
+pub fn chat_library_connectors(app: AppHandle, id: String) -> Result<Vec<LibraryConnector>, String> {
+    use crate::tools::registry::Connector as _;
+    let library = super::libraries::load(&config_dir(&app)?, &id)?;
+    let mut list: Vec<LibraryConnector> = app
+        .state::<crate::tools::registry::ToolRegistry>()
+        .connectors()
+        .into_iter()
+        .map(|c| LibraryConnector { mirrored: library.connectors.contains(&c.id().to_string()), id: c.id().to_string(), name: c.descriptor().display_name })
+        .collect();
+    list.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(list)
+}
+
+/// Starts or stops mirroring a connector's documents into a library, then syncs it.
+#[tauri::command]
+pub async fn chat_set_library_connector(app: AppHandle, id: String, connector_id: String, on: bool) -> Result<super::libraries::SyncReport, String> {
+    let dir = config_dir(&app)?;
+    super::libraries::set_connector(&dir, &id, &connector_id, on)?;
+    let report = super::libraries::sync_connectors(&dir, &id, &registry_connectors(&app)).await?;
+    if on && report.added == 0 && report.errors.is_empty() && !super::libraries::load(&dir, &id)?.documents.iter().any(|d| d.source.as_deref().is_some_and(|s| s.starts_with(&format!("mcp:{connector_id}:")))) {
+        return Err("This connector offers no documents to index (it has tools but no resources).".into());
+    }
+    Ok(report)
 }
 
 #[tauri::command]
