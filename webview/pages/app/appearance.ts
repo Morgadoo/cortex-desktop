@@ -265,6 +265,7 @@ export function setBackground(id: string) {
 
 export const BACKDROPS: { id: string; label: string; css: string }[] = [
   { id: 'none', label: 'None', css: '' },
+  { id: 'liquid', label: 'Liquid', css: 'radial-gradient(900px 640px at 12% 8%, rgba(120,90,255,.55), transparent 62%), radial-gradient(800px 600px at 92% 18%, rgba(0,190,255,.42), transparent 60%), radial-gradient(900px 700px at 70% 100%, rgba(255,90,160,.40), transparent 62%), radial-gradient(700px 520px at 5% 95%, rgba(255,170,60,.35), transparent 60%)' },
   { id: 'dusk', label: 'Dusk', css: 'radial-gradient(1200px 700px at 15% 10%, rgba(139,109,255,.35), transparent 60%), radial-gradient(900px 600px at 90% 90%, rgba(255,120,90,.28), transparent 60%)' },
   { id: 'aurora', label: 'Aurora', css: 'radial-gradient(1000px 600px at 80% 0%, rgba(52,211,153,.30), transparent 60%), radial-gradient(900px 700px at 0% 100%, rgba(56,132,255,.30), transparent 60%)' },
   { id: 'paper', label: 'Paper', css: 'repeating-linear-gradient(0deg, rgba(127,127,127,.06) 0 1px, transparent 1px 28px), repeating-linear-gradient(90deg, rgba(127,127,127,.06) 0 1px, transparent 1px 28px)' },
@@ -292,9 +293,23 @@ export function applyBackdrop() {
   const id = storedBackdrop();
   const image = id === 'custom' ? read(BACKDROP_IMAGE_KEY) : null;
   const layer = id === 'custom' ? (image ? `url("${image}") center / cover no-repeat` : '') : (BACKDROPS.find((b) => b.id === id)?.css ?? '');
+  document.documentElement.dataset.material = storedMaterial();
   main.classList.toggle('has-backdrop', Boolean(layer));
   main.style.setProperty('--backdrop', layer || 'none');
   main.style.setProperty('--backdrop-veil', String(id === 'custom' ? backdropVeil() : 0));
+}
+
+const MATERIAL_KEY = 'lumo.material';
+export type Material = 'solid' | 'glass';
+
+/** A light Liquid Glass touch (glass.css), the default, or solid surfaces. */
+export function storedMaterial(): Material {
+  return read(MATERIAL_KEY) === 'solid' ? 'solid' : 'glass';
+}
+
+export function setMaterial(m: Material) {
+  write(MATERIAL_KEY, m);
+  applyBackdrop();
 }
 
 export function setBackdrop(id: string) {

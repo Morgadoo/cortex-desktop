@@ -9,6 +9,7 @@ import { audioApi, audioSettings, refreshAudioSettings, speakText, type AudioVie
 import { SHORTCUTS, bindingFor, comboOf, display, setBinding } from './shortcuts';
 import { EMOJI_STYLES, emojiStatus, emojiStyle, onEmojiStatus, setEmojiStyle, type EmojiStatus, type EmojiStyle } from './fluent';
 import { uploadsCard } from './uploads';
+import { setMaterial, storedMaterial, type Material } from './appearance';
 import { ACCENTS, BACKDROPS, BACKGROUNDS, backdropVeil, setBackdrop, setBackdropImage, setBackdropVeil, storedBackdrop, TEXT_SIZES, ZOOMS, accentHex, applyAppearance, readability, setAccent, setBackground, setReadability, storedAccent, storedBackground, type TextSize } from './appearance';
 import { setVoicePauseMs, voicePauseMs } from './dictation';
 import { setWakePrefs, wakePrefs } from './wakeword';
@@ -75,6 +76,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Accent colour', 'appearance', 'color colour highlight'],
   ['Background and palette', 'appearance', 'background colours palette'],
   ['Readability', 'appearance', 'text size font zoom scale contrast motion animation accessibility'],
+  ['Material', 'appearance', 'liquid glass apple translucent blur frosted material solid'],
   ['Emoji', 'appearance', 'emoji style microsoft fluent teams 3d flat system'],
 ];
 
@@ -1699,6 +1701,13 @@ function renderAppearance(content: HTMLElement) {
       row('Reduce motion', 'Turns off animations and smooth scrolling, also when the system does not ask for it.', switchInput(r.reduceMotion, (v) => setReadability({ reduceMotion: v })))
     )
   );
+
+  // Material: solid surfaces, or Liquid Glass (Apple's 2025 design language).
+  const materials: [Material, string, string][] = [['glass', 'Liquid Glass', 'Translucent, lightly lit glass'], ['solid', 'Solid', 'Opaque surfaces']];
+  const materialRow = h('div', { class: 'theme-options' }, materials.map(([id, label, hint]) =>
+    h('button', { class: `theme-option material-${id}${storedMaterial() === id ? ' active' : ''}`, title: hint, on: { click: () => { setMaterial(id); rerender(); } } }, h('span', { class: `material-swatch ${id}` }), label)
+  ));
+  content.append(card(h('h3', {}, 'Material'), h('p', { class: 'muted' }, 'Liquid Glass gives the message box, menus, dialogs and question cards a light glass finish: what is behind them shows through, blurred, under a thin bright rim. Solid keeps them opaque.'), materialRow));
 
   // Emoji: Microsoft's Fluent set (as in Teams), downloaded once, or the system's.
   const emojiSelect = h('select', { class: 'input select-sm' }, EMOJI_STYLES.map((s) => h('option', { value: s.id, selected: s.id === emojiStyle() }, s.label)));

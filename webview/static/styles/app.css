@@ -1791,3 +1791,6 @@ button.usage-meter:hover { background: var(--hover); }
 .sticky-prompt{background:color-mix(in srgb,var(--bg-elevated) 72%,transparent);-webkit-backdrop-filter:blur(14px) saturate(1.3);backdrop-filter:blur(14px) saturate(1.3)}
 .popover{-webkit-backdrop-filter:blur(16px) saturate(1.2);backdrop-filter:blur(16px) saturate(1.2)}
 .modal-backdrop{-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.material-swatch{display:block;width:100%;height:46px;border-radius:12px;margin-bottom:8px}
+.material-swatch.solid{background:var(--bg-elevated);border:1px solid var(--border-strong)}
+.material-swatch.glass{background:linear-gradient(180deg,rgba(255,255,255,.35),rgba(255,255,255,.06)),radial-gradient(80px 50px at 20% 20%,rgba(120,90,255,.8),transparent),radial-gradient(90px 60px at 85% 80%,rgba(255,90,160,.7),transparent),radial-gradient(70px 50px at 70% 10%,rgba(0,190,255,.7),transparent);border:1px solid rgba(255,255,255,.4);box-shadow:inset 0 1px 0 rgba(255,255,255,.7)}
