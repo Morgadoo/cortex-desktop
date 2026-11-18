@@ -472,6 +472,12 @@ pub fn run() {
             } else if !crate::HOSTED_WEB_APP {
                 account::seed_local_account(&app.state::<account::ActiveAccount>());
             }
+            // Before anything reads the keychain: chat setup starts the local API in the background,
+            // and its key cannot load until the keychain knows where withdrawn credentials are kept.
+            match settings::get_config_dir(app.handle()) {
+                Ok(config_dir) => tools::auth::set_pending_deletes_dir(config_dir),
+                Err(e) => error!("connector secrets will not load: {e}"),
+            }
             chat::commands::setup(app);
             app.manage(skills::SkillCache::new(app.path().app_cache_dir()?.join("skill-runtime"),
                 app.state::<account::ActiveAccount>().get()));
@@ -518,10 +524,6 @@ pub fn run() {
             )));
             app.manage(registry);
 
-            match settings::get_config_dir(app.handle()) {
-                Ok(config_dir) => tools::auth::set_pending_deletes_dir(config_dir),
-                Err(e) => error!("connector secrets will not load: {e}"),
-            }
             app.manage(tools::auth::SecureStorageStatus {
                 available: tauri::async_runtime::block_on(tools::auth::secure_storage_available()),
             });

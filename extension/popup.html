@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header><img src="icon32.png" alt="" /><strong>Ask Lumo</strong><span id="page" class="muted"></span></header>
+  <section id="setup" hidden>
+    <p class="muted">Turn on the local API in Lumo (Settings → General → Local API) and paste its key here. Lumo answers from your computer; nothing goes anywhere else.</p>
+    <label>Port <input id="port" type="number" value="8484" /></label>
+    <label>API key <input id="key" type="password" placeholder="lumo-…" /></label>
+    <button id="save">Connect</button>
+    <p id="setup-error" class="error"></p>
+  </section>
+  <section id="ask" hidden>
+    <div class="row">
+      <label class="grow">Model <select id="model"></select></label>
+      <label class="scope"><input type="checkbox" id="use-selection" /> <span id="scope-label">Only the selection</span></label>
+    </div>
+    <textarea id="question" rows="3" placeholder="Summarize this page · What does it say about pricing? · Translate the selection"></textarea>
+    <div class="row">
+      <button id="go">Ask</button>
+      <button id="continue" class="secondary" title="Open this question with the page in a new Lumo chat">Continue in Lumo</button>
+      <button id="settings" class="link">Settings</button>
+    </div>
+    <div id="answer"></div>
+  </section>
+  <script src="popup.js"></script>
+</body>
+</html>

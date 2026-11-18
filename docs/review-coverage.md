@@ -9,12 +9,12 @@ platform-only features, explained there under "deliberately left out".
 | Status | At the re-audit | Now |
 |---|---|---|
 | DONE | 58 | 207 |
-| PARTIAL | 86 | 2 |
+| PARTIAL | 86 | 3 |
 | MISSING | 48 | 1 |
-| OUT OF SCOPE | 31 | 13 |
+| OUT OF SCOPE | 31 | 12 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 49 / 0 / 0 / 5 · LibreChat 45 / 0 / 0 / 1 · LobeHub 33 / 0 / 0 / 1 · Onyx 23 / 0 / 0 / 3 · Osaurus 26 / 1 / 1 / 2 · OpenBot 31 / 1 / 0 / 1.
+Per app now (done / partial / missing / out of scope): Open WebUI 49 / 0 / 0 / 5 · LibreChat 45 / 0 / 0 / 1 · LobeHub 33 / 0 / 0 / 1 · Onyx 23 / 1 / 0 / 2 · Osaurus 26 / 1 / 1 / 2 · OpenBot 31 / 1 / 0 / 1.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -177,7 +177,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 49 / 0 / 0 / 5
 | Onyx | Enterprise features | MISSING | OUT OF SCOPE | parity L217 |
 | Onyx | Custom code for PII and query rejection | PARTIAL | DONE | Filters (Functions) rewrite or refuse messages in code: personal data taken out before it is sent, messages matching a rule refused with the reason shown as Not sent. Verified live: an email address redacted and a customer number refused |
 | Onyx | Served as an MCP server | MISSING | DONE | `/mcp` on the local API: search_libraries, ask, list_models, list_tasks, run_task (parity: Lumo as an MCP server) |
-| Onyx | Extension, widget, Slack/Discord bots, CLI | MISSING | OUT OF SCOPE | Channels N/A (parity L256); scripts can use the local API (L292) |
+| Onyx | Extension, widget, Slack/Discord bots, CLI | MISSING | PARTIAL | Browser extension (extension/ in the repository, Chrome, Edge, Brave): asks Lumo about the open page or the selected text through the local API, right-click Ask Lumo about the selection, and Continue in Lumo opens the question with the page in a new chat; verified live in Chromium with a real model (an answer from the page, another from the selection only). Slack and Telegram bots (Settings → General). CLI: lumo-desktop chat. Not here: an embeddable website widget, a Discord bot |
 | Osaurus | Global hotkey | MISSING | DONE | parity L293 |
 | Osaurus | App Intents (Shortcuts, Spotlight, Siri) | MISSING | MISSING |  |
 | Osaurus | Built-in local runtime, model downloads | PARTIAL | DONE | Settings → Providers → Built-in models: Qwen 2.5 (0.5B–7B) and Llama 3.2 (1B, 3B) run inside Lumo with candle (pure Rust, 4-bit GGUF), downloaded from Hugging Face with progress and cancel, then offline. They appear in the model menu as Built-in; the engine reaches them through an OpenAI-compatible endpoint on 127.0.0.1 started on first use, with a short brief and no tools so a processor answers in seconds. Verified live: downloaded, chatted (title and follow-ups made locally too) |
