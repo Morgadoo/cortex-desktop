@@ -41,6 +41,9 @@ pub enum Frequency {
     /// Whenever new files appear in `folder`.
     #[serde(rename_all = "camelCase")]
     NewFiles { folder: String },
+    /// Whenever an RSS or Atom feed at `url` has new items (checked every 10 minutes).
+    #[serde(rename_all = "camelCase")]
+    NewFeedItems { url: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -175,8 +178,8 @@ pub fn next_run(frequency: &Frequency, after: DateTime<Utc>) -> Result<Option<Da
             }
             Ok(None)
         }
-        // Started by files, not by the clock.
-        Frequency::NewFiles { .. } => Ok(None),
+        // Started by files or feeds, not by the clock.
+        Frequency::NewFiles { .. } | Frequency::NewFeedItems { .. } => Ok(None),
         Frequency::Yearly { month, day, time } => {
             if *month == 0 || *month > 12 || *day == 0 || *day > 31 {
                 return Err("A yearly task needs a month from 1 to 12 and a day from 1 to 31.".into());
@@ -227,7 +230,137 @@ pub fn describe(frequency: &Frequency) -> String {
             let name = Path::new(folder).file_name().map_or_else(|| folder.clone(), |n| n.to_string_lossy().into_owned());
             format!("When new files arrive in {name}")
         }
+        Frequency::NewFeedItems { url } => {
+            let host = url::Url::parse(url).ok().and_then(|u| u.host_str().map(str::to_string)).unwrap_or_else(|| url.clone());
+            format!("When {host} posts something new")
+        }
     }
+}
+
+/// One item of a feed.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FeedItem {
+    pub id: String,
+    pub title: String,
+    pub link: String,
+}
+
+/// The text of the first `<tag>` in `xml` (CDATA and entities undone), if any.
+fn element<'a>(xml: &'a str, tag: &str) -> Option<String> {
+    let open = format!("<{tag}");
+    let mut from = 0;
+    loop {
+        let start = from + xml[from..].find(&open)?;
+        let after = &xml[start + open.len()..];
+        // `<link` must not match `<linkedin`: the tag name ends at a space, `>` or `/`.
+        if !after.starts_with(['>', ' ', '/', '\t', '\n', '\r']) {
+            from = start + open.len();
+            continue;
+        }
+        let gt = start + xml[start..].find('>')?;
+        if xml[..gt].ends_with('/') {
+            return Some(String::new());
+        }
+        let close = format!("</{tag}>");
+        let end = gt + 1 + xml[gt + 1..].find(&close)?;
+        let raw = xml[gt + 1..end].trim();
+        let raw = raw.strip_prefix("<![CDATA[").and_then(|r| r.strip_suffix("]]>")).unwrap_or(raw);
+        return Some(raw.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&#39;", "'").replace("&apos;", "'").replace("&amp;", "&").trim().to_string());
+    }
+}
+
+/// An attribute of the first `<tag …>` in `xml`.
+fn attribute(xml: &str, tag: &str, name: &str) -> Option<String> {
+    let start = xml.find(&format!("<{tag} "))?;
+    let end = start + xml[start..].find('>')?;
+    let head = &xml[start..end];
+    for q in ['"', '\''] {
+        if let Some(i) = head.find(&format!("{name}={q}")) {
+            let rest = &head[i + name.len() + 2..];
+            return rest.find(q).map(|j| rest[..j].replace("&amp;", "&"));
+        }
+    }
+    None
+}
+
+/// The items of an RSS 2.0, RSS 1.0 or Atom feed, newest first as published.
+pub fn parse_feed(xml: &str) -> Vec<FeedItem> {
+    let (open, close) = if xml.contains("<entry") { ("<entry", "</entry>") } else { ("<item", "</item>") };
+    let mut items = Vec::new();
+    let mut rest = xml;
+    while let Some(start) = rest.find(open) {
+        let Some(len) = rest[start..].find(close) else { break };
+        let block = &rest[start..start + len];
+        rest = &rest[start + len + close.len()..];
+        let title = element(block, "title").unwrap_or_default();
+        let link = element(block, "link").filter(|l| !l.is_empty()).or_else(|| attribute(block, "link", "href")).unwrap_or_default();
+        let id = element(block, "guid").or_else(|| element(block, "id")).filter(|i| !i.is_empty()).unwrap_or_else(|| if link.is_empty() { title.clone() } else { link.clone() });
+        if !id.is_empty() {
+            items.push(FeedItem { id, title, link });
+        }
+    }
+    items
+}
+
+/// Feed tasks whose feeds have new items: each with the prompt naming them. Feeds are fetched
+/// at most every 10 minutes per task.
+pub async fn take_new_feed_items(config_dir: &Path) -> Vec<Task> {
+    let due: Vec<(String, String)> = load(config_dir)
+        .into_iter()
+        .filter(|t| t.enabled)
+        .filter_map(|t| match &t.frequency {
+            Frequency::NewFeedItems { url } => Some((t.id.clone(), url.clone())),
+            _ => None,
+        })
+        .collect();
+    if due.is_empty() {
+        return Vec::new();
+    }
+    let client = reqwest::Client::builder().timeout(Duration::from_secs(20)).user_agent("Lumo feed reader").build();
+    let Ok(client) = client else { return Vec::new() };
+    let mut fetched = Vec::new();
+    for (id, url) in due {
+        match client.get(&url).send().await.and_then(|r| r.error_for_status()) {
+            Ok(r) => match r.text().await {
+                Ok(text) => fetched.push((id, parse_feed(&text))),
+                Err(e) => warn!("feed {url}: {e}"),
+            },
+            Err(e) => warn!("feed {url}: {e}"),
+        }
+    }
+    let mut tasks = load(config_dir);
+    let mut started = Vec::new();
+    for (id, items) in fetched {
+        let Some(task) = tasks.iter_mut().find(|t| t.id == id) else { continue };
+        let ids: Vec<String> = items.iter().map(|i| i.id.clone()).collect();
+        let Some(seen) = task.seen.as_mut() else {
+            // First look: what the feed shows now is the baseline.
+            task.seen = Some(ids);
+            continue;
+        };
+        let fresh: Vec<&FeedItem> = items.iter().filter(|i| !seen.contains(&i.id)).take(20).collect();
+        // Remember what the feed shows now (feeds drop old items), plus anything still listed.
+        let mut keep = ids.clone();
+        keep.extend(seen.iter().filter(|s| !ids.contains(s)).take(200).cloned());
+        *seen = keep;
+        if fresh.is_empty() {
+            continue;
+        }
+        task.last_run = Some(Utc::now());
+        task.last_status = Some("running".into());
+        let mut run = task.clone();
+        let list: Vec<String> = fresh.iter().map(|i| if i.link.is_empty() { format!("- {}", i.title) } else { format!("- {} ({})", i.title, i.link) }).collect();
+        let url = match &task.frequency {
+            Frequency::NewFeedItems { url } => url.clone(),
+            _ => String::new(),
+        };
+        run.prompt = format!("{}\n\nNew in the feed {url}:\n{}", task.prompt, list.join("\n"));
+        started.push(run);
+    }
+    if let Err(e) = store(config_dir, &tasks) {
+        warn!("could not save task state: {e}");
+    }
+    started
 }
 
 /// How long a new file must stay unchanged before it counts (it may still be copying).
@@ -348,7 +481,13 @@ pub fn save(config_dir: &Path, mut task: Task) -> Result<Vec<Task>, String> {
         return Err("A task needs a title and a prompt.".into());
     }
     task.next_run = if task.enabled { next_run(&task.frequency, Utc::now())? } else { None };
-    if let Frequency::NewFiles { folder } = &task.frequency {
+    if let Frequency::NewFeedItems { url } = &task.frequency {
+        if !url::Url::parse(url).is_ok_and(|u| matches!(u.scheme(), "http" | "https")) {
+            return Err("Give the feed's web address (https://…).".into());
+        }
+        let previous = load(config_dir).into_iter().find(|t| t.id == task.id);
+        task.seen = previous.filter(|p| p.frequency == task.frequency).and_then(|p| p.seen);
+    } else if let Frequency::NewFiles { folder } = &task.frequency {
         if !Path::new(folder).is_dir() {
             return Err("Choose a folder that exists.".into());
         }
@@ -432,6 +571,14 @@ pub fn start(app: AppHandle) {
                     info!("new files started task {}", task.title);
                     let app = app.clone();
                     tauri::async_runtime::spawn(async move { super::engine::run_task(app, task).await });
+                }
+                // Feeds: every 10 minutes (the first tick is right after start).
+                if ticks % 20 == 1 {
+                    for task in take_new_feed_items(&config_dir).await {
+                        info!("new feed items started task {}", task.title);
+                        let app = app.clone();
+                        tauri::async_runtime::spawn(async move { super::engine::run_task(app, task).await });
+                    }
                 }
             }
             tokio::time::sleep(Duration::from_secs(30)).await;
@@ -637,5 +784,23 @@ mod tests {
         let saved = &load(dir.path())[0];
         assert!(saved.next_run.unwrap() > next);
         assert_eq!(saved.last_status.as_deref(), Some("running"));
+    }
+
+    #[test]
+    fn rss_and_atom_feeds_are_read() {
+        let rss = r#"<?xml version="1.0"?><rss><channel><title>Blog</title><link>https://b.example</link>
+            <item><title><![CDATA[Rust & Tauri]]></title><link>https://b.example/2</link><guid>post-2</guid></item>
+            <item><title>First</title><link>https://b.example/1</link></item></channel></rss>"#;
+        let items = parse_feed(rss);
+        assert_eq!(items, vec![
+            FeedItem { id: "post-2".into(), title: "Rust & Tauri".into(), link: "https://b.example/2".into() },
+            FeedItem { id: "https://b.example/1".into(), title: "First".into(), link: "https://b.example/1".into() },
+        ]);
+        let atom = r#"<feed xmlns="http://www.w3.org/2005/Atom"><title>A</title><link href="https://a.example"/>
+            <entry><title type="text">News &amp; notes</title><link rel="alternate" href="https://a.example/n?x=1&amp;y=2"/><id>tag:a,1</id></entry></feed>"#;
+        assert_eq!(parse_feed(atom), vec![FeedItem { id: "tag:a,1".into(), title: "News & notes".into(), link: "https://a.example/n?x=1&y=2".into() }]);
+        assert!(parse_feed("not a feed").is_empty());
+        assert_eq!(describe(&Frequency::NewFeedItems { url: "https://blog.rust-lang.org/feed.xml".into() }), "When blog.rust-lang.org posts something new");
+        assert_eq!(next_run(&Frequency::NewFeedItems { url: "https://x".into() }, Utc::now()).unwrap(), None);
     }
 }

@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 140 |
-| PARTIAL | 86 | 51 |
+| DONE | 58 | 141 |
+| PARTIAL | 86 | 50 |
 | MISSING | 48 | 1 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9 · LibreChat 34 / 8 / 0 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 17 / 4 / 0 / 5 · Osaurus 14 / 11 / 1 / 4 · OpenBot 20 / 9 / 0 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9 · LibreChat 34 / 8 / 0 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 17 / 4 / 0 / 5 · Osaurus 15 / 10 / 1 / 4 · OpenBot 20 / 9 / 0 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -187,7 +187,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9
 | Osaurus | Built-in app agents | PARTIAL | PARTIAL | MCP connectors. Missing: ready-made specialist agents |
 | Osaurus | External agent runtimes | MISSING | DONE | parity: Coding agent programs as models (Claude Code, Codex, Gemini CLI) |
 | Osaurus | Typed workflows, designer agent | PARTIAL | PARTIAL | `{{blank}}` inputs in workflows (parity L269). Missing: typed inputs, a designer agent |
-| Osaurus | Triggers: schedule, folder, webhook, feed | PARTIAL | PARTIAL | Schedule, new files (parity L274), webhook through the local API (L291). Missing: feeds |
+| Osaurus | Triggers: schedule, folder, webhook, feed | PARTIAL | DONE | Schedules, new files (parity L274), webhooks through the local API (L291) and feeds: a task can start when an RSS or Atom feed has new items (`Frequency::NewFeedItems`, `parse_feed`). Verified live: the first check recorded the feed's two posts; after a third was added, one run started with its title and link in the prompt |
 | Osaurus | VM per agent | PARTIAL | PARTIAL | bubblewrap sandbox (parity L231). Missing: a separate environment per agent |
 | Osaurus | Browser session per agent | PARTIAL | PARTIAL | Missing: per-agent sessions |
 | Osaurus | Computer use with rules per app | MISSING | PARTIAL | Computer use (parity L288). Missing: per-app rules |

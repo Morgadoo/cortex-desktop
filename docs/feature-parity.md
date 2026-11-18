@@ -217,7 +217,7 @@ items most likely to differ:
 Reviewed in November 2026 feature by feature against the docs of Open WebUI, LibreChat, LobeHub,
 Onyx, Osaurus and OpenBot (about 220 features). Every item of the review's shortlist is in the table
 below; every feature the review found missing or partial is tracked row by row, with evidence, in
-[review-coverage.md](review-coverage.md) (now 140 done, 51 partial, 1 missing, 31 out of scope).
+[review-coverage.md](review-coverage.md) (now 141 done, 50 partial, 1 missing, 31 out of scope).
 What was deliberately left out, and why:
 
 - **Team and enterprise features** (channels, comments, SSO, SCIM, tenants, admin plane, shared
@@ -241,6 +241,7 @@ What was deliberately left out, and why:
 | Voice input | open-webui, lobehub | Dictation via rig transcription (OpenAI, Groq) | Done |
 | Hands-free voice conversation | open-webui (call mode), onyx, osaurus, openbot.run | The wave button beside the model opens a call: it listens, sends when you pause (short sounds and lone blips are ignored), shows what it heard, reads the answer aloud and listens again; tap the orb to interrupt or pause, Esc or End to hang up. The microphone stays open for the call and never plays back through the speakers; auto-play stays quiet while a call reads answers itself. Verified live over two turns with real speech and a real speech-to-text model (Whisper): "What is the capital of France?" → "It is Paris." spoken, then "And the capital of Italy?" → "It is Rome." | Done |
 | Read aloud (TTS) | open-webui, lobehub | Speaker under each answer, via rig speech models (xAI, OpenAI); verified live | Done |
+| Tasks started by feeds | osaurus | Scheduled → New task → Repeat → "When a feed has new items" with an RSS or Atom address. Checked every 10 minutes; what the feed shows at the first check is the baseline, and each later check that finds new items starts one run with their titles and links added to the prompt (up to 20). RSS 2.0, RSS 1.0 and Atom are read (CDATA, entities, `href` links). Verified live with a local feed: two existing posts were left alone, a new one started a run that summarized it | Done |
 | Use knowledge vs save new facts | onyx | Context → Knowledge has two switches: Use knowledge (facts and pages go into conversations) and Save new facts (the assistant may add, change and remove them). With saving off, the save tools are not offered and refuse if called, and the prompt says nothing will be remembered | Done |
 | Clock format | librechat | Settings → General → Clock: like the system, 24-hour or 12-hour, for message times, tasks, the calendar, versions and sync. Verified live: a message time switched from "08:12 AM" style to "05:26" | Done |
 | Responses and Ollama endpoints on the local API | osaurus | Besides `/v1/chat/completions` and `/v1/messages`, the local API answers OpenAI's Responses API (`/v1/responses`, plain or streamed as response.* events) and Ollama's (`/api/tags`, `/api/chat` and `/api/generate` streamed as NDJSON unless `stream: false`, `/api/version`), with agents as models and the same key; Ollama bodies are read whatever their content type. Verified live with curl | Done |

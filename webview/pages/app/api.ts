@@ -223,7 +223,8 @@ export type Frequency =
   | { kind: 'weekly'; days: number[]; time: string }
   | { kind: 'monthly'; day: number; time: string }
   | { kind: 'yearly'; month: number; day: number; time: string }
-  | { kind: 'newFiles'; folder: string };
+  | { kind: 'newFiles'; folder: string }
+  | { kind: 'newFeedItems'; url: string };
 
 export interface Task {
   id: string;

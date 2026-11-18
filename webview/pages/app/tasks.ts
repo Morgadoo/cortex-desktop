@@ -32,8 +32,8 @@ export function editTask(existing: Task | null, onSaved: (tasks: Task[]) => void
     const kind = h(
       'select',
       { class: 'input' },
-      (['once', 'daily', 'weekly', 'monthly', 'yearly', 'newFiles'] as const).map((k) =>
-        h('option', { value: k, selected: freq.kind === k }, k === 'once' ? 'Once' : k === 'newFiles' ? 'When new files arrive in a folder' : k.charAt(0).toUpperCase() + k.slice(1))
+      (['once', 'daily', 'weekly', 'monthly', 'yearly', 'newFiles', 'newFeedItems'] as const).map((k) =>
+        h('option', { value: k, selected: freq.kind === k }, k === 'once' ? 'Once' : k === 'newFiles' ? 'When new files arrive in a folder' : k === 'newFeedItems' ? 'When a feed has new items' : k.charAt(0).toUpperCase() + k.slice(1))
       )
     );
     const time = h('input', { class: 'input', type: 'time', value: 'time' in freq ? freq.time : '09:00' });
@@ -41,6 +41,8 @@ export function editTask(existing: Task | null, onSaved: (tasks: Task[]) => void
     let folder = freq.kind === 'newFiles' ? freq.folder : '';
     const folderBtn = h('button', { class: 'btn btn-secondary folder-choice' }, icon('folder', 15), h('span', {}, folder || 'Choose a folder'));
     const timeField = h('div', {}, h('label', { class: 'field-label' }, 'Time'), time);
+    // Event trigger: an RSS or Atom feed to follow.
+    const feed = h('input', { class: 'input', type: 'url', value: freq.kind === 'newFeedItems' ? freq.url : '', placeholder: 'https://example.com/feed.xml' });
     folderBtn.addEventListener('click', async () => {
       const dir = await api.pickDirectory();
       if (!dir) return;
@@ -74,9 +76,12 @@ export function editTask(existing: Task | null, onSaved: (tasks: Task[]) => void
         kind.value === 'yearly' ? h('div', { class: 'freq-row' }, h('div', { class: 'grow' }, h('label', { class: 'field-label' }, 'Month'), month), h('div', {}, h('label', { class: 'field-label' }, 'Day'), dayOfMonth)) : null,
         kind.value === 'newFiles'
           ? h('div', {}, h('label', { class: 'field-label' }, 'Folder'), folderBtn, h('small', { class: 'muted' }, 'Files already there are left alone. Each new file starts a run, with its path added to the prompt.'))
+          : null,
+        kind.value === 'newFeedItems'
+          ? h('div', {}, h('label', { class: 'field-label' }, 'Feed address (RSS or Atom)'), feed, h('small', { class: 'muted' }, 'Checked every 10 minutes. What the feed shows today is left alone; new items start a run, with their titles and links added to the prompt.'))
           : null
       );
-      timeField.hidden = kind.value === 'newFiles';
+      timeField.hidden = kind.value === 'newFiles' || kind.value === 'newFeedItems';
     };
     kind.addEventListener('change', renderExtra);
     renderExtra();
@@ -95,6 +100,10 @@ export function editTask(existing: Task | null, onSaved: (tasks: Task[]) => void
         error.textContent = 'Choose the folder to watch.';
         return;
       }
+      if (kind.value === 'newFeedItems' && !/^https?:\/\//.test(feed.value.trim())) {
+        error.textContent = 'Give the feed’s web address (https://…).';
+        return;
+      }
       if (kind.value === 'newFiles') {
         // The run reads the new files: the folder must be one the assistant may open.
         const settings = await api.appSettings();
@@ -106,6 +115,8 @@ export function editTask(existing: Task | null, onSaved: (tasks: Task[]) => void
       const frequency: Frequency =
         kind.value === 'newFiles'
           ? { kind: 'newFiles', folder }
+          : kind.value === 'newFeedItems'
+          ? { kind: 'newFeedItems', url: feed.value.trim() }
           : kind.value === 'once'
           ? { kind: 'once', date: date.value, time: t }
           : kind.value === 'daily'
@@ -312,6 +323,15 @@ function describe(f: Frequency): string {
       return `Every year on ${MONTH_NAMES[f.month - 1] ?? '?'} ${f.day} at ${f.time}`;
     case 'newFiles':
       return `When new files arrive in ${f.folder.split(/[\\/]/).pop() || f.folder}`;
+    case 'newFeedItems': {
+      let host = f.url;
+      try {
+        host = new URL(f.url).host;
+      } catch {
+        /* as written */
+      }
+      return `When ${host} posts something new`;
+    }
   }
 }
 
@@ -477,7 +497,7 @@ class TaskCalendar {
             )
           )
         : h('p', { class: 'muted empty-line' }, 'Nothing runs on this day.'),
-      this.tasks.some((t) => t.frequency.kind === 'newFiles') ? h('p', { class: 'muted cal-note' }, 'Tasks started by new files show on the days they ran.') : null
+      this.tasks.some((t) => t.frequency.kind === 'newFiles' || t.frequency.kind === 'newFeedItems') ? h('p', { class: 'muted cal-note' }, 'Tasks started by new files or feed items show on the days they ran.') : null
     );
     clear(this.el, head, h('div', { class: 'cal-grid' }, weekdays.map((w) => h('div', { class: 'cal-weekday' }, w)), cells), agenda);
   }
