@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 163 |
-| PARTIAL | 86 | 28 |
+| DONE | 58 | 165 |
+| PARTIAL | 86 | 26 |
 | MISSING | 48 | 1 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 40 / 5 / 0 / 9 · LibreChat 39 / 3 / 0 / 4 · LobeHub 24 / 5 / 0 / 5 · Onyx 18 / 3 / 0 / 5 · Osaurus 20 / 5 / 1 / 4 · OpenBot 22 / 7 / 0 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 42 / 3 / 0 / 9 · LibreChat 39 / 3 / 0 / 4 · LobeHub 24 / 5 / 0 / 5 · Onyx 18 / 3 / 0 / 5 · Osaurus 20 / 5 / 1 / 4 · OpenBot 22 / 7 / 0 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -25,7 +25,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 40 / 5 / 0 / 9
 | Open WebUI | Compare Text (prompt vs revision) | MISSING | DONE | parity: Compare answer versions (word diff between any two versions of a reply, from a regenerated answer or an edited prompt) |
 | Open WebUI | Trigger characters `/ @ # $ :` | PARTIAL | DONE | `/` commands and skills, `@` models and agents, `#` libraries, knowledge pages, canvases and chats, `:` emoji (parity: Emoji shortcodes). Open WebUI's `$` (tools) is covered by `/` skills |
 | Open WebUI | Built-in slash commands | PARTIAL | DONE | parity L280: /new, /temporary, /model, /voice, /fork, /context, /settings, /export, /clear |
-| Open WebUI | Default upload mode (search vs full) | MISSING | PARTIAL | Chat attachments always go in full (chat.ts:1694–1700); library documents are searched, with `read_document` for the whole text (parity L241). Missing: a per-file or default choice |
+| Open WebUI | Default upload mode (search vs full) | MISSING | DONE | Settings → Profile → Uploaded files: every file in full, every file searched, or (default) files over 20k characters searched. A searched file goes to the Uploads library and the message tells the assistant to search it; the bubble shows it as a 'searched' chip (uploads.ts, chat_upload_to_library). Verified live: a 33k-character log was searched and the one failure in it found |
 | Open WebUI | LaTeX, tables, task lists, Mermaid | PARTIAL | DONE | LaTeX parity L275; GFM tables and task lists dom.ts:149; Mermaid parity L200 |
 | Open WebUI | `:::writing` blocks | MISSING | DONE | parity: Writing blocks (dom.ts `extractWriting`; the system prompt asks for them) |
 | Open WebUI | Inline visualizations | PARTIAL | DONE | Apps preview inline in the reply with an Expand bar (parity L129); Mermaid drawn inline (L200) |
@@ -66,7 +66,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 40 / 5 / 0 / 9
 | Open WebUI | Sidebar hover previews | MISSING | DONE | parity L281; main.ts:212–215 |
 | Open WebUI | Chat sharing links | MISSING | OUT OF SCOPE | Hosted links are server-only; the local equivalent "Share as web page" exists (parity L202) |
 | Open WebUI | Comments | MISSING | OUT OF SCOPE | Team feature (parity L217) |
-| Open WebUI | Data controls: uploaded-file management | PARTIAL | PARTIAL | Archive, trash, export (parity L308; settings.ts:186). Missing: a page that lists and manages uploaded files |
+| Open WebUI | Data controls: uploaded-file management | PARTIAL | DONE | Archive, trash, export (parity L308), and Uploaded files in Settings → Profile: every file and image sent in any chat, filterable, with Open chat and Remove (the message keeps a note in its place) (uploads.rs). Verified live |
 | Open WebUI | Notes: rich editor with toolbar | PARTIAL | DONE | Canvas document editor: a formatting toolbar (bold, italic, strikethrough, code, H1–H3, lists, checklist, quote, link, table, code block) with Ctrl+B / Ctrl+I / Ctrl+K, undoable, toggling off what is already applied (`mdformat.ts`, checked by npm run check:i18n) |
 | Open WebUI | Notes: AI Enhance in place | PARTIAL | DONE | parity: Improve with AI in editors (selection or whole page rewritten in place, Undo) |
 | Open WebUI | Notes: attach a note to a chat | PARTIAL | DONE | parity: Knowledge pages and canvases as context (`#` in the composer) |

@@ -1644,6 +1644,35 @@ pub fn chat_agent_routing(app: AppHandle, enabled: Option<bool>) -> Result<bool,
     Ok(super::agents::routing_enabled(&dir))
 }
 
+/// Every file and image sent in a chat, newest first.
+#[tauri::command]
+pub async fn chat_uploads(app: AppHandle) -> Result<Vec<super::uploads::Upload>, String> {
+    let dir = config_dir(&app)?;
+    tokio::task::spawn_blocking(move || super::uploads::list(&dir)).await.map_err(|e| e.to_string())
+}
+
+/// Takes a file or an image out of a chat's message.
+#[tauri::command]
+pub fn chat_remove_upload(app: AppHandle, conversation_id: String, message_index: usize, kind: String, name: String) -> Result<(), String> {
+    let dir = config_dir(&app)?;
+    let mut c = store::load_conversation(&dir, &conversation_id)?;
+    super::uploads::remove(&mut c, message_index, &kind, &name)?;
+    store::save_conversation(&dir, &c)
+}
+
+/// Puts a large attachment in the "Uploads" library (made when missing), for the assistant to
+/// search instead of reading it all; returns the library's name.
+#[tauri::command]
+pub fn chat_upload_to_library(app: AppHandle, name: String, text: String) -> Result<String, String> {
+    let dir = config_dir(&app)?;
+    let library = match super::libraries::list(&dir).into_iter().find(|l| l.name == "Uploads") {
+        Some(l) => l,
+        None => super::libraries::create(&dir, "Uploads", "Large files attached in chats, searched instead of sent in full.")?,
+    };
+    super::libraries::add_text(&dir, &library.id, &name, &text)?;
+    Ok(library.name)
+}
+
 /// The local API's latest requests, newest first.
 #[tauri::command]
 pub fn chat_api_server_log() -> Vec<super::api_server::LogEntry> {

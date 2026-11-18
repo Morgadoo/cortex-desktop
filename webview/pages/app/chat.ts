@@ -3,6 +3,7 @@ import { emojiFor, findEmoji } from './emoji';
 import { autocompleteOn } from './state';
 import { tauriInvoke } from '../../shared/tauri';
 import { api, newId, type ApprovalMode, type ChatParams, type Conversation, type Part, type Turn, type UsageTotals } from './api';
+import { searchInstead } from './uploads';
 import { fillVariables } from './variables';
 import { startVoiceConversation, voiceActive, voiceTurnEnded } from './voice';
 import { attachVim } from './vim';
@@ -791,6 +792,11 @@ function renderUserTurn(turn: Turn, conversationId: string, branch: HTMLElement 
   const files: HTMLElement[] = [];
   rest = rest.replace(/\n*<attachment name="([^"]*)">\n?([\s\S]*?)\n?<\/attachment>/g, (_, name: string, body: string) => {
     files.push(h('details', { class: 'bubble-file' }, h('summary', {}, icon('file', 14), h('span', {}, name), h('small', { class: 'muted' }, `${body.split('\n').length} lines`)), h('pre', {}, body)));
+    return '';
+  }).trim();
+  // Files kept in the Uploads library to be searched: chips too, without the note to the model.
+  rest = rest.replace(/\n*\(Attached and kept in the "Uploads" library: ([^)]*)\. Search it with search_library[^)]*\)/g, (_, list: string) => {
+    for (const m of list.matchAll(/"([^"]+)"/g)) files.push(h('div', { class: 'bubble-file searched', title: 'Kept in the Uploads library; the assistant searches it' }, icon('library', 14), h('span', {}, m[1]!), h('small', { class: 'muted' }, 'searched')));
     return '';
   }).trim();
   const body = h('div', { class: 'bubble-text' }, rest);
@@ -2434,9 +2440,21 @@ class Composer {
     const filled = await fillVariables(text);
     if (filled === null) return;
     text = filled;
+    // Large files go to the Uploads library to be searched (Settings → Profile → Uploaded files).
+    const searched: string[] = [];
     for (const file of this.attachments.filter((a) => !a.image)) {
+      if (searchInstead(file.text.length)) {
+        try {
+          await tauriInvoke<string>('chat_upload_to_library', { name: file.name, text: file.text });
+          searched.push(file.name);
+          continue;
+        } catch (e) {
+          toast(`${file.name} goes in full: ${String(e)}`, 'error');
+        }
+      }
       text += `\n\n<attachment name="${file.name}">\n${file.text}\n</attachment>`;
     }
+    if (searched.length) text += `\n\n(Attached and kept in the "Uploads" library: ${searched.map((n) => `"${n}"`).join(', ')}. Search it with search_library for what the request needs, or read a file whole with read_document.)`;
     const images = this.attachments.flatMap((a) => (a.image ? [a.image] : []));
     // Sent text is no longer a draft (sending from home moves to the new chat right away).
     this.clearSuggestion();

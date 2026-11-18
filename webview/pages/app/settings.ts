@@ -8,6 +8,7 @@ import { button, card, modalHeader, switchInput } from './ui';
 import { audioApi, audioSettings, refreshAudioSettings, speakText, type AudioView } from './audio';
 import { SHORTCUTS, bindingFor, comboOf, display, setBinding } from './shortcuts';
 import { EMOJI_STYLES, emojiStatus, emojiStyle, onEmojiStatus, setEmojiStyle, type EmojiStatus, type EmojiStyle } from './fluent';
+import { uploadsCard } from './uploads';
 import { ACCENTS, BACKDROPS, BACKGROUNDS, backdropVeil, setBackdrop, setBackdropImage, setBackdropVeil, storedBackdrop, TEXT_SIZES, ZOOMS, accentHex, applyAppearance, readability, setAccent, setBackground, setReadability, storedAccent, storedBackground, type TextSize } from './appearance';
 import { setVoicePauseMs, voicePauseMs } from './dictation';
 import { setWakePrefs, wakePrefs } from './wakeword';
@@ -30,6 +31,7 @@ const SECTIONS: { id: Section; label: string; icon: string; group: string }[] = 
 const SETTINGS_INDEX: [string, Section, string][] = [
   ['Your profile', 'profile', 'name about instructions tone personality'],
   ['Your data', 'profile', 'export import backup delete history'],
+  ['Uploaded files', 'profile', 'files attachments images uploads remove search full library'],
   ['Shared links', 'profile', 'share link network url stop sharing public page'],
   ['Encrypt data', 'profile', 'encryption at rest encrypt security privacy keychain disk'],
   ['Sync between devices', 'profile', 'sync devices encrypted syncthing dropbox icloud nextcloud onedrive passphrase other computer'],
@@ -287,6 +289,7 @@ function renderProfile(content: HTMLElement) {
       h('p', { class: 'hint' }, 'Used in the greeting and shared with the model so it can address you.'),
       h('div', { class: 'card-actions' }, save)
     ),
+    uploadsCard(),
     card(
       h('h3', {}, 'Your data'),
       h('p', { class: 'muted' }, 'Export every conversation as Markdown, plus a copy of your projects, agents, tasks, knowledge, skills and libraries.'),

@@ -1689,3 +1689,10 @@ button.usage-meter:hover { background: var(--hover); }
 .emoji-sample{font-size:22px;letter-spacing:4px}
 .member-order{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;border-radius:8px;background:var(--accent,#7c5cff);color:#fff;font-size:10px;font-weight:700}
 .routing-row{margin:0 0 14px;padding:10px 14px;border:1px solid var(--border);border-radius:10px}
+.upload-list{display:flex;flex-direction:column;gap:2px;max-height:340px;overflow:auto;margin-top:8px}
+.upload-row{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:8px}
+.upload-row:hover{background:var(--bg-hover)}
+.upload-name{font-weight:600;font-size:13px;word-break:break-all}
+.bubble-file.searched{display:flex;align-items:center;gap:6px;padding:6px 10px}
+.upload-list{overflow-x:hidden}
+.setting-row select.select-sm{max-width:300px}
