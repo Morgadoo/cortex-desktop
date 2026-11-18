@@ -1,6 +1,7 @@
 /** Libraries: document collections the assistant searches, with a search box to test them. */
 import { tauriInvoke } from '../../shared/tauri';
-import { clear, confirmDialog, h, icon, promptText, toast } from './dom';
+import { clear, confirmDialog, h, icon, modal, promptText, toast } from './dom';
+import { modalHeader } from './ui';
 
 interface Doc {
   id: string;
@@ -46,6 +47,30 @@ const api = {
 
 function size(chars: number): string {
   return chars > 1_000_000 ? `${(chars / 1_000_000).toFixed(1)}M characters` : chars > 1000 ? `${Math.round(chars / 1000)}k characters` : `${chars} characters`;
+}
+
+/** A document's indexed text, with find-in-text. */
+function previewDocument(libraryId: string, documentId: string, name: string) {
+  void modal((close) => {
+    const body = h('pre', { class: 'doc-preview' }, 'Loading…');
+    const find = h('input', { class: 'input', type: 'search', placeholder: 'Find in this document' });
+    let text = '';
+    const render = () => {
+      const q = find.value.trim();
+      if (!q) return void (body.textContent = text);
+      const pattern = new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+      clear(body, text.split(pattern).map((piece, i) => (i % 2 ? h('mark', {}, piece) : piece)));
+      body.querySelector('mark')?.scrollIntoView({ block: 'center' });
+    };
+    find.addEventListener('input', render);
+    void tauriInvoke<string>('chat_document_text', { libraryId, documentId })
+      .then((t) => {
+        text = t;
+        render();
+      })
+      .catch((e) => (body.textContent = String(e)));
+    return h('div', { class: 'dialog-small wide' }, modalHeader(name, close, { flush: true }), find, body);
+  });
 }
 
 export class LibrariesPage {
@@ -148,23 +173,52 @@ export class LibrariesPage {
       this.open = null;
       await this.load();
     });
-    const docs = lib.documents.length
+    // Select documents to remove several at once.
+    const selected = new Set<string>();
+    const removeSelected = h('button', { class: 'btn btn-danger btn-sm', hidden: true });
+    const syncSelection = () => {
+      removeSelected.hidden = selected.size === 0;
+      removeSelected.textContent = `Remove ${selected.size} selected`;
+    };
+    removeSelected.addEventListener('click', async () => {
+      if (!(await confirmDialog(`Remove ${selected.size} documents?`, `They leave “${lib.name}”. Files in mirrored folders come back on the next sync unless the folder stops being mirrored.`))) return;
+      for (const id of selected) await api.removeDoc(lib.id, id).catch((e) => toast(String(e), 'error'));
+      toast(`${selected.size} documents removed.`);
+      await this.load();
+    });
+    const selectAll = h('input', { type: 'checkbox', title: 'Select all' });
+    selectAll.addEventListener('change', () => {
+      for (const box of docsEl.querySelectorAll<HTMLInputElement>('.doc-select')) {
+        box.checked = selectAll.checked;
+        box.dispatchEvent(new Event('change'));
+      }
+    });
+    const docsEl: HTMLElement = lib.documents.length
       ? h(
           'div',
           { class: 'doc-list' },
-          lib.documents.map((d) =>
-            h(
+          h('div', { class: 'doc-row doc-head' }, selectAll, h('span', { class: 'doc-name muted' }, `${lib.documents.length} documents`), h('span', { class: 'spacer' }), removeSelected),
+          lib.documents.map((d) => {
+            const box = h('input', { type: 'checkbox', class: 'doc-select' });
+            box.addEventListener('change', () => {
+              if (box.checked) selected.add(d.id);
+              else selected.delete(d.id);
+              syncSelection();
+            });
+            return h(
               'div',
               { class: 'doc-row' },
+              box,
               icon('file', 16),
-              h('span', { class: 'doc-name' }, d.name),
+              h('button', { class: 'doc-name link-like', title: 'Preview its text', on: { click: () => previewDocument(lib.id, d.id, d.name) } }, d.name),
               h('span', { class: 'muted' }, size(d.chars)),
               h('span', { class: 'muted' }, new Date(d.addedAt).toLocaleDateString()),
               h('button', { class: 'icon-btn small', title: 'Remove', on: { click: async () => { await api.removeDoc(lib.id, d.id); await this.load(); } } }, icon('trash', 15))
-            )
-          )
+            );
+          })
         )
       : h('p', { class: 'muted empty-line' }, 'No documents yet. Add some to make this library searchable.');
+    const docs = docsEl;
     const query = h('input', { class: 'input', placeholder: `Try a search in ${lib.name}` });
     const results = h('div', { class: 'passage-list' });
     query.addEventListener('keydown', async (e) => {

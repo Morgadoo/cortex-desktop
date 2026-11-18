@@ -1074,6 +1074,12 @@ pub fn chat_delete_exchange(app: AppHandle, state: State<'_, ChatState>, id: Str
     store::save_conversation(&dir, &conversation)
 }
 
+/// The indexed text of a library document, for its preview.
+#[tauri::command]
+pub fn chat_document_text(app: AppHandle, library_id: String, document_id: String) -> Result<String, String> {
+    super::libraries::document_text(&config_dir(&app)?, &library_id, &document_id, 200_000)
+}
+
 /// Earlier versions of an agent, workflow or tool, newest first.
 #[tauri::command]
 pub fn chat_versions(app: AppHandle, kind: String, id: String) -> Result<Vec<super::versions::Version>, String> {

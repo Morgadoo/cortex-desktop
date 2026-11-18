@@ -392,6 +392,14 @@ pub fn read_document(config_dir: &Path, library: &str, name: &str, part: usize) 
     Ok(format!("# {} ({}), part {part} of {parts}\n\n{slice}", doc.name, library.name))
 }
 
+/// The indexed text of a document, for its preview (at most `max` characters).
+pub fn document_text(config_dir: &Path, library_id: &str, document_id: &str, max: usize) -> Result<String, String> {
+    let library = load(config_dir, library_id)?;
+    let doc = library.documents.iter().find(|d| d.id == document_id).ok_or("That document is gone.")?;
+    let text = std::fs::read_to_string(docs_dir(config_dir, &library.id)?.join(format!("{}.txt", doc.id))).map_err(|e| e.to_string())?;
+    Ok(if text.chars().count() > max { format!("{}\n\n… (the rest is cut here; the assistant reads it all with read_document)", text.chars().take(max).collect::<String>()) } else { text })
+}
+
 /// File types a mirrored folder indexes.
 const SYNC_EXTENSIONS: &[&str] = &["pdf", "docx", "pptx", "odt", "odp", "md", "markdown", "txt", "html", "htm", "csv", "json", "yaml", "yml", "xml", "rs", "py", "js", "ts", "go", "java", "c", "cpp", "h", "sql", "log", "rst", "org", "tex"];
 /// Files indexed per folder, and how deep a folder is walked.
