@@ -135,6 +135,24 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
 }
 
 // Version comes from tauri.conf.json via package_info.
+/// The app menu's actions from the window's own menu (Vibe's menu at the top left): the same
+/// as the tray's.
+#[tauri::command]
+pub fn app_menu_action(app: AppHandle, action: String) -> Result<(), String> {
+    match action.as_str() {
+        "check-updates" => {
+            let handle = app.clone();
+            tauri::async_runtime::spawn(async move {
+                updater::check_and_prompt(&handle).await;
+            });
+        }
+        "about" => show_about(&app),
+        "quit" => app.exit(0),
+        other => return Err(format!("unknown action {other}")),
+    }
+    Ok(())
+}
+
 fn show_about(app: &AppHandle) {
     let info = app.package_info();
     branded::show(

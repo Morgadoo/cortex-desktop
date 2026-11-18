@@ -103,6 +103,31 @@ const CONTEXT_PAGES: { page: Page; label: string; preview?: boolean }[] = [
   { page: 'workflows', label: 'Workflows' },
 ];
 
+/** The app menu at the top left (Vibe's hamburger menu): the app's own actions in one place. */
+function openAppMenu(anchor: HTMLElement) {
+  const item = (ic: Parameters<typeof icon>[0], label: string, keys: string | null, run: () => void) =>
+    h('button', { class: 'menu-item', on: { click: () => { close(); run(); } } }, icon(ic, 16), h('span', { class: 'grow' }, label), keys ? h('small', { class: 'muted' }, keys) : null);
+  const action = (name: string) => () => void tauriInvoke('app_menu_action', { action: name }).catch((e) => toast(String(e), 'error'));
+  const close = popover(
+    anchor,
+    h(
+      'div',
+      { class: 'menu app-menu' },
+      item('plus', 'New chat', 'Ctrl+N', newChat),
+      item('search', 'Search chats and actions', 'Ctrl+K', openSearch),
+      item('search', 'Search everything', 'Ctrl+Shift+F', () => openSearchMode()),
+      h('div', { class: 'menu-sep' }),
+      item('settings', 'Settings', 'Ctrl+,', () => void openSettings()),
+      item('sparkle', "What's new", null, openWhatsNew),
+      item('download', 'Check for updates', null, action('check-updates')),
+      item('user', 'About Lumo', null, action('about')),
+      h('div', { class: 'menu-sep' }),
+      item('close', 'Quit', null, action('quit'))
+    ),
+    'below'
+  );
+}
+
 function renderSidebar() {
   document.body.classList.toggle('sidebar-collapsed', state.sidebarCollapsed);
   const v = state.view;
@@ -110,6 +135,7 @@ function renderSidebar() {
   const top = h(
     'div',
     { class: 'sidebar-top' },
+    h('button', { class: 'icon-btn app-menu-btn', title: 'Menu', on: { click: (e: MouseEvent) => openAppMenu(e.currentTarget as HTMLElement) } }, icon('menu', 18)),
     h('button', { class: 'icon-btn', title: 'Toggle sidebar', on: { click: () => { state.sidebarCollapsed = !state.sidebarCollapsed; changed(); } } }, icon('sidebar', 18)),
     h('button', { class: 'icon-btn', title: 'Back', disabled: state.history.length === 0, on: { click: back } }, icon('back', 18)),
     h('button', { class: 'icon-btn', title: 'Forward', disabled: state.future.length === 0, on: { click: forward } }, icon('forward', 18)),

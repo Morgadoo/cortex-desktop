@@ -239,6 +239,12 @@ pub fn handle_navigation(app_handle: &tauri::AppHandle, url: &url::Url) -> bool 
         Navigation::Browser => {
             if is_proton(url) {
                 open_in_browser(url);
+            } else if crate::inapp_browser::is_web(url) && crate::inapp_browser::prefs(app_handle).in_app {
+                // Lumo's own browser, when chosen; the system browser is one menu item away.
+                if let Err(e) = crate::inapp_browser::open(app_handle, url) {
+                    error!("could not open Lumo's browser: {e}");
+                    confirm_and_open(app_handle, url.clone());
+                }
             } else {
                 confirm_and_open(app_handle, url.clone());
             }

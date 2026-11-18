@@ -47,6 +47,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Launch at startup', 'general', 'autostart login'],
   ['Notify when a reply is ready', 'general', 'notification background alert'],
   ['Suggest follow-ups', 'general', 'follow up questions suggestions'],
+  ['Open links in Lumo\u2019s browser', 'general', 'browser links integrated external open in app web page'],
   ['Autocomplete as you type', 'general', 'autocomplete suggest complete typing tab continuation'],
   ['New chats are temporary', 'general', 'temporary incognito history'],
   ['Keyboard shortcuts', 'general', 'hotkeys keys rebind'],
@@ -1150,6 +1151,15 @@ async function renderGeneral(content: HTMLElement) {
       row('Play a sound with it', 'A short chime with the notification.', switchInput(finishSoundOn(), (v) => setFinishSound(v))),
       row('Follow answers as they stream', 'Keep the newest text in view while an answer is written; off leaves the page where you put it.', switchInput(followStreamOn(), (v) => setFollowStream(v))),
       row('Suggest follow-ups', 'After each answer, offer three next questions. Each takes one short extra request to the model.', switchInput(followUpsOn(), (v) => setFollowUps(v))),
+      (() => {
+        // Lumo's own browser for links (Vibe's integrated browser); the choice lives in the app.
+        const sw = switchInput(false, (v) => void tauriInvoke('set_browser_prefs', { prefs: { inApp: v } }).catch((e) => toast(String(e), 'error')));
+        void tauriInvoke<{ inApp: boolean }>('browser_prefs').then((p) => {
+          const box = sw.querySelector('input') ?? (sw as HTMLInputElement);
+          (box as HTMLInputElement).checked = p.inApp;
+        }).catch(() => undefined);
+        return row('Open links in Lumo\u2019s browser', 'Links from answers open in a Lumo window beside the chat; its Page menu goes back, reloads, copies the link or opens it in your usual browser. Off: links ask, then open in your usual browser.', sw);
+      })(),
       row('Autocomplete as you type', 'When you pause while typing, suggest how the sentence goes on; Tab takes it, Esc dismisses it. Each pause is one short request to the model.', switchInput(autocompleteOn(), (v) => setAutocomplete(v))),
       row('New chats are temporary', 'Chats are not saved to your history unless you turn this off for one (the ghost button on the new-chat page). Takes effect from the next new chat.', switchInput(temporaryByDefault(), (v) => setTemporaryByDefault(v)))
     ),

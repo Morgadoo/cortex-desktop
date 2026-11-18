@@ -24,6 +24,7 @@ mod tray;
 #[cfg(target_os = "macos")]
 mod unhandled_keys;
 mod updater;
+pub mod inapp_browser;
 mod webview;
 
 #[doc(hidden)]
