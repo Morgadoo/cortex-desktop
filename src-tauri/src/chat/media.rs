@@ -123,13 +123,15 @@ pub fn definition(config_dir: &Path) -> Option<ChatTool> {
             "Create an image from a description: illustrations, photos, logos, diagrams with a \
              look. Write a detailed prompt (subject, style, composition, colors, lighting). The \
              image is shown to the user and saved in this conversation's workspace, where \
-             run_code can use it. Uses {model}."
+             run_code can use it. To edit an image or make a variation, pass it as `reference`. \
+             Uses {model}."
         ),
         parameters: json!({
             "type": "object",
             "properties": {
-                "prompt": { "type": "string", "description": "A detailed description of the image." },
-                "shape": { "type": "string", "enum": ["square", "landscape", "portrait"], "default": "square" }
+                "prompt": { "type": "string", "description": "A detailed description of the image, or for an edit, what to change." },
+                "shape": { "type": "string", "enum": ["square", "landscape", "portrait"], "default": "square" },
+                "reference": { "type": "string", "description": "To edit or vary an image: `attached` for the latest image the user attached, or the `file` an earlier generate_image call returned (images/...)." }
             },
             "required": ["prompt"]
         }),
@@ -167,9 +169,19 @@ pub async fn generate(config_dir: &Path, conversation_id: &str, args: &Value) ->
         Some("portrait") => (1024, 1536),
         _ => (1024, 1024),
     };
-    let request = ImageGenerationRequestBuilder::new(prompt).width(width).height(height).build();
+    let mut builder = ImageGenerationRequestBuilder::new(prompt).width(width).height(height);
+    if let Some(reference) = args.get("reference").and_then(Value::as_str).filter(|r| !r.trim().is_empty()) {
+        match reference_image(config_dir, conversation_id, reference.trim()) {
+            Ok(image) => builder = builder.image(image),
+            Err(e) => return err(e),
+        }
+    }
+    let request = builder.build();
     let image = match tokio::time::timeout(std::time::Duration::from_secs(180), client.image_generation(model.clone()).call(request)).await {
         Ok(Ok(response)) => response.image,
+        Ok(Err(e)) if e.to_string().contains("takes no reference images") => {
+            return err(format!("{reference} cannot edit images. Make a new image from a fuller description instead, or set an image model that edits (OpenAI gpt-image-1) in Settings → Providers."))
+        }
         Ok(Err(e)) => return err(format!("The image could not be made: {e}")),
         Err(_) => return err("The image took too long to make.".into()),
     };
@@ -188,6 +200,41 @@ pub async fn generate(config_dir: &Path, conversation_id: &str, args: &Value) ->
         text: json!({ "file": format!("images/{name}"), "model": reference, "bytes": image.len() }).to_string(),
         is_error: false,
     }
+}
+
+/// The image an edit starts from: the user's latest attachment, or an image in the workspace.
+fn reference_image(config_dir: &Path, conversation_id: &str, reference: &str) -> Result<rig_core::completion::message::Image, String> {
+    use base64::Engine as _;
+    use rig_core::completion::message::{DocumentSourceKind, Image, ImageMediaType, Message, UserContent};
+    let (data, media_type) = if reference == "attached" {
+        let conversation = super::store::load_conversation(config_dir, conversation_id)?;
+        conversation
+            .messages
+            .iter()
+            .rev()
+            .find_map(|m| match m {
+                Message::User { content } => content.iter().find_map(|c| match c {
+                    UserContent::Image(image) => match &image.data {
+                        DocumentSourceKind::Base64(b64) => Some((b64.clone(), image.media_type.clone())),
+                        _ => None,
+                    },
+                    _ => None,
+                }),
+                _ => None,
+            })
+            .ok_or("No image was attached in this conversation.")?
+    } else {
+        // Only files inside this conversation's workspace.
+        let root = super::sandbox::workspace(config_dir, conversation_id)?;
+        let canonical = root.join(reference).canonicalize().map_err(|_| format!("There is no image at {reference}."))?;
+        if !canonical.starts_with(root.canonicalize().map_err(|e| e.to_string())?) {
+            return Err("The reference must be an image in this conversation's workspace.".into());
+        }
+        let bytes = std::fs::read(&canonical).map_err(|e| e.to_string())?;
+        let media = ImageMediaType::sniff(&bytes);
+        (base64::engine::general_purpose::STANDARD.encode(bytes), media)
+    };
+    Ok(Image { data: DocumentSourceKind::Base64(data), media_type, detail: None, native: None })
 }
 
 /// Characters read aloud at most; long answers are cut at a sentence.
