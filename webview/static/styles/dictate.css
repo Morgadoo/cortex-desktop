@@ -1,0 +1,124 @@
+@import url("lumo-tokens.css");
+
+:root {
+    --dictate-border: #DDDEFB;
+    --dictate-shadow: 0 4px 10px rgba(55, 37, 128, 0.14);
+    --dictate-live: #d93f5b;
+}
+
+:root[data-theme="dark"] {
+    --dictate-border: rgba(221, 222, 251, 0.16);
+    --dictate-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+    --dictate-live: #ff6f86;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+    margin: 0;
+    background: transparent;
+    overflow: hidden;
+}
+
+body {
+    /* Room for the shadow inside the transparent window. */
+    padding: 12px;
+    font-family: var(--lumo-font-sans);
+    color: var(--lumo-text, #1b1340);
+    -webkit-font-smoothing: antialiased;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.dictate-pill {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 60px;
+    padding: 0 10px 0 16px;
+    background: var(--lumo-bg);
+    border: 1px solid var(--dictate-border);
+    border-radius: var(--lumo-radius-pill, 999px);
+    box-shadow: var(--dictate-shadow);
+}
+
+.dictate-dot {
+    flex: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--dictate-live);
+    animation: pulse 1.2s ease-in-out infinite;
+}
+
+.dictate-pill.busy .dictate-dot {
+    background: var(--lumo-primary, #6d4aff);
+    animation-duration: 0.6s;
+}
+
+.dictate-pill.error .dictate-dot {
+    animation: none;
+}
+
+@keyframes pulse {
+    50% { opacity: 0.35; transform: scale(0.8); }
+}
+
+.dictate-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+    line-height: 1.25;
+}
+
+.dictate-text strong {
+    white-space: nowrap;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.dictate-text span {
+    font-size: 12px;
+    opacity: 0.7;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dictate-meter {
+    flex: none;
+    width: 46px;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--dictate-border);
+    overflow: hidden;
+}
+
+.dictate-meter span {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: var(--dictate-live);
+    transition: width 80ms linear;
+}
+
+.dictate-pill.busy .dictate-meter,
+.dictate-pill.error .dictate-meter {
+    visibility: hidden;
+}
+
+.dictate-btn {
+    flex: none;
+    border: 1px solid var(--dictate-border);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 13px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    cursor: pointer;
+}
+
+.dictate-btn:hover { background: var(--dictate-border); }
+.dictate-btn.quiet { padding: 6px 9px; }

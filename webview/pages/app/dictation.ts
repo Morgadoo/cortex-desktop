@@ -77,8 +77,22 @@ function pauseDetector(listening: Listening, sampleRate: number): (samples: Floa
   };
 }
 
+/**
+ * The microphone, mono with echo and noise reduction where the engine supports them. Some
+ * (WebKitGTK with PulseAudio) refuse those constraints with an OverconstrainedError; then any
+ * audio input will do, as recordings are mixed to mono anyway.
+ */
+async function openStream(): Promise<MediaStream> {
+  try {
+    return await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+  } catch (e) {
+    if ((e as { name?: string })?.name !== 'OverconstrainedError') throw e;
+    return navigator.mediaDevices.getUserMedia({ audio: true });
+  }
+}
+
 export async function startRecording(listening: Listening = {}): Promise<Recording> {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+  const stream = await openStream();
   const release = () => stream.getTracks().forEach((t) => t.stop());
   // WAV first: every speech-to-text endpoint takes it and it needs no codec support.
   try {
@@ -227,7 +241,7 @@ export interface Microphone {
 }
 
 export async function openMicrophone(): Promise<Microphone> {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+  const stream = await openStream();
   const Context = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
   const context = new Context();
   const source = context.createMediaStreamSource(stream);

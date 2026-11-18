@@ -34,6 +34,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Speech to text', 'audio', 'dictation microphone whisper transcription stt'],
   ['Text to speech', 'audio', 'read aloud voice tts elevenlabs'],
   ['Voice conversation', 'audio', 'pause silence turn hands-free call talk'],
+  ['Dictation anywhere', 'audio', 'dictation hotkey shortcut system-wide global type speech any app whisper'],
   ['Files', 'permissions', 'edit files folders allow'],
   ['Terminal', 'permissions', 'shell commands run bash'],
   ['Your tools', 'permissions', 'custom tools python javascript script'],
@@ -1638,6 +1639,47 @@ async function renderAudio(content: HTMLElement) {
           (v) => { setVoicePauseMs(Number(v)); toast('Saved.'); }
         )
       )
-    )
+    ),
+    await dictationCard()
+  );
+}
+
+/** Dictation anywhere: a global shortcut that types what you say into any app. */
+async function dictationCard(): Promise<HTMLElement> {
+  type Prefs = { enabled: boolean; shortcut: string; insert: 'type' | 'paste' | 'copy'; stopOnPause: boolean };
+  let prefs: Prefs = { enabled: false, shortcut: 'Ctrl+Alt+D', insert: 'type', stopOnPause: false };
+  try {
+    prefs = await tauriInvoke<Prefs>('dictation_prefs');
+  } catch {
+    /* defaults */
+  }
+  const save = async (next: Partial<Prefs>) => {
+    const before = prefs;
+    prefs = { ...prefs, ...next };
+    try {
+      await tauriInvoke('set_dictation_prefs', { prefs });
+      toast(prefs.enabled ? `Dictation anywhere is on: press ${prefs.shortcut} in any app.` : 'Saved.');
+    } catch (e) {
+      prefs = before;
+      toast(String(e), 'error');
+    }
+  };
+  const shortcut = h('input', { class: 'input', value: prefs.shortcut, placeholder: 'Ctrl+Alt+D', 'aria-label': 'Dictation shortcut' });
+  shortcut.addEventListener('change', () => void save({ shortcut: shortcut.value.trim() || 'Ctrl+Alt+D' }));
+  const how = h(
+    'select',
+    { class: 'input', 'aria-label': 'How the text goes in', on: { change: (e: Event) => void save({ insert: (e.target as HTMLSelectElement).value as Prefs['insert'] }) } },
+    h('option', { value: 'type' }, 'Type it into the app'),
+    h('option', { value: 'paste' }, 'Paste it (uses the clipboard)'),
+    h('option', { value: 'copy' }, 'Copy it, I paste myself')
+  );
+  how.value = prefs.insert;
+  return card(
+    h('h3', {}, 'Dictation anywhere'),
+    h('p', { class: 'muted' }, 'Press a shortcut in any app, speak, and press it again: what you said is transcribed with the speech-to-text above and typed where your cursor is. A small pill shows while Lumo listens; it never takes focus.'),
+    row('Dictation anywhere', 'Registers the shortcut below for the whole system while Lumo runs.', switchInput(prefs.enabled, (v) => void save({ enabled: v }))),
+    row('Shortcut', 'Like Ctrl+Alt+D or Alt+Shift+Space.', shortcut),
+    row('How the text goes in', 'Typing works on X11 and Wayland (xdotool, wtype or ydotool); macOS and Windows paste it. Terminals paste with Ctrl+Shift+V, so typing suits them better.', how),
+    row('Finish when I pause', 'Also stop after about two seconds of silence, not only on the second press.', switchInput(prefs.stopOnPause, (v) => void save({ stopOnPause: v })))
   );
 }

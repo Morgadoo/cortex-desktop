@@ -3,6 +3,7 @@ mod app;
 mod browser_login;
 mod chat;
 mod dialog;
+mod dictation;
 mod downloads;
 mod feature_flags;
 mod main_window;

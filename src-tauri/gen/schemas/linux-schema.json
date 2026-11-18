@@ -897,6 +897,12 @@
           "markdownDescription": "Shows a native notification for the active account from the main webview."
         },
         {
+          "description": "The dictation pill: transcribe what was said and type it into the app that had focus.",
+          "type": "string",
+          "const": "allow-dictation-pill",
+          "markdownDescription": "The dictation pill: transcribe what was said and type it into the app that had focus."
+        },
+        {
           "description": "Removes stored connector credentials.",
           "type": "string",
           "const": "allow-disconnect-connector",

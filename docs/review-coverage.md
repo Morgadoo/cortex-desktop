@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 131 |
+| DONE | 58 | 132 |
 | PARTIAL | 86 | 54 |
-| MISSING | 48 | 7 |
+| MISSING | 48 | 6 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9 · LibreChat 33 / 8 / 1 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 15 / 6 / 0 / 5 · Osaurus 10 / 12 / 4 / 4 · OpenBot 18 / 9 / 2 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9 · LibreChat 33 / 8 / 1 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 15 / 6 / 0 / 5 · Osaurus 11 / 12 / 3 / 4 · OpenBot 18 / 9 / 2 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -201,7 +201,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9
 | Osaurus | Developer tools, request log | PARTIAL | DONE | Recent requests log for the local API |
 | Osaurus | On-device transcription | PARTIAL | PARTIAL | Any OpenAI-compatible server (parity L238). Missing: a built-in model |
 | Osaurus | Wake word | MISSING | MISSING |  |
-| Osaurus | System-wide dictation hotkey | MISSING | MISSING |  |
+| Osaurus | System-wide dictation hotkey | MISSING | DONE | parity: Dictation anywhere (`dictation.rs`, `dictate.ts`; Settings → Audio). Verified live: Ctrl+Alt+D over an xterm opened the Listening pill, speech played into a virtual microphone was recorded (7.4 s WAV) and transcribed, and the text was typed into the xterm; changing the shortcut released the old one; auto-finish on pause and paste mode also ran |
 | Osaurus | On-device images | PARTIAL | PARTIAL | Cloud only (parity L233) |
 | Osaurus | Encrypted sync between devices | MISSING | MISSING |  |
 | Osaurus | Workspaces | MISSING | OUT OF SCOPE | Team (parity L217) |

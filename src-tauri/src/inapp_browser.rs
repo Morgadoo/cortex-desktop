@@ -94,7 +94,7 @@ pub fn open(app: &AppHandle, url: &url::Url) -> Result<(), String> {
             }
             "copy-link" => {
                 if let Some(url) = current {
-                    copy_text(url.as_str());
+                    let _ = copy_text(url.as_str());
                 }
             }
             "external" => {
@@ -114,8 +114,8 @@ pub fn open(app: &AppHandle, url: &url::Url) -> Result<(), String> {
     Ok(())
 }
 
-/// Puts text on the clipboard through the system's tools.
-fn copy_text(text: &str) {
+/// Puts text on the clipboard through the system's tools; false when none is installed.
+pub(crate) fn copy_text(text: &str) -> bool {
     use std::io::Write as _;
     let tools: &[(&str, &[&str])] = if cfg!(target_os = "macos") {
         &[("pbcopy", &[])]
@@ -129,11 +129,11 @@ fn copy_text(text: &str) {
             if let Some(mut stdin) = child.stdin.take() {
                 let _ = stdin.write_all(text.as_bytes());
             }
-            let _ = child.wait();
-            return;
+            return child.wait().is_ok_and(|s| s.success());
         }
     }
-    warn!("no clipboard tool was found to copy the link");
+    warn!("no clipboard tool was found to copy the text");
+    false
 }
 
 #[tauri::command]

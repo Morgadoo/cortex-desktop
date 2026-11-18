@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dictation</title>
+  <link rel="stylesheet" href="styles/dictate.css">
+  <script src="scripts/theme.js"></script>
+</head>
+<body>
+<div class="dictate-pill" id="pill" role="status" aria-live="polite">
+  <span class="dictate-dot" id="dot" aria-hidden="true"></span>
+  <div class="dictate-text">
+    <strong id="state">Listening…</strong>
+    <span id="hint"></span>
+  </div>
+  <div class="dictate-meter" aria-hidden="true"><span id="level"></span></div>
+  <button type="button" class="dictate-btn" id="done" title="Finish and insert">Done</button>
+  <button type="button" class="dictate-btn quiet" id="cancel" title="Cancel" aria-label="Cancel">&#x2715;</button>
+</div>
+<script src="scripts/dictate.js"></script>
+</body>
+</html>

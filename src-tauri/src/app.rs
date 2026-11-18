@@ -199,6 +199,10 @@ pub fn run() {
             crate::inapp_browser::browser_prefs,
             crate::inapp_browser::set_browser_prefs,
             crate::tray::app_menu_action,
+            crate::dictation::dictation_prefs,
+            crate::dictation::set_dictation_prefs,
+            crate::dictation::dictation_insert,
+            crate::dictation::dictation_cancel,
             chat::commands::chat_import_archive,
             chat::commands::chat_open_app_window,
             chat::commands::chat_set_defaults,
@@ -298,6 +302,7 @@ pub fn run() {
         .setup(|app| {
             app.manage(updater::UpdateState::default());
             app.manage(downloads::Downloads::default());
+            app.manage(crate::dictation::Dictation::default());
             // First line of every launch: the log appends across sessions, and a bug report is
             // only useful with the version and platform it came from.
             info!(
@@ -435,9 +440,11 @@ pub fn run() {
             let app_handle = app.handle().clone();
             app.handle().plugin(
                 tauri_plugin_global_shortcut::Builder::new()
-                    .with_handler(move |_app, _shortcut, event| {
+                    .with_handler(move |_app, shortcut, event| {
                         if event.state() == ShortcutState::Pressed {
-                            if let Err(e) = quick_ask::window::show(&app_handle) {
+                            if crate::dictation::is_shortcut(&app_handle, shortcut) {
+                                crate::dictation::toggle(&app_handle);
+                            } else if let Err(e) = quick_ask::window::show(&app_handle) {
                                 error!("could not show search window: {e}");
                             }
                         }
@@ -458,6 +465,7 @@ pub fn run() {
                     .unwrap_or_else(|_| Shortcut::new(Some(Modifiers::CONTROL), Code::KeyL));
                 app.handle().global_shortcut().register(shortcut)?;
             }
+            crate::dictation::startup(app.handle());
             tray::create(app.handle())?;
             updater::startup(app.handle());
             Ok(())

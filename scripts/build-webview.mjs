@@ -43,6 +43,7 @@ const entries = {
     'pages/app/main.ts': 'app.js',
     'pages/login.ts': 'login.js',
     'pages/search.ts': 'search.js',
+    'pages/dictate.ts': 'dictate.js',
     'pages/theme.ts': 'theme.js',
     // Still JavaScript: extracted verbatim from settings.html, frozen as the reference
     // for the React rewrite that replaces it.
