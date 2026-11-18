@@ -20,6 +20,11 @@ const TOOL_CHOICES: { id: string; label: string }[] = [
   { id: 'schedule_task', label: 'Schedule tasks' },
   { id: 'use_skill', label: 'Skills' },
   { id: 'remember', label: 'Knowledge' },
+  { id: 'generate_image', label: 'Image generation' },
+  { id: 'run_code', label: 'Run code' },
+  { id: 'browser_view', label: 'Real browser' },
+  { id: 'browser_act', label: 'Use web pages' },
+  { id: 'message_agent', label: 'Message agents' },
 ];
 
 export async function reloadAgents() {

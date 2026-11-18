@@ -85,6 +85,10 @@ pub struct ProvidersFile {
     /// The Auto model's strong choice, for code, analysis and long or attached input.
     #[serde(default)]
     pub router_strong: Option<String>,
+    /// A local image server with the AUTOMATIC1111 API (Stable Diffusion WebUI, Forge, SD.Next,
+    /// Draw Things), used as the image model `sdwebui/<checkpoint or default>`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_server: Option<String>,
 }
 
 pub fn file_path(config_dir: &Path) -> PathBuf {

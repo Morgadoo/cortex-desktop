@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 177 |
-| PARTIAL | 86 | 14 |
+| DONE | 58 | 181 |
+| PARTIAL | 86 | 10 |
 | MISSING | 48 | 1 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 42 / 3 / 0 / 9 · LibreChat 40 / 2 / 0 / 4 · LobeHub 28 / 1 / 0 / 5 · Onyx 20 / 1 / 0 / 5 · Osaurus 21 / 4 / 1 / 4 · OpenBot 26 / 3 / 0 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 43 / 2 / 0 / 9 · LibreChat 41 / 1 / 0 / 4 · LobeHub 29 / 0 / 0 / 5 · Onyx 20 / 1 / 0 / 5 · Osaurus 22 / 3 / 1 / 4 · OpenBot 26 / 3 / 0 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -58,7 +58,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 42 / 3 / 0 / 9
 | Open WebUI | Tabs side panel, split panes | PARTIAL | PARTIAL | Apps, canvases and Sources as panel tabs (parity L200; canvas.ts:55). Missing: chats and files as tabs, split panes |
 | Open WebUI | Hands-free voice and video calls, realtime | PARTIAL | DONE | Hands-free call (parity L236). Video and realtime models are left out (L221) |
 | Open WebUI | Voice cloning | MISSING | OUT OF SCOPE | Left out (parity L221) |
-| Open WebUI | Image generation and editing, ComfyUI | PARTIAL | PARTIAL | Editing through a reference image (parity L234, itself Partial). Missing: ComfyUI or any local image backend |
+| Open WebUI | Image generation and editing, ComfyUI | PARTIAL | DONE | Cloud image models (OpenAI, xAI, Together) with editing by reference, and a local image server: Stable Diffusion WebUI, Forge, SD.Next or Draw Things through the AUTOMATIC1111 API (txt2img, img2img for edits), its checkpoints listed as image models. ComfyUI's own workflow API is not used. Verified live against an AUTOMATIC1111-compatible server |
 | Open WebUI | Video generation | MISSING | OUT OF SCOPE | Left out (parity L221) |
 | Open WebUI | Chat overview (map with compaction marks) | MISSING | DONE | Outline in the chat header with the summarized point marked (parity: Chat outline) |
 | Open WebUI | Models search past chats | PARTIAL | DONE | parity L271 (`search_chats`, `read_chat`) |
@@ -117,7 +117,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 42 / 3 / 0 / 9
 | LibreChat | Every shortcut rebindable | PARTIAL | DONE | Settings → General → Keyboard shortcuts: every shortcut can be rebound, including prompt history (Ctrl+R), folding activity (Ctrl+O), the mode cycle (Shift+Tab) and the nine chat shortcuts (Ctrl+1–9); prompt history and the mode cycle act only in the message box |
 | LibreChat | Settings search | MISSING | DONE | Search box at the top of Settings (parity: Search settings) |
 | LibreChat | Security / admin | MISSING | OUT OF SCOPE | Team/enterprise (parity L217) |
-| LibreChat | Image generation and editing, local server | PARTIAL | PARTIAL | Editing by reference (parity L234). Missing: a local image server |
+| LibreChat | Image generation and editing, local server | PARTIAL | DONE | Local image server (AUTOMATIC1111 API: Stable Diffusion WebUI, Forge, SD.Next, Draw Things) in Settings → Providers → Images and voice, with checkpoints as models, seeds and img2img edits (media.rs sdwebui). Verified live |
 | LobeHub | LaTeX in streaming answers | PARTIAL | DONE | parity L275 |
 | LobeHub | Translate a message | MISSING | DONE | chat.ts:730–760 (`chat_translate`; not in the parity doc) |
 | LobeHub | Fold a long reply | MISSING | DONE | Fold button on long answers (parity: Fold a long answer) |
@@ -138,7 +138,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 42 / 3 / 0 / 9
 | LobeHub | Relevance scores, excerpt preview | PARTIAL | DONE | Passage scores in Test a search; document preview (parity: Library document preview) |
 | LobeHub | Notion ZIP import | MISSING | DONE | parity: Import an export into a library (libraries.rs `import_archive`) |
 | LobeHub | Pages: long documents with a page list | PARTIAL | DONE | Apps → Documents and sheets lists every document and sheet canvas, newest first, with search, Download and Open (in its conversation). Verified live |
-| LobeHub | Image page (ratio, size, count, seed…) | PARTIAL | PARTIAL | `generate_image` with a reference (parity L234). Missing: a page with those controls |
+| LobeHub | Image page (ratio, size, count, seed…) | PARTIAL | DONE | Image generation is a tool in the chat, as in Grok: Create an image (home suggestion or + menu) puts an Image chip on the message box with shape (1:1, 3:2, 2:3), how many (1 to 4), templates (mascot, logo, sticker, poster, product photo) that ask style and background first; generate_image takes count, quality, seed and a reference; results show as a grid and in Resources. Verified live |
 | LobeHub | Video generation | MISSING | OUT OF SCOPE | Left out (parity L221) |
 | LobeHub | Prompt Extend before generation | MISSING | DONE | parity: Improve prompt (Ctrl+E, Ctrl+Z undoes) |
 | LobeHub | Topic panel: status tabs, card/list views | PARTIAL | DONE | Archive, and the Chats page (grid button beside Chats in the sidebar): tabs All, Unread, Pinned, Scheduled runs, Archived with counts, a search, list or card view, archive/restore per chat (chatspage.ts). Verified live |
@@ -202,7 +202,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 42 / 3 / 0 / 9
 | Osaurus | On-device transcription | PARTIAL | PARTIAL | Any OpenAI-compatible server (parity L238). Missing: a built-in model |
 | Osaurus | Wake word | MISSING | DONE | parity: Wake word (`wakeword.ts`, `wakematch.ts`; Settings → Audio). Verified live with a virtual microphone: an unrelated phrase was transcribed and ignored; "Hey Lumo, what is two plus two? …" opened a new chat that asked it (answer: 4); with the window hidden, "Hey Lumo" alone brought Lumo forward into a voice conversation |
 | Osaurus | System-wide dictation hotkey | MISSING | DONE | parity: Dictation anywhere (`dictation.rs`, `dictate.ts`; Settings → Audio). Verified live: Ctrl+Alt+D over an xterm opened the Listening pill, speech played into a virtual microphone was recorded (7.4 s WAV) and transcribed, and the text was typed into the xterm; changing the shortcut released the old one; auto-finish on pause and paste mode also ran |
-| Osaurus | On-device images | PARTIAL | PARTIAL | Cloud only (parity L233) |
+| Osaurus | On-device images | PARTIAL | DONE | Images made on the user's own machine through a local image server (Draw Things on a Mac, Stable Diffusion WebUI or Forge elsewhere), used by generate_image with no key (media.rs). Verified live against a local AUTOMATIC1111-compatible server |
 | Osaurus | Encrypted sync between devices | MISSING | DONE | parity: Sync between devices (`sync.rs`; Settings → Profile). Verified live with two configurations sharing one folder: device A sent 105 encrypted items (no plaintext in the folder); device B refused a wrong passphrase, then received A's 5 extra conversations and sent its renamed chat, which reached A; a chat deleted on A was moved to B's trash on B's next sync |
 | Osaurus | Workspaces | MISSING | OUT OF SCOPE | Team (parity L217) |
 | Osaurus | Encryption at rest | PARTIAL | DONE | parity: Encrypt data on this computer (`at_rest.rs`; Settings → Profile). Verified live: 338 files were sealed (no plaintext left outside sandboxes), the app restarted, unlocked from the keychain, listed and searched chats and saved a new one sealed; decrypting restored every file in the clear |

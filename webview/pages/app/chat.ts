@@ -789,6 +789,14 @@ function renderUserTurn(turn: Turn, conversationId: string, branch: HTMLElement 
     chips.push(h('span', { class: 'skill-chip' }, icon('skill', 14), skill[1]!));
     rest = rest.slice(skill[0].length);
   }
+  // Image mode's instruction (imageDirective) reads as a chip, as Grok shows its image tool.
+  const imageAsk = rest.match(/^Create (an image|(\d) images \(variations\)) with generate_image \(shape: (\w+)[^)]*\)\.([^\n]*)\n\n/);
+  if (imageAsk) {
+    const template = IMAGE_TEMPLATES.find((t) => imageAsk[4]!.trim() && imageAsk[4]!.includes(t.brief.slice(0, 40)));
+    const label = ['Image', template?.label, imageAsk[3] !== 'square' ? imageAsk[3]![0]!.toUpperCase() + imageAsk[3]!.slice(1) : null, imageAsk[2] ? `×${imageAsk[2]}` : null].filter(Boolean).join(' · ');
+    chips.push(h('span', { class: 'skill-chip' }, icon('image', 14), label));
+    rest = rest.slice(imageAsk[0].length);
+  }
   const quote = rest.match(/^((?:> .*(?:\n|$))+)\n*/);
   let quoteEl: HTMLElement | null = null;
   if (quote) {
@@ -1609,6 +1617,7 @@ async function send(text: string, conversationId: string | null, images: { media
       temporary,
       images,
       connectors: connectorChoice(),
+      toolsOff: [...toolsOff],
     });
     if (temporary) temporaryChats.add(id);
     temporaryNext = temporaryByDefault();
@@ -1618,6 +1627,39 @@ async function send(text: string, conversationId: string | null, images: { media
     return false;
   }
   return true;
+}
+
+/**
+ * The assistant's built-in tools, each switchable for the chats you send from the + menu's
+ * Tools (as Grok and Vibe show them): image generation is one tool among the others.
+ */
+const TOOL_GROUPS: { label: string; icon: string; names: string[]; hint: string }[] = [
+  { label: 'Web search', icon: 'globe', names: ['web_search'], hint: 'Search the web and cite sources' },
+  { label: 'Image generation', icon: 'image', names: ['generate_image'], hint: 'Create and edit images' },
+  { label: 'Browser', icon: 'globe', names: ['browser_view', 'browser_act', 'browser'], hint: 'Open, read and use web pages' },
+  { label: 'Canvas', icon: 'file', names: ['canvas'], hint: 'Documents, apps and sheets beside the chat' },
+  { label: 'Run code', icon: 'terminal', names: ['run_code'], hint: 'Python and JavaScript in a sandbox' },
+  { label: 'Sub-agents', icon: 'workflow', names: ['delegate'], hint: 'Research in parallel' },
+  { label: 'Message agents', icon: 'chat', names: ['message_agent'], hint: 'Ask your other agents' },
+  { label: 'Schedule tasks', icon: 'clock', names: ['schedule_task'], hint: 'Runs at set times' },
+  { label: 'Knowledge', icon: 'book', names: ['remember', 'forget', 'knowledge_write'], hint: 'Save what it learns about you' },
+];
+const toolsOff = new Set<string>();
+
+/** Image templates (Grok's "Modelo" cards): what to ask first and how to draw it. */
+const IMAGE_TEMPLATES: { id: string; label: string; icon: string; brief: string }[] = [
+  { id: 'mascot', label: 'Mascot maker', icon: 'sparkle', brief: 'This is a mascot or avatar. Unless I said, first ask me with ask_user for the style (options: Polished 2D game mascot, Chibi cute, Retro cartoon, Flat vector) and then the background (options: Plain white, Transparent look, In a scene). Then design one friendly, memorable character that fits the subject, centred, full body.' },
+  { id: 'logo', label: 'Logo', icon: 'star', brief: 'This is a logo. Unless I said, first ask me with ask_user for the style (options: Minimal wordmark, Emblem or badge, Geometric icon, Hand-drawn) and the colours. Keep it simple, readable at small sizes, on a plain background.' },
+  { id: 'sticker', label: 'Sticker', icon: 'image', brief: 'This is a die-cut sticker: bold outlines, a white border, plain background. Unless I said, ask me with ask_user for the style (options: Kawaii, Cartoon, Pixel art, Watercolour).' },
+  { id: 'poster', label: 'Poster', icon: 'file', brief: 'This is a poster. Unless I said, ask me with ask_user for the mood (options: Bold and modern, Vintage, Minimal, Playful) and any text to show; keep text short and spelled exactly.' },
+  { id: 'product', label: 'Product photo', icon: 'image', brief: 'This is a product photo. Unless I said, ask me with ask_user for the setting (options: White studio, Lifestyle scene, Flat lay, Dramatic dark). Realistic lighting, sharp focus on the product.' },
+];
+
+/** The message for image mode: use the image tool, with the chosen shape, count and template. */
+function imageDirective(img: { shape: string; count: number; template: string | null }, text: string): string {
+  const t = IMAGE_TEMPLATES.find((x) => x.id === img.template);
+  const what = img.count > 1 ? `${img.count} images (variations)` : 'an image';
+  return `Create ${what} with generate_image (shape: ${img.shape}${img.count > 1 ? `, count: ${img.count}` : ''}).${t ? ` ${t.brief}` : ''}\n\n${text || 'Surprise me.'}`;
 }
 
 /** Connectors switched off from the + menu; every ready one is on unless listed here. */
@@ -1735,6 +1777,8 @@ class Composer {
   private quote: string | null = null;
   /** Ask for the answer in a canvas. */
   private useCanvas = false;
+  /** Image mode (the image generation tool, explicitly): its shape, how many, and a template. */
+  private image: { shape: 'square' | 'landscape' | 'portrait'; count: number; template: string | null } | null = null;
   private chips: HTMLElement;
   private bar: HTMLElement;
   private conversationId: string | null = null;
@@ -2452,6 +2496,7 @@ class Composer {
       text = `${quoted}\n\n${text || 'Tell me more about this.'}`;
     }
     if (this.useCanvas) text = `Use a canvas for this.\n\n${text}`;
+    if (this.image) text = imageDirective(this.image, text);
     if (this.folder) text = `Work with the files in the folder \`${this.folder}\`.\n\n${text}`;
     if (this.library) text = `Search the "${this.library}" library (search_library) for this, and cite what you use.\n\n${text}`;
     if (this.workflow) text = workflowPrompt(this.workflow, text);
@@ -2506,6 +2551,7 @@ class Composer {
       this.attachments = [];
       this.quote = null;
       this.useCanvas = false;
+      this.setImage(null);
       this.folder = null;
       this.library = null;
       this.workflow = null;
@@ -2513,6 +2559,38 @@ class Composer {
       this.renderChips();
       this.renderBar();
     }
+  }
+
+  /** Turns image mode on (with the image tool) or off. */
+  setImage(next: { shape: 'square' | 'landscape' | 'portrait'; count: number; template: string | null } | null) {
+    this.image = next;
+    if (next) toolsOff.delete('generate_image');
+    this.textarea.placeholder = next ? 'Describe the image you want…' : this.placeholder;
+    this.renderChips();
+    this.renderBar();
+  }
+
+  private imageOptions(anchor: HTMLElement) {
+    if (!this.image) return;
+    const img = this.image;
+    let close = () => {};
+    const pick = (change: Partial<typeof img>) => { this.setImage({ ...img, ...change }); close(); this.focus(); };
+    const row = (label: string, on: boolean, run: () => void, ic?: string) => h('button', { class: `menu-item${on ? ' selected' : ''}`, on: { click: run } }, ic ? icon(ic, 15) : icon(on ? 'check' : 'dot', 14), h('span', { class: 'grow' }, label));
+    close = popover(
+      anchor,
+      h(
+        'div',
+        { class: 'menu image-menu' },
+        h('div', { class: 'menu-heading' }, 'Shape'),
+        (['square', 'landscape', 'portrait'] as const).map((s) => row(s === 'square' ? 'Square 1:1' : s === 'landscape' ? 'Landscape 3:2' : 'Portrait 2:3', img.shape === s, () => pick({ shape: s }))),
+        h('div', { class: 'menu-heading' }, 'How many'),
+        h('div', { class: 'count-row' }, [1, 2, 3, 4].map((n) => h('button', { class: `count-btn${img.count === n ? ' active' : ''}`, on: { click: () => pick({ count: n }) } }, String(n)))),
+        h('div', { class: 'menu-heading' }, 'Template'),
+        row('None: just my description', !img.template, () => pick({ template: null })),
+        IMAGE_TEMPLATES.map((t) => row(t.label, img.template === t.id, () => pick({ template: t.id }), t.icon))
+      ),
+      'above'
+    );
   }
 
   setQuote(text: string) {
@@ -2610,6 +2688,15 @@ class Composer {
     if (this.folder) extra.push(tokenChip('folder', this.folder.split(/[\\/]/).pop() || this.folder, () => (this.folder = null)));
     if (this.useCanvas) {
       extra.push(chip({ icon: 'file', tone: 'accent', label: 'Canvas', onRemove: () => { this.useCanvas = false; this.renderChips(); } }));
+    }
+    if (this.image) {
+      const img = this.image;
+      const label = ['Image', img.template ? IMAGE_TEMPLATES.find((t) => t.id === img.template)?.label : null, img.shape !== 'square' ? (img.shape === 'landscape' ? 'Landscape' : 'Portrait') : null, img.count > 1 ? `×${img.count}` : null].filter(Boolean).join(' · ');
+      const c = chip({ icon: 'image', tone: 'accent', label, onRemove: () => { this.setImage(null); this.renderChips(); } });
+      c.classList.add('chip-clickable');
+      c.title = 'Shape, how many, and templates';
+      c.addEventListener('click', (e) => { if (!(e.target as HTMLElement).closest('.chip-x')) this.imageOptions(c); });
+      extra.push(c);
     }
     clear(
       this.chips,
@@ -2737,7 +2824,7 @@ class Composer {
   renderBar() {
     const running = this.running();
     if (this.conversationId && queued.has(this.conversationId) && running !== this.chipsDrawnRunning) this.renderChips();
-    this.textarea.placeholder = running ? 'Steer the task: Enter sends it now, Alt+Enter queues it for after' : this.placeholder;
+    this.textarea.placeholder = running ? 'Steer the task: Enter sends it now, Alt+Enter queues it for after' : this.image ? 'Describe the image you want…' : this.placeholder;
     const plus = h('button', { class: 'icon-btn', title: 'Add' }, icon('plus', 18));
     plus.addEventListener('click', () => this.openPlusMenu(plus));
 
@@ -2943,7 +3030,13 @@ class Composer {
         clear(flyout, h('div', { class: 'status-line' }, h('span', { class: 'dots' })));
         flyout.classList.add('open');
         const content = await fill().catch((e) => [h('div', { class: 'empty-small' }, String(e))]);
-        if (row.classList.contains('active')) clear(flyout, content);
+        if (row.classList.contains('active')) {
+          clear(flyout, content);
+          // Long lists near the bottom of the window open upward, so they stay on screen.
+          const r = flyout.getBoundingClientRect();
+          const over = r.bottom - (window.innerHeight - 8);
+          if (over > 0) flyout.style.top = `${row.offsetTop - 6 - Math.min(over, r.top - 8)}px`;
+        }
       };
       row.addEventListener('mouseenter', () => void show());
       row.addEventListener('click', () => void show());
@@ -2994,6 +3087,19 @@ class Composer {
         entry('settings', 'Open Knowledge', null, () => navigate({ kind: 'page', page: 'knowledge' })),
       ];
     };
+    const tools = async () => [
+      heading('Tools the assistant can use'),
+      ...TOOL_GROUPS.map((g) => {
+        const on = h('input', { type: 'checkbox', class: 'switch', checked: !g.names.every((n) => toolsOff.has(n)) });
+        on.addEventListener('change', () => {
+          for (const n of g.names) (on.checked ? toolsOff.delete(n) : toolsOff.add(n));
+          if (!on.checked && g.names.includes('generate_image')) this.setImage(null);
+        });
+        return h('label', { class: 'menu-item static', title: g.hint }, icon(g.icon, 16), h('span', { class: 'grow ellipsis' }, g.label), on);
+      }),
+      sep(),
+      h('small', { class: 'menu-note muted' }, 'For the chats you send from here. Agents also have their own tools.'),
+    ];
     const connectors = async () => {
       const manifests = (await api.connectors()).filter((m) => m.enabled && m.readiness.state === 'ready');
       knownConnectors = manifests.map((m) => m.id);
@@ -3101,8 +3207,10 @@ class Composer {
       sub('workflow', 'Workflows', workflows),
       sub('chat', 'Other chats', chats),
       item('file', 'Canvas', () => { this.useCanvas = true; this.renderChips(); this.focus(); }),
+      item('image', 'Create an image', () => { this.setImage(this.image ?? { shape: 'square', count: 1, template: null }); this.focus(); }),
+      sub('tool', 'Tools', tools),
       sep(),
-      item('reset', 'Reset input', () => { this.setText(''); this.attachments = []; this.folder = null; this.library = null; this.workflow = null; this.quote = null; this.useCanvas = false; this.renderChips(); this.renderBar(); })
+      item('reset', 'Reset input', () => { this.setText(''); this.attachments = []; this.folder = null; this.library = null; this.workflow = null; this.quote = null; this.useCanvas = false; this.setImage(null); this.renderChips(); this.renderBar(); })
     );
     close = popover(anchor, h('div', { class: 'plus-wrap' }, menu, flyout), 'below');
   }
@@ -3212,6 +3320,7 @@ function renderQuestion(conversationId: string, q: NonNullable<LiveTurn['questio
     if (live) live.question = null;
     changed();
   };
+  const skip = () => answer('(The user skipped this question. Choose what fits best yourself, say what you chose, and go on without asking it again.)');
   const input = h('input', { class: 'question-input', placeholder: 'Type your answer…' });
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && input.value.trim()) answer(input.value.trim());
@@ -3223,9 +3332,12 @@ function renderQuestion(conversationId: string, q: NonNullable<LiveTurn['questio
     ...q.options.map((option, i) =>
       h('button', { class: 'question-option', on: { click: () => answer(option) } }, h('span', { class: 'num' }, String(i + 1)), h('span', {}, option), icon('send', 15))
     ),
-    h('div', { class: 'question-option free' }, h('span', { class: 'num' }, String(q.options.length + 1)), input)
+    h('div', { class: 'question-option free' }, h('span', { class: 'num' }, String(q.options.length + 1)), input),
+    // Skip (Grok's "Ignorar"): the assistant decides by itself and goes on.
+    h('div', { class: 'question-foot' }, h('small', { class: 'muted' }, 'Esc skips'), h('span', { class: 'spacer' }), h('button', { class: 'btn btn-ghost btn-sm', title: 'Let the assistant choose and go on', on: { click: skip } }, 'Skip'))
   );
   card.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') return void skip();
     if (e.target === input) return;
     const n = Number(e.key);
     if (n >= 1 && n <= q.options.length) answer(q.options[n - 1]!);
@@ -3276,7 +3388,8 @@ function renderApprovals(): HTMLElement | null {
 // ---------------------------------------------------------------------------------------------
 // Views
 
-const SUGGESTIONS: { icon: string; text: string; page?: boolean; more?: boolean }[] = [
+const SUGGESTIONS: { icon: string; text: string; page?: boolean; more?: boolean; image?: boolean }[] = [
+  { icon: 'image', text: 'Create an image', image: true },
   { icon: 'skill', text: 'Set up and discover what this assistant can do' },
   { icon: 'globe', text: 'What is the current state of the AI industry?' },
   { icon: 'plug', text: 'Connect your apps for better answers', page: true },
@@ -3379,7 +3492,7 @@ export class HomeView {
               'button',
               {
                 class: 'suggestion',
-                on: { click: () => (s.page ? navigate({ kind: 'page', page: 'connectors' }) : (composer.setText(s.text), composer.focus())) },
+                on: { click: () => (s.page ? navigate({ kind: 'page', page: 'connectors' }) : s.image ? (composer.setImage({ shape: 'square', count: 1, template: null }), composer.focus()) : (composer.setText(s.text), composer.focus())) },
               },
               icon(s.icon, 17),
               s.text.replace(/: $/, '')

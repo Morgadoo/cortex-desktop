@@ -42,22 +42,25 @@ function size(bytes: number): string {
 export function renderImage(part: Extract<Part, { kind: 'tool' }>, live: boolean, conversationId: string): HTMLElement {
   const prompt = typeof part.arguments.prompt === 'string' ? part.arguments.prompt : '';
   const running = live && part.output === null;
-  let file = '';
+  let files: string[] = [];
   try {
-    file = part.output && !part.isError ? ((JSON.parse(part.output) as { file?: string }).file ?? '') : '';
+    const out = part.output && !part.isError ? (JSON.parse(part.output) as { file?: string; files?: string[] }) : {};
+    files = out.files?.length ? out.files : out.file ? [out.file] : [];
   } catch {
-    file = '';
+    files = [];
   }
+  const count = typeof part.arguments.count === 'number' ? part.arguments.count : 1;
   let body: HTMLElement;
   if (running) {
-    body = h('div', { class: 'image-wait' }, h('span', { class: 'dots' }), 'Creating the image…');
-  } else if (file) {
-    const url = workspaceUrl(conversationId, file);
-    const img = h('img', { class: 'generated-image', src: url, alt: prompt, title: 'Open larger' });
-    img.addEventListener('click', () =>
-      void modal((close) => h('div', { class: 'image-modal', on: { click: close } }, h('img', { src: url, alt: prompt })), true)
-    );
-    body = img;
+    body = h('div', { class: 'image-wait' }, h('span', { class: 'dots' }), count > 1 ? `Creating ${count} images…` : 'Creating the image…');
+  } else if (files.length) {
+    const imgs = files.map((file) => {
+      const url = workspaceUrl(conversationId, file);
+      const img = h('img', { class: 'generated-image', src: url, alt: prompt, title: 'Open larger' });
+      img.addEventListener('click', () => void modal((close) => h('div', { class: 'image-modal', on: { click: close } }, h('img', { src: url, alt: prompt })), true));
+      return img;
+    });
+    body = imgs.length === 1 ? imgs[0]! : h('div', { class: `image-grid n${Math.min(imgs.length, 4)}` }, imgs);
   } else {
     body = h('pre', { class: 'run-stderr' }, part.output ?? 'The image could not be made.');
   }
@@ -69,7 +72,7 @@ export function renderImage(part: Extract<Part, { kind: 'tool' }>, live: boolean
   return h(
     'div',
     { class: 'canvas-step' },
-    h('div', { class: 'canvas-label' }, running ? 'Creating an image…' : part.isError ? 'Could not create the image' : 'Created an image'),
+    h('div', { class: 'canvas-label' }, running ? (count > 1 ? `Creating ${count} images…` : 'Creating an image…') : part.isError ? 'Could not create the image' : files.length > 1 ? `Created ${files.length} images` : 'Created an image'),
     h('div', { class: 'image-card' }, body, h('div', { class: 'image-caption' }, h('span', { class: 'muted' }, prompt), copy))
   );
 }

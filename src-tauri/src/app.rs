@@ -212,6 +212,8 @@ pub fn run() {
             chat::commands::chat_usage_breakdown,
             chat::commands::chat_task_comment,
             chat::commands::chat_open_preview,
+            chat::commands::chat_set_image_server,
+            chat::commands::chat_image_server_models,
             chat::commands::chat_agent_browser,
             chat::commands::chat_outputs,
             chat::commands::chat_save_output,

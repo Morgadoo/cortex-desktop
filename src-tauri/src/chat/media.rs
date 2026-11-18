@@ -38,6 +38,7 @@ pub struct MediaModels {
     pub image_vendors: Vec<String>,
     pub speech_vendors: Vec<String>,
     pub voice_vendors: Vec<String>,
+    pub image_server: Option<String>,
 }
 
 fn dialect(vendor: &str) -> Option<&'static Dialect> {
@@ -69,7 +70,76 @@ fn pick(file: &ProvidersFile, chosen: Option<&String>, defaults: &[(&str, &str)]
 }
 
 pub fn image_model(file: &ProvidersFile) -> Option<String> {
-    pick(file, file.image_model.as_ref(), IMAGE_DEFAULTS)
+    // A local image server needs no key: chosen, or the only image maker there is.
+    let local = file.image_server.as_ref().filter(|u| !u.trim().is_empty());
+    if let Some(chosen) = file.image_model.as_ref().filter(|m| m.starts_with(SDWEBUI_PREFIX)) {
+        return local.map(|_| chosen.clone());
+    }
+    pick(file, file.image_model.as_ref(), IMAGE_DEFAULTS).or_else(|| local.map(|_| format!("{SDWEBUI_PREFIX}default")))
+}
+
+// ---------------------------------------------------------------------------------------------
+// A local image server (Open WebUI's and LibreChat's local image generation; on a Mac, Draw
+// Things makes images on the device): the AUTOMATIC1111 API that Stable Diffusion WebUI,
+// Forge, SD.Next and Draw Things serve. `txt2img` makes an image; `img2img` starts from one.
+
+pub const SDWEBUI_PREFIX: &str = "sdwebui/";
+
+/// The request body for the AUTOMATIC1111 API.
+pub fn sdwebui_body(prompt: &str, width: u32, height: u32, seed: Option<u64>, checkpoint: Option<&str>, init_image: Option<&str>) -> Value {
+    let mut body = json!({
+        "prompt": prompt,
+        "negative_prompt": "blurry, low quality, watermark, text artifacts",
+        "width": width,
+        "height": height,
+        "steps": 25,
+        "cfg_scale": 7,
+        "seed": seed.map_or(-1i64, |s| s as i64),
+        "batch_size": 1,
+    });
+    if let Some(c) = checkpoint.filter(|c| !c.is_empty() && *c != "default") {
+        body["override_settings"] = json!({ "sd_model_checkpoint": c });
+    }
+    if let Some(img) = init_image {
+        body["init_images"] = json!([img]);
+        body["denoising_strength"] = json!(0.6);
+    }
+    body
+}
+
+/// Makes one image on the local server; returns its bytes.
+pub async fn sdwebui_image(server: &str, model: &str, prompt: &str, width: u32, height: u32, seed: Option<u64>, init_image: Option<&str>) -> Result<Vec<u8>, String> {
+    use base64::Engine as _;
+    let base = server.trim().trim_end_matches('/');
+    let endpoint = if init_image.is_some() { "img2img" } else { "txt2img" };
+    let checkpoint = model.strip_prefix(SDWEBUI_PREFIX);
+    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(600)).build().map_err(|e| e.to_string())?;
+    let response = client
+        .post(format!("{base}/sdapi/v1/{endpoint}"))
+        .json(&sdwebui_body(prompt, width, height, seed, checkpoint, init_image))
+        .send()
+        .await
+        .map_err(|e| format!("The local image server did not answer at {base}: {e}"))?;
+    if !response.status().is_success() {
+        return Err(format!("The local image server answered {}.", response.status()));
+    }
+    let body: Value = response.json().await.map_err(|e| format!("The local image server sent something unexpected: {e}"))?;
+    let b64 = body["images"].get(0).and_then(Value::as_str).ok_or("The local image server sent back no image.")?;
+    // Some servers prefix a data URL.
+    let b64 = b64.split_once(",").filter(|(head, _)| head.starts_with("data:")).map_or(b64, |(_, rest)| rest);
+    base64::engine::general_purpose::STANDARD.decode(b64).map_err(|e| e.to_string())
+}
+
+fn image_server(config_dir: &Path) -> Option<String> {
+    providers::load(config_dir).image_server.filter(|u| !u.trim().is_empty())
+}
+
+/// The base64 of a reference image, for img2img.
+fn image_b64(image: &rig_core::completion::message::Image) -> Option<String> {
+    match &image.data {
+        rig_core::completion::message::DocumentSourceKind::Base64(b) => Some(b.clone()),
+        _ => None,
+    }
 }
 
 pub fn speech_model(file: &ProvidersFile) -> Option<String> {
@@ -90,6 +160,7 @@ pub fn models(config_dir: &Path) -> MediaModels {
         image_vendors: vendors(IMAGE_DEFAULTS),
         speech_vendors: vendors(SPEECH_DEFAULTS),
         voice_vendors: vendors(VOICE_DEFAULTS),
+        image_server: file.image_server.clone(),
     }
 }
 
@@ -131,7 +202,10 @@ pub fn definition(config_dir: &Path) -> Option<ChatTool> {
             "properties": {
                 "prompt": { "type": "string", "description": "A detailed description of the image, or for an edit, what to change." },
                 "shape": { "type": "string", "enum": ["square", "landscape", "portrait"], "default": "square" },
-                "reference": { "type": "string", "description": "To edit or vary an image: `attached` for the latest image the user attached, or the `file` an earlier generate_image call returned (images/...)." }
+                "reference": { "type": "string", "description": "To edit or vary an image: `attached` for the latest image the user attached, or the `file` an earlier generate_image call returned (images/...)." },
+                "count": { "type": "integer", "minimum": 1, "maximum": 4, "description": "How many images (variations). Default 1." },
+                "quality": { "type": "string", "enum": ["low", "medium", "high", "auto"] },
+                "seed": { "type": "integer", "description": "Only when the user gives one, to make an image again." }
             },
             "required": ["prompt"]
         }),
@@ -151,54 +225,22 @@ fn extension(bytes: &[u8]) -> &'static str {
     }
 }
 
-/// Generates an image and saves it in the conversation's workspace.
+/// Generates images (one to four) and saves them in the conversation's workspace.
 pub async fn generate(config_dir: &Path, conversation_id: &str, args: &Value) -> Outcome {
-    let err = |text: String| Outcome { text, is_error: true };
-    let Some(prompt) = args.get("prompt").and_then(Value::as_str).map(str::trim).filter(|p| !p.is_empty()) else {
-        return err("Describe the image to create.".into());
+    let s = |k: &str| args.get(k).and_then(Value::as_str).map(str::trim).filter(|v| !v.is_empty()).map(str::to_string);
+    let request = StudioRequest {
+        prompt: s("prompt").unwrap_or_default(),
+        model: None,
+        shape: s("shape").unwrap_or_default(),
+        quality: s("quality"),
+        count: args.get("count").and_then(Value::as_u64).map_or(1, |c| c.clamp(1, 4) as u32),
+        seed: args.get("seed").and_then(Value::as_u64),
+        reference: s("reference"),
     };
-    let Some(reference) = image_model(&providers::load(config_dir)) else {
-        return err("No provider that makes images is set up.".into());
-    };
-    let (client, model) = match connect(config_dir, &reference).await {
-        Ok(c) => c,
-        Err(e) => return err(e),
-    };
-    let (width, height) = match args.get("shape").and_then(Value::as_str) {
-        Some("landscape") => (1536, 1024),
-        Some("portrait") => (1024, 1536),
-        _ => (1024, 1024),
-    };
-    let mut builder = ImageGenerationRequestBuilder::new(prompt).width(width).height(height);
-    if let Some(reference) = args.get("reference").and_then(Value::as_str).filter(|r| !r.trim().is_empty()) {
-        match reference_image(config_dir, conversation_id, reference.trim()) {
-            Ok(image) => builder = builder.image(image),
-            Err(e) => return err(e),
-        }
-    }
-    let request = builder.build();
-    let image = match tokio::time::timeout(std::time::Duration::from_secs(180), client.image_generation(model.clone()).call(request)).await {
-        Ok(Ok(response)) => response.image,
-        Ok(Err(e)) if e.to_string().contains("takes no reference images") => {
-            return err(format!("{reference} cannot edit images. Make a new image from a fuller description instead, or set an image model that edits (OpenAI gpt-image-1) in Settings → Providers."))
-        }
-        Ok(Err(e)) => return err(format!("The image could not be made: {e}")),
-        Err(_) => return err("The image took too long to make.".into()),
-    };
-    if image.is_empty() {
-        return err("The provider sent back no image.".into());
-    }
-    let dir = match super::sandbox::workspace(config_dir, conversation_id) {
-        Ok(d) => d.join("images"),
-        Err(e) => return err(e),
-    };
-    let name = format!("{}.{}", chrono::Local::now().format("%Y%m%d-%H%M%S-%3f"), extension(&image));
-    if let Err(e) = std::fs::create_dir_all(&dir).and_then(|()| crate::chat::at_rest::write(dir.join(&name), &image)) {
-        return err(format!("Could not save the image: {e}"));
-    }
-    Outcome {
-        text: json!({ "file": format!("images/{name}"), "model": reference, "bytes": image.len() }).to_string(),
-        is_error: false,
+    let model = image_model(&providers::load(config_dir)).unwrap_or_default();
+    match make_images(config_dir, conversation_id, request).await {
+        Ok((files, errors)) => Outcome { text: json!({ "file": files[0], "files": files, "model": model, "failed": errors }).to_string(), is_error: false },
+        Err(e) => Outcome { text: e, is_error: true },
     }
 }
 
@@ -388,5 +430,183 @@ mod tests {
     fn knows_image_formats() {
         assert_eq!(extension(&[0x89, b'P', b'N', b'G', 0]), "png");
         assert_eq!(extension(&[0xFF, 0xD8, 0xFF]), "jpg");
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Several images at once from one prompt, with a shape, quality, optional seed and an optional
+// reference image (LobeHub's image studio), for the generate_image tool.
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StudioRequest {
+    pub prompt: String,
+    /// An image model (`vendor/model`); the default image model when empty.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// `square`, `landscape` or `portrait`.
+    #[serde(default)]
+    pub shape: String,
+    /// `low`, `medium`, `high` or `auto`.
+    #[serde(default)]
+    pub quality: Option<String>,
+    #[serde(default = "one")]
+    pub count: u32,
+    #[serde(default)]
+    pub seed: Option<u64>,
+    /// A file in the gallery (`images/…`) to edit or vary.
+    #[serde(default)]
+    pub reference: Option<String>,
+}
+
+fn one() -> u32 {
+    1
+}
+
+pub fn studio_size(shape: &str) -> (u32, u32) {
+    match shape {
+        "landscape" => (1536, 1024),
+        "portrait" => (1024, 1536),
+        _ => (1024, 1024),
+    }
+}
+
+/// xAI takes the shape as an aspect ratio, which rig's request leaves at 1:1.
+pub fn aspect_for(vendor: &str, width: u32, height: u32) -> Option<&'static str> {
+    (vendor == "xai").then(|| match width.cmp(&height) {
+        std::cmp::Ordering::Greater => "3:2",
+        std::cmp::Ordering::Less => "2:3",
+        std::cmp::Ordering::Equal => "1:1",
+    })
+}
+
+fn merge(a: Option<Value>, b: Option<Value>) -> Option<Value> {
+    match (a, b) {
+        (Some(Value::Object(mut x)), Some(Value::Object(y))) => {
+            x.extend(y);
+            Some(Value::Object(x))
+        }
+        (x, None) => x,
+        (None, y) => y,
+        (x, _) => x,
+    }
+}
+
+/// Extra request fields: quality, and a seed for models that take one.
+pub fn studio_params(quality: Option<&str>, seed: Option<u64>) -> Option<Value> {
+    let mut p = serde_json::Map::new();
+    if let Some(q) = quality.filter(|q| matches!(*q, "low" | "medium" | "high" | "auto")) {
+        p.insert("quality".into(), json!(q));
+    }
+    if let Some(s) = seed {
+        p.insert("seed".into(), json!(s));
+    }
+    (!p.is_empty()).then_some(Value::Object(p))
+}
+
+/// Makes the images in a conversation's workspace; returns their files, and the errors of
+/// those that failed.
+pub async fn make_images(config_dir: &Path, workspace: &str, request: StudioRequest) -> Result<(Vec<String>, Vec<String>), String> {
+    let prompt = request.prompt.trim().to_string();
+    if prompt.is_empty() {
+        return Err("Describe the image to create.".into());
+    }
+    let reference = match request.model.filter(|m| !m.trim().is_empty()) {
+        Some(m) => m,
+        None => image_model(&providers::load(config_dir)).ok_or("No provider that makes images is set up.")?,
+    };
+    let (width, height) = studio_size(&request.shape);
+    let image = match request.reference.as_deref().filter(|r| !r.trim().is_empty()) {
+        Some(r) => Some(reference_image(config_dir, workspace, r)?),
+        None => None,
+    };
+    let count = request.count.clamp(1, 4);
+    let dir = super::sandbox::workspace(config_dir, workspace)?.join("images");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    if reference.starts_with(SDWEBUI_PREFIX) {
+        let server = image_server(config_dir).ok_or("Set the local image server's address in Settings → Providers.")?;
+        let init = image.as_ref().and_then(image_b64);
+        let (w, h) = (width * 2 / 3, height * 2 / 3);
+        let mut files = Vec::new();
+        let mut errors = Vec::new();
+        // One at a time: a local GPU makes images in turn anyway.
+        for i in 0..count {
+            match sdwebui_image(&server, &reference, &prompt, w, h, request.seed.map(|s| s + u64::from(i)), init.as_deref()).await {
+                Ok(bytes) => {
+                    let name = format!("{}-{}.{}", chrono::Local::now().format("%Y%m%d-%H%M%S-%3f"), i + 1, extension(&bytes));
+                    crate::chat::at_rest::write(dir.join(&name), &bytes).map_err(|e| e.to_string())?;
+                    files.push(format!("images/{name}"));
+                }
+                Err(e) => errors.push(e),
+            }
+        }
+        if files.is_empty() {
+            return Err(errors.first().cloned().unwrap_or_else(|| "No image was made.".into()));
+        }
+        return Ok((files, errors));
+    }
+    let (client, model) = connect(config_dir, &reference).await?;
+    let calls = (0..count).map(|i| {
+        let mut builder = ImageGenerationRequestBuilder::new(prompt.clone()).width(width).height(height);
+        // With a seed, each image of the batch gets the next one, so a batch stays reproducible.
+        let vendor = providers::split_reference(&reference).map_or("", |(v, _)| v);
+        let aspect = aspect_for(vendor, width, height).map(|a| json!({ "aspect_ratio": a }));
+        builder = builder.additional_params(merge(studio_params(request.quality.as_deref(), request.seed.map(|s| s + u64::from(i))), aspect));
+        if let Some(img) = &image {
+            builder = builder.image(img.clone());
+        }
+        let request = builder.build();
+        let client = client.clone();
+        let model = model.clone();
+        async move { tokio::time::timeout(std::time::Duration::from_secs(240), client.image_generation(model).call(request)).await }
+    });
+    let mut files = Vec::new();
+    let mut errors = Vec::new();
+    for (i, result) in futures::future::join_all(calls).await.into_iter().enumerate() {
+        match result {
+            Ok(Ok(r)) if !r.image.is_empty() => {
+                let name = format!("{}-{}.{}", chrono::Local::now().format("%Y%m%d-%H%M%S-%3f"), i + 1, extension(&r.image));
+                crate::chat::at_rest::write(dir.join(&name), &r.image).map_err(|e| e.to_string())?;
+                files.push(format!("images/{name}"));
+            }
+            Ok(Ok(_)) => errors.push("The provider sent back no image.".into()),
+            Ok(Err(e)) if e.to_string().contains("takes no reference images") => errors.push(format!("{reference} cannot edit images; start from nothing, or choose a model that edits (OpenAI gpt-image, or a local image server).")),
+            Ok(Err(e)) => errors.push(super::context::short_error(&e.to_string())),
+            Err(_) => errors.push("An image took too long.".into()),
+        }
+    }
+    if files.is_empty() {
+        return Err(errors.first().cloned().unwrap_or_else(|| "No image was made.".into()));
+    }
+    Ok((files, errors))
+}
+
+#[cfg(test)]
+mod studio_tests {
+    use super::*;
+
+    #[test]
+    fn studio_sizes_and_params() {
+        assert_eq!(studio_size("landscape"), (1536, 1024));
+        assert_eq!(studio_size("portrait"), (1024, 1536));
+        assert_eq!(studio_size("anything"), (1024, 1024));
+        assert_eq!(studio_params(None, None), None);
+        assert_eq!(studio_params(Some("high"), Some(7)), Some(json!({"quality": "high", "seed": 7})));
+        assert_eq!(studio_params(Some("ultra"), None), None, "unknown qualities are not sent");
+        assert_eq!(aspect_for("xai", 1024, 1536), Some("2:3"));
+        assert_eq!(aspect_for("xai", 1536, 1024), Some("3:2"));
+        assert_eq!(aspect_for("openai", 1536, 1024), None, "OpenAI takes the size itself");
+        assert_eq!(merge(Some(json!({"seed": 1})), Some(json!({"aspect_ratio": "2:3"}))), Some(json!({"seed": 1, "aspect_ratio": "2:3"})));
+        let body = sdwebui_body("a fox", 680, 1024, Some(5), Some("dreamshaper_8"), None);
+        assert_eq!((body["width"].clone(), body["seed"].clone()), (json!(680), json!(5)));
+        assert_eq!(body["override_settings"]["sd_model_checkpoint"], "dreamshaper_8");
+        assert_eq!(sdwebui_body("x", 1, 1, None, Some("default"), Some("AAA"))["init_images"], json!(["AAA"]));
+        assert_eq!(sdwebui_body("x", 1, 1, None, None, None)["seed"], json!(-1));
+        let mut file = ProvidersFile::default();
+        assert_eq!(image_model(&file), None);
+        file.image_server = Some("http://127.0.0.1:7860".into());
+        assert_eq!(image_model(&file).as_deref(), Some("sdwebui/default"), "a local server needs no key");
+        file.image_model = Some("sdwebui/dreamshaper_8".into());
+        assert_eq!(image_model(&file).as_deref(), Some("sdwebui/dreamshaper_8"));
     }
 }

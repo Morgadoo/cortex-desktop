@@ -89,6 +89,7 @@ const ICONS: Record<string, string> = {
   stop: 'M7 7h10v10H7z',
   mic: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3',
   dot: 'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
+  star: 'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z',
   play: 'M8 5v14l11-7z',
   wave: 'M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4',
   bolt: 'M13 3L5 14h6l-1 7 8-11h-6z',

@@ -324,6 +324,35 @@ pub fn chat_set_media_models(
     Ok(super::media::models(&dir))
 }
 
+/// The local image server's address (AUTOMATIC1111 API); empty to remove it.
+#[tauri::command]
+pub async fn chat_set_image_server(app: AppHandle, url: Option<String>) -> Result<super::media::MediaModels, String> {
+    let dir = config_dir(&app)?;
+    let url = url.map(|u| u.trim().trim_end_matches('/').to_string()).filter(|u| !u.is_empty());
+    if let Some(u) = &url {
+        if !(u.starts_with("http://") || u.starts_with("https://")) {
+            return Err("Give the server's address, like http://127.0.0.1:7860.".into());
+        }
+        // A quick check that something answers there.
+        let ok = reqwest::Client::builder().timeout(std::time::Duration::from_secs(8)).build().map_err(|e| e.to_string())?.get(format!("{u}/sdapi/v1/sd-models")).send().await;
+        if !ok.is_ok_and(|r| r.status().is_success()) {
+            return Err(format!("No AUTOMATIC1111-style image server answered at {u} (Stable Diffusion WebUI needs --api)."));
+        }
+    }
+    let mut file = super::providers::load(&dir);
+    file.image_server = url;
+    super::providers::save(&dir, &file)?;
+    Ok(super::media::models(&dir))
+}
+
+/// The checkpoints the local image server offers, as image models.
+#[tauri::command]
+pub async fn chat_image_server_models(app: AppHandle) -> Result<Vec<String>, String> {
+    let Some(server) = super::providers::load(&config_dir(&app)?).image_server else { return Ok(Vec::new()) };
+    let list: Vec<serde_json::Value> = reqwest::get(format!("{server}/sdapi/v1/sd-models")).await.map_err(|e| e.to_string())?.json().await.map_err(|e| e.to_string())?;
+    Ok(list.iter().filter_map(|m| m["model_name"].as_str().or(m["title"].as_str())).map(|m| format!("{}{m}", super::media::SDWEBUI_PREFIX)).collect())
+}
+
 /// The model replies switch to when theirs fails.
 #[tauri::command]
 pub fn chat_backup_model(app: AppHandle) -> Result<Option<String>, String> {
@@ -2575,7 +2604,7 @@ pub async fn chat_draft_agent(app: AppHandle, description: String, current: Opti
 }
 
 /// The tool names an agent can be given, matching the editor's choices.
-const TOOL_CHOICES: &[&str] = &["web_search", "browser", "filesystem", "bash", "delegate", "update_plan", "canvas", "schedule_task", "use_skill", "remember", "run_code", "calendar_events", "find_contact", "search_chats", "knowledge_search", "notify"];
+const TOOL_CHOICES: &[&str] = &["web_search", "browser", "filesystem", "bash", "delegate", "update_plan", "canvas", "schedule_task", "use_skill", "remember", "run_code", "calendar_events", "find_contact", "search_chats", "knowledge_search", "notify", "generate_image", "browser_view", "browser_act", "message_agent"];
 
 /// Tokens and cost across all conversations this calendar month, for the usage gauge.
 #[tauri::command]

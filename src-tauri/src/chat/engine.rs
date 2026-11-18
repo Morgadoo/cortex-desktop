@@ -174,6 +174,10 @@ pub struct TurnRequest {
     /// Why Auto chose this request's model, shown above the answer.
     #[serde(skip)]
     pub route_note: Option<String>,
+    /// Built-in tools turned off for this chat in the composer's Tools menu (`generate_image`,
+    /// `web_search`, …).
+    #[serde(default)]
+    pub tools_off: Vec<String>,
 }
 
 pub(super) fn emit(app: &AppHandle, event: ChatEvent) {
@@ -540,6 +544,7 @@ async fn message_agent(app: &AppHandle, config_dir: &std::path::Path, from_chat:
             workdir: None,
             connectors: None,
             route_note: None,
+            tools_off: Vec::new(),
         };
         // A turn of its own, so the other agent's events stream to its chat as usual.
         queue_turn(app, request, cancel).await.map_err(|_| "The other agent's turn stopped.".to_string())?;
@@ -812,6 +817,10 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
     }
     if let Some(agent) = &agent {
         offered.retain(|t| t.name == ASK_USER || agents::allows(agent, &t.name));
+    }
+    // The composer's Tools menu: what the user turned off for this chat.
+    if !request.tools_off.is_empty() {
+        offered.retain(|t| !request.tools_off.iter().any(|off| off == &t.name || t.name.starts_with(&format!("{off}__"))));
     }
     if request.approval.unattended() {
         // Nobody can answer a question during a scheduled run.
@@ -1717,6 +1726,7 @@ pub async fn run_task(app: AppHandle, task: tasks::Task) {
         workdir: None,
         connectors: None,
         route_note: None,
+        tools_off: Vec::new(),
     };
     run_turn(app.clone(), request, cancel).await;
     let finished = store::load_conversation(&config_dir, &id).ok();
@@ -1746,6 +1756,8 @@ pub fn strip_directives(text: &str) -> String {
             rest = r.trim_start();
         } else if let Some(r) = rest.strip_prefix("Use the \"").and_then(|r| r.split_once("\" skill.")).map(|(_, r)| r) {
             rest = r.trim_start();
+        } else if rest.starts_with("Create ") && rest.contains(" with generate_image (") && rest.contains("\n\n") {
+            rest = rest.split_once("\n\n").map_or("", |(_, r)| r).trim_start();
         } else if rest.starts_with("> ") {
             rest = rest.split_once("\n\n").map_or("", |(_, r)| r).trim_start();
         } else {
@@ -1893,6 +1905,7 @@ mod tests {
         assert_eq!(strip_directives("Use a canvas for this.\n\nUse the \"deep-research\" skill.\n\nAI in 2026?"), "AI in 2026?");
         assert_eq!(strip_directives("> quoted line\n> more\n\nWhat does it mean?"), "What does it mean?");
         assert_eq!(strip_directives("Plain question"), "Plain question");
+        assert_eq!(strip_directives("Create 2 images (variations) with generate_image (shape: square, count: 2). This is a mascot.\n\nmascot for ERSE"), "mascot for ERSE");
     }
 
     #[test]

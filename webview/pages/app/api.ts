@@ -340,6 +340,8 @@ export const api = {
     temporary?: boolean;
     images?: { mediaType: string; data: string }[];
     connectors?: string[] | null;
+    /** Built-in tools turned off in the composer's Tools menu. */
+    toolsOff?: string[];
   }) => call<void>('chat_send', { request }),
   cancel: (conversationId: string) => call<boolean>('chat_cancel', { conversationId }),
   answer: (callId: string, answer: string) => call<boolean>('chat_answer', { callId, answer }),

@@ -41,7 +41,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Providers and API keys', 'providers', 'key openai anthropic mistral xai ollama llama.cpp lm studio model default base url'],
   ['Web search', 'providers', 'searxng brave tavily engine internet'],
   ['Semantic search', 'providers', 'embeddings libraries vector rag rerank reranker reranking'],
-  ['Images and voice', 'providers', 'image generation dall-e text to speech voice model'],
+  ['Images and voice', 'providers', 'image generation dall-e text to speech voice model local image server stable diffusion automatic1111 forge draw things'],
   ['Speech to text', 'audio', 'dictation microphone whisper transcription stt'],
   ['Text to speech', 'audio', 'read aloud voice tts elevenlabs'],
   ['Voice conversation', 'audio', 'pause silence turn hands-free call talk'],
@@ -613,6 +613,7 @@ interface MediaModels {
   voiceVendors: string[];
   imageVendors: string[];
   speechVendors: string[];
+  imageServer?: string | null;
 }
 
 /** Which models make images and transcribe voice input. */
@@ -621,6 +622,16 @@ async function mediaCard(): Promise<HTMLElement> {
   const image = h('input', { class: 'input', value: media.imageModel ?? '', placeholder: 'xai/grok-imagine-image, openai/gpt-image-1' });
   const speech = h('input', { class: 'input', value: media.speechModel ?? '', placeholder: 'openai/gpt-4o-mini-transcribe, groq/whisper-large-v3-turbo' });
   const voice = h('input', { class: 'input', value: media.voiceModel ?? '', placeholder: 'xai/grok-tts, openai/gpt-4o-mini-tts' });
+  const server = h('input', { class: 'input', value: media.imageServer ?? '', placeholder: 'http://127.0.0.1:7860' });
+  const serverSave = button({ variant: 'secondary', label: 'Connect', onClick: async () => {
+    try {
+      const saved = await tauriInvoke<MediaModels>('chat_set_image_server', { url: server.value.trim() || null });
+      image.value = saved.imageModel ?? '';
+      toast(saved.imageServer ? 'The local image server answered.' : 'Local image server removed.');
+    } catch (e) {
+      toast(String(e), 'error');
+    }
+  } });
   const save = h('button', { class: 'btn btn-primary' }, 'Save');
   save.addEventListener('click', async () => {
     try {
@@ -641,6 +652,9 @@ async function mediaCard(): Promise<HTMLElement> {
     h('label', { class: 'field-label' }, 'Image model'),
     image,
     note(media.imageVendors, 'image generation (OpenAI, xAI or Together)'),
+    h('label', { class: 'field-label', title: 'Stable Diffusion WebUI (started with --api), Forge, SD.Next or Draw Things: images made on your own computer' }, 'Local image server'),
+    h('div', { class: 'row-inline' }, server, serverSave),
+    h('small', { class: 'muted' }, 'Its models show as sdwebui/<checkpoint>; with no other image model, it is used by itself.'),
     h('label', { class: 'field-label' }, 'Speech-to-text model'),
     speech,
     note(media.speechVendors, 'speech-to-text (OpenAI or Groq)'),

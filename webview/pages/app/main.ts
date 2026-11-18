@@ -86,6 +86,7 @@ function renderMain() {
               ? new ChatsPage()
             : v.page === 'resources'
               ? new ResourcesPage()
+
             : v.page === 'scheduled'
               ? new TasksPage()
           : v.page === 'knowledge'
