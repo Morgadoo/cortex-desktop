@@ -7,6 +7,7 @@ import { autocompleteOn, changed, finishNotificationsOn, setAutocomplete, finish
 import { button, card, modalHeader, switchInput } from './ui';
 import { audioApi, audioSettings, refreshAudioSettings, speakText, type AudioView } from './audio';
 import { SHORTCUTS, bindingFor, comboOf, display, setBinding } from './shortcuts';
+import { EMOJI_STYLES, emojiStatus, emojiStyle, onEmojiStatus, setEmojiStyle, type EmojiStatus, type EmojiStyle } from './fluent';
 import { ACCENTS, BACKDROPS, BACKGROUNDS, backdropVeil, setBackdrop, setBackdropImage, setBackdropVeil, storedBackdrop, TEXT_SIZES, ZOOMS, accentHex, applyAppearance, readability, setAccent, setBackground, setReadability, storedAccent, storedBackground, type TextSize } from './appearance';
 import { setVoicePauseMs, voicePauseMs } from './dictation';
 import { setWakePrefs, wakePrefs } from './wakeword';
@@ -72,6 +73,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Accent colour', 'appearance', 'color colour highlight'],
   ['Background and palette', 'appearance', 'background colours palette'],
   ['Readability', 'appearance', 'text size font zoom scale contrast motion animation accessibility'],
+  ['Emoji', 'appearance', 'emoji style microsoft fluent teams 3d flat system'],
 ];
 
 export type Theme = 'light' | 'dark' | 'system';
@@ -1680,6 +1682,36 @@ function renderAppearance(content: HTMLElement) {
       row('Reduce motion', 'Turns off animations and smooth scrolling, also when the system does not ask for it.', switchInput(r.reduceMotion, (v) => setReadability({ reduceMotion: v })))
     )
   );
+
+  // Emoji: Microsoft's Fluent set (as in Teams), downloaded once, or the system's.
+  const emojiSelect = h('select', { class: 'input select-sm' }, EMOJI_STYLES.map((s) => h('option', { value: s.id, selected: s.id === emojiStyle() }, s.label)));
+  const emojiNote = h('small', { class: 'muted' });
+  const showEmoji = (s: EmojiStatus) => {
+    const style = emojiSelect.value as EmojiStyle;
+    clear(
+      emojiNote,
+      style === 'system'
+        ? 'Emoji look as your system draws them.'
+        : s.state === 'ready'
+          ? h('span', { class: 'emoji-sample' }, '😀 👍 🎉 ❤️ 🚀 🇵🇹')
+          : s.state === 'downloading'
+            ? 'Downloading Microsoft’s emoji (about 16 MB, once)…'
+            : s.state === 'failed'
+              ? h('span', {}, `Could not download them: ${s.error ?? 'unknown error'} `, h('button', { class: 'btn-link', on: { click: () => void setEmojiStyle(style) } }, 'Try again'))
+              : ''
+    );
+  };
+  const unwatch = onEmojiStatus(showEmoji);
+  emojiSelect.addEventListener('change', () => void setEmojiStyle(emojiSelect.value as EmojiStyle).then(() => emojiStatus(emojiSelect.value as EmojiStyle).then(showEmoji)));
+  void emojiStatus(emojiStyle()).then(showEmoji).catch(() => undefined);
+  const emojiCard = card(
+    h('h3', {}, 'Emoji'),
+    row('Emoji style', 'Microsoft’s Fluent emoji, the set Teams uses, in 3D or flat, or the ones your system has. Copying a message still copies the emoji themselves.', emojiSelect),
+    emojiNote
+  );
+  // Stop listening once the settings page is gone.
+  new MutationObserver((_, obs) => { if (!emojiCard.isConnected) { unwatch(); obs.disconnect(); } }).observe(document.body, { childList: true, subtree: true });
+  content.append(emojiCard);
 
   const rerender = () => {
     content.replaceChildren();

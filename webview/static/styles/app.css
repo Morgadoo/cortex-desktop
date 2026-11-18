@@ -1680,3 +1680,10 @@ button.usage-meter:hover { background: var(--hover); }
 @media (max-width:700px){.builder:has(.builder-preview:not(:empty)){grid-template-columns:1fr}}
 .designer-log:empty{display:none}
 .hook-text .badge{margin-left:6px}
+
+/* Fluent emoji: the character stays (copy, search, read aloud) and is drawn transparent over its image. */
+.fluent-emoji{display:inline-block;width:1.3em;height:1.3em;line-height:1.3em;vertical-align:-0.3em;overflow:hidden;color:transparent;background:center/contain no-repeat;text-align:center;white-space:nowrap;text-indent:0;font-style:normal}
+.fluent-emoji::selection{color:transparent;background:color-mix(in srgb,var(--accent,#7c5cff) 35%,transparent)}
+.agent-avatar .fluent-emoji{width:1.15em;height:1.15em;vertical-align:middle}
+.emoji-jumbo .fluent-emoji{width:2.6em;height:2.6em;vertical-align:middle}
+.emoji-sample{font-size:22px;letter-spacing:4px}

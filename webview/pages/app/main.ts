@@ -22,6 +22,7 @@ import { applyTheme, openSettings, reloadModels, setTheme, storedTheme } from '.
 import { stepZoom, applyBackdrop } from './appearance';
 import { applyEvent, back, changed, finishNotificationsOn, finishSoundOn, forward, navigate, playChime, state, subscribe, type Page } from './state';
 import { button, emptyState, iconButton, modalHeader } from './ui';
+import { startFluentEmoji } from './fluent';
 import { refreshAudioSettings } from './audio';
 
 interface View {
@@ -832,6 +833,8 @@ declare global {
 async function start() {
   // The interface language first, so the first frame is already translated.
   await startUiLanguage();
+  // Microsoft's Fluent emoji, as Teams shows them (or the system's).
+  void startFluentEmoji();
   void refreshAudioSettings();
   applyTheme(storedTheme());
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme(storedTheme()));

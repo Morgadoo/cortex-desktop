@@ -212,6 +212,9 @@ pub fn run() {
             chat::commands::chat_usage_breakdown,
             chat::commands::chat_task_comment,
             chat::commands::chat_open_preview,
+            chat::commands::chat_emoji_status,
+            chat::commands::chat_emoji_index,
+            chat::commands::chat_emoji_install,
             chat::commands::chat_open_chat_window,
             chat::commands::chat_set_production,
             chat::commands::chat_draft_workflow,
@@ -339,6 +342,14 @@ pub fn run() {
         )
         // Mini apps the assistant builds run from here, in a sandboxed frame with their own CSP.
         .register_uri_scheme_protocol("lumoapp", |ctx, request| {
+            // Fluent emoji images, from the pack kept in the local data folder.
+            if let Some(rest) = request.uri().path().strip_prefix("/emoji/") {
+                use tauri::Manager as _;
+                return match ctx.app_handle().path().app_local_data_dir() {
+                    Ok(root) => chat::emoji_pack::serve(&root, rest),
+                    Err(_) => tauri::http::Response::builder().status(500).body(Vec::new()).unwrap_or_default(),
+                };
+            }
             match crate::settings::get_config_dir(ctx.app_handle()) {
                 Ok(dir) => match request.uri().path().strip_prefix("/sandbox/") {
                     Some(rest) => chat::sandbox::serve(&dir, rest),

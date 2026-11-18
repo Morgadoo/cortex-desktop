@@ -1595,6 +1595,45 @@ pub fn chat_open_chat_window(app: AppHandle, id: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+fn emoji_root(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    use tauri::Manager as _;
+    app.path().app_local_data_dir().map_err(|e| e.to_string())
+}
+
+/// Whether Microsoft's Fluent emoji in `style` (`3d` or `flat`) are on this device.
+#[tauri::command]
+pub fn chat_emoji_status(app: AppHandle, style: String) -> Result<super::emoji_pack::Status, String> {
+    Ok(super::emoji_pack::status(&emoji_root(&app)?, &style))
+}
+
+/// The image names of an installed emoji pack (code points joined by hyphens).
+#[tauri::command]
+pub fn chat_emoji_index(app: AppHandle, style: String) -> Result<Vec<String>, String> {
+    Ok(super::emoji_pack::index(&emoji_root(&app)?, &style))
+}
+
+/// Downloads an emoji pack in the background; `chat://emoji` reports when it is ready or failed.
+#[tauri::command]
+pub fn chat_emoji_install(app: AppHandle, style: String) -> Result<super::emoji_pack::Status, String> {
+    use tauri::Emitter as _;
+    let root = emoji_root(&app)?;
+    super::emoji_pack::pack(&style).ok_or("Unknown emoji style.")?;
+    let now = super::emoji_pack::status(&root, &style);
+    if now.state == "ready" || now.state == "downloading" {
+        return Ok(now);
+    }
+    let style2 = style.clone();
+    let root2 = root.clone();
+    tauri::async_runtime::spawn(async move {
+        let result = super::emoji_pack::install(&root2, &style2).await;
+        if let Err(e) = &result {
+            log::warn!("the {style2} emoji could not be installed: {e}");
+        }
+        let _ = app.emit("chat://emoji", super::emoji_pack::status(&root2, &style2));
+    });
+    Ok(super::emoji_pack::Status { state: "downloading".into(), error: None })
+}
+
 /// The local API's latest requests, newest first.
 #[tauri::command]
 pub fn chat_api_server_log() -> Vec<super::api_server::LogEntry> {

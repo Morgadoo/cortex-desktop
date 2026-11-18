@@ -35,6 +35,7 @@ pub mod custom_tools;
 pub mod computer;
 pub mod openapi;
 pub mod embeddings;
+pub mod emoji_pack;
 mod backup;
 pub mod builtins;
 pub mod calendar;
