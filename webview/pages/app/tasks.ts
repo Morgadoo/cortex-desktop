@@ -31,9 +31,21 @@ export function editTask(existing: Task | null, onSaved: (tasks: Task[]) => void
     const kind = h(
       'select',
       { class: 'input' },
-      (['once', 'daily', 'weekly', 'monthly', 'yearly'] as const).map((k) => h('option', { value: k, selected: freq.kind === k }, k === 'once' ? 'Once' : k.charAt(0).toUpperCase() + k.slice(1)))
+      (['once', 'daily', 'weekly', 'monthly', 'yearly', 'newFiles'] as const).map((k) =>
+        h('option', { value: k, selected: freq.kind === k }, k === 'once' ? 'Once' : k === 'newFiles' ? 'When new files arrive in a folder' : k.charAt(0).toUpperCase() + k.slice(1))
+      )
     );
-    const time = h('input', { class: 'input', type: 'time', value: freq.time });
+    const time = h('input', { class: 'input', type: 'time', value: 'time' in freq ? freq.time : '09:00' });
+    // Event trigger: a folder to watch.
+    let folder = freq.kind === 'newFiles' ? freq.folder : '';
+    const folderBtn = h('button', { class: 'btn btn-secondary folder-choice' }, icon('folder', 15), h('span', {}, folder || 'Choose a folder'));
+    const timeField = h('div', {}, h('label', { class: 'field-label' }, 'Time'), time);
+    folderBtn.addEventListener('click', async () => {
+      const dir = await api.pickDirectory();
+      if (!dir) return;
+      folder = dir;
+      clear(folderBtn, icon('folder', 15), h('span', {}, dir));
+    });
     const date = h('input', { class: 'input', type: 'date', value: freq.kind === 'once' ? freq.date : new Date(Date.now() + 86400000).toISOString().slice(0, 10) });
     const dayOfMonth = h('input', { class: 'input', type: 'number', min: 1, max: 31, value: String(freq.kind === 'monthly' || freq.kind === 'yearly' ? freq.day : 1) });
     const month = h(
@@ -58,8 +70,12 @@ export function editTask(existing: Task | null, onSaved: (tasks: Task[]) => void
         kind.value === 'once' ? h('div', {}, h('label', { class: 'field-label' }, 'Date'), date) : null,
         kind.value === 'weekly' ? h('div', {}, h('label', { class: 'field-label' }, 'Days'), dayPicker) : null,
         kind.value === 'monthly' ? h('div', {}, h('label', { class: 'field-label' }, 'Day of the month'), dayOfMonth) : null,
-        kind.value === 'yearly' ? h('div', { class: 'freq-row' }, h('div', { class: 'grow' }, h('label', { class: 'field-label' }, 'Month'), month), h('div', {}, h('label', { class: 'field-label' }, 'Day'), dayOfMonth)) : null
+        kind.value === 'yearly' ? h('div', { class: 'freq-row' }, h('div', { class: 'grow' }, h('label', { class: 'field-label' }, 'Month'), month), h('div', {}, h('label', { class: 'field-label' }, 'Day'), dayOfMonth)) : null,
+        kind.value === 'newFiles'
+          ? h('div', {}, h('label', { class: 'field-label' }, 'Folder'), folderBtn, h('small', { class: 'muted' }, 'Files already there are left alone. Each new file starts a run, with its path added to the prompt.'))
+          : null
       );
+      timeField.hidden = kind.value === 'newFiles';
     };
     kind.addEventListener('change', renderExtra);
     renderExtra();
@@ -73,8 +89,22 @@ export function editTask(existing: Task | null, onSaved: (tasks: Task[]) => void
     const error = h('p', { class: 'error-text' });
     const save = async () => {
       const t = time.value || '09:00';
+      if (kind.value === 'newFiles' && !folder) {
+        error.textContent = 'Choose the folder to watch.';
+        return;
+      }
+      if (kind.value === 'newFiles') {
+        // The run reads the new files: the folder must be one the assistant may open.
+        const settings = await api.appSettings();
+        if (!settings.filesystem_allowed_roots.includes(folder)) {
+          settings.filesystem_allowed_roots.push(folder);
+          await api.saveAppSettings(settings);
+        }
+      }
       const frequency: Frequency =
-        kind.value === 'once'
+        kind.value === 'newFiles'
+          ? { kind: 'newFiles', folder }
+          : kind.value === 'once'
           ? { kind: 'once', date: date.value, time: t }
           : kind.value === 'daily'
             ? { kind: 'daily', time: t }
@@ -115,7 +145,7 @@ export function editTask(existing: Task | null, onSaved: (tasks: Task[]) => void
       title,
       h('label', { class: 'field-label' }, 'Instructions'),
       prompt,
-      h('div', { class: 'freq-row' }, h('div', {}, h('label', { class: 'field-label' }, 'Repeat'), kind), h('div', {}, h('label', { class: 'field-label' }, 'Time'), time)),
+      h('div', { class: 'freq-row' }, h('div', {}, h('label', { class: 'field-label' }, 'Repeat'), kind), timeField),
       extra,
       h('label', { class: 'field-label' }, 'Run as'),
       agent,
@@ -254,5 +284,7 @@ function describe(f: Frequency): string {
       return `Every month on day ${f.day} at ${f.time}`;
     case 'yearly':
       return `Every year on ${MONTH_NAMES[f.month - 1] ?? '?'} ${f.day} at ${f.time}`;
+    case 'newFiles':
+      return `When new files arrive in ${f.folder.split(/[\\/]/).pop() || f.folder}`;
   }
 }

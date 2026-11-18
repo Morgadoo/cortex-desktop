@@ -6,6 +6,10 @@
 //! is refused unless the task allows changes. Times are the user's local time. The scheduler
 //! wakes every 30 seconds while the app runs; a run missed while the app was closed happens once
 //! at the next start.
+//!
+//! A task can also start on an event: new files in a folder (`NewFiles`). The folder's contents
+//! are noted when the task is saved; each scheduler tick, files that appeared since and have not
+//! changed for a few seconds start a run, with their names added to the prompt.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -34,6 +38,9 @@ pub enum Frequency {
     /// Every year on `month` (1–12) and `day`, clamped to the month's length.
     #[serde(rename_all = "camelCase")]
     Yearly { month: u8, day: u8, time: String },
+    /// Whenever new files appear in `folder`.
+    #[serde(rename_all = "camelCase")]
+    NewFiles { folder: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -63,6 +70,9 @@ pub struct Task {
     pub last_status: Option<String>,
     #[serde(default)]
     pub next_run: Option<DateTime<Utc>>,
+    /// `NewFiles` tasks: the files already in the folder, so only newer ones start a run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seen: Option<Vec<String>>,
 }
 
 fn yes() -> bool {
@@ -130,6 +140,8 @@ pub fn next_run(frequency: &Frequency, after: DateTime<Utc>) -> Result<Option<Da
             }
             Ok(None)
         }
+        // Started by files, not by the clock.
+        Frequency::NewFiles { .. } => Ok(None),
         Frequency::Yearly { month, day, time } => {
             if *month == 0 || *month > 12 || *day == 0 || *day > 31 {
                 return Err("A yearly task needs a month from 1 to 12 and a day from 1 to 31.".into());
@@ -176,7 +188,71 @@ pub fn describe(frequency: &Frequency) -> String {
             let name = MONTHS.get(usize::from(month.saturating_sub(1))).copied().unwrap_or("?");
             format!("Every year on {name} {day} at {time}")
         }
+        Frequency::NewFiles { folder } => {
+            let name = Path::new(folder).file_name().map_or_else(|| folder.clone(), |n| n.to_string_lossy().into_owned());
+            format!("When new files arrive in {name}")
+        }
     }
+}
+
+/// How long a new file must stay unchanged before it counts (it may still be copying).
+const SETTLE: Duration = Duration::from_secs(5);
+
+/// The visible files directly in `folder`, with whether each has settled.
+fn folder_files(folder: &Path, now: std::time::SystemTime) -> Result<Vec<(String, bool)>, String> {
+    let entries = std::fs::read_dir(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+    let mut out = Vec::new();
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let Ok(meta) = entry.metadata() else { continue };
+        // Hidden files and partial downloads are not new documents.
+        if !meta.is_file() || name.starts_with('.') || name.ends_with(".part") || name.ends_with(".crdownload") || name.ends_with(".tmp") {
+            continue;
+        }
+        let settled = meta.modified().ok().and_then(|m| now.duration_since(m).ok()).is_none_or(|age| age >= SETTLE);
+        out.push((name, settled));
+    }
+    out.sort();
+    Ok(out)
+}
+
+/// The folder tasks whose folders have new, settled files: each with the prompt naming them.
+pub fn take_new_files(config_dir: &Path, now: std::time::SystemTime) -> Vec<Task> {
+    let mut tasks = load(config_dir);
+    let mut started = Vec::new();
+    let mut changed = false;
+    for task in tasks.iter_mut().filter(|t| t.enabled) {
+        let Frequency::NewFiles { folder } = &task.frequency else { continue };
+        let Ok(files) = folder_files(Path::new(folder), now) else { continue };
+        let Some(seen) = task.seen.as_mut() else {
+            // First look: what is there now is the baseline.
+            task.seen = Some(files.into_iter().map(|(n, _)| n).collect());
+            changed = true;
+            continue;
+        };
+        let fresh: Vec<String> = files.iter().filter(|(n, settled)| *settled && !seen.contains(n)).map(|(n, _)| n.clone()).collect();
+        // Files that went away may come back as new ones later.
+        let before = seen.len();
+        seen.retain(|n| files.iter().any(|(f, _)| f == n));
+        changed |= seen.len() != before;
+        if fresh.is_empty() {
+            continue;
+        }
+        seen.extend(fresh.iter().cloned());
+        changed = true;
+        task.last_run = Some(Utc::now());
+        task.last_status = Some("running".into());
+        let mut run = task.clone();
+        let list: Vec<String> = fresh.iter().map(|n| format!("- {}", Path::new(folder).join(n).display())).collect();
+        run.prompt = format!("{}\n\nNew files in `{folder}`:\n{}", task.prompt, list.join("\n"));
+        started.push(run);
+    }
+    if changed {
+        if let Err(e) = store(config_dir, &tasks) {
+            warn!("could not save task state: {e}");
+        }
+    }
+    started
 }
 
 pub fn weekday_index(name: &str) -> Option<u8> {
@@ -208,7 +284,14 @@ pub fn save(config_dir: &Path, mut task: Task) -> Result<Vec<Task>, String> {
         return Err("A task needs a title and a prompt.".into());
     }
     task.next_run = if task.enabled { next_run(&task.frequency, Utc::now())? } else { None };
-    if task.enabled && task.next_run.is_none() && task.last_run.is_none() {
+    if let Frequency::NewFiles { folder } = &task.frequency {
+        if !Path::new(folder).is_dir() {
+            return Err("Choose a folder that exists.".into());
+        }
+        // The same folder keeps what was already seen; a changed one starts a fresh baseline.
+        let previous = load(config_dir).into_iter().find(|t| t.id == task.id);
+        task.seen = previous.filter(|p| p.frequency == task.frequency).and_then(|p| p.seen);
+    } else if task.enabled && task.next_run.is_none() && task.last_run.is_none() {
         return Err("That time has already passed.".into());
     }
     let mut tasks = load(config_dir);
@@ -273,6 +356,11 @@ pub fn start(app: AppHandle) {
                     let app = app.clone();
                     tauri::async_runtime::spawn(async move { super::engine::run_task(app, task).await });
                 }
+                for task in take_new_files(&config_dir, std::time::SystemTime::now()) {
+                    info!("new files started task {}", task.title);
+                    let app = app.clone();
+                    tauri::async_runtime::spawn(async move { super::engine::run_task(app, task).await });
+                }
             }
             tokio::time::sleep(Duration::from_secs(30)).await;
         }
@@ -291,6 +379,45 @@ pub fn run_now(app: &AppHandle, id: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn new_files_start_a_run_once_settled() {
+        let config = tempfile::tempdir().unwrap();
+        let watched = tempfile::tempdir().unwrap();
+        std::fs::write(watched.path().join("old.pdf"), "x").unwrap();
+        let task = Task {
+            id: "t1".into(),
+            title: "File invoices".into(),
+            prompt: "Summarize each new invoice.".into(),
+            frequency: Frequency::NewFiles { folder: watched.path().to_string_lossy().into_owned() },
+            agent_id: None,
+            model: None,
+            enabled: true,
+            allow_changes: false,
+            created_at: Utc::now(),
+            last_run: None,
+            last_conversation: None,
+            last_status: None,
+            next_run: None,
+            seen: None,
+        };
+        save(config.path(), task).unwrap();
+        let later = std::time::SystemTime::now() + Duration::from_secs(60);
+        assert!(take_new_files(config.path(), later).is_empty(), "the first look only notes what is there");
+        std::fs::write(watched.path().join("march.pdf"), "x").unwrap();
+        std::fs::write(watched.path().join(".hidden"), "x").unwrap();
+        // Just written: not settled yet.
+        assert!(take_new_files(config.path(), std::time::SystemTime::now()).is_empty());
+        let runs = take_new_files(config.path(), later);
+        assert_eq!(runs.len(), 1);
+        assert!(runs[0].prompt.contains("march.pdf") && !runs[0].prompt.contains("old.pdf") && !runs[0].prompt.contains(".hidden"));
+        assert!(take_new_files(config.path(), later).is_empty(), "each file starts one run");
+        assert_eq!(describe(&load(config.path())[0].frequency), format!("When new files arrive in {}", watched.path().file_name().unwrap().to_string_lossy()));
+        let mut gone = load(config.path())[0].clone();
+        gone.frequency = Frequency::NewFiles { folder: "/no/such/folder".into() };
+        assert!(save(config.path(), gone).is_err());
+    }
+
     use super::*;
 
     fn at(y: i32, m: u32, d: u32, h: u32, min: u32) -> DateTime<Utc> {
@@ -364,6 +491,7 @@ mod tests {
             last_conversation: None,
             last_status: None,
             next_run: None,
+            seen: None,
         };
         save(dir.path(), task).unwrap();
         let next = load(dir.path())[0].next_run.unwrap();

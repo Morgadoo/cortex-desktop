@@ -439,6 +439,7 @@ fn schedule(config_dir: &Path, args: &Value) -> Outcome {
         last_conversation: None,
         last_status: None,
         next_run: None,
+        seen: None,
     };
     let id = task.id.clone();
     match tasks::save(config_dir, task) {
