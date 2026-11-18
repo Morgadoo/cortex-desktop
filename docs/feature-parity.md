@@ -212,7 +212,9 @@ items most likely to differ:
 
 Reviewed in November 2026 feature by feature against the docs of Open WebUI, LibreChat, LobeHub,
 Onyx, Osaurus and OpenBot (about 220 features). Every item of the review's shortlist is in the table
-below. What was deliberately left out, and why:
+below; every feature the review found missing or partial is tracked row by row, with evidence, in
+[review-coverage.md](review-coverage.md) (now 89 done, 67 partial, 36 missing, 31 out of scope).
+What was deliberately left out, and why:
 
 - **Team and enterprise features** (channels, comments, SSO, SCIM, tenants, admin plane, shared
   marketplaces): this is a single-user desktop app.
