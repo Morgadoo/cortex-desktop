@@ -1614,3 +1614,6 @@ button.usage-meter:hover { background: var(--hover); }
 .reader-article blockquote{margin:0 0 14px;padding-left:14px;border-left:3px solid var(--accent);color:var(--muted)}
 .reader-article pre{white-space:pre-wrap;background:var(--card);padding:10px;border-radius:8px;font-size:13px}
 .reader-meta{margin-bottom:18px}
+
+.import-list{max-height:52vh;overflow:auto}
+.import-row{cursor:pointer}

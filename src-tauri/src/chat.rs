@@ -15,6 +15,7 @@ pub mod agents;
 pub mod headless;
 pub mod reader;
 pub mod recorder;
+pub mod coding_import;
 pub mod config_cli;
 pub mod share;
 pub mod sync;

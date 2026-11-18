@@ -2325,6 +2325,39 @@ pub async fn chat_code_files(app: AppHandle, conversation_id: String) -> Result<
     tokio::task::spawn_blocking(move || super::code::files(&dir)).await.map_err(|e| e.to_string())
 }
 
+/// Sessions of other coding agents (Claude Code, Codex) on this computer, newest first.
+#[tauri::command]
+pub async fn chat_find_coding_sessions(app: AppHandle) -> Result<Vec<super::coding_import::Found>, String> {
+    let dir = config_dir(&app)?;
+    tokio::task::spawn_blocking(move || super::coding_import::find(&dir, None)).await.map_err(|e| e.to_string())
+}
+
+/// Imports the chosen sessions as Code conversations; returns their ids.
+#[tauri::command]
+pub async fn chat_import_coding_sessions(app: AppHandle, paths: Vec<String>) -> Result<Vec<String>, String> {
+    let dir = config_dir(&app)?;
+    // Only files the search found can be imported.
+    let found: Vec<String> = super::coding_import::find(&dir, None).into_iter().map(|f| f.path).collect();
+    tokio::task::spawn_blocking(move || paths.iter().filter(|p| found.contains(p)).map(|p| super::coding_import::import(&dir, std::path::Path::new(p))).collect::<Result<Vec<_>, _>>())
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// A folder's files for `@` mentions: tracked and new ones, not ignored (git-aware).
+#[tauri::command]
+pub async fn chat_folder_files(dir: String) -> Result<(Vec<String>, bool), String> {
+    if !std::path::Path::new(&dir).is_dir() {
+        return Err("That folder does not exist.".into());
+    }
+    tokio::task::spawn_blocking(move || super::code::files(&dir)).await.map_err(|e| e.to_string())
+}
+
+/// One file of a folder, as text, for an `@` mention; paths that leave the folder are refused.
+#[tauri::command]
+pub fn chat_folder_read(dir: String, path: String) -> Result<String, String> {
+    super::code::read_file(&dir, &path)
+}
+
 /// One file of a coding session's folder, as text.
 #[tauri::command]
 pub fn chat_code_read_file(app: AppHandle, conversation_id: String, path: String) -> Result<String, String> {

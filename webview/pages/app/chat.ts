@@ -2022,7 +2022,69 @@ class Composer {
   }
 
   /** Typing `/` (or `@`, as Vibe Work does) at the start lists the enabled skills; picking one inserts `/name `. */
+  /** The folder of the coding session being written in (an open one, or a new Code chat's). */
+  private workdir(): string | null {
+    const open = this.conversationId ? state.conversations.find((c) => c.id === this.conversationId) : null;
+    if (open) return open.workdir ?? null;
+    return state.mode === 'code' ? state.workdir : null;
+  }
+
+  private folderFiles: { dir: string; files: string[] } | null = null;
+
+  /**
+   * `@path` in a coding session (Vibe's @ file mentions): the folder's files (git-aware: tracked
+   * and new, not ignored), matched anywhere in the path; picking one attaches its text.
+   */
+  private updateFileMenu(): boolean {
+    const dir = this.workdir();
+    if (!dir) return false;
+    const before = this.textarea.value.slice(0, this.textarea.selectionStart);
+    const match = before.match(/(?:^|\s)@([^\s@]*)$/);
+    // `@` alone at the start still offers models, agents and skills; a path character makes it a file.
+    if (!match || (before.startsWith('@') && match.index === 0 && !/[./_-]/.test(match[1]!) && match[1]!.length < 3)) return false;
+    if (this.folderFiles?.dir !== dir) {
+      this.folderFiles = { dir, files: [] };
+      const asked = this.folderFiles;
+      void tauriInvoke<[string[], boolean]>('chat_folder_files', { dir })
+        .then(([files]) => {
+          asked.files = files;
+          if (this.folderFiles === asked) this.updateSlashMenu();
+        })
+        .catch(() => undefined);
+    }
+    const q = match[1]!.toLowerCase();
+    // Matches in the file name first, then anywhere in the path; shorter paths first.
+    const hits = this.folderFiles.files
+      .filter((f) => f.toLowerCase().includes(q))
+      .sort((a, b) => Number(!a.toLowerCase().split('/').pop()!.includes(q)) - Number(!b.toLowerCase().split('/').pop()!.includes(q)) || a.length - b.length)
+      .slice(0, 8);
+    if (!hits.length) {
+      this.slashMenu?.close();
+      this.slashMenu = null;
+      return true;
+    }
+    const items = hits.map((f) => `file:${f}`);
+    const index = Math.min(this.slashMenu?.index ?? 0, items.length - 1);
+    const list = h('div', { class: 'menu slash-menu' }, h('div', { class: 'menu-heading' }, 'Add a file'));
+    hits.forEach((f, i) => {
+      const slash = f.lastIndexOf('/');
+      list.append(
+        h(
+          'button',
+          { class: `menu-item rich${i === index ? ' selected' : ''}`, on: { mousedown: (e: MouseEvent) => { e.preventDefault(); this.pickSkill(`file:${f}`); } } },
+          icon('file', 16),
+          h('span', {}, h('strong', { class: 'no-translate' }, f.slice(slash + 1)), h('small', { class: 'mono no-translate' }, slash > 0 ? f.slice(0, slash) : './'))
+        )
+      );
+    });
+    this.slashMenu?.close();
+    const close = popover(this.textarea, list, 'above');
+    this.slashMenu = { close, items, index, list };
+    return true;
+  }
+
   private updateSlashMenu() {
+    if (this.updateFileMenu()) return;
     if (this.updateHashMenu()) return;
     if (this.updateEmojiMenu()) return;
     const match = this.textarea.value.match(/^([/@])([a-z0-9-]*)$/);
@@ -2117,6 +2179,22 @@ class Composer {
     if (name.startsWith('cmd:')) {
       this.setText('');
       return void this.runCommand(name.slice(4));
+    }
+    if (name.startsWith('file:')) {
+      const path = name.slice(5);
+      const dir = this.workdir();
+      const word = this.textarea.value.slice(0, this.textarea.selectionStart).match(/@[^\s@]*$/);
+      if (word) this.replaceBeforeCaret(word[0].length, `@${path} `);
+      if (dir) {
+        void tauriInvoke<string>('chat_folder_read', { dir, path })
+          .then((text) => {
+            if (!this.attachments.some((a) => a.name === path)) this.attachments.push({ name: path, text });
+            this.renderChips();
+            this.renderBar();
+          })
+          .catch((e) => toast(String(e), 'error'));
+      }
+      return this.focus();
     }
     if (name.startsWith('lib:')) {
       this.dropHashWord();

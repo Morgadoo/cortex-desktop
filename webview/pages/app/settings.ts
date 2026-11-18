@@ -31,6 +31,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Your data', 'profile', 'export import backup delete history'],
   ['Shared links', 'profile', 'share link network url stop sharing public page'],
   ['Sync between devices', 'profile', 'sync devices encrypted syncthing dropbox icloud nextcloud onedrive passphrase other computer'],
+  ['Import coding sessions', 'profile', 'claude code codex import sessions coding agents'],
   ['Storage and backups', 'profile', 'backup restore damaged files recently deleted trash'],
   ['Backup model', 'providers', 'fallback failover failure credit down'],
   ['Providers and API keys', 'providers', 'key openai anthropic mistral xai ollama llama.cpp lm studio model default base url'],
@@ -322,7 +323,8 @@ function renderProfile(content: HTMLElement) {
               toast(String(e), 'error');
             }
           },
-        })
+        }),
+        button({ variant: 'secondary', icon: 'code', label: 'Import coding sessions', title: 'Claude Code and Codex sessions on this computer become Code chats', onClick: () => importCodingSessions() })
       )
     ),
     dataCard,
@@ -1980,4 +1982,74 @@ async function dictationCard(): Promise<HTMLElement> {
     row('How the text goes in', 'Typing works on X11 and Wayland (xdotool, wtype or ydotool); macOS and Windows paste it. Terminals paste with Ctrl+Shift+V, so typing suits them better.', how),
     row('Finish when I pause', 'Also stop after about two seconds of silence, not only on the second press.', switchInput(prefs.stopOnPause, (v) => void save({ stopOnPause: v })))
   );
+}
+
+interface CodingSession {
+  path: string;
+  source: 'claude-code' | 'codex';
+  folder: string;
+  title: string;
+  messages: number;
+  updatedAt: string | null;
+  imported: boolean;
+}
+
+/**
+ * Sessions from other coding agents (Vibe Desktop imports them too): Claude Code and Codex
+ * sessions on this computer, picked and brought in as Code chats in their project folders.
+ */
+function importCodingSessions() {
+  void modal((close) => {
+    const list = h('div', { class: 'hook-list import-list' }, h('div', { class: 'status-line' }, h('span', { class: 'dots' }), ' Looking for sessions…'));
+    const picked = new Set<string>();
+    const go = button({
+      variant: 'primary',
+      label: 'Import',
+      onClick: async () => {
+        if (!picked.size) return toast('Pick the sessions to import.', 'error');
+        try {
+          const ids = await tauriInvoke<string[]>('chat_import_coding_sessions', { paths: [...picked] });
+          toast(`Imported ${ids.length} session${ids.length === 1 ? '' : 's'} as Code chats.`);
+          window.dispatchEvent(new Event('chat:conversations-changed'));
+          close();
+        } catch (e) {
+          toast(String(e), 'error');
+        }
+      },
+    });
+    void tauriInvoke<CodingSession[]>('chat_find_coding_sessions')
+      .then((found) =>
+        clear(
+          list,
+          found.length
+            ? found.map((s) => {
+                const box = h('input', { type: 'checkbox', checked: false });
+                box.addEventListener('change', () => (box.checked ? picked.add(s.path) : picked.delete(s.path)));
+                const when = s.updatedAt ? new Date(s.updatedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+                return h(
+                  'label',
+                  { class: 'hook-row import-row' },
+                  box,
+                  h(
+                    'div',
+                    { class: 'grow share-row' },
+                    h('div', {}, h('strong', { class: 'no-translate' }, s.title || 'Untitled')),
+                    h('div', { class: 'muted small mono no-translate share-url' }, s.folder || '(no folder)'),
+                    h('div', { class: 'muted small' }, [s.source === 'codex' ? 'Codex' : 'Claude Code', `${s.messages} messages`, when, s.imported ? 'imported before: updates it' : ''].filter(Boolean).join(' · '))
+                  )
+                );
+              })
+            : h('p', { class: 'muted' }, 'No Claude Code or Codex sessions were found on this computer (~/.claude/projects, ~/.codex/sessions).')
+        )
+      )
+      .catch((e) => clear(list, h('p', { class: 'error-text' }, String(e))));
+    return h(
+      'div',
+      { class: 'dialog-small wide' },
+      modalHeader('Import coding sessions', close, { flush: true }),
+      h('p', { class: 'muted' }, 'Sessions from Claude Code and Codex become Code chats in their project folder: what was said is kept, and each tool step is a short line. Importing one again updates it.'),
+      list,
+      h('div', { class: 'dialog-actions' }, button({ variant: 'secondary', label: 'Cancel', onClick: close }), go)
+    );
+  });
 }
