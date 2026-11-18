@@ -910,7 +910,11 @@ pub async fn chat_export_canvas(app: AppHandle, id: String) -> Result<bool, Stri
     let web_app = canvas.kind == "app";
     let (tx, rx) = tokio::sync::oneshot::channel();
     let dialog = app.dialog().file();
-    let dialog = if web_app {
+    let multi_file = web_app && super::canvas::app_files(canvas.content()).is_some();
+    let dialog = if multi_file {
+        // Its files, as a ZIP to unpack and open index.html.
+        dialog.set_file_name(format!("{}.zip", sanitize_file_name(&canvas.title))).add_filter("ZIP archive", &["zip"])
+    } else if web_app {
         // A single HTML file that runs in any browser.
         dialog.set_file_name(format!("{}.html", sanitize_file_name(&canvas.title))).add_filter("Web page", &["html"])
     } else if sheet {
@@ -938,6 +942,10 @@ pub async fn chat_export_canvas(app: AppHandle, id: String) -> Result<bool, Stri
             let rows: Vec<(String, Vec<Vec<String>>)> = sheets.iter().map(|(n, c)| (n.clone(), super::sheets::parse_csv(c))).collect();
             super::sheets::write_workbook(&path.with_extension("xlsx"), &rows)?;
         }
+        return Ok(true);
+    }
+    if multi_file {
+        std::fs::write(path, super::canvas::app_zip(canvas.content())?).map_err(|e| e.to_string())?;
         return Ok(true);
     }
     if web_app {

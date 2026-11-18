@@ -1135,11 +1135,20 @@ impl Runner<'_> {
         }
         if name == builtins::CANVAS {
             let text = |k: &str| arguments.get(k).and_then(Value::as_str).map(str::to_string);
-            let Some(content) = text("content").filter(|c| !c.trim().is_empty()) else {
+            // A bigger app comes as several files.
+            let files: Option<Vec<canvas::AppFile>> = arguments.get("files").and_then(|f| serde_json::from_value(f.clone()).ok()).filter(|f: &Vec<canvas::AppFile>| !f.is_empty());
+            let content = match files {
+                Some(files) => match canvas::bundle(&files) {
+                    Ok(c) => Some(c),
+                    Err(e) => return tools::Outcome { text: e, is_error: true },
+                },
+                None => text("content").filter(|c| !c.trim().is_empty()),
+            };
+            let Some(content) = content else {
                 return tools::Outcome { text: "Give the canvas content.".into(), is_error: true };
             };
             let id = text("id").filter(|i| !i.trim().is_empty());
-            let kind = text("kind");
+            let kind = if arguments.get("files").is_some() { Some("app".to_string()) } else { text("kind") };
             return match canvas::write_kind(self.config_dir, self.id, id.as_deref(), text("title").as_deref(), &content, "assistant", kind.as_deref()) {
                 Ok(c) => tools::Outcome {
                     text: serde_json::json!({ "id": c.id, "title": c.title, "kind": c.kind, "version": c.versions.len() }).to_string(),

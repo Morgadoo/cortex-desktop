@@ -125,9 +125,13 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
                     "description": "document: Markdown. sheet: a spreadsheet table as CSV (first row is the header), which the user edits as a grid and downloads as Excel; for several sheets, start each with a line `## Sheet: Name` followed by its CSV. app: an interactive mini app, as one complete self-contained HTML document with inline CSS and JS (libraries only from cdn.jsdelivr.net, unpkg.com or cdnjs.cloudflare.com); it runs sandboxed with a live preview."
                 },
                 "title": { "type": "string" },
-                "content": { "type": "string", "description": "The full document, in Markdown." }
-            },
-            "required": ["content"]
+                "content": { "type": "string", "description": "The full document, in Markdown (or the app's HTML)." },
+                "files": {
+                    "type": "array",
+                    "description": "For a bigger app instead of `content`: its files, index.html first, linked with relative paths (style.css, js/app.js). Send every file each time.",
+                    "items": { "type": "object", "properties": { "path": { "type": "string" }, "content": { "type": "string" } }, "required": ["path", "content"] }
+                }
+            }
         }),
     ));
     out.push(tool(

@@ -38,7 +38,8 @@ export function openAppWindow(id: string) {
 /** Where a mini app is served: the `lumoapp` protocol, spelled per platform. */
 export function appUrl(id: string, version = 0): string {
   const windows = navigator.userAgent.includes('Windows');
-  return `${windows ? 'http://lumoapp.localhost' : 'lumoapp://localhost'}/${id}?v=${version}`;
+  // The trailing slash lets a multi-file app's relative links (style.css, js/app.js) resolve.
+  return `${windows ? 'http://lumoapp.localhost' : 'lumoapp://localhost'}/${id}/?v=${version}`;
 }
 
 /** A sandboxed frame running a mini app: scripts run, but it has its own origin and no IPC. */
@@ -131,6 +132,38 @@ interface AppInfo {
 }
 
 /** Preview and code, switched by the two icon buttons. */
+/** A multi-file app's files (Vibe's file list), or `null` for a one-file app. */
+export function appFiles(code: string): { path: string; content: string }[] | null {
+  if (!code.trimStart().startsWith('{')) return null;
+  try {
+    const files = (JSON.parse(code) as { lumoAppFiles?: { path: string; content: string }[] }).lumoAppFiles;
+    return Array.isArray(files) && files.length ? files : null;
+  } catch {
+    return null;
+  }
+}
+
+/** An app's code as text to copy: one file as it is, several each under its path. */
+export function appCodeText(code: string): string {
+  const files = appFiles(code);
+  return files ? files.map((f) => `// ${f.path}\n${f.content}`).join('\n\n') : code;
+}
+
+/** The code view: the file list and the chosen file for a multi-file app, else the page. */
+function codeView(code: string): HTMLElement {
+  const files = appFiles(code);
+  if (!files) return h('pre', { class: 'step-pre app-code' }, code);
+  const pre = h('pre', { class: 'step-pre app-code' });
+  const list = h('div', { class: 'app-file-list' });
+  const pick = (i: number) => {
+    pre.textContent = files[i]!.content;
+    list.querySelectorAll('button').forEach((b, j) => b.classList.toggle('active', i === j));
+  };
+  files.forEach((f, i) => list.append(h('button', { class: 'app-file', title: f.path, on: { click: () => pick(i) } }, icon('file', 13), h('span', {}, f.path))));
+  pick(0);
+  return h('div', { class: 'app-code-files' }, list, pre);
+}
+
 function viewSwitch(app: AppInfo, body: HTMLElement, frameClass = '') {
   const code = iconButton({ icon: 'code', title: 'Code', size: 'sm' });
   const eye = iconButton({ icon: 'eye', title: 'Preview', size: 'sm' });
@@ -139,7 +172,7 @@ function viewSwitch(app: AppInfo, body: HTMLElement, frameClass = '') {
     code.classList.toggle('active', !preview);
     const frame = appFrame(app.id, app.version);
     if (frameClass) frame.classList.add(frameClass);
-    clear(body, preview ? frame : h('pre', { class: 'step-pre app-code' }, app.code));
+    clear(body, preview ? frame : codeView(app.code));
   };
   code.addEventListener('click', () => show(false));
   eye.addEventListener('click', () => show(true));
@@ -148,7 +181,7 @@ function viewSwitch(app: AppInfo, body: HTMLElement, frameClass = '') {
 }
 
 function download(id: string) {
-  void api.export(id).then((saved) => saved && toast('App saved as a web page.')).catch((e) => toast(String(e), 'error'));
+  void api.export(id).then((saved) => saved && toast('App saved.')).catch((e) => toast(String(e), 'error'));
 }
 
 export function openAppPanel(app: AppInfo) {
@@ -157,7 +190,7 @@ export function openAppPanel(app: AppInfo) {
   const close = iconButton({ icon: 'close', title: 'Close', size: 'sm' });
   close.addEventListener('click', closePanel);
   const copy = iconButton({ icon: 'copy', title: 'Copy code', size: 'sm' });
-  copy.addEventListener('click', () => { void navigator.clipboard.writeText(app.code); toast('Code copied.'); });
+  copy.addEventListener('click', () => { void navigator.clipboard.writeText(appCodeText(app.code)); toast('Code copied.'); });
   const full = iconButton({ icon: 'expand', title: 'Full screen', size: 'sm' });
   full.addEventListener('click', () => void modal((done) => h('div', { class: 'app-modal' }, modalHeader(app.title, done), appFrame(app.id, app.version)), true));
   const windowed = iconButton({ icon: 'share', title: 'Open in a window of its own', size: 'sm' });
@@ -186,7 +219,12 @@ export function openAppPanel(app: AppInfo) {
 /** A mini app the model built: a preview in the reply that opens in the side panel. */
 function renderAppCard(part: Extract<Part, { kind: 'tool' }>, live: boolean): HTMLElement {
   const title = typeof part.arguments.title === 'string' && part.arguments.title ? part.arguments.title : 'App';
-  const code = typeof part.arguments.content === 'string' ? part.arguments.content : '';
+  // A multi-file app sends `files`; it is kept as the same bundle the app is stored as.
+  const code = Array.isArray(part.arguments.files)
+    ? JSON.stringify({ lumoAppFiles: part.arguments.files })
+    : typeof part.arguments.content === 'string'
+      ? part.arguments.content
+      : '';
   const id = idOf(part);
   let version = 0;
   try {

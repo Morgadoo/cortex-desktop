@@ -47,9 +47,9 @@ fn document_kind() -> String {
 /// What may run inside an app: inline code, and libraries from the common CDNs only. The app has
 /// no access to the chat's IPC; the iframe sandbox gives it a unique origin.
 pub const APP_CSP: &str = "default-src 'none'; \
-    script-src 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com; \
-    style-src 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com https://fonts.googleapis.com; \
-    font-src https://fonts.gstatic.com data:; img-src data: blob: https:; media-src data: blob: https:; \
+    script-src lumoapp: http://lumoapp.localhost 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com; \
+    style-src lumoapp: http://lumoapp.localhost 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com https://fonts.googleapis.com; \
+    font-src lumoapp: http://lumoapp.localhost https://fonts.gstatic.com data:; img-src lumoapp: http://lumoapp.localhost data: blob: https:; media-src lumoapp: http://lumoapp.localhost data: blob: https:; \
     connect-src https:; form-action 'none'; base-uri 'none'";
 
 /// The address, under the app protocol, of the page that draws Mermaid diagrams.
@@ -101,6 +101,82 @@ window.addEventListener('message', (e) => {
 });
 </script></body></html>"#;
 
+// The app runs in a sandboxed frame with an opaque origin, where 'self' matches nothing; its
+// own files are allowed by the app scheme instead.
+
+/// A mini app made of several files (Vibe's apps with a file list): kept in the canvas as JSON
+/// `{"lumoAppFiles": [{"path": "index.html", "content": "…"}, …]}`. One-file apps stay HTML.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AppFile {
+    pub path: String,
+    pub content: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Bundle {
+    #[serde(rename = "lumoAppFiles")]
+    files: Vec<AppFile>,
+}
+
+/// The files of a multi-file app, or `None` for a one-file app.
+pub fn app_files(content: &str) -> Option<Vec<AppFile>> {
+    let trimmed = content.trim_start();
+    if !trimmed.starts_with('{') {
+        return None;
+    }
+    serde_json::from_str::<Bundle>(trimmed).ok().map(|b| b.files).filter(|f| !f.is_empty())
+}
+
+/// Stores files as an app's content, checking their paths: relative, no `..`, at most 40 files.
+pub fn bundle(files: &[AppFile]) -> Result<String, String> {
+    if files.is_empty() || files.len() > 40 {
+        return Err("An app has 1 to 40 files.".into());
+    }
+    for f in files {
+        let p = f.path.trim();
+        if p.is_empty() || p.starts_with('/') || p.contains('\\') || p.split('/').any(|s| s == ".." || s.is_empty() || s.starts_with('.')) {
+            return Err(format!("`{}` is not a usable file path; use relative paths like css/app.css.", f.path));
+        }
+    }
+    if !files.iter().any(|f| f.path.ends_with(".html")) {
+        return Err("An app needs an HTML file, usually index.html.".into());
+    }
+    serde_json::to_string(&Bundle { files: files.to_vec() }).map_err(|e| e.to_string())
+}
+
+/// The page an app opens on: `index.html`, else its first HTML file.
+fn entry(files: &[AppFile]) -> Option<&AppFile> {
+    files.iter().find(|f| f.path == "index.html").or_else(|| files.iter().find(|f| f.path.ends_with(".html")))
+}
+
+fn mime(path: &str) -> &'static str {
+    match path.rsplit('.').next().unwrap_or_default().to_ascii_lowercase().as_str() {
+        "html" | "htm" => "text/html; charset=utf-8",
+        "css" => "text/css; charset=utf-8",
+        "js" | "mjs" => "text/javascript; charset=utf-8",
+        "json" => "application/json",
+        "svg" => "image/svg+xml",
+        "txt" | "md" => "text/plain; charset=utf-8",
+        "csv" => "text/csv; charset=utf-8",
+        _ => "application/octet-stream",
+    }
+}
+
+/// An app's files as a ZIP archive, to download.
+pub fn app_zip(content: &str) -> Result<Vec<u8>, String> {
+    let files = app_files(content).unwrap_or_else(|| vec![AppFile { path: "index.html".into(), content: app_html(content) }]);
+    let mut out = Vec::new();
+    {
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut out));
+        for f in &files {
+            zip.start_file(f.path.as_str(), zip::write::SimpleFileOptions::default()).map_err(|e| e.to_string())?;
+            std::io::Write::write_all(&mut zip, f.content.as_bytes()).map_err(|e| e.to_string())?;
+        }
+        zip.finish().map_err(|e| e.to_string())?;
+    }
+    Ok(out)
+}
+
 /// An app's HTML: its content, unwrapped from a ```html fence if the model added one.
 pub fn app_html(content: &str) -> String {
     let trimmed = content.trim();
@@ -123,7 +199,7 @@ pub fn window_html(id: &str, title: &str, windows: bool) -> String {
     let title = title.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\"><title>{title}</title><style>html,body{{margin:0;height:100%;background:#fff}}iframe{{border:0;width:100%;height:100%;display:block}}</style></head>\
-         <body><iframe sandbox=\"allow-scripts allow-forms allow-modals allow-popups\" src=\"{base}/{id}\"></iframe></body></html>"
+         <body><iframe sandbox=\"allow-scripts allow-forms allow-modals allow-popups\" src=\"{base}/{id}/\"></iframe></body></html>"
     )
 }
 
@@ -157,14 +233,29 @@ pub fn serve(config_dir: &Path, path: &str) -> tauri::http::Response<Vec<u8>> {
             .body(DIAGRAM_HTML.as_bytes().to_vec())
             .unwrap_or_default();
     }
+    // `/<id>/` is the app's page; `/<id>/<file>` one of its files.
+    let file = path.trim_start_matches('/').split_once('/').map(|(_, rest)| rest.split(['?', '#']).next().unwrap_or_default()).unwrap_or_default();
     match load(config_dir, id) {
-        Ok(canvas) if canvas.kind == "app" => builder
-            .status(200)
-            .header("Content-Type", "text/html; charset=utf-8")
-            .header("Content-Security-Policy", APP_CSP)
-            .header("Cache-Control", "no-store")
-            .body(app_html(canvas.content()).into_bytes())
-            .unwrap_or_default(),
+        Ok(canvas) if canvas.kind == "app" => {
+            let (body, kind) = match app_files(canvas.content()) {
+                Some(files) => {
+                    let found = if file.is_empty() { entry(&files) } else { files.iter().find(|f| f.path == file) };
+                    match found {
+                        Some(f) => (f.content.clone().into_bytes(), mime(&f.path)),
+                        None => return builder.status(404).header("Content-Type", "text/plain").body(b"No such file in this app".to_vec()).unwrap_or_default(),
+                    }
+                }
+                None if file.is_empty() || file == "index.html" => (app_html(canvas.content()).into_bytes(), "text/html; charset=utf-8"),
+                None => return builder.status(404).header("Content-Type", "text/plain").body(b"No such file in this app".to_vec()).unwrap_or_default(),
+            };
+            builder
+                .status(200)
+                .header("Content-Type", kind)
+                .header("Content-Security-Policy", APP_CSP)
+                .header("Cache-Control", "no-store")
+                .body(body)
+                .unwrap_or_default()
+        }
         _ => builder.status(404).header("Content-Type", "text/plain").body(b"No such app".to_vec()).unwrap_or_default(),
     }
 }
@@ -338,10 +429,34 @@ mod tests {
     fn an_app_window_frames_the_app_in_the_sandbox() {
         let page = window_html("abc", "Tip <calc>", false);
         assert!(page.contains(r#"sandbox="allow-scripts allow-forms allow-modals allow-popups""#));
-        assert!(page.contains(r#"src="lumoapp://localhost/abc""#));
+        assert!(page.contains(r#"src="lumoapp://localhost/abc/""#));
         assert!(page.contains("<title>Tip &lt;calc&gt;</title>"));
         assert!(!page.contains("allow-same-origin"));
-        assert!(window_html("abc", "x", true).contains("http://lumoapp.localhost/abc"));
+        assert!(window_html("abc", "x", true).contains("http://lumoapp.localhost/abc/"));
+    }
+
+
+    #[test]
+    fn apps_can_have_several_files() {
+        let files = vec![
+            AppFile { path: "index.html".into(), content: "<link rel=stylesheet href=style.css><script src=js/app.js></script>".into() },
+            AppFile { path: "style.css".into(), content: "body{color:red}".into() },
+            AppFile { path: "js/app.js".into(), content: "console.log(1)".into() },
+        ];
+        let content = bundle(&files).unwrap();
+        assert_eq!(app_files(&content).unwrap(), files);
+        assert_eq!(entry(&files).unwrap().path, "index.html");
+        assert_eq!(mime("js/app.js"), "text/javascript; charset=utf-8");
+        assert!(app_files("<!doctype html><p>one file</p>").is_none());
+        assert!(bundle(&[AppFile { path: "../x.html".into(), content: String::new() }]).is_err());
+        assert!(bundle(&[AppFile { path: "app.js".into(), content: String::new() }]).is_err());
+        // The ZIP holds every file; a one-file app downloads as index.html.
+        let zip = app_zip(&content).unwrap();
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(zip)).unwrap();
+        assert_eq!(archive.len(), 3);
+        assert!(archive.by_name("js/app.js").is_ok());
+        let single = app_zip("<p>hi</p>").unwrap();
+        assert!(zip::ZipArchive::new(std::io::Cursor::new(single)).unwrap().by_name("index.html").is_ok());
     }
 
 }
