@@ -90,6 +90,7 @@
     "allow-chat-favicon",
     "allow-chat-link-preview",
     "allow-chat-debug",
+    "allow-chat-task-calendar",
     "allow-chat-api-server",
     "allow-chat-exchange-and-bundles",
     "allow-chat-search-settings",

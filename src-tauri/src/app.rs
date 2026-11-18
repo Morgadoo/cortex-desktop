@@ -153,6 +153,7 @@ pub fn run() {
                 chat::commands::chat_favicon,
                 chat::commands::chat_link_preview,
                 chat::commands::chat_debug,
+                chat::commands::chat_task_calendar,
                 chat::commands::chat_api_server,
                 chat::commands::chat_save_api_server,
                 chat::commands::chat_delete_exchange,

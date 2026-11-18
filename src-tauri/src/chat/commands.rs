@@ -1115,6 +1115,15 @@ pub async fn chat_save_api_server(app: AppHandle, settings: super::api_server::A
     api_server_view(&app).await
 }
 
+/// Planned task runs between two times, for the Scheduled page's calendar.
+#[tauri::command]
+pub fn chat_task_calendar(app: AppHandle, from: chrono::DateTime<chrono::Utc>, to: chrono::DateTime<chrono::Utc>) -> Result<Vec<super::tasks::Occurrence>, String> {
+    if to < from || to - from > chrono::Duration::days(62) {
+        return Err("Ask for at most two months.".into());
+    }
+    Ok(super::tasks::occurrences(&super::tasks::load(&config_dir(&app)?), from, to))
+}
+
 #[tauri::command]
 pub fn chat_search_settings(app: AppHandle) -> Result<super::search::SearchSettings, String> {
     Ok(super::search::load_settings(&config_dir(&app)?))

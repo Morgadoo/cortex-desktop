@@ -741,6 +741,12 @@
           "markdownDescription": "Read what a sub-agent did."
         },
         {
+          "description": "List planned task runs for the calendar.",
+          "type": "string",
+          "const": "allow-chat-task-calendar",
+          "markdownDescription": "List planned task runs for the calendar."
+        },
+        {
           "description": "Forget finished background commands.",
           "type": "string",
           "const": "allow-chat-terminal-clear",

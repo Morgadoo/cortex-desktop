@@ -517,3 +517,8 @@ commands.allow = ["chat_delete_exchange", "chat_export_agent", "chat_import_agen
 identifier = "allow-chat-api-server"
 description = "Turn the local OpenAI-compatible API on or off and show its token."
 commands.allow = ["chat_api_server", "chat_save_api_server"]
+
+[[permission]]
+identifier = "allow-chat-task-calendar"
+description = "List planned task runs for the calendar."
+commands.allow = ["chat_task_calendar"]

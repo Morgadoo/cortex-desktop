@@ -275,6 +275,35 @@ fn store(config_dir: &Path, tasks: &[Task]) -> Result<(), String> {
     write_json(&path(config_dir), &tasks)
 }
 
+/// A planned run, for the calendar.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Occurrence {
+    pub task_id: String,
+    pub at: DateTime<Utc>,
+}
+
+/// The planned runs of enabled tasks between `from` and `to`, in time order. Tasks started by
+/// files have none.
+pub fn occurrences(tasks: &[Task], from: DateTime<Utc>, to: DateTime<Utc>) -> Vec<Occurrence> {
+    let mut out = Vec::new();
+    for task in tasks.iter().filter(|t| t.enabled) {
+        // Runs still to come: from now on, never before.
+        let mut after = from.max(Utc::now()) - chrono::Duration::seconds(1);
+        for _ in 0..400 {
+            match next_run(&task.frequency, after) {
+                Ok(Some(at)) if at <= to => {
+                    out.push(Occurrence { task_id: task.id.clone(), at });
+                    after = at;
+                }
+                _ => break,
+            }
+        }
+    }
+    out.sort_by_key(|o| o.at);
+    out
+}
+
 /// Saves a task, validating it and computing its next run.
 pub fn save(config_dir: &Path, mut task: Task) -> Result<Vec<Task>, String> {
     if !valid_id(&task.id) {
@@ -379,6 +408,38 @@ pub fn run_now(app: &AppHandle, id: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_calendar_lists_planned_runs_in_range() {
+        let base = Task {
+            id: "d".into(),
+            title: "Daily".into(),
+            prompt: "x".into(),
+            frequency: Frequency::Daily { time: "09:00".into() },
+            agent_id: None,
+            model: None,
+            enabled: true,
+            allow_changes: false,
+            created_at: Utc::now(),
+            last_run: None,
+            last_conversation: None,
+            last_status: None,
+            next_run: None,
+            seen: None,
+        };
+        let mut paused = base.clone();
+        paused.id = "p".into();
+        paused.enabled = false;
+        let mut folder = base.clone();
+        folder.id = "f".into();
+        folder.frequency = Frequency::NewFiles { folder: "/tmp".into() };
+        let from = Utc::now();
+        let runs = occurrences(&[base, paused, folder], from, from + chrono::Duration::days(7));
+        assert!(runs.len() >= 7 && runs.len() <= 8, "{}", runs.len());
+        assert!(runs.iter().all(|o| o.task_id == "d" && o.at > from));
+        assert!(runs.windows(2).all(|w| w[0].at < w[1].at));
+    }
+
 
     #[test]
     fn new_files_start_a_run_once_settled() {

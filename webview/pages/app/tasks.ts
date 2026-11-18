@@ -1,5 +1,6 @@
 /** Scheduled tasks: the list, its tabs and the task editor. */
 import { api, newId, type Frequency, type Task } from './api';
+import { tauriInvoke } from '../../shared/tauri';
 import { clear, confirmDialog, h, icon, modal, toast } from './dom';
 import { navigate, state } from './state';
 import { modalHeader } from './ui';
@@ -164,6 +165,13 @@ export class TasksPage {
   private filter = '';
   private tabs = h('div', { class: 'tabs' });
   private list = h('div', { class: 'task-list' });
+  /** List or calendar, remembered on this device. */
+  private view: 'list' | 'calendar' = storedView();
+  private viewSwitch = h('div', { class: 'segmented' });
+  private calendar = new TaskCalendar(
+    (t) => void editTask(t, (all) => this.set(all)),
+    (date) => void editTask(null, (all) => this.set(all), { agentId: this.agentId, frequency: { kind: 'once', date, time: '09:00' } })
+  );
 
   /** `agentId` narrows the page to one agent's tasks. */
   constructor(private agentId: string | null = null) {
@@ -177,9 +185,10 @@ export class TasksPage {
     });
     this.el.append(
       h('header', { class: 'page-header' }, h('div', {}, h('h1', {}, 'Scheduled tasks'), h('p', { class: 'muted' }, 'Run instructions on a schedule. Each run arrives as a new conversation.')), h('div', { class: 'page-actions' }, create)),
-      this.tabs,
+      h('div', { class: 'tasks-bar' }, this.tabs, this.viewSwitch),
       h('div', { class: 'toolbar' }, h('div', { class: 'search-wrap' }, icon('search', 16), search)),
-      this.list
+      this.list,
+      this.calendar.el
     );
     void this.load();
   }
@@ -199,6 +208,18 @@ export class TasksPage {
   }
 
   private render() {
+    clear(
+      this.viewSwitch,
+      (['list', 'calendar'] as const).map((v) =>
+        h('button', { class: `seg${this.view === v ? ' active' : ''}`, on: { click: () => { this.view = v; saveView(v); this.render(); } } }, icon(v === 'list' ? 'list' : 'calendar', 15), v === 'list' ? 'List' : 'Calendar')
+      )
+    );
+    const calendar = this.view === 'calendar';
+    this.tabs.hidden = calendar;
+    (this.el.querySelector('.toolbar') as HTMLElement | null)?.toggleAttribute('hidden', calendar);
+    this.list.hidden = calendar;
+    this.calendar.el.hidden = !calendar;
+    if (calendar) return void this.calendar.show(this.tasks);
     const count = (b: string) => this.tasks.filter((t) => this.bucket(t) === b).length;
     clear(
       this.tabs,
@@ -287,4 +308,177 @@ function describe(f: Frequency): string {
     case 'newFiles':
       return `When new files arrive in ${f.folder.split(/[\\/]/).pop() || f.folder}`;
   }
+}
+
+function storedView(): 'list' | 'calendar' {
+  try {
+    return localStorage.getItem('lumo.tasksView') === 'calendar' ? 'calendar' : 'list';
+  } catch {
+    return 'list';
+  }
+}
+
+function saveView(view: 'list' | 'calendar') {
+  try {
+    localStorage.setItem('lumo.tasksView', view);
+  } catch {
+    // A convenience only.
+  }
+}
+
+interface Occurrence {
+  taskId: string;
+  at: string;
+}
+
+/** One entry on the calendar: a run still to come, or one that happened (its conversation). */
+interface CalendarEntry {
+  task: Task;
+  at: Date;
+  conversationId: string | null;
+}
+
+const TASK_COLORS = ['var(--accent)', '#4fa3d1', '#5fb98a', '#d9a441', '#c96f9b', '#8c8fd6', '#d97a5b'];
+
+function colorOf(task: Task): string {
+  let n = 0;
+  for (const c of task.id) n = (n * 31 + c.charCodeAt(0)) >>> 0;
+  return TASK_COLORS[n % TASK_COLORS.length]!;
+}
+
+const sameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+
+/**
+ * The Scheduled page's calendar: a month of planned runs (from each task's schedule) and past
+ * runs (the conversations tasks started), with the chosen day's agenda below.
+ */
+class TaskCalendar {
+  readonly el = h('div', { class: 'task-calendar' });
+  private month = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  private selected = new Date();
+  private tasks: Task[] = [];
+  private loading = 0;
+
+  constructor(
+    private onEdit: (task: Task) => void,
+    private onNew: (date: string) => void
+  ) {}
+
+  show(tasks: Task[]) {
+    this.tasks = tasks;
+    void this.render();
+  }
+
+  private move(months: number) {
+    this.month = new Date(this.month.getFullYear(), this.month.getMonth() + months, 1);
+    if (!sameDay(new Date(this.selected.getFullYear(), this.selected.getMonth(), 1), this.month)) this.selected = new Date(this.month);
+    void this.render();
+  }
+
+  private async render() {
+    const load = ++this.loading;
+    // Six weeks from the Monday on or before the 1st.
+    const start = new Date(this.month);
+    start.setDate(1 - ((start.getDay() + 6) % 7));
+    const end = new Date(start);
+    end.setDate(start.getDate() + 42);
+    let planned: Occurrence[] = [];
+    try {
+      planned = await tauriInvoke<Occurrence[]>('chat_task_calendar', { from: start.toISOString(), to: end.toISOString() });
+    } catch (e) {
+      toast(String(e), 'error');
+    }
+    if (load !== this.loading) return;
+    const byId = new Map(this.tasks.map((t) => [t.id, t]));
+    const entries: CalendarEntry[] = [];
+    for (const o of planned) {
+      const task = byId.get(o.taskId);
+      if (task) entries.push({ task, at: new Date(o.at), conversationId: null });
+    }
+    for (const c of state.conversations) {
+      const task = c.taskId ? byId.get(c.taskId) : undefined;
+      const at = new Date(c.createdAt);
+      if (task && at >= start && at < end) entries.push({ task, at, conversationId: c.id });
+    }
+    entries.sort((a, b) => a.at.getTime() - b.at.getTime());
+    const perDay = new Map<string, CalendarEntry[]>();
+    for (const e of entries) perDay.set(dayKey(e.at), [...(perDay.get(dayKey(e.at)) ?? []), e]);
+
+    const today = new Date();
+    const title = this.month.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    const head = h(
+      'div',
+      { class: 'cal-head' },
+      h('button', { class: 'icon-btn', title: 'Previous month', on: { click: () => this.move(-1) } }, icon('chevronLeft', 16)),
+      h('h2', {}, title),
+      h('button', { class: 'icon-btn', title: 'Next month', on: { click: () => this.move(1) } }, icon('chevronRight', 16)),
+      h('span', { class: 'spacer' }),
+      h('button', { class: 'btn btn-secondary btn-sm', on: { click: () => { this.month = new Date(today.getFullYear(), today.getMonth(), 1); this.selected = today; void this.render(); } } }, 'Today')
+    );
+    const weekdays = Array.from({ length: 7 }, (_, i) => new Date(2026, 10, 16 + i).toLocaleDateString(undefined, { weekday: 'short' }));
+    const cells: HTMLElement[] = [];
+    for (let i = 0; i < 42; i++) {
+      const day = new Date(start);
+      day.setDate(start.getDate() + i);
+      const items = perDay.get(dayKey(day)) ?? [];
+      const chips = items.slice(0, 3).map((e) =>
+        h(
+          'div',
+          { class: `cal-chip${e.conversationId ? ' ran' : ''}`, style: { '--chip': colorOf(e.task) }, title: `${e.task.title} · ${e.at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}` },
+          h('span', { class: 'cal-time' }, e.at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })),
+          h('span', { class: 'cal-title' }, e.task.title)
+        )
+      );
+      const more = items.length > 3 ? h('div', { class: 'cal-more' }, `+${items.length - 3} more`) : null;
+      cells.push(
+        h(
+          'button',
+          {
+            class: `cal-day${day.getMonth() !== this.month.getMonth() ? ' other' : ''}${sameDay(day, today) ? ' today' : ''}${sameDay(day, this.selected) ? ' selected' : ''}`,
+            on: { click: () => { this.selected = day; if (day.getMonth() !== this.month.getMonth()) this.month = new Date(day.getFullYear(), day.getMonth(), 1); void this.render(); } },
+          },
+          h('span', { class: 'cal-num' }, String(day.getDate())),
+          chips,
+          more
+        )
+      );
+    }
+    const dayItems = perDay.get(dayKey(this.selected)) ?? [];
+    const agenda = h(
+      'div',
+      { class: 'cal-agenda' },
+      h(
+        'div',
+        { class: 'cal-agenda-head' },
+        h('h3', {}, this.selected.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })),
+        this.selected >= new Date(new Date().setHours(0, 0, 0, 0))
+          ? h('button', { class: 'btn btn-secondary btn-sm', on: { click: () => this.onNew(isoDate(this.selected)) } }, icon('plus', 14), 'New task on this day')
+          : null
+      ),
+      dayItems.length
+        ? dayItems.map((e) =>
+            h(
+              'button',
+              {
+                class: 'task-row cal-entry',
+                on: { click: () => (e.conversationId ? navigate({ kind: 'chat', id: e.conversationId }) : this.onEdit(e.task)) },
+              },
+              h('span', { class: 'cal-dot', style: { background: colorOf(e.task) } }),
+              h('span', { class: 'cal-entry-time' }, e.at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })),
+              h('strong', {}, e.task.title),
+              h('span', { class: 'muted' }, e.conversationId ? 'Ran: open the result' : describe(e.task.frequency)),
+              h('span', { class: `cal-badge${e.conversationId ? ' ran' : ''}` }, e.conversationId ? 'Ran' : 'Planned')
+            )
+          )
+        : h('p', { class: 'muted empty-line' }, 'Nothing runs on this day.'),
+      this.tasks.some((t) => t.frequency.kind === 'newFiles') ? h('p', { class: 'muted cal-note' }, 'Tasks started by new files show on the days they ran.') : null
+    );
+    clear(this.el, head, h('div', { class: 'cal-grid' }, weekdays.map((w) => h('div', { class: 'cal-weekday' }, w)), cells), agenda);
+  }
+}
+
+/** A local date as YYYY-MM-DD. */
+function isoDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
