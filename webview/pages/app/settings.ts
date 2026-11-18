@@ -30,6 +30,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Your profile', 'profile', 'name about instructions tone personality'],
   ['Your data', 'profile', 'export import backup delete history'],
   ['Shared links', 'profile', 'share link network url stop sharing public page'],
+  ['Encrypt data', 'profile', 'encryption at rest encrypt security privacy keychain disk'],
   ['Sync between devices', 'profile', 'sync devices encrypted syncthing dropbox icloud nextcloud onedrive passphrase other computer'],
   ['Import coding sessions', 'profile', 'claude code codex import sessions coding agents'],
   ['Storage and backups', 'profile', 'backup restore damaged files recently deleted trash'],
@@ -328,6 +329,7 @@ function renderProfile(content: HTMLElement) {
       )
     ),
     dataCard,
+    encryptionCard(),
     syncCard(() => void renderData()),
     sharedLinksCard()
   );
@@ -2052,4 +2054,34 @@ function importCodingSessions() {
       h('div', { class: 'dialog-actions' }, button({ variant: 'secondary', label: 'Cancel', onClick: close }), go)
     );
   });
+}
+
+/** Encryption at rest: conversations and everything Lumo keeps, sealed with a keychain key. */
+function encryptionCard(): HTMLElement {
+  type Status = { enabled: boolean; locked: boolean; sealed: number; plain: number };
+  const box = card();
+  const render = (s: Status | null) => {
+    const busy = h('p', { class: 'muted small' });
+    const sw = switchInput(!!s?.enabled, async (v) => {
+      if (!v && !(await confirmDialog('Decrypt your data?', 'Every conversation, knowledge page and the rest are written back in the clear on this computer, and the key is removed from the keychain.', 'Decrypt'))) return void render(s);
+      clear(busy, h('span', { class: 'dots' }), v ? ' Encrypting…' : ' Decrypting…');
+      try {
+        const n = await tauriInvoke<number>('chat_set_encryption', { on: v });
+        toast(v ? `Encrypted ${n} files. New ones are encrypted as they are saved.` : `Decrypted ${n} files.`);
+      } catch (e) {
+        toast(String(e), 'error');
+      }
+      render(await tauriInvoke<Status>('chat_encryption_status').catch(() => null));
+    });
+    clear(
+      box,
+      h('h3', {}, 'Encrypt data on this computer'),
+      h('p', { class: 'muted' }, 'Seal conversations, knowledge, memories, agents, tasks, canvases, libraries, the search index and backups with XChaCha20-Poly1305, under a key kept in the OS keychain. Anyone who copies Lumo’s folder or reads a backup of the disk sees only ciphertext; exports you make are written in the clear. Code sandboxes and skills stay readable for the programs that run them.'),
+      row('Encrypt data', s?.locked ? 'On, but the key could not be read from the keychain: unlock it and restart Lumo.' : s?.enabled ? `${s.sealed} files encrypted${s.plain ? `, ${s.plain} not yet` : ''}.` : 'Off: files are plain JSON on this computer.', sw),
+      busy
+    );
+  };
+  render(null);
+  void tauriInvoke<Status>('chat_encryption_status').then(render).catch(() => undefined);
+  return box;
 }

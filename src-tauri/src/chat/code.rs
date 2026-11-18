@@ -60,7 +60,7 @@ pub fn prompt(dir: &str) -> String {
         out.push_str("\nDo not commit, push or rewrite history unless the user asks.");
     }
     for name in INSTRUCTION_FILES {
-        let Ok(text) = std::fs::read_to_string(path.join(name)) else { continue };
+        let Ok(text) = crate::chat::at_rest::read_to_string(path.join(name)) else { continue };
         let text: String = text.chars().take(INSTRUCTION_CHARS).collect();
         out.push_str(&format!(
             "\n\nThe project's instructions for coding agents, from `{name}` (follow them):\n<project_instructions>\n{}\n</project_instructions>",
@@ -131,7 +131,7 @@ pub fn read_file(dir: &str, path: &str) -> Result<String, String> {
     if meta.len() > MAX_FILE_BYTES {
         return Err(format!("The file is {} KB; only files up to {} KB are shown here.", meta.len() / 1024, MAX_FILE_BYTES / 1024));
     }
-    let bytes = std::fs::read(&full).map_err(|e| e.to_string())?;
+    let bytes = crate::chat::at_rest::read(&full).map_err(|e| e.to_string())?;
     if bytes.iter().take(8000).any(|b| *b == 0) {
         return Err("Binary file.".into());
     }
@@ -152,7 +152,7 @@ pub fn changes(dir: &str) -> Changes {
     let names = run(with_base(&["diff", "--name-status", "-M"]));
     let mut files = parse(&numstat, &names);
     for untracked in run(vec!["ls-files".into(), "--others".into(), "--exclude-standard".into()]).lines().filter(|l| !l.is_empty()) {
-        let additions = std::fs::read_to_string(path.join(untracked)).map(|t| t.lines().count() as u32).unwrap_or(0);
+        let additions = crate::chat::at_rest::read_to_string(path.join(untracked)).map(|t| t.lines().count() as u32).unwrap_or(0);
         files.push(ChangedFile { path: untracked.to_string(), status: "untracked".into(), additions, deletions: 0 });
     }
     let mut diff = run(with_base(&["diff", "-M", "--no-color", "--no-ext-diff"]));
@@ -430,8 +430,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(dir.path().join("src")).unwrap();
         std::fs::create_dir_all(dir.path().join("node_modules/x")).unwrap();
-        std::fs::write(dir.path().join("src/main.rs"), "fn main() {}").unwrap();
-        std::fs::write(dir.path().join("node_modules/x/i.js"), "x").unwrap();
+        crate::chat::at_rest::write(dir.path().join("src/main.rs"), "fn main() {}").unwrap();
+        crate::chat::at_rest::write(dir.path().join("node_modules/x/i.js"), "x").unwrap();
         let root = dir.path().to_str().unwrap();
         let (list, truncated) = files(root);
         assert!(list.contains(&"src/main.rs".to_string()) && !truncated);
@@ -453,12 +453,12 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path();
         sh(dir, &["init", "-q", "-b", "main"]);
-        std::fs::write(dir.join("a.txt"), "one\ntwo\n").unwrap();
-        std::fs::write(dir.join("AGENTS.md"), "Run `make test` before finishing.").unwrap();
+        crate::chat::at_rest::write(dir.join("a.txt"), "one\ntwo\n").unwrap();
+        crate::chat::at_rest::write(dir.join("AGENTS.md"), "Run `make test` before finishing.").unwrap();
         sh(dir, &["add", "."]);
         sh(dir, &["commit", "-q", "-m", "first"]);
-        std::fs::write(dir.join("a.txt"), "one\nTWO\nthree\n").unwrap();
-        std::fs::write(dir.join("new.txt"), "x\ny\n").unwrap();
+        crate::chat::at_rest::write(dir.join("a.txt"), "one\nTWO\nthree\n").unwrap();
+        crate::chat::at_rest::write(dir.join("new.txt"), "x\ny\n").unwrap();
 
         let text = prompt(dir.to_str().unwrap());
         assert!(text.contains("on branch `main`"));
@@ -536,10 +536,10 @@ mod tests {
         sh(&work, &["config", "user.name", "t"]);
         sh(&work, &["config", "user.email", "t@t"]);
         sh(&work, &["switch", "-q", "-c", "main"]);
-        std::fs::write(work.join("a.txt"), "one\n").unwrap();
+        crate::chat::at_rest::write(work.join("a.txt"), "one\n").unwrap();
         commit(work.to_str().unwrap(), "First").unwrap();
         sh(&work, &["push", "-q", "-u", "origin", "main"]);
-        std::fs::write(work.join("a.txt"), "two\n").unwrap();
+        crate::chat::at_rest::write(work.join("a.txt"), "two\n").unwrap();
         commit(work.to_str().unwrap(), "Second").unwrap();
 
         // On the default branch: a branch is made from the title and pushed; a local remote has
@@ -553,10 +553,10 @@ mod tests {
         {
             use std::os::unix::fs::PermissionsExt;
             let hook = remote.join("hooks/post-receive");
-            std::fs::write(&hook, "#!/bin/sh\necho\necho \"Create a new pull request for 'ai/use-three':\"\necho \"  https://git.example.org/me/app/compare/main...ai/use-three\"\n").unwrap();
+            crate::chat::at_rest::write(&hook, "#!/bin/sh\necho\necho \"Create a new pull request for 'ai/use-three':\"\necho \"  https://git.example.org/me/app/compare/main...ai/use-three\"\n").unwrap();
             std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
             sh(&work, &["switch", "-q", "main"]);
-            std::fs::write(work.join("a.txt"), "three\n").unwrap();
+            crate::chat::at_rest::write(work.join("a.txt"), "three\n").unwrap();
             commit(work.to_str().unwrap(), "Third").unwrap();
             let pr = open_pull_request(work.to_str().unwrap(), "Use three").unwrap();
             assert_eq!(pr.url.as_deref(), Some("https://git.example.org/me/app/compare/main...ai/use-three"));
@@ -583,7 +583,7 @@ mod tests {
         std::fs::create_dir_all(&repo).unwrap();
         let run = |dir: &Path, args: &[&str]| assert!(Command::new("git").arg("-C").arg(dir).args(args).env("GIT_AUTHOR_NAME", "t").env("GIT_AUTHOR_EMAIL", "t@t").env("GIT_COMMITTER_NAME", "t").env("GIT_COMMITTER_EMAIL", "t@t").status().unwrap().success());
         run(&repo, &["init", "-q"]);
-        std::fs::write(repo.join("a.txt"), "a").unwrap();
+        crate::chat::at_rest::write(repo.join("a.txt"), "a").unwrap();
         run(&repo, &["add", "."]);
         run(&repo, &["commit", "-qm", "first"]);
         let (folder, branch) = create_worktree(repo.to_str().unwrap(), "Add a login page!").unwrap();

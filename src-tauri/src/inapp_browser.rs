@@ -26,7 +26,7 @@ fn path(app: &AppHandle) -> Option<PathBuf> {
 }
 
 pub fn prefs(app: &AppHandle) -> Prefs {
-    path(app).and_then(|p| std::fs::read_to_string(p).ok()).and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    path(app).and_then(|p| crate::chat::at_rest::read_to_string(p).ok()).and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
 }
 
 pub fn save(app: &AppHandle, prefs: &Prefs) -> Result<(), String> {
@@ -34,7 +34,7 @@ pub fn save(app: &AppHandle, prefs: &Prefs) -> Result<(), String> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
-    std::fs::write(path, serde_json::to_string_pretty(prefs).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+    crate::chat::at_rest::write(path, serde_json::to_string_pretty(prefs).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
 }
 
 /// Only web pages open here; anything else (mailto:, files) goes to the system.

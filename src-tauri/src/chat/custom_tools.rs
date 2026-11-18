@@ -47,7 +47,7 @@ pub fn list(config_dir: &Path) -> Vec<CustomTool> {
         .into_iter()
         .flatten()
         .flatten()
-        .filter_map(|e| serde_json::from_str(&std::fs::read_to_string(e.path().join("tool.json")).ok()?).ok())
+        .filter_map(|e| serde_json::from_str(&crate::chat::at_rest::read_to_string(e.path().join("tool.json")).ok()?).ok())
         .collect();
     out.sort_by(|a, b| a.name.cmp(&b.name));
     out

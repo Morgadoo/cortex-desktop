@@ -111,7 +111,7 @@ pub async fn get(config_dir: &Path, url: &str) -> Result<Preview, String> {
         return Err("Not a public web address.".into());
     }
     let path = cache_path(config_dir, url);
-    if let Some(cached) = std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<Preview>(&t).ok()) {
+    if let Some(cached) = crate::chat::at_rest::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<Preview>(&t).ok()) {
         return Ok(cached);
     }
     let client = reqwest::Client::builder()

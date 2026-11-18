@@ -30,7 +30,7 @@ fn path(config_dir: &Path) -> PathBuf {
 }
 
 pub fn load(config_dir: &Path) -> Settings {
-    std::fs::read_to_string(path(config_dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::chat::at_rest::read_to_string(path(config_dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
 }
 
 pub fn save(config_dir: &Path, settings: &Settings) -> Result<(), String> {
@@ -47,7 +47,7 @@ pub async fn fetch(location: &str) -> Result<String, String> {
         return fetch_url(location).await;
     }
     let path = location.strip_prefix("file://").unwrap_or(location);
-    std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))
+    crate::chat::at_rest::read_to_string(path).map_err(|e| format!("{path}: {e}"))
 }
 
 async fn fetch_url(url: &str) -> Result<String, String> {

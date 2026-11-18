@@ -55,12 +55,12 @@ fn dir(config_dir: &Path) -> PathBuf {
 }
 
 pub fn list(config_dir: &Path) -> Vec<Share> {
-    std::fs::read_to_string(dir(config_dir).join("shares.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::chat::at_rest::read_to_string(dir(config_dir).join("shares.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
 }
 
 fn write_list(config_dir: &Path, shares: &[Share]) -> Result<(), String> {
     std::fs::create_dir_all(dir(config_dir)).map_err(|e| e.to_string())?;
-    std::fs::write(dir(config_dir).join("shares.json"), serde_json::to_string_pretty(shares).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+    crate::chat::at_rest::write(dir(config_dir).join("shares.json"), serde_json::to_string_pretty(shares).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
 }
 
 /// A token is 32 lowercase hex characters; anything else is never a file name here.
@@ -121,7 +121,7 @@ async fn page(State(config_dir): State<PathBuf>, UrlPath(token): UrlPath<String>
     }
     let mut shares = list(&config_dir);
     let Some(share) = shares.iter_mut().find(|s| s.token == token) else { return not_found() };
-    let Ok(html) = std::fs::read_to_string(dir(&config_dir).join(format!("{token}.html"))) else { return not_found() };
+    let Ok(html) = crate::chat::at_rest::read_to_string(dir(&config_dir).join(format!("{token}.html"))) else { return not_found() };
     share.views += 1;
     let csp = if share.app { APP_CSP } else { CSP };
     let _ = write_list(&config_dir, &shares);
@@ -148,7 +148,7 @@ pub async fn share(config_dir: &Path, title: &str, html: &str, app: bool) -> Res
     rand::fill(&mut bytes);
     let token: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
     std::fs::create_dir_all(dir(config_dir)).map_err(|e| e.to_string())?;
-    std::fs::write(dir(config_dir).join(format!("{token}.html")), html).map_err(|e| e.to_string())?;
+    crate::chat::at_rest::write(dir(config_dir).join(format!("{token}.html")), html).map_err(|e| e.to_string())?;
     let share = Share { token, title: title.trim().chars().take(200).collect(), created_at: chrono::Utc::now(), views: 0, app };
     let mut shares = list(config_dir);
     shares.insert(0, share.clone());

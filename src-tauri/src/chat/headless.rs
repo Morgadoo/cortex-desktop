@@ -116,7 +116,7 @@ pub fn parse(args: &[String], stdin: impl FnOnce() -> String) -> Option<Result<A
             value_of(args, flag).map(|v| v.parse::<f64>().ok().filter(|n| *n > 0.0).ok_or(format!("{flag} takes a positive number, not `{v}`"))).transpose()
         };
         let mut prompt = match value_of(args, "--prompt-file") {
-            Some(path) => std::fs::read_to_string(&path).map_err(|e| format!("--prompt-file {path}: {e}"))?,
+            Some(path) => crate::chat::at_rest::read_to_string(&path).map_err(|e| format!("--prompt-file {path}: {e}"))?,
             None => args.get(at + 1).filter(|a| !a.starts_with("--")).cloned().unwrap_or_else(|| "-".into()),
         };
         if prompt == "-" {
@@ -172,7 +172,7 @@ pub fn maybe_run() -> Option<i32> {
 
 pub fn write_export(dir: &Path, export: &Export) -> Result<(), String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    std::fs::write(dir.join("export.json"), serde_json::to_string_pretty(export).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+    crate::chat::at_rest::write(dir.join("export.json"), serde_json::to_string_pretty(export).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
 }
 
 /// One request, answered with the read-only tools, within the limits asked for.
@@ -315,7 +315,7 @@ mod tests {
     fn limits_and_files_are_read_and_checked() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("task.md");
-        std::fs::write(&file, "  Summarize the report.\n").unwrap();
+        crate::chat::at_rest::write(&file, "  Summarize the report.\n").unwrap();
         let a = parse(&args(&["lumo", "-p", "--prompt-file", file.to_str().unwrap(), "--max-turns", "3", "--max-tokens", "5000", "--max-price", "0.25", "--time-limit", "60", "--output-dir", "out"]), String::new).unwrap().unwrap();
         assert_eq!(a.prompt, "Summarize the report.");
         assert_eq!((a.max_turns, a.max_tokens, a.max_price, a.time_limit), (Some(3), Some(5000), Some(0.25), Some(60)));
@@ -330,7 +330,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let export = Export { prompt: "p".into(), model: "m".into(), answer: "a".into(), ending: Ending::Limit, exit_code: 3, message: "the time limit of 5 s was reached".into(), steps: vec![Step { tool: "web_search".into(), input: serde_json::json!({"query": "q"}), output: "r".into(), error: false }], input_tokens: 10, output_tokens: 2, cost: 0.001, seconds: 1.5 };
         write_export(&dir.path().join("out"), &export).unwrap();
-        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dir.path().join("out/export.json")).unwrap()).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&crate::chat::at_rest::read_to_string(dir.path().join("out/export.json")).unwrap()).unwrap();
         assert_eq!((v["ending"].as_str(), v["exit_code"].as_i64(), v["steps"][0]["tool"].as_str()), (Some("limit"), Some(3), Some("web_search")));
     }
 }

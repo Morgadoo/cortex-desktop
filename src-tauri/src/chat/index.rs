@@ -117,7 +117,7 @@ fn searchable(c: &Conversation) -> String {
 fn synced<R>(config_dir: &Path, read: impl FnOnce(&IndexFile) -> R) -> R {
     let mut cache = cache();
     let index = cache.entry(config_dir.to_path_buf()).or_insert_with(|| {
-        std::fs::read_to_string(index_dir(config_dir).join("conversations.json"))
+        crate::chat::at_rest::read_to_string(index_dir(config_dir).join("conversations.json"))
             .ok()
             .and_then(|t| serde_json::from_str::<IndexFile>(&t).ok())
             .filter(|i| i.version == INDEX_VERSION)
@@ -136,11 +136,12 @@ fn synced<R>(config_dir: &Path, read: impl FnOnce(&IndexFile) -> R) -> R {
         let Ok(meta) = file.metadata() else { continue };
         let modified = meta.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_millis());
         seen.push(id.clone());
-        if index.entries.get(&id).is_some_and(|e| e.modified == modified && e.size == meta.len()) {
+        // A damaged entry is looked at again: the cause may have passed (a locked keychain).
+        if index.entries.get(&id).is_some_and(|e| !e.damaged && e.modified == modified && e.size == meta.len()) {
             continue;
         }
         dirty = true;
-        let parsed = std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<Conversation>(&t).ok());
+        let parsed = crate::chat::at_rest::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<Conversation>(&t).ok());
         let text = text_path(config_dir, &id);
         let entry = match parsed {
             Some(c) if c.temporary => {
@@ -151,7 +152,7 @@ fn synced<R>(config_dir: &Path, read: impl FnOnce(&IndexFile) -> R) -> R {
                 if let Some(parent) = text.parent() {
                     let _ = std::fs::create_dir_all(parent);
                 }
-                let _ = std::fs::write(&text, searchable(&c));
+                let _ = crate::chat::at_rest::write(&text, searchable(&c));
                 Entry { modified, size: meta.len(), summary: Some(summarize(&c)), damaged: false }
             }
             None => {
@@ -229,7 +230,7 @@ pub fn search(config_dir: &Path, query: &str, limit: usize) -> Vec<Hit> {
         .filter_map(|c| {
             let title = c.title.to_lowercase();
             let in_title = terms.iter().all(|t| title.contains(t));
-            let text = std::fs::read_to_string(text_path(config_dir, &c.id)).unwrap_or_default();
+            let text = crate::chat::at_rest::read_to_string(text_path(config_dir, &c.id)).unwrap_or_default();
             // The first line repeats the title; snippets come from what was said.
             let said = text.split_once('\n').map_or("", |(_, rest)| rest);
             let lower = said.to_lowercase();
@@ -292,7 +293,7 @@ mod tests {
 
         // A file that cannot be read is reported, and the rest still list.
         let bad = chat_dir(dir.path()).join("conversations/33333333-3333-4333-8333-333333333333.json");
-        std::fs::write(&bad, "{ not json").unwrap();
+        crate::chat::at_rest::write(&bad, "{ not json").unwrap();
         assert_eq!(list(dir.path()).len(), 1);
         assert_eq!(damaged(dir.path()), vec!["33333333-3333-4333-8333-333333333333".to_string()]);
 

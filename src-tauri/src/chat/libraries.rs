@@ -76,7 +76,7 @@ pub fn list(config_dir: &Path) -> Vec<Library> {
     let Ok(entries) = std::fs::read_dir(root(config_dir)) else { return Vec::new() };
     let mut out: Vec<Library> = entries
         .filter_map(Result::ok)
-        .filter_map(|e| std::fs::read_to_string(e.path().join("library.json")).ok())
+        .filter_map(|e| crate::chat::at_rest::read_to_string(e.path().join("library.json")).ok())
         .filter_map(|t| serde_json::from_str(&t).ok())
         .collect();
     out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
@@ -84,7 +84,7 @@ pub fn list(config_dir: &Path) -> Vec<Library> {
 }
 
 pub fn load(config_dir: &Path, id: &str) -> Result<Library, String> {
-    let text = std::fs::read_to_string(lib_dir(config_dir, id)?.join("library.json")).map_err(|_| "No such library.".to_string())?;
+    let text = crate::chat::at_rest::read_to_string(lib_dir(config_dir, id)?.join("library.json")).map_err(|_| "No such library.".to_string())?;
     serde_json::from_str(&text).map_err(|e| e.to_string())
 }
 
@@ -300,7 +300,7 @@ pub fn move_document(config_dir: &Path, from: &str, document_id: &str, to: &str)
     }
     let source = load(config_dir, from)?;
     let doc = source.documents.iter().find(|d| d.id == document_id).ok_or("That document is gone.")?.clone();
-    let text = std::fs::read_to_string(docs_dir(config_dir, from)?.join(format!("{}.txt", doc.id))).map_err(|e| e.to_string())?;
+    let text = crate::chat::at_rest::read_to_string(docs_dir(config_dir, from)?.join(format!("{}.txt", doc.id))).map_err(|e| e.to_string())?;
     load(config_dir, to)?;
     add_text(config_dir, to, &doc.name, &text)?;
     remove(config_dir, from, document_id).map(|_| ())
@@ -321,9 +321,9 @@ pub fn read_text(path: &Path) -> Result<String, String> {
                 .ok_or("The PDF could not be read.")?
                 .map_err(|e| format!("The PDF could not be read: {e}"))?
         }
-        e if OFFICE_EXTENSIONS.contains(&e) => office_text(&std::fs::read(path).map_err(|e| e.to_string())?, e)?,
+        e if OFFICE_EXTENSIONS.contains(&e) => office_text(&crate::chat::at_rest::read(path).map_err(|e| e.to_string())?, e)?,
         "html" | "htm" => {
-            let raw = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+            let raw = crate::chat::at_rest::read_to_string(path).map_err(|e| e.to_string())?;
             let doc = scraper::Html::parse_document(&raw);
             let body = scraper::Selector::parse("body").expect("selector");
             doc.select(&body)
@@ -332,7 +332,7 @@ pub fn read_text(path: &Path) -> Result<String, String> {
                 .unwrap_or_default()
         }
         _ => {
-            let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+            let bytes = crate::chat::at_rest::read(path).map_err(|e| e.to_string())?;
             if bytes.iter().take(8000).any(|b| *b == 0) {
                 return Err(format!("{} is not a text document (PDF, Word, PowerPoint, OpenDocument, HTML, Markdown, text, code and data files are supported).", path.display()));
             }
@@ -398,7 +398,7 @@ pub fn add_text(config_dir: &Path, library_id: &str, name: &str, text: &str) -> 
     };
     let docs = lib_dir(config_dir, library_id)?.join("docs");
     std::fs::create_dir_all(&docs).map_err(|e| e.to_string())?;
-    std::fs::write(docs.join(format!("{}.txt", doc.id)), text).map_err(|e| e.to_string())?;
+    crate::chat::at_rest::write(docs.join(format!("{}.txt", doc.id)), text).map_err(|e| e.to_string())?;
     library.documents.push(doc);
     save(config_dir, &library)?;
     Ok(library)
@@ -491,7 +491,7 @@ pub fn import_archive(config_dir: &Path, library_id: &str, bytes: &[u8]) -> Resu
         let ext = path.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
         // Read through a file, so every kind is read as when it is added from disk.
         let file = scratch.join(format!("{i}.{ext}"));
-        let result = std::fs::write(&file, data).map_err(|e| e.to_string()).and_then(|()| read_text(&file));
+        let result = crate::chat::at_rest::write(&file, data).map_err(|e| e.to_string()).and_then(|()| read_text(&file));
         let _ = std::fs::remove_file(&file);
         match result.and_then(|text| add_text(config_dir, library_id, &name, &text)) {
             Ok(updated) => {
@@ -586,7 +586,7 @@ pub fn read_document(config_dir: &Path, library: &str, name: &str, part: usize) 
     let Some((library, doc)) = found else {
         return Err(format!("No library document is named {name}; use a name from search_library."));
     };
-    let text = std::fs::read_to_string(docs_dir(config_dir, &library.id)?.join(format!("{}.txt", doc.id))).map_err(|e| e.to_string())?;
+    let text = crate::chat::at_rest::read_to_string(docs_dir(config_dir, &library.id)?.join(format!("{}.txt", doc.id))).map_err(|e| e.to_string())?;
     let chars: Vec<char> = text.chars().collect();
     let parts = chars.len().div_ceil(READ_PART).max(1);
     if part > parts {
@@ -631,7 +631,7 @@ pub async fn add_web_page(config_dir: &Path, library_id: &str, url: &str) -> Res
 pub fn document_text(config_dir: &Path, library_id: &str, document_id: &str, max: usize) -> Result<String, String> {
     let library = load(config_dir, library_id)?;
     let doc = library.documents.iter().find(|d| d.id == document_id).ok_or("That document is gone.")?;
-    let text = std::fs::read_to_string(docs_dir(config_dir, &library.id)?.join(format!("{}.txt", doc.id))).map_err(|e| e.to_string())?;
+    let text = crate::chat::at_rest::read_to_string(docs_dir(config_dir, &library.id)?.join(format!("{}.txt", doc.id))).map_err(|e| e.to_string())?;
     Ok(if text.chars().count() > max { format!("{}\n\n… (the rest is cut here; the assistant reads it all with read_document)", text.chars().take(max).collect::<String>()) } else { text })
 }
 
@@ -742,7 +742,7 @@ pub fn sync(config_dir: &Path, library_id: &str) -> Result<SyncReport, String> {
                     modified: modified_secs(&path),
                     source: Some(source),
                 };
-                std::fs::write(docs.join(format!("{}.txt", doc.id)), text).map_err(|e| e.to_string())?;
+                crate::chat::at_rest::write(docs.join(format!("{}.txt", doc.id)), text).map_err(|e| e.to_string())?;
                 library.documents.push(doc);
                 report.added += 1;
             }
@@ -852,7 +852,7 @@ pub fn search(config_dir: &Path, only: &[String], query: &str, k: usize) -> Vec<
     for library in list(config_dir).into_iter().filter(|l| only.is_empty() || only.contains(&l.id)) {
         let Ok(dir) = lib_dir(config_dir, &library.id) else { continue };
         for document in &library.documents {
-            let Ok(text) = std::fs::read_to_string(dir.join("docs").join(format!("{}.txt", document.id))) else { continue };
+            let Ok(text) = crate::chat::at_rest::read_to_string(dir.join("docs").join(format!("{}.txt", document.id))) else { continue };
             for (i, passage) in passages(&text).into_iter().enumerate() {
                 let words = tokens(&passage);
                 let mut terms = HashMap::new();
@@ -936,10 +936,10 @@ mod tests {
         let config = tempfile::tempdir().unwrap();
         let folder = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(folder.path().join("notes/.git")).unwrap();
-        std::fs::write(folder.path().join("a.md"), "Alpha project kickoff notes").unwrap();
-        std::fs::write(folder.path().join("notes/b.txt"), "Beta budget is 40k").unwrap();
-        std::fs::write(folder.path().join("notes/.git/config"), "hidden").unwrap();
-        std::fs::write(folder.path().join("photo.png"), [0u8, 1, 2]).unwrap();
+        crate::chat::at_rest::write(folder.path().join("a.md"), "Alpha project kickoff notes").unwrap();
+        crate::chat::at_rest::write(folder.path().join("notes/b.txt"), "Beta budget is 40k").unwrap();
+        crate::chat::at_rest::write(folder.path().join("notes/.git/config"), "hidden").unwrap();
+        crate::chat::at_rest::write(folder.path().join("photo.png"), [0u8, 1, 2]).unwrap();
         let lib = create(config.path(), "Work", "").unwrap();
         let r = add_folder(config.path(), &lib.id, folder.path()).unwrap();
         assert_eq!((r.added, r.updated, r.removed), (2, 0, 0));
@@ -950,9 +950,9 @@ mod tests {
         assert_eq!(sync(config.path(), &lib.id).unwrap(), SyncReport::default());
         // A change, a deletion and a new file.
         std::thread::sleep(std::time::Duration::from_millis(1100));
-        std::fs::write(folder.path().join("a.md"), "Alpha project moved to March").unwrap();
+        crate::chat::at_rest::write(folder.path().join("a.md"), "Alpha project moved to March").unwrap();
         std::fs::remove_file(folder.path().join("notes/b.txt")).unwrap();
-        std::fs::write(folder.path().join("c.csv"), "item,cost\nchairs,300").unwrap();
+        crate::chat::at_rest::write(folder.path().join("c.csv"), "item,cost\nchairs,300").unwrap();
         let r = sync(config.path(), &lib.id).unwrap();
         assert_eq!((r.added, r.updated, r.removed), (1, 1, 1));
         assert!(!search(config.path(), &[lib.id.clone()], "March", 3).is_empty());
@@ -1005,7 +1005,7 @@ mod tests {
         // Libraries index them too.
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("report.docx");
-        std::fs::write(&path, &docx).unwrap();
+        crate::chat::at_rest::write(&path, &docx).unwrap();
         assert_eq!(extract(&path).unwrap(), "Quarterly report & plan Revenue 12 €");
     }
 
@@ -1029,11 +1029,11 @@ mod tests {
         let files = tempfile::tempdir().unwrap();
         let lib = create(dir.path(), "Energy", "Regulation notes").unwrap();
         let a = files.path().join("tariffs.md");
-        std::fs::write(&a, "ERSE sets regulated electricity tariffs every year after public consultation.").unwrap();
+        crate::chat::at_rest::write(&a, "ERSE sets regulated electricity tariffs every year after public consultation.").unwrap();
         let b = files.path().join("garden.txt");
-        std::fs::write(&b, "Tomatoes need sun and regular watering in summer.").unwrap();
+        crate::chat::at_rest::write(&b, "Tomatoes need sun and regular watering in summer.").unwrap();
         let html = files.path().join("page.html");
-        std::fs::write(&html, "<html><head><title>x</title></head><body><p>Gas market rules</p></body></html>").unwrap();
+        crate::chat::at_rest::write(&html, "<html><head><title>x</title></head><body><p>Gas market rules</p></body></html>").unwrap();
         add(dir.path(), &lib.id, &a).unwrap();
         add(dir.path(), &lib.id, &b).unwrap();
         let lib = add(dir.path(), &lib.id, &html).unwrap();
@@ -1045,7 +1045,7 @@ mod tests {
         assert!(search(dir.path(), &["other".into()], "tariffs", 5).is_empty());
 
         let binary = files.path().join("x.bin");
-        std::fs::write(&binary, [0u8, 1, 2, 3]).unwrap();
+        crate::chat::at_rest::write(&binary, [0u8, 1, 2, 3]).unwrap();
         assert!(add(dir.path(), &lib.id, &binary).is_err());
 
         let doc = lib.documents[1].id.clone();

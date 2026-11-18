@@ -149,7 +149,7 @@ fn state_path(config_dir: &Path) -> PathBuf {
 }
 
 fn load_state(config_dir: &Path) -> SkillState {
-    std::fs::read_to_string(state_path(config_dir))
+    crate::chat::at_rest::read_to_string(state_path(config_dir))
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok())
         .unwrap_or_default()
@@ -194,7 +194,7 @@ pub fn list(config_dir: &Path) -> Vec<Skill> {
     let mut skills: Vec<Skill> = Vec::new();
     if let Ok(entries) = std::fs::read_dir(skills_dir(config_dir)) {
         for entry in entries.filter_map(Result::ok) {
-            let Ok(text) = std::fs::read_to_string(entry.path().join("SKILL.md")) else { continue };
+            let Ok(text) = crate::chat::at_rest::read_to_string(entry.path().join("SKILL.md")) else { continue };
             let Some((name, description, body)) = parse(&text) else { continue };
             if !valid_name(&name) {
                 continue;
@@ -229,7 +229,7 @@ pub fn save(config_dir: &Path, name: &str, description: &str, body: &str) -> Res
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let next = render(name, description, body);
     // The version being replaced is kept, so any earlier one can come back.
-    if let Ok(previous) = std::fs::read_to_string(dir.join("SKILL.md")) {
+    if let Ok(previous) = crate::chat::at_rest::read_to_string(dir.join("SKILL.md")) {
         if previous != next {
             let history = dir.join("history");
             std::fs::create_dir_all(&history).map_err(|e| e.to_string())?;
@@ -241,11 +241,11 @@ pub fn save(config_dir: &Path, name: &str, description: &str, body: &str) -> Res
                 file = history.join(format!("{stamp}-{n}.md"));
                 n += 1;
             }
-            std::fs::write(file, previous).map_err(|e| e.to_string())?;
+            crate::chat::at_rest::write(file, previous).map_err(|e| e.to_string())?;
             prune_history(&history);
         }
     }
-    std::fs::write(dir.join("SKILL.md"), next).map_err(|e| e.to_string())
+    crate::chat::at_rest::write(dir.join("SKILL.md"), next).map_err(|e| e.to_string())
 }
 
 /// Versions kept per skill.
@@ -282,7 +282,7 @@ pub fn history(config_dir: &Path, name: &str) -> Result<Vec<Version>, String> {
         .flatten()
         .filter_map(|e| {
             let id = e.path().file_stem()?.to_string_lossy().into_owned();
-            let (_, description, body) = parse(&std::fs::read_to_string(e.path()).ok()?)?;
+            let (_, description, body) = parse(&crate::chat::at_rest::read_to_string(e.path()).ok()?)?;
             Some(Version { id, description, body })
         })
         .collect();
@@ -317,7 +317,7 @@ pub fn set_enabled(config_dir: &Path, name: &str, enabled: bool) -> Result<(), S
 /// Imports a `SKILL.md`, or a folder holding one, by copying its text.
 pub fn import(config_dir: &Path, source: &Path) -> Result<String, String> {
     let file = if source.is_dir() { source.join("SKILL.md") } else { source.to_path_buf() };
-    let text = std::fs::read_to_string(&file).map_err(|e| format!("could not read {file:?}: {e}"))?;
+    let text = crate::chat::at_rest::read_to_string(&file).map_err(|e| format!("could not read {file:?}: {e}"))?;
     let (name, description, body) =
         parse(&text).ok_or("That file has no `---` front matter with a name and description.")?;
     save(config_dir, &name, &description, &body)?;
@@ -478,7 +478,7 @@ mod tests {
     fn importing_reads_a_folder_or_a_file() {
         let dir = tempfile::tempdir().unwrap();
         let source = tempfile::tempdir().unwrap();
-        std::fs::write(source.path().join("SKILL.md"), render("imported", "Use it.", "Body")).unwrap();
+        crate::chat::at_rest::write(source.path().join("SKILL.md"), render("imported", "Use it.", "Body")).unwrap();
         assert_eq!(import(dir.path(), source.path()).unwrap(), "imported");
         assert_eq!(find(dir.path(), "imported").unwrap().body, "Body");
     }

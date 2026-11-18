@@ -67,7 +67,7 @@ fn path(config_dir: &Path) -> PathBuf {
 }
 
 pub fn load(config_dir: &Path) -> Vec<Agent> {
-    std::fs::read_to_string(path(config_dir))
+    crate::chat::at_rest::read_to_string(path(config_dir))
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok())
         .unwrap_or_default()
@@ -210,7 +210,7 @@ fn notebook_path(config_dir: &Path, id: &str) -> Result<PathBuf, String> {
 
 /// The agent's notebook: what it keeps across conversations and runs, in Markdown.
 pub fn notebook(config_dir: &Path, id: &str) -> String {
-    notebook_path(config_dir, id).ok().and_then(|p| std::fs::read_to_string(p).ok()).unwrap_or_default()
+    notebook_path(config_dir, id).ok().and_then(|p| crate::chat::at_rest::read_to_string(p).ok()).unwrap_or_default()
 }
 
 pub fn save_notebook(config_dir: &Path, id: &str, text: &str) -> Result<(), String> {
@@ -222,7 +222,7 @@ pub fn save_notebook(config_dir: &Path, id: &str, text: &str) -> Result<(), Stri
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    std::fs::write(path, text).map_err(|e| e.to_string())
+    crate::chat::at_rest::write(path, text).map_err(|e| e.to_string())
 }
 
 pub fn notebook_tool() -> super::tools::ChatTool {

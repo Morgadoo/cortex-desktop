@@ -256,7 +256,7 @@ mod tests {
             format!(r#"{{"type":"user","cwd":"{cwd}","message":{{"role":"user","content":[{{"type":"tool_result","content":"ok"}}]}}}}"#),
             format!(r#"{{"type":"assistant","cwd":"{cwd}","timestamp":"2026-11-01T10:01:00Z","message":{{"role":"assistant","content":[{{"type":"text","text":"Fixed."}}]}}}}"#),
         ];
-        std::fs::write(&file, lines.join("\n")).unwrap();
+        crate::chat::at_rest::write(&file, lines.join("\n")).unwrap();
         let s = read(&file).unwrap();
         assert_eq!(s.folder, cwd);
         assert_eq!(s.turns.len(), 2, "{:?}", s.turns);
@@ -278,7 +278,7 @@ mod tests {
     fn codex_sessions_are_read() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("rollout-2026-11-01.jsonl");
-        std::fs::write(&file, [
+        crate::chat::at_rest::write(&file, [
             r#"{"type":"session_meta","payload":{"cwd":"/repo"}}"#,
             r#"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>cwd</environment_context>"}]}}"#,
             r#"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Add a README"}]}}"#,

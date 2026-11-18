@@ -62,7 +62,7 @@ fn settings_path(config_dir: &Path) -> PathBuf {
 }
 
 pub fn load(config_dir: &Path) -> ApiServerSettings {
-    std::fs::read_to_string(settings_path(config_dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::chat::at_rest::read_to_string(settings_path(config_dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
 }
 
 pub fn save(config_dir: &Path, settings: &ApiServerSettings) -> Result<(), String> {

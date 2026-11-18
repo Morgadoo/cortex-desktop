@@ -41,7 +41,7 @@ fn settings_path(config_dir: &Path) -> PathBuf {
 
 pub fn always_allowed(config_dir: &Path) -> bool {
     if !LOADED.swap(true, Ordering::Relaxed) {
-        let saved = std::fs::read_to_string(settings_path(config_dir))
+        let saved = crate::chat::at_rest::read_to_string(settings_path(config_dir))
             .ok()
             .and_then(|t| serde_json::from_str::<Value>(&t).ok())
             .and_then(|v| v.get("alwaysAllow").and_then(Value::as_bool))
@@ -224,7 +224,7 @@ pub async fn run(config_dir: &Path, conversation_id: &str, args: &Value) -> Outc
         return err(format!("Could not create the workspace: {e}"));
     }
     let script = dir.join(format!(".cell.{}", lang.ext));
-    if let Err(e) = std::fs::write(&script, code) {
+    if let Err(e) = crate::chat::at_rest::write(&script, code) {
         return err(format!("Could not write the program: {e}"));
     }
     let before = snapshot(&dir);
@@ -356,7 +356,7 @@ pub fn serve(config_dir: &Path, rest: &str) -> tauri::http::Response<Vec<u8>> {
     if !real.starts_with(&root) {
         return not_found();
     }
-    match std::fs::read(&real) {
+    match crate::chat::at_rest::read(&real) {
         Ok(bytes) => tauri::http::Response::builder()
             .status(200)
             .header("Content-Type", content_type(&file))
@@ -438,7 +438,7 @@ mod permission_tests {
     fn always_allow_is_saved() {
         let dir = tempfile::tempdir().unwrap();
         set_always_allowed(dir.path(), true).unwrap();
-        let saved = std::fs::read_to_string(settings_path(dir.path())).unwrap();
+        let saved = crate::chat::at_rest::read_to_string(settings_path(dir.path())).unwrap();
         assert!(saved.contains("\"alwaysAllow\": true") || saved.contains("\"alwaysAllow\":true"));
         assert!(always_allowed(dir.path()));
         set_always_allowed(dir.path(), false).unwrap();

@@ -48,12 +48,12 @@ pub fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
     }
     let text = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
     let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, text).map_err(|e| format!("could not write {tmp:?}: {e}"))?;
+    crate::chat::at_rest::write(&tmp, text).map_err(|e| format!("could not write {tmp:?}: {e}"))?;
     std::fs::rename(&tmp, path).map_err(|e| format!("could not replace {path:?}: {e}"))
 }
 
 fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Option<T> {
-    let text = std::fs::read_to_string(path).ok()?;
+    let text = crate::chat::at_rest::read_to_string(path).ok()?;
     match serde_json::from_str(&text) {
         Ok(value) => Some(value),
         Err(e) => {

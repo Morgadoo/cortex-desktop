@@ -193,7 +193,7 @@ pub async fn generate(config_dir: &Path, conversation_id: &str, args: &Value) ->
         Err(e) => return err(e),
     };
     let name = format!("{}.{}", chrono::Local::now().format("%Y%m%d-%H%M%S-%3f"), extension(&image));
-    if let Err(e) = std::fs::create_dir_all(&dir).and_then(|()| std::fs::write(dir.join(&name), &image)) {
+    if let Err(e) = std::fs::create_dir_all(&dir).and_then(|()| crate::chat::at_rest::write(dir.join(&name), &image)) {
         return err(format!("Could not save the image: {e}"));
     }
     Outcome {
@@ -230,7 +230,7 @@ fn reference_image(config_dir: &Path, conversation_id: &str, reference: &str) ->
         if !canonical.starts_with(root.canonicalize().map_err(|e| e.to_string())?) {
             return Err("The reference must be an image in this conversation's workspace.".into());
         }
-        let bytes = std::fs::read(&canonical).map_err(|e| e.to_string())?;
+        let bytes = crate::chat::at_rest::read(&canonical).map_err(|e| e.to_string())?;
         let media = ImageMediaType::sniff(&bytes);
         (base64::engine::general_purpose::STANDARD.encode(bytes), media)
     };

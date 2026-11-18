@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 142 |
-| PARTIAL | 86 | 49 |
+| DONE | 58 | 143 |
+| PARTIAL | 86 | 48 |
 | MISSING | 48 | 1 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9 · LibreChat 34 / 8 / 0 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 17 / 4 / 0 / 5 · Osaurus 15 / 10 / 1 / 4 · OpenBot 21 / 8 / 0 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9 · LibreChat 34 / 8 / 0 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 17 / 4 / 0 / 5 · Osaurus 16 / 9 / 1 / 4 · OpenBot 21 / 8 / 0 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -205,7 +205,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9
 | Osaurus | On-device images | PARTIAL | PARTIAL | Cloud only (parity L233) |
 | Osaurus | Encrypted sync between devices | MISSING | DONE | parity: Sync between devices (`sync.rs`; Settings → Profile). Verified live with two configurations sharing one folder: device A sent 105 encrypted items (no plaintext in the folder); device B refused a wrong passphrase, then received A's 5 extra conversations and sent its renamed chat, which reached A; a chat deleted on A was moved to B's trash on B's next sync |
 | Osaurus | Workspaces | MISSING | OUT OF SCOPE | Team (parity L217) |
-| Osaurus | Encryption at rest | PARTIAL | PARTIAL | Local files, keys in the keychain. Missing: encrypted data |
+| Osaurus | Encryption at rest | PARTIAL | DONE | parity: Encrypt data on this computer (`at_rest.rs`; Settings → Profile). Verified live: 338 files were sealed (no plaintext left outside sandboxes), the app restarted, unlocked from the keychain, listed and searched chats and saved a new one sealed; decrypting restored every file in the clear |
 | Osaurus | Telemetry toggles | MISSING | DONE | Error reports opt-in (absent from builds without a reporting key), update check at start can be turned off (parity: Error reports and update checks) |
 | Osaurus | Agent identity, encrypted relay | MISSING | OUT OF SCOPE | Team |
 | OpenBot | FIFO queue: pause, resume, cancel, survives a crash | PARTIAL | DONE | Queue kept across restarts, paused and resumed, cleared |

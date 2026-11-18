@@ -39,7 +39,7 @@ fn conversation_file(config_dir: &Path, id: &str) -> Result<PathBuf, String> {
 }
 
 fn readable(path: &Path) -> Option<Conversation> {
-    serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()
+    serde_json::from_str(&crate::chat::at_rest::read_to_string(path).ok()?).ok()
 }
 
 /// Called before a conversation file is replaced: keeps today's first copy of it.
@@ -253,7 +253,7 @@ mod tests {
         assert!(list_trash(dir.path()).is_empty() && restore(dir.path(), ID).is_err());
 
         // A damaged file is replaced by the backup and kept in quarantine.
-        std::fs::write(conversation_file(dir.path(), ID).unwrap(), "{ broken").unwrap();
+        crate::chat::at_rest::write(conversation_file(dir.path(), ID).unwrap(), "{ broken").unwrap();
         let health = health(dir.path());
         assert_eq!(health.damaged.len(), 1);
         assert_eq!(health.damaged[0].backup.as_deref(), Some(today().as_str()));
@@ -269,7 +269,7 @@ mod tests {
         assert!(list_trash(dir.path()).is_empty());
 
         // State files are copied once a day; old backups and trash go.
-        std::fs::write(chat_dir(dir.path()).join("projects.json"), "[]").unwrap();
+        crate::chat::at_rest::write(chat_dir(dir.path()).join("projects.json"), "[]").unwrap();
         std::fs::create_dir_all(backups_dir(dir.path()).join("2020-01-01/conversations")).unwrap();
         daily(dir.path());
         assert!(backups_dir(dir.path()).join(today()).join("state/projects.json").exists());

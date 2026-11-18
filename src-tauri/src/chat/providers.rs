@@ -92,7 +92,7 @@ pub fn file_path(config_dir: &Path) -> PathBuf {
 }
 
 pub fn load(config_dir: &Path) -> ProvidersFile {
-    std::fs::read_to_string(file_path(config_dir))
+    crate::chat::at_rest::read_to_string(file_path(config_dir))
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
         .unwrap_or_default()

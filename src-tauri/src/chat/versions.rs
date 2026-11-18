@@ -42,7 +42,7 @@ pub fn keep<T: Serialize>(config_dir: &Path, kind: &str, id: &str, previous: &T,
         file = dir.join(format!("{stamp}-{n}.json"));
         n += 1;
     }
-    std::fs::write(&file, serde_json::to_string_pretty(&previous).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    crate::chat::at_rest::write(&file, serde_json::to_string_pretty(&previous).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
     let mut files: Vec<_> = std::fs::read_dir(&dir).into_iter().flatten().flatten().map(|e| e.path()).collect();
     files.sort();
     for old in files.iter().take(files.len().saturating_sub(KEEP)) {
@@ -68,7 +68,7 @@ pub fn list(config_dir: &Path, kind: &str, id: &str) -> Result<Vec<Version>, Str
         .flatten()
         .filter_map(|e| {
             let id = e.path().file_stem()?.to_string_lossy().into_owned();
-            let value = serde_json::from_str(&std::fs::read_to_string(e.path()).ok()?).ok()?;
+            let value = serde_json::from_str(&crate::chat::at_rest::read_to_string(e.path()).ok()?).ok()?;
             Some(Version { id, value })
         })
         .collect();

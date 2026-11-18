@@ -47,7 +47,7 @@ fn dir(config_dir: &Path) -> PathBuf {
 }
 
 pub fn list(config_dir: &Path) -> Vec<Server> {
-    std::fs::read_to_string(dir(config_dir).join("servers.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::chat::at_rest::read_to_string(dir(config_dir).join("servers.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
 }
 
 fn store(config_dir: &Path, servers: &[Server]) -> Result<(), String> {
@@ -167,7 +167,7 @@ pub fn tools(config_dir: &Path) -> Vec<ChatTool> {
     let mut out = Vec::new();
     for server in list(config_dir).into_iter().filter(|s| s.enabled) {
         let Ok(path) = spec_path(config_dir, &server.id) else { continue };
-        let Some(spec) = std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) else { continue };
+        let Some(spec) = crate::chat::at_rest::read_to_string(path).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) else { continue };
         for op in operations(&spec) {
             let read_only = op.method == "GET";
             out.push(ChatTool {
@@ -298,7 +298,7 @@ fn url_escape(s: &str) -> String {
 pub async fn call(config_dir: &Path, tool: &ChatTool, input: &Value) -> Result<String, String> {
     let id = tool.connector_id.as_deref().and_then(|c| c.strip_prefix(PREFIX)).ok_or("not an OpenAPI tool")?;
     let server = list(config_dir).into_iter().find(|s| s.id == id).ok_or("That API server was removed.")?;
-    let spec: Value = std::fs::read_to_string(spec_path(config_dir, id)?).ok().and_then(|t| serde_json::from_str(&t).ok()).ok_or("The API's spec is missing; refresh it in Settings.")?;
+    let spec: Value = crate::chat::at_rest::read_to_string(spec_path(config_dir, id)?).ok().and_then(|t| serde_json::from_str(&t).ok()).ok_or("The API's spec is missing; refresh it in Settings.")?;
     let op = operations(&spec).into_iter().find(|o| o.id == tool.tool_name).ok_or("That operation is no longer in the spec.")?;
     let (method, url, body) = request_for(&server.base_url, &op, input)?;
     let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(60)).build().map_err(|e| e.to_string())?;

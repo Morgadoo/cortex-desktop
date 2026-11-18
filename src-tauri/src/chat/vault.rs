@@ -46,7 +46,7 @@ fn keychain_name(name: &str) -> String {
 }
 
 pub fn list(config_dir: &Path) -> Vec<Secret> {
-    std::fs::read_to_string(path(config_dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::chat::at_rest::read_to_string(path(config_dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
 }
 
 fn write(config_dir: &Path, secrets: &[Secret]) -> Result<(), String> {
@@ -54,7 +54,7 @@ fn write(config_dir: &Path, secrets: &[Secret]) -> Result<(), String> {
     if let Some(dir) = p.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
-    std::fs::write(p, serde_json::to_string_pretty(secrets).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+    crate::chat::at_rest::write(p, serde_json::to_string_pretty(secrets).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
 }
 
 /// `GITHUB_TOKEN`-style: capitals, digits and underscores, not starting with a digit.

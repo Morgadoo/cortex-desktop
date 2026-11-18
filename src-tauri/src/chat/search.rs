@@ -119,7 +119,7 @@ fn settings_path(config_dir: &std::path::Path) -> std::path::PathBuf {
 }
 
 pub fn load_settings(config_dir: &std::path::Path) -> SearchSettings {
-    std::fs::read_to_string(settings_path(config_dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::chat::at_rest::read_to_string(settings_path(config_dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
 }
 
 pub fn save_settings(config_dir: &std::path::Path, settings: &SearchSettings) -> Result<(), String> {

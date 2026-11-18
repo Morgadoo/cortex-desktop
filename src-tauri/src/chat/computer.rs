@@ -40,7 +40,7 @@ fn settings_path(config_dir: &Path) -> std::path::PathBuf {
 }
 
 pub fn load(config_dir: &Path) -> ComputerSettings {
-    std::fs::read_to_string(settings_path(config_dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::chat::at_rest::read_to_string(settings_path(config_dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
 }
 
 pub fn save(config_dir: &Path, settings: &ComputerSettings) -> Result<(), String> {
@@ -254,7 +254,7 @@ pub(crate) async fn capture() -> Result<Vec<u8>, String> {
         let path = std::env::temp_dir().join(format!("lumo-screen-{}.png", uuid::Uuid::new_v4().simple()));
         let p = path.to_string_lossy().into_owned();
         output("screencapture", &["-x", "-t", "png", &p]).await?;
-        let bytes = std::fs::read(&path).map_err(|e| e.to_string());
+        let bytes = crate::chat::at_rest::read(&path).map_err(|e| e.to_string());
         let _ = std::fs::remove_file(&path);
         return bytes;
     }

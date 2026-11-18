@@ -97,7 +97,7 @@ pub fn from_dir(root: &Path) -> Result<Files, String> {
                 }
             } else if kind.is_file() && entry.metadata().is_ok_and(|m| m.len() as usize <= MAX_FILE) {
                 let rel = path.strip_prefix(root).map_err(|e| e.to_string())?.to_string_lossy().replace('\\', "/");
-                add(&mut files, &mut total, rel, std::fs::read(&path).map_err(|e| e.to_string())?)?;
+                add(&mut files, &mut total, rel, crate::chat::at_rest::read(&path).map_err(|e| e.to_string())?)?;
             }
         }
     }
@@ -421,7 +421,7 @@ pub fn keep_files(files: &Files, root: &str, dir: &Path) -> Result<(), String> {
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
-        std::fs::write(&target, bytes).map_err(|e| e.to_string())?;
+        crate::chat::at_rest::write(&target, bytes).map_err(|e| e.to_string())?;
         #[cfg(unix)]
         if rel.ends_with(".sh") || rel.starts_with("bin/") || rel.starts_with("scripts/") {
             use std::os::unix::fs::PermissionsExt as _;

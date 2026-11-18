@@ -84,7 +84,7 @@ fn builtins() -> Vec<Workflow> {
 
 /// The user's workflows, then the built-in ones they have not replaced.
 pub fn load(config_dir: &Path) -> Vec<Workflow> {
-    let mut mine: Vec<Workflow> = std::fs::read_to_string(path(config_dir))
+    let mut mine: Vec<Workflow> = crate::chat::at_rest::read_to_string(path(config_dir))
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok())
         .unwrap_or_default();

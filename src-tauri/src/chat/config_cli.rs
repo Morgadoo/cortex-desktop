@@ -70,7 +70,7 @@ pub fn check(config_dir: &Path) -> Vec<(&'static str, Result<&'static str, Strin
     FILES
         .iter()
         .map(|f| {
-            let state = match std::fs::read_to_string(config_dir.join(f.path)) {
+            let state = match crate::chat::at_rest::read_to_string(config_dir.join(f.path)) {
                 Err(_) => Ok("missing (defaults apply)"),
                 Ok(text) => (f.check)(&text).map(|_| "ok"),
             };
@@ -146,7 +146,7 @@ fn unknown_settings(value: &Value, schema: &Value, root: &Value, at: &str, out: 
 pub fn warnings(config_dir: &Path) -> Vec<String> {
     let mut out = Vec::new();
     for f in FILES {
-        let Ok(text) = std::fs::read_to_string(config_dir.join(f.path)) else { continue };
+        let Ok(text) = crate::chat::at_rest::read_to_string(config_dir.join(f.path)) else { continue };
         let Ok(value) = serde_json::from_str::<Value>(&text) else { continue };
         let schema = serde_json::to_value((f.schema)()).unwrap_or(Value::Null);
         let mut found = Vec::new();
@@ -257,7 +257,7 @@ mod tests {
         // What the app writes passes its own check.
         let dir = tempfile::tempdir().unwrap();
         super::super::providers::save(dir.path(), &super::super::providers::ProvidersFile { default_model: Some("x/y".into()), ..Default::default() }).unwrap();
-        std::fs::write(dir.path().join("chat/hooks.json"), "{\"not\": \"a list\"}").unwrap();
+        crate::chat::at_rest::write(dir.path().join("chat/hooks.json"), "{\"not\": \"a list\"}").unwrap();
         let states = check(dir.path());
         assert_eq!(states.iter().find(|(p, _)| *p == "chat/providers.json").unwrap().1, Ok("ok"));
         assert!(states.iter().find(|(p, _)| *p == "chat/hooks.json").unwrap().1.is_err());
@@ -272,8 +272,8 @@ mod tests {
     fn unknown_settings_are_named_with_a_suggestion() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(dir.path().join("chat")).unwrap();
-        std::fs::write(dir.path().join("chat/providers.json"), r#"{"defaultModle": "x/y", "providers": {"xai": {"enabled": true, "baseURL": "u"}}, "colour": 1}"#).unwrap();
-        std::fs::write(dir.path().join("chat/hooks.json"), r#"[{"event": "turn_end", "command": "echo", "enabld": true}]"#).unwrap();
+        crate::chat::at_rest::write(dir.path().join("chat/providers.json"), r#"{"defaultModle": "x/y", "providers": {"xai": {"enabled": true, "baseURL": "u"}}, "colour": 1}"#).unwrap();
+        crate::chat::at_rest::write(dir.path().join("chat/hooks.json"), r#"[{"event": "turn_end", "command": "echo", "enabld": true}]"#).unwrap();
         let w = warnings(dir.path());
         assert!(w.contains(&"chat/providers.json: unknown setting `defaultModle` (did you mean `defaultModel`?)".to_string()), "{w:?}");
         assert!(w.iter().any(|x| x.contains("providers.xai.baseURL") && x.contains("baseUrl")), "{w:?}");

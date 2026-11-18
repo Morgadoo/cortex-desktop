@@ -51,7 +51,7 @@ fn settings_path(config_dir: &Path) -> PathBuf {
 }
 
 pub fn load(config_dir: &Path) -> EmbeddingSettings {
-    std::fs::read_to_string(settings_path(config_dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::chat::at_rest::read_to_string(settings_path(config_dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
 }
 
 pub fn save(config_dir: &Path, settings: &EmbeddingSettings) -> Result<(), String> {
@@ -104,7 +104,7 @@ fn cache_path(doc_dir: &Path, document_id: &str, model: &str) -> PathBuf {
 }
 
 pub fn read_cache(doc_dir: &Path, document_id: &str, model: &str, passages: usize) -> Option<Vec<Vec<f32>>> {
-    let cached: Cached = serde_json::from_str(&std::fs::read_to_string(cache_path(doc_dir, document_id, model)).ok()?).ok()?;
+    let cached: Cached = serde_json::from_str(&crate::chat::at_rest::read_to_string(cache_path(doc_dir, document_id, model)).ok()?).ok()?;
     (cached.model == model && cached.vectors.len() == passages).then_some(cached.vectors)
 }
 
@@ -153,7 +153,7 @@ pub async fn index(config_dir: &Path, settings: &EmbeddingSettings, only: &[Stri
     for library in libraries::list(config_dir).into_iter().filter(|l| only.is_empty() || only.contains(&l.id)) {
         let doc_dir = libraries::docs_dir(config_dir, &library.id)?;
         for document in &library.documents {
-            let Ok(text) = std::fs::read_to_string(doc_dir.join(format!("{}.txt", document.id))) else { continue };
+            let Ok(text) = crate::chat::at_rest::read_to_string(doc_dir.join(format!("{}.txt", document.id))) else { continue };
             let passages = libraries::passages(&text);
             if passages.is_empty() || read_cache(&doc_dir, &document.id, &settings.model, passages.len()).is_some() {
                 continue;
@@ -174,7 +174,7 @@ async fn semantic(config_dir: &Path, settings: &EmbeddingSettings, only: &[Strin
     for library in libraries::list(config_dir).into_iter().filter(|l| only.is_empty() || only.contains(&l.id)) {
         let doc_dir = libraries::docs_dir(config_dir, &library.id)?;
         for document in &library.documents {
-            let Ok(text) = std::fs::read_to_string(doc_dir.join(format!("{}.txt", document.id))) else { continue };
+            let Ok(text) = crate::chat::at_rest::read_to_string(doc_dir.join(format!("{}.txt", document.id))) else { continue };
             let passages = libraries::passages(&text);
             let Some(vectors) = read_cache(&doc_dir, &document.id, &settings.model, passages.len()) else { continue };
             for (i, (passage, vector)) in passages.into_iter().zip(vectors).enumerate() {

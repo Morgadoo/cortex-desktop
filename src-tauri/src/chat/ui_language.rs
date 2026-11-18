@@ -77,7 +77,7 @@ fn path(config_dir: &Path, code: &str) -> Option<PathBuf> {
 
 /// What has been translated for `code` so far.
 pub fn load(config_dir: &Path, code: &str) -> BTreeMap<String, String> {
-    path(config_dir, code).and_then(|p| std::fs::read_to_string(p).ok()).and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    path(config_dir, code).and_then(|p| crate::chat::at_rest::read_to_string(p).ok()).and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
 }
 
 fn save(config_dir: &Path, code: &str, map: &BTreeMap<String, String>) -> Result<(), String> {
@@ -85,7 +85,7 @@ fn save(config_dir: &Path, code: &str, map: &BTreeMap<String, String>) -> Result
     if let Some(dir) = p.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
-    std::fs::write(p, serde_json::to_string_pretty(map).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+    crate::chat::at_rest::write(p, serde_json::to_string_pretty(map).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
 }
 
 /// A translation keeps every `{n}` placeholder of the original, and no others.

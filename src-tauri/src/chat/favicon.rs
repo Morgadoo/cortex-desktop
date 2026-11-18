@@ -120,7 +120,7 @@ pub async fn get(config_dir: &Path, host: &str) -> Option<String> {
     }
     let path = cache_path(config_dir, &host);
     if let Ok(meta) = std::fs::metadata(&path) {
-        let cached = std::fs::read_to_string(&path).unwrap_or_default();
+        let cached = crate::chat::at_rest::read_to_string(&path).unwrap_or_default();
         if !cached.is_empty() {
             return Some(cached);
         }
@@ -137,7 +137,7 @@ pub async fn get(config_dir: &Path, host: &str) -> Option<String> {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    let _ = std::fs::write(&path, icon.as_deref().unwrap_or_default());
+    let _ = crate::chat::at_rest::write(&path, icon.as_deref().unwrap_or_default());
     icon
 }
 
@@ -165,11 +165,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = cache_path(dir.path(), "example.com");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(&path, "").unwrap();
+        crate::chat::at_rest::write(&path, "").unwrap();
         let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         // A fresh miss answers from the cache without going to the network.
         assert_eq!(rt.block_on(get(dir.path(), "example.com")), None);
-        std::fs::write(&path, "data:image/png;base64,AAAA").unwrap();
+        crate::chat::at_rest::write(&path, "data:image/png;base64,AAAA").unwrap();
         assert_eq!(rt.block_on(get(dir.path(), "www.EXAMPLE.com")).as_deref(), Some("data:image/png;base64,AAAA"));
     }
 }

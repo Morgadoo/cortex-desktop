@@ -499,7 +499,7 @@ pub async fn chat_read_document(name: String, data: String) -> Result<String, St
         let text = if ext == "pdf" {
             // The PDF reader takes a path.
             let tmp = std::env::temp_dir().join(format!("lumo-attachment-{}.pdf", uuid::Uuid::new_v4().simple()));
-            std::fs::write(&tmp, &bytes).map_err(|e| e.to_string())?;
+            crate::chat::at_rest::write(&tmp, &bytes).map_err(|e| e.to_string())?;
             let text = super::libraries::read_text(&tmp);
             let _ = std::fs::remove_file(&tmp);
             text?
@@ -747,7 +747,7 @@ pub async fn chat_export_conversation(app: AppHandle, id: String) -> Result<bool
         return Ok(false);
     };
     let path = path.into_path().map_err(|e| e.to_string())?;
-    std::fs::write(path, text).map_err(|e| e.to_string())?;
+    crate::chat::at_rest::write(path, text).map_err(|e| e.to_string())?;
     Ok(true)
 }
 
@@ -919,6 +919,20 @@ pub async fn chat_shared_links(app: AppHandle) -> Result<Vec<super::share::Share
 #[tauri::command]
 pub fn chat_stop_share(app: AppHandle, token: String) -> Result<(), String> {
     super::share::stop(&config_dir(&app)?, &token)
+}
+
+/// Encryption at rest: whether it is on, and how many files are sealed.
+#[tauri::command]
+pub async fn chat_encryption_status(app: AppHandle) -> Result<super::at_rest::Status, String> {
+    let dir = config_dir(&app)?;
+    tokio::task::spawn_blocking(move || super::at_rest::status(&dir)).await.map_err(|e| e.to_string())
+}
+
+/// Turns encryption at rest on or off; returns how many files were converted.
+#[tauri::command]
+pub async fn chat_set_encryption(app: AppHandle, on: bool) -> Result<usize, String> {
+    let dir = config_dir(&app)?;
+    if on { super::at_rest::enable(&dir).await } else { super::at_rest::disable(&dir).await }
 }
 
 /// Sync between devices, as this device has it.
@@ -1150,7 +1164,7 @@ pub async fn chat_export_canvas(app: AppHandle, id: String) -> Result<bool, Stri
         let sheets = super::sheets::split_sheets(canvas.content(), &canvas.title);
         let csv = sheets.first().map(|(_, c)| c.clone()).unwrap_or_default();
         if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("csv")) {
-            std::fs::write(&path, csv).map_err(|e| e.to_string())?;
+            crate::chat::at_rest::write(&path, csv).map_err(|e| e.to_string())?;
         } else {
             // Every sheet into one workbook; CSV holds the first only.
             let rows: Vec<(String, Vec<Vec<String>>)> = sheets.iter().map(|(n, c)| (n.clone(), super::sheets::parse_csv(c))).collect();
@@ -1159,14 +1173,14 @@ pub async fn chat_export_canvas(app: AppHandle, id: String) -> Result<bool, Stri
         return Ok(true);
     }
     if multi_file {
-        std::fs::write(path, super::canvas::app_zip(canvas.content())?).map_err(|e| e.to_string())?;
+        crate::chat::at_rest::write(path, super::canvas::app_zip(canvas.content())?).map_err(|e| e.to_string())?;
         return Ok(true);
     }
     if web_app {
-        std::fs::write(path, super::canvas::app_html(canvas.content())).map_err(|e| e.to_string())?;
+        crate::chat::at_rest::write(path, super::canvas::app_html(canvas.content())).map_err(|e| e.to_string())?;
         return Ok(true);
     }
-    std::fs::write(path, canvas.content()).map_err(|e| e.to_string())?;
+    crate::chat::at_rest::write(path, canvas.content()).map_err(|e| e.to_string())?;
     Ok(true)
 }
 
@@ -1296,7 +1310,7 @@ pub async fn chat_add_documents(app: AppHandle, id: String) -> Result<Option<Add
 /// The text in an image, read by the default model: OCR with any model that can see.
 async fn ocr(config_dir: &std::path::Path, path: &std::path::Path, media_type: &str) -> Result<String, String> {
     use base64::Engine as _;
-    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    let bytes = crate::chat::at_rest::read(path).map_err(|e| e.to_string())?;
     let file = providers::load(config_dir);
     let reference = match file.default_model.clone() {
         Some(r) => r,
@@ -1424,7 +1438,7 @@ pub async fn chat_export_diagnostics(app: AppHandle) -> Result<bool, String> {
         return Ok(false);
     };
     let path = path.into_path().map_err(|e| e.to_string())?;
-    std::fs::write(path, serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    crate::chat::at_rest::write(path, serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
     Ok(true)
 }
 
@@ -1447,7 +1461,7 @@ pub async fn chat_import_archive(app: AppHandle, library_id: String) -> Result<O
     let path = path.into_path().map_err(|e| e.to_string())?;
     let dir = config_dir(&app)?;
     tokio::task::spawn_blocking(move || {
-        let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+        let bytes = crate::chat::at_rest::read(&path).map_err(|e| e.to_string())?;
         super::libraries::import_archive(&dir, &library_id, &bytes)
     })
     .await
@@ -1555,7 +1569,7 @@ pub async fn chat_export_agent(app: AppHandle, id: String) -> Result<bool, Strin
         return Ok(false);
     };
     let path = path.into_path().map_err(|e| e.to_string())?;
-    std::fs::write(path, serde_json::to_string_pretty(&bundle).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    crate::chat::at_rest::write(path, serde_json::to_string_pretty(&bundle).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
     Ok(true)
 }
 
@@ -1575,7 +1589,7 @@ pub async fn chat_import_agent(app: AppHandle) -> Result<Option<String>, String>
         return Ok(None);
     };
     let path = path.into_path().map_err(|e| e.to_string())?;
-    let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let text = crate::chat::at_rest::read_to_string(path).map_err(|e| e.to_string())?;
     let bundle: super::agents::Bundle = serde_json::from_str(&text).map_err(|_| "This file is not an exported agent.".to_string())?;
     let servers = bundle.mcp_servers.clone();
     let agent = super::agents::install(&config_dir(&app)?, bundle)?;
@@ -1723,7 +1737,7 @@ pub async fn chat_export_conversation_json(app: AppHandle, id: String) -> Result
         "usage": conversation.usage,
         "turns": view.turns,
     });
-    std::fs::write(path, serde_json::to_string_pretty(&out).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    crate::chat::at_rest::write(path, serde_json::to_string_pretty(&out).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
     Ok(true)
 }
 
@@ -1830,7 +1844,7 @@ pub async fn chat_save_file(app: AppHandle, name: String, data: String) -> Resul
     let Some(path) = rx.await.map_err(|e| e.to_string())? else {
         return Ok(false);
     };
-    std::fs::write(path.into_path().map_err(|e| e.to_string())?, bytes).map_err(|e| e.to_string())?;
+    crate::chat::at_rest::write(path.into_path().map_err(|e| e.to_string())?, bytes).map_err(|e| e.to_string())?;
     Ok(true)
 }
 
@@ -2192,7 +2206,7 @@ pub async fn chat_export_all(app: AppHandle) -> Result<Option<String>, String> {
     for summary in store::list_conversations(&dir) {
         let Ok(conversation) = store::load_conversation(&dir, &summary.id) else { continue };
         let name = format!("{} {}.md", summary.updated_at.format("%Y-%m-%d"), sanitize_file_name(&summary.title));
-        std::fs::write(markdown.join(name), conversation_markdown(&conversation)).map_err(|e| e.to_string())?;
+        crate::chat::at_rest::write(markdown.join(name), conversation_markdown(&conversation)).map_err(|e| e.to_string())?;
         count += 1;
     }
     copy_dir(&store::chat_dir(&dir), &out.join("data/chat"))?;
@@ -2210,7 +2224,9 @@ fn copy_dir(from: &std::path::Path, to: &std::path::Path) -> Result<(), String> 
         if entry.file_type().is_dir() {
             std::fs::create_dir_all(&dest).map_err(|e| e.to_string())?;
         } else if entry.file_type().is_file() {
-            std::fs::copy(entry.path(), &dest).map_err(|e| e.to_string())?;
+            // Exports leave the app's folder in the clear, even when it is encrypted.
+            let data = crate::chat::at_rest::read(entry.path()).map_err(|e| e.to_string())?;
+            std::fs::write(&dest, data).map_err(|e| e.to_string())?;
         }
     }
     Ok(())
@@ -2354,7 +2370,7 @@ pub async fn chat_read_video(app: AppHandle, name: String, data: String) -> Resu
     let ext = std::path::Path::new(&name).extension().and_then(|e| e.to_str()).filter(|e| e.chars().all(|c| c.is_ascii_alphanumeric())).unwrap_or("mp4").to_string();
     // A private temporary file, removed once read.
     let path = std::env::temp_dir().join(format!("lumo-video-{}.{ext}", uuid::Uuid::new_v4().simple()));
-    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+    crate::chat::at_rest::write(&path, bytes).map_err(|e| e.to_string())?;
     let digest = super::video::digest(&config_dir(&app)?, &path).await;
     let _ = std::fs::remove_file(&path);
     digest
@@ -2431,7 +2447,7 @@ pub async fn chat_save_shared_page(app: AppHandle, title: String, html: String) 
         return Ok(false);
     };
     let path = path.into_path().map_err(|e| e.to_string())?;
-    std::fs::write(path.with_extension("html"), html).map_err(|e| e.to_string())?;
+    crate::chat::at_rest::write(path.with_extension("html"), html).map_err(|e| e.to_string())?;
     Ok(true)
 }
 

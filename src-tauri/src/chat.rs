@@ -12,6 +12,7 @@
 
 pub mod agent_cli;
 pub mod agents;
+pub mod at_rest;
 pub mod headless;
 pub mod reader;
 pub mod recorder;

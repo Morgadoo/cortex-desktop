@@ -12,6 +12,8 @@ use crate::{
 };
 
 pub fn run() {
+    // Encrypted data is unlocked with the keychain's key before anything reads it.
+    crate::chat::at_rest::unlock_at_start();
     // `-p "question"`: answer on standard output and exit, without a window (Vibe's headless run).
     if let Some(code) = crate::chat::headless::maybe_run() {
         std::process::exit(code);
@@ -204,6 +206,8 @@ pub fn run() {
             chat::commands::chat_sync_settings,
             chat::commands::chat_save_sync_settings,
             chat::commands::chat_sync_now,
+            chat::commands::chat_encryption_status,
+            chat::commands::chat_set_encryption,
             chat::commands::chat_share_link,
             chat::commands::chat_read_article,
             chat::commands::chat_folder_files,

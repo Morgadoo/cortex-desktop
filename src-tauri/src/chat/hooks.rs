@@ -46,7 +46,7 @@ fn path(config_dir: &Path) -> PathBuf {
 }
 
 pub fn load(config_dir: &Path) -> Vec<Hook> {
-    std::fs::read_to_string(path(config_dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::chat::at_rest::read_to_string(path(config_dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
 }
 
 pub fn save(config_dir: &Path, hooks: &[Hook]) -> Result<(), String> {
@@ -199,7 +199,7 @@ mod tests {
         assert_eq!(before_tool(&dir, "c1", "web_search", &json!({"query": "rm -rf"}), None).await, None);
         assert_eq!(after_tool(&dir, "c1", "web_search", &json!({}), "ok", false, None).await, ["checked web_search"]);
         turn_end(&dir, "c1", "All done.", false, None).await;
-        let logged: Value = serde_json::from_str(std::fs::read_to_string(&log).unwrap().trim()).unwrap();
+        let logged: Value = serde_json::from_str(crate::chat::at_rest::read_to_string(&log).unwrap().trim()).unwrap();
         assert_eq!(logged["event"], "turn_end");
         assert_eq!(logged["answer"], "All done.");
         assert!(save(&dir, &[Hook { event: "sometime".into(), matcher: String::new(), command: "x".into(), enabled: true }]).is_err());

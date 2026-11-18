@@ -179,7 +179,7 @@ mod tests {
         let path = dir.path().join("plan.xlsx");
         let rows: Vec<(String, Vec<Vec<String>>)> = sheets.iter().map(|(n, c)| (n.clone(), parse_csv(c))).collect();
         write_workbook(&path, &rows).unwrap();
-        let back = read_workbook(&std::fs::read(&path).unwrap()).unwrap();
+        let back = read_workbook(&crate::chat::at_rest::read(&path).unwrap()).unwrap();
         assert_eq!(back.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(), ["Budget", "Notes"]);
         assert_eq!(back[1].1, "Note\nPay by the 5th");
     }
@@ -190,7 +190,7 @@ mod tests {
         let path = dir.path().join("budget.xlsx");
         let rows = parse_csv("Item,Cost\nRent,1200\nFood,350.5\n");
         write_workbook(&path, &[("Budget: May".to_string(), rows)]).unwrap();
-        let sheets = read_workbook(&std::fs::read(&path).unwrap()).unwrap();
+        let sheets = read_workbook(&crate::chat::at_rest::read(&path).unwrap()).unwrap();
         assert_eq!(sheets.len(), 1);
         assert_eq!(sheets[0].0, "Budget May");
         assert_eq!(sheets[0].1, "Item,Cost\nRent,1200\nFood,350.5");

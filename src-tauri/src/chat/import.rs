@@ -25,7 +25,7 @@ pub struct ImportReport {
 
 /// Reads `conversations.json` from an export zip, or the JSON file itself.
 fn read_export(path: &Path) -> Result<Value, String> {
-    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    let bytes = crate::chat::at_rest::read(path).map_err(|e| e.to_string())?;
     let json = if bytes.starts_with(b"PK") {
         let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| format!("Not a readable zip: {e}"))?;
         let name = (0..archive.len())

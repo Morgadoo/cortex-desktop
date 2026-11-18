@@ -496,13 +496,13 @@ fn tool_output_path(config_dir: &std::path::Path, conversation: &str, call_id: &
 fn save_tool_output(config_dir: &std::path::Path, conversation: &str, call_id: &str, text: &str) -> Result<(), String> {
     let path = tool_output_path(config_dir, conversation, call_id).ok_or("unusable call id")?;
     std::fs::create_dir_all(path.parent().ok_or("no folder")?).map_err(|e| e.to_string())?;
-    std::fs::write(path, text).map_err(|e| e.to_string())
+    crate::chat::at_rest::write(path, text).map_err(|e| e.to_string())
 }
 
 /// A part of a saved long output, from `offset` characters, at most 20,000.
 pub fn read_tool_output(config_dir: &std::path::Path, conversation: &str, call_id: &str, offset: usize) -> Result<String, String> {
     let path = tool_output_path(config_dir, conversation, call_id).ok_or("There is no saved output with that call id.")?;
-    let text = std::fs::read_to_string(path).map_err(|_| "There is no saved output with that call id in this conversation.".to_string())?;
+    let text = crate::chat::at_rest::read_to_string(path).map_err(|_| "There is no saved output with that call id in this conversation.".to_string())?;
     let total = text.chars().count();
     let part: String = text.chars().skip(offset).take(20_000).collect();
     let end = (offset + part.chars().count()).min(total);

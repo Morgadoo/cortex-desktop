@@ -131,7 +131,7 @@ pub fn save_settings(config_dir: &Path, s: &Settings) -> Result<(), String> {
 }
 
 fn read<T: for<'de> Deserialize<'de>>(path: &Path) -> Option<T> {
-    serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()
+    serde_json::from_str(&crate::chat::at_rest::read_to_string(path).ok()?).ok()
 }
 
 fn write<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
@@ -139,7 +139,7 @@ fn write<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
     let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, serde_json::to_vec_pretty(value).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    crate::chat::at_rest::write(&tmp, serde_json::to_vec_pretty(value).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, path).map_err(|e| e.to_string())
 }
 
@@ -236,7 +236,7 @@ fn local_files(config_dir: &Path) -> BTreeMap<String, PathBuf> {
         for e in entries.filter_map(Result::ok) {
             let name = e.file_name().to_string_lossy().to_string();
             // Temporary chats are never kept, so they never sync.
-            let temporary = std::fs::read_to_string(e.path()).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()).is_some_and(|v| v.get("temporary").and_then(|t| t.as_bool()) == Some(true));
+            let temporary = crate::chat::at_rest::read_to_string(e.path()).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()).is_some_and(|v| v.get("temporary").and_then(|t| t.as_bool()) == Some(true));
             if name.ends_with(".json") && !temporary {
                 add(format!("chat/conversations/{name}"), e.path());
             }
@@ -290,7 +290,7 @@ fn device_name() -> String {
 }
 
 fn hostname() -> Option<String> {
-    std::env::var("HOSTNAME").ok().or_else(|| std::env::var("COMPUTERNAME").ok()).or_else(|| std::fs::read_to_string("/etc/hostname").ok()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    std::env::var("HOSTNAME").ok().or_else(|| std::env::var("COMPUTERNAME").ok()).or_else(|| crate::chat::at_rest::read_to_string("/etc/hostname").ok()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
 }
 
 /// Syncs the config folder with `<folder>/Lumo Sync` under `key`.
@@ -313,7 +313,7 @@ pub fn sync_once(config_dir: &Path, remote: &Path, key: &[u8; 32]) -> Report {
             if !e.file_name().to_string_lossy().ends_with(".lumo") {
                 continue;
             }
-            let item = std::fs::read(e.path()).map_err(|e| e.to_string()).and_then(|d| open(key, &d)).and_then(|p| serde_json::from_slice::<Item>(&p).map_err(|e| e.to_string()));
+            let item = crate::chat::at_rest::read(e.path()).map_err(|e| e.to_string()).and_then(|d| open(key, &d)).and_then(|p| serde_json::from_slice::<Item>(&p).map_err(|e| e.to_string()));
             match item {
                 // A name that does not match its path was not written by Lumo with this key.
                 Ok(item) if item_name(key, &item.path) == e.file_name().to_string_lossy() && allowed(&item.path) => {
@@ -328,7 +328,7 @@ pub fn sync_once(config_dir: &Path, remote: &Path, key: &[u8; 32]) -> Report {
     let local = local_files(config_dir);
     let mut local_hashes: BTreeMap<String, (String, Vec<u8>)> = BTreeMap::new();
     for (rel, full) in &local {
-        match std::fs::read(full) {
+        match crate::chat::at_rest::read(full) {
             Ok(bytes) => {
                 local_hashes.insert(rel.clone(), (sha256(&bytes), bytes));
             }
@@ -341,7 +341,7 @@ pub fn sync_once(config_dir: &Path, remote: &Path, key: &[u8; 32]) -> Report {
         let sealed = seal(key, &serde_json::to_vec(item).map_err(|e| e.to_string())?)?;
         let path = items_dir.join(item_name(key, &item.path));
         let tmp = path.with_extension("part");
-        std::fs::write(&tmp, sealed).map_err(|e| e.to_string())?;
+        crate::chat::at_rest::write(&tmp, sealed).map_err(|e| e.to_string())?;
         std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
     };
     let upload = |rel: &str, hash: &str, bytes: &[u8]| put(&Item { path: rel.into(), hash: hash.into(), modified: modified_ms(&local[rel]), device: device.clone(), deleted: false, content: b64.encode(bytes) });
@@ -359,7 +359,7 @@ pub fn sync_once(config_dir: &Path, remote: &Path, key: &[u8; 32]) -> Report {
             super::backup::before_overwrite(config_dir, &target);
         }
         let tmp = target.with_extension("sync-tmp");
-        std::fs::write(&tmp, &bytes).map_err(|e| e.to_string())?;
+        crate::chat::at_rest::write(&tmp, &bytes).map_err(|e| e.to_string())?;
         std::fs::rename(&tmp, &target).map_err(|e| e.to_string())
     };
     let remove_local = |rel: &str| -> Result<(), String> {
@@ -534,13 +534,13 @@ mod tests {
         for (rel, text) in files {
             let p = dir.path().join(rel);
             std::fs::create_dir_all(p.parent().unwrap()).unwrap();
-            std::fs::write(p, text).unwrap();
+            crate::chat::at_rest::write(p, text).unwrap();
         }
         dir
     }
 
     fn text(dir: &Path, rel: &str) -> Option<String> {
-        std::fs::read_to_string(dir.join(rel)).ok()
+        crate::chat::at_rest::read_to_string(dir.join(rel)).ok()
     }
 
     #[test]
@@ -575,7 +575,7 @@ mod tests {
         assert_eq!((r.sent, r.received), (3, 0), "{r:?}");
         // Nothing readable lands in the folder: no names, no text.
         for e in std::fs::read_dir(remote.join("items")).unwrap() {
-            let bytes = std::fs::read(e.unwrap().path()).unwrap();
+            let bytes = crate::chat::at_rest::read(e.unwrap().path()).unwrap();
             assert!(!String::from_utf8_lossy(&bytes).contains("From A"));
         }
         let r = sync_once(b.path(), &remote, &key);
@@ -588,7 +588,7 @@ mod tests {
         assert!(text(a.path(), "chat/conversations/t.json").is_none(), "temporary chats stay home");
 
         // An edit on B reaches A; nothing changes when both are in step.
-        std::fs::write(b.path().join("chat/memories.json"), "[\"likes tea\"]").unwrap();
+        crate::chat::at_rest::write(b.path().join("chat/memories.json"), "[\"likes tea\"]").unwrap();
         assert_eq!(sync_once(b.path(), &remote, &key).sent, 1);
         assert_eq!(sync_once(a.path(), &remote, &key).received, 1);
         assert_eq!(text(a.path(), "chat/memories.json").unwrap(), "[\"likes tea\"]");
@@ -602,9 +602,9 @@ mod tests {
         assert_eq!(sync_once(a.path(), &remote, &key).summary(), "Everything was already in sync.");
 
         // Both edit the same file: one conflict, the newer edit on both.
-        std::fs::write(a.path().join("chat/memories.json"), "[\"A\"]").unwrap();
+        crate::chat::at_rest::write(a.path().join("chat/memories.json"), "[\"A\"]").unwrap();
         std::thread::sleep(std::time::Duration::from_millis(20));
-        std::fs::write(b.path().join("chat/memories.json"), "[\"B newer\"]").unwrap();
+        crate::chat::at_rest::write(b.path().join("chat/memories.json"), "[\"B newer\"]").unwrap();
         sync_once(a.path(), &remote, &key);
         let r = sync_once(b.path(), &remote, &key);
         assert_eq!(r.conflicts, ["chat/memories.json"]);
@@ -625,7 +625,7 @@ mod tests {
         let b = device(&[("chat/memories.json", "[\"old\"]")]);
         sync_once(b.path(), &remote, &k2);
         std::thread::sleep(std::time::Duration::from_millis(20));
-        std::fs::write(a.path().join("chat/memories.json"), "[\"edited here\"]").unwrap();
+        crate::chat::at_rest::write(a.path().join("chat/memories.json"), "[\"edited here\"]").unwrap();
         let r = sync_once(a.path(), &remote, &k2);
         assert_eq!(r.conflicts, ["chat/memories.json"], "a first sync with a store treats differences as conflicts");
         assert_eq!(text(a.path(), "chat/memories.json").unwrap(), "[\"edited here\"]", "the newer local edit is kept");

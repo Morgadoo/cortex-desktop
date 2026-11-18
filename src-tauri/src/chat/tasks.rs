@@ -433,7 +433,7 @@ fn path(config_dir: &Path) -> PathBuf {
 }
 
 pub fn load(config_dir: &Path) -> Vec<Task> {
-    std::fs::read_to_string(path(config_dir))
+    crate::chat::at_rest::read_to_string(path(config_dir))
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok())
         .unwrap_or_default()
@@ -637,7 +637,7 @@ mod tests {
     fn new_files_start_a_run_once_settled() {
         let config = tempfile::tempdir().unwrap();
         let watched = tempfile::tempdir().unwrap();
-        std::fs::write(watched.path().join("old.pdf"), "x").unwrap();
+        crate::chat::at_rest::write(watched.path().join("old.pdf"), "x").unwrap();
         let task = Task {
             id: "t1".into(),
             title: "File invoices".into(),
@@ -659,8 +659,8 @@ mod tests {
         save(config.path(), task).unwrap();
         let later = std::time::SystemTime::now() + Duration::from_secs(60);
         assert!(take_new_files(config.path(), later).is_empty(), "the first look only notes what is there");
-        std::fs::write(watched.path().join("march.pdf"), "x").unwrap();
-        std::fs::write(watched.path().join(".hidden"), "x").unwrap();
+        crate::chat::at_rest::write(watched.path().join("march.pdf"), "x").unwrap();
+        crate::chat::at_rest::write(watched.path().join(".hidden"), "x").unwrap();
         // Just written: not settled yet.
         assert!(take_new_files(config.path(), std::time::SystemTime::now()).is_empty());
         let runs = take_new_files(config.path(), later);

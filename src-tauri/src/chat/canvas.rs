@@ -270,7 +270,7 @@ pub fn list_all(config_dir: &Path) -> Vec<Canvas> {
     let Ok(entries) = std::fs::read_dir(dir(config_dir)) else { return Vec::new() };
     let mut out: Vec<Canvas> = entries
         .filter_map(Result::ok)
-        .filter_map(|e| std::fs::read_to_string(e.path()).ok())
+        .filter_map(|e| crate::chat::at_rest::read_to_string(e.path()).ok())
         .filter_map(|t| serde_json::from_str::<Canvas>(&t).ok())
         .collect();
     out.sort_by_key(|c| std::cmp::Reverse(c.versions.last().map(|v| v.at)));
@@ -294,7 +294,7 @@ fn path(config_dir: &Path, id: &str) -> Result<PathBuf, String> {
 }
 
 pub fn load(config_dir: &Path, id: &str) -> Result<Canvas, String> {
-    let text = std::fs::read_to_string(path(config_dir, id)?).map_err(|_| format!("no canvas `{id}`"))?;
+    let text = crate::chat::at_rest::read_to_string(path(config_dir, id)?).map_err(|_| format!("no canvas `{id}`"))?;
     serde_json::from_str(&text).map_err(|e| e.to_string())
 }
 
@@ -302,7 +302,7 @@ pub fn list_for(config_dir: &Path, conversation_id: &str) -> Vec<Canvas> {
     let Ok(entries) = std::fs::read_dir(dir(config_dir)) else { return Vec::new() };
     let mut out: Vec<Canvas> = entries
         .filter_map(Result::ok)
-        .filter_map(|e| std::fs::read_to_string(e.path()).ok())
+        .filter_map(|e| crate::chat::at_rest::read_to_string(e.path()).ok())
         .filter_map(|t| serde_json::from_str::<Canvas>(&t).ok())
         .filter(|c| c.conversation_id == conversation_id)
         .collect();

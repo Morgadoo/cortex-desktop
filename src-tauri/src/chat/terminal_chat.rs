@@ -219,7 +219,7 @@ async fn run(model_arg: Option<String>, resume: Option<String>) -> i32 {
                     println!("New conversation.");
                 }
                 Command::Open => println!("lumo://chat/{}", conversation.id),
-                Command::Save(path) => match std::fs::write(&path, markdown(&conversation)) {
+                Command::Save(path) => match crate::chat::at_rest::write(&path, markdown(&conversation)) {
                     Ok(()) => println!("Saved to {path}."),
                     Err(e) => println!("Could not save: {e}"),
                 },
