@@ -1125,6 +1125,41 @@ pub fn chat_task_calendar(app: AppHandle, from: chrono::DateTime<chrono::Utc>, t
 }
 
 #[tauri::command]
+pub fn chat_openapi_servers(app: AppHandle) -> Result<Vec<super::openapi::Server>, String> {
+    Ok(super::openapi::list(&config_dir(&app)?))
+}
+
+/// Adds an OpenAPI tool server from its spec address, with an optional bearer key.
+#[tauri::command]
+pub async fn chat_add_openapi_server(app: AppHandle, name: String, spec_url: String, key: Option<String>) -> Result<Vec<super::openapi::Server>, String> {
+    let dir = config_dir(&app)?;
+    let servers = super::openapi::add(&dir, &name, &spec_url).await?;
+    match (key.map(|k| k.trim().to_string()).filter(|k| !k.is_empty()), servers.last()) {
+        (Some(key), Some(added)) => {
+            secrets()?.store(&super::openapi::secret_name(&added.id), &key).await?;
+            super::openapi::update(&dir, &added.id.clone(), None, Some(true))
+        }
+        _ => Ok(servers),
+    }
+}
+
+#[tauri::command]
+pub async fn chat_refresh_openapi_server(app: AppHandle, id: String) -> Result<Vec<super::openapi::Server>, String> {
+    super::openapi::refresh(&config_dir(&app)?, &id).await
+}
+
+#[tauri::command]
+pub fn chat_toggle_openapi_server(app: AppHandle, id: String, enabled: bool) -> Result<Vec<super::openapi::Server>, String> {
+    super::openapi::update(&config_dir(&app)?, &id, Some(enabled), None)
+}
+
+#[tauri::command]
+pub async fn chat_remove_openapi_server(app: AppHandle, id: String) -> Result<Vec<super::openapi::Server>, String> {
+    let _ = secrets()?.delete(&super::openapi::secret_name(&id)).await;
+    super::openapi::remove(&config_dir(&app)?, &id)
+}
+
+#[tauri::command]
 pub fn chat_search_settings(app: AppHandle) -> Result<super::search::SearchSettings, String> {
     Ok(super::search::load_settings(&config_dir(&app)?))
 }

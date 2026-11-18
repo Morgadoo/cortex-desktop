@@ -72,7 +72,7 @@ impl ChatTool {
 }
 
 /// Providers accept `^[a-zA-Z0-9_-]{1,64}$`; anything else becomes `_`.
-fn safe_name(name: &str) -> String {
+pub(crate) fn safe_name(name: &str) -> String {
     let cleaned: String = name
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
@@ -370,6 +370,16 @@ pub async fn execute(
     } else {
         matches!(mode, ApprovalMode::Autonomous | ApprovalMode::Auto)
     };
+    // OpenAPI tool servers: the same gate as any connector, then an HTTP call.
+    if connector_id.starts_with(super::openapi::PREFIX) {
+        let Ok(config_dir) = crate::settings::get_config_dir(app) else {
+            return Outcome { text: "The app's data folder is not available.".into(), is_error: true };
+        };
+        return match super::openapi::call(&config_dir, tool, &input).await {
+            Ok(text) => Outcome { text, is_error: false },
+            Err(e) => Outcome { text: e, is_error: true },
+        };
+    }
     let context = CallContext {
         conversation: Some(conversation_id),
         ..CallContext::default()

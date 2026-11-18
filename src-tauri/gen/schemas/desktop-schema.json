@@ -531,6 +531,12 @@
           "markdownDescription": "Read the image and speech models."
         },
         {
+          "description": "Add, refresh, switch and remove OpenAPI tool servers.",
+          "type": "string",
+          "const": "allow-chat-openapi",
+          "markdownDescription": "Add, refresh, switch and remove OpenAPI tool servers."
+        },
+        {
           "description": "Generate a sample reply under draft instructions.",
           "type": "string",
           "const": "allow-chat-preview-instructions",

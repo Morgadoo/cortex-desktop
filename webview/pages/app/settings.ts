@@ -552,7 +552,73 @@ async function renderPermissions(content: HTMLElement) {
       h('h3', {}, 'Terminal'),
       row('Allow shell commands', 'Lets the assistant run commands on this computer. Every command asks first unless you allow it.', switchInput(settings.bash_enabled, (v) => { settings.bash_enabled = v; void persist(settings); }))
     ),
-    mcpCard()
+    mcpCard(),
+    await openApiCard()
+  );
+}
+
+interface OpenApiServer {
+  id: string;
+  name: string;
+  specUrl: string;
+  baseUrl: string;
+  enabled: boolean;
+  hasKey: boolean;
+  operations: number;
+}
+
+/** OpenAPI tool servers: each operation of a service's spec becomes a tool (Open WebUI). */
+async function openApiCard(): Promise<HTMLElement> {
+  const list = h('div', { class: 'openapi-list' });
+  const render = (servers: OpenApiServer[]) =>
+    clear(
+      list,
+      servers.length
+        ? servers.map((s) =>
+            h(
+              'div',
+              { class: 'setting-row' },
+              h('div', {}, h('strong', {}, s.name), h('small', { class: 'muted' }, `${s.operations} tools · ${s.baseUrl}${s.hasKey ? ' · key saved' : ''}`)),
+              h(
+                'div',
+                { class: 'row-actions' },
+                h('button', { class: 'link-btn', title: 'Fetch the spec again', on: { click: () => void tauriInvoke<OpenApiServer[]>('chat_refresh_openapi_server', { id: s.id }).then((v) => { render(v); toast('Refreshed.'); }).catch((e) => toast(String(e), 'error')) } }, 'Refresh'),
+                h('button', { class: 'link-btn', on: { click: () => void tauriInvoke<OpenApiServer[]>('chat_remove_openapi_server', { id: s.id }).then(render).catch((e) => toast(String(e), 'error')) } }, 'Remove'),
+                switchInput(s.enabled, (v) => void tauriInvoke<OpenApiServer[]>('chat_toggle_openapi_server', { id: s.id, enabled: v }).then(render))
+              )
+            )
+          )
+        : h('p', { class: 'muted' }, 'No API servers yet.')
+    );
+  render(await tauriInvoke<OpenApiServer[]>('chat_openapi_servers'));
+  const name = h('input', { class: 'input', placeholder: 'Name (optional; the spec’s title otherwise)' });
+  const url = h('input', { class: 'input', placeholder: 'https://api.example.com/openapi.json' });
+  const key = h('input', { class: 'input', type: 'password', placeholder: 'Bearer token, if the API needs one' });
+  const add = h('button', { class: 'btn btn-primary' }, 'Add API');
+  add.addEventListener('click', async () => {
+    if (!url.value.trim()) return void toast('Give the address of the OpenAPI spec (JSON).', 'error');
+    add.setAttribute('disabled', '');
+    try {
+      render(await tauriInvoke<OpenApiServer[]>('chat_add_openapi_server', { name: name.value, specUrl: url.value, key: key.value.trim() || null }));
+      name.value = url.value = key.value = '';
+      toast('Added. Its operations are now tools; reads run freely, changes follow your mode.');
+    } catch (e) {
+      toast(String(e), 'error');
+    } finally {
+      add.removeAttribute('disabled');
+    }
+  });
+  return card(
+    h('h3', {}, 'API tool servers (OpenAPI)'),
+    h('p', { class: 'muted' }, 'Point to any service’s OpenAPI spec: each operation becomes a tool. GET operations run as reads; anything that changes data follows the approval mode.'),
+    list,
+    h('label', { class: 'field-label' }, 'Spec address'),
+    url,
+    h('label', { class: 'field-label' }, 'Name'),
+    name,
+    h('label', { class: 'field-label' }, 'API key'),
+    key,
+    h('div', { class: 'card-actions' }, add)
   );
 }
 

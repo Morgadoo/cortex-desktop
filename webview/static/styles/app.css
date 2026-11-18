@@ -1383,3 +1383,5 @@ button.usage-meter:hover { background: var(--hover); }
 /* The hidden attribute always wins over a component's display. */
 [hidden] { display: none !important; }
 .cal-agenda-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.row-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+.setting-row > .row-actions { flex-direction: row; }

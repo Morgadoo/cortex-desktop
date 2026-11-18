@@ -522,3 +522,8 @@ commands.allow = ["chat_api_server", "chat_save_api_server"]
 identifier = "allow-chat-task-calendar"
 description = "List planned task runs for the calendar."
 commands.allow = ["chat_task_calendar"]
+
+[[permission]]
+identifier = "allow-chat-openapi"
+description = "Add, refresh, switch and remove OpenAPI tool servers."
+commands.allow = ["chat_openapi_servers", "chat_add_openapi_server", "chat_refresh_openapi_server", "chat_toggle_openapi_server", "chat_remove_openapi_server"]

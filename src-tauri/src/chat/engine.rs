@@ -422,6 +422,7 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
     let mut fallback = agent.as_ref().and_then(|a| a.fallback_model.clone()).filter(|f| f != &request.model);
     let mut offered = tools::available(&registry, request.connectors.as_deref());
     offered.splice(1..1, builtins::definitions(&config_dir));
+    offered.extend(super::openapi::tools(&config_dir));
     if let Some(agent) = &agent {
         offered.retain(|t| t.name == ASK_USER || agents::allows(agent, &t.name));
     }
