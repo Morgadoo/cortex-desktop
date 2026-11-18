@@ -210,6 +210,19 @@ items most likely to differ:
 
 ## The inspiration apps
 
+Reviewed in November 2026 feature by feature against the docs of Open WebUI, LibreChat, LobeHub,
+Onyx, Osaurus and OpenBot (about 220 features). Every item of the review's shortlist is in the table
+below. What was deliberately left out, and why:
+
+- **Team and enterprise features** (channels, comments, SSO, SCIM, tenants, admin plane, shared
+  marketplaces): this is a single-user desktop app.
+- **A choice of vector database**: the local passage index with cached embeddings covers a person's
+  libraries; a server database adds setup without benefit here.
+- **Video generation, voice cloning, realtime voice models**: provider-specific and outside rig's
+  current modalities; image generation, editing and voice conversation are covered.
+- **Custom Python tools edited inside the app, filters and pipes**: MCP servers and OpenAPI tool
+  servers give the same reach without running user code inside the app process.
+
 | Feature | Seen in | Here | Status |
 |---|---|---|---|
 | Any provider, local models | open-webui, LibreChat, lobehub, osaurus | 15 rig providers, Ollama, llama.cpp, custom base URLs | Done |
