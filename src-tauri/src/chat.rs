@@ -63,6 +63,7 @@ pub mod videogen;
 pub mod local_models;
 pub mod functions;
 pub mod agent_market;
+pub mod animation;
 pub mod memory;
 pub mod privacy;
 pub mod providers;

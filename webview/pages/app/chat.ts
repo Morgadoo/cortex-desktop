@@ -100,6 +100,7 @@ const BUILTIN_ICONS: Record<string, string> = {
   save_skill: 'skill',
   generate_image: 'sparkle',
   generate_video: 'video',
+  make_animation: 'video',
   browser_view: 'globe',
   browser_act: 'globe',
 };
@@ -639,7 +640,7 @@ function renderParts(parts: Part[], live: boolean, key: string, durations: numbe
       out.push(renderImage(part, live, key.split(':')[0] ?? ''));
       return;
     }
-    if (part.kind === 'tool' && part.name === 'generate_video') {
+    if (part.kind === 'tool' && (part.name === 'generate_video' || part.name === 'make_animation')) {
       flush();
       out.push(renderVideo(part, live, key.split(':')[0] ?? ''));
       return;
@@ -1646,6 +1647,7 @@ const TOOL_GROUPS: { label: string; icon: string; names: string[]; hint: string 
   { label: 'Web search', icon: 'globe', names: ['web_search'], hint: 'Search the web and cite sources' },
   { label: 'Image generation', icon: 'image', names: ['generate_image'], hint: 'Create and edit images' },
   { label: 'Video generation', icon: 'video', names: ['generate_video'], hint: 'Short clips, or an image brought to life' },
+  { label: 'Animations', icon: 'video', names: ['make_animation'], hint: 'Explainers, infographics and titles as code' },
   { label: 'Browser', icon: 'globe', names: ['browser_view', 'browser_act', 'browser'], hint: 'Open, read and use web pages' },
   { label: 'Canvas', icon: 'file', names: ['canvas'], hint: 'Documents, apps and sheets beside the chat' },
   { label: 'Run code', icon: 'terminal', names: ['run_code'], hint: 'Python and JavaScript in a sandbox' },

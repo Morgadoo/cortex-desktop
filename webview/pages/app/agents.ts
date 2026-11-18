@@ -23,6 +23,7 @@ const TOOL_CHOICES: { id: string; label: string }[] = [
   { id: 'remember', label: 'Knowledge' },
   { id: 'generate_image', label: 'Image generation' },
   { id: 'generate_video', label: 'Video generation' },
+  { id: 'make_animation', label: 'Animations' },
   { id: 'run_code', label: 'Run code' },
   { id: 'browser_view', label: 'Real browser' },
   { id: 'browser_act', label: 'Use web pages' },

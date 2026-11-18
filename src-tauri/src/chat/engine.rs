@@ -1499,6 +1499,9 @@ impl Runner<'_> {
         if name == media::GENERATE_IMAGE {
             return media::generate(self.config_dir, self.id, &arguments).await;
         }
+        if name == super::animation::MAKE_ANIMATION {
+            return super::animation::make(self.config_dir, self.id, &arguments).await;
+        }
         if name == super::videogen::GENERATE_VIDEO {
             return super::videogen::generate(self.config_dir, self.id, &arguments).await;
         }

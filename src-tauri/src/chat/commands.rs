@@ -2818,7 +2818,7 @@ pub async fn chat_draft_agent(app: AppHandle, description: String, current: Opti
 }
 
 /// The tool names an agent can be given, matching the editor's choices.
-const TOOL_CHOICES: &[&str] = &["web_search", "browser", "filesystem", "bash", "delegate", "update_plan", "canvas", "schedule_task", "use_skill", "remember", "run_code", "calendar_events", "find_contact", "search_chats", "knowledge_search", "notify", "generate_image", "generate_video", "browser_view", "browser_act", "message_agent"];
+const TOOL_CHOICES: &[&str] = &["web_search", "browser", "filesystem", "bash", "delegate", "update_plan", "canvas", "schedule_task", "use_skill", "remember", "run_code", "calendar_events", "find_contact", "search_chats", "knowledge_search", "notify", "generate_image", "generate_video", "make_animation", "browser_view", "browser_act", "message_agent"];
 
 /// Tokens and cost across all conversations this calendar month, for the usage gauge.
 #[tauri::command]

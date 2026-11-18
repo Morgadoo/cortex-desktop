@@ -96,7 +96,8 @@ export function workspaceVideo(src: string, attrs: Record<string, unknown>): HTM
 
 /** A clip made by generate_video: a player while it is ready, a wait line while it is made. */
 export function renderVideo(part: Extract<Part, { kind: 'tool' }>, live: boolean, conversationId: string): HTMLElement {
-  const prompt = typeof part.arguments.prompt === 'string' ? part.arguments.prompt : '';
+  const animation = part.name === 'make_animation';
+  const prompt = animation ? (typeof part.arguments.name === 'string' ? part.arguments.name : 'Animation') : typeof part.arguments.prompt === 'string' ? part.arguments.prompt : '';
   const running = live && part.output === null;
   let file = '';
   try {
@@ -106,7 +107,7 @@ export function renderVideo(part: Extract<Part, { kind: 'tool' }>, live: boolean
   }
   const shape = typeof part.arguments.shape === 'string' ? part.arguments.shape : 'landscape';
   const body = running
-    ? h('div', { class: 'image-wait' }, h('span', { class: 'dots' }), 'Making the video… this takes a minute or two.')
+    ? h('div', { class: 'image-wait' }, h('span', { class: 'dots' }), animation ? 'Rendering the animation… this takes a minute or more.' : 'Making the video… this takes a minute or two.')
     : file
       ? workspaceVideo(workspaceUrl(conversationId, file), { class: `generated-video ${shape}`, controls: true, loop: true, playsinline: true, preload: 'metadata' })
       : h('pre', { class: 'run-stderr' }, part.output ?? 'The video could not be made.');
@@ -118,7 +119,7 @@ export function renderVideo(part: Extract<Part, { kind: 'tool' }>, live: boolean
   return h(
     'div',
     { class: 'canvas-step' },
-    h('div', { class: 'canvas-label' }, running ? 'Creating a video…' : part.isError ? 'Could not create the video' : 'Created a video'),
+    h('div', { class: 'canvas-label' }, running ? (animation ? 'Rendering an animation…' : 'Creating a video…') : part.isError ? (animation ? 'Could not render the animation' : 'Could not create the video') : animation ? 'Rendered an animation' : 'Created a video'),
     h('div', { class: 'image-card' }, body, h('div', { class: 'image-caption' }, h('span', { class: 'muted' }, prompt), copy))
   );
 }
