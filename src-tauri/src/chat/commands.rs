@@ -1160,6 +1160,16 @@ pub async fn chat_remove_openapi_server(app: AppHandle, id: String) -> Result<Ve
 }
 
 #[tauri::command]
+pub fn chat_computer_settings(app: AppHandle) -> Result<super::computer::ComputerSettings, String> {
+    Ok(super::computer::load(&config_dir(&app)?))
+}
+
+#[tauri::command]
+pub fn chat_save_computer_settings(app: AppHandle, settings: super::computer::ComputerSettings) -> Result<(), String> {
+    super::computer::save(&config_dir(&app)?, &settings)
+}
+
+#[tauri::command]
 pub fn chat_search_settings(app: AppHandle) -> Result<super::search::SearchSettings, String> {
     Ok(super::search::load_settings(&config_dir(&app)?))
 }

@@ -552,8 +552,22 @@ async function renderPermissions(content: HTMLElement) {
       h('h3', {}, 'Terminal'),
       row('Allow shell commands', 'Lets the assistant run commands on this computer. Every command asks first unless you allow it.', switchInput(settings.bash_enabled, (v) => { settings.bash_enabled = v; void persist(settings); }))
     ),
+    await computerCard(),
     mcpCard(),
     await openApiCard()
+  );
+}
+
+/** Computer use: the assistant may see the screen and use the mouse and keyboard. */
+async function computerCard(): Promise<HTMLElement> {
+  const current = await tauriInvoke<{ enabled: boolean }>('chat_computer_settings');
+  return card(
+    h('h3', {}, 'Computer use'),
+    row(
+      'Allow computer use',
+      'Lets the assistant take screenshots and click, type and scroll on this computer. Screenshots are sent to your model. Each action follows the composer’s mode: Ask confirms every click, Auto checks each one against your request. Needs xdotool and ImageMagick on Linux, or cliclick on macOS.',
+      switchInput(current.enabled, (v) => void tauriInvoke('chat_save_computer_settings', { settings: { enabled: v } }).then(() => toast(v ? 'Computer use on.' : 'Computer use off.')))
+    )
   );
 }
 

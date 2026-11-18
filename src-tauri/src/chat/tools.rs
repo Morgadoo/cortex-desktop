@@ -165,6 +165,7 @@ pub fn available(registry: &ToolRegistry, connectors: Option<&[String]>) -> Vec<
 fn reads_only(tool: &ChatTool, input: &Value) -> bool {
     match (tool.connector_id.as_deref(), tool.tool_name.as_str()) {
         (Some("browser"), "navigate") => true,
+        (Some("computer"), _) => super::computer::is_screenshot(input),
         (Some("browser"), "fetch") => input
             .get("method")
             .and_then(Value::as_str)
@@ -370,6 +371,13 @@ pub async fn execute(
     } else {
         matches!(mode, ApprovalMode::Autonomous | ApprovalMode::Auto)
     };
+    // Computer use: the same gate, then the screen, mouse and keyboard.
+    if connector_id == super::computer::CONNECTOR {
+        return match super::computer::run(conversation_id, &input).await {
+            Ok(text) => Outcome { text, is_error: false },
+            Err(e) => Outcome { text: e, is_error: true },
+        };
+    }
     // OpenAPI tool servers: the same gate as any connector, then an HTTP call.
     if connector_id.starts_with(super::openapi::PREFIX) {
         let Ok(config_dir) = crate::settings::get_config_dir(app) else {

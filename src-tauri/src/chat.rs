@@ -13,6 +13,7 @@
 pub mod agents;
 pub mod api_server;
 pub mod audio;
+pub mod computer;
 pub mod openapi;
 pub mod embeddings;
 mod backup;

@@ -527,3 +527,8 @@ commands.allow = ["chat_task_calendar"]
 identifier = "allow-chat-openapi"
 description = "Add, refresh, switch and remove OpenAPI tool servers."
 commands.allow = ["chat_openapi_servers", "chat_add_openapi_server", "chat_refresh_openapi_server", "chat_toggle_openapi_server", "chat_remove_openapi_server"]
+
+[[permission]]
+identifier = "allow-chat-computer"
+description = "Turn computer use on or off."
+commands.allow = ["chat_computer_settings", "chat_save_computer_settings"]

@@ -423,6 +423,9 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
     let mut offered = tools::available(&registry, request.connectors.as_deref());
     offered.splice(1..1, builtins::definitions(&config_dir));
     offered.extend(super::openapi::tools(&config_dir));
+    if super::computer::load(&config_dir).enabled {
+        offered.push(super::computer::definition());
+    }
     if let Some(agent) = &agent {
         offered.retain(|t| t.name == ASK_USER || agents::allows(agent, &t.name));
     }
@@ -778,7 +781,15 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
                     }
                 }
             }
-            let mut result = call.result(vec![ToolResultContent::text(outcome.text)]);
+            let mut content = vec![ToolResultContent::text(outcome.text)];
+            // Computer use: the screenshot goes with the result; older ones leave the history.
+            if call.function.name.as_str() == super::computer::TOOL {
+                if let Some(data) = super::computer::take_image(id) {
+                    drop_old_screenshots(&mut conversation.messages);
+                    content.push(ToolResultContent::image_base64(data, Some(rig_core::completion::message::ImageMediaType::JPEG), None));
+                }
+            }
+            let mut result = call.result(content);
             result.is_error = outcome.is_error;
             results.push(result);
         }
@@ -1380,5 +1391,23 @@ mod tests {
             serde_json::to_value(event).unwrap(),
             serde_json::json!({"type": "toolEnd", "conversationId": "c", "callId": "1", "output": "ok", "isError": false})
         );
+    }
+}
+
+/// Replaces screenshots in earlier tool results with a note: only the latest view matters, and
+/// each one costs many tokens.
+fn drop_old_screenshots(messages: &mut [Message]) {
+    use rig_core::completion::message::UserContent;
+    for message in messages.iter_mut() {
+        let Message::User { content } = message else { continue };
+        for item in content.iter_mut() {
+            if let UserContent::ToolResult(result) = item {
+                let has_image = result.content.iter().any(|c| matches!(c, ToolResultContent::Image(_)));
+                if has_image {
+                    let kept: Vec<ToolResultContent> = result.content.iter().filter(|c| !matches!(c, ToolResultContent::Image(_))).cloned().chain(std::iter::once(ToolResultContent::text("[earlier screenshot removed]"))).collect();
+                    result.content = kept;
+                }
+            }
+        }
     }
 }

@@ -153,6 +153,8 @@ pub fn run() {
                 chat::commands::chat_favicon,
                 chat::commands::chat_link_preview,
                 chat::commands::chat_debug,
+                chat::commands::chat_computer_settings,
+                chat::commands::chat_save_computer_settings,
                 chat::commands::chat_openapi_servers,
                 chat::commands::chat_add_openapi_server,
                 chat::commands::chat_refresh_openapi_server,
