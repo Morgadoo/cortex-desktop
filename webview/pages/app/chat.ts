@@ -721,10 +721,47 @@ function renderUserTurn(turn: Turn, conversationId: string, branch: HTMLElement 
   }
   return h(
     'div',
-    { class: 'turn turn-user' },
+    { class: 'turn turn-user', 'data-index': String(turn.index) },
     bubble,
-    h('div', { class: `turn-actions user-actions${branch ? ' pinned' : ''}` }, branch, turn.index >= 0 ? editButton(turn, conversationId, text) : null, copy, turn.index >= 0 ? deleteExchangeButton(turn, conversationId) : null, h('span', { class: 'turn-time' }, timeLabel(turn.time)))
+    h('div', { class: `turn-actions user-actions${branch ? ' pinned' : ''}` }, branch, turn.index >= 0 ? editButton(turn, conversationId, text) : null, copy, turn.index >= 0 ? bookmarkButton(turn, conversationId, 15) : null, turn.index >= 0 ? deleteExchangeButton(turn, conversationId) : null, h('span', { class: 'turn-time' }, timeLabel(turn.time)))
   );
+}
+
+/** Bookmarked turn indexes of the open conversations, kept in step with the saved ones. */
+const bookmarked = new Map<string, Set<number>>();
+
+/** Marks a message to find again: listed in the chat's header and in search (Ctrl+K). */
+function bookmarkButton(turn: Turn, conversationId: string, size = 16): HTMLElement {
+  const on = () => bookmarked.get(conversationId)?.has(turn.index) ?? false;
+  const button = h('button', { class: `icon-btn small${on() ? ' active' : ''}`, title: on() ? 'Remove bookmark' : 'Bookmark' }, icon('bookmark', size));
+  button.addEventListener('click', async () => {
+    const next = !on();
+    try {
+      await tauriInvoke('chat_bookmark', { id: conversationId, index: turn.index, on: next });
+      const set = bookmarked.get(conversationId) ?? new Set<number>();
+      if (next) set.add(turn.index);
+      else set.delete(turn.index);
+      bookmarked.set(conversationId, set);
+      button.classList.toggle('active', next);
+      button.title = next ? 'Remove bookmark' : 'Bookmark';
+      toast(next ? 'Bookmarked. Find it in the chat header or with Ctrl+K.' : 'Bookmark removed.');
+      await refreshConversations();
+    } catch (e) {
+      toast(String(e), 'error');
+    }
+  });
+  return button;
+}
+
+/** Scrolls to a turn by its index and flashes it. */
+export function scrollToTurn(index: number) {
+  const target = document.querySelector<HTMLElement>(`.turn[data-index="${index}"]`);
+  if (!target) return false;
+  target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  target.classList.remove('flash');
+  void target.offsetWidth;
+  target.classList.add('flash');
+  return true;
 }
 
 const TRANSLATE_TO = ['English', 'Português', 'Español', 'Français', 'Deutsch', 'Italiano', '日本語', '中文'];
@@ -881,7 +918,7 @@ function editButton(turn: Turn, conversationId: string, text: string): HTMLEleme
 
 function renderAssistantTurn(conversation: Conversation, turn: Turn, isLast: boolean, running: boolean, branch: HTMLElement | null = null): HTMLElement {
   const durations = isLast ? stepDurations.get(conversation.id) : undefined;
-  const el = h('div', { class: 'turn turn-assistant' }, ...renderParts(turn.parts, false, `${conversation.id}:${turn.index}`, durations));
+  const el = h('div', { class: 'turn turn-assistant', 'data-index': String(turn.index) }, ...renderParts(turn.parts, false, `${conversation.id}:${turn.index}`, durations));
   numberLibraryCitations(el, turn.parts);
   // A reply that stopped after its tools ran, before answering, can pick up where it left off.
   const unfinished = isLast && !running && turn.parts[turn.parts.length - 1]?.kind === 'tool' && !state.live.has(conversation.id);
@@ -993,6 +1030,7 @@ function renderActions(conversation: Conversation, turn: Turn, isLast: boolean, 
     h('button', { class: `icon-btn small${turn.rating < 0 ? ' active-bad' : ''}`, title: 'Bad reply', on: { click: rate(-1) } }, icon('thumbDown', 16)),
     isLast ? h('button', { class: 'icon-btn small', title: 'Regenerate', on: { click: () => void regenerate(conversation.id) } }, icon('retry', 16)) : null,
     copy,
+    bookmarkButton(turn, conversation.id),
     editAnswerButton(turn, conversation.id),
     translateButton(turn),
     readAloudButton(textOf(turn.parts)),
@@ -2639,6 +2677,7 @@ export class ChatView {
   async refresh(scroll: boolean) {
     try {
       this.conversation = await api.conversation(this.id);
+      bookmarked.set(this.id, new Set(this.conversation.bookmarks ?? []));
       pendingUser.delete(this.id);
       // Opening a conversation that finished in the background marks it read.
       const summary = state.conversations.find((c) => c.id === this.id);
@@ -2661,6 +2700,7 @@ export class ChatView {
         agentId: null,
         archived: false,
         params: { temperature: null, maxTokens: null, instructions: '' },
+        bookmarks: [],
         versions: [],
       };
     }
@@ -2724,6 +2764,22 @@ export class ChatView {
       await refreshConversations();
     });
     const meter = usageMeter(this.id, state.usage.get(this.id), c?.usage);
+    // Bookmarked messages of this chat, to jump to.
+    const marks = summary?.bookmarks ?? [];
+    const marksBtn = marks.length ? h('button', { class: 'icon-btn', title: `Bookmarks (${marks.length})` }, icon('bookmark', 18), h('span', { class: 'badge-count' }, String(marks.length))) : null;
+    marksBtn?.addEventListener('click', () => {
+      const close = popover(
+        marksBtn,
+        h(
+          'div',
+          { class: 'menu bookmarks-menu' },
+          h('div', { class: 'menu-heading' }, 'Bookmarks'),
+          marks.map(([index, snippet]) =>
+            h('button', { class: 'menu-item rich', on: { click: () => { close(); if (!scrollToTurn(index)) toast('That message is in another version of this chat.'); } } }, icon('bookmark', 15), h('span', {}, snippet))
+          )
+        )
+      );
+    });
     const exportBtn = h('button', { class: 'icon-btn', title: 'Share or export' }, icon('share', 18));
     let changesBtn: HTMLElement | null = null;
     let terminalBtn: HTMLElement | null = null;
@@ -2769,7 +2825,7 @@ export class ChatView {
         project || workdir ? h('span', { class: 'crumb-sep' }, '/') : null,
         titleBtn
       ),
-      h('div', { class: 'header-actions' }, filesBtn, terminalBtn, changesBtn, debugBtn, meter, pin, exportBtn)
+      h('div', { class: 'header-actions' }, filesBtn, terminalBtn, changesBtn, debugBtn, meter, marksBtn, pin, exportBtn)
     );
   }
 

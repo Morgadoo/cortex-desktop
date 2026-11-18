@@ -6,7 +6,7 @@
 import { actionFor } from './shortcuts';
 import { api, listen, type ApprovalRequest, type ChatEvent } from './api';
 import { tauriInvoke } from '../../shared/tauri';
-import { ChatView, CompareView, HomeView, composer, conversationMenu, recordStepTimes, refreshConversations, turnEnded, viewCache } from './chat';
+import { ChatView, CompareView, HomeView, composer, conversationMenu, recordStepTimes, refreshConversations, scrollToTurn, turnEnded, viewCache } from './chat';
 import { clear, h, icon, modal, popover, promptText, confirmDialog, toast } from './dom';
 import { ConnectorsPage, PlaceholderPage, openInstructions } from './pages';
 import { KnowledgePage, SkillsPage } from './context';
@@ -637,6 +637,17 @@ function renderFooter(): HTMLElement {
 // ---------------------------------------------------------------------------------------------
 // Search
 
+/** Opens a chat and scrolls to one of its messages once it is on screen. */
+function openAt(id: string, index: number) {
+  navigate({ kind: 'chat', id });
+  let tries = 0;
+  const attempt = () => {
+    if (scrollToTurn(index) || ++tries > 30) return;
+    setTimeout(attempt, 100);
+  };
+  setTimeout(attempt, 150);
+}
+
 function openSearch() {
   void modal((close) => {
     const input = h('input', { class: 'input', placeholder: 'Search chats and actions, or #tag' });
@@ -688,6 +699,23 @@ function openSearch() {
         ),
       ];
     };
+    /** Bookmarked messages across chats, matched by their snippet or chat title. */
+    const bookmarkRows = (q: string) => {
+      const marks = state.conversations.flatMap((c) => (c.bookmarks ?? []).map(([index, snippet]) => ({ c, index, snippet })));
+      const found = marks.filter((m) => !q || m.snippet.toLowerCase().includes(q) || m.c.title.toLowerCase().includes(q));
+      if (!found.length) return [];
+      return [
+        h('div', { class: 'menu-heading' }, 'Bookmarks'),
+        ...found.slice(0, q ? 8 : 5).map((m) =>
+          h(
+            'button',
+            { class: 'menu-item rich', on: { click: () => { close(); openAt(m.c.id, m.index); } } },
+            icon('bookmark', 16),
+            h('span', {}, h('strong', {}, m.c.title), h('small', {}, m.snippet))
+          )
+        ),
+      ];
+    };
     let latest = 0;
     const render = async () => {
       const q = input.value.toLowerCase().trim();
@@ -695,7 +723,7 @@ function openSearch() {
       if (!q || q.startsWith('#')) {
         const tag = q.slice(1);
         const found = state.conversations.filter((c) => !q || c.tags.some((t) => t.startsWith(tag))).slice(0, q ? 30 : 8);
-        clear(results, q ? null : actionRows(''), found.length ? [h('div', { class: 'menu-heading' }, 'Chats'), ...found.map((c) => row(c, null))] : h('p', { class: 'muted' }, 'Nothing found.'));
+        clear(results, q ? null : bookmarkRows(''), q ? null : actionRows(''), found.length ? [h('div', { class: 'menu-heading' }, 'Chats'), ...found.map((c) => row(c, null))] : h('p', { class: 'muted' }, 'Nothing found.'));
         return;
       }
       const ticket = ++latest;
@@ -703,9 +731,11 @@ function openSearch() {
       if (ticket !== latest) return;
       const terms = q.split(/\s+/).filter(Boolean);
       const acts = actionRows(q);
+      const marks = bookmarkRows(q);
       clear(
         results,
         acts,
+        marks,
         hits.length ? [h('div', { class: 'menu-heading' }, 'Chats'), ...hits.map((hit) => row(hit, hit.snippet ? marked(hit.snippet, terms) : null))] : acts.length ? null : h('p', { class: 'muted' }, 'Nothing found in your conversations.')
       );
     };

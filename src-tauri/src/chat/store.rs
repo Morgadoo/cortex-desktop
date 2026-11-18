@@ -119,6 +119,10 @@ pub struct Conversation {
     /// What the user said was wrong with a reply they rated down, by the same index.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rating_reasons: Vec<(usize, String)>,
+    /// Messages the user bookmarked, by the index of the turn's last message, with a snippet for
+    /// the bookmarks list.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bookmarks: Vec<(usize, String)>,
     /// How long the model thought before each reply message, in milliseconds, by message index.
     #[serde(default)]
     pub thought: Vec<(usize, u32)>,
@@ -167,6 +171,7 @@ impl Conversation {
             params: ChatParams::default(),
             ratings: Vec::new(),
             rating_reasons: Vec::new(),
+            bookmarks: Vec::new(),
             summary: None,
             usage: Default::default(),
         }
@@ -259,6 +264,9 @@ pub struct ConversationSummary {
     /// The start of the latest reply (or message), for the sidebar's hover preview.
     #[serde(default)]
     pub preview: String,
+    /// Bookmarked messages: turn index and snippet.
+    #[serde(default)]
+    pub bookmarks: Vec<(usize, String)>,
 }
 
 /// The sidebar rows, from the index (see [`super::index`]), so a long history stays fast.
@@ -375,6 +383,8 @@ pub struct ConversationView {
     pub pinned: bool,
     pub archived: bool,
     pub params: ChatParams,
+    /// Turn indexes the user bookmarked.
+    pub bookmarks: Vec<usize>,
     pub turns: Vec<Turn>,
     /// The branch points along the showing path, each with its switcher position.
     pub versions: Vec<VersionsView>,
@@ -455,6 +465,8 @@ pub fn delete_exchange(conversation: &mut Conversation, prompt: usize) -> Result
     conversation.messages.drain(prompt..end);
     shift_all(&mut conversation.times, prompt, end);
     shift_all(&mut conversation.ratings, prompt, end);
+    shift_all(&mut conversation.rating_reasons, prompt, end);
+    shift_all(&mut conversation.bookmarks, prompt, end);
     shift_all(&mut conversation.thought, prompt, end);
     shift_all(&mut conversation.notices, prompt, end);
     for v in conversation.branches.iter_mut().filter(|v| v.from >= end) {
@@ -521,6 +533,22 @@ pub fn rewrite_message(conversation: &mut Conversation, index: usize, text: &str
         None => return Err("That message no longer exists.".into()),
     }
     conversation.updated_at = Utc::now();
+    Ok(())
+}
+
+/// Bookmarks or un-bookmarks the turn ending at message `index`; the snippet is the turn's text.
+pub fn set_bookmark(conversation: &mut Conversation, index: usize, on: bool) -> Result<(), String> {
+    conversation.bookmarks.retain(|(i, _)| *i != index);
+    if on {
+        let turn = turns(conversation).into_iter().find(|t| t.index == index).ok_or("That message no longer exists.")?;
+        let text: String = turn.parts.iter().filter_map(|p| if let Part::Text { text } = p { Some(text.as_str()) } else { None }).collect::<Vec<_>>().join(" ");
+        // Attached files and Markdown marks are noise in a list.
+        let text = text.split("<attachment").next().unwrap_or_default();
+        let flat: String = text.chars().filter(|c| !matches!(c, '*' | '#' | '`' | '>' | '_')).collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ");
+        let snippet = if flat.chars().count() > 140 { format!("{}…", flat.chars().take(140).collect::<String>()) } else { flat };
+        conversation.bookmarks.push((index, if snippet.is_empty() { format!("{} message", turn.role) } else { snippet }));
+        conversation.bookmarks.sort_by_key(|(i, _)| *i);
+    }
     Ok(())
 }
 
@@ -766,6 +794,7 @@ pub fn view(conversation: &Conversation) -> ConversationView {
         pinned: conversation.pinned,
         archived: conversation.archived,
         params: conversation.params.clone(),
+        bookmarks: conversation.bookmarks.iter().map(|(i, _)| *i).collect(),
         turns: turns(conversation),
         versions: conversation
             .versions
@@ -820,6 +849,20 @@ mod tests {
         assert_eq!(c.messages.len(), 4);
         assert!(rewrite_message(&mut c, 3, "  ").is_err());
         assert!(rewrite_message(&mut c, 9, "x").is_err());
+    }
+
+    #[test]
+    fn bookmarks_keep_a_snippet_and_follow_deletions() {
+        let mut c = Conversation::new("c".into(), None, None);
+        c.messages = vec![Message::user("one"), Message::assistant("**First** answer"), Message::user("two"), Message::assistant("Second answer")];
+        set_bookmark(&mut c, 3, true).unwrap();
+        set_bookmark(&mut c, 1, true).unwrap();
+        assert_eq!(c.bookmarks, vec![(1, "First answer".to_string()), (3, "Second answer".to_string())]);
+        assert!(set_bookmark(&mut c, 7, true).is_err());
+        delete_exchange(&mut c, 0).unwrap();
+        assert_eq!(c.bookmarks, vec![(1, "Second answer".to_string())], "the deleted answer's bookmark goes, the later one moves back");
+        set_bookmark(&mut c, 1, false).unwrap();
+        assert!(c.bookmarks.is_empty());
     }
 
     #[test]

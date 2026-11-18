@@ -43,6 +43,8 @@ export interface ConversationSummary {
   taskId: string | null;
   /** How the conversation left off, for the sidebar's hover. */
   preview?: string;
+  /** Bookmarked messages: turn index and snippet. */
+  bookmarks?: [number, string][];
   unread: boolean;
   pinned: boolean;
   archived: boolean;
@@ -127,6 +129,8 @@ export interface Conversation {
   archived: boolean;
   /** This conversation's own model settings. */
   params: ChatParams;
+  /** Turn indexes the user bookmarked. */
+  bookmarks: number[];
   turns: Turn[];
   running: boolean;
   /** Which answer to the last prompt shows, when it was answered more than once. */

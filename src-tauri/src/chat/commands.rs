@@ -1319,6 +1319,15 @@ pub fn chat_conversation_text(app: AppHandle, id: String) -> Result<String, Stri
     Ok(super::builtins::chat_transcript(&conversation, 60_000))
 }
 
+/// Bookmarks a message (the turn ending at `index`) or removes its bookmark.
+#[tauri::command]
+pub fn chat_bookmark(app: AppHandle, id: String, index: usize, on: bool) -> Result<(), String> {
+    let dir = config_dir(&app)?;
+    let mut conversation = store::load_conversation(&dir, &id)?;
+    store::set_bookmark(&mut conversation, index, on)?;
+    store::save_conversation(&dir, &conversation)
+}
+
 /// Why a reply was rated down, kept with the conversation.
 #[tauri::command]
 pub fn chat_rate_reason(app: AppHandle, id: String, index: usize, reason: String) -> Result<(), String> {
