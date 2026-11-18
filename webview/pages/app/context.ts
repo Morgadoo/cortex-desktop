@@ -2,6 +2,7 @@
 import { tauriInvoke } from '../../shared/tauri';
 import { api, type Memories, type Skill } from './api';
 import { clear, confirmDialog, h, icon, markdown, modal, popover, promptText, toast } from './dom';
+import { improveButton } from './improve';
 import { state } from './state';
 import { button, emptyState, iconButton, modalHeader, pageHeader, switchInput, tabs } from './ui';
 
@@ -245,13 +246,14 @@ function editKnowledgePage(page: KnowledgePageData | null, onSaved: (pages: Know
         toast(String(e), 'error');
       }
     };
+    const improve = improveButton(area, renderPreview);
     return h(
       'div',
       { class: 'canvas-modal' },
       modalHeader(title, close),
       h('div', { class: 'canvas-split' }, area, preview),
       page?.sources.length ? h('p', { class: 'muted knowledge-sources' }, `Sources: ${page.sources.join(' · ')}`) : null,
-      h('div', { class: 'dialog-actions canvas-actions' }, h('span', { class: 'hint' }, 'Markdown'), h('span', { class: 'spacer' }), button({ variant: 'secondary', label: 'Cancel', onClick: close }), button({ variant: 'primary', label: 'Save', onClick: () => void save() }))
+      h('div', { class: 'dialog-actions canvas-actions' }, improve, h('span', { class: 'hint' }, 'Markdown'), h('span', { class: 'spacer' }), button({ variant: 'secondary', label: 'Cancel', onClick: close }), button({ variant: 'primary', label: 'Save', onClick: () => void save() }))
     );
   }, true);
 }

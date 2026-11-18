@@ -143,12 +143,16 @@ pub fn serve(config_dir: &Path, path: &str) -> tauri::http::Response<Vec<u8>> {
 
 /// Every app canvas, newest first.
 pub fn list_apps(config_dir: &Path) -> Vec<Canvas> {
+    list_all(config_dir).into_iter().filter(|c| c.kind == "app").collect()
+}
+
+/// Every canvas, newest change first.
+pub fn list_all(config_dir: &Path) -> Vec<Canvas> {
     let Ok(entries) = std::fs::read_dir(dir(config_dir)) else { return Vec::new() };
     let mut out: Vec<Canvas> = entries
         .filter_map(Result::ok)
         .filter_map(|e| std::fs::read_to_string(e.path()).ok())
         .filter_map(|t| serde_json::from_str::<Canvas>(&t).ok())
-        .filter(|c| c.kind == "app")
         .collect();
     out.sort_by_key(|c| std::cmp::Reverse(c.versions.last().map(|v| v.at)));
     out

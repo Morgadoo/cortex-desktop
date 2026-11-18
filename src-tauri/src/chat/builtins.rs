@@ -50,7 +50,8 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             "properties": {
                 "query": { "type": "string", "description": "Search terms, as you would type them." },
                 "max_results": { "type": "integer", "minimum": 1, "maximum": 10, "default": 6 },
-                "recency": { "type": "string", "enum": ["day", "week", "month", "year"], "description": "Only results from the past day, week, month or year: for news and anything that changes." }
+                "recency": { "type": "string", "enum": ["day", "week", "month", "year"], "description": "Only results from the past day, week, month or year: for news and anything that changes." },
+                "sites": { "type": "array", "items": { "type": "string" }, "maxItems": 5, "description": "Only results from these sites, e.g. [\"docs.rs\", \"github.com\"]: for official docs or a source the user named." }
             },
             "required": ["query"]
         }),
@@ -314,8 +315,11 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
             }
             let max = args.get("max_results").and_then(Value::as_u64).unwrap_or(6).clamp(1, 10) as usize;
             let recency = search::Recency::parse(&str_arg("recency"));
-            match search::search_with(config_dir, &query, max, recency).await {
-                Ok(hits) => ok(serde_json::to_string_pretty(&json!({ "query": query, "results": hits })).unwrap_or_default()),
+            let sites: Vec<String> = args.get("sites").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default();
+            let sites = search::clean_sites(&sites);
+            match search::search_sites(config_dir, &query, max, recency, &sites).await {
+                Ok(hits) if hits.is_empty() && !sites.is_empty() => ok(format!("No results on {} for that query. Try other words or search without sites.", sites.join(", "))),
+                Ok(hits) => ok(serde_json::to_string_pretty(&json!({ "query": query, "sites": sites, "results": hits })).unwrap_or_default()),
                 Err(e) => err(e),
             }
         }

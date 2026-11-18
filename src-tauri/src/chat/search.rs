@@ -242,6 +242,59 @@ impl Recency {
     }
 }
 
+/// Domains to keep results to, from what a model sent: bare hosts like `docs.rs`, lowercase,
+/// without scheme, `www.` or path; at most 5.
+pub fn clean_sites(values: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for v in values {
+        let v = v.trim().to_lowercase();
+        let v = v.trim_start_matches("site:");
+        let v = v.split("://").last().unwrap_or_default();
+        let host = v.split(['/', '?', '#']).next().unwrap_or_default().trim_start_matches("www.").trim_end_matches('.');
+        if host.contains('.') && host.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-') && !out.iter().any(|h| h == host) {
+            out.push(host.to_string());
+        }
+    }
+    out.truncate(5);
+    out
+}
+
+/// The query with `site:` operators, which Bing, DuckDuckGo, SearXNG and Brave understand.
+pub fn with_sites(query: &str, sites: &[String]) -> String {
+    match sites {
+        [] => query.to_string(),
+        [one] => format!("{query} site:{one}"),
+        many => format!("{query} ({})", many.iter().map(|s| format!("site:{s}")).collect::<Vec<_>>().join(" OR ")),
+    }
+}
+
+/// Whether a URL is on one of the sites (the site itself or a subdomain of it).
+pub fn on_sites(url: &str, sites: &[String]) -> bool {
+    let host = url.split("://").nth(1).unwrap_or(url).split(['/', '?', '#', ':']).next().unwrap_or_default().to_lowercase();
+    sites.is_empty() || sites.iter().any(|s| host == *s || host.ends_with(&format!(".{s}")))
+}
+
+/// Searches only the given sites. Results from other sites are dropped, so an engine that
+/// ignores `site:` gives fewer results, never wrong ones.
+pub async fn search_sites(config_dir: &std::path::Path, query: &str, max: usize, recency: Option<Recency>, sites: &[String]) -> Result<Vec<Hit>, String> {
+    if sites.is_empty() {
+        return search_with(config_dir, query, max, recency).await;
+    }
+    let settings = load_settings(config_dir);
+    let hits = if settings.engine == "tavily" {
+        match tavily(query, (max * 2).min(20), recency, sites).await {
+            Ok(hits) => hits,
+            Err(e) => {
+                log::warn!("tavily search failed: {e}");
+                search(&with_sites(query, sites), 15, recency).await?
+            }
+        }
+    } else {
+        search_with(config_dir, &with_sites(query, sites), (max * 2).min(20), recency).await?
+    };
+    Ok(hits.into_iter().filter(|h| on_sites(&h.url, sites)).take(max).collect())
+}
+
 pub async fn search_with(config_dir: &std::path::Path, query: &str, max: usize, recency: Option<Recency>) -> Result<Vec<Hit>, String> {
     let settings = load_settings(config_dir);
     if settings.engine == "auto" {
@@ -291,22 +344,27 @@ async fn engine_search(settings: &SearchSettings, query: &str, max: usize, recen
                 .map_err(|e| e.to_string())?;
             Ok(parse_brave(&json(r).await?))
         }
-        "tavily" => {
-            let key = key().await?.ok_or("no Tavily key")?;
-            let r = client
-                .post("https://api.tavily.com/search")
-                .bearer_auth(key)
-                .json(&match recency {
-                    Some(r) => serde_json::json!({ "query": query, "max_results": max.min(20), "time_range": r.word() }),
-                    None => serde_json::json!({ "query": query, "max_results": max.min(20) }),
-                })
-                .send()
-                .await
-                .map_err(|e| e.to_string())?;
-            Ok(parse_tavily(&json(r).await?))
-        }
+        "tavily" => tavily(query, max, recency, &[]).await,
         other => Err(format!("unknown engine {other}")),
     }
+}
+
+/// Tavily, which takes the sites as a list instead of `site:` operators.
+async fn tavily(query: &str, max: usize, recency: Option<Recency>, sites: &[String]) -> Result<Vec<Hit>, String> {
+    let key = key().await?.ok_or("no Tavily key")?;
+    let mut body = serde_json::json!({ "query": query, "max_results": max.min(20) });
+    if let Some(r) = recency {
+        body["time_range"] = r.word().into();
+    }
+    if !sites.is_empty() {
+        body["include_domains"] = sites.into();
+    }
+    let r = client()?.post("https://api.tavily.com/search").bearer_auth(key).json(&body).send().await.map_err(|e| e.to_string())?;
+    let status = r.status();
+    if !status.is_success() {
+        return Err(format!("HTTP {status}"));
+    }
+    Ok(parse_tavily(&r.json::<serde_json::Value>().await.map_err(|e| e.to_string())?))
 }
 
 /// Up to `max` results for `query`, from the first engine that answers with any.
@@ -414,6 +472,18 @@ mod tests {
     }
 
     #[test]
+    fn site_filters() {
+        let sites = clean_sites(&["https://www.Docs.rs/rig".into(), "site:github.com".into(), "docs.rs".into(), "not a site".into()]);
+        assert_eq!(sites, ["docs.rs", "github.com"]);
+        assert_eq!(with_sites("rig", &sites[..1]), "rig site:docs.rs");
+        assert_eq!(with_sites("rig", &sites), "rig (site:docs.rs OR site:github.com)");
+        assert!(on_sites("https://docs.rs/rig-core", &sites));
+        assert!(on_sites("https://gist.github.com/x", &sites));
+        assert!(!on_sites("https://notgithub.com/x", &sites));
+        assert!(on_sites("https://anything.example", &[]));
+    }
+
+    #[test]
     fn recency_maps_to_each_engine() {
         assert_eq!(Recency::parse("Week"), Some(Recency::Week));
         assert_eq!(Recency::parse("any"), None);
@@ -436,7 +506,8 @@ mod live {
     #[tokio::test]
     #[ignore]
     async fn live_search() {
-        let hits = super::search("rig rust llm library", 5, None).await.expect("search");
+        let query = std::env::var("Q").unwrap_or_else(|_| "rig rust llm library".into());
+        let hits = super::search(&query, 10, None).await.expect("search");
         assert!(!hits.is_empty());
         for h in &hits {
             println!("HIT {} | {} | {}", h.title, h.url, h.snippet.chars().take(60).collect::<String>());

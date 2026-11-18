@@ -1459,6 +1459,39 @@ pub async fn chat_translate(app: AppHandle, model: String, text: String, languag
     Ok(response.text())
 }
 
+/// Rewrites `text` as asked (shorter, clearer, fixed grammar, …) for editing in place. `context`
+/// is the text around it, so a rewritten passage still fits.
+#[tauri::command]
+pub async fn chat_improve_text(app: AppHandle, model: String, text: String, instruction: String, context: Option<String>) -> Result<String, String> {
+    let instruction: String = instruction.trim().chars().take(400).collect();
+    if text.trim().is_empty() {
+        return Err("Nothing to improve.".into());
+    }
+    let instruction = if instruction.is_empty() { "Improve the writing: clearer and tighter, same meaning.".to_string() } else { instruction };
+    let model = engine::connect_model(&config_dir(&app)?, &model).await?;
+    let context = context
+        .filter(|c| !c.trim().is_empty())
+        .map(|c| format!("\n\nThe text around it, for reference only (do not repeat it):\n<context>\n{}\n</context>", c.chars().take(12_000).collect::<String>()))
+        .unwrap_or_default();
+    let prompt = format!(
+        "Rewrite the text below. Instruction: {instruction}\n\
+         Keep its Markdown, links, code and facts; do not add facts. Reply with the rewritten text alone, \
+         with no preamble or quotes.{context}\n\n<text>\n{}\n</text>",
+        text.chars().take(30_000).collect::<String>()
+    );
+    let request = rig_core::completion::CompletionRequest::new(rig_core::completion::message::Message::user(prompt)).max_tokens(8_000u64);
+    let response = tokio::time::timeout(std::time::Duration::from_secs(120), model.call(request))
+        .await
+        .map_err(|_| "The provider did not answer in time.".to_string())?
+        .map_err(|e| super::context::short_error(&e.to_string()))?;
+    let out = response.text();
+    let out = out.trim().trim_start_matches("<text>").trim_end_matches("</text>").trim();
+    if out.is_empty() {
+        return Err("The model gave no text back.".into());
+    }
+    Ok(out.to_string())
+}
+
 /// A conversation as plain text, to add to another one as context.
 #[tauri::command]
 pub fn chat_conversation_text(app: AppHandle, id: String) -> Result<String, String> {
@@ -1688,6 +1721,25 @@ fn conversation_markdown(conversation: &store::Conversation) -> String {
         }
     }
     text
+}
+
+/// One canvas in a list: enough to pick it, without its versions.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanvasEntry {
+    id: String,
+    title: String,
+    kind: String,
+    conversation_id: String,
+}
+
+/// Every canvas, newest change first, to add one to a chat as context.
+#[tauri::command]
+pub fn chat_list_canvases(app: AppHandle) -> Result<Vec<CanvasEntry>, String> {
+    Ok(super::canvas::list_all(&config_dir(&app)?)
+        .into_iter()
+        .map(|c| CanvasEntry { id: c.id, title: c.title, kind: c.kind, conversation_id: c.conversation_id })
+        .collect())
 }
 
 #[tauri::command]

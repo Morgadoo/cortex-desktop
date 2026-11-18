@@ -1,4 +1,5 @@
 /** The home screen, a conversation, and the composer they share. */
+import { emojiFor, findEmoji } from './emoji';
 import { tauriInvoke } from '../../shared/tauri';
 import { api, newId, type ApprovalMode, type ChatParams, type Conversation, type Part, type Turn, type UsageTotals } from './api';
 import { fillVariables } from './variables';
@@ -1642,46 +1643,108 @@ class Composer {
     });
   }
 
-  /** Library names for the `#` menu, loaded the first time it opens. */
-  private libraryNames: string[] | null = null;
+  /** What the `#` menu offers besides chats, loaded each time it opens. */
+  private hashSources: { libraries: string[]; pages: { id: string; title: string }[]; canvases: { id: string; title: string; kind: string }[] } | null = null;
 
   /**
-   * `#` adds context where you type it (Open WebUI's `#`): a library to search, or another chat
-   * attached in full. The `#word` is taken out of the message.
+   * `#` adds context where you type it (Open WebUI's `#`): a library to search, a knowledge page,
+   * a canvas or another chat, attached in full. The `#word` is taken out of the message.
    */
   private updateHashMenu(): boolean {
     const before = this.textarea.value.slice(0, this.textarea.selectionStart);
     const match = before.match(/(?:^|\s)#([^\s#]*)$/);
-    if (!match) return false;
-    if (this.libraryNames === null) {
-      this.libraryNames = [];
-      void tauriInvoke<{ name: string }[]>('chat_list_libraries').then((libs) => {
-        this.libraryNames = libs.map((l) => l.name);
-        this.updateSlashMenu();
-      }).catch(() => undefined);
+    if (!match) {
+      this.hashSources = null;
+      return false;
+    }
+    if (this.hashSources === null) {
+      this.hashSources = { libraries: [], pages: [], canvases: [] };
+      const sources = this.hashSources;
+      void Promise.all([
+        tauriInvoke<{ name: string }[]>('chat_list_libraries').catch(() => []),
+        tauriInvoke<{ id: string; title: string }[]>('chat_knowledge_pages').catch(() => []),
+        tauriInvoke<{ id: string; title: string; kind: string }[]>('chat_list_canvases').catch(() => []),
+      ]).then(([libs, pages, canvases]) => {
+        sources.libraries = libs.map((l) => l.name);
+        sources.pages = pages;
+        sources.canvases = canvases;
+        if (this.hashSources === sources) this.updateSlashMenu();
+      });
     }
     const q = match[1]!.toLowerCase();
-    const libs = this.libraryNames.filter((n) => n.toLowerCase().includes(q)).slice(0, 5);
-    const chats = state.conversations.filter((c) => c.id !== this.conversationId && !c.archived && (c.title || '').toLowerCase().includes(q)).slice(0, 6);
-    if (!libs.length && !chats.length) {
+    const has = (t: string) => (t || '').toLowerCase().includes(q);
+    const groups: { heading: string; icon: Parameters<typeof icon>[0]; entries: { key: string; label: string }[] }[] = [
+      { heading: 'Search a library', icon: 'library', entries: this.hashSources.libraries.filter(has).slice(0, 4).map((n) => ({ key: `lib:${n}`, label: n })) },
+      { heading: 'Add a knowledge page', icon: 'book', entries: this.hashSources.pages.filter((p) => has(p.title)).slice(0, 4).map((p) => ({ key: `page:${p.id}`, label: p.title || 'Untitled' })) },
+      { heading: 'Add a canvas', icon: 'file', entries: this.hashSources.canvases.filter((c) => has(c.title)).slice(0, 4).map((c) => ({ key: `canvas:${c.id}`, label: c.title || 'Untitled' })) },
+      {
+        heading: 'Add a chat as context',
+        icon: 'chat',
+        entries: state.conversations.filter((c) => c.id !== this.conversationId && !c.archived && has(c.title)).slice(0, 5).map((c) => ({ key: `chat:${c.id}`, label: c.title || 'Untitled' })),
+      },
+    ].filter((g) => g.entries.length);
+    if (!groups.length) {
       this.slashMenu?.close();
       this.slashMenu = null;
       return true;
     }
-    const items = [...libs.map((n) => `lib:${n}`), ...chats.map((c) => `chat:${c.id}`)];
+    const items = groups.flatMap((g) => g.entries.map((e) => e.key));
     const index = Math.min(this.slashMenu?.index ?? 0, items.length - 1);
     const list = h('div', { class: 'menu slash-menu' });
-    if (libs.length) list.append(h('div', { class: 'menu-heading' }, 'Search a library'));
-    libs.forEach((n, i) => list.append(h('button', { class: `menu-item${i === index ? ' selected' : ''}`, on: { mousedown: (e: MouseEvent) => { e.preventDefault(); this.pickSkill(`lib:${n}`); } } }, icon('library', 16), h('span', {}, n))));
-    if (chats.length) list.append(h('div', { class: 'menu-heading' }, 'Add a chat as context'));
-    chats.forEach((c, j) => {
-      const i = libs.length + j;
-      list.append(h('button', { class: `menu-item${i === index ? ' selected' : ''}`, on: { mousedown: (e: MouseEvent) => { e.preventDefault(); this.pickSkill(`chat:${c.id}`); } } }, icon('chat', 16), h('span', {}, c.title || 'Untitled')));
-    });
+    for (const g of groups) {
+      list.append(h('div', { class: 'menu-heading' }, g.heading));
+      for (const e of g.entries) {
+        const i = items.indexOf(e.key);
+        list.append(h('button', { class: `menu-item${i === index ? ' selected' : ''}`, on: { mousedown: (ev: MouseEvent) => { ev.preventDefault(); this.pickSkill(e.key); } } }, icon(g.icon, 16), h('span', {}, e.label)));
+      }
+    }
     this.slashMenu?.close();
     const close = popover(this.textarea, list, 'above');
     this.slashMenu = { close, items, index, list };
     return true;
+  }
+
+  /**
+   * `:name` lists emoji by shortcode (Open WebUI's and Slack's `:`); a closing `:` on an exact
+   * shortcode turns it into the emoji at once.
+   */
+  private updateEmojiMenu(): boolean {
+    const caret = this.textarea.selectionStart;
+    const before = this.textarea.value.slice(0, caret);
+    const closed = before.match(/(^|\s):([a-z0-9_+-]+):$/i);
+    const exact = closed ? emojiFor(closed[2]!) : undefined;
+    if (closed && exact) {
+      this.replaceBeforeCaret(closed[0].length - closed[1]!.length, exact);
+      this.slashMenu?.close();
+      this.slashMenu = null;
+      return true;
+    }
+    const match = before.match(/(?:^|\s):([a-z0-9_+-]{2,})$/i);
+    if (!match) return false;
+    const found = findEmoji(match[1]!);
+    this.slashMenu?.close();
+    this.slashMenu = null;
+    if (!found.length) return true;
+    const items = found.map(([name]) => `emoji:${name}`);
+    const index = 0;
+    const list = h('div', { class: 'menu slash-menu' }, h('div', { class: 'menu-heading' }, 'Emoji'));
+    found.forEach(([name, emoji], i) =>
+      list.append(
+        h('button', { class: `menu-item${i === index ? ' selected' : ''}`, on: { mousedown: (e: MouseEvent) => { e.preventDefault(); this.pickSkill(`emoji:${name}`); } } }, h('span', { class: 'emoji-glyph' }, emoji), h('span', {}, `:${name}:`))
+      )
+    );
+    const close = popover(this.textarea, list, 'above');
+    this.slashMenu = { close, items, index, list };
+    return true;
+  }
+
+  /** Replaces the `count` characters before the caret with `text`, keeping the rest. */
+  private replaceBeforeCaret(count: number, text: string) {
+    const caret = this.textarea.selectionStart;
+    const value = this.textarea.value;
+    this.setText(value.slice(0, caret - count) + text + value.slice(caret));
+    const at = caret - count + text.length;
+    this.textarea.setSelectionRange(at, at);
   }
 
   /** Takes the `#word` being typed out of the message. */
@@ -1694,6 +1757,7 @@ class Composer {
   /** Typing `/` (or `@`, as Vibe Work does) at the start lists the enabled skills; picking one inserts `/name `. */
   private updateSlashMenu() {
     if (this.updateHashMenu()) return;
+    if (this.updateEmojiMenu()) return;
     const match = this.textarea.value.match(/^([/@])([a-z0-9-]*)$/);
     // The skills used most come first: the menu learns from use.
     const uses = skillUses();
@@ -1792,6 +1856,35 @@ class Composer {
       this.library = name.slice(4);
       this.renderChips();
       this.renderBar();
+      return this.focus();
+    }
+    if (name.startsWith('emoji:')) {
+      const emoji = emojiFor(name.slice(6));
+      const word = this.textarea.value.slice(0, this.textarea.selectionStart).match(/:[a-z0-9_+-]*$/i);
+      if (emoji && word) this.replaceBeforeCaret(word[0].length, `${emoji} `);
+      return this.focus();
+    }
+    if (name.startsWith('page:') || name.startsWith('canvas:')) {
+      const page = name.startsWith('page:');
+      const id = name.slice(name.indexOf(':') + 1);
+      this.dropHashWord();
+      const load = page
+        ? tauriInvoke<{ id: string; title: string; body: string }[]>('chat_knowledge_pages').then((pages) => {
+            const p = pages.find((x) => x.id === id);
+            if (!p) throw new Error('That page is gone.');
+            return { name: `Page: ${p.title || 'Untitled'}`, text: `# ${p.title}\n\n${p.body}` };
+          })
+        : tauriInvoke<{ title: string; kind: string; versions: { content: string }[] }>('chat_get_canvas', { id }).then((c) => ({
+            name: `Canvas: ${c.title || 'Untitled'}`,
+            text: `${c.title} (${c.kind})\n\n${c.versions[c.versions.length - 1]?.content ?? ''}`,
+          }));
+      void load
+        .then((a) => {
+          this.attachments.push(a);
+          this.renderChips();
+          this.renderBar();
+        })
+        .catch((e) => toast(String(e instanceof Error ? e.message : e), 'error'));
       return this.focus();
     }
     if (name.startsWith('chat:')) {

@@ -3,6 +3,7 @@ import { tauriInvoke } from '../../shared/tauri';
 import type { Part } from './api';
 import { clear, h, icon, markdown, modal, toast } from './dom';
 import { button, iconButton, modalHeader } from './ui';
+import { improveButton } from './improve';
 import { renderSheetCard } from './sheet';
 import { diagramFrame, isMarp } from './diagrams';
 
@@ -359,7 +360,7 @@ function openEditor(title: string, content: string, onSave: (title: string, cont
       { class: 'canvas-modal' },
       modalHeader(titleInput, close),
       h('div', { class: 'canvas-split' }, area, preview),
-      h('div', { class: 'dialog-actions canvas-actions' }, h('span', { class: 'hint' }, 'Markdown · Ctrl+S saves a new version'), h('span', { class: 'spacer' }), h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Save'))
+      h('div', { class: 'dialog-actions canvas-actions' }, improveButton(area, renderPreview), h('span', { class: 'hint' }, 'Markdown · Ctrl+S saves a new version'), h('span', { class: 'spacer' }), h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Save'))
     );
   }, true);
 }

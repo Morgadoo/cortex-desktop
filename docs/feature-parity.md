@@ -213,7 +213,7 @@ items most likely to differ:
 Reviewed in November 2026 feature by feature against the docs of Open WebUI, LibreChat, LobeHub,
 Onyx, Osaurus and OpenBot (about 220 features). Every item of the review's shortlist is in the table
 below; every feature the review found missing or partial is tracked row by row, with evidence, in
-[review-coverage.md](review-coverage.md) (now 106 done, 57 partial, 29 missing, 31 out of scope).
+[review-coverage.md](review-coverage.md) (now 111 done, 53 partial, 28 missing, 31 out of scope).
 What was deliberately left out, and why:
 
 - **Team and enterprise features** (channels, comments, SSO, SCIM, tenants, admin plane, shared
@@ -319,6 +319,11 @@ What was deliberately left out, and why:
 | Webhooks when a task finishes | open-webui (webhooks), osaurus | A scheduled task can tell a webhook: a JSON POST with the task, its status, the conversation and the answer, plus `text` and `content` fields Slack and Discord incoming webhooks show as a message. Verified live: a run's result arrived at a local receiver | Done |
 | `#` adds context while typing | open-webui (`#`) | Typing `#` in the composer lists libraries (to search for this message) and other chats (attached in full); the `#word` leaves the message. Verified live | Done |
 | Continue a chat with an agent | lobehub (forward to another assistant) | Conversation menu → Continue with an agent: a copy the chosen agent carries on, filed under it. Verified live | Done |
+| Compare answer versions | Open WebUI | The version switcher under a regenerated (or re-asked) answer has a compare button: pick any two versions and see the words removed and added, with a count. Works for versions saved in the older format too. Verified live | Done |
+| Emoji shortcodes | Open WebUI, Slack | `:name` in the composer lists matching emoji (`:roc` → 🚀); a closing colon on an exact name (`:tada:`) turns into the emoji at once. Verified live | Done |
+| Knowledge pages and canvases as context | Open WebUI | The composer's `#` menu also lists knowledge pages and canvases; picking one attaches it in full to the message, next to libraries and other chats. Verified live: the answer used the attached page | Done |
+| Web search on chosen sites | Onyx, Perplexity | `web_search` takes `sites` (up to 5 domains): the query gets `site:` operators (Tavily gets its domain list) and results from other sites are dropped, so an engine that ignores the operator returns fewer results, never wrong ones. Verified live: the model searched with `sites: ["docs.rs"]` | Done |
+| Improve with AI in editors | Open WebUI, Notion | The knowledge page and canvas editors have Improve: rewrite the selection, or the whole text, in place with the current model (improve, fix grammar, shorter, longer, formal, simpler, as a list, or your own instruction). The spacing around the selection is kept; Undo puts the text back. Verified live | Done |
 | Translate an answer | LibreChat, lobehub | The globe under an answer translates it into a listed or any language, shown below the original (Markdown and code kept) without changing the conversation. Verified live | Done |
 | Quote a passage into the next message | LibreChat, lobehub | Selecting text in an answer (or a canvas) shows "Ask about this", which quotes it in the composer | Done |
 | Slash commands | open-webui (built-in `/` commands), Vibe CLI | `/` lists app commands before skills: /new, /temporary, /model, /voice, /fork, /context, /settings, /export, /clear. Verified live (/context) | Done |

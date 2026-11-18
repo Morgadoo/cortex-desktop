@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 106 |
-| PARTIAL | 86 | 57 |
-| MISSING | 48 | 29 |
+| DONE | 58 | 111 |
+| PARTIAL | 86 | 53 |
+| MISSING | 48 | 28 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 30 / 11 / 4 / 9 · LibreChat 31 / 8 / 3 / 4 · LobeHub 13 / 10 / 6 / 5 · Onyx 11 / 7 / 3 / 5 · Osaurus 6 / 12 / 8 / 4 · OpenBot 15 / 9 / 5 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 34 / 8 / 3 / 9 · LibreChat 31 / 8 / 3 / 4 · LobeHub 13 / 10 / 6 / 5 · Onyx 12 / 6 / 3 / 5 · Osaurus 6 / 12 / 8 / 4 · OpenBot 15 / 9 / 5 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -22,8 +22,8 @@ Per app now (done / partial / missing / out of scope): Open WebUI 30 / 11 / 4 / 
 | Open WebUI | Autocomplete as you type | MISSING | MISSING | No model completion in the composer |
 | Open WebUI | Follow-up prompts after each reply | MISSING | DONE | parity L268; `chat_follow_ups` command |
 | Open WebUI | Expand the message box | MISSING | DONE | parity L287 (expand button, tall editor) |
-| Open WebUI | Compare Text (prompt vs revision) | MISSING | MISSING | Nothing found; the only diff view is for canvas versions (canvas.ts:405) |
-| Open WebUI | Trigger characters `/ @ # $ :` | PARTIAL | PARTIAL | `/` commands and skills, `@` models and agents, `#` libraries and chats (parity: # adds context). Missing: `:` emoji |
+| Open WebUI | Compare Text (prompt vs revision) | MISSING | DONE | parity: Compare answer versions (word diff between any two versions of a reply, from a regenerated answer or an edited prompt) |
+| Open WebUI | Trigger characters `/ @ # $ :` | PARTIAL | DONE | `/` commands and skills, `@` models and agents, `#` libraries, knowledge pages, canvases and chats, `:` emoji (parity: Emoji shortcodes). Open WebUI's `$` (tools) is covered by `/` skills |
 | Open WebUI | Built-in slash commands | PARTIAL | DONE | parity L280: /new, /temporary, /model, /voice, /fork, /context, /settings, /export, /clear |
 | Open WebUI | Default upload mode (search vs full) | MISSING | PARTIAL | Chat attachments always go in full (chat.ts:1694–1700); library documents are searched, with `read_document` for the whole text (parity L241). Missing: a per-file or default choice |
 | Open WebUI | LaTeX, tables, task lists, Mermaid | PARTIAL | DONE | LaTeX parity L275; GFM tables and task lists dom.ts:149; Mermaid parity L200 |
@@ -68,8 +68,8 @@ Per app now (done / partial / missing / out of scope): Open WebUI 30 / 11 / 4 / 
 | Open WebUI | Comments | MISSING | OUT OF SCOPE | Team feature (parity L217) |
 | Open WebUI | Data controls: uploaded-file management | PARTIAL | PARTIAL | Archive, trash, export (parity L308; settings.ts:186). Missing: a page that lists and manages uploaded files |
 | Open WebUI | Notes: rich editor with toolbar | PARTIAL | PARTIAL | Canvas documents with Preview/Code (parity L111). Missing: a formatting toolbar |
-| Open WebUI | Notes: AI Enhance in place | PARTIAL | PARTIAL | "Ask about this" quotes the selection into the composer (parity L279). Missing: rewrite of the selection in place |
-| Open WebUI | Notes: attach a note to a chat | PARTIAL | PARTIAL | Knowledge pages recalled by relevance (parity L85); chats can be attached (L285). Missing: attaching a chosen knowledge page or canvas |
+| Open WebUI | Notes: AI Enhance in place | PARTIAL | DONE | parity: Improve with AI in editors (selection or whole page rewritten in place, Undo) |
+| Open WebUI | Notes: attach a note to a chat | PARTIAL | DONE | parity: Knowledge pages and canvases as context (`#` in the composer) |
 | Open WebUI | Administration (RBAC, SSO…) | MISSING | OUT OF SCOPE | Team/enterprise (parity L217) |
 | Open WebUI | Channels | MISSING | OUT OF SCOPE | Team (parity L217) |
 | LibreChat | Favorites pinned in the palette | MISSING | DONE | Ctrl+K opens with pinned chats and agents first (parity: Pinned chats and agents in the palette) |
@@ -165,7 +165,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 30 / 11 / 4 / 
 | Onyx | Agentic hybrid RAG | PARTIAL | DONE | parity L243, L241 |
 | Onyx | Connectors indexed and synced | PARTIAL | PARTIAL | Folders are indexed (parity L240). Missing: MCP connectors indexed into a library |
 | Onyx | Search mode with source cards | MISSING | MISSING |  |
-| Onyx | Time range / source filter | MISSING | PARTIAL | `web_search` recency: day, week, month, year (parity: Recent results only). Missing: a source (site) filter |
+| Onyx | Time range / source filter | MISSING | DONE | `web_search` recency (parity: Recent results only) and `sites` (parity: Web search on chosen sites) |
 | Onyx | Cited vs found sources; add one in full | PARTIAL | PARTIAL | Sources panel; falls back to search results when nothing is cited (chat.ts:889–895). Missing: a separate Found list, add in full |
 | Onyx | Web search providers | PARTIAL | DONE | parity L294 |
 | Onyx | Document sets | PARTIAL | PARTIAL | Libraries; a project can have one (api.ts `Project.libraryId`). Missing: per agent |
