@@ -627,18 +627,42 @@ async fn launch(browser: &Path, profile: &Path) -> Result<(tokio::process::Child
         .map_err(|e| format!("The browser could not start: {e}"))?;
     let stderr = child.stderr.take().ok_or("no browser output")?;
     let mut lines = tokio::io::BufReader::new(stderr).lines();
-    let found = tokio::time::timeout(std::time::Duration::from_secs(20), async {
+    // What the browser said, to explain a start that fails.
+    let mut said: Vec<String> = Vec::new();
+    // A cold start on a busy computer can take a while.
+    let waited = tokio::time::timeout(std::time::Duration::from_secs(60), async {
         while let Ok(Some(line)) = lines.next_line().await {
             if let Some(url) = line.split("DevTools listening on ").nth(1) {
                 return Some(url.trim().to_string());
             }
+            said.push(line);
+            if said.len() > 8 {
+                said.remove(0);
+            }
         }
+        // The browser closed its output: it exited.
         None
     })
-    .await
-    .ok()
-    .flatten()
-    .ok_or("The browser did not open its DevTools port.")?;
+    .await;
+    let found = match waited {
+        Ok(Some(url)) => url,
+        outcome => {
+            let why = if outcome.is_err() {
+                "within a minute"
+            } else {
+                "before it exited"
+            };
+            let tail = said.join(" | ");
+            return Err(format!(
+                "The browser did not open its DevTools port {why}.{}",
+                if tail.is_empty() {
+                    String::new()
+                } else {
+                    format!(" It said: {tail}")
+                }
+            ));
+        }
+    };
     // Keep reading its output so it never blocks on a full pipe.
     tokio::spawn(async move { while let Ok(Some(_)) = lines.next_line().await {} });
     Ok((child, found))
@@ -772,6 +796,26 @@ mod act_tests {
             .contains("requestSubmit"));
         assert!(step_js(&json!({"press": "Delete"})).is_err());
         assert!(step_js(&json!({"dance": 1})).is_err());
+    }
+
+    /// A browser that exits without opening its DevTools port is reported with what it said.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_browser_that_exits_is_explained() {
+        let dir = tempfile::tempdir().unwrap();
+        let fake = dir.path().join("fake-browser");
+        std::fs::write(
+            &fake,
+            "#!/bin/sh\necho 'Missing X server or $DISPLAY' >&2\nexit 1\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&fake, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
+        let err = launch(&fake, dir.path()).await.unwrap_err();
+        assert!(
+            err.contains("before it exited") && err.contains("Missing X server"),
+            "{err}"
+        );
     }
 
     /// Runs only where a browser is installed: fills a form and reads what its script shows.
