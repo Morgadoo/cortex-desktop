@@ -49,7 +49,8 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             "type": "object",
             "properties": {
                 "query": { "type": "string", "description": "Search terms, as you would type them." },
-                "max_results": { "type": "integer", "minimum": 1, "maximum": 10, "default": 6 }
+                "max_results": { "type": "integer", "minimum": 1, "maximum": 10, "default": 6 },
+                "recency": { "type": "string", "enum": ["day", "week", "month", "year"], "description": "Only results from the past day, week, month or year: for news and anything that changes." }
             },
             "required": ["query"]
         }),
@@ -312,7 +313,8 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
                 return err("Give a search query.");
             }
             let max = args.get("max_results").and_then(Value::as_u64).unwrap_or(6).clamp(1, 10) as usize;
-            match search::search_with(config_dir, &query, max).await {
+            let recency = search::Recency::parse(&str_arg("recency"));
+            match search::search_with(config_dir, &query, max, recency).await {
                 Ok(hits) => ok(serde_json::to_string_pretty(&json!({ "query": query, "results": hits })).unwrap_or_default()),
                 Err(e) => err(e),
             }

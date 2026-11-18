@@ -700,6 +700,17 @@ function openSearch() {
         ),
       ];
     };
+    /** Pinned chats and your agents first, a keystroke away (LibreChat's favorites). */
+    const pinnedRows = () => {
+      const pinned = state.conversations.filter((c) => c.pinned && !c.archived).slice(0, 6);
+      const agents = state.agents.slice(0, 6);
+      if (!pinned.length && !agents.length) return [];
+      return [
+        h('div', { class: 'menu-heading' }, 'Pinned and agents'),
+        ...pinned.map((c) => h('button', { class: 'menu-item', on: { click: () => { close(); navigate({ kind: 'chat', id: c.id }); } } }, icon('pin', 16), h('span', {}, c.title))),
+        ...agents.map((a) => h('button', { class: 'menu-item', on: { click: () => { close(); state.mode = 'agents'; navigate({ kind: 'home', agentId: a.id }); } } }, h('span', { class: 'agent-avatar small' }, a.avatar || a.name.charAt(0)), h('span', {}, `Chat with ${a.name}`))),
+      ];
+    };
     /** Bookmarked messages across chats, matched by their snippet or chat title. */
     const bookmarkRows = (q: string) => {
       const marks = state.conversations.flatMap((c) => (c.bookmarks ?? []).map(([index, snippet]) => ({ c, index, snippet })));
@@ -724,7 +735,7 @@ function openSearch() {
       if (!q || q.startsWith('#')) {
         const tag = q.slice(1);
         const found = state.conversations.filter((c) => !q || c.tags.some((t) => t.startsWith(tag))).slice(0, q ? 30 : 8);
-        clear(results, q ? null : bookmarkRows(''), q ? null : actionRows(''), found.length ? [h('div', { class: 'menu-heading' }, 'Chats'), ...found.map((c) => row(c, null))] : h('p', { class: 'muted' }, 'Nothing found.'));
+        clear(results, q ? null : pinnedRows(), q ? null : bookmarkRows(''), q ? null : actionRows(''), found.length ? [h('div', { class: 'menu-heading' }, 'Chats'), ...found.map((c) => row(c, null))] : h('p', { class: 'muted' }, 'Nothing found.'));
         return;
       }
       const ticket = ++latest;

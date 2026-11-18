@@ -736,6 +736,22 @@ function renderUserTurn(turn: Turn, conversationId: string, branch: HTMLElement 
 /** Bookmarked turn indexes of the open conversations, kept in step with the saved ones. */
 const bookmarked = new Map<string, Set<number>>();
 
+/** Long answers can be folded to a few lines, to scroll past them (LobeHub). */
+function foldAnswerButton(turn: Turn): HTMLElement | null {
+  const length = textOf(turn.parts).length;
+  if (length < 2500) return null;
+  const button = h('button', { class: 'icon-btn small', title: 'Fold this answer' }, icon('chevronUp', 16));
+  button.addEventListener('click', () => {
+    const el = button.closest('.turn-assistant');
+    if (!el) return;
+    const folded = el.classList.toggle('answer-folded');
+    button.title = folded ? 'Unfold this answer' : 'Fold this answer';
+    button.replaceChildren(icon(folded ? 'chevron' : 'chevronUp', 16));
+    if (folded) el.scrollIntoView({ block: 'nearest' });
+  });
+  return button;
+}
+
 /** Marks a message to find again: listed in the chat's header and in search (Ctrl+K). */
 function bookmarkButton(turn: Turn, conversationId: string, size = 16): HTMLElement {
   const on = () => bookmarked.get(conversationId)?.has(turn.index) ?? false;
@@ -1094,6 +1110,7 @@ function renderActions(conversation: Conversation, turn: Turn, isLast: boolean, 
     h('button', { class: `icon-btn small${turn.rating < 0 ? ' active-bad' : ''}`, title: 'Bad reply', on: { click: rate(-1) } }, icon('thumbDown', 16)),
     isLast ? h('button', { class: 'icon-btn small', title: 'Regenerate', on: { click: () => void regenerate(conversation.id) } }, icon('retry', 16)) : null,
     copy,
+    foldAnswerButton(turn),
     bookmarkButton(turn, conversation.id),
     editAnswerButton(turn, conversation.id),
     isLast ? null : branchHereButton(turn, conversation.id),
@@ -2885,6 +2902,24 @@ export class ChatView {
       await refreshConversations();
     });
     const meter = usageMeter(this.id, state.usage.get(this.id), c?.usage);
+    // The chat at a glance (Open WebUI's chat overview): every message you sent, where earlier
+    // turns were summarized for the model, and a jump to each.
+    const prompts = (c?.turns ?? []).filter((t) => t.role === 'user' && t.index >= 0);
+    const outlineBtn = prompts.length > 2 ? h('button', { class: 'icon-btn', title: 'Outline of this chat' }, icon('list', 18)) : null;
+    outlineBtn?.addEventListener('click', () => {
+      const cut = c?.compactedBefore ?? null;
+      const items: HTMLElement[] = [];
+      let marked = false;
+      prompts.forEach((t, i) => {
+        if (cut !== null && !marked && t.index >= cut) {
+          marked = true;
+          items.push(h('div', { class: 'menu-note muted' }, '↑ summarized for the model'));
+        }
+        const text = textOf(t.parts).replace(/<attachment[\s\S]*?<\/attachment>/g, '').replace(/\s+/g, ' ').trim();
+        items.push(h('button', { class: 'menu-item outline-item', on: { click: () => { close(); scrollToTurn(t.index); } } }, h('span', { class: 'outline-n' }, String(i + 1)), h('span', {}, text.length > 90 ? `${text.slice(0, 90)}…` : text || '(attachments)')));
+      });
+      const close = popover(outlineBtn, h('div', { class: 'menu outline-menu' }, h('div', { class: 'menu-heading' }, `${prompts.length} messages`), items));
+    });
     // Bookmarked messages of this chat, to jump to.
     const marks = summary?.bookmarks ?? [];
     const marksBtn = marks.length ? h('button', { class: 'icon-btn', title: `Bookmarks (${marks.length})` }, icon('bookmark', 18), h('span', { class: 'badge-count' }, String(marks.length))) : null;
@@ -2946,7 +2981,7 @@ export class ChatView {
         project || workdir ? h('span', { class: 'crumb-sep' }, '/') : null,
         titleBtn
       ),
-      h('div', { class: 'header-actions' }, filesBtn, terminalBtn, changesBtn, debugBtn, meter, marksBtn, pin, exportBtn)
+      h('div', { class: 'header-actions' }, filesBtn, terminalBtn, changesBtn, debugBtn, meter, outlineBtn, marksBtn, pin, exportBtn)
     );
   }
 

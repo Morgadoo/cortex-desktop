@@ -180,22 +180,84 @@ fn strip_tags(text: &str) -> String {
 }
 
 /// Searches with the engine chosen in Settings, or the keyless one; a failing engine falls back.
-pub async fn search_with(config_dir: &std::path::Path, query: &str, max: usize) -> Result<Vec<Hit>, String> {
-    let settings = load_settings(config_dir);
-    if settings.engine == "auto" {
-        return search(query, max).await;
+/// How recent results must be (Open WebUI's and Onyx's time filters): `day`, `week`, `month`
+/// or `year`; anything else means any time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Recency {
+    Day,
+    Week,
+    Month,
+    Year,
+}
+
+impl Recency {
+    pub fn parse(text: &str) -> Option<Self> {
+        match text.trim().to_lowercase().as_str() {
+            "day" | "24h" | "today" => Some(Self::Day),
+            "week" => Some(Self::Week),
+            "month" => Some(Self::Month),
+            "year" => Some(Self::Year),
+            _ => None,
+        }
     }
-    match engine_search(&settings, query, max).await {
-        Ok(hits) if !hits.is_empty() => Ok(dedup(hits, max)),
-        Ok(_) => search(query, max).await,
-        Err(e) => {
-            log::warn!("{} search failed, using the keyless search: {e}", settings.engine);
-            search(query, max).await
+
+    /// The word SearXNG and Tavily use.
+    fn word(self) -> &'static str {
+        match self {
+            Self::Day => "day",
+            Self::Week => "week",
+            Self::Month => "month",
+            Self::Year => "year",
+        }
+    }
+
+    /// Brave's `freshness`.
+    fn brave(self) -> &'static str {
+        match self {
+            Self::Day => "pd",
+            Self::Week => "pw",
+            Self::Month => "pm",
+            Self::Year => "py",
+        }
+    }
+
+    /// DuckDuckGo's `df`.
+    fn ddg(self) -> &'static str {
+        match self {
+            Self::Day => "d",
+            Self::Week => "w",
+            Self::Month => "m",
+            Self::Year => "y",
+        }
+    }
+
+    /// Bing's `filters` (it has no past-year filter; a year leaves results unfiltered there).
+    fn bing(self) -> Option<&'static str> {
+        match self {
+            Self::Day => Some("ex1:\"ez1\""),
+            Self::Week => Some("ex1:\"ez2\""),
+            Self::Month => Some("ex1:\"ez3\""),
+            Self::Year => None,
         }
     }
 }
 
-async fn engine_search(settings: &SearchSettings, query: &str, max: usize) -> Result<Vec<Hit>, String> {
+pub async fn search_with(config_dir: &std::path::Path, query: &str, max: usize, recency: Option<Recency>) -> Result<Vec<Hit>, String> {
+    let settings = load_settings(config_dir);
+    if settings.engine == "auto" {
+        return search(query, max, recency).await;
+    }
+    match engine_search(&settings, query, max, recency).await {
+        Ok(hits) if !hits.is_empty() => Ok(dedup(hits, max)),
+        Ok(_) => search(query, max, recency).await,
+        Err(e) => {
+            log::warn!("{} search failed, using the keyless search: {e}", settings.engine);
+            search(query, max, recency).await
+        }
+    }
+}
+
+async fn engine_search(settings: &SearchSettings, query: &str, max: usize, recency: Option<Recency>) -> Result<Vec<Hit>, String> {
     let client = client()?;
     let json = |r: reqwest::Response| async move {
         let status = r.status();
@@ -209,7 +271,11 @@ async fn engine_search(settings: &SearchSettings, query: &str, max: usize) -> Re
             if settings.base_url.is_empty() {
                 return Err("no SearXNG address".into());
             }
-            let r = client.get(format!("{}/search", settings.base_url)).query(&[("q", query), ("format", "json")]).send().await.map_err(|e| e.to_string())?;
+            let mut params = vec![("q", query), ("format", "json")];
+            if let Some(r) = recency {
+                params.push(("time_range", r.word()));
+            }
+            let r = client.get(format!("{}/search", settings.base_url)).query(&params).send().await.map_err(|e| e.to_string())?;
             Ok(parse_searxng(&json(r).await?))
         }
         "brave" => {
@@ -217,6 +283,7 @@ async fn engine_search(settings: &SearchSettings, query: &str, max: usize) -> Re
             let r = client
                 .get("https://api.search.brave.com/res/v1/web/search")
                 .query(&[("q", query), ("count", &max.min(20).to_string())])
+                .query(&recency.map(|r| vec![("freshness", r.brave())]).unwrap_or_default())
                 .header("X-Subscription-Token", key)
                 .header("Accept", "application/json")
                 .send()
@@ -229,7 +296,10 @@ async fn engine_search(settings: &SearchSettings, query: &str, max: usize) -> Re
             let r = client
                 .post("https://api.tavily.com/search")
                 .bearer_auth(key)
-                .json(&serde_json::json!({ "query": query, "max_results": max.min(20) }))
+                .json(&match recency {
+                    Some(r) => serde_json::json!({ "query": query, "max_results": max.min(20), "time_range": r.word() }),
+                    None => serde_json::json!({ "query": query, "max_results": max.min(20) }),
+                })
                 .send()
                 .await
                 .map_err(|e| e.to_string())?;
@@ -240,13 +310,14 @@ async fn engine_search(settings: &SearchSettings, query: &str, max: usize) -> Re
 }
 
 /// Up to `max` results for `query`, from the first engine that answers with any.
-pub async fn search(query: &str, max: usize) -> Result<Vec<Hit>, String> {
+pub async fn search(query: &str, max: usize, recency: Option<Recency>) -> Result<Vec<Hit>, String> {
     let client = client()?;
     let mut errors = Vec::new();
 
     match client
         .get("https://www.bing.com/search")
         .query(&[("q", query), ("setlang", "en"), ("count", "15")])
+        .query(&recency.and_then(Recency::bing).map(|f| vec![("filters", f)]).unwrap_or_default())
         .send()
         .await
     {
@@ -262,7 +333,10 @@ pub async fn search(query: &str, max: usize) -> Result<Vec<Hit>, String> {
 
     match client
         .post("https://html.duckduckgo.com/html/")
-        .form(&[("q", query)])
+        .form(&match recency {
+            Some(r) => vec![("q", query), ("df", r.ddg())],
+            None => vec![("q", query)],
+        })
         .send()
         .await
     {
@@ -340,6 +414,15 @@ mod tests {
     }
 
     #[test]
+    fn recency_maps_to_each_engine() {
+        assert_eq!(Recency::parse("Week"), Some(Recency::Week));
+        assert_eq!(Recency::parse("any"), None);
+        assert_eq!((Recency::Day.word(), Recency::Day.brave(), Recency::Day.ddg()), ("day", "pd", "d"));
+        assert_eq!(Recency::Month.bing(), Some("ex1:\"ez3\""));
+        assert_eq!(Recency::Year.bing(), None, "Bing has no past-year filter");
+    }
+
+    #[test]
     fn duplicates_and_extras_are_dropped() {
         let hit = |u: &str| Hit { title: "t".into(), url: u.into(), snippet: String::new() };
         let hits = dedup(vec![hit("https://a/"), hit("https://a"), hit("https://b"), hit("https://c")], 2);
@@ -353,7 +436,7 @@ mod live {
     #[tokio::test]
     #[ignore]
     async fn live_search() {
-        let hits = super::search("rig rust llm library", 5).await.expect("search");
+        let hits = super::search("rig rust llm library", 5, None).await.expect("search");
         assert!(!hits.is_empty());
         for h in &hits {
             println!("HIT {} | {} | {}", h.title, h.url, h.snippet.chars().take(60).collect::<String>());

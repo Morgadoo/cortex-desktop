@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 93 |
-| PARTIAL | 86 | 66 |
-| MISSING | 48 | 33 |
+| DONE | 58 | 96 |
+| PARTIAL | 86 | 67 |
+| MISSING | 48 | 29 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 25 / 15 / 5 / 9 · LibreChat 28 / 10 / 4 / 4 · LobeHub 9 / 13 / 7 / 5 · Onyx 10 / 7 / 4 / 5 · Osaurus 6 / 12 / 8 / 4 · OpenBot 15 / 9 / 5 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 26 / 15 / 4 / 9 · LibreChat 29 / 10 / 3 / 4 · LobeHub 10 / 13 / 6 / 5 · Onyx 10 / 8 / 3 / 5 · Osaurus 6 / 12 / 8 / 4 · OpenBot 15 / 9 / 5 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -60,7 +60,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 25 / 15 / 5 / 
 | Open WebUI | Voice cloning | MISSING | OUT OF SCOPE | Left out (parity L221) |
 | Open WebUI | Image generation and editing, ComfyUI | PARTIAL | PARTIAL | Editing through a reference image (parity L234, itself Partial). Missing: ComfyUI or any local image backend |
 | Open WebUI | Video generation | MISSING | OUT OF SCOPE | Left out (parity L221) |
-| Open WebUI | Chat overview (map with compaction marks) | MISSING | MISSING |  |
+| Open WebUI | Chat overview (map with compaction marks) | MISSING | DONE | Outline in the chat header with the summarized point marked (parity: Chat outline) |
 | Open WebUI | Models search past chats | PARTIAL | DONE | parity L271 (`search_chats`, `read_chat`) |
 | Open WebUI | Reference chats | MISSING | DONE | parity L285 |
 | Open WebUI | Sidebar hover previews | MISSING | DONE | parity L281; main.ts:212–215 |
@@ -72,7 +72,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 25 / 15 / 5 / 
 | Open WebUI | Notes: attach a note to a chat | PARTIAL | PARTIAL | Knowledge pages recalled by relevance (parity L85); chats can be attached (L285). Missing: attaching a chosen knowledge page or canvas |
 | Open WebUI | Administration (RBAC, SSO…) | MISSING | OUT OF SCOPE | Team/enterprise (parity L217) |
 | Open WebUI | Channels | MISSING | OUT OF SCOPE | Team (parity L217) |
-| LibreChat | Favorites pinned in the palette | MISSING | MISSING |  |
+| LibreChat | Favorites pinned in the palette | MISSING | DONE | Ctrl+K opens with pinned chats and agents first (parity: Pinned chats and agents in the palette) |
 | LibreChat | Recently used files to attach again | MISSING | MISSING |  |
 | LibreChat | Long paste becomes a file | MISSING | DONE | parity L276 |
 | LibreChat | Quote a passage into the next message | PARTIAL | DONE | parity L279 (answers and canvases) |
@@ -120,7 +120,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 25 / 15 / 5 / 
 | LibreChat | Image generation and editing, local server | PARTIAL | PARTIAL | Editing by reference (parity L234). Missing: a local image server |
 | LobeHub | LaTeX in streaming answers | PARTIAL | DONE | parity L275 |
 | LobeHub | Translate a message | MISSING | DONE | chat.ts:730–760 (`chat_translate`; not in the parity doc) |
-| LobeHub | Fold a long reply | MISSING | MISSING | Only user messages fold (chat.ts:710) |
+| LobeHub | Fold a long reply | MISSING | DONE | Fold button on long answers (parity: Fold a long answer) |
 | LobeHub | Delete a message | MISSING | DONE | parity L296 |
 | LobeHub | Select several messages, delete or forward | MISSING | MISSING |  |
 | LobeHub | Agent market | MISSING | OUT OF SCOPE | Shared marketplaces (parity L217) |
@@ -165,7 +165,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 25 / 15 / 5 / 
 | Onyx | Agentic hybrid RAG | PARTIAL | DONE | parity L243, L241 |
 | Onyx | Connectors indexed and synced | PARTIAL | PARTIAL | Folders are indexed (parity L240). Missing: MCP connectors indexed into a library |
 | Onyx | Search mode with source cards | MISSING | MISSING |  |
-| Onyx | Time range / source filter | MISSING | MISSING |  |
+| Onyx | Time range / source filter | MISSING | PARTIAL | `web_search` recency: day, week, month, year (parity: Recent results only). Missing: a source (site) filter |
 | Onyx | Cited vs found sources; add one in full | PARTIAL | PARTIAL | Sources panel; falls back to search results when nothing is cited (chat.ts:889–895). Missing: a separate Found list, add in full |
 | Onyx | Web search providers | PARTIAL | DONE | parity L294 |
 | Onyx | Document sets | PARTIAL | PARTIAL | Libraries; a project can have one (api.ts `Project.libraryId`). Missing: per agent |
