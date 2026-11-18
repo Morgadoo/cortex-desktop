@@ -46,6 +46,8 @@ export interface LiveTurn {
   ends: number[];
   /** Guidance the user sent while the turn ran, shown where it joined. */
   steers: string[];
+  /** This page saw the turn start, so it holds all of it (not only what came after it opened). */
+  seenStart?: boolean;
 }
 
 function fresh(): LiveTurn {
@@ -158,7 +160,7 @@ export function applyEvent(event: ChatEvent): boolean {
   };
   switch (event.type) {
     case 'started':
-      state.live.set(id, fresh());
+      state.live.set(id, { ...fresh(), seenStart: true });
       return false;
     case 'steered':
       ensure().steers.push(event.text);

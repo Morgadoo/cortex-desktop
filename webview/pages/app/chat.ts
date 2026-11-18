@@ -2,7 +2,7 @@
 import { emojiFor, findEmoji } from './emoji';
 import { autocompleteOn } from './state';
 import { tauriInvoke } from '../../shared/tauri';
-import { api, newId, type ApprovalMode, type ChatParams, type Conversation, type Part, type Turn, type UsageTotals } from './api';
+import { api, newId, type ApprovalMode, type ChatEvent, type ChatParams, type Conversation, type Part, type Turn, type UsageTotals } from './api';
 import { openOutputsPanel } from './outputs';
 import { conversationPng } from './chatimage';
 import { searchInstead } from './uploads';
@@ -13,7 +13,7 @@ import { startVoiceConversation, voiceActive, voiceTurnEnded } from './voice';
 import { attachVim } from './vim';
 import { actionFor } from './shortcuts';
 import { clear, confirmDialog, greeting, h, icon, markdown, modal, popover, promptText, timeLabel, toast, clockHour12 } from './dom';
-import { changed, currentModel, followUpsOn, navigate, setMode, state, temporaryByDefault, type LiveTurn, followStreamOn } from './state';
+import { applyEvent, changed, currentModel, followUpsOn, navigate, setMode, state, temporaryByDefault, type LiveTurn, followStreamOn } from './state';
 import { openSettings } from './settings';
 import { openInstructions } from './pages';
 import { closePanel, enableAskAboutSelection, hasPanel, openSidePanel, renderCanvasCard, setPanelHost, lineDiff } from './canvas';
@@ -3753,6 +3753,15 @@ export class ChatView {
   async refresh(scroll: boolean) {
     try {
       this.conversation = await api.conversation(this.id);
+      // A turn running since before this window opened (or reloaded): what it streamed so far.
+      if (this.conversation.running && !state.live.get(this.id)?.seenStart) {
+        const events = await tauriInvoke<ChatEvent[]>('chat_live_events', { conversationId: this.id }).catch(() => [] as ChatEvent[]);
+        // The replay holds everything so far, including what already arrived here: start over from it.
+        if (events.length) {
+          state.live.delete(this.id);
+          for (const e of events) applyEvent(e);
+        }
+      }
       bookmarked.set(this.id, new Set(this.conversation.bookmarks ?? []));
       pendingUser.delete(this.id);
       // Opening a conversation that finished in the background marks it read.

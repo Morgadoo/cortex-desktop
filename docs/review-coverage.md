@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 203 |
+| DONE | 58 | 204 |
 | PARTIAL | 86 | 0 |
 | MISSING | 48 | 1 |
-| OUT OF SCOPE | 31 | 19 |
+| OUT OF SCOPE | 31 | 18 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 49 / 0 / 0 / 5 · LibreChat 44 / 0 / 0 / 2 · LobeHub 32 / 0 / 0 / 2 · Onyx 23 / 0 / 0 / 3 · Osaurus 25 / 0 / 1 / 4 · OpenBot 30 / 0 / 0 / 3.
+Per app now (done / partial / missing / out of scope): Open WebUI 49 / 0 / 0 / 5 · LibreChat 45 / 0 / 0 / 1 · LobeHub 32 / 0 / 0 / 2 · Onyx 23 / 0 / 0 / 3 · Osaurus 25 / 0 / 1 / 4 · OpenBot 30 / 0 / 0 / 3.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -83,7 +83,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 49 / 0 / 0 / 5
 | LibreChat | Drafts saved locally | MISSING | DONE | parity L276 (text and attachments, across restarts) |
 | LibreChat | Collapse long user messages | MISSING | DONE | parity L276; chat.ts:710–720 |
 | LibreChat | Smooth streaming (fade-in, elapsed time) | PARTIAL | DONE | Elapsed seconds while working, and new characters fade in once as they arrive (`fadeInFresh`, chat.ts), respecting reduced motion. Verified live: the newest words of a streamed reply faded in while earlier text stayed still |
-| LibreChat | Resumable streams | MISSING | OUT OF SCOPE | Server-only: a web client reconnecting to a server stream. Here the turn runs in the Rust process, not the page |
+| LibreChat | Resumable streams | MISSING | DONE | A turn runs in the Rust process, not the page, so closing or reloading a window never stops it; what it has streamed is kept while it runs, and a window that opens (or reloads) during the turn shows all of it and keeps following. Unit-tested; verified live: a chat opened in a new window mid-answer showed the answer so far and continued |
 | LibreChat | Fork options (visible, related, all; leave out files) | PARTIAL | DONE | Branch from a chosen answer, with or without attached files (parity: Branch from a chosen answer) |
 | LibreChat | Continue a cut-off reply | MISSING | DONE | parity L298; chat.ts:836–841 |
 | LibreChat | Save an edit without a new reply | MISSING | DONE | Save without reply on your message; edit an answer in place (parity: Edit without a new reply) |

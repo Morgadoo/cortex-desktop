@@ -709,6 +709,12 @@ pub async fn chat_install_market_agent(app: AppHandle, identifier: String, sourc
     super::agent_market::install(&config_dir(&app)?, &source, language.as_deref().unwrap_or("en"), &identifier).await
 }
 
+/// What a running turn has streamed so far, for a window that opens during it.
+#[tauri::command]
+pub fn chat_live_events(state: State<'_, ChatState>, conversation_id: String) -> Vec<serde_json::Value> {
+    state.replay(&conversation_id)
+}
+
 #[tauri::command]
 pub async fn chat_code_pr_status(app: AppHandle, conversation_id: String) -> Result<Option<super::code::PrStatus>, String> {
     let conversation = store::load_conversation(&config_dir(&app)?, &conversation_id)?;

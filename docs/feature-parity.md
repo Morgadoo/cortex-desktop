@@ -222,7 +222,7 @@ items most likely to differ:
 Reviewed in November 2026 feature by feature against the docs of Open WebUI, LibreChat, LobeHub,
 Onyx, Osaurus and OpenBot (about 220 features). Every item of the review's shortlist is in the table
 below; every feature the review found missing or partial is tracked row by row, with evidence, in
-[review-coverage.md](review-coverage.md) (now 203 done, 0 partial, 1 missing, 19 out of scope).
+[review-coverage.md](review-coverage.md) (now 204 done, 0 partial, 1 missing, 18 out of scope).
 What was deliberately left out, and why:
 
 - **Team and enterprise features** (channels, comments, SSO, SCIM, tenants, admin plane, publishing
@@ -415,6 +415,7 @@ What was deliberately left out, and why:
 | Functions: filters and pipes | open-webui (Functions), onyx (custom code for PII and query rejection) | Settings → Permissions → Functions. A filter (Python, JavaScript or Bash) sees each message before it is sent and each answer before it is kept, and prints the new text, nothing, or `{"block": "why"}`; a refused message shows as Not sent with the reason. A pipe is a model made of code, in the model menu under Your functions. Both run in the code sandbox, with a Test button in the editor. Verified live: an email redacted, a customer number refused, an answer rewritten, a pipe answering | Done |
 | Share links with QR code and expiry | open-webui, LibreChat, lobehub, onyx | Share → Share a link serves a read-only page (or an app, which cannot reach the network) at `http://<this computer>:8485/s/<random token>`, with a QR code for a phone, an expiry (never, 1 hour to 30 days), view counts and Stop sharing. It reaches the same network, not the internet, since Lumo runs no server. Verified live, expiry included | Done |
 | Community agents | LibreChat (agent marketplace), lobehub (agent market), openbot.run | Agents → Browse community agents: LobeHub's open catalog (about 500 agents), searched by text and category, in the app's language where translated. Add copies an agent's instructions, description, avatar and opening questions into one of your agents; no code comes with it. Verified live against the public catalog | Done |
+| Resumable streams | LibreChat | Answers are made in the app's Rust process, so a closed or reloaded window does not stop them; what a running answer has streamed is kept, and a window opened during it shows all of it and follows on. Verified live with a chat opened in a new window mid-answer | Done |
 | Animations made as code (explainers, infographics, titles) | HyperFrames, ManimGX (requested by the owner) | `make_animation` tool (Tools menu → Animations): the model writes a HyperFrames composition (HTML animated with GSAP) or a ManimGX scene (Python), Lumo renders it on this computer (`npx hyperframes@0.9.66 render`, or `manimgx render`) into the chat's `videos/`, and keeps the source in `animations/<name>/` so a later call changes it. A composition is checked for HyperFrames' required parts before rendering. Verified live with HyperFrames: a 4-second 1280×720 animated bar-chart infographic written by the model and rendered (about 2 minutes on this machine's software GL). ManimGX was not run here (installing it was not allowed in this environment) | Done |
 
 ## Built for years of use

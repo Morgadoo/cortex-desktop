@@ -181,6 +181,9 @@ pub struct TurnRequest {
 }
 
 pub(super) fn emit(app: &AppHandle, event: ChatEvent) {
+    if let (Some(state), Ok(value)) = (app.try_state::<ChatState>(), serde_json::to_value(&event)) {
+        state.record(&value);
+    }
     if let Err(e) = app.emit(EVENT, event) {
         warn!("could not emit chat event: {e}");
     }

@@ -101,6 +101,9 @@ pub struct ChatState {
     questions: Mutex<HashMap<String, oneshot::Sender<String>>>,
     /// Conversation id → messages the user sent while its turn was running.
     steering: Mutex<HashMap<String, Vec<String>>>,
+    /// Conversation id → what its running turn has streamed so far, so a window that opens (or
+    /// reloads) during the turn shows it all, not only what comes next.
+    replay: Mutex<HashMap<String, Vec<serde_json::Value>>>,
 }
 
 impl ChatState {
@@ -152,6 +155,44 @@ impl ChatState {
         Self::lock(&self.running).contains_key(conversation)
     }
 
+    /// Keeps a streamed event for replay: a new turn starts afresh, an ended one is forgotten,
+    /// and text pieces in a row are joined so the buffer stays small.
+    pub fn record(&self, event: &serde_json::Value) {
+        let Some(id) = event.get("conversationId").and_then(serde_json::Value::as_str) else { return };
+        let kind = event.get("type").and_then(serde_json::Value::as_str).unwrap_or_default();
+        let mut replay = Self::lock(&self.replay);
+        match kind {
+            "started" => {
+                replay.insert(id.to_string(), vec![event.clone()]);
+            }
+            "done" | "error" => {
+                replay.remove(id);
+            }
+            "title" | "usage" => {}
+            _ => {
+                let events = replay.entry(id.to_string()).or_default();
+                if let (Some(last), Some(text)) = (events.last_mut(), event.get("text").and_then(serde_json::Value::as_str)) {
+                    if last.get("type").and_then(serde_json::Value::as_str) == Some(kind) && matches!(kind, "text" | "reasoning") {
+                        let joined = format!("{}{text}", last.get("text").and_then(serde_json::Value::as_str).unwrap_or_default());
+                        last["text"] = serde_json::Value::String(joined);
+                        return;
+                    }
+                }
+                if events.len() < 5_000 {
+                    events.push(event.clone());
+                }
+            }
+        }
+    }
+
+    /// What a running turn has streamed so far.
+    pub fn replay(&self, conversation: &str) -> Vec<serde_json::Value> {
+        if !self.is_running(conversation) {
+            return Vec::new();
+        }
+        Self::lock(&self.replay).get(conversation).cloned().unwrap_or_default()
+    }
+
     pub fn ask(&self, call_id: &str) -> oneshot::Receiver<String> {
         let (tx, rx) = oneshot::channel();
         Self::lock(&self.questions).insert(call_id.to_string(), tx);
@@ -172,6 +213,24 @@ impl ChatState {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_running_turn_can_be_replayed() {
+        use serde_json::json;
+        let state = ChatState::default();
+        let _rx = state.begin("c").unwrap();
+        state.record(&json!({"type": "started", "conversationId": "c"}));
+        state.record(&json!({"type": "text", "conversationId": "c", "text": "Hel"}));
+        state.record(&json!({"type": "text", "conversationId": "c", "text": "lo"}));
+        state.record(&json!({"type": "toolCall", "conversationId": "c", "name": "web_search"}));
+        state.record(&json!({"type": "text", "conversationId": "c", "text": "!"}));
+        let r = state.replay("c");
+        assert_eq!(r.len(), 4);
+        assert_eq!(r[1]["text"], "Hello");
+        state.record(&json!({"type": "done", "conversationId": "c"}));
+        assert!(state.replay("c").is_empty());
+        assert!(state.replay("other").is_empty());
+    }
+
     #[test]
     fn guidance_waits_for_a_running_turn() {
         let state = ChatState::default();
