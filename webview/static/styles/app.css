@@ -1841,3 +1841,12 @@ video.output-thumb { object-fit: cover; background: #000; }
 .share-qr { flex: none; border-radius: 8px; background: #fff; padding: 4px; }
 .share-fields { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 @media (max-width: 520px) { .share-body { flex-direction: column; align-items: center; } }
+.market-dialog { width: min(980px, 94vw); }
+.market-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; max-height: 60vh; overflow-y: auto; margin-top: 8px; padding-right: 4px; }
+.market-card { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-elevated, transparent); }
+.market-head { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.market-head strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.market-desc { margin: 0; font-size: var(--fs-sm); color: var(--text-secondary); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; flex: 1; }
+.market-foot { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+.market-tags { display: flex; gap: 4px; flex-wrap: wrap; min-width: 0; overflow: hidden; max-height: 26px; }
+.market-category { width: auto; }

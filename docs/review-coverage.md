@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 200 |
+| DONE | 58 | 203 |
 | PARTIAL | 86 | 0 |
 | MISSING | 48 | 1 |
-| OUT OF SCOPE | 31 | 22 |
+| OUT OF SCOPE | 31 | 19 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 49 / 0 / 0 / 5 · LibreChat 43 / 0 / 0 / 3 · LobeHub 31 / 0 / 0 / 3 · Onyx 23 / 0 / 0 / 3 · Osaurus 25 / 0 / 1 / 4 · OpenBot 29 / 0 / 0 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 49 / 0 / 0 / 5 · LibreChat 44 / 0 / 0 / 2 · LobeHub 32 / 0 / 0 / 2 · Onyx 23 / 0 / 0 / 3 · Osaurus 25 / 0 / 1 / 4 · OpenBot 30 / 0 / 0 / 3.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -91,7 +91,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 49 / 0 / 0 / 5
 | LibreChat | Download a code block | MISSING | DONE | parity L276 |
 | LibreChat | Run a code block | PARTIAL | DONE | parity L277 |
 | LibreChat | Copy as rich text | MISSING | DONE | parity L287; chat.ts:921–928 |
-| LibreChat | Agent marketplace | MISSING | OUT OF SCOPE | Shared marketplaces left out (parity L217) |
+| LibreChat | Agent marketplace | MISSING | DONE | Agents → Browse community agents: LobeHub's open catalog (about 500 agents) searched by text and category, in the app's language where translated; Add copies an agent's instructions, description, avatar and opening questions into an agent of your own (no code comes with it). Another catalog with the same layout can be used. Verified live against the public catalog: SmartTrip added and answered in character |
 | LibreChat | Agent plugins (skills, MCP, hooks in one package) | MISSING | DONE | Claude plugins import skills (with their supporting files), agents, MCP servers and now hooks: hooks/hooks.json PreToolUse, PostToolUse and Stop map to Lumo's hooks, arrive turned off, and get Claude's input fields (plugins.rs install, hooks.rs from_claude). Verified live: a plugin folder imported, its after-call hook read tool_name and annotated a web search, its Stop hook ran the plugin's own script |
 | LibreChat | Agents API | MISSING | DONE | Agents answer through the local API as `agent/<id>` (parity: Agents in the local API) |
 | LibreChat | Prompt variables | MISSING | DONE | parity L269 |
@@ -123,7 +123,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 49 / 0 / 0 / 5
 | LobeHub | Fold a long reply | MISSING | DONE | Fold button on long answers (parity: Fold a long answer) |
 | LobeHub | Delete a message | MISSING | DONE | parity L296 |
 | LobeHub | Select several messages, delete or forward | MISSING | DONE | parity: Select messages (copy, forward to a chat or agent, delete with re-keyed history) |
-| LobeHub | Agent market | MISSING | OUT OF SCOPE | Shared marketplaces (parity L217) |
+| LobeHub | Agent market | MISSING | DONE | Agents → Browse community agents reads LobeHub's own public agent index; search, categories, Add. Verified live against the public catalog |
 | LobeHub | Skills marketplace (browse, publish) | PARTIAL | OUT OF SCOPE | Shared marketplaces (parity L217); SKILL.md import exists (parity L82) |
 | LobeHub | Agent groups (sequential, parallel, debate…) | PARTIAL | DONE | An agent can host a group: members picked in order in the agent editor, and a mode (parallel, sequential, debate). The host hands each request to them with `delegate` and answers from their reports; sequential members see the earlier reports, a debate adds a second round where each answers the others (subagents.rs Mode, agents.rs group_prompt). Verified live: a two-member debate ran both rounds and the host summed up |
 | LobeHub | External agents (Claude Code, Codex) | MISSING | DONE | parity: Coding agent programs as models (agent_cli.rs) |
@@ -226,7 +226,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 49 / 0 / 0 / 5
 | OpenBot | Teach a task by recording | MISSING | DONE | parity: Teach a task by recording (`recorder.rs`, `record.ts`; Skills → Record a task). Verified live: a terminal task (cd, mkdir reports, date +%F > reports/today.txt, ls, cat) was recorded as 10 steps in 25 s with Lumo out of the way and the Recording pill on top; from the screenshots alone, the model drafted a skill with the right steps and checks, which was reviewed and saved as SKILL.md |
 | OpenBot | Agents learn from work into skills | PARTIAL | DONE | Notebook and save_skill (parity L250, L62), and Agents learn skills from their work (Knowledge page): after an agent turn of 3+ tool steps a reflection may save the procedure as a skill, turned off until reviewed, and the chat says so (learning.rs, engine.rs learn_from_turn). Verified live: News Briefer learned compare-shop-prices |
 | OpenBot | Earlier-message lookup | MISSING | DONE | parity L271 |
-| OpenBot | Marketplace | MISSING | OUT OF SCOPE | Shared marketplaces (parity L217) |
+| OpenBot | Marketplace | MISSING | DONE | Community agents (LobeHub's open catalog) and Claude plugin marketplaces on GitHub (skills, commands, subagents, MCP servers: Agents → Import, Skills → Import) are browsed and added from the app. Verified live: an agent from the public catalog added and used |
 | OpenBot | Add skills from a GitHub link | MISSING | DONE | Skills → Import → From a link (parity: Skills from a link) |
 | OpenBot | Vault access per agent | MISSING | DONE | parity: Vault (`vault.rs`; Settings → Permissions → Vault; agent editor → Secrets from the vault). Verified live: DEMO_TOKEN saved through Settings (value only in the keychain), granted to one agent; that agent's run_code saw it (length 20) while a plain chat's did not (False); a user tool that printed the key had it masked as [secret DEMO_TOKEN] everywhere in the saved chat |
 | OpenBot | Library views, favourites | PARTIAL | DONE | Libraries: favourite libraries (★, listed first) and documents (★), a document filter and sorting by favourites, newest, name or size, remembered on this device. Verified live |

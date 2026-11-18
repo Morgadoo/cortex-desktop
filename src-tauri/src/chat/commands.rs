@@ -695,6 +695,20 @@ pub async fn chat_test_function(app: AppHandle, function: super::functions::Func
     })
 }
 
+/// The community agent catalog (LobeHub's open index, or another with its layout).
+#[tauri::command]
+pub async fn chat_agent_market(app: AppHandle, source: Option<String>, language: Option<String>, refresh: Option<bool>) -> Result<Vec<super::agent_market::Listing>, String> {
+    let source = source.filter(|s| s.starts_with("https://") || s.starts_with("http://")).unwrap_or_else(|| super::agent_market::DEFAULT_SOURCE.into());
+    super::agent_market::listings(&config_dir(&app)?, &source, language.as_deref().unwrap_or("en"), refresh.unwrap_or(false)).await
+}
+
+/// Adds a catalog agent as one of the user's agents.
+#[tauri::command]
+pub async fn chat_install_market_agent(app: AppHandle, identifier: String, source: Option<String>, language: Option<String>) -> Result<super::agents::Agent, String> {
+    let source = source.filter(|s| s.starts_with("https://") || s.starts_with("http://")).unwrap_or_else(|| super::agent_market::DEFAULT_SOURCE.into());
+    super::agent_market::install(&config_dir(&app)?, &source, language.as_deref().unwrap_or("en"), &identifier).await
+}
+
 #[tauri::command]
 pub async fn chat_code_pr_status(app: AppHandle, conversation_id: String) -> Result<Option<super::code::PrStatus>, String> {
     let conversation = store::load_conversation(&config_dir(&app)?, &conversation_id)?;

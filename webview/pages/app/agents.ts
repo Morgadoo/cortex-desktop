@@ -7,6 +7,7 @@ import { changed, navigate, state } from './state';
 import { TasksPage } from './tasks';
 import { agentPanel } from './agentpanel';
 import { button, card, modalHeader, switchInput } from './ui';
+import { storedLanguage } from './i18n';
 
 /** Tools an agent can be given, by the name the engine matches. */
 const TOOL_CHOICES: { id: string; label: string }[] = [
@@ -394,11 +395,13 @@ export class AgentsPage {
         toast(String(e), 'error');
       }
     });
+    const browse = h('button', { class: 'btn btn-secondary' }, icon('globe', 15), 'Browse community agents');
+    browse.addEventListener('click', () => void openAgentMarket());
     // The orchestrator (Osaurus): new chats go to the agent that fits them.
     const routing = switchInput(false, (on) => void tauriInvoke<boolean>('chat_agent_routing', { enabled: on }).then((now) => toast(now ? 'New chats now go to the agent that fits them best.' : 'New chats stay with the general assistant.')).catch((e) => toast(String(e), 'error')));
     void tauriInvoke<boolean>('chat_agent_routing', { enabled: null }).then((on) => { routing.checked = on; }).catch(() => undefined);
     this.el.append(
-      h('header', { class: 'page-header' }, h('div', {}, h('h1', {}, 'Your agents'), h('p', { class: 'muted' }, 'A workforce of assistants with their own instructions, tools and schedules. Chat with one, or give it tasks that run on their own.')), h('div', { class: 'page-actions' }, importBtn, create)),
+      h('header', { class: 'page-header' }, h('div', {}, h('h1', {}, 'Your agents'), h('p', { class: 'muted' }, 'A workforce of assistants with their own instructions, tools and schedules. Chat with one, or give it tasks that run on their own.')), h('div', { class: 'page-actions' }, browse, importBtn, create)),
       h('div', { class: 'setting-row routing-row' }, h('div', {}, h('strong', {}, 'Route new chats to agents'), h('small', { class: 'muted' }, 'When a new chat clearly fits one of your agents, it goes to that agent, and the chat says so. A quick question to the fast model decides.')), routing),
       this.grid,
       h('div', { class: 'section-title' }, 'Add a ready-made agent'),
@@ -534,4 +537,92 @@ export class AgentPage {
 function spendLabel(spend: AgentSpend | undefined, agent: Agent): string {
   if (!spend || spend.cost <= 0) return '';
   return agent.monthlyBudget ? `$${spend.cost.toFixed(2)} of $${agent.monthlyBudget.toFixed(0)}` : `$${spend.cost.toFixed(2)} this month`;
+}
+
+interface MarketListing {
+  identifier: string;
+  title: string;
+  description: string;
+  avatar: string;
+  category: string;
+  tags: string[];
+  author: string;
+  createdAt: string;
+}
+
+/** The community catalog's address: LobeHub's open index unless another is chosen. */
+function marketSource(): string | null {
+  try {
+    return localStorage.getItem('agentMarketSource');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Community agents (LobeHub's and LibreChat's agent marketplaces): search a public catalog of
+ * agents, read one, and add it as an agent of your own.
+ */
+async function openAgentMarket() {
+  const language = storedLanguage() === 'auto' ? navigator.language.slice(0, 2) : storedLanguage();
+  await modal((close) => {
+    const search = h('input', { class: 'input', placeholder: 'Search agents: travel, code review, Excel…', 'aria-label': 'Search agents' });
+    const category = h('select', { class: 'input market-category', 'aria-label': 'Category' }, h('option', { value: '' }, 'All categories'));
+    const grid = h('div', { class: 'market-grid' }, h('p', { class: 'muted' }, 'Loading the catalog…'));
+    const count = h('small', { class: 'muted' });
+    let all: MarketListing[] = [];
+    const draw = () => {
+      const q = search.value.trim().toLowerCase();
+      const shown = all.filter((a) => (!category.value || a.category === category.value) && (!q || `${a.title} ${a.description} ${a.tags.join(' ')}`.toLowerCase().includes(q)));
+      count.textContent = `${shown.length} of ${all.length} agents`;
+      clear(
+        grid,
+        shown.length
+          ? shown.slice(0, 120).map((a) => {
+              const add = button({ variant: 'secondary', label: 'Add', onClick: async () => {
+                add.setAttribute('disabled', '');
+                try {
+                  const agent = await tauriInvoke<Agent>('chat_install_market_agent', { identifier: a.identifier, source: marketSource(), language });
+                  await reloadAgents();
+                  toast(`${agent.name} is now one of your agents.`);
+                  add.textContent = 'Added';
+                } catch (e) {
+                  add.removeAttribute('disabled');
+                  toast(String(e), 'error');
+                }
+              } });
+              return h(
+                'div',
+                { class: 'market-card' },
+                h('div', { class: 'market-head' }, h('span', { class: 'agent-avatar' }, a.avatar && !a.avatar.startsWith('http') ? a.avatar : a.title.charAt(0)), h('div', { class: 'grow' }, h('strong', {}, a.title), h('small', { class: 'muted' }, [a.category, a.author && `by ${a.author}`].filter(Boolean).join(' · ')))),
+                h('p', { class: 'market-desc' }, a.description),
+                h('div', { class: 'market-foot' }, h('div', { class: 'market-tags' }, a.tags.slice(0, 3).map((t) => h('span', { class: 'chip small' }, t))), add)
+              );
+            })
+          : h('p', { class: 'muted' }, 'No agent matches.')
+      );
+    };
+    search.addEventListener('input', draw);
+    category.addEventListener('change', draw);
+    const load = (refresh: boolean) =>
+      tauriInvoke<MarketListing[]>('chat_agent_market', { source: marketSource(), language, refresh })
+        .then((list) => {
+          all = list;
+          const cats = [...new Set(list.map((a) => a.category).filter(Boolean))].sort();
+          clear(category, h('option', { value: '' }, 'All categories'), cats.map((c) => h('option', { value: c }, c.charAt(0).toUpperCase() + c.slice(1))));
+          draw();
+        })
+        .catch((e) => clear(grid, h('p', { class: 'error-text' }, String(e))));
+    void load(false);
+    const refresh = button({ variant: 'secondary', icon: 'retry', label: 'Refresh', onClick: () => void load(true) });
+    return h(
+      'div',
+      { class: 'dialog-small wide market-dialog' },
+      modalHeader('Community agents', close, { flush: true }),
+      h('p', { class: 'muted' }, "Agents shared by others in LobeHub's open catalog. Adding one copies its instructions into an agent of your own: no code comes with it, and it uses your models and tools under your settings."),
+      h('div', { class: 'row-inline' }, h('div', { class: 'grow' }, search), category, refresh),
+      count,
+      grid
+    );
+  }, true);
 }
