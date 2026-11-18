@@ -4,7 +4,7 @@ import { api, newId, type ApprovalMode, type ChatParams, type Conversation, type
 import { fillVariables } from './variables';
 import { startVoiceConversation, voiceActive, voiceTurnEnded } from './voice';
 import { clear, confirmDialog, greeting, h, icon, markdown, modal, popover, promptText, timeLabel, toast } from './dom';
-import { changed, currentModel, followUpsOn, navigate, setMode, state, type LiveTurn } from './state';
+import { changed, currentModel, followUpsOn, navigate, setMode, state, temporaryByDefault, type LiveTurn } from './state';
 import { openSettings } from './settings';
 import { openInstructions } from './pages';
 import { closePanel, enableAskAboutSelection, openSidePanel, renderCanvasCard, setPanelHost } from './canvas';
@@ -1073,7 +1073,7 @@ async function send(text: string, conversationId: string | null, images: { media
       connectors: connectorChoice(),
     });
     if (temporary) temporaryChats.add(id);
-    temporaryNext = false;
+    temporaryNext = temporaryByDefault();
     void refreshConversations();
   } catch (e) {
     toast(String(e), 'error');
@@ -1150,7 +1150,7 @@ function openCompareDialog(onDone: () => void) {
 }
 
 /** The next new conversation is temporary: kept out of the history and deleted on restart. */
-let temporaryNext = false;
+let temporaryNext = temporaryByDefault();
 const temporaryChats = new Set<string>();
 
 /** Messages typed on the home screen, shown before the new conversation is on disk. */

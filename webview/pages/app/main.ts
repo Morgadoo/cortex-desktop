@@ -207,9 +207,11 @@ function conversationLink(id: string, title: string, pinned: boolean, nested = f
     conversationMenu(more, id, title, pinned);
   });
   const running = state.live.has(id) && !state.live.get(id)?.error;
+  // Hovering shows the title and how the conversation left off.
+  const preview = state.conversations.find((c) => c.id === id)?.preview;
   return h(
     'div',
-    { class: `conv-link${active ? ' active' : ''}${nested ? ' nested' : ''}`, 'data-chat-id': id, on: { click: () => navigate({ kind: 'chat', id }) }, title },
+    { class: `conv-link${active ? ' active' : ''}${nested ? ' nested' : ''}`, 'data-chat-id': id, on: { click: () => navigate({ kind: 'chat', id }) }, title: preview ? `${title}\n\n${preview}` : title },
     pinned ? icon('pin', 13) : null,
     h('span', { class: 'conv-title' }, title),
     state.conversations.find((c) => c.id === id)?.unread ? h('span', { class: 'unread-dot' }) : null,

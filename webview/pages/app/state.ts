@@ -252,6 +252,23 @@ function storedMode(): ApprovalMode {
   return 'auto';
 }
 
+/** Whether new chats start temporary (not saved to history), as Open WebUI allows. */
+export function temporaryByDefault(): boolean {
+  try {
+    return localStorage.getItem('lumo.temporaryDefault') === 'on';
+  } catch {
+    return false;
+  }
+}
+
+export function setTemporaryByDefault(on: boolean) {
+  try {
+    localStorage.setItem('lumo.temporaryDefault', on ? 'on' : 'off');
+  } catch {
+    // Remembering is a convenience.
+  }
+}
+
 /** Whether three follow-up questions are suggested after each answer (on unless turned off). */
 export function followUpsOn(): boolean {
   try {

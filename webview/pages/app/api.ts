@@ -41,6 +41,8 @@ export interface ConversationSummary {
   workdir: string | null;
   agentId: string | null;
   taskId: string | null;
+  /** How the conversation left off, for the sidebar's hover. */
+  preview?: string;
   unread: boolean;
   pinned: boolean;
   archived: boolean;

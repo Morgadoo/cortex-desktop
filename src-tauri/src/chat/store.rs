@@ -256,6 +256,9 @@ pub struct ConversationSummary {
     pub tokens: u64,
     #[serde(default)]
     pub cost: f64,
+    /// The start of the latest reply (or message), for the sidebar's hover preview.
+    #[serde(default)]
+    pub preview: String,
 }
 
 /// The sidebar rows, from the index (see [`super::index`]), so a long history stays fast.

@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use super::store::{chat_dir, write_json, Conversation, ConversationSummary};
 
 /// Bumped when the index's own shape changes; an older index is rebuilt.
-const INDEX_VERSION: u32 = 2;
+const INDEX_VERSION: u32 = 4;
 /// Characters of text kept per conversation for search.
 const MAX_TEXT: usize = 400_000;
 
@@ -70,7 +70,23 @@ fn summarize(c: &Conversation) -> ConversationSummary {
         updated_at: c.updated_at,
         tokens: c.usage.input_tokens + c.usage.output_tokens,
         cost: c.usage.cost,
+        preview: preview(c),
     }
+}
+
+/// The last thing said with text in it, on one line, short.
+fn preview(c: &Conversation) -> String {
+    let text = c
+        .messages
+        .iter()
+        .rev()
+        .map(super::context::message_text)
+        .find(|t| !t.trim().is_empty() && !t.starts_with('{'))
+        .unwrap_or_default();
+    // Markdown marks read as noise in a tooltip.
+    let plain: String = text.chars().filter(|c| !matches!(c, '*' | '#' | '`' | '>' | '_')).collect();
+    let flat: String = plain.split_whitespace().collect::<Vec<_>>().join(" ");
+    if flat.chars().count() > 160 { format!("{}…", flat.chars().take(160).collect::<String>()) } else { flat }
 }
 
 /// What search reads: the title, then what was said, one message a line.
