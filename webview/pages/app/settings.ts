@@ -1034,14 +1034,14 @@ async function apiServerCard(): Promise<HTMLElement> {
           s.running && s.address ? copyable('Base URL', s.address) : h('p', { class: 'error-text' }, s.error ?? 'Not running.'),
           view.token ? copyable('API key', view.token) : null,
           s.running && s.address && view.token
-            ? h('pre', { class: 'api-example' }, `curl ${s.address}/chat/completions \\\n  -H "Authorization: Bearer ${view.token.slice(0, 9)}…" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model": "${state.model ?? 'vendor/model'}", "messages": [{"role": "user", "content": "Hello"}]}'`)
+            ? h('pre', { class: 'api-example' }, `curl ${s.address}/chat/completions \\\n  -H "Authorization: Bearer ${view.token.slice(0, 9)}…" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model": "${state.model ?? 'vendor/model'}", "messages": [{"role": "user", "content": "Hello"}]}'\n\n# As an MCP server, e.g. for Claude Code:\nclaude mcp add --transport http lumo ${s.address.replace(/\/v1$/, '')}/mcp \\\n  --header "Authorization: Bearer ${view.token.slice(0, 9)}…"`)
             : null,
           h('div', { class: 'card-actions' }, logButton(), h('button', { class: 'btn btn-secondary', on: { click: () => void save(true, true) } }, 'New API key')),
         ]
       : [];
     clear(
       body,
-      row('Local API', 'Lets scripts, editors and other apps on this computer use your models and agents (as agent/<id>) through an OpenAI-compatible API (/v1/chat/completions, /v1/models) or an Anthropic-style one (/v1/messages, key in x-api-key), and start scheduled tasks like webhooks (GET /v1/tasks, POST /v1/tasks/{id}/run with an optional input). Only this computer can reach it, and every request needs the API key.', switchInput(view.settings.enabled, (v) => void save(v))),
+      row('Local API', 'Lets scripts, editors and other apps on this computer use your models and agents (as agent/<id>) through an OpenAI-compatible API (/v1/chat/completions, /v1/models) or an Anthropic-style one (/v1/messages, key in x-api-key), serves an MCP server at /mcp (search your libraries, ask a model or agent, run tasks from an editor or coding agent), and starts scheduled tasks like webhooks (GET /v1/tasks, POST /v1/tasks/{id}/run with an optional input). Only this computer can reach it, and every request needs the API key.', switchInput(view.settings.enabled, (v) => void save(v))),
       row('Port', '', port),
       details
     );

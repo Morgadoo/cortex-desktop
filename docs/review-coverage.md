@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 89 |
+| DONE | 58 | 91 |
 | PARTIAL | 86 | 67 |
-| MISSING | 48 | 36 |
+| MISSING | 48 | 34 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 25 / 15 / 5 / 9 · LibreChat 28 / 10 / 4 / 4 · LobeHub 9 / 13 / 7 / 5 · Onyx 9 / 7 / 5 / 5 · Osaurus 4 / 12 / 10 / 4 · OpenBot 14 / 10 / 5 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 25 / 15 / 5 / 9 · LibreChat 28 / 10 / 4 / 4 · LobeHub 9 / 13 / 7 / 5 · Onyx 10 / 7 / 4 / 5 · Osaurus 5 / 12 / 9 / 4 · OpenBot 14 / 10 / 5 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -176,7 +176,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 25 / 15 / 5 / 
 | Onyx | Memory reference / update switches | PARTIAL | PARTIAL | One on/off (`chat_set_memory_enabled`). Missing: separate use vs update |
 | Onyx | Enterprise features | MISSING | OUT OF SCOPE | parity L217 |
 | Onyx | Custom code for PII and query rejection | PARTIAL | OUT OF SCOPE | Filters left out (parity L223); personal-data filter exists (L265) |
-| Onyx | Served as an MCP server | MISSING | MISSING | api_server.rs:165–168 has no MCP |
+| Onyx | Served as an MCP server | MISSING | DONE | `/mcp` on the local API: search_libraries, ask, list_models, list_tasks, run_task (parity: Lumo as an MCP server) |
 | Onyx | Extension, widget, Slack/Discord bots, CLI | MISSING | OUT OF SCOPE | Channels N/A (parity L256); scripts can use the local API (L292) |
 | Osaurus | Global hotkey | MISSING | DONE | parity L293 |
 | Osaurus | App Intents (Shortcuts, Spotlight, Siri) | MISSING | MISSING |  |
@@ -195,7 +195,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 25 / 15 / 5 / 
 | Osaurus | Agent channels | MISSING | OUT OF SCOPE | parity L256 |
 | Osaurus | Import Claude plugins | MISSING | MISSING |  |
 | Osaurus | Plugin registry | MISSING | MISSING |  |
-| Osaurus | MCP server | MISSING | MISSING |  |
+| Osaurus | MCP server | MISSING | DONE | `/mcp` on the local API: search_libraries, ask, list_models, list_tasks, run_task (parity: Lumo as an MCP server) |
 | Osaurus | Agent run endpoint | MISSING | DONE | `POST /v1/tasks/{id}/run` and agents as models |
 | Osaurus | Bundles: agents, skills, MCP servers | MISSING | DONE | Agent files carry the agent, notebook, its skills and the MCP servers it uses, without secrets |
 | Osaurus | Developer tools, request log | PARTIAL | DONE | Recent requests log for the local API |

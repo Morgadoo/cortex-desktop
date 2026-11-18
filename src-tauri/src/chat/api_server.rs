@@ -10,6 +10,10 @@
 //! and model, without tools. Anthropic-style clients can use `POST /v1/messages` (plain or
 //! streamed). Recent requests are listed in Settings (time, endpoint, model, status, duration).
 //!
+//! It is also an MCP server (`POST /mcp`, Streamable HTTP answered as JSON), as Onyx and Osaurus
+//! are: an editor or a coding agent on this computer can search your libraries, ask a model or an
+//! agent, and list or start scheduled tasks, with the same key.
+//!
 //! Off by default. When on, it listens on 127.0.0.1 only and every request needs the bearer
 //! token shown in Settings (kept in the keychain as `api-server`). It sends no CORS headers, so
 //! web pages cannot call it.
@@ -200,6 +204,7 @@ fn router(ctx: Ctx) -> Router {
         .route("/v1/models", get(models))
         .route("/v1/chat/completions", post(chat))
         .route("/v1/messages", post(messages))
+        .route("/mcp", post(mcp).get(mcp_no_stream))
         .route("/v1/tasks", get(list_tasks))
         .route("/v1/tasks/{id}/run", post(run_task))
         .with_state(ctx)
@@ -548,6 +553,180 @@ async fn messages_inner(ctx: Ctx, headers: HeaderMap, body: Result<Json<Messages
     Sse::new(events).keep_alive(KeepAlive::default()).into_response()
 }
 
+/// The MCP protocol version this server speaks when a client names none it knows.
+const MCP_VERSION: &str = "2025-06-18";
+
+/// The tools Lumo offers MCP clients.
+pub fn mcp_tools() -> Value {
+    json!([
+        {
+            "name": "search_libraries",
+            "description": "Search the user's document libraries in Lumo and get the most relevant passages with their document names.",
+            "inputSchema": { "type": "object", "properties": { "query": { "type": "string" }, "library": { "type": "string", "description": "A library name, to search only that one." } }, "required": ["query"] }
+        },
+        {
+            "name": "ask",
+            "description": "Ask one of the user's models or agents in Lumo and get its answer. `model` is an id from list_models (`vendor/model` or `agent/<id>`); the default model when left out.",
+            "inputSchema": { "type": "object", "properties": { "prompt": { "type": "string" }, "model": { "type": "string" } }, "required": ["prompt"] }
+        },
+        {
+            "name": "list_models",
+            "description": "The models and agents Lumo can answer with.",
+            "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
+            "name": "list_tasks",
+            "description": "The user's scheduled tasks in Lumo.",
+            "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
+            "name": "run_task",
+            "description": "Start one of the user's scheduled tasks now, with optional input added to its prompt; its result arrives in Lumo as a conversation.",
+            "inputSchema": { "type": "object", "properties": { "id": { "type": "string" }, "input": { "type": "string" } }, "required": ["id"] }
+        }
+    ])
+}
+
+fn rpc_result(id: &Value, result: Value) -> Value {
+    json!({ "jsonrpc": "2.0", "id": id, "result": result })
+}
+
+fn rpc_error(id: &Value, code: i64, message: &str) -> Value {
+    json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
+}
+
+fn tool_text(text: impl Into<String>, is_error: bool) -> Value {
+    json!({ "content": [{ "type": "text", "text": text.into() }], "isError": is_error })
+}
+
+async fn mcp_no_stream(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
+    if !authorized(&headers, &ctx.token) {
+        return error(StatusCode::UNAUTHORIZED, "Missing or wrong bearer token.");
+    }
+    // No server-initiated messages: every answer comes back on its POST.
+    (StatusCode::METHOD_NOT_ALLOWED, "This MCP server answers each POST directly; it opens no event stream.").into_response()
+}
+
+async fn mcp(State(ctx): State<Ctx>, headers: HeaderMap, body: Result<Json<Value>, axum::extract::rejection::JsonRejection>) -> Response {
+    let started = std::time::Instant::now();
+    if !authorized(&headers, &ctx.token) {
+        record("mcp", "", StatusCode::UNAUTHORIZED, started);
+        return error(StatusCode::UNAUTHORIZED, "Missing or wrong bearer token.");
+    }
+    let Ok(Json(message)) = body else {
+        return (StatusCode::BAD_REQUEST, Json(rpc_error(&Value::Null, -32700, "Parse error"))).into_response();
+    };
+    let method = message.get("method").and_then(Value::as_str).unwrap_or_default().to_string();
+    let response = match mcp_answer(&ctx, &message).await {
+        Some(answer) => Json(answer).into_response(),
+        // Notifications get no answer.
+        None => StatusCode::ACCEPTED.into_response(),
+    };
+    record(&format!("mcp {method}"), message.pointer("/params/arguments/model").and_then(Value::as_str).unwrap_or_default(), response.status(), started);
+    response
+}
+
+/// The answer to one JSON-RPC message, or `None` for a notification.
+async fn mcp_answer(ctx: &Ctx, message: &Value) -> Option<Value> {
+    let id = message.get("id").cloned()?;
+    let method = message.get("method").and_then(Value::as_str).unwrap_or_default();
+    let params = message.get("params").cloned().unwrap_or(Value::Null);
+    Some(match method {
+        "initialize" => {
+            let asked = params.get("protocolVersion").and_then(Value::as_str).unwrap_or(MCP_VERSION);
+            let version = if ["2025-06-18", "2025-03-26", "2024-11-05"].contains(&asked) { asked } else { MCP_VERSION };
+            rpc_result(&id, json!({
+                "protocolVersion": version,
+                "capabilities": { "tools": { "listChanged": false } },
+                "serverInfo": { "name": "lumo", "title": "Lumo", "version": env!("CARGO_PKG_VERSION") },
+                "instructions": "Lumo is the user's desktop assistant. Search their document libraries, ask their models or agents, and start their scheduled tasks."
+            }))
+        }
+        "ping" => rpc_result(&id, json!({})),
+        "tools/list" => rpc_result(&id, json!({ "tools": mcp_tools() })),
+        "tools/call" => {
+            let name = params.get("name").and_then(Value::as_str).unwrap_or_default();
+            let args = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
+            rpc_result(&id, mcp_call(ctx, name, &args).await)
+        }
+        _ => rpc_error(&id, -32601, &format!("Method not found: {method}")),
+    })
+}
+
+async fn mcp_call(ctx: &Ctx, name: &str, args: &Value) -> Value {
+    let text = |k: &str| args.get(k).and_then(Value::as_str).unwrap_or_default().trim().to_string();
+    match name {
+        "search_libraries" => {
+            let query = text("query");
+            if query.is_empty() {
+                return tool_text("Give a query.", true);
+            }
+            let only: Vec<String> = match text("library") {
+                l if l.is_empty() => Vec::new(),
+                l => super::libraries::list(&ctx.config_dir).into_iter().filter(|x| x.name.eq_ignore_ascii_case(&l)).map(|x| x.id).collect(),
+            };
+            let (passages, note) = super::embeddings::search(&ctx.config_dir, &only, &query, 8).await;
+            if passages.is_empty() {
+                return tool_text("No passage matched.", false);
+            }
+            let mut out: Vec<String> = passages.iter().map(|p| format!("[{} — {}, passage {}]\n{}", p.document, p.library, p.passage + 1, p.text)).collect();
+            if let Some(note) = note {
+                out.insert(0, note);
+            }
+            tool_text(out.join("\n\n"), false)
+        }
+        "ask" => {
+            let prompt = text("prompt");
+            if prompt.is_empty() {
+                return tool_text("Give a prompt.", true);
+            }
+            let model = match text("model") {
+                m if m.is_empty() => match super::providers::load(&ctx.config_dir).default_model {
+                    Some(m) => m,
+                    None => return tool_text("No default model is set in Lumo; pass `model`.", true),
+                },
+                m => m,
+            };
+            let (connected, agent) = match resolve(&ctx.config_dir, &model).await {
+                Ok(m) => m,
+                Err(e) => return tool_text(e, true),
+            };
+            match connected.call(with_agent(CompletionRequest::new(Message::user(prompt)), agent)).await {
+                Ok(response) => tool_text(response.text(), false),
+                Err(e) => tool_text(super::context::short_error(&e.to_string()), true),
+            }
+        }
+        "list_models" => {
+            let file = super::providers::load(&ctx.config_dir);
+            let mut lines: Vec<String> = super::providers::models(&file).await.into_iter().map(|m| format!("{} — {}", m.reference, m.name)).collect();
+            lines.extend(super::agents::load(&ctx.config_dir).into_iter().map(|a| format!("{AGENT_PREFIX}{} — agent {}", a.id, a.name)));
+            tool_text(lines.join("\n"), false)
+        }
+        "list_tasks" => {
+            let lines: Vec<String> = super::tasks::load(&ctx.config_dir)
+                .into_iter()
+                .map(|t| format!("{} — {} ({}{})", t.id, t.title, super::tasks::describe(&t.frequency), if t.enabled { "" } else { ", paused" }))
+                .collect();
+            tool_text(if lines.is_empty() { "No scheduled tasks.".to_string() } else { lines.join("\n") }, false)
+        }
+        "run_task" => {
+            let Some(mut task) = super::tasks::load(&ctx.config_dir).into_iter().find(|t| t.id == text("id")) else {
+                return tool_text("No task with that id; see list_tasks.", true);
+            };
+            let input: String = text("input").chars().take(20_000).collect();
+            if !input.is_empty() {
+                task.prompt = format!("{}\n\nThis run was started from outside the app with this input:\n{input}", task.prompt);
+            }
+            super::tasks::record(&ctx.config_dir, &task.id, task.last_conversation.as_deref().unwrap_or_default(), "running");
+            let title = task.title.clone();
+            let app = ctx.app.clone();
+            tauri::async_runtime::spawn(async move { super::engine::run_task(app, task).await });
+            tool_text(format!("Started “{title}”. Its result will be a new conversation in Lumo."), false)
+        }
+        other => tool_text(format!("Unknown tool {other}."), true),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -605,6 +784,19 @@ mod tests {
         // An agent's instructions come before the caller's own.
         let with = with_agent(request, Some("You are Researcher.".into()));
         assert_eq!(with.system_instructions(), Some("You are Researcher.\n\nBe brief."));
+    }
+
+    #[test]
+    fn mcp_tools_are_valid_schemas() {
+        let tools = mcp_tools();
+        let names: Vec<&str> = tools.as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
+        assert_eq!(names, ["search_libraries", "ask", "list_models", "list_tasks", "run_task"]);
+        for t in tools.as_array().unwrap() {
+            assert_eq!(t["inputSchema"]["type"], "object");
+            assert!(!t["description"].as_str().unwrap().is_empty());
+        }
+        assert_eq!(rpc_error(&json!(3), -32601, "x")["error"]["code"], -32601);
+        assert_eq!(tool_text("hi", true)["isError"], true);
     }
 
     #[test]
