@@ -449,6 +449,44 @@ pub fn chat_read_spreadsheet(data: String) -> Result<Vec<(String, String)>, Stri
     super::sheets::read_workbook(&bytes)
 }
 
+/// A desktop notification, e.g. when a reply finishes while the window is in the background.
+#[tauri::command]
+pub fn chat_notify(app: AppHandle, title: String, body: String) {
+    let body: String = body.chars().take(180).collect();
+    super::engine::notify(&app, title.trim(), body.trim());
+}
+
+/// The text of an attached PDF or Office document, with its line breaks.
+#[tauri::command]
+pub async fn chat_read_document(name: String, data: String) -> Result<String, String> {
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(data.as_bytes()).map_err(|e| e.to_string())?;
+    if bytes.len() > 50 * 1024 * 1024 {
+        return Err("That document is too large.".into());
+    }
+    let ext = std::path::Path::new(&name).extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
+    tokio::task::spawn_blocking(move || {
+        let text = if ext == "pdf" {
+            // The PDF reader takes a path.
+            let tmp = std::env::temp_dir().join(format!("lumo-attachment-{}.pdf", uuid::Uuid::new_v4().simple()));
+            std::fs::write(&tmp, &bytes).map_err(|e| e.to_string())?;
+            let text = super::libraries::read_text(&tmp);
+            let _ = std::fs::remove_file(&tmp);
+            text?
+        } else if super::libraries::OFFICE_EXTENSIONS.contains(&ext.as_str()) {
+            super::libraries::office_text(&bytes, &ext)?
+        } else {
+            return Err("Only PDF, Word, PowerPoint and OpenDocument files are read this way.".to_string());
+        };
+        if text.trim().is_empty() {
+            return Err(if ext == "pdf" { "This PDF has no text layer (a scan?). Attach its pages as images instead.".to_string() } else { "This document has no text.".to_string() });
+        }
+        Ok(text.trim().to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Adds guidance to a running turn; it joins the conversation at the turn's next step.
 #[tauri::command]
 pub fn chat_steer(state: State<'_, ChatState>, conversation_id: String, text: String) -> Result<bool, String> {
@@ -919,7 +957,7 @@ pub async fn chat_add_documents(app: AppHandle, id: String) -> Result<Option<Add
     app.dialog()
         .file()
         .set_title("Add documents")
-        .add_filter("Documents", &["pdf", "md", "txt", "html", "htm", "csv", "json", "yaml", "yml", "xml", "rs", "py", "js", "ts", "go", "java", "c", "cpp", "h", "sql", "log", "png", "jpg", "jpeg", "webp", "gif"])
+        .add_filter("Documents", &["pdf", "docx", "pptx", "odt", "odp", "md", "txt", "html", "htm", "csv", "json", "yaml", "yml", "xml", "rs", "py", "js", "ts", "go", "java", "c", "cpp", "h", "sql", "log", "png", "jpg", "jpeg", "webp", "gif"])
         .pick_files(move |paths| {
             let _ = tx.send(paths);
         });
@@ -1033,6 +1071,18 @@ pub fn chat_delete_exchange(app: AppHandle, state: State<'_, ChatState>, id: Str
     let dir = config_dir(&app)?;
     let mut conversation = store::load_conversation(&dir, &id)?;
     store::delete_exchange(&mut conversation, index)?;
+    store::save_conversation(&dir, &conversation)
+}
+
+/// Rewrites a message (yours or an answer) in place, without asking for a new reply.
+#[tauri::command]
+pub fn chat_rewrite_message(app: AppHandle, state: State<'_, ChatState>, id: String, index: usize, text: String) -> Result<(), String> {
+    if state.is_running(&id) {
+        return Err("Wait for the reply to finish first.".into());
+    }
+    let dir = config_dir(&app)?;
+    let mut conversation = store::load_conversation(&dir, &id)?;
+    store::rewrite_message(&mut conversation, index, &text)?;
     store::save_conversation(&dir, &conversation)
 }
 

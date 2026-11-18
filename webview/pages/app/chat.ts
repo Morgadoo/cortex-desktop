@@ -730,6 +730,51 @@ function renderUserTurn(turn: Turn, conversationId: string, branch: HTMLElement 
 const TRANSLATE_TO = ['English', 'Português', 'Español', 'Français', 'Deutsch', 'Italiano', '日本語', '中文'];
 
 /** Translates an answer below itself (LibreChat, LobeHub); the conversation keeps the original. */
+/** Saves an edited message in place; no new reply is asked for. */
+async function rewrite(conversationId: string, index: number, text: string) {
+  try {
+    await tauriInvoke('chat_rewrite_message', { id: conversationId, index, text });
+    await viewCache.chat?.refresh(false);
+    toast('Saved.');
+  } catch (e) {
+    toast(String(e), 'error');
+  }
+}
+
+/** Edit an answer in place, e.g. to correct it before it is built on (LibreChat, LobeHub). */
+function editAnswerButton(turn: Turn, conversationId: string): HTMLElement {
+  const button = h('button', { class: 'icon-btn small', title: 'Edit answer' }, icon('edit', 16));
+  button.addEventListener('click', () => {
+    const el = button.closest('.turn-assistant');
+    const texts = turn.parts.filter((p): p is Extract<Part, { kind: 'text' }> => p.kind === 'text');
+    if (!el || !texts.length) return;
+    const area = h('textarea', { class: 'input textarea edit-area', rows: 8 });
+    area.value = texts[texts.length - 1]!.text;
+    area.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') void viewCache.chat?.refresh(false);
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) void rewrite(conversationId, turn.index, area.value);
+    });
+    el.replaceChildren(
+      h(
+        'div',
+        { class: 'edit-box' },
+        area,
+        h(
+          'div',
+          { class: 'dialog-actions' },
+          h('small', { class: 'muted' }, 'The final text of this answer; tool steps stay as they were.'),
+          h('span', { class: 'spacer' }),
+          h('button', { class: 'btn btn-secondary', on: { click: () => void viewCache.chat?.refresh(false) } }, 'Cancel'),
+          h('button', { class: 'btn btn-primary', on: { click: () => void rewrite(conversationId, turn.index, area.value) } }, 'Save')
+        )
+      )
+    );
+    area.style.height = `${Math.min(520, Math.max(160, area.scrollHeight + 4))}px`;
+    area.focus();
+  });
+  return button;
+}
+
 function translateButton(turn: Turn): HTMLElement {
   const button = h('button', { class: 'icon-btn small', title: 'Translate' }, icon('globe', 16));
   button.addEventListener('click', () => {
@@ -795,11 +840,14 @@ function editButton(turn: Turn, conversationId: string, text: string): HTMLEleme
     const el = button.closest('.turn-user');
     if (!el) return;
     const area = h('textarea', { class: 'input textarea edit-area', rows: 3 });
-    area.value = text;
+    // Attached files stay attached; only the message itself is edited.
+    const attached = (text.match(/\n*<attachment name="[^"]*">[\s\S]*?<\/attachment>/g) ?? []).join('');
+    area.value = text.replace(/\n*<attachment name="[^"]*">[\s\S]*?<\/attachment>/g, '').trim();
+    const full = () => `${area.value.trim()}${attached}`;
     const save = async () => {
       if (!state.model) return void toast('Choose a model first.', 'error');
       try {
-        await api.send({ conversationId, text: area.value, model: state.model, speed: state.speed, approval: state.approval, editIndex: turn.index });
+        await api.send({ conversationId, text: full(), model: state.model, speed: state.speed, approval: state.approval, editIndex: turn.index });
       } catch (e) {
         toast(String(e), 'error');
       }
@@ -816,7 +864,14 @@ function editButton(turn: Turn, conversationId: string, text: string): HTMLEleme
         'div',
         { class: 'edit-box' },
         area,
-        h('div', { class: 'dialog-actions' }, h('button', { class: 'btn btn-secondary', on: { click: () => void viewCache.chat?.refresh(false) } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Send'))
+        h(
+          'div',
+          { class: 'dialog-actions' },
+          h('button', { class: 'btn btn-secondary', on: { click: () => void viewCache.chat?.refresh(false) } }, 'Cancel'),
+          // Fix a typo or a detail for the record, keeping the answer that came back.
+          h('button', { class: 'btn btn-secondary', title: 'Keep the answer below; the model reads the edited message from now on', on: { click: () => void rewrite(conversationId, turn.index, full()) } }, 'Save without reply'),
+          h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Send')
+        )
       )
     );
     area.focus();
@@ -938,6 +993,7 @@ function renderActions(conversation: Conversation, turn: Turn, isLast: boolean, 
     h('button', { class: `icon-btn small${turn.rating < 0 ? ' active-bad' : ''}`, title: 'Bad reply', on: { click: rate(-1) } }, icon('thumbDown', 16)),
     isLast ? h('button', { class: 'icon-btn small', title: 'Regenerate', on: { click: () => void regenerate(conversation.id) } }, icon('retry', 16)) : null,
     copy,
+    editAnswerButton(turn, conversation.id),
     translateButton(turn),
     readAloudButton(textOf(turn.parts)),
     h('span', { class: 'spacer' }),
@@ -1292,6 +1348,12 @@ class Composer {
         .map((i) => i.getAsFile())
         .filter((f): f is File => f !== null);
       const files = fromItems.length ? fromItems : Array.from(e.clipboardData?.files ?? []).filter((f) => IMAGE_TYPES.includes(f.type));
+      const others = Array.from(e.clipboardData?.files ?? []).filter((f) => !IMAGE_TYPES.includes(f.type));
+      if (!files.length && others.length) {
+        e.preventDefault();
+        void this.addFiles(others);
+        return;
+      }
       if (!files.length) return;
       e.preventDefault();
       for (const file of files) this.attachments.push({ name: file.name || 'pasted image', text: '', image: await readImage(file) });
@@ -1301,6 +1363,31 @@ class Composer {
     this.chips = h('div', { class: 'chips' });
     this.bar = h('div', { class: 'composer-bar' });
     this.el = h('div', { class: 'composer' }, h('div', { class: 'composer-box' }, this.chips, this.textarea, this.bar));
+    // Files dropped on the composer are attached like picked ones.
+    let depth = 0;
+    const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+    this.el.addEventListener('dragenter', (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      depth++;
+      this.el.classList.add('drop-target');
+    });
+    this.el.addEventListener('dragover', (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    });
+    this.el.addEventListener('dragleave', () => {
+      depth = Math.max(0, depth - 1);
+      if (!depth) this.el.classList.remove('drop-target');
+    });
+    this.el.addEventListener('drop', (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      depth = 0;
+      this.el.classList.remove('drop-target');
+      void this.addFiles(Array.from(e.dataTransfer?.files ?? []));
+    });
     this.renderBar();
   }
 
@@ -1666,15 +1753,36 @@ class Composer {
     const input = h('input', { type: 'file', multiple: true, class: 'hidden' });
     // WebKitGTK only reports the choice for an input that is in the document.
     document.body.append(input);
-    input.addEventListener('change', async () => {
+    input.addEventListener('change', () => {
       input.remove();
-      for (const file of Array.from(input.files ?? [])) {
+      void this.addFiles(Array.from(input.files ?? []));
+    });
+    input.click();
+  }
+
+  /** Attaches files: images as images, documents and workbooks as their text. */
+  async addFiles(files: File[]) {
+    {
+      for (const file of files) {
         if (IMAGE_TYPES.includes(file.type)) {
           if (file.size > 8 * 1024 * 1024) {
             toast(`${file.name} is larger than 8 MB.`, 'error');
             continue;
           }
           this.attachments.push({ name: file.name, text: '', image: await readImage(file) });
+          continue;
+        }
+        // PDFs and Office documents are read into text, as libraries read them.
+        if (/\.(pdf|docx|pptx|odt|odp)$/i.test(file.name)) {
+          try {
+            const bytes = new Uint8Array(await file.arrayBuffer());
+            let binary = '';
+            for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+            const text = await tauriInvoke<string>('chat_read_document', { name: file.name, data: btoa(binary) });
+            this.attachments.push({ name: file.name, text: text.length > 400_000 ? `${text.slice(0, 400_000)}\n… (cut; add the file to a library to search all of it)` : text });
+          } catch (e) {
+            toast(`${file.name}: ${String(e)}`, 'error');
+          }
           continue;
         }
         // Workbooks are read into CSV, one block per sheet.
@@ -1704,8 +1812,7 @@ class Composer {
       }
       this.renderChips();
       this.renderBar();
-    });
-    input.click();
+    }
   }
 
   renderBar() {

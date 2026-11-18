@@ -3200,6 +3200,7 @@ dependencies = [
  "futures",
  "glob",
  "gtk",
+ "iana-time-zone",
  "image",
  "keyring",
  "lettre",

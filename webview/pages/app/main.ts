@@ -16,7 +16,7 @@ import { LibrariesPage } from './libraries';
 import { AppsPage } from './apps';
 import { WorkflowsPage } from './workflows';
 import { applyTheme, openSettings, reloadModels, setTheme, storedTheme } from './settings';
-import { applyEvent, back, changed, forward, navigate, state, subscribe, type Page } from './state';
+import { applyEvent, back, changed, finishNotificationsOn, forward, navigate, state, subscribe, type Page } from './state';
 import { button, emptyState, iconButton, modalHeader } from './ui';
 import { refreshAudioSettings } from './audio';
 
@@ -638,6 +638,17 @@ async function start() {
     renderMain();
   });
 
+  /** A desktop notification for a reply that finished while the window was in the background. */
+  const notifyFinished = (id: string, failed: boolean) => {
+    const summary = state.conversations.find((c) => c.id === id);
+    // Scheduled tasks post their own notification.
+    if (summary?.taskId) return;
+    const live = state.live.get(id);
+    const text = (live?.parts ?? []).filter((p): p is Extract<typeof p, { kind: 'text' }> => p.kind === 'text').map((p) => p.text).join(' ');
+    const plain = text.replace(/```[\s\S]*?```/g, ' [code] ').replace(/[#*_`>|]/g, '').replace(/\s+/g, ' ').trim();
+    const body = failed ? `The reply could not finish${live?.error ? `: ${live.error}` : '.'}` : plain || 'Your answer is ready.';
+    void tauriInvoke('chat_notify', { title: summary?.title || 'Lumo', body }).catch(() => undefined);
+  };
   void listen<ChatEvent>('chat://event', (event) => {
     const id = event.conversationId;
     // A scheduled run starts a conversation the page has not seen yet.
@@ -648,6 +659,7 @@ async function start() {
       // A failed turn keeps its live state, so the partial reply and the error stay on screen
       // until the next send; a finished one is replaced by what was saved.
       const failed = event.type === 'error';
+      if ((failed || (event.type === 'done' && !event.cancelled)) && !document.hasFocus() && finishNotificationsOn()) notifyFinished(id, failed);
       void refreshConversations();
       const chat = viewCache.chat;
       if (chat && chat.key === `chat:${id}`) {

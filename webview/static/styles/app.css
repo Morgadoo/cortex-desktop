@@ -1423,3 +1423,6 @@ button.usage-meter:hover { background: var(--hover); }
 
 .translation { margin: 10px 0 4px; padding: 10px 14px; border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); border-radius: 0 var(--radius-md) var(--radius-md) 0; }
 .translation-head { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px; }
+
+/* Files dragged over the composer. */
+.composer.drop-target .composer-box { outline: 2px dashed var(--accent, #7c5cff); outline-offset: 2px; }

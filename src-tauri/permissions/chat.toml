@@ -351,7 +351,7 @@ commands.allow = ["chat_delete_knowledge_page"]
 [[permission]]
 identifier = "allow-chat-read-spreadsheet"
 description = "Read an uploaded workbook."
-commands.allow = ["chat_read_spreadsheet"]
+commands.allow = ["chat_read_spreadsheet", "chat_read_document", "chat_notify"]
 
 [[permission]]
 identifier = "allow-chat-terminal-list"
@@ -511,7 +511,7 @@ commands.allow = ["chat_search_settings", "chat_save_search_settings"]
 [[permission]]
 identifier = "allow-chat-exchange-and-bundles"
 description = "Delete a message and its reply, export and import agents, export a conversation as JSON."
-commands.allow = ["chat_delete_exchange", "chat_export_agent", "chat_import_agent", "chat_export_conversation_json"]
+commands.allow = ["chat_delete_exchange", "chat_rewrite_message", "chat_export_agent", "chat_import_agent", "chat_export_conversation_json"]
 
 [[permission]]
 identifier = "allow-chat-api-server"

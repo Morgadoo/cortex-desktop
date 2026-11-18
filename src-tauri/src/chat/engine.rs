@@ -172,6 +172,19 @@ const TONES: &[(&str, &str)] = &[
     ("reflective", "Be thoughtful; surface assumptions and second-order effects."),
 ];
 
+/// The user's date and time zone, so "today" and deadlines mean what they mean to the user
+/// rather than in UTC. No clock time: the preamble then stays the same all day, which keeps
+/// provider prompt caches warm.
+pub fn local_time_line<Tz: chrono::TimeZone>(now: chrono::DateTime<Tz>) -> String
+where
+    Tz::Offset: std::fmt::Display,
+{
+    let zone = iana_time_zone::get_timezone().ok().filter(|z| !z.is_empty());
+    let offset = now.format("%:z").to_string();
+    let offset = if offset == "+00:00" { "UTC".to_string() } else { format!("UTC{offset}") };
+    format!("Today is {} in the user's time zone ({}).", now.format("%A, %B %-d, %Y"), zone.map_or(offset.clone(), |z| format!("{z}, {offset}")))
+}
+
 /// The system prompt: who the assistant is, today's date, and the user's standing instructions.
 /// What the system prompt is built from, beside the tools on offer.
 #[derive(Default)]
@@ -210,7 +223,7 @@ pub fn preamble(context: &Context<'_>, tools: &[ChatTool]) -> String {
          language. Use Markdown: short paragraphs, lists and tables where they help, fenced code \
          blocks with a language tag. When you are unsure, say so instead of guessing.",
     );
-    out.push_str(&format!("\n\nToday is {}.", Utc::now().format("%A, %B %-d, %Y")));
+    out.push_str(&format!("\n\n{}", local_time_line(chrono::Local::now())));
     if !instructions.name.trim().is_empty() {
         out.push_str(&format!(" The user's name is {}.", instructions.name.trim()));
     }
@@ -1220,7 +1233,7 @@ pub async fn run_task(app: AppHandle, task: tasks::Task) {
     notify(&app, &task.title, if answered { "Your scheduled task finished." } else { "Your scheduled task could not finish." });
 }
 
-fn notify(app: &AppHandle, title: &str, body: &str) {
+pub fn notify(app: &AppHandle, title: &str, body: &str) {
     use tauri_plugin_notification::NotificationExt;
     if let Err(e) = app.notification().builder().title(title).body(body).show() {
         warn!("could not show a notification: {e}");
@@ -1305,6 +1318,16 @@ async fn name_conversation(app: AppHandle, reference: String, mut conversation: 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_prompt_uses_the_users_local_time() {
+        use chrono::TimeZone as _;
+        let lisbon_summer = chrono::FixedOffset::east_opt(3600).unwrap().with_ymd_and_hms(2026, 7, 1, 0, 30, 0).unwrap();
+        let line = local_time_line(lisbon_summer);
+        // 00:30 at UTC+1 is July 1 for the user but still June 30 in UTC.
+        assert!(line.starts_with("Today is Wednesday, July 1, 2026 in the user's time zone ("), "{line}");
+        assert!(line.contains("UTC+01:00"), "{line}");
+    }
 
     #[test]
     fn preamble_carries_instructions_and_project() {

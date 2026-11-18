@@ -119,8 +119,129 @@ pub fn delete(config_dir: &Path, id: &str) -> Result<(), String> {
     }
 }
 
-/// The text of a file, by its kind.
-pub fn extract(path: &Path) -> Result<String, String> {
+/// Office documents (Word, PowerPoint, OpenDocument text and slides) by their zipped XML.
+pub const OFFICE_EXTENSIONS: &[&str] = &["docx", "pptx", "odt", "odp"];
+
+/// The text of an Office document: paragraphs on their own lines, slides in order.
+pub fn office_text(bytes: &[u8], ext: &str) -> Result<String, String> {
+    use std::io::Read as _;
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|_| "The document could not be opened (not an Office file?).".to_string())?;
+    let mut parts: Vec<String> = match ext {
+        "docx" => {
+            let mut names = vec!["word/document.xml".to_string()];
+            names.extend(zip.file_names().filter(|n| n.starts_with("word/footnotes") && n.ends_with(".xml")).map(str::to_string));
+            names
+        }
+        "pptx" => {
+            let mut slides: Vec<(u32, String)> = zip
+                .file_names()
+                .filter_map(|n| n.strip_prefix("ppt/slides/slide").and_then(|r| r.strip_suffix(".xml")).and_then(|d| d.parse().ok()).map(|d| (d, n.to_string())))
+                .collect();
+            slides.sort();
+            slides.into_iter().map(|(_, n)| n).collect()
+        }
+        _ => vec!["content.xml".to_string()],
+    };
+    parts.retain(|n| zip.by_name(n).is_ok());
+    if parts.is_empty() {
+        return Err("The document has no text part.".into());
+    }
+    let mut out = Vec::new();
+    for (i, name) in parts.iter().enumerate() {
+        let mut xml = String::new();
+        zip.by_name(name).map_err(|e| e.to_string())?.read_to_string(&mut xml).map_err(|e| e.to_string())?;
+        let text = xml_text(&xml);
+        if ext == "pptx" {
+            out.push(format!("Slide {}:\n{}", i + 1, text.trim()));
+        } else {
+            out.push(text.trim().to_string());
+        }
+    }
+    Ok(out.join("\n\n"))
+}
+
+/// Text from WordprocessingML, DrawingML or ODF XML: paragraph and line ends become newlines,
+/// tabs become tabs, tags are dropped and entities decoded.
+fn xml_text(xml: &str) -> String {
+    let mut out = String::new();
+    let mut rest = xml;
+    while let Some(start) = rest.find('<') {
+        let between = &rest[..start];
+        // Indentation between tags in pretty-printed XML is not text.
+        if !(between.trim().is_empty() && between.contains('\n')) {
+            out.push_str(&decode_entities(between));
+        }
+        let Some(end) = rest[start..].find('>') else { break };
+        let tag = &rest[start + 1..start + end];
+        let name = tag.trim_start_matches('/').split(|c: char| c.is_whitespace() || c == '/').next().unwrap_or_default();
+        let closing = tag.starts_with('/');
+        match name {
+            "w:p" | "a:p" | "text:p" | "text:h" if closing => out.push('\n'),
+            "w:br" | "a:br" | "text:line-break" | "w:cr" => out.push('\n'),
+            "w:tab" | "text:tab" if !closing => out.push('\t'),
+            "text:s" if !closing => out.push(' '),
+            "w:tc" | "a:tc" | "table:table-cell" if closing => out.push('\t'),
+            _ => {}
+        }
+        rest = &rest[start + end + 1..];
+    }
+    // Paragraph text only appears inside <w:t>/<a:t>/text:p, but stray whitespace between tags
+    // in pretty-printed XML would add blank lines: keep at most one empty line.
+    let mut cleaned = String::new();
+    let mut blank = 0;
+    for line in out.lines() {
+        let line = line.trim_end();
+        if line.trim().is_empty() {
+            blank += 1;
+            if blank > 1 {
+                continue;
+            }
+        } else {
+            blank = 0;
+        }
+        cleaned.push_str(line);
+        cleaned.push('\n');
+    }
+    cleaned
+}
+
+fn decode_entities(s: &str) -> String {
+    if !s.contains('&') {
+        return s.to_string();
+    }
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(i) = rest.find('&') {
+        out.push_str(&rest[..i]);
+        let tail = &rest[i..];
+        let Some(end) = tail.find(';').filter(|e| *e <= 10) else {
+            out.push('&');
+            rest = &tail[1..];
+            continue;
+        };
+        let entity = &tail[1..end];
+        let decoded = match entity {
+            "amp" => Some('&'),
+            "lt" => Some('<'),
+            "gt" => Some('>'),
+            "quot" => Some('"'),
+            "apos" => Some('\''),
+            e if e.starts_with("#x") => u32::from_str_radix(&e[2..], 16).ok().and_then(char::from_u32),
+            e if e.starts_with('#') => e[1..].parse().ok().and_then(char::from_u32),
+            _ => None,
+        };
+        match decoded {
+            Some(c) => out.push(c),
+            None => out.push_str(&tail[..=end]),
+        }
+        rest = &tail[end + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// The text of a file with its line breaks, by its kind: PDF, Office, HTML or plain text.
+pub fn read_text(path: &Path) -> Result<String, String> {
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
     let text = match ext.as_str() {
         "pdf" => {
@@ -134,6 +255,7 @@ pub fn extract(path: &Path) -> Result<String, String> {
                 .ok_or("The PDF could not be read.")?
                 .map_err(|e| format!("The PDF could not be read: {e}"))?
         }
+        e if OFFICE_EXTENSIONS.contains(&e) => office_text(&std::fs::read(path).map_err(|e| e.to_string())?, e)?,
         "html" | "htm" => {
             let raw = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
             let doc = scraper::Html::parse_document(&raw);
@@ -146,11 +268,18 @@ pub fn extract(path: &Path) -> Result<String, String> {
         _ => {
             let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
             if bytes.iter().take(8000).any(|b| *b == 0) {
-                return Err(format!("{} is not a text document (PDF, HTML, Markdown, text, code and data files are supported).", path.display()));
+                return Err(format!("{} is not a text document (PDF, Word, PowerPoint, OpenDocument, HTML, Markdown, text, code and data files are supported).", path.display()));
             }
             String::from_utf8_lossy(&bytes).into_owned()
         }
     };
+    Ok(text)
+}
+
+/// The text of a file, by its kind, with whitespace collapsed for indexing.
+pub fn extract(path: &Path) -> Result<String, String> {
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
+    let text = read_text(path)?;
     let text: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if text.trim().is_empty() {
         return Err(if ext == "pdf" {
@@ -264,7 +393,7 @@ pub fn read_document(config_dir: &Path, library: &str, name: &str, part: usize) 
 }
 
 /// File types a mirrored folder indexes.
-const SYNC_EXTENSIONS: &[&str] = &["pdf", "md", "markdown", "txt", "html", "htm", "csv", "json", "yaml", "yml", "xml", "rs", "py", "js", "ts", "go", "java", "c", "cpp", "h", "sql", "log", "rst", "org", "tex"];
+const SYNC_EXTENSIONS: &[&str] = &["pdf", "docx", "pptx", "odt", "odp", "md", "markdown", "txt", "html", "htm", "csv", "json", "yaml", "yml", "xml", "rs", "py", "js", "ts", "go", "java", "c", "cpp", "h", "sql", "log", "rst", "org", "tex"];
 /// Files indexed per folder, and how deep a folder is walked.
 const SYNC_MAX_FILES: usize = 2_000;
 const SYNC_MAX_DEPTH: usize = 6;
@@ -591,6 +720,42 @@ mod tests {
     }
 
     use super::*;
+
+    fn zipped(parts: &[(&str, &str)]) -> Vec<u8> {
+        use std::io::Write as _;
+        let mut buf = std::io::Cursor::new(Vec::new());
+        let mut zip = zip::ZipWriter::new(&mut buf);
+        for (name, body) in parts {
+            zip.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
+            zip.write_all(body.as_bytes()).unwrap();
+        }
+        zip.finish().unwrap();
+        buf.into_inner()
+    }
+
+    #[test]
+    fn office_documents_are_read_as_text() {
+        let docx = zipped(&[(
+            "word/document.xml",
+            r#"<w:document><w:body><w:p><w:r><w:t>Quarterly</w:t></w:r><w:r><w:t xml:space="preserve"> report &amp; plan</w:t></w:r></w:p>
+            <w:p><w:r><w:t>Revenue</w:t><w:tab/><w:t>12 &#8364;</w:t></w:r></w:p></w:body></w:document>"#,
+        )]);
+        assert_eq!(office_text(&docx, "docx").unwrap(), "Quarterly report & plan\nRevenue\t12 €");
+        let pptx = zipped(&[
+            ("ppt/slides/slide10.xml", "<p:sld><a:p><a:r><a:t>Last</a:t></a:r></a:p></p:sld>"),
+            ("ppt/slides/slide2.xml", "<p:sld><a:p><a:r><a:t>Second</a:t></a:r></a:p></p:sld>"),
+            ("ppt/slides/slide1.xml", "<p:sld><a:p><a:r><a:t>Title</a:t></a:r></a:p></p:sld>"),
+        ]);
+        assert_eq!(office_text(&pptx, "pptx").unwrap(), "Slide 1:\nTitle\n\nSlide 2:\nSecond\n\nSlide 3:\nLast");
+        let odt = zipped(&[("content.xml", "<office:text><text:h>Heading</text:h><text:p>One<text:s/>two</text:p></office:text>")]);
+        assert_eq!(office_text(&odt, "odt").unwrap(), "Heading\nOne two");
+        assert!(office_text(b"not a zip", "docx").is_err());
+        // Libraries index them too.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("report.docx");
+        std::fs::write(&path, &docx).unwrap();
+        assert_eq!(extract(&path).unwrap(), "Quarterly report & plan Revenue 12 €");
+    }
 
     #[test]
     fn passages_overlap_and_cover_the_text() {

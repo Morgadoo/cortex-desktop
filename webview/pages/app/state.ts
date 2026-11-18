@@ -278,6 +278,23 @@ export function followUpsOn(): boolean {
   }
 }
 
+/** Notify when a reply finishes while the window is in the background (on unless turned off). */
+export function finishNotificationsOn(): boolean {
+  try {
+    return localStorage.getItem('lumo.notifyFinished') !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+export function setFinishNotifications(on: boolean) {
+  try {
+    localStorage.setItem('lumo.notifyFinished', on ? 'on' : 'off');
+  } catch {
+    // Remembering is a convenience.
+  }
+}
+
 export function setFollowUps(on: boolean) {
   try {
     localStorage.setItem('lumo.followUps', on ? 'on' : 'off');

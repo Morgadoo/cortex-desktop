@@ -464,6 +464,66 @@ pub fn delete_exchange(conversation: &mut Conversation, prompt: usize) -> Result
     Ok(())
 }
 
+/// Rewrites a message in place, without asking for a new reply: the text of a message the user
+/// sent (its images kept), or the final text of an answer (the turn's tool steps kept). The
+/// model reads the rewritten version from then on.
+pub fn rewrite_message(conversation: &mut Conversation, index: usize, text: &str) -> Result<(), String> {
+    migrate(conversation);
+    if text.trim().is_empty() {
+        return Err("The message cannot be empty.".into());
+    }
+    if conversation.summary.as_ref().is_some_and(|s| s.upto > index) {
+        return Err("This part of the conversation is summarized for the model and cannot be changed.".into());
+    }
+    match conversation.messages.get(index) {
+        Some(m) if is_prompt(m) => {
+            if let Some(Message::User { content }) = conversation.messages.get_mut(index) {
+                let mut replaced = false;
+                let items: Vec<UserContent> = std::mem::take(content);
+                let kept: Vec<UserContent> = items
+                    .into_iter()
+                    .filter_map(|c| match c {
+                        UserContent::Text(_) if replaced => None,
+                        UserContent::Text(_) => {
+                            replaced = true;
+                            Some(UserContent::text(text))
+                        }
+                        other => Some(other),
+                    })
+                    .collect();
+                *content = kept;
+            }
+        }
+        Some(_) => {
+            // An answer: its last message with text, after the prompt that asked for it.
+            let start = conversation.messages[..=index].iter().rposition(is_prompt).map_or(0, |i| i + 1);
+            let at = (start..=index)
+                .rev()
+                .find(|i| matches!(&conversation.messages[*i], Message::Assistant(a) if a.content.iter().any(|c| matches!(c, AssistantContent::Text(t) if !t.text.trim().is_empty()))))
+                .ok_or("This answer has no text to edit.")?;
+            if let Message::Assistant(assistant) = &mut conversation.messages[at] {
+                let mut replaced = false;
+                let items: Vec<AssistantContent> = std::mem::take(&mut assistant.content);
+                let kept: Vec<AssistantContent> = items
+                    .into_iter()
+                    .filter_map(|c| match c {
+                        AssistantContent::Text(_) if replaced => None,
+                        AssistantContent::Text(_) => {
+                            replaced = true;
+                            Some(AssistantContent::text(text))
+                        }
+                        other => Some(other),
+                    })
+                    .collect();
+                assistant.content = kept;
+            }
+        }
+        None => return Err("That message no longer exists.".into()),
+    }
+    conversation.updated_at = Utc::now();
+    Ok(())
+}
+
 /// Drops entries keyed inside `start..end` and moves later ones back.
 fn shift_all<T>(entries: &mut Vec<(usize, T)>, start: usize, end: usize) {
     entries.retain(|(i, _)| !(start..end).contains(i));
@@ -743,6 +803,23 @@ mod tests {
         // The last exchange can go too.
         delete_exchange(&mut c, 2).unwrap();
         assert_eq!(c.messages.len(), 2);
+    }
+
+    #[test]
+    fn messages_are_rewritten_without_a_new_reply() {
+        use rig_core::completion::message::AssistantContent;
+        let mut c = Conversation::new("c".into(), None, None);
+        let tool_turn = Message::Assistant(rig_core::completion::message::AssistantMessage::new(vec![AssistantContent::tool_call("t1", rig_core::completion::message::ToolName::new("web_search").unwrap(), serde_json::json!({ "query": "x" }))]));
+        c.messages = vec![Message::user("what is 2+2?"), tool_turn, Message::assistant("five"), Message::user("thanks")];
+        rewrite_message(&mut c, 0, "what is 2+3?").unwrap();
+        assert_eq!(super::super::context::message_text(&c.messages[0]), "what is 2+3?");
+        // Editing an answer changes its final text and keeps the tool step before it.
+        rewrite_message(&mut c, 2, "Four.").unwrap();
+        assert_eq!(super::super::context::message_text(&c.messages[2]), "Four.");
+        assert!(matches!(&c.messages[1], Message::Assistant(a) if matches!(a.content[0], AssistantContent::ToolCall(_))));
+        assert_eq!(c.messages.len(), 4);
+        assert!(rewrite_message(&mut c, 3, "  ").is_err());
+        assert!(rewrite_message(&mut c, 9, "x").is_err());
     }
 
     #[test]
