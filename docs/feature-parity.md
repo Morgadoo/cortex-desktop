@@ -232,7 +232,7 @@ below. What was deliberately left out, and why:
 | Image generation | open-webui, LibreChat, lobehub | `generate_image` via rig (OpenAI, xAI, Together) | Done |
 | Image editing and variations | open-webui, lobehub | `generate_image` takes a `reference`: the user's latest attached image or an earlier generated one (workspace files only). Image models that accept references (OpenAI gpt-image-1) edit them; xAI's endpoint refuses references, and the assistant is told to describe a new image instead. The reference path was verified live up to the provider; an actual edit needs an OpenAI key | Partial |
 | Voice input | open-webui, lobehub | Dictation via rig transcription (OpenAI, Groq) | Done |
-| Hands-free voice conversation | open-webui (call mode), onyx, osaurus, openbot.run | The wave button beside the model opens a call: it listens, sends when you pause (short sounds and lone blips are ignored), shows what it heard, reads the answer aloud and listens again; tap the orb to interrupt or pause, Esc or End to hang up. The microphone stays open for the call and never plays back through the speakers; auto-play stays quiet while a call reads answers itself. The first turn was verified live (tone in, transcription, send, spoken answer, listening again); later turns could not be confirmed in the headless test audio setup | Done |
+| Hands-free voice conversation | open-webui (call mode), onyx, osaurus, openbot.run | The wave button beside the model opens a call: it listens, sends when you pause (short sounds and lone blips are ignored), shows what it heard, reads the answer aloud and listens again; tap the orb to interrupt or pause, Esc or End to hang up. The microphone stays open for the call and never plays back through the speakers; auto-play stays quiet while a call reads answers itself. Verified live over two turns with real speech and a real speech-to-text model (Whisper): "What is the capital of France?" → "It is Paris." spoken, then "And the capital of Italy?" → "It is Rome." | Done |
 | Read aloud (TTS) | open-webui, lobehub | Speaker under each answer, via rig speech models (xAI, OpenAI); verified live | Done |
 | Audio provider setup | open-webui (Admin → Audio) | Settings → Audio, as Open WebUI sets it up. Speech to text: chat providers, any OpenAI-compatible server (base URL, key, model, language) or ElevenLabs. Text to speech: chat providers, OpenAI-compatible (Kokoro, LocalAI, Speaches…), xAI, ElevenLabs (account voices listed) or the system voice. Each has its voice, speed and keychain-stored key. Auto-send after dictation, auto-play of answers. OpenAI-compatible TTS and auto-play verified live | Done |
 | RAG over documents | open-webui, onyx | Libraries and project files, cited | Done |
@@ -313,14 +313,10 @@ below. What was deliberately left out, and why:
 - **Reference coverage:** sections 1–6 were checked against the first 5 Vibe screenshots, and the
   app canvas flow (thinking, card, side panel) against 3 fresh ones from November 2026. Screens
   without a screenshot (Context pages, Scheduled, Settings, Code mode) follow Mistral's docs.
-- **Voice input against a real provider:** dictation was verified end to end in the app with a
-  virtual microphone and a mock transcription endpoint. The test proxy has no transcription
-  endpoint (404), so it has not run against a real speech-to-text model yet. The same applies to
-  the OpenAI-compatible and ElevenLabs speech-to-text engines and to ElevenLabs voices, which
-  need keys this setup does not have.
+- **Speech services that need their own keys:** dictation and voice conversation were verified with
+  a real speech-to-text model (Whisper tiny.en behind an OpenAI-compatible endpoint, fed speech the
+  xAI voice model spoke). ElevenLabs speech-to-text and ElevenLabs voices need keys this setup does
+  not have.
 - **Computer use on macOS and Wayland input:** only Linux/X11 was run here; macOS uses screencapture and cliclick, and Wayland can take screenshots (grim) but not click.
-- **Voice conversation beyond the first turn:** in the headless test setup (PulseAudio null sinks,
-  no audio clock), WebKit's capture delivers microphone audio late and in fragments after the
-  first take, so second and later turns could not be confirmed there. The first full turn was.
 - **Pull requests to non-GitHub remotes:** the branch is pushed, and the pull request is opened on that host by hand.
 - **Branding:** the app still carries the Lumo name and logo; a new name is the owner's decision.
