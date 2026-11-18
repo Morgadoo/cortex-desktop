@@ -228,7 +228,8 @@ What was deliberately left out, and why:
 - **Owner's decision (18 November 2026):** see [live-checks.md](live-checks.md) for the real-account checks. Lumo stays a personal desktop app. Multi-user and
   team features, a Microsoft Teams bot and macOS App Intents (Shortcuts, Siri) are not planned.
   Integrations tested here only against stand-ins (Telegram, Slack, Discord, video generation,
-  Qdrant, Tika, ACP, PR status) are left for the owner to try with real accounts.
+  ACP, PR status) are left for the owner to try with real accounts. Tika is tested against the
+  real Apache Tika server in CI; Qdrant runs there against the real Qdrant server too.
 - **Team and enterprise features** (channels, comments, SSO, SCIM, tenants, admin plane, publishing
   to shared marketplaces): this is a single-user desktop app. Browsing community agents and plugin
   marketplaces is in.
@@ -407,7 +408,7 @@ What was deliberately left out, and why:
 | Export a conversation as JSON | open-webui, LibreChat | Conversation menu → Export as JSON: every turn, tool step and the usage totals | Done |
 | Continue a cut-off reply | LibreChat, lobehub | Continue on a stopped or failed reply picks up from the work already done | Done |
 | Pull request status and CI | LibreChat | The Changes view shows the branch's pull request (state, review decision) and each CI check with its state and a link to the run, through `gh` or `glab`. Verified live | Done |
-| Document extraction servers | open-webui (Tika, Docling) | Settings → Providers → Document extraction: built-in readers, Apache Tika or Docling, used for library documents and attachments; the built-in reader takes over when the server fails. Verified live with a Tika stand-in | Done |
+| Document extraction servers | open-webui (Tika, Docling) | Settings → Providers → Document extraction: built-in readers, Apache Tika or Docling, used for library documents and attachments; the built-in reader takes over when the server fails. Verified live with a Tika stand-in, and against the real Apache Tika 4.2.0 server in CI (the Live job: a generated PDF and a web page came back as their text) | Done |
 | An environment per agent | osaurus (VM per agent) | Each agent's code runs with its own home folder (files and pip/npm user installs persist across its chats), its own network switch, and Reset on its page. Verified live | Done |
 | ACP agents as models | openbot.run | Settings → Providers → ACP agents: Claude Code, Codex, Gemini CLI or any Agent Client Protocol command becomes a model; its text, thinking and tool notices stream into the chat and its permission requests use Lumo's approval card. Verified live with a stand-in agent | Done |
 | Video generation as a tool | openbot.run (image and video steps), Grok | `generate_video`: a 1–15 second clip from a description, or an image brought to life (`reference`), through xAI Grok Imagine (Settings → Providers → Images, video and voice → Video model). The job is started and polled; the clip is saved in the workspace, plays in the chat and shows under Outputs → Videos. Tools menu → Video generation; agents can have it; the built-in "Image to video" workflow chains both tools. Verified live against a stand-in service | Done |
@@ -465,7 +466,7 @@ What is not here, and why. Everything else in the Vibe tables is built and was r
   and dictation anywhere were run with the microphone, hotkey and typing real and a stand-in
   transcription server. ElevenLabs needs keys this setup does not have.
 - **Coding agents and plugins from GitHub:** the Claude Code CLI ran for real; Codex and Gemini
-  CLIs were run as stand-ins with the same command-line shape. ACP agents were tested with a stand-in that speaks the protocol; the Tika and Docling clients were tested against stand-in servers. Video generation was tested against a stand-in for xAI's video service (the account has no credit); this Linux test machine has no H.264 decoder for WebKitGTK (`video/mp4` is reported unsupported), so when a clip cannot play, Lumo converts it once with ffmpeg to Ogg Theora, which the base media plugins decode, and plays that in the chat; verified live, the clip played and looped in the window. Without ffmpeg, a still and "Play in your video player" (the system's player) remain. Downloading a plugin ZIP from
+  CLIs were run as stand-ins with the same command-line shape. ACP agents were tested with a stand-in that speaks the protocol; the Tika and Docling clients were tested against stand-in servers, and the Tika client also against the real Apache Tika 4.2.0 server in CI. Video generation was tested against a stand-in for xAI's video service (the account has no credit); this Linux test machine has no H.264 decoder for WebKitGTK (`video/mp4` is reported unsupported), so when a clip cannot play, Lumo converts it once with ffmpeg to Ogg Theora, which the base media plugins decode, and plays that in the chat; verified live, the clip played and looped in the window. Without ffmpeg, a still and "Play in your video player" (the system's player) remain. Downloading a plugin ZIP from
   GitHub was blocked by this environment's network; reading the official marketplace worked.
 - **Interface translations:** Portuguese, Spanish, French, German and Arabic were translated by a model
   and have not been reviewed by native speakers.

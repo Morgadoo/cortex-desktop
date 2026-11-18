@@ -1,7 +1,9 @@
 # Live checks for the integrations tested against stand-ins
 
-These eight integrations were tested against local stand-ins for their services, because no
-accounts were available where they were built. Each check below takes a few minutes with a real
+These integrations were tested against local stand-ins for their services, because no
+accounts were available where they were built. Two of them now also run against the real
+servers in CI (the Live job in `.github/workflows/ci.yml`): Apache Tika passed there; Qdrant
+runs there too. Each check below takes a few minutes with a real
 account. Note what you see; if a step fails, Settings → General → Error reports and updates → Export diagnostics saves the app log, which says why.
 
 ## Telegram
