@@ -140,3 +140,36 @@ export function renderCodeRun(part: Extract<Part, { kind: 'tool' }>, live: boole
     )
   );
 }
+
+/** A page opened in the real browser (browser_view): its screenshot, and the text it read. */
+export function renderPageView(part: Extract<Part, { kind: 'tool' }>, live: boolean, conversationId: string): HTMLElement {
+  const url = typeof part.arguments.url === 'string' ? part.arguments.url : '';
+  const running = live && part.output === null;
+  let out: { file?: string; title?: string; text?: string; steps?: string[] } = {};
+  try {
+    out = part.output && !part.isError ? (JSON.parse(part.output) as typeof out) : {};
+  } catch {
+    out = {};
+  }
+  let shot: HTMLElement | null = null;
+  if (out.file) {
+    const src = workspaceUrl(conversationId, out.file);
+    const img = h('img', { class: 'generated-image page-shot', src, alt: out.title || url, title: 'Open larger' });
+    img.addEventListener('click', () => void modal((close) => h('div', { class: 'image-modal', on: { click: close } }, h('img', { src, alt: out.title || url })), true));
+    shot = img;
+  }
+  const text = out.text ? h('details', { class: 'bubble-file' }, h('summary', {}, icon('file', 14), h('span', {}, 'What the page says'), h('small', { class: 'muted' }, `${out.text.length.toLocaleString()} characters`)), h('pre', {}, out.text)) : null;
+  return h(
+    'div',
+    { class: 'canvas-step' },
+    h('div', { class: 'canvas-label' }, running ? (part.name === 'browser_act' ? 'Using the page…' : 'Opening the page in the browser…') : part.isError ? 'Could not open the page' : part.name === 'browser_act' ? 'Used the page' : 'Opened the page in the browser'),
+    h(
+      'div',
+      { class: 'image-card' },
+      running ? h('div', { class: 'image-wait' }, h('span', { class: 'dots' }), url) : part.isError ? h('pre', { class: 'run-stderr' }, part.output ?? '') : shot,
+      out.steps?.length ? h('ol', { class: 'page-steps' }, out.steps.map((s) => h('li', { class: s.includes('failed:') ? 'error-text' : '' }, s.replace(/^\d+\.\s*/, '')))) : null,
+      text,
+      h('div', { class: 'image-caption' }, h('a', { class: 'muted', href: url, target: '_blank', rel: 'noopener noreferrer' }, out.title ? `${out.title} · ${url}` : url))
+    )
+  );
+}

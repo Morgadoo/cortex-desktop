@@ -124,7 +124,42 @@ function viewMemory(agent: Agent) {
   });
 }
 
-/** The four rows for `agent`; refreshes itself after a change. */
+/** The agent's own browser profile: sign it in to sites, or forget its session. */
+function browserSession(agent: Agent) {
+  void modal((close) => {
+    const url = h('input', { class: 'input', placeholder: 'https://… (the site to sign in to)' });
+    const open = button({ variant: 'primary', icon: 'globe', label: 'Open the browser', onClick: async () => {
+      try {
+        await tauriInvoke('chat_agent_browser', { agentId: agent.id, url: url.value.trim() || null, clear: false });
+        toast(`Sign in there, then close the window. ${agent.name} uses those logins when it opens pages.`);
+        close();
+      } catch (e) {
+        toast(String(e), 'error');
+      }
+    } });
+    const forget = button({ variant: 'subtle', label: 'Forget its logins', onClick: async () => {
+      try {
+        await tauriInvoke('chat_agent_browser', { agentId: agent.id, url: null, clear: true });
+        toast(`${agent.name}'s browser session is cleared.`);
+        close();
+      } catch (e) {
+        toast(String(e), 'error');
+      }
+    } });
+    url.addEventListener('keydown', (e) => { if (e.key === 'Enter') open.click(); });
+    setTimeout(() => url.focus());
+    return h(
+      'div',
+      { class: 'dialog-small' },
+      modalHeader(`${agent.name}’s browser`, close, { flush: true }),
+      h('p', { class: 'muted' }, `${agent.name} opens pages in your Chrome, Chromium, Edge or Brave with a profile of its own, so its cookies and logins stay apart from yours and from other agents'. Open it to sign in to the sites it should use.`),
+      url,
+      h('div', { class: 'dialog-actions' }, forget, h('span', { class: 'spacer' }), open)
+    );
+  });
+}
+
+/** The rows for `agent`; refreshes itself after a change. */
 export function agentPanel(agentId: string): HTMLElement {
   const el = h('div', { class: 'agent-panel' });
   const render = async () => {
@@ -143,6 +178,7 @@ export function agentPanel(agentId: string): HTMLElement {
       row('edit', 'Instructions', agent.instructions.trim() ? `${agent.instructions.trim().split(/\s+/).length} words` : '', agent.instructions.trim() ? 'Edit' : 'Add', () => editInstructions(agent, again)),
       row('files', 'Context', files ? `${files} ${files === 1 ? 'file' : 'files'}` : '', files ? 'View' : 'Add', () => viewFiles(agent, again)),
       row('brain', 'Memory', notebook.trim() ? `${notebook.trim().split('\n').filter(Boolean).length} notes` : '', 'View', () => viewMemory(agent)),
+      row('globe', 'Browser', 'its own logins', 'Sign in', () => void browserSession(agent)),
       row('clock', 'Scheduled', tasks ? `${tasks} ${tasks === 1 ? 'task' : 'tasks'}` : '', 'Add', () => void editTask(null, () => { again(); changed(); }, { agentId: agent.id }))
     );
   };

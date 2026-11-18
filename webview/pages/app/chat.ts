@@ -6,6 +6,7 @@ import { api, newId, type ApprovalMode, type ChatParams, type Conversation, type
 import { openOutputsPanel } from './outputs';
 import { conversationPng } from './chatimage';
 import { searchInstead } from './uploads';
+import { renderPageView } from './coderun';
 import { agentPanel } from './agentpanel';
 import { fillVariables } from './variables';
 import { startVoiceConversation, voiceActive, voiceTurnEnded } from './voice';
@@ -98,6 +99,8 @@ const BUILTIN_ICONS: Record<string, string> = {
   knowledge_search: 'book',
   save_skill: 'skill',
   generate_image: 'sparkle',
+  browser_view: 'globe',
+  browser_act: 'globe',
 };
 
 /** What an approval card asks to allow. */
@@ -623,6 +626,11 @@ function renderParts(parts: Part[], live: boolean, key: string, durations: numbe
     if (part.kind === 'tool' && part.name === 'canvas') {
       flush();
       out.push(renderCanvasCard(part, live));
+      return;
+    }
+    if (part.kind === 'tool' && (part.name === 'browser_view' || part.name === 'browser_act')) {
+      flush();
+      out.push(renderPageView(part, live, key.split(':')[0] ?? ''));
       return;
     }
     if (part.kind === 'tool' && part.name === 'generate_image') {

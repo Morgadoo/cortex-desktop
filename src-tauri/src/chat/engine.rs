@@ -1383,6 +1383,23 @@ impl Runner<'_> {
         if name == terminal::START || name == terminal::READ || name == terminal::STOP {
             return self.terminal(name, &arguments).await;
         }
+        if name == super::webpage::BROWSER_ACT {
+            // Using a page can change things (submit, sign up, post), so it asks unless the
+            // chat runs on its own by choice.
+            if !asked && !matches!(self.request.approval, ApprovalMode::Auto | ApprovalMode::Autonomous) {
+                if self.request.approval.unattended() {
+                    return tools::Outcome { text: "Using web pages needs the user's approval, and nobody is watching this run.".into(), is_error: true };
+                }
+                let gate = ChatTool { name: name.into(), description: String::new(), parameters: Value::Null, connector_id: Some("browser".into()), tool_name: name.into(), read_only: false };
+                if matches!(tools::request_approval(self.app, &gate, &arguments).await, ApprovalDecision::Deny) {
+                    return tools::Outcome { text: "The user declined this. Do not retry it; ask what they would like instead.".into(), is_error: true };
+                }
+            }
+            return super::webpage::act(self.config_dir, self.id, self.agent.map(|a| a.id.as_str()), &arguments).await;
+        }
+        if name == super::webpage::BROWSER_VIEW {
+            return super::webpage::view(self.config_dir, self.id, self.agent.map(|a| a.id.as_str()), &arguments).await;
+        }
         if name == media::GENERATE_IMAGE {
             return media::generate(self.config_dir, self.id, &arguments).await;
         }

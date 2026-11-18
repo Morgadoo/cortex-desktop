@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 174 |
-| PARTIAL | 86 | 17 |
+| DONE | 58 | 177 |
+| PARTIAL | 86 | 14 |
 | MISSING | 48 | 1 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 42 / 3 / 0 / 9 · LibreChat 40 / 2 / 0 / 4 · LobeHub 28 / 1 / 0 / 5 · Onyx 19 / 2 / 0 / 5 · Osaurus 20 / 5 / 1 / 4 · OpenBot 25 / 4 / 0 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 42 / 3 / 0 / 9 · LibreChat 40 / 2 / 0 / 4 · LobeHub 28 / 1 / 0 / 5 · Onyx 20 / 1 / 0 / 5 · Osaurus 21 / 4 / 1 / 4 · OpenBot 26 / 3 / 0 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -161,7 +161,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 42 / 3 / 0 / 9
 | Onyx | Craft: Outputs / Files / Apps tabs | PARTIAL | DONE | Canvases, apps, Files panel, and an Outputs panel per chat (button in the chat header): its documents, apps, sheets, generated images (thumbnails) and workspace files, each opening in the side panel or saved (outputs.rs, outputs.ts). Verified live after a run_code chart, CSV and canvas |
 | Onyx | Queue a follow-up | PARTIAL | DONE | parity L270 |
 | Onyx | User library across sessions | PARTIAL | DONE | Libraries usable from any chat (parity L49, L86) |
-| Onyx | Sandboxed browser with screenshots | PARTIAL | PARTIAL | Browser reads pages; screenshots only of the whole screen through computer use (parity L288). Missing: browser screenshots |
+| Onyx | Sandboxed browser with screenshots | PARTIAL | DONE | browser_view: pages open headless in the user's own Chrome, Chromium, Edge or Brave, after their scripts run; the screenshot shows in the chat and the rendered text goes to the model (webpage.rs). Verified live: rust-lang.org screenshotted and read; a unit test checks script-made text and a PNG with a real browser |
 | Onyx | Agentic hybrid RAG | PARTIAL | DONE | parity L243, L241 |
 | Onyx | Connectors indexed and synced | PARTIAL | PARTIAL | Folders are indexed (parity L240). Missing: MCP connectors indexed into a library |
 | Onyx | Search mode with source cards | MISSING | DONE | parity: Search mode (searchmode.ts, search_all.rs) |
@@ -189,7 +189,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 42 / 3 / 0 / 9
 | Osaurus | Typed workflows, designer agent | PARTIAL | DONE | Inputs typed as {{name:number}} (or date, time, url, email, long), optional with ?, choices as {{name&#124;a&#124;b}}, each with its own control and checked before sending (promptvars.ts); a designer in the workflow editor drafts or revises the workflow from a description (chat_draft_workflow). Verified live |
 | Osaurus | Triggers: schedule, folder, webhook, feed | PARTIAL | DONE | Schedules, new files (parity L274), webhooks through the local API (L291) and feeds: a task can start when an RSS or Atom feed has new items (`Frequency::NewFeedItems`, `parse_feed`). Verified live: the first check recorded the feed's two posts; after a third was added, one run started with its title and link in the prompt |
 | Osaurus | VM per agent | PARTIAL | PARTIAL | bubblewrap sandbox (parity L231). Missing: a separate environment per agent |
-| Osaurus | Browser session per agent | PARTIAL | PARTIAL | Missing: per-agent sessions |
+| Osaurus | Browser session per agent | PARTIAL | DONE | Each agent has a browser profile of its own (chat/browser-profiles/<agent>): cookies and logins stay apart; the agent's Browser row opens it visibly to sign in, or forgets it (webpage.rs, agentpanel.ts). Verified live |
 | Osaurus | Computer use with rules per app | MISSING | DONE | Settings → Permissions → Computer use: never act in these apps, and only act in these apps, matched in the front window's title; a refused action tells the model to ask the user (`computer::app_allowed`, tested) |
 | Osaurus | Calendar, Mail, Contacts… integrations | MISSING | DONE | parity: Calendars and contacts (calendar.rs: ICS links/files with repeat rules, vCard); mail through the Proton Mail connector |
 | Osaurus | Agent channels | MISSING | OUT OF SCOPE | parity L256 |
@@ -220,7 +220,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 42 / 3 / 0 / 9
 | OpenBot | Models listed for a custom provider | PARTIAL | DONE | OpenAI-compatible local servers list their loaded models (parity: Local OpenAI-compatible servers) |
 | OpenBot | Agents message each other, share files | PARTIAL | DONE | `delegate` and reports, and `message_agent`: the assistant or an agent writes to another agent by name, sharing up to 5 text files; the other agent answers in an unread chat of its own and its reply comes back (engine.rs message_agent, agents.rs). Verified live: a file sent to EU AI Brief, which restated it |
 | OpenBot | Workflow canvas with approval steps | PARTIAL | DONE | Workflows show as a flow of steps (Workflows page and a live preview in the editor); a step starting with Approve: stops the run and asks the user Approve / Change something / Stop before going on (workflows.ts isApproval, flowView). Verified live: the run paused at the approval and finished once approved |
-| OpenBot | Browser control, profiles | PARTIAL | PARTIAL | Missing: an app browser the agent drives, profiles |
+| OpenBot | Browser control, profiles | PARTIAL | DONE | Per-agent browser profiles, browser_view, and browser_act: the agent opens a page with its own logins and clicks, types, presses Enter/Tab/Escape, waits and follows links through the browser's DevTools protocol; each result has a screenshot, the page text and its controls with targets; it asks first unless the chat is in Auto (webpage.rs act). Verified live: a catalogue searched by typing and clicking, with the approval card in Ask mode |
 | OpenBot | Computer use | MISSING | DONE | parity L288 |
 | OpenBot | Routines: schedule or webhook | PARTIAL | DONE | parity L291, L196 |
 | OpenBot | Teach a task by recording | MISSING | DONE | parity: Teach a task by recording (`recorder.rs`, `record.ts`; Skills → Record a task). Verified live: a terminal task (cd, mkdir reports, date +%F > reports/today.txt, ls, cat) was recorded as 10 steps in 25 s with Lumo out of the way and the Recording pill on top; from the screenshots alone, the model drafted a skill with the right steps and checks, which was reviewed and saved as SKILL.md |

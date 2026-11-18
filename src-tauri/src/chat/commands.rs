@@ -1741,6 +1741,16 @@ pub async fn chat_save_output(app: AppHandle, conversation_id: String, path: Str
     Ok(true)
 }
 
+/// Opens an agent's browser profile in a window, to sign in to sites for it; `clear` forgets it.
+#[tauri::command]
+pub fn chat_agent_browser(app: AppHandle, agent_id: Option<String>, url: Option<String>, clear: bool) -> Result<(), String> {
+    let dir = config_dir(&app)?;
+    if clear {
+        return super::webpage::clear_profile(&dir, agent_id.as_deref());
+    }
+    super::webpage::open_profile(&dir, agent_id.as_deref(), url.as_deref().unwrap_or_default())
+}
+
 /// The local API's latest requests, newest first.
 #[tauri::command]
 pub fn chat_api_server_log() -> Vec<super::api_server::LogEntry> {
