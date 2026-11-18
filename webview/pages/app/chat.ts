@@ -1711,7 +1711,7 @@ class Composer {
       const text = this.textarea.value.trim();
       if (!text || !this.conversationId) return;
       if (queue) {
-        queued.set(this.conversationId, [...(queued.get(this.conversationId) ?? []), text]);
+        setQueue(this.conversationId, [...(queued.get(this.conversationId) ?? []), text]);
         this.textarea.value = '';
         this.autosize();
         this.renderChips();
@@ -1788,16 +1788,56 @@ class Composer {
   }
 
   renderChips() {
+    this.chipsDrawnRunning = this.running();
     const extra: HTMLElement[] = [];
     // Messages waiting for the running task to end, with Send now (steer) and remove.
     const waiting = this.conversationId ? queued.get(this.conversationId) ?? [] : [];
+    if (waiting.length && this.conversationId) {
+      const id = this.conversationId;
+      const paused = pausedQueues.has(id);
+      const idle = !this.running();
+      // The queue's own controls: pause or resume it, and send the next one when nothing runs
+      // (after a restart, or while paused).
+      extra.push(
+        h(
+          'div',
+          { class: 'queued-head' },
+          h('span', { class: 'queued-label' }, `${waiting.length} queued${paused ? ' · paused' : ''}`),
+          h('span', { class: 'spacer' }),
+          idle
+            ? h('button', { class: 'link-btn', title: 'Send the first queued message now', on: { click: () => {
+                // A reply started meanwhile: the queue resumes, so this goes as soon as it ends.
+                if (this.running()) {
+                  pausedQueues.delete(id);
+                  saveQueues();
+                  this.renderChips();
+                  return void toast('A reply is running; the queue resumes and this goes next.');
+                }
+                const [next, ...rest] = waiting;
+                setQueue(id, rest);
+                this.renderChips();
+                if (next) void send(next, id);
+              } } }, 'Send next')
+            : null,
+          h('button', { class: 'link-btn', title: paused ? 'Send queued messages again as each turn ends' : 'Keep them waiting until you resume', on: { click: () => { if (paused) pausedQueues.delete(id); else pausedQueues.add(id); saveQueues(); this.renderChips(); } } }, paused ? 'Resume' : 'Pause'),
+          h('button', { class: 'link-btn', on: { click: () => { setQueue(id, []); this.renderChips(); } } }, 'Clear')
+        )
+      );
+    }
     waiting.forEach((text, i) => {
       const id = this.conversationId!;
       const drop = () => {
-        const list = queued.get(id) ?? [];
+        const list = [...(queued.get(id) ?? [])];
         list.splice(i, 1);
-        if (list.length) queued.set(id, list);
-        else queued.delete(id);
+        setQueue(id, list);
+        this.renderChips();
+      };
+      const move = (by: -1 | 1) => {
+        const list = [...(queued.get(id) ?? [])];
+        const j = i + by;
+        if (j < 0 || j >= list.length) return;
+        [list[i], list[j]] = [list[j]!, list[i]!];
+        setQueue(id, list);
         this.renderChips();
       };
       extra.push(
@@ -1805,9 +1845,11 @@ class Composer {
           'div',
           { class: 'queued-row' },
           icon('clock', 14),
-          h('span', { class: 'queued-label' }, 'Queued'),
+          h('span', { class: 'queued-label' }, `${i + 1}`),
           h('span', { class: 'queued-text', title: text }, text),
-          h('button', { class: 'link-btn', title: 'Send it to the running task now', on: { click: () => { drop(); void api.steer(id, text); } } }, 'Send now'),
+          waiting.length > 1 ? iconButton({ icon: 'chevronUp', title: 'Move up', size: 'xs', class: 'chip-x', onClick: () => move(-1) }) : null,
+          waiting.length > 1 ? iconButton({ icon: 'chevron', title: 'Move down', size: 'xs', class: 'chip-x', onClick: () => move(1) }) : null,
+          this.running() ? h('button', { class: 'link-btn', title: 'Send it to the running task now', on: { click: () => { drop(); void api.steer(id, text); } } }, 'Send now') : null,
           h('button', { class: 'link-btn', title: 'Edit', on: { click: () => { drop(); this.setText(text); this.focus(); } } }, 'Edit'),
           iconButton({ icon: 'close', title: 'Remove from the queue', size: 'xs', class: 'chip-x', onClick: drop })
         )
@@ -1914,8 +1956,12 @@ class Composer {
     }
   }
 
+  /** Whether the queue's controls were drawn for a running reply. */
+  private chipsDrawnRunning = false;
+
   renderBar() {
     const running = this.running();
+    if (this.conversationId && queued.has(this.conversationId) && running !== this.chipsDrawnRunning) this.renderChips();
     this.textarea.placeholder = running ? 'Steer the task: Enter sends it now, Alt+Enter queues it for after' : this.placeholder;
     const plus = h('button', { class: 'icon-btn', title: 'Add' }, icon('plus', 18));
     plus.addEventListener('click', () => this.openPlusMenu(plus));
@@ -3074,8 +3120,39 @@ export function conversationMenu(anchor: HTMLElement, id: string, title: string,
   );
 }
 
-/** Messages queued behind a running task, by conversation. */
+/** Messages queued behind a running task, by conversation; kept across restarts. */
 const queued = new Map<string, string[]>();
+/** Conversations whose queue waits instead of sending when a turn ends. */
+const pausedQueues = new Set<string>();
+const QUEUE_KEY = 'lumo.queue';
+
+function loadQueues() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(QUEUE_KEY) ?? '{}') as { queues?: Record<string, string[]>; paused?: string[] };
+    for (const [id, list] of Object.entries(saved.queues ?? {})) if (Array.isArray(list) && list.length) queued.set(id, list.map(String));
+    for (const id of saved.paused ?? []) pausedQueues.add(id);
+  } catch {
+    // Nothing saved, or unreadable: start empty.
+  }
+}
+loadQueues();
+
+function saveQueues() {
+  try {
+    localStorage.setItem(QUEUE_KEY, JSON.stringify({ queues: Object.fromEntries(queued), paused: [...pausedQueues].filter((id) => queued.has(id)) }));
+  } catch {
+    // Kept for this session only.
+  }
+}
+
+function setQueue(id: string, list: string[]) {
+  if (list.length) queued.set(id, list);
+  else {
+    queued.delete(id);
+    pausedQueues.delete(id);
+  }
+  saveQueues();
+}
 /** Suggested next messages under the last answer, by conversation. */
 const followUps = new Map<string, string[]>();
 
@@ -3083,11 +3160,15 @@ const followUps = new Map<string, string[]>();
 export function turnEnded(id: string, ok: boolean) {
   voiceTurnEnded(id, ok);
   const list = queued.get(id);
-  if (ok && list?.length) {
-    const next = list.shift()!;
-    if (!list.length) queued.delete(id);
+  if (ok && list?.length && !pausedQueues.has(id)) {
+    const [next, ...rest] = list;
+    setQueue(id, rest);
     composer.renderChips();
-    void send(next, id);
+    void send(next!, id);
+    return;
+  }
+  if (list?.length) {
+    composer.renderChips();
     return;
   }
   if (ok) void suggestFollowUps(id);

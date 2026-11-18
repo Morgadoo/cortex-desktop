@@ -76,6 +76,7 @@ const ICONS: Record<string, string> = {
   more: 'M6 12h.01M12 12h.01M18 12h.01',
   close: 'M6 6l12 12M18 6L6 18',
   chevron: 'M6 9l6 6 6-6',
+  chevronUp: 'M6 15l6-6 6 6',
   chevronRight: 'M9 6l6 6-6 6',
   chevronLeft: 'M15 6l-6 6 6 6',
   list: 'M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01',
