@@ -153,6 +153,9 @@ pub struct TurnRequest {
     /// Connector ids to offer; all enabled ones when absent.
     #[serde(default)]
     pub connectors: Option<Vec<String>>,
+    /// Why Auto chose this request's model, shown above the answer.
+    #[serde(skip)]
+    pub route_note: Option<String>,
 }
 
 pub(super) fn emit(app: &AppHandle, event: ChatEvent) {
@@ -318,6 +321,14 @@ pub(crate) async fn api_key(vendor: &str) -> Result<Option<String>, String> {
 }
 
 pub async fn connect_model(config_dir: &std::path::Path, reference: &str) -> Result<DynModel<Completion>, String> {
+    // The app's own errands on Auto use its fast model.
+    let routed;
+    let reference = if reference == super::router::AUTO {
+        routed = super::router::models(&providers::load(config_dir)).map(|(fast, _)| fast).ok_or("Choose Auto's fast and strong models first.")?;
+        routed.as_str()
+    } else {
+        reference
+    };
     let (vendor, _) = providers::split_reference(reference)
         .ok_or_else(|| format!("`{reference}` is not a model reference"))?;
     let file = providers::load(config_dir);
@@ -378,6 +389,14 @@ fn rewind_to_last_prompt(conversation: &mut Conversation) -> bool {
 pub async fn run_turn(app: AppHandle, request: TurnRequest, cancel: watch::Receiver<bool>) {
     let id = request.conversation_id.clone();
     emit(&app, ChatEvent::Started { conversation_id: id.clone() });
+    let request = match auto_route(&app, request) {
+        Ok(r) => r,
+        Err(message) => {
+            app.state::<ChatState>().finish(&id);
+            emit(&app, ChatEvent::Error { conversation_id: id, message });
+            return;
+        }
+    };
     let outcome = turn(&app, &request, cancel).await;
     app.state::<ChatState>().finish(&id);
     if let Ok(cancelled) = outcome {
@@ -419,6 +438,33 @@ pub async fn run_turn(app: AppHandle, request: TurnRequest, cancel: watch::Recei
             emit(&app, ChatEvent::Error { conversation_id: id, message });
         }
     }
+}
+
+/// The Auto model: picks the fast or the strong model for this message and says which.
+fn auto_route(app: &AppHandle, mut request: TurnRequest) -> Result<TurnRequest, String> {
+    if request.model != super::router::AUTO {
+        return Ok(request);
+    }
+    let dir = config_dir(app)?;
+    let (fast, strong) = super::router::models(&providers::load(&dir)).ok_or("Choose Auto's fast and strong models under Settings → Providers & models first.")?;
+    // Regenerating: the message being answered again decides.
+    let text = if request.text.trim().is_empty() {
+        store::load_conversation(&dir, &request.conversation_id)
+            .ok()
+            .and_then(|c| store::last_prompt(&c).and_then(|i| c.messages.get(i).cloned()))
+            .map(|m| match m {
+                Message::User { content } => content.iter().filter_map(|c| if let rig_core::completion::message::UserContent::Text(t) = c { Some(t.text.clone()) } else { None }).collect::<Vec<_>>().join("\n"),
+                _ => String::new(),
+            })
+            .unwrap_or_default()
+    } else {
+        request.text.clone()
+    };
+    let route = super::router::route(&text, request.images.len());
+    request.model = if route.strong { strong } else { fast };
+    let name = providers::split_reference(&request.model).map_or(request.model.as_str(), |(_, m)| m).to_string();
+    request.route_note = Some(format!("Auto chose {name}: {}.", route.reason));
+    Ok(request)
 }
 
 /// Waits for the turn to be cancelled; never resolves otherwise.
@@ -483,6 +529,10 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         conversation.times.push((conversation.messages.len() - 1, Utc::now()));
     }
     conversation.updated_at = Utc::now();
+    if let Some(note) = &request.route_note {
+        conversation.notices.push((conversation.messages.len(), note.clone()));
+        emit(app, ChatEvent::Notice { conversation_id: id.into(), text: note.clone() });
+    }
     store::save_conversation(&config_dir, &conversation)?;
 
     // A coding agent program (Claude Code, Codex, Gemini CLI) answers with its own tools.
@@ -1359,6 +1409,7 @@ pub async fn run_task(app: AppHandle, task: tasks::Task) {
         resume: false,
         workdir: None,
         connectors: None,
+        route_note: None,
     };
     run_turn(app.clone(), request, cancel).await;
     let finished = store::load_conversation(&config_dir, &id).ok();

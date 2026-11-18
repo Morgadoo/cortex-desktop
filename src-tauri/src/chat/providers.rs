@@ -79,6 +79,12 @@ pub struct ProvidersFile {
     /// down, an account out of credit); an agent's own backup comes first.
     #[serde(default)]
     pub backup_model: Option<String>,
+    /// The Auto model's fast choice, for quick messages.
+    #[serde(default)]
+    pub router_fast: Option<String>,
+    /// The Auto model's strong choice, for code, analysis and long or attached input.
+    #[serde(default)]
+    pub router_strong: Option<String>,
 }
 
 pub fn file_path(config_dir: &Path) -> PathBuf {
@@ -313,6 +319,8 @@ pub async fn models(file: &ProvidersFile) -> Vec<ModelView> {
     }
     // Coding agent programs installed on this computer.
     out.extend(super::agent_cli::installed());
+    // Auto, when its two models are set.
+    out.extend(super::router::model_view(file));
     out
 }
 

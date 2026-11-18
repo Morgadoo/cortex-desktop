@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 126 |
+| DONE | 58 | 127 |
 | PARTIAL | 86 | 54 |
-| MISSING | 48 | 12 |
+| MISSING | 48 | 11 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 36 / 8 / 1 / 9 · LibreChat 33 / 8 / 1 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 12 / 6 / 3 / 5 · Osaurus 9 / 12 / 5 / 4 · OpenBot 18 / 9 / 2 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 36 / 8 / 1 / 9 · LibreChat 33 / 8 / 1 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 13 / 6 / 2 / 5 · Osaurus 9 / 12 / 5 / 4 · OpenBot 18 / 9 / 2 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -152,7 +152,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 36 / 8 / 1 / 9
 | LobeHub | Filter memories | PARTIAL | DONE | Find, by source and by date (parity: Filter saved facts) |
 | LobeHub | Memory agent | PARTIAL | PARTIAL | `sanitize-my-knowledge` skill (parity L60). Missing: an automatic reviewer |
 | LobeHub | Multi-user, SSO, PWA, IM channels | MISSING | OUT OF SCOPE | parity L256–257 |
-| Onyx | Auto model router | MISSING | MISSING |  |
+| Onyx | Auto model router | MISSING | DONE | parity: Auto model (router.rs) |
 | Onyx | Reasoning level and temperature | PARTIAL | DONE | Fast/Think (parity L74), temperature per chat (L272) |
 | Onyx | Agents with starters and knowledge | PARTIAL | DONE | Agents carry starters and libraries they search and cite (parity: Agent conversation starters and libraries) |
 | Onyx | Per-turn reminder; system prompt replaced | MISSING | DONE | Agent instructions replace the persona; "Reminder on every turn" rides on each request (parity: A reminder on every turn) |

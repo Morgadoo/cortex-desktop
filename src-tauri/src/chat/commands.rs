@@ -307,6 +307,22 @@ pub fn chat_set_backup_model(app: AppHandle, reference: Option<String>) -> Resul
     super::providers::save(&dir, &file)
 }
 
+/// Auto's fast and strong models.
+#[tauri::command]
+pub fn chat_router_models(app: AppHandle) -> Result<(Option<String>, Option<String>), String> {
+    let file = super::providers::load(&config_dir(&app)?);
+    Ok((file.router_fast, file.router_strong))
+}
+
+#[tauri::command]
+pub fn chat_set_router_models(app: AppHandle, fast: Option<String>, strong: Option<String>) -> Result<(), String> {
+    let dir = config_dir(&app)?;
+    let mut file = super::providers::load(&dir);
+    file.router_fast = fast.filter(|m| !m.trim().is_empty() && m != super::router::AUTO);
+    file.router_strong = strong.filter(|m| !m.trim().is_empty() && m != super::router::AUTO);
+    super::providers::save(&dir, &file)
+}
+
 /// Transcribes speech recorded in the composer (base64 audio).
 #[tauri::command]
 pub async fn chat_transcribe(app: AppHandle, audio: String, mime: String) -> Result<String, String> {

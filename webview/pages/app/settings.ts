@@ -325,6 +325,7 @@ async function renderProviders(content: HTMLElement) {
   const sorted = [...providers].sort((a, b) => Number(b.ready) - Number(a.ready));
   for (const provider of sorted) list.append(providerCard(provider));
   content.append(await backupModelCard());
+  content.append(await autoModelCard());
   content.append(await mediaCard());
   content.append(await searchCard());
   content.append(await embeddingCard());
@@ -547,6 +548,31 @@ async function backupModelCard(): Promise<HTMLElement> {
     h('h3', {}, 'Backup model'),
     h('p', { class: 'muted' }, 'When a reply\'s model fails before answering (a provider down, an account out of credit, a key refused), the reply continues once with this model and says so. An agent\'s own backup model comes first.'),
     select
+  );
+}
+
+/** Auto (Onyx's model router): a fast and a strong model, picked per message. */
+async function autoModelCard(): Promise<HTMLElement> {
+  const [fast, strong] = await tauriInvoke<[string | null, string | null]>('chat_router_models').catch(() => [null, null] as [null, null]);
+  const choices = state.models.filter((m) => m.reference !== 'auto/router');
+  const pick = (current: string | null) =>
+    h('select', { class: 'input' }, h('option', { value: '' }, 'Not set'), choices.map((m) => h('option', { value: m.reference, selected: m.reference === current }, `${m.providerLabel} · ${m.name}`)));
+  const fastSel = pick(fast);
+  const strongSel = pick(strong);
+  const save = () =>
+    void tauriInvoke('chat_set_router_models', { fast: fastSel.value || null, strong: strongSel.value || null })
+      .then(async () => {
+        await reloadModels();
+        toast(fastSel.value && strongSel.value ? 'Auto is in the model picker.' : 'Saved. Choose both for Auto to appear.');
+      })
+      .catch((e) => toast(String(e), 'error'));
+  fastSel.addEventListener('change', save);
+  strongSel.addEventListener('change', save);
+  return card(
+    h('h3', {}, 'Auto model'),
+    h('p', { class: 'muted' }, 'With both set, "Auto" in the model picker sends each message to one of them: the strong model for code, analysis and design, long or attached input, images or several questions at once, and the fast one for everything else. The chat says which it chose and why.'),
+    row('Fast model', 'Quick questions, small talk, short rewrites.', fastSel),
+    row('Strong model', 'Code, analysis, planning, long documents.', strongSel)
   );
 }
 
