@@ -139,6 +139,19 @@ export class LibrariesPage {
       toast(parts.length ? `Synced: ${parts.join(', ')}.` : 'Already up to date.');
       if (r.errors.length) toast(r.errors.slice(0, 3).join(' '), 'error');
     };
+    const addPage = h('button', { class: 'btn btn-secondary' }, icon('globe', 15), 'Add a web page');
+    addPage.addEventListener('click', async () => {
+      const url = await promptText('Add a web page', '', 'https://example.com/article');
+      if (!url) return;
+      toast('Fetching the page…');
+      try {
+        await tauriInvoke('chat_add_web_page', { libraryId: lib.id, url });
+        toast('Page added.');
+      } catch (e) {
+        toast(String(e), 'error');
+      }
+      await this.load();
+    });
     const addFolder = h('button', { class: 'btn btn-secondary' }, icon('folder', 15), 'Mirror a folder');
     addFolder.addEventListener('click', async () => {
       addFolder.textContent = 'Indexing…';
@@ -234,7 +247,7 @@ export class LibrariesPage {
     clear(
       this.body,
       tabs,
-      h('div', { class: 'library-actions' }, add, addFolder, h('span', { class: 'spacer' }), remove),
+      h('div', { class: 'library-actions' }, add, addFolder, addPage, h('span', { class: 'spacer' }), remove),
       folders,
       docs,
       h('div', { class: 'section-title' }, 'Test a search'),

@@ -392,6 +392,37 @@ pub fn read_document(config_dir: &Path, library: &str, name: &str, part: usize) 
     Ok(format!("# {} ({}), part {part} of {parts}\n\n{slice}", doc.name, library.name))
 }
 
+/// Saves a web page's readable text into a library (Onyx's web connector, Open WebUI's "add a
+/// webpage"); the document is named after the page and starts with its address.
+pub async fn add_web_page(config_dir: &Path, library_id: &str, url: &str) -> Result<Library, String> {
+    let parsed = url::Url::parse(url.trim()).map_err(|_| "That is not a web address.".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("Only http and https pages can be saved.".into());
+    }
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(25))
+        .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Lumo")
+        .build()
+        .map_err(|e| e.to_string())?;
+    let response = client.get(parsed.clone()).send().await.map_err(|e| format!("The page could not be fetched: {e}"))?;
+    if !response.status().is_success() {
+        return Err(format!("The page answered {}.", response.status()));
+    }
+    let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+    if bytes.len() > 8 * 1024 * 1024 {
+        return Err("That page is too large to save.".into());
+    }
+    let html = String::from_utf8_lossy(&bytes);
+    let text = crate::tools::connectors::browser::html_to_text(&html);
+    if text.trim().len() < 40 {
+        return Err("That page has no readable text (it may need JavaScript).".into());
+    }
+    let title = crate::tools::connectors::browser::extract_title(&html);
+    let host = parsed.host_str().unwrap_or("page").trim_start_matches("www.").to_string();
+    let name: String = if title.trim().is_empty() { format!("{host}{}", parsed.path()) } else { format!("{} ({host})", title.trim()) }.chars().take(120).collect();
+    add_text(config_dir, library_id, &name, &format!("Source: {parsed}\n\n{text}"))
+}
+
 /// The indexed text of a document, for its preview (at most `max` characters).
 pub fn document_text(config_dir: &Path, library_id: &str, document_id: &str, max: usize) -> Result<String, String> {
     let library = load(config_dir, library_id)?;

@@ -3387,6 +3387,30 @@ setInterval(() => {
 }, 1000);
 
 /** The Sources panel beside the conversation: each page with its site, title and what it says. */
+/** Asks which library, then saves the page's text there. */
+async function saveToLibrary(anchor: HTMLElement, url: string) {
+  const libraries = await tauriInvoke<{ id: string; name: string }[]>('chat_list_libraries').catch(() => []);
+  const save = async (id: string, name: string) => {
+    close();
+    toast(`Saving to ${name}…`);
+    try {
+      await tauriInvoke('chat_add_web_page', { libraryId: id, url });
+      toast(`Saved to ${name}. Library searches can now find and cite it.`);
+    } catch (e) {
+      toast(String(e), 'error');
+    }
+  };
+  const close = popover(
+    anchor,
+    h(
+      'div',
+      { class: 'menu' },
+      h('div', { class: 'menu-heading' }, 'Save page to'),
+      libraries.length ? libraries.map((l) => h('button', { class: 'menu-item', on: { click: () => void save(l.id, l.name) } }, icon('library', 15), h('span', {}, l.name))) : h('p', { class: 'muted menu-note' }, 'No libraries yet: make one under Libraries.')
+    )
+  );
+}
+
 function openSourcesPanel(sources: Source[]) {
   const close = iconButton({ icon: 'close', title: 'Close', size: 'sm', onClick: closePanel });
   openSidePanel(
@@ -3408,10 +3432,17 @@ function openSourcesPanel(sources: Source[]) {
               if (p?.description && !s.snippet) snippet.textContent = p.description;
             });
           }
+          // Keep the page: its text goes into a library, to search and cite later.
+          const save = h('button', { class: 'icon-btn tiny source-save', title: 'Save this page to a library' }, icon('library', 14));
+          save.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            void saveToLibrary(save, s.url);
+          });
           return h(
             'a',
             { class: 'source-entry', href: s.url, target: '_blank', rel: 'noopener noreferrer' },
-            h('div', { class: 'source-site' }, siteIcon(s.url), h('span', {}, host(s.url))),
+            h('div', { class: 'source-site' }, siteIcon(s.url), h('span', { class: 'grow' }, host(s.url)), save),
             title,
             snippet
           );

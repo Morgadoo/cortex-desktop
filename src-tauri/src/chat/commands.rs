@@ -1080,6 +1080,12 @@ pub fn chat_delete_exchange(app: AppHandle, state: State<'_, ChatState>, id: Str
     store::save_conversation(&dir, &conversation)
 }
 
+/// Saves a web page's text into a library.
+#[tauri::command]
+pub async fn chat_add_web_page(app: AppHandle, library_id: String, url: String) -> Result<super::libraries::Library, String> {
+    super::libraries::add_web_page(&config_dir(&app)?, &library_id, &url).await
+}
+
 /// The local API's latest requests, newest first.
 #[tauri::command]
 pub fn chat_api_server_log() -> Vec<super::api_server::LogEntry> {

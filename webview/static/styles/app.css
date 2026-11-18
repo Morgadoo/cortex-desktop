@@ -1489,3 +1489,7 @@ button.usage-meter:hover { background: var(--hover); }
   .muted, .turn-time, .step-label, .thought-toggle { color: #555 !important; }
 }
 .print-title, .print-meta { display: none; }
+.source-site { display: flex; align-items: center; gap: 6px; }
+.source-site .grow { flex: 1; }
+.source-save { opacity: .6; }
+.source-entry:hover .source-save { opacity: 1; }
