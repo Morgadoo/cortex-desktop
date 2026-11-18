@@ -1711,6 +1711,23 @@ pub async fn chat_complete_prompt(app: AppHandle, model: String, text: String) -
     Ok(joined)
 }
 
+/// Search mode: one query over libraries, knowledge pages, chats and (when asked) the web.
+#[tauri::command]
+pub async fn chat_search_everything(app: AppHandle, query: String, web: bool) -> Result<super::search_all::Results, String> {
+    Ok(super::search_all::search(&config_dir(&app)?, &query, web).await)
+}
+
+/// A short answer from search results, citing them by number.
+#[tauri::command]
+pub async fn chat_answer_from_results(app: AppHandle, model: String, query: String, cards: Vec<super::search_all::Card>) -> Result<String, String> {
+    if cards.is_empty() {
+        return Err("There is nothing to answer from.".into());
+    }
+    let prompt = super::search_all::answer_prompt(&query, &cards);
+    let request = rig_core::completion::CompletionRequest::new(rig_core::completion::message::Message::user(prompt)).max_tokens(4_000u64);
+    engine::ask_text(&config_dir(&app)?, &model, request, 90).await
+}
+
 /// A conversation as plain text, to add to another one as context.
 #[tauri::command]
 pub fn chat_conversation_text(app: AppHandle, id: String) -> Result<String, String> {

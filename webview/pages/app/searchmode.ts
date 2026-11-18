@@ -1,0 +1,137 @@
+/**
+ * Search mode (Onyx's): one query over libraries, knowledge pages, earlier chats and, if wanted,
+ * the web. Results come first, as cards; an answer from them, citing them by number, only when
+ * asked for; or they go into a new chat as context.
+ */
+import { tauriInvoke } from '../../shared/tauri';
+import { clear, h, icon, markdown, modal, toast } from './dom';
+import { navigate, state } from './state';
+import { button, modalHeader, switchInput } from './ui';
+import { composer } from './chat';
+
+interface Card {
+  kind: 'library' | 'knowledge' | 'chat' | 'web';
+  title: string;
+  place: string;
+  snippet: string;
+  target: string;
+}
+
+const KIND: Record<Card['kind'], [string, string]> = {
+  library: ['library', 'Library'],
+  knowledge: ['book', 'Knowledge'],
+  chat: ['chat', 'Chat'],
+  web: ['globe', 'Web'],
+};
+
+function webOn(): boolean {
+  try {
+    return localStorage.getItem('lumo.searchWeb') !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+export function openSearchMode(initial = '') {
+  void modal((close) => {
+    const input = h('input', { class: 'input search-mode-input', placeholder: 'Search your libraries, knowledge, chats and the web', value: initial });
+    let web = webOn();
+    const webSwitch = switchInput(web, (v) => {
+      web = v;
+      try {
+        localStorage.setItem('lumo.searchWeb', v ? 'on' : 'off');
+      } catch {
+        /* per-device convenience only */
+      }
+    });
+    const status = h('div', { class: 'muted small search-mode-status' });
+    const answer = h('div', { class: 'search-answer', hidden: true });
+    const grid = h('div', { class: 'search-cards' });
+    let cards: Card[] = [];
+    let query = '';
+    const open = (c: Card) => {
+      if (c.kind === 'web') return void window.open(c.target, '_blank', 'noopener');
+      close();
+      if (c.kind === 'chat') navigate({ kind: 'chat', id: c.target });
+      else if (c.kind === 'knowledge') navigate({ kind: 'page', page: 'knowledge' });
+      else navigate({ kind: 'page', page: 'libraries' });
+    };
+    const askAbout = () => {
+      close();
+      navigate({ kind: 'home' });
+      const text = cards.map((c, i) => `[${i + 1}] ${c.title} (${KIND[c.kind][1]}: ${c.place}${c.kind === 'web' ? `, ${c.target}` : ''})\n${c.snippet}`).join('\n\n');
+      setTimeout(() => {
+        composer.attachText(`Search results for “${query}” (${cards.length})`, text);
+        composer.setText(query);
+        composer.focus();
+      }, 50);
+    };
+    const answerBtn = button({ variant: 'primary', size: 'sm', icon: 'sparkle', label: 'Answer from these', onClick: () => void runAnswer() });
+    const chatBtn = button({ variant: 'secondary', size: 'sm', icon: 'chat', label: 'Ask in a new chat', onClick: askAbout });
+    const actions = h('div', { class: 'search-mode-actions', hidden: true }, answerBtn, chatBtn);
+    const runAnswer = async () => {
+      if (!state.model) return toast('Choose a model first.', 'error');
+      answer.hidden = false;
+      clear(answer, h('div', { class: 'status-line' }, h('span', { class: 'dots' }), ' Reading the results…'));
+      try {
+        const text = await tauriInvoke<string>('chat_answer_from_results', { model: state.model, query, cards });
+        clear(answer, h('div', { class: 'markdown' }, markdown(text)));
+        // [n] in the answer jumps to card n.
+        for (const el of answer.querySelectorAll<HTMLElement>('.markdown')) {
+          el.innerHTML = el.innerHTML.replace(/\[(\d{1,2})\]/g, (m, n: string) => (Number(n) <= cards.length ? `<a class="search-ref" data-n="${n}">${n}</a>` : m));
+        }
+        answer.querySelectorAll<HTMLElement>('.search-ref').forEach((a) =>
+          a.addEventListener('click', () => grid.querySelector<HTMLElement>(`[data-card="${a.dataset.n}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
+        );
+      } catch (e) {
+        clear(answer, h('p', { class: 'error-text' }, String(e)));
+      }
+    };
+    const run = async () => {
+      query = input.value.trim();
+      if (!query) return;
+      answer.hidden = true;
+      actions.hidden = true;
+      clear(grid);
+      clear(status, h('span', { class: 'dots' }), web ? ' Searching your things and the web…' : ' Searching your things…');
+      try {
+        const r = await tauriInvoke<{ cards: Card[]; notes: string[] }>('chat_search_everything', { query, web });
+        cards = r.cards;
+        const counts = (['library', 'knowledge', 'chat', 'web'] as const).map((k) => [k, cards.filter((c) => c.kind === k).length] as const).filter(([, n]) => n);
+        clear(status, cards.length ? counts.map(([k, n]) => `${n} ${KIND[k][1].toLowerCase()}`).join(' · ') : 'Nothing found.', r.notes.length ? h('div', {}, r.notes.join(' ')) : null);
+        actions.hidden = !cards.length;
+        clear(
+          grid,
+          cards.map((c, i) =>
+            h(
+              'button',
+              { class: `search-card kind-${c.kind}`, 'data-card': String(i + 1), on: { click: () => open(c) } },
+              h('div', { class: 'search-card-head' }, h('span', { class: 'search-card-n' }, String(i + 1)), icon(KIND[c.kind][0], 14), h('span', { class: 'muted' }, `${KIND[c.kind][1]} · ${c.place}`)),
+              h('strong', {}, c.title),
+              h('p', {}, c.snippet)
+            )
+          )
+        );
+      } catch (e) {
+        clear(status, String(e));
+      }
+    };
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') void run();
+    });
+    setTimeout(() => {
+      input.focus();
+      if (initial) void run();
+    });
+    return h(
+      'div',
+      { class: 'dialog-small wide search-mode' },
+      modalHeader('Search everything', close, { flush: true }),
+      h('div', { class: 'search-mode-bar' }, input, h('label', { class: 'search-mode-web' }, webSwitch, h('span', {}, 'Include the web'))),
+      status,
+      actions,
+      answer,
+      grid
+    );
+  }, true);
+}

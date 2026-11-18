@@ -15,6 +15,7 @@ pub mod agents;
 pub mod hooks;
 pub mod plugins;
 pub mod router;
+pub mod search_all;
 pub mod api_server;
 pub mod arena;
 pub mod audio;

@@ -162,7 +162,8 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
                 "type": "object",
                 "properties": {
                     "query": { "type": "string" },
-                    "library": { "type": "string", "description": "A library name, to search only that one." }
+                    "library": { "type": "string", "description": "A library name, to search only that one." },
+                    "since": { "type": "string", "description": "Only documents changed on or after this: a date (2026-03-01) or a span back from today (30d, 6m, 1y). For questions about recent or current versions." }
                 },
                 "required": ["query"]
             }),
@@ -434,7 +435,21 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
                     None => return err(format!("There is no library named {wanted}.")),
                 }
             };
-            let (hits, note) = super::embeddings::search(config_dir, &only, &query, 6).await;
+            let since_text = str_arg("since");
+            let since = super::libraries::parse_since(&since_text, chrono::Utc::now());
+            if !since_text.is_empty() && since.is_none() {
+                return err("`since` is a date like 2026-03-01, or a span like 30d, 6m or 1y.");
+            }
+            // With a cutoff, a wider pool is searched and the older documents' passages left out.
+            let (hits, note) = super::embeddings::search(config_dir, &only, &query, if since.is_some() { 30 } else { 6 }).await;
+            let hits: Vec<_> = match since {
+                Some(cutoff) => super::libraries::changed_since(config_dir, hits, cutoff).into_iter().take(6).collect(),
+                None => hits,
+            };
+            let note = match (since, hits.is_empty()) {
+                (Some(cutoff), true) => Some(format!("No document changed since {} matched; search without `since` to include older ones.", cutoff.format("%Y-%m-%d"))),
+                _ => note,
+            };
             if hits.is_empty() {
                 ok(json!({ "query": query, "passages": [], "note": note.unwrap_or_else(|| "Nothing matched; try other keywords.".into()) }).to_string())
             } else {
@@ -527,7 +542,7 @@ fn schedule(config_dir: &Path, args: &Value) -> Outcome {
 const READ_CHAT_LIMIT: usize = 24_000;
 
 /// Earlier conversations matching `query`: every word first; failing that, the most words.
-fn search_chats(config_dir: &Path, query: &str) -> Vec<super::index::Hit> {
+pub(crate) fn search_chats(config_dir: &Path, query: &str) -> Vec<super::index::Hit> {
     let all = super::index::search(config_dir, query, 8);
     let words: Vec<&str> = query.split_whitespace().filter(|w| w.chars().count() > 2).collect();
     if !all.is_empty() || words.len() < 2 {

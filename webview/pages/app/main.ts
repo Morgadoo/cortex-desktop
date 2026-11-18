@@ -3,6 +3,7 @@
  * screen, a conversation or a context page. Model calls happen in Rust (`src-tauri/src/chat`);
  * this page renders what it streams back.
  */
+import { openSearchMode } from './searchmode';
 import { actionFor } from './shortcuts';
 import { api, listen, type ApprovalRequest, type ChatEvent } from './api';
 import { tauriInvoke } from '../../shared/tauri';
@@ -682,6 +683,7 @@ function openSearch() {
       { label: 'Scheduled', icon: 'clock', run: () => navigate({ kind: 'page', page: 'scheduled' }) },
       { label: 'Apps', icon: 'apps', run: () => navigate({ kind: 'page', page: 'apps' }) },
       { label: 'Settings', icon: 'settings', keys: 'Ctrl+,', run: () => void openSettings() },
+      { label: 'Search everything…', icon: 'search', keys: 'Ctrl+Shift+F', run: () => openSearchMode() },
       { label: 'Providers & models', icon: 'key', run: () => void openSettings('providers') },
       { label: 'Audio settings', icon: 'mic', run: () => void openSettings('audio') },
       { label: 'Appearance', icon: 'palette', run: () => void openSettings('appearance') },
@@ -857,6 +859,7 @@ async function start() {
       if (action === 'settings') {
         if (!document.querySelector('.modal .settings')) void openSettings();
       } else if (action === 'search') openSearch();
+      else if (action === 'searchAll') openSearchMode();
       else if (action === 'newChat') newChat();
       else if (action === 'sidebar') {
         state.sidebarCollapsed = !state.sidebarCollapsed;

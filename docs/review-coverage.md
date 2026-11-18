@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 128 |
+| DONE | 58 | 130 |
 | PARTIAL | 86 | 54 |
-| MISSING | 48 | 10 |
+| MISSING | 48 | 8 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9 · LibreChat 33 / 8 / 1 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 13 / 6 / 2 / 5 · Osaurus 9 / 12 / 5 / 4 · OpenBot 18 / 9 / 2 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9 · LibreChat 33 / 8 / 1 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 15 / 6 / 0 / 5 · Osaurus 9 / 12 / 5 / 4 · OpenBot 18 / 9 / 2 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -156,7 +156,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9
 | Onyx | Reasoning level and temperature | PARTIAL | DONE | Fast/Think (parity L74), temperature per chat (L272) |
 | Onyx | Agents with starters and knowledge | PARTIAL | DONE | Agents carry starters and libraries they search and cite (parity: Agent conversation starters and libraries) |
 | Onyx | Per-turn reminder; system prompt replaced | MISSING | DONE | Agent instructions replace the persona; "Reminder on every turn" rides on each request (parity: A reminder on every turn) |
-| Onyx | Knowledge cutoff date | MISSING | MISSING |  |
+| Onyx | Knowledge cutoff date | MISSING | DONE | parity: Time cutoff for library search (`since` on search_library) |
 | Onyx | MCP and OpenAPI actions | PARTIAL | DONE | parity L290 |
 | Onyx | Craft: Outputs / Files / Apps tabs | PARTIAL | PARTIAL | Canvases, apps, Files panel. Missing: an outputs tab per session |
 | Onyx | Queue a follow-up | PARTIAL | DONE | parity L270 |
@@ -164,7 +164,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9
 | Onyx | Sandboxed browser with screenshots | PARTIAL | PARTIAL | Browser reads pages; screenshots only of the whole screen through computer use (parity L288). Missing: browser screenshots |
 | Onyx | Agentic hybrid RAG | PARTIAL | DONE | parity L243, L241 |
 | Onyx | Connectors indexed and synced | PARTIAL | PARTIAL | Folders are indexed (parity L240). Missing: MCP connectors indexed into a library |
-| Onyx | Search mode with source cards | MISSING | MISSING |  |
+| Onyx | Search mode with source cards | MISSING | DONE | parity: Search mode (searchmode.ts, search_all.rs) |
 | Onyx | Time range / source filter | MISSING | DONE | `web_search` recency (parity: Recent results only) and `sites` (parity: Web search on chosen sites) |
 | Onyx | Cited vs found sources; add one in full | PARTIAL | PARTIAL | Sources panel; falls back to search results when nothing is cited (chat.ts:889–895). Missing: a separate Found list, add in full |
 | Onyx | Web search providers | PARTIAL | DONE | parity L294 |

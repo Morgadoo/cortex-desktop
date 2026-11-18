@@ -505,6 +505,43 @@ pub fn import_archive(config_dir: &Path, library_id: &str, bytes: &[u8]) -> Resu
     Ok(ArchiveReport { library, added, skipped })
 }
 
+impl Document {
+    /// When the document last changed: its file's time for a mirrored folder, else when it was added.
+    pub fn changed_at(&self) -> DateTime<Utc> {
+        self.modified.and_then(|secs| DateTime::from_timestamp(secs, 0)).unwrap_or(self.added_at)
+    }
+}
+
+/// A date cutoff from what a model or a person wrote: `2026-03-01`, or `30d`, `6m`, `1y` ago.
+pub fn parse_since(text: &str, now: DateTime<Utc>) -> Option<DateTime<Utc>> {
+    let t = text.trim().to_lowercase();
+    if t.is_empty() {
+        return None;
+    }
+    if let Ok(date) = chrono::NaiveDate::parse_from_str(&t, "%Y-%m-%d") {
+        return date.and_hms_opt(0, 0, 0).map(|d| d.and_utc());
+    }
+    let (n, unit) = t.split_at(t.find(|c: char| !c.is_ascii_digit())?);
+    let n: i64 = n.parse().ok()?;
+    let days = match unit.trim() {
+        "d" | "day" | "days" => n,
+        "w" | "week" | "weeks" => n * 7,
+        "m" | "month" | "months" => n * 30,
+        "y" | "year" | "years" => n * 365,
+        _ => return None,
+    };
+    Some(now - chrono::Duration::days(days))
+}
+
+/// Keeps the passages from documents changed on or after `since` (Onyx's time cutoff).
+pub fn changed_since(config_dir: &Path, passages: Vec<Passage>, since: DateTime<Utc>) -> Vec<Passage> {
+    let dates: HashMap<(String, String), DateTime<Utc>> = list(config_dir)
+        .into_iter()
+        .flat_map(|l| l.documents.into_iter().map(move |d| ((l.name.clone(), d.name.clone()), d.changed_at())))
+        .collect();
+    passages.into_iter().filter(|p| dates.get(&(p.library.clone(), p.document.clone())).is_some_and(|d| *d >= since)).collect()
+}
+
 /// Where a library keeps its documents' text (and their cached vectors).
 pub fn docs_dir(config_dir: &Path, library_id: &str) -> Result<PathBuf, String> {
     Ok(lib_dir(config_dir, library_id)?.join("docs"))
@@ -1049,6 +1086,32 @@ mod tests {
         assert!(report.skipped.is_empty());
         assert_eq!(report.library.documents.iter().map(|d| d.name.as_str()).collect::<Vec<_>>(), ["Home.md", "Tasks.csv"]);
         assert!(search(&dir, &[], "team wiki", 3).iter().any(|p| p.text.contains("Welcome")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+
+    #[test]
+    fn a_time_cutoff_keeps_recent_documents() {
+        let now = Utc::now();
+        assert_eq!(parse_since("2026-03-01", now).unwrap().format("%Y-%m-%d").to_string(), "2026-03-01");
+        assert_eq!((now - parse_since("30d", now).unwrap()).num_days(), 30);
+        assert_eq!((now - parse_since("2 weeks", now).unwrap()).num_days(), 14);
+        assert_eq!((now - parse_since("1y", now).unwrap()).num_days(), 365);
+        assert!(parse_since("lately", now).is_none());
+        assert!(parse_since("", now).is_none());
+
+        let dir = std::env::temp_dir().join(format!("lumo-since-{}", std::process::id()));
+        let lib = create(&dir, "Notes", "").unwrap();
+        add_text(&dir, &lib.id, "old.md", "budget figures for the old plan").unwrap();
+        add_text(&dir, &lib.id, "new.md", "budget figures for the new plan").unwrap();
+        // The first document is from two years ago.
+        let mut l = load(&dir, &lib.id).unwrap();
+        l.documents[0].added_at = now - chrono::Duration::days(730);
+        save(&dir, &l).unwrap();
+        let hits = search(&dir, &[], "budget figures", 5);
+        assert_eq!(hits.len(), 2);
+        let recent = changed_since(&dir, hits, parse_since("1y", now).unwrap());
+        assert_eq!(recent.iter().map(|p| p.document.as_str()).collect::<Vec<_>>(), ["new.md"]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

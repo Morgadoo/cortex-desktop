@@ -4,10 +4,11 @@
  * physical key, so Shift+1 stays "1" on every layout. Changes are kept on this device.
  */
 
-export type ShortcutAction = 'settings' | 'search' | 'newChat' | 'sidebar' | 'work' | 'code' | 'agents';
+export type ShortcutAction = 'settings' | 'search' | 'searchAll' | 'newChat' | 'sidebar' | 'work' | 'code' | 'agents';
 
 export const SHORTCUTS: { action: ShortcutAction; label: string; fallback: string }[] = [
   { action: 'search', label: 'Command palette and search', fallback: 'Mod+K' },
+  { action: 'searchAll', label: 'Search everything (libraries, knowledge, chats, web)', fallback: 'Mod+Shift+F' },
   { action: 'newChat', label: 'New chat', fallback: 'Mod+N' },
   { action: 'sidebar', label: 'Show or hide the sidebar', fallback: 'Mod+B' },
   { action: 'settings', label: 'Settings', fallback: 'Mod+,' },
