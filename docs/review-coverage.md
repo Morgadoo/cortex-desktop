@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 111 |
+| DONE | 58 | 116 |
 | PARTIAL | 86 | 53 |
-| MISSING | 48 | 28 |
+| MISSING | 48 | 23 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 34 / 8 / 3 / 9 · LibreChat 31 / 8 / 3 / 4 · LobeHub 13 / 10 / 6 / 5 · Onyx 12 / 6 / 3 / 5 · Osaurus 6 / 12 / 8 / 4 · OpenBot 15 / 9 / 5 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 36 / 8 / 1 / 9 · LibreChat 32 / 8 / 2 / 4 · LobeHub 15 / 10 / 4 / 5 · Onyx 12 / 6 / 3 / 5 · Osaurus 6 / 12 / 8 / 4 · OpenBot 15 / 9 / 5 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -27,7 +27,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 34 / 8 / 3 / 9
 | Open WebUI | Built-in slash commands | PARTIAL | DONE | parity L280: /new, /temporary, /model, /voice, /fork, /context, /settings, /export, /clear |
 | Open WebUI | Default upload mode (search vs full) | MISSING | PARTIAL | Chat attachments always go in full (chat.ts:1694–1700); library documents are searched, with `read_document` for the whole text (parity L241). Missing: a per-file or default choice |
 | Open WebUI | LaTeX, tables, task lists, Mermaid | PARTIAL | DONE | LaTeX parity L275; GFM tables and task lists dom.ts:149; Mermaid parity L200 |
-| Open WebUI | `:::writing` blocks | MISSING | MISSING |  |
+| Open WebUI | `:::writing` blocks | MISSING | DONE | parity: Writing blocks (dom.ts `extractWriting`; the system prompt asks for them) |
 | Open WebUI | Inline visualizations | PARTIAL | DONE | Apps preview inline in the reply with an Expand bar (parity L129); Mermaid drawn inline (L200) |
 | Open WebUI | Response auto-scroll | PARTIAL | DONE | Follows while at the bottom, and a setting turns following off (parity: Sound and stream following) |
 | Open WebUI | Chat parameters (prompt, params per chat/account/model) | PARTIAL | DONE | Per chat: temperature, length, top-p, instructions; defaults for every chat (parity: Defaults for every chat, and top-p) |
@@ -41,7 +41,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 34 / 8 / 3 / 9
 | Open WebUI | Open Terminal (shell, files, site preview) | PARTIAL | PARTIAL | Terminal and Files panels (parity L122, L208). Missing: live preview of a dev server |
 | Open WebUI | Custom tools with editor, versions, Tool Search | PARTIAL | DONE | Editor with Test, `find_tools`, and versions (parity: Version history) |
 | Open WebUI | Filters (Functions) | MISSING | OUT OF SCOPE | Left out: "Filters and pipes" (parity L223) |
-| Open WebUI | Actions: custom message-toolbar buttons | MISSING | MISSING | The actions row is fixed (chat.ts:933–945) |
+| Open WebUI | Actions: custom message-toolbar buttons | MISSING | DONE | parity: Answer actions (your own prompts under each answer, editable) |
 | Open WebUI | Pipes (providers from code) | MISSING | OUT OF SCOPE | Left out: "Filters and pipes" (parity L223) |
 | Open WebUI | OpenAPI tool servers | MISSING | DONE | parity L290 |
 | Open WebUI | Skills with supporting files and versions | PARTIAL | PARTIAL | Versions done (parity L278). Missing: supporting files (a skill is name, description and body only, api.ts `Skill`) |
@@ -73,7 +73,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 34 / 8 / 3 / 9
 | Open WebUI | Administration (RBAC, SSO…) | MISSING | OUT OF SCOPE | Team/enterprise (parity L217) |
 | Open WebUI | Channels | MISSING | OUT OF SCOPE | Team (parity L217) |
 | LibreChat | Favorites pinned in the palette | MISSING | DONE | Ctrl+K opens with pinned chats and agents first (parity: Pinned chats and agents in the palette) |
-| LibreChat | Recently used files to attach again | MISSING | MISSING |  |
+| LibreChat | Recently used files to attach again | MISSING | DONE | parity: Recent files (recent_files.rs) |
 | LibreChat | Long paste becomes a file | MISSING | DONE | parity L276 |
 | LibreChat | Quote a passage into the next message | PARTIAL | DONE | parity L279 (answers and canvases) |
 | LibreChat | Enter: Queue, Steer or Interrupt | PARTIAL | DONE | parity L270 (Enter steers, Alt+Enter queues), Stop (L191) |
@@ -122,7 +122,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 34 / 8 / 3 / 9
 | LobeHub | Translate a message | MISSING | DONE | chat.ts:730–760 (`chat_translate`; not in the parity doc) |
 | LobeHub | Fold a long reply | MISSING | DONE | Fold button on long answers (parity: Fold a long answer) |
 | LobeHub | Delete a message | MISSING | DONE | parity L296 |
-| LobeHub | Select several messages, delete or forward | MISSING | MISSING |  |
+| LobeHub | Select several messages, delete or forward | MISSING | DONE | parity: Select messages (copy, forward to a chat or agent, delete with re-keyed history) |
 | LobeHub | Agent market | MISSING | OUT OF SCOPE | Shared marketplaces (parity L217) |
 | LobeHub | Skills marketplace (browse, publish) | PARTIAL | OUT OF SCOPE | Shared marketplaces (parity L217); SKILL.md import exists (parity L82) |
 | LobeHub | Agent groups (sequential, parallel, debate…) | PARTIAL | PARTIAL | `delegate` to teammates (parity L251). Missing: group chat modes and an orchestrator setting |
@@ -140,7 +140,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 34 / 8 / 3 / 9
 | LobeHub | Pages: long documents with a page list | PARTIAL | PARTIAL | Canvas documents. Missing: a list of all documents (the Apps page lists apps only) |
 | LobeHub | Image page (ratio, size, count, seed…) | PARTIAL | PARTIAL | `generate_image` with a reference (parity L234). Missing: a page with those controls |
 | LobeHub | Video generation | MISSING | OUT OF SCOPE | Left out (parity L221) |
-| LobeHub | Prompt Extend before generation | MISSING | MISSING |  |
+| LobeHub | Prompt Extend before generation | MISSING | DONE | parity: Improve prompt (Ctrl+E, Ctrl+Z undoes) |
 | LobeHub | Topic panel: status tabs, card/list views | PARTIAL | PARTIAL | Archive. Missing: status tabs and views |
 | LobeHub | Sort and group chats | MISSING | DONE | Sort four ways and date groups Today, Yesterday, 7 and 30 days, months |
 | LobeHub | Smart rename / rename | PARTIAL | DONE | Automatic title (engine.rs:804–808), Rename (chat.ts:2790) |

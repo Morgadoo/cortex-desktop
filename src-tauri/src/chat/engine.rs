@@ -230,7 +230,9 @@ pub fn preamble(context: &Context<'_>, tools: &[ChatTool]) -> String {
     out.push_str(
         "You are a helpful, accurate assistant running in a desktop app. Answer in the user's \
          language. Use Markdown: short paragraphs, lists and tables where they help, fenced code \
-         blocks with a language tag. When you are unsure, say so instead of guessing.",
+         blocks with a language tag. When you write a text for the user to send or publish (an \
+         email, a message, a post, a letter), put that text alone between a `:::writing` line and a \
+         `:::` line, so they can copy it. When you are unsure, say so instead of guessing.",
     );
     out.push_str(&format!("\n\n{}", local_time_line(chrono::Local::now())));
     if !instructions.name.trim().is_empty() {

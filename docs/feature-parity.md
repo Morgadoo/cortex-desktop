@@ -213,7 +213,7 @@ items most likely to differ:
 Reviewed in November 2026 feature by feature against the docs of Open WebUI, LibreChat, LobeHub,
 Onyx, Osaurus and OpenBot (about 220 features). Every item of the review's shortlist is in the table
 below; every feature the review found missing or partial is tracked row by row, with evidence, in
-[review-coverage.md](review-coverage.md) (now 111 done, 53 partial, 28 missing, 31 out of scope).
+[review-coverage.md](review-coverage.md) (now 116 done, 53 partial, 23 missing, 31 out of scope).
 What was deliberately left out, and why:
 
 - **Team and enterprise features** (channels, comments, SSO, SCIM, tenants, admin plane, shared
@@ -324,6 +324,11 @@ What was deliberately left out, and why:
 | Knowledge pages and canvases as context | Open WebUI | The composer's `#` menu also lists knowledge pages and canvases; picking one attaches it in full to the message, next to libraries and other chats. Verified live: the answer used the attached page | Done |
 | Web search on chosen sites | Onyx, Perplexity | `web_search` takes `sites` (up to 5 domains): the query gets `site:` operators (Tavily gets its domain list) and results from other sites are dropped, so an engine that ignores the operator returns fewer results, never wrong ones. Verified live: the model searched with `sites: ["docs.rs"]` | Done |
 | Improve with AI in editors | Open WebUI, Notion | The knowledge page and canvas editors have Improve: rewrite the selection, or the whole text, in place with the current model (improve, fix grammar, shorter, longer, formal, simpler, as a list, or your own instruction). The spacing around the selection is kept; Undo puts the text back. Verified live | Done |
+| Writing blocks | Open WebUI | When the assistant writes something to send or publish (an email, a post, a letter), it goes in a `:::writing` block, shown as a card in a reading face with its own Copy button; a block still streaming shows as it grows. Verified live | Done |
+| Answer actions | Open WebUI | The bolt under an answer lists actions (summarize, explain more simply, make a checklist, find the weak points, or your own): each sends its prompt about that answer as the next message, quoting an earlier answer so the model knows which one is meant; `{{answer}}` puts the answer's text in the prompt. Edit actions… adds, changes and removes them. Verified live with a custom action | Done |
+| Recent files | LibreChat | + → Recent files lists the last 20 files attached (what was read from them, images included), to attach again without finding them on disk; the list can be cleared. Verified live | Done |
+| Select messages | LobeHub | Chat menu → Select messages: tick messages (or All), then copy them as text, forward them to a new chat or an agent as an attachment, or delete them; each deleted message goes with the question or answer it belongs to, and timestamps, ratings, bookmarks and branch points after it move with the rest. Verified live | Done |
+| Improve prompt | LobeHub | Ctrl+E (or + → Improve prompt) has the model rewrite what you typed into a clearer, fuller prompt before sending, keeping your language, details, placeholders and commands; Ctrl+Z puts yours back. Verified live | Done |
 | Translate an answer | LibreChat, lobehub | The globe under an answer translates it into a listed or any language, shown below the original (Markdown and code kept) without changing the conversation. Verified live | Done |
 | Quote a passage into the next message | LibreChat, lobehub | Selecting text in an answer (or a canvas) shows "Ask about this", which quotes it in the composer | Done |
 | Slash commands | open-webui (built-in `/` commands), Vibe CLI | `/` lists app commands before skills: /new, /temporary, /model, /voice, /fork, /context, /settings, /export, /clear. Verified live (/context) | Done |

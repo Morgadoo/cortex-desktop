@@ -233,7 +233,22 @@ const EXTENSIONS: Record<string, string> = {
   html: 'html', css: 'css', json: 'json', yaml: 'yaml', yml: 'yml', toml: 'toml', sql: 'sql', markdown: 'md', md: 'md', xml: 'xml', csv: 'csv',
 };
 
+/**
+ * Takes `:::writing` … `:::` blocks (Open WebUI's writing blocks: a draft to send or publish) out
+ * of the text, leaving a placeholder for each. A block still being written runs to the end.
+ */
+export function extractWriting(text: string): { text: string; blocks: string[] } {
+  const blocks: string[] = [];
+  const out = text.replace(/^:::writing[^\n]*\n([\s\S]*?)(?:\n:::[ \t]*(?=\n|$)|$(?![\s\S]))/gm, (_, body: string) => {
+    blocks.push(body);
+    return `\n<div data-writing="${blocks.length - 1}"></div>\n`;
+  });
+  return { text: out, blocks };
+}
+
 export function markdown(text: string, options: { breaks?: boolean } = {}): DocumentFragment {
+  const writing = extractWriting(text);
+  text = writing.text;
   const math = extractMath(text);
   // `breaks` keeps single line breaks, for documents where lines matter (poems, notes, canvases).
   const html = marked.parse(math.text, { async: false, breaks: options.breaks ?? false }) as string;
@@ -267,6 +282,16 @@ export function markdown(text: string, options: { breaks?: boolean } = {}): Docu
     }
     frag.append(value.slice(last));
     node.replaceWith(frag);
+  }
+  for (const slot of template.content.querySelectorAll<HTMLElement>('div[data-writing]')) {
+    const body = writing.blocks[Number(slot.dataset.writing)] ?? '';
+    const copy = h('button', { class: 'code-copy writing-copy', title: 'Copy the text' }, icon('copy', 14), 'Copy');
+    copy.addEventListener('click', () => {
+      void navigator.clipboard.writeText(body.trim());
+      copy.classList.add('copied');
+      setTimeout(() => copy.classList.remove('copied'), 1200);
+    });
+    slot.replaceWith(h('div', { class: 'writing-block' }, h('div', { class: 'writing-head' }, icon('pencil', 13), h('span', {}, 'Writing'), copy), h('div', { class: 'writing-body' }, markdown(body, { breaks: true }))));
   }
   for (const pre of template.content.querySelectorAll('pre')) {
     const code = pre.querySelector('code');

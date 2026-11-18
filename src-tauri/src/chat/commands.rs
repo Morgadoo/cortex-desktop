@@ -1214,6 +1214,19 @@ pub fn chat_rewrite_message(app: AppHandle, state: State<'_, ChatState>, id: Str
     store::save_conversation(&dir, &conversation)
 }
 
+/// Deletes the exchanges (prompt and answer) holding the given messages; returns how many went.
+#[tauri::command]
+pub fn chat_delete_exchanges(app: AppHandle, state: State<'_, ChatState>, id: String, indices: Vec<usize>) -> Result<usize, String> {
+    if state.is_running(&id) {
+        return Err("Wait for the reply to finish first.".into());
+    }
+    let dir = config_dir(&app)?;
+    let mut conversation = store::load_conversation(&dir, &id)?;
+    let count = store::delete_exchanges(&mut conversation, &indices)?;
+    store::save_conversation(&dir, &conversation)?;
+    Ok(count)
+}
+
 /// Saves an agent, its notebook and the skills it uses as one file, to back up or share.
 #[tauri::command]
 pub async fn chat_export_agent(app: AppHandle, id: String) -> Result<bool, String> {
@@ -1490,6 +1503,24 @@ pub async fn chat_improve_text(app: AppHandle, model: String, text: String, inst
         return Err("The model gave no text back.".into());
     }
     Ok(out.to_string())
+}
+
+/// Files attached lately, newest first, to attach again.
+#[tauri::command]
+pub fn chat_recent_files(app: AppHandle) -> Result<Vec<super::recent_files::RecentFile>, String> {
+    Ok(super::recent_files::load(&config_dir(&app)?))
+}
+
+/// Remembers the files a message carried.
+#[tauri::command]
+pub fn chat_remember_files(app: AppHandle, files: Vec<super::recent_files::RecentFile>) -> Result<(), String> {
+    super::recent_files::add(&config_dir(&app)?, files)
+}
+
+/// Takes one recent file off the list, or all of them.
+#[tauri::command]
+pub fn chat_forget_recent_file(app: AppHandle, index: Option<usize>) -> Result<Vec<super::recent_files::RecentFile>, String> {
+    super::recent_files::forget(&config_dir(&app)?, index)
 }
 
 /// A conversation as plain text, to add to another one as context.

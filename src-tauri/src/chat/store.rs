@@ -477,32 +477,12 @@ fn is_prompt(message: &Message) -> bool {
 }
 
 /// Removes the message the user typed at `prompt` and the reply to it (everything up to the
-/// next typed message). Refused inside the summarized part, or where other versions branch off.
+/// next typed message), with any other versions of it. Refused inside the summarized part.
 pub fn delete_exchange(conversation: &mut Conversation, prompt: usize) -> Result<(), String> {
-    migrate(conversation);
     if !conversation.messages.get(prompt).is_some_and(is_prompt) {
         return Err("That is not a message you sent.".into());
     }
-    let end = conversation.messages.iter().enumerate().skip(prompt + 1).find(|(_, m)| is_prompt(m)).map_or(conversation.messages.len(), |(i, _)| i);
-    if conversation.summary.as_ref().is_some_and(|s| s.upto > prompt) {
-        return Err("This part of the conversation is summarized for the model and cannot be removed.".into());
-    }
-    if conversation.branches.iter().any(|v| (prompt..end).contains(&v.start())) {
-        return Err("This message has other versions; it can be edited instead.".into());
-    }
-    let n = end - prompt;
-    conversation.messages.drain(prompt..end);
-    shift_all(&mut conversation.times, prompt, end);
-    shift_all(&mut conversation.ratings, prompt, end);
-    shift_all(&mut conversation.rating_reasons, prompt, end);
-    shift_all(&mut conversation.bookmarks, prompt, end);
-    shift_all(&mut conversation.thought, prompt, end);
-    shift_all(&mut conversation.notices, prompt, end);
-    for v in conversation.branches.iter_mut().filter(|v| v.from >= end) {
-        v.from -= n;
-    }
-    conversation.updated_at = Utc::now();
-    Ok(())
+    delete_exchanges(conversation, &[prompt]).map(|_| ())
 }
 
 /// Rewrites a message in place, without asking for a new reply: the text of a message the user
@@ -644,6 +624,61 @@ fn strip_attachments(text: &str) -> String {
     }
     out.push_str(rest);
     out.trim_end().to_string()
+}
+
+/// The messages of the exchange holding message `index`: from the prompt the user typed up to the
+/// next one. Tool results and follow-up answers stay with it.
+fn exchange_range(conversation: &Conversation, index: usize) -> Option<std::ops::Range<usize>> {
+    if index >= conversation.messages.len() {
+        return None;
+    }
+    let start = conversation.messages[..=index].iter().rposition(is_prompt).unwrap_or(0);
+    let end = conversation.messages.iter().skip(start + 1).position(is_prompt).map_or(conversation.messages.len(), |p| start + 1 + p);
+    Some(start..end)
+}
+
+/// Moves a branch point and those inside its stored branches back by `by` messages.
+fn shift_branch(point: &mut Versions, by: usize) {
+    point.from -= by;
+    for nested in point.nested.iter_mut().flatten() {
+        shift_branch(nested, by);
+    }
+}
+
+/// Deletes the exchanges holding the given messages (each turn's last message index): the prompt
+/// and everything answering it, so the history still alternates as providers expect. Timestamps,
+/// ratings, bookmarks and branch points after them move back; branch points inside them, and
+/// the other versions they hold, go. Exchanges already summarized for the model stay.
+/// Returns how many exchanges went.
+pub fn delete_exchanges(conversation: &mut Conversation, indices: &[usize]) -> Result<usize, String> {
+    migrate(conversation);
+    let mut ranges: Vec<std::ops::Range<usize>> = indices.iter().filter_map(|&i| exchange_range(conversation, i)).collect();
+    if ranges.is_empty() {
+        return Err("Those messages no longer exist.".into());
+    }
+    ranges.sort_by_key(|r| r.start);
+    ranges.dedup();
+    let count = ranges.len();
+    let first = ranges[0].start;
+    if conversation.summary.as_ref().is_some_and(|s| s.upto > first) {
+        return Err("This part of the conversation is summarized for the model and cannot be removed.".into());
+    }
+    for range in ranges.into_iter().rev() {
+        let (start, end) = (range.start, range.end);
+        conversation.messages.drain(start..end);
+        shift_all(&mut conversation.times, start, end);
+        shift_all(&mut conversation.ratings, start, end);
+        shift_all(&mut conversation.rating_reasons, start, end);
+        shift_all(&mut conversation.bookmarks, start, end);
+        shift_all(&mut conversation.thought, start, end);
+        shift_all(&mut conversation.notices, start, end);
+        conversation.branches.retain(|v| !(start..end).contains(&v.start()));
+        for point in conversation.branches.iter_mut().filter(|v| v.start() >= end) {
+            shift_branch(point, end - start);
+        }
+    }
+    conversation.updated_at = Utc::now();
+    Ok(count)
 }
 
 /// Drops entries keyed inside `start..end` and moves later ones back.
@@ -1184,4 +1219,39 @@ mod tests {
         }
         assert_eq!(turns[1].parts[1], Part::Text { text: "There is one file.".into() });
     }
+
+    #[test]
+    fn deleting_exchanges_keeps_the_rest_in_place() {
+        let mut c = Conversation::new("d".into(), None, None);
+        for (q, a) in [("Q1", "A1"), ("Q2", "A2"), ("Q3", "A3")] {
+            c.messages.push(Message::user(q));
+            c.messages.push(Message::assistant(a));
+        }
+        let now = Utc::now();
+        c.times = (0..6).map(|i| (i, now)).collect();
+        c.ratings = vec![(1, 1), (5, -1)];
+        c.bookmarks = vec![(5, "A3".into())];
+        // A regenerated third answer: its branch point sits after the deleted exchange.
+        keep_branch(&mut c, 4, "answer");
+        c.messages.truncate(5);
+        c.messages.push(Message::assistant("A3b"));
+        // Deleting the first exchange by its answer's index, and asking twice for it, deletes it once.
+        assert_eq!(delete_exchanges(&mut c, &[1, 0]).unwrap(), 1);
+        let texts: Vec<String> = turns(&c).iter().map(|t| match &t.parts[0] { Part::Text { text } => text.clone(), _ => String::new() }).collect();
+        assert_eq!(texts, ["Q2", "A2", "Q3", "A3b"]);
+        assert_eq!(c.ratings, vec![(3, -1)]);
+        assert_eq!(c.bookmarks[0].0, 3);
+        assert_eq!(c.times.len(), 4);
+        // The branch point moved with its answer: switching still works.
+        let v = view(&c).versions[0].clone();
+        assert_eq!(v.from, 2);
+        select_version(&mut c, v.from, 0).unwrap();
+        assert!(matches!(&c.messages[3], Message::Assistant(a) if matches!(a.content.first(), Some(AssistantContent::Text(t)) if t.text == "A3")));
+        // Deleting the exchange the branch point is in drops it.
+        assert_eq!(delete_exchanges(&mut c, &[3]).unwrap(), 1);
+        assert!(c.branches.is_empty());
+        assert_eq!(c.messages.len(), 2);
+        assert!(delete_exchanges(&mut c, &[9]).is_err());
+    }
+
 }

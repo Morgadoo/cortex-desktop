@@ -893,6 +893,106 @@ function editAnswerButton(turn: Turn, conversationId: string): HTMLElement {
   return button;
 }
 
+interface AnswerAction {
+  name: string;
+  prompt: string;
+}
+
+const DEFAULT_ANSWER_ACTIONS: AnswerAction[] = [
+  { name: 'Summarize', prompt: 'Summarize that answer in three short bullet points.' },
+  { name: 'Explain more simply', prompt: 'Explain that answer again in plain words, as to someone new to the subject.' },
+  { name: 'Make a checklist', prompt: 'Turn that answer into a checklist of concrete steps, as a Markdown task list.' },
+  { name: 'Find the weak points', prompt: 'What in that answer is most likely wrong, missing or oversimplified? Be specific.' },
+];
+
+/** The actions under each answer: the built-in ones until the user changes the list. */
+function answerActions(): AnswerAction[] {
+  try {
+    const saved = JSON.parse(localStorage.getItem('lumo.answerActions') ?? 'null') as AnswerAction[] | null;
+    if (Array.isArray(saved)) return saved.filter((a) => a && typeof a.name === 'string' && typeof a.prompt === 'string');
+  } catch {
+    /* the defaults */
+  }
+  return DEFAULT_ANSWER_ACTIONS;
+}
+
+function saveAnswerActions(actions: AnswerAction[]) {
+  try {
+    localStorage.setItem('lumo.answerActions', JSON.stringify(actions));
+  } catch {
+    toast('The actions could not be saved.', 'error');
+  }
+}
+
+/** Edits the list of answer actions: a name and the prompt each one sends. */
+function editAnswerActions() {
+  void modal((close) => {
+    const rows = h('div', { class: 'action-rows' });
+    const addRow = (a: AnswerAction) => {
+      const name = h('input', { class: 'input', value: a.name, placeholder: 'Name' });
+      const prompt = h('textarea', { class: 'input textarea', rows: 2, placeholder: 'What to ask about the answer' });
+      prompt.value = a.prompt;
+      const row = h('div', { class: 'action-row' }, h('div', { class: 'action-fields' }, name, prompt), iconButton({ icon: 'trash', title: 'Remove', size: 'sm', onClick: () => row.remove() }));
+      rows.append(row);
+    };
+    answerActions().forEach(addRow);
+    const save = () => {
+      const list = [...rows.querySelectorAll('.action-row')].map((r) => ({ name: (r.querySelector('input') as HTMLInputElement).value.trim(), prompt: (r.querySelector('textarea') as HTMLTextAreaElement).value.trim() })).filter((a) => a.name && a.prompt);
+      saveAnswerActions(list);
+      close();
+      toast('Actions saved.');
+    };
+    return h(
+      'div',
+      { class: 'dialog-small wide' },
+      modalHeader('Answer actions', close, { flush: true }),
+      h('p', { class: 'muted small' }, 'Each action asks about the answer it is under, as a new message in the chat. Write {{answer}} to put the answer’s text in the prompt yourself.'),
+      rows,
+      h(
+        'div',
+        { class: 'dialog-actions' },
+        button({ variant: 'secondary', icon: 'plus', label: 'Add an action', onClick: () => { addRow({ name: '', prompt: '' }); const last = rows.lastElementChild; last?.scrollIntoView({ block: 'nearest' }); last?.querySelector('input')?.focus(); } }),
+        button({ variant: 'subtle', label: 'Restore the built-in ones', onClick: () => { clear(rows); DEFAULT_ANSWER_ACTIONS.forEach(addRow); } }),
+        h('span', { class: 'spacer' }),
+        button({ variant: 'secondary', label: 'Cancel', onClick: close }),
+        button({ variant: 'primary', label: 'Save', onClick: save })
+      )
+    );
+  });
+}
+
+/**
+ * Actions on an answer (Open WebUI's message actions): prompts of your own about it, sent as the
+ * next message. An earlier answer is quoted so the model knows which one is meant.
+ */
+function actionsButton(turn: Turn, isLast: boolean): HTMLElement {
+  const b = h('button', { class: 'icon-btn small', title: 'Actions' }, icon('bolt', 16));
+  b.addEventListener('click', () => {
+    const answer = textOf(turn.parts);
+    const run = (a: AnswerAction) => {
+      close();
+      const withAnswer = a.prompt.includes('{{answer}}');
+      const prompt = withAnswer ? a.prompt.split('{{answer}}').join(answer) : a.prompt;
+      if (!isLast && !withAnswer) composer.setQuote(answer.length > 1500 ? `${answer.slice(0, 1500)}…` : answer);
+      composer.setText(prompt);
+      void composer.submit();
+    };
+    const close = popover(
+      b,
+      h(
+        'div',
+        { class: 'menu' },
+        h('div', { class: 'menu-heading' }, 'Ask about this answer'),
+        ...answerActions().map((a) => h('button', { class: 'menu-item', title: a.prompt, on: { click: () => run(a) } }, icon('bolt', 15), h('span', {}, a.name))),
+        h('div', { class: 'menu-sep' }),
+        h('button', { class: 'menu-item', on: { click: () => { close(); editAnswerActions(); } } }, icon('settings', 15), h('span', {}, 'Edit actions…'))
+      ),
+      'above'
+    );
+  });
+  return b;
+}
+
 function translateButton(turn: Turn): HTMLElement {
   const button = h('button', { class: 'icon-btn small', title: 'Translate' }, icon('globe', 16));
   button.addEventListener('click', () => {
@@ -1116,6 +1216,7 @@ function renderActions(conversation: Conversation, turn: Turn, isLast: boolean, 
     editAnswerButton(turn, conversation.id),
     isLast ? null : branchHereButton(turn, conversation.id),
     translateButton(turn),
+    actionsButton(turn, isLast),
     readAloudButton(textOf(turn.parts)),
     h('span', { class: 'spacer' }),
     h('span', { class: 'turn-time' }, timeLabel(turn.time))
@@ -1475,6 +1576,8 @@ interface Attachment {
   text: string;
   /** Set for images, which travel as image content rather than text. */
   image?: { mediaType: string; data: string };
+  /** A file from disk (not a chat, page or canvas), kept in the recent files once sent. */
+  file?: boolean;
 }
 
 function userParts(text: string, images: { mediaType: string; data: string }[]): Part[] {
@@ -1534,6 +1637,18 @@ class Composer {
       if (e.key === 'r' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
         e.preventDefault();
         this.searchHistory();
+        return;
+      }
+      if (e.key === 'e' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+        e.preventDefault();
+        void this.extendPrompt();
+        return;
+      }
+      // Ctrl+Z right after Improve prompt puts the prompt as it was typed back.
+      if (e.key === 'z' && (e.ctrlKey || e.metaKey) && this.beforeExtend && this.textarea.value === this.beforeExtend.after) {
+        e.preventDefault();
+        this.setText(this.beforeExtend.before);
+        this.beforeExtend = null;
         return;
       }
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
@@ -1621,6 +1736,46 @@ class Composer {
     this.historyIndex = next;
     this.setText(next === -1 ? this.draft : history[next]!);
     return true;
+  }
+
+  /** The prompt before Improve prompt rewrote it, for Ctrl+Z. */
+  private beforeExtend: { before: string; after: string } | null = null;
+  private extending = false;
+
+  /**
+   * Improve prompt (LobeHub's Prompt Extend): the model rewrites what is typed into a clearer,
+   * more complete prompt before it is sent. Ctrl+Z puts the original back.
+   */
+  async extendPrompt() {
+    const before = this.textarea.value;
+    if (!before.trim()) return toast('Type a prompt first.');
+    if (this.extending) return;
+    if (!state.model) return toast('Choose a model first.', 'error');
+    this.extending = true;
+    this.el.classList.add('extending');
+    toast('Improving the prompt…');
+    try {
+      const after = await tauriInvoke<string>('chat_improve_text', {
+        model: state.model,
+        text: before,
+        instruction:
+          'This is a prompt the user is about to send to an AI assistant. Rewrite it as a clearer, more complete prompt: ' +
+          'state the goal, the useful context and constraints the user implied, and the form of the answer wanted. ' +
+          'Keep the user\'s language, voice and every detail; do not answer it, and do not invent facts or requirements. ' +
+          'Keep {{placeholders}}, /commands and @mentions as they are. Keep it short when the request is simple.',
+        context: null,
+      });
+      if (this.textarea.value !== before) return; // The user kept typing: leave their text.
+      this.setText(after);
+      this.beforeExtend = { before, after };
+      this.focus();
+      toast('Prompt improved. Ctrl+Z puts yours back.');
+    } catch (e) {
+      toast(String(e), 'error');
+    } finally {
+      this.extending = false;
+      this.el.classList.remove('extending');
+    }
   }
 
   /** Ctrl+R: search earlier prompts and put one in the composer. */
@@ -2064,6 +2219,8 @@ class Composer {
     }
     if (ok) {
       if (typed) rememberPrompt(typed);
+      const files = unsentFiles.filter((a) => a.file).map((a) => ({ name: a.name, text: a.text, image: a.image, usedAt: new Date().toISOString() }));
+      if (files.length) void tauriInvoke('chat_remember_files', { files }).catch(() => undefined);
       this.historyIndex = -1;
       this.draft = '';
       this.textarea.value = '';
@@ -2208,7 +2365,7 @@ class Composer {
             toast(`${file.name} is larger than 8 MB.`, 'error');
             continue;
           }
-          this.attachments.push({ name: file.name, text: '', image: await readImage(file) });
+          this.attachments.push({ name: file.name, text: '', image: await readImage(file), file: true });
           continue;
         }
         // Recordings are transcribed with the speech-to-text model, and the transcript attached.
@@ -2220,7 +2377,7 @@ class Composer {
             let binary = '';
             for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
             const text = await tauriInvoke<string>('chat_transcribe', { audio: btoa(binary), mime: file.type || 'audio/mpeg' });
-            this.attachments.push({ name: `${file.name} (transcript)`, text });
+            this.attachments.push({ name: `${file.name} (transcript)`, text, file: true });
           } catch (e) {
             toast(`${file.name}: ${String(e)}`, 'error');
           }
@@ -2233,7 +2390,7 @@ class Composer {
             let binary = '';
             for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
             const text = await tauriInvoke<string>('chat_read_document', { name: file.name, data: btoa(binary) });
-            this.attachments.push({ name: file.name, text: text.length > 400_000 ? `${text.slice(0, 400_000)}\n… (cut; add the file to a library to search all of it)` : text });
+            this.attachments.push({ name: file.name, text: text.length > 400_000 ? `${text.slice(0, 400_000)}\n… (cut; add the file to a library to search all of it)` : text, file: true });
           } catch (e) {
             toast(`${file.name}: ${String(e)}`, 'error');
           }
@@ -2247,7 +2404,7 @@ class Composer {
             for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
             const sheets = await tauriInvoke<[string, string][]>('chat_read_spreadsheet', { data: btoa(binary) });
             const text = sheets.map(([name, csv]) => `Sheet "${name}" (CSV):\n${csv}`).join('\n\n');
-            this.attachments.push({ name: file.name, text: text.length > 400_000 ? `${text.slice(0, 400_000)}\n… (cut; analyse the full file with run_code)` : text });
+            this.attachments.push({ name: file.name, text: text.length > 400_000 ? `${text.slice(0, 400_000)}\n… (cut; analyse the full file with run_code)` : text, file: true });
           } catch (e) {
             toast(String(e), 'error');
           }
@@ -2262,11 +2419,18 @@ class Composer {
           toast(`${file.name} is not a text file.`, 'error');
           continue;
         }
-        this.attachments.push({ name: file.name, text });
+        this.attachments.push({ name: file.name, text, file: true });
       }
       this.renderChips();
       this.renderBar();
     }
+  }
+
+  /** Attaches a block of text (forwarded messages and the like) to the next message. */
+  attachText(name: string, text: string) {
+    this.attachments.push({ name, text });
+    this.renderChips();
+    this.renderBar();
   }
 
   /** Whether the queue's controls were drawn for a running reply. */
@@ -2586,6 +2750,28 @@ class Composer {
       setTimeout(() => search.focus());
       return [heading('Add a chat as context'), h('div', { class: 'flyout-head' }, search), list];
     };
+    // Files attached lately (LibreChat's recent files): attached again from what was read then.
+    const recent = async () => {
+      type Recent = { name: string; text: string; image?: { mediaType: string; data: string }; usedAt: string };
+      const files = await tauriInvoke<Recent[]>('chat_recent_files');
+      const ago = (iso: string) => {
+        const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+        return days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`;
+      };
+      return [
+        heading('Attach again'),
+        ...(files.length
+          ? files.map((f) => entry(f.image ? 'eye' : 'file', f.name, ago(f.usedAt), () => {
+              this.attachments.push({ name: f.name, text: f.text, image: f.image, file: true });
+              this.renderChips();
+              this.renderBar();
+              this.focus();
+            }))
+          : [empty('Files you attach show here.')]),
+        files.length ? sep() : null,
+        files.length ? entry('trash', 'Clear the list', null, () => void tauriInvoke('chat_forget_recent_file', { index: null }).then(() => toast('Recent files cleared.'))) : null,
+      ];
+    };
     const workflows = async () => {
       const all = await workflowsApi.list();
       return [
@@ -2599,6 +2785,8 @@ class Composer {
 
     menu.append(
       item('upload', 'Upload files', () => this.pickFiles()),
+      sub('clock', 'Recent files', recent),
+      item('sparkle', 'Improve prompt (Ctrl+E)', () => void this.extendPrompt()),
       sub('folder', 'Folders', folders),
       sub('skill', 'Skills', skills),
       sub('book', 'Knowledge', knowledge),
@@ -3390,6 +3578,128 @@ function usageMeter(id: string, live: { usage: UsageTotals; window: number } | u
   );
 }
 
+/**
+ * Select several messages (LobeHub's multi-select): tick them, then copy them, forward them to a
+ * new chat or an agent as an attachment, or delete them with their replies. Esc leaves.
+ */
+function selectMessages(conversationId: string) {
+  const view = viewCache.chat;
+  const transcript = view?.el.querySelector<HTMLElement>('.transcript');
+  if (!view || view.key !== `chat:${conversationId}` || !transcript || transcript.classList.contains('selecting')) return;
+  transcript.classList.add('selecting');
+  const turns = [...transcript.querySelectorAll<HTMLElement>('.turn[data-index]')].filter((t) => Number(t.dataset.index) >= 0);
+  const selected = new Set<HTMLElement>();
+  const count = h('span', { class: 'select-count' });
+  const textOf = (turn: HTMLElement) => {
+    const user = turn.classList.contains('turn-user');
+    const body = user
+      ? [turn.querySelector<HTMLElement>('.bubble-text')?.innerText ?? '', ...[...turn.querySelectorAll<HTMLElement>('.bubble-file summary span')].map((f) => `[Attached: ${f.innerText}]`)].filter(Boolean).join('\n')
+      : [...turn.querySelectorAll<HTMLElement>('.markdown')].filter((m) => !m.closest('details, .activity') && !m.parentElement?.closest('.markdown')).map((m) => m.innerText).join('\n\n');
+    return `${user ? 'You' : 'Assistant'}:\n${body.trim()}`;
+  };
+  const chosen = () => turns.filter((t) => selected.has(t));
+  const transcriptText = () => chosen().map(textOf).join('\n\n---\n\n');
+  const buttons: HTMLButtonElement[] = [];
+  const update = () => {
+    count.textContent = selected.size ? `${selected.size} selected` : 'Tick the messages';
+    buttons.forEach((b) => (b.disabled = !selected.size));
+  };
+  const toggles: [HTMLElement, (e: MouseEvent) => void][] = [];
+  const checks = turns.map((turn) => {
+    const box = h('input', { type: 'checkbox', class: 'turn-check', title: 'Select' });
+    box.addEventListener('change', () => {
+      if (box.checked) selected.add(turn);
+      else selected.delete(turn);
+      turn.classList.toggle('selected', box.checked);
+      update();
+    });
+    turn.prepend(box);
+    // A click anywhere on the message ticks it, except on its links and buttons.
+    const toggle = (e: MouseEvent) => {
+      if (e.target === box || (e.target as HTMLElement).closest('a, button, input, summary, select, textarea')) return;
+      box.checked = !box.checked;
+      box.dispatchEvent(new Event('change'));
+    };
+    turn.addEventListener('click', toggle);
+    toggles.push([turn, toggle]);
+    return box;
+  });
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') exit();
+  };
+  const exit = () => {
+    checks.forEach((c) => c.remove());
+    toggles.forEach(([t, f]) => t.removeEventListener('click', f));
+    turns.forEach((t) => t.classList.remove('selected'));
+    transcript.classList.remove('selecting');
+    bar.remove();
+    document.removeEventListener('keydown', onKey);
+  };
+  const action = (ic: string, label: string, run: (b: HTMLButtonElement) => void, danger = false) => {
+    const b = h('button', { class: `btn btn-sm ${danger ? 'btn-danger' : 'btn-secondary'}` }, icon(ic, 14), label);
+    b.addEventListener('click', () => run(b));
+    buttons.push(b);
+    return b;
+  };
+  const forwardTo = (agentId: string | null) => {
+    const text = transcriptText();
+    const n = selected.size;
+    exit();
+    if (agentId) state.mode = 'agents';
+    navigate({ kind: 'home', agentId: agentId ?? undefined });
+    setTimeout(() => {
+      composer.attachText(`Forwarded messages (${n})`, text);
+      composer.focus();
+    }, 50);
+    toast(agentId ? `Forwarded to ${state.agents.find((a) => a.id === agentId)?.name ?? 'the agent'}.` : 'Forwarded to a new chat.');
+  };
+  const all = h('button', { class: 'link-btn' }, 'All');
+  all.addEventListener('click', () => {
+    const on = selected.size < turns.length;
+    checks.forEach((c) => {
+      c.checked = on;
+      c.dispatchEvent(new Event('change'));
+    });
+  });
+  const bar = h(
+    'div',
+    { class: 'select-bar' },
+    count,
+    all,
+    h('span', { class: 'spacer' }),
+    action('copy', 'Copy', () => void navigator.clipboard.writeText(transcriptText()).then(() => toast('Copied.'))),
+    action('share', 'Forward', (b) => {
+      const close = popover(
+        b,
+        h(
+          'div',
+          { class: 'menu' },
+          h('div', { class: 'menu-heading' }, 'Forward to'),
+          h('button', { class: 'menu-item', on: { click: () => { close(); forwardTo(null); } } }, icon('plus', 16), h('span', {}, 'A new chat')),
+          ...state.agents.map((a) => h('button', { class: 'menu-item', on: { click: () => { close(); forwardTo(a.id); } } }, icon('sparkle', 16), h('span', {}, a.name)))
+        ),
+        'above'
+      );
+    }),
+    action('trash', 'Delete', async () => {
+      const indices = chosen().map((t) => Number(t.dataset.index));
+      if (!(await confirmDialog(`Delete ${indices.length === 1 ? 'this message' : `${indices.length} messages`}?`, 'Each message goes with the question or answer it belongs to, and any other versions of them.', 'Delete'))) return;
+      try {
+        const n = await tauriInvoke<number>('chat_delete_exchanges', { id: conversationId, indices });
+        exit();
+        await viewCache.chat?.refresh(false);
+        toast(`Deleted ${n} ${n === 1 ? 'exchange' : 'exchanges'}.`);
+      } catch (e) {
+        toast(String(e), 'error');
+      }
+    }, true),
+    h('button', { class: 'btn btn-sm btn-ghost', on: { click: () => exit() } }, 'Done')
+  );
+  document.addEventListener('keydown', onKey);
+  view.el.append(bar);
+  update();
+}
+
 export function conversationMenu(anchor: HTMLElement, id: string, title: string, pinned: boolean) {
   const item = (ic: string, label: string, action: () => void, danger = false) =>
     h('button', { class: `menu-item${danger ? ' danger' : ''}`, on: { click: () => { close(); action(); } } }, icon(ic, 16), label);
@@ -3445,6 +3755,10 @@ export function conversationMenu(anchor: HTMLElement, id: string, title: string,
             }),
           ]
         : []),
+      item('check', 'Select messages', () => {
+        if (state.view.kind !== 'chat' || state.view.id !== id) navigate({ kind: 'chat', id });
+        setTimeout(() => selectMessages(id), state.view.kind === 'chat' && state.view.id === id ? 0 : 400);
+      }),
       item('download', 'Export as Markdown', () => void api.exportConversation(id).then((saved) => saved && toast('Conversation exported.'))),
       item('link', 'Copy link', () => void navigator.clipboard.writeText(`lumo://chat/${id}`).then(() => toast('Link copied. It opens this chat in Lumo on this computer.'))),
       item('download', 'Print or save as PDF', () => void printConversation(id, title)),
