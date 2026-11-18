@@ -1673,6 +1673,23 @@ pub fn chat_upload_to_library(app: AppHandle, name: String, text: String) -> Res
     Ok(library.name)
 }
 
+/// The learning switches (weekly knowledge review, skills from work); `change` sets them.
+#[tauri::command]
+pub fn chat_learning(app: AppHandle, change: Option<super::learning::Learning>) -> Result<super::learning::Learning, String> {
+    let dir = config_dir(&app)?;
+    if let Some(mut next) = change {
+        next.last_review = super::learning::load(&dir).last_review;
+        super::learning::save(&dir, &next)?;
+    }
+    Ok(super::learning::load(&dir))
+}
+
+/// The agent's own files library (made on first use).
+#[tauri::command]
+pub fn chat_agent_files(app: AppHandle, id: String) -> Result<super::libraries::Library, String> {
+    super::agents::files_library(&config_dir(&app)?, &id)
+}
+
 /// The local API's latest requests, newest first.
 #[tauri::command]
 pub fn chat_api_server_log() -> Vec<super::api_server::LogEntry> {

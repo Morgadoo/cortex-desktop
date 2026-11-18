@@ -4,6 +4,7 @@ import { autocompleteOn } from './state';
 import { tauriInvoke } from '../../shared/tauri';
 import { api, newId, type ApprovalMode, type ChatParams, type Conversation, type Part, type Turn, type UsageTotals } from './api';
 import { searchInstead } from './uploads';
+import { agentPanel } from './agentpanel';
 import { fillVariables } from './variables';
 import { startVoiceConversation, voiceActive, voiceTurnEnded } from './voice';
 import { attachVim } from './vim';
@@ -3371,7 +3372,7 @@ export class HomeView {
     clear(
       this.el,
       code ? null : ghost,
-      h('div', { class: 'home-inner' }, agent ? h('span', { class: 'agent-avatar large' }, agent.avatar || agent.name.charAt(0)) : h('div', { class: 'brand-mark' }), title, h('div', { class: 'composer-wrap' }, banner, composer.el), worktreeToggle, suggestions)
+      h('div', { class: 'home-inner' }, agent ? h('span', { class: 'agent-avatar large' }, agent.avatar || agent.name.charAt(0)) : h('div', { class: 'brand-mark' }), title, h('div', { class: 'composer-wrap' }, banner, composer.el), worktreeToggle, suggestions, agent ? agentPanel(agent.id) : null)
     );
     setTimeout(() => composer.focus());
   }

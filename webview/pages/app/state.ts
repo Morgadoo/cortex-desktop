@@ -164,7 +164,10 @@ export function applyEvent(event: ChatEvent): boolean {
       ensure().steers.push(event.text);
       return false;
     case 'notice':
-      ensure().parts.push({ kind: 'notice', text: event.text });
+      // A note after the reply finished (a skill learned from it): the saved chat has it, so
+      // reload instead of reopening a live turn.
+      if (!live) return true;
+      live.parts.push({ kind: 'notice', text: event.text });
       return false;
     case 'text': {
       const turn = ensure();

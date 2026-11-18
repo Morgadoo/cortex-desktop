@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 165 |
-| PARTIAL | 86 | 26 |
+| DONE | 58 | 167 |
+| PARTIAL | 86 | 24 |
 | MISSING | 48 | 1 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 42 / 3 / 0 / 9 · LibreChat 39 / 3 / 0 / 4 · LobeHub 24 / 5 / 0 / 5 · Onyx 18 / 3 / 0 / 5 · Osaurus 20 / 5 / 1 / 4 · OpenBot 22 / 7 / 0 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 42 / 3 / 0 / 9 · LibreChat 39 / 3 / 0 / 4 · LobeHub 25 / 4 / 0 / 5 · Onyx 18 / 3 / 0 / 5 · Osaurus 20 / 5 / 1 / 4 · OpenBot 23 / 6 / 0 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -150,7 +150,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 42 / 3 / 0 / 9
 | LobeHub | Share link | MISSING | OUT OF SCOPE | Server-only (parity L202) |
 | LobeHub | Memory categories, weight, confidence, links | MISSING | DONE | parity: Memory categories, importance, confidence, links (memory.rs `Filing`) |
 | LobeHub | Filter memories | PARTIAL | DONE | Find, by source and by date (parity: Filter saved facts) |
-| LobeHub | Memory agent | PARTIAL | PARTIAL | `sanitize-my-knowledge` skill (parity L60). Missing: an automatic reviewer |
+| LobeHub | Memory agent | PARTIAL | DONE | sanitize-my-knowledge skill (parity L60), and Review my knowledge weekly (Knowledge page): a background review of saved facts and knowledge pages leaves its proposals in an unread chat, changing nothing until the user answers (learning.rs). Verified live |
 | LobeHub | Multi-user, SSO, PWA, IM channels | MISSING | OUT OF SCOPE | parity L256–257 |
 | Onyx | Auto model router | MISSING | DONE | parity: Auto model (router.rs) |
 | Onyx | Reasoning level and temperature | PARTIAL | DONE | Fast/Think (parity L74), temperature per chat (L272) |
@@ -224,7 +224,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 42 / 3 / 0 / 9
 | OpenBot | Computer use | MISSING | DONE | parity L288 |
 | OpenBot | Routines: schedule or webhook | PARTIAL | DONE | parity L291, L196 |
 | OpenBot | Teach a task by recording | MISSING | DONE | parity: Teach a task by recording (`recorder.rs`, `record.ts`; Skills → Record a task). Verified live: a terminal task (cd, mkdir reports, date +%F > reports/today.txt, ls, cat) was recorded as 10 steps in 25 s with Lumo out of the way and the Recording pill on top; from the screenshots alone, the model drafted a skill with the right steps and checks, which was reviewed and saved as SKILL.md |
-| OpenBot | Agents learn from work into skills | PARTIAL | PARTIAL | Notebook and `save_skill` (parity L250, L62). Missing: learning without being asked |
+| OpenBot | Agents learn from work into skills | PARTIAL | DONE | Notebook and save_skill (parity L250, L62), and Agents learn skills from their work (Knowledge page): after an agent turn of 3+ tool steps a reflection may save the procedure as a skill, turned off until reviewed, and the chat says so (learning.rs, engine.rs learn_from_turn). Verified live: News Briefer learned compare-shop-prices |
 | OpenBot | Earlier-message lookup | MISSING | DONE | parity L271 |
 | OpenBot | Marketplace | MISSING | OUT OF SCOPE | Shared marketplaces (parity L217) |
 | OpenBot | Add skills from a GitHub link | MISSING | DONE | Skills → Import → From a link (parity: Skills from a link) |

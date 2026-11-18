@@ -173,6 +173,37 @@ async function viewSkillFile(name: string, path: string): Promise<void> {
   });
 }
 
+/** Learning on its own (learning.rs): a weekly knowledge review, and skills from agents' work. */
+function learningRows(): HTMLElement {
+  type Learning = { reviewKnowledge: boolean; skillsFromWork: boolean; lastReview?: string | null };
+  const box = h('div', {});
+  void tauriInvoke<Learning>('chat_learning', { change: null }).then((l) => {
+    const change = async (next: Partial<Learning>) => {
+      try {
+        l = await tauriInvoke<Learning>('chat_learning', { change: { ...l, ...next } });
+      } catch (e) {
+        toast(String(e), 'error');
+      }
+    };
+    clear(
+      box,
+      h(
+        'div',
+        { class: 'setting-row' },
+        h('div', {}, h('strong', {}, 'Review my knowledge weekly'), h('small', { class: 'muted' }, `Once a week, a background review looks for duplicates, contradictions, stale and sensitive facts, and leaves its proposals in an unread chat. Nothing changes until you answer there.${l.lastReview ? ` Last review: ${new Date(l.lastReview).toLocaleDateString()}.` : ''}`)),
+        switchInput(l.reviewKnowledge, (v) => void change({ reviewKnowledge: v }))
+      ),
+      h(
+        'div',
+        { class: 'setting-row' },
+        h('div', {}, h('strong', {}, 'Agents learn skills from their work'), h('small', { class: 'muted' }, 'After an agent works through several steps, it considers whether the procedure is worth reusing and, if so, saves it as a skill, turned off until you review it.')),
+        switchInput(l.skillsFromWork, (v) => void change({ skillsFromWork: v }))
+      )
+    );
+  }).catch(() => undefined);
+  return box;
+}
+
 export class SkillsPage {
   readonly el = h('div', { class: 'page' });
   readonly key = 'page:skills';
@@ -550,7 +581,8 @@ export class KnowledgePage {
         { class: 'setting-row' },
         h('div', {}, h('strong', {}, 'Keep sensitive data out'), h('small', { class: 'muted' }, 'The assistant does not save card numbers, bank accounts, passwords, PINs or keys to knowledge, and tells you when it left something out.')),
         switchInput(m.keepSensitiveOut ?? true, async (v) => this.set(await tauriInvoke<Memories>('chat_set_keep_sensitive_out', { on: v })))
-      )
+      ),
+      learningRows()
     );
     const input = h('input', { class: 'input', placeholder: 'Add something the assistant should know, e.g. “I work in renewable energy regulation”' });
     const add = async () => {

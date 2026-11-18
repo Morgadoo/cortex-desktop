@@ -37,6 +37,7 @@ pub mod openapi;
 pub mod embeddings;
 pub mod emoji_pack;
 pub mod uploads;
+pub mod learning;
 mod backup;
 pub mod builtins;
 pub mod calendar;

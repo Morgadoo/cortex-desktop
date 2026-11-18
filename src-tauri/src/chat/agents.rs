@@ -279,6 +279,20 @@ pub fn team_prompt(agents: &[Agent], except: Option<&str>) -> Option<String> {
     ))
 }
 
+/// The agent's own files: a library named for it, made and given to it on first use.
+pub fn files_library(config_dir: &Path, id: &str) -> Result<super::libraries::Library, String> {
+    let mut agent = find(config_dir, id).ok_or("No such agent.")?;
+    let all = super::libraries::list(config_dir);
+    let wanted = format!("{} files", agent.name);
+    if let Some(l) = all.iter().find(|l| agent.libraries.contains(&l.id) && l.name == wanted).or_else(|| all.iter().find(|l| agent.libraries.contains(&l.id))) {
+        return Ok(l.clone());
+    }
+    let library = super::libraries::create(config_dir, &wanted, &format!("Context for the agent {}: it searches these before answering.", agent.name))?;
+    agent.libraries.push(library.id.clone());
+    save(config_dir, agent)?;
+    Ok(library)
+}
+
 /// Whether new chats are handed to the best-suited agent (Osaurus's orchestrator).
 pub fn routing_enabled(config_dir: &Path) -> bool {
     crate::chat::at_rest::read_to_string(chat_dir(config_dir).join("agent-routing.json"))
@@ -571,6 +585,18 @@ pub fn templates() -> Vec<Agent> {
 #[cfg(test)]
 mod group_tests {
     use super::*;
+
+    #[test]
+    fn agents_get_their_own_files_library() {
+        let dir = tempfile::tempdir().unwrap();
+        let agent = Agent { id: "a1".into(), name: "Researcher".into(), created_at: Utc::now(), ..Default::default() };
+        save(dir.path(), agent).unwrap();
+        let first = files_library(dir.path(), "a1").unwrap();
+        assert_eq!(first.name, "Researcher files");
+        assert_eq!(files_library(dir.path(), "a1").unwrap().id, first.id, "made once");
+        assert_eq!(find(dir.path(), "a1").unwrap().libraries, [first.id]);
+        assert!(files_library(dir.path(), "nope").is_err());
+    }
 
     #[test]
     fn new_chats_route_to_the_named_agent() {

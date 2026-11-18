@@ -418,6 +418,10 @@ pub async fn run_turn(app: AppHandle, request: TurnRequest, cancel: watch::Recei
     let request = route_to_agent(&app, request).await;
     let outcome = turn(&app, &request, cancel).await;
     app.state::<ChatState>().finish(&id);
+    if matches!(outcome, Ok(false)) {
+        let (app, id) = (app.clone(), id.clone());
+        tauri::async_runtime::spawn(async move { learn_from_turn(&app, &id).await });
+    }
     if let Ok(cancelled) = outcome {
         // The user's turn_end hooks, without holding up the next message.
         if let Ok(dir) = config_dir(&app) {
@@ -457,6 +461,55 @@ pub async fn run_turn(app: AppHandle, request: TurnRequest, cancel: watch::Recei
             emit(&app, ChatEvent::Error { conversation_id: id, message });
         }
     }
+}
+
+/// Skills from work (learning.rs): after an agent's turn with several tool steps, a reflection
+/// may turn the procedure into a skill, saved turned off; the chat says so.
+async fn learn_from_turn(app: &AppHandle, id: &str) {
+    let Ok(dir) = config_dir(app) else { return };
+    if !super::learning::load(&dir).skills_from_work {
+        return;
+    }
+    let Ok(c) = store::load_conversation(&dir, id) else { return };
+    let Some(agent) = c.agent_id.as_deref().and_then(|a| agents::find(&dir, a)) else { return };
+    let turns = store::turns(&c);
+    let Some(last) = turns.iter().rev().find(|t| t.role == "assistant") else { return };
+    let steps: Vec<String> = last
+        .parts
+        .iter()
+        .filter_map(|p| match p {
+            store::Part::Tool { name, arguments, .. } => Some(format!("{name}: {}", arguments.to_string().chars().take(160).collect::<String>())),
+            _ => None,
+        })
+        .collect();
+    if steps.len() < super::learning::MIN_STEPS {
+        return;
+    }
+    let request = turns.iter().rev().find(|t| t.role == "user").map(|t| t.parts.iter().filter_map(|p| if let store::Part::Text { text } = p { Some(text.as_str()) } else { None }).collect::<Vec<_>>().join("\n")).unwrap_or_default();
+    let answer: String = last.parts.iter().filter_map(|p| if let store::Part::Text { text } = p { Some(text.as_str()) } else { None }).collect::<Vec<_>>().join("\n");
+    let existing: Vec<String> = super::skills::list(&dir).into_iter().map(|s| s.name).collect();
+    let reference = super::router::models(&providers::load(&dir)).map(|(fast, _)| fast).or_else(|| c.model.clone()).or(providers::load(&dir).default_model);
+    let Some(reference) = reference else { return };
+    let prompt = super::learning::reflect_prompt(&agent.name, &request, &steps, &answer, &existing);
+    let reply = match ask_text(&dir, &reference, CompletionRequest::new(Message::user(prompt)), 60).await {
+        Ok(r) => r,
+        Err(e) => {
+            warn!("could not reflect on {}'s work: {e}", agent.name);
+            return;
+        }
+    };
+    let Some(skill) = super::learning::parse_reflection(&reply, &existing) else { return };
+    if let Err(e) = super::learning::keep(&dir, &agent.name, &skill) {
+        warn!("could not keep a learned skill: {e}");
+        return;
+    }
+    info!("{} learned the skill {}", agent.name, skill.name);
+    let note = format!("{} learned a skill from this work: /{}, turned off until you review it under Skills.", agent.name, skill.name);
+    if let Ok(mut c) = store::load_conversation(&dir, id) {
+        c.notices.push((c.messages.len(), note.clone()));
+        let _ = store::save_conversation(&dir, &c);
+    }
+    emit(app, ChatEvent::Notice { conversation_id: id.into(), text: note });
 }
 
 /// The orchestrator: a new Work chat goes to the agent that fits it best, when that is turned on

@@ -602,6 +602,12 @@ pub fn start(app: AppHandle) {
                     let app = app.clone();
                     tauri::async_runtime::spawn(async move { super::engine::run_task(app, task).await });
                 }
+                // The weekly knowledge review, when turned on (learning.rs).
+                if super::learning::take_review(&config_dir, Utc::now()) {
+                    info!("running the weekly knowledge review");
+                    let app = app.clone();
+                    tauri::async_runtime::spawn(async move { super::engine::run_task(app, super::learning::review_task()).await });
+                }
                 for task in take_new_files(&config_dir, std::time::SystemTime::now()) {
                     info!("new files started task {}", task.title);
                     let app = app.clone();

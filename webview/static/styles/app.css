@@ -1696,3 +1696,15 @@ button.usage-meter:hover { background: var(--hover); }
 .bubble-file.searched{display:flex;align-items:center;gap:6px;padding:6px 10px}
 .upload-list{overflow-x:hidden}
 .setting-row select.select-sm{max-width:300px}
+
+/* An agent's setup at a glance: Instructions, Context, Memory, Scheduled. */
+.agent-panel{display:flex;flex-direction:column;margin:18px 0 6px;max-width:520px;width:100%}
+.agent-panel:empty{display:none}
+.agent-panel-row{display:flex;align-items:center;gap:12px;padding:14px 4px;border:0;border-bottom:1px solid var(--border);background:none;color:var(--text);font:inherit;text-align:left;cursor:pointer}
+.agent-panel-row:last-child{border-bottom:0}
+.agent-panel-row svg{color:var(--text-muted,var(--muted))}
+.agent-panel-label{font-size:15px}
+.agent-panel-detail{font-size:13px;color:var(--text-muted,var(--muted))}
+.agent-panel-action{font-weight:600}
+.agent-panel-row:hover .agent-panel-action{color:var(--accent-strong,var(--accent))}
+.home-inner .agent-panel{margin:22px auto 0}

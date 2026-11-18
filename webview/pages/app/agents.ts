@@ -5,6 +5,7 @@ import { clear, confirmDialog, h, icon, modal, timeLabel, toast } from './dom';
 import { historyButton } from './versions';
 import { changed, navigate, state } from './state';
 import { TasksPage } from './tasks';
+import { agentPanel } from './agentpanel';
 import { button, card, modalHeader, switchInput } from './ui';
 
 /** Tools an agent can be given, by the name the engine matches. */
@@ -448,31 +449,15 @@ export class AgentPage {
   private runs = h('div', { class: 'run-list' });
   private head = h('header', { class: 'page-header' });
   private stats = h('div', { class: 'agent-stats' });
-  private notebook = card();
   private spend: AgentSpend | undefined;
 
   constructor(private id: string, private onChat: (agentId: string) => void) {
     this.key = `agent:${id}`;
     const tasks = new TasksPage(id);
     tasks.el.classList.add('embedded');
-    this.el.append(this.head, this.stats, h('div', { class: 'section-title' }, 'Recent conversations'), this.runs, h('div', { class: 'section-title' }, 'Notebook'), this.notebook, tasks.el);
+    this.el.append(this.head, this.stats, agentPanel(id), h('div', { class: 'section-title' }, 'Recent conversations'), this.runs, tasks.el);
     void api.agentSpend().then((spend) => { this.spend = spend[id]; this.update(); });
-    void this.renderNotebook();
     this.update();
-  }
-
-  /** What the agent keeps across runs; it updates this itself, and the user can edit it. */
-  private async renderNotebook() {
-    const text = await api.agentNotebook(this.id).catch(() => '');
-    const area = h('textarea', { class: 'input textarea mono notebook-area', rows: 10, placeholder: 'Empty. The agent writes here what it learns: preferences, decisions, open threads.' });
-    area.value = text;
-    const save = button({ variant: 'secondary', size: 'sm', label: 'Save notebook', onClick: async () => { try { await api.saveAgentNotebook(this.id, area.value); toast('Notebook saved.'); } catch (e) { toast(String(e), 'error'); } } });
-    clear(
-      this.notebook,
-      h('p', { class: 'muted' }, 'The agent reads this at the start of every conversation and run, and updates it when it learns something worth keeping.'),
-      area,
-      h('div', { class: 'card-actions' }, save)
-    );
   }
 
   update() {
