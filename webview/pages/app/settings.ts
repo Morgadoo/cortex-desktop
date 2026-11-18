@@ -26,6 +26,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Your profile', 'profile', 'name about instructions tone personality'],
   ['Your data', 'profile', 'export import backup delete history'],
   ['Storage and backups', 'profile', 'backup restore damaged files recently deleted trash'],
+  ['Backup model', 'providers', 'fallback failover failure credit down'],
   ['Providers and API keys', 'providers', 'key openai anthropic mistral xai ollama llama.cpp lm studio model default base url'],
   ['Web search', 'providers', 'searxng brave tavily engine internet'],
   ['Semantic search', 'providers', 'embeddings libraries vector rag rerank reranker reranking'],
@@ -321,6 +322,7 @@ async function renderProviders(content: HTMLElement) {
   content.append(list);
   const sorted = [...providers].sort((a, b) => Number(b.ready) - Number(a.ready));
   for (const provider of sorted) list.append(providerCard(provider));
+  content.append(await backupModelCard());
   content.append(await mediaCard());
   content.append(await searchCard());
   content.append(await embeddingCard());
@@ -524,6 +526,25 @@ async function mediaCard(): Promise<HTMLElement> {
     voice,
     note(media.voiceVendors, 'text-to-speech (OpenAI or xAI)'),
     h('div', { class: 'card-actions' }, save)
+  );
+}
+
+/** The model a reply switches to, once, when its own fails before answering. */
+async function backupModelCard(): Promise<HTMLElement> {
+  const current = await tauriInvoke<string | null>('chat_backup_model').catch(() => null);
+  const select = h(
+    'select',
+    { class: 'input' },
+    h('option', { value: '' }, 'None: show the error'),
+    state.models.map((m) => h('option', { value: m.reference, selected: m.reference === current }, `${m.providerLabel} · ${m.name}`))
+  );
+  select.addEventListener('change', () =>
+    void tauriInvoke('chat_set_backup_model', { reference: select.value || null }).then(() => toast('Saved.')).catch((e) => toast(String(e), 'error'))
+  );
+  return card(
+    h('h3', {}, 'Backup model'),
+    h('p', { class: 'muted' }, 'When a reply\'s model fails before answering (a provider down, an account out of credit, a key refused), the reply continues once with this model and says so. An agent\'s own backup model comes first.'),
+    select
   );
 }
 

@@ -75,6 +75,10 @@ pub struct ProvidersFile {
     pub speech_model: Option<String>,
     /// `vendor/model` for reading answers aloud; a default for the providers set up when unset.
     pub voice_model: Option<String>,
+    /// `vendor/model` a reply switches to, once, when its model fails before answering (a provider
+    /// down, an account out of credit); an agent's own backup comes first.
+    #[serde(default)]
+    pub backup_model: Option<String>,
 }
 
 pub fn file_path(config_dir: &Path) -> PathBuf {

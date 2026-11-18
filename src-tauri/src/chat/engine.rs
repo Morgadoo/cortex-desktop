@@ -365,6 +365,8 @@ pub async fn run_turn(app: AppHandle, request: TurnRequest, cancel: watch::Recei
                     }
                 }
             }
+            // A provider's raw error (status, JSON) becomes what it means; the log keeps it all.
+            let message = if message.contains("ProviderResponseError") || message.contains("status ") { super::context::short_error(&message) } else { message };
             emit(&app, ChatEvent::Error { conversation_id: id, message });
         }
     }
@@ -441,7 +443,11 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         agents::check_budget(&config_dir, agent)?;
     }
     // The backup model, tried once when the main one fails before anything streamed.
-    let mut fallback = agent.as_ref().and_then(|a| a.fallback_model.clone()).filter(|f| f != &request.model);
+    let mut fallback = agent
+        .as_ref()
+        .and_then(|a| a.fallback_model.clone())
+        .or_else(|| providers::load(&config_dir).backup_model)
+        .filter(|f| f != &request.model);
     let mut offered = tools::available(&registry, request.connectors.as_deref());
     offered.splice(1..1, builtins::definitions(&config_dir));
     offered.extend(super::openapi::tools(&config_dir));
@@ -676,7 +682,7 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
                             model = next;
                             attempt = 0;
                             let label = backup.rsplit('/').next().unwrap_or(&backup).to_string();
-                            let text = format!("The model failed ({}); continuing with {label}.", super::context::short_error(&e.to_string()));
+                            let text = format!("{}; continuing with {label}.", super::context::brief_error(&e.to_string()));
                             conversation.notices.push((conversation.messages.len(), text.clone()));
                             emit(app, ChatEvent::Notice { conversation_id: id.into(), text });
                         }

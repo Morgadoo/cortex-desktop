@@ -53,9 +53,40 @@ export interface Playback {
   done: Promise<void>;
 }
 
-/** Speaks `text` with the chosen engine. */
+/** A provider error, made short and plain: what went wrong, not the service's JSON. */
+export function shortError(e: unknown): string {
+  const text = String(e).replace(/\\"/g, '"');
+  const status = Number(text.match(/status (\d{3})/)?.[1] ?? 0);
+  const message = text.match(/"(?:message|error)"\s*:\s*"([^"]{4,200})"/)?.[1];
+  const reason =
+    status === 401 || status === 403 ? 'the service refused the key'
+    : status === 402 || /credit|balance|quota|payment/i.test(text) ? 'the account is out of credit'
+    : status === 429 ? 'too many requests; try again shortly'
+    : /auth_unavailable|no auth available/i.test(text) ? 'the service has no access to that model right now'
+    : status >= 500 ? 'the service is unavailable'
+    : null;
+  const detail = (message ?? text.replace(/^(?:Error:\s*)+/, '').replace(/^\w*Error:\s*/, '')).trim();
+  const short = detail.length > 120 ? `${detail.slice(0, 120)}…` : detail;
+  return reason ? `${reason}${status ? ` (HTTP ${status})` : ''}` : short;
+}
+
+let fallbackNoticeShown = false;
+
+/** Speaks `text` with the chosen engine; when that service fails, with the system voice. */
 export async function speakText(text: string): Promise<Playback> {
-  const out = await tauriInvoke<SpeechOut>('chat_speak', { text });
+  let out: SpeechOut;
+  try {
+    out = await tauriInvoke<SpeechOut>('chat_speak', { text });
+  } catch (e) {
+    if (!('speechSynthesis' in window)) throw new Error(`Reading aloud failed: ${shortError(e)}. Settings → Audio chooses another voice.`);
+    // Keep talking: the system voice stands in, and the reason is shown once.
+    if (!fallbackNoticeShown) {
+      fallbackNoticeShown = true;
+      const { toast } = await import('./dom');
+      toast(`The voice service failed (${shortError(e)}); using the system voice. Settings → Audio changes it.`, 'error');
+    }
+    out = { kind: 'browser', text, rate: audioSettings?.tts.speed ?? 1, voice: '' };
+  }
   if (out.kind === 'audio') {
     const audio = new Audio(`data:${out.mime};base64,${out.data}`);
     const done = new Promise<void>((resolve) => {

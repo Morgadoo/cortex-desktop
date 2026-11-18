@@ -293,6 +293,20 @@ pub fn chat_set_media_models(
     Ok(super::media::models(&dir))
 }
 
+/// The model replies switch to when theirs fails.
+#[tauri::command]
+pub fn chat_backup_model(app: AppHandle) -> Result<Option<String>, String> {
+    Ok(super::providers::load(&config_dir(&app)?).backup_model)
+}
+
+#[tauri::command]
+pub fn chat_set_backup_model(app: AppHandle, reference: Option<String>) -> Result<(), String> {
+    let dir = config_dir(&app)?;
+    let mut file = super::providers::load(&dir);
+    file.backup_model = reference.filter(|m| !m.trim().is_empty());
+    super::providers::save(&dir, &file)
+}
+
 /// Transcribes speech recorded in the composer (base64 audio).
 #[tauri::command]
 pub async fn chat_transcribe(app: AppHandle, audio: String, mime: String) -> Result<String, String> {

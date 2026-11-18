@@ -129,13 +129,41 @@ pub fn request_messages(messages: &[Message], summary: Option<&Summary>) -> Vec<
 }
 
 /// The first line of an error, short enough for a notice.
-pub fn short_error(text: &str) -> String {
-    // A provider's JSON error reads better as just its message.
-    if let Some(m) = regex::Regex::new(r#""message"\s*:\s*"([^"]{1,200})""#).ok().and_then(|re| re.captures(text)) {
-        return m[1].to_string();
+/// Just what went wrong, for a one-line notice: the plain reason when known, else a short detail.
+pub fn brief_error(text: &str) -> String {
+    let full = short_error(text);
+    match full.split_once(" (HTTP ") {
+        Some((reason, _)) if reason.ends_with('.') => reason.trim_end_matches('.').to_string(),
+        _ => full.chars().take(100).collect(),
     }
-    let line = text.lines().next().unwrap_or_default();
-    if line.chars().count() > 120 { format!("{}…", line.chars().take(120).collect::<String>()) } else { line.to_string() }
+}
+
+pub fn short_error(text: &str) -> String {
+    let text = text.replace("\\\"", "\"");
+    let status: u16 = regex::Regex::new(r"status (\d{3})").ok().and_then(|re| re.captures(&text)).and_then(|c| c[1].parse().ok()).unwrap_or(0);
+    // A provider's JSON error reads better as just its message.
+    let message = regex::Regex::new(r#""(?:message|error)"\s*:\s*"([^"]{1,200})""#).ok().and_then(|re| re.captures(&text)).map(|m| m[1].to_string());
+    let lower = text.to_lowercase();
+    // What it means, for the errors people meet most.
+    let reason = if status == 401 || status == 403 || lower.contains("invalid api key") || lower.contains("incorrect api key") {
+        Some("The provider refused the API key; check it in Settings → Providers.")
+    } else if status == 402 || ["credit", "balance", "quota", "payment required", "billing"].iter().any(|w| lower.contains(w)) {
+        Some("The provider account is out of credit.")
+    } else if status == 429 || lower.contains("rate limit") {
+        Some("The provider is limiting requests; wait a moment and continue.")
+    } else if lower.contains("auth_unavailable") || lower.contains("no auth available") {
+        Some("The provider has no access to this model right now.")
+    } else if lower.contains("context length") || lower.contains("maximum context") || lower.contains("too many tokens") {
+        Some("The conversation is too long for this model; start a new chat or pick a model with a larger window.")
+    } else {
+        None
+    };
+    let detail = message.unwrap_or_else(|| text.lines().next().unwrap_or_default().to_string());
+    let detail = if detail.chars().count() > 120 { format!("{}…", detail.chars().take(120).collect::<String>()) } else { detail };
+    match reason {
+        Some(reason) => format!("{reason} ({}{detail})", if status > 0 { format!("HTTP {status}: ") } else { String::new() }),
+        None => detail,
+    }
 }
 
 /// One slice of the context window.
@@ -275,6 +303,17 @@ pub fn transcript(messages: &[Message]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn provider_errors_read_plainly() {
+        let credit = r#"ProviderResponseError: status 402 Payment Required: {\"code\":\"x\",\"error\":\"You have run out of credits\"}"#;
+        assert_eq!(short_error(credit), "The provider account is out of credit. (HTTP 402: You have run out of credits)");
+        let key = r#"ProviderResponseError: status 401 Unauthorized: {"error":{"message":"Incorrect API key provided"}}"#;
+        assert!(short_error(key).starts_with("The provider refused the API key"));
+        assert_eq!(short_error("connection reset by peer\nmore"), "connection reset by peer");
+        assert_eq!(brief_error(credit), "The provider account is out of credit");
+        assert!(short_error(r#"status 400: {"message":"maximum context length is 8192 tokens"}"#).starts_with("The conversation is too long"));
+    }
     use rig_core::completion::message::{AssistantContent, AssistantMessage, CallId, ToolName};
 
     fn result(id: &str, text: &str) -> Message {

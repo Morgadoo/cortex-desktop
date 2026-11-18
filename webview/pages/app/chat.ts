@@ -12,7 +12,7 @@ import { hostOf, previewFor, siteIcon } from './favicon';
 import './diagrams';
 import { renderCodeRun, renderImage } from './coderun';
 import { startRecording, toBase64, type Recording } from './dictation';
-import { audioSettings, speakText, type Playback } from './audio';
+import { audioSettings, shortError, speakText, type Playback } from './audio';
 import { editWorkflow, workflowPrompt, workflowsApi } from './workflows';
 import type { Workflow } from './api';
 import { diffLines, loadChanges, openChanges, openFiles, openDebug } from './changes';
@@ -1151,14 +1151,20 @@ function stopSpeaking() {
 }
 
 /** Reads a finished answer aloud when auto-play is on. */
+/** Automatic read-aloud stops for the session after it fails, rather than failing on every answer. */
+let autoPlayFailed = false;
+
 export function autoPlay(text: string) {
-  if (!audioSettings?.tts.autoPlay || audioSettings.tts.engine === 'off' || !text.trim() || voiceActive()) return;
+  if (autoPlayFailed || !audioSettings?.tts.autoPlay || audioSettings.tts.engine === 'off' || !text.trim() || voiceActive()) return;
   stopSpeaking();
   void speakText(text)
     .then((playback) => {
       speaking = { playback, button: null };
     })
-    .catch((e) => toast(String(e), 'error'));
+    .catch((e) => {
+      autoPlayFailed = true;
+      toast(`${String(e).replace(/^Error:\s*/, '')} Reading answers aloud is paused until Lumo restarts.`, 'error');
+    });
 }
 
 /** Reads an answer aloud with the voice model; a second click stops it. */
@@ -1182,7 +1188,7 @@ function readAloudButton(text: string): HTMLButtonElement {
       stopSpeaking();
       button.classList.remove('active');
       button.replaceChildren(icon('speaker', 16));
-      toast(String(e), 'error');
+      toast(String(e).replace(/^Error:\s*/, ''), 'error');
     }
   });
   return button;
