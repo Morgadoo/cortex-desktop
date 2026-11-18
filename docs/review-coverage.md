@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 122 |
-| PARTIAL | 86 | 55 |
+| DONE | 58 | 123 |
+| PARTIAL | 86 | 54 |
 | MISSING | 48 | 15 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 36 / 8 / 1 / 9 · LibreChat 33 / 8 / 1 / 4 · LobeHub 17 / 11 / 1 / 5 · Onyx 12 / 6 / 3 / 5 · Osaurus 8 / 13 / 5 / 4 · OpenBot 16 / 9 / 4 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 36 / 8 / 1 / 9 · LibreChat 33 / 8 / 1 / 4 · LobeHub 17 / 11 / 1 / 5 · Onyx 12 / 6 / 3 / 5 · Osaurus 9 / 12 / 5 / 4 · OpenBot 16 / 9 / 4 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -194,7 +194,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 36 / 8 / 1 / 9
 | Osaurus | Calendar, Mail, Contacts… integrations | MISSING | MISSING | Only through MCP connectors |
 | Osaurus | Agent channels | MISSING | OUT OF SCOPE | parity L256 |
 | Osaurus | Import Claude plugins | MISSING | DONE | parity: Import Claude plugins (plugins.rs: skills, commands, agents, MCP servers) |
-| Osaurus | Plugin registry | MISSING | PARTIAL | A Claude plugin marketplace repository can be imported (parity: Import Claude plugins). Missing: a browsable registry inside the app |
+| Osaurus | Plugin registry | MISSING | DONE | A Claude plugin marketplace on GitHub lists its plugins in the app to tick and import (parity: Import Claude plugins); verified with Anthropic's official marketplace |
 | Osaurus | MCP server | MISSING | DONE | `/mcp` on the local API: search_libraries, ask, list_models, list_tasks, run_task (parity: Lumo as an MCP server) |
 | Osaurus | Agent run endpoint | MISSING | DONE | `POST /v1/tasks/{id}/run` and agents as models |
 | Osaurus | Bundles: agents, skills, MCP servers | MISSING | DONE | Agent files carry the agent, notebook, its skills and the MCP servers it uses, without secrets |

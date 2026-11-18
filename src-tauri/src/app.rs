@@ -178,6 +178,7 @@ pub fn run() {
             chat::commands::chat_forget_recent_file,
             chat::commands::chat_delete_exchanges,
             chat::commands::chat_import_plugin,
+            chat::commands::chat_plugin_marketplace,
             chat::commands::chat_import_archive,
             chat::commands::chat_open_app_window,
             chat::commands::chat_set_defaults,

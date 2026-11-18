@@ -135,6 +135,83 @@ export class SkillsPage {
     }
   }
 
+  /**
+   * A marketplace (Osaurus's plugin registry): its plugins listed to tick and import. A link to a
+   * single plugin imports it at once.
+   */
+  private async openMarketplace(link: string) {
+    type Entry = { name: string; description: string; category: string; link: string | null };
+    let entries: Entry[] | null;
+    try {
+      entries = await tauriInvoke<Entry[] | null>('chat_plugin_marketplace', { link });
+    } catch (e) {
+      return toast(String(e), 'error');
+    }
+    if (!entries) return void this.importPlugin(link);
+    if (!entries.length) return toast('That marketplace lists no plugins.', 'error');
+    const list = entries;
+    void modal((close) => {
+      const search = h('input', { class: 'input', placeholder: `Search ${list.length} plugins` });
+      const rows = h('div', { class: 'market-list' });
+      const chosen = new Set<string>();
+      const go = button({ variant: 'primary', label: 'Import', onClick: () => void run() });
+      const update = () => {
+        go.disabled = !chosen.size;
+        go.textContent = chosen.size ? `Import ${chosen.size}` : 'Import';
+      };
+      const render = () => {
+        const q = search.value.toLowerCase();
+        clear(
+          rows,
+          list
+            .filter((e) => !q || `${e.name} ${e.description} ${e.category}`.toLowerCase().includes(q))
+            .map((e) => {
+              const box = h('input', { type: 'checkbox', checked: chosen.has(e.name), disabled: !e.link });
+              box.addEventListener('change', () => {
+                if (box.checked) chosen.add(e.name);
+                else chosen.delete(e.name);
+                update();
+              });
+              return h(
+                'label',
+                { class: `market-row${e.link ? '' : ' disabled'}` },
+                box,
+                h('span', { class: 'market-text' }, h('strong', {}, e.name), e.category ? h('small', { class: 'muted' }, ` · ${e.category}`) : null, h('span', { class: 'muted small' }, e.description || (e.link ? '' : 'Its source is not on GitHub; it cannot be fetched from here.')))
+              );
+            })
+        );
+      };
+      const run = async () => {
+        const picked = list.filter((e) => chosen.has(e.name) && e.link);
+        close();
+        const done: string[] = [];
+        for (const e of picked) {
+          toast(`Importing ${e.name}…`);
+          try {
+            await tauriInvoke('chat_import_plugin', { link: e.link });
+            done.push(e.name);
+          } catch (err) {
+            toast(`${e.name}: ${String(err)}`, 'error');
+          }
+        }
+        await this.load();
+        if (done.length) toast(`Imported ${done.join(', ')}. Their skills are below, agents under Agents, tool servers under Connectors.`);
+      };
+      search.addEventListener('input', render);
+      render();
+      update();
+      setTimeout(() => search.focus());
+      return h(
+        'div',
+        { class: 'dialog-small wide' },
+        modalHeader('Plugins in this marketplace', close, { flush: true }),
+        search,
+        rows,
+        h('div', { class: 'dialog-actions' }, h('span', { class: 'spacer' }), button({ variant: 'secondary', label: 'Cancel', onClick: close }), go)
+      );
+    });
+  }
+
   constructor() {
     // Import a SKILL.md from this computer, or from a link (a skill's folder on GitHub).
     const importBtn = h('button', { class: 'btn btn-secondary' }, 'Import', icon('chevron', 14));
@@ -177,7 +254,7 @@ export class SkillsPage {
                 click: async () => {
                   close();
                   const link = await promptText('Import Claude plugins from GitHub', '', 'https://github.com/owner/repo (a plugin or a marketplace)');
-                  if (link) void this.importPlugin(link);
+                  if (link) void this.openMarketplace(link);
                 },
               },
             },

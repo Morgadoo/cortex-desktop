@@ -148,6 +148,93 @@ pub fn github_sources(link: &str) -> Result<(Vec<String>, String), String> {
     }
 }
 
+/// One plugin a marketplace lists, and the GitHub link it is installed from (none when its
+/// source is somewhere this app cannot fetch, such as a package registry).
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MarketEntry {
+    pub name: String,
+    pub description: String,
+    pub category: String,
+    pub link: Option<String>,
+}
+
+/// `owner/repo` of a GitHub repository URL or `owner/repo` string.
+fn github_repo(spec: &str) -> Option<String> {
+    let rest = spec.trim().trim_end_matches('/').trim_end_matches(".git");
+    let rest = rest.strip_prefix("https://").or_else(|| rest.strip_prefix("http://")).unwrap_or(rest);
+    let rest = rest.strip_prefix("github.com/").or_else(|| rest.strip_prefix("git@github.com:")).unwrap_or(rest);
+    let parts: Vec<&str> = rest.split('/').collect();
+    match parts.as_slice() {
+        [owner, repo] if !owner.is_empty() && !repo.is_empty() && !owner.contains('.') => Some(format!("{owner}/{repo}")),
+        _ => None,
+    }
+}
+
+/// A browsable link for a repository, a ref and a folder in it.
+fn tree_link(repo: &str, reference: Option<&str>, path: Option<&str>) -> String {
+    let path = path.map(|p| p.trim_start_matches("./").trim_matches('/')).filter(|p| !p.is_empty());
+    match (reference, path) {
+        (_, None) if reference.is_none() => format!("https://github.com/{repo}"),
+        (reference, path) => format!("https://github.com/{repo}/tree/{}{}", reference.unwrap_or("main"), path.map(|p| format!("/{p}")).unwrap_or_default()),
+    }
+}
+
+/// The plugins a `marketplace.json` lists. `home` is the marketplace's own repository and ref,
+/// which plugins kept inside it (`"source": "./plugins/x"`) come from.
+pub fn market_entries(market: &Value, home: (&str, &str)) -> Vec<MarketEntry> {
+    let base = market.pointer("/metadata/pluginRoot").and_then(Value::as_str).unwrap_or("").trim_start_matches("./").trim_matches('/').to_string();
+    market["plugins"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|p| {
+            let name = p["name"].as_str()?.to_string();
+            let source = &p["source"];
+            let link = if let Some(local) = source.as_str() {
+                let local = local.trim_start_matches("./").trim_matches('/');
+                let path = if local.contains('/') || base.is_empty() { local.to_string() } else { format!("{base}/{local}") };
+                Some(tree_link(home.0, Some(home.1), Some(&path)))
+            } else {
+                let repo = source["repo"].as_str().and_then(github_repo).or_else(|| source["url"].as_str().and_then(github_repo));
+                repo.map(|repo| tree_link(&repo, source["ref"].as_str().or(if source["path"].is_string() { Some("main") } else { None }), source["path"].as_str()))
+            };
+            Some(MarketEntry {
+                name,
+                description: p["description"].as_str().unwrap_or_default().to_string(),
+                category: p["category"].as_str().unwrap_or_default().to_string(),
+                link,
+            })
+        })
+        .collect()
+}
+
+/// Reads the marketplace a GitHub link points at, from its raw file; `None` when the
+/// repository has no `.claude-plugin/marketplace.json` (it is then a plugin itself).
+pub async fn read_market(link: &str) -> Result<Option<Vec<MarketEntry>>, String> {
+    let rest = link.trim().trim_end_matches('/').trim_end_matches(".git");
+    let rest = rest.strip_prefix("https://").or_else(|| rest.strip_prefix("http://")).unwrap_or(rest);
+    let path = rest.strip_prefix("github.com/").ok_or("Give a github.com link.")?;
+    let parts: Vec<&str> = path.split('/').filter(|p| !p.is_empty()).collect();
+    let (repo, refs, folder): (String, Vec<String>, String) = match parts.as_slice() {
+        [owner, repo] => (format!("{owner}/{repo}"), vec!["main".into(), "master".into()], String::new()),
+        [owner, repo, "tree", reference, folder @ ..] => (format!("{owner}/{repo}"), vec![(*reference).to_string()], folder.join("/")),
+        _ => return Err("Give a link to a repository, like https://github.com/owner/repo.".into()),
+    };
+    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(30)).build().map_err(|e| e.to_string())?;
+    for reference in refs {
+        let prefix = if folder.is_empty() { String::new() } else { format!("{folder}/") };
+        let url = format!("https://raw.githubusercontent.com/{repo}/{reference}/{prefix}.claude-plugin/marketplace.json");
+        let Ok(response) = client.get(&url).send().await else { continue };
+        if !response.status().is_success() {
+            continue;
+        }
+        let market: Value = response.json().await.map_err(|e| format!("The marketplace file could not be read: {e}"))?;
+        return Ok(Some(market_entries(&market, (&repo, &reference))));
+    }
+    Ok(None)
+}
+
 /// Only the files under `folder`, with the folder taken off their paths.
 pub fn subfolder(files: Files, folder: &str) -> Files {
     if folder.is_empty() {
@@ -228,10 +315,26 @@ pub fn plugin_roots(files: &Files) -> Vec<String> {
 fn command_skill(name: &str, text: &str) -> SkillDraft {
     let (front, body) = front_matter(text);
     let description = front.get("description").cloned().filter(|d| !d.is_empty()).unwrap_or_else(|| format!("The /{name} command."));
-    let body = body
+    let body = inline_commands(&body)
         .replace("$ARGUMENTS", "(the text the user wrote after the command)")
         .replace("$1", "(the first thing the user wrote after the command)");
     SkillDraft { name: slug(name), description, body }
+}
+
+/// Claude Code runs `` !`command` `` in a command file and puts its output there; here the model
+/// is asked to run it, with the tools it has.
+fn inline_commands(body: &str) -> String {
+    let mut out = String::new();
+    let mut rest = body;
+    while let Some(start) = rest.find("!`") {
+        let after = &rest[start + 2..];
+        let Some(end) = after.find('`') else { break };
+        out.push_str(&rest[..start]);
+        out.push_str(&format!("(run `{}` and use its output)", &after[..end]));
+        rest = &after[end + 1..];
+    }
+    out.push_str(rest);
+    out
 }
 
 /// Reads one plugin.
@@ -459,4 +562,51 @@ mod tests {
         let f = from_zip(&zip_bytes).unwrap();
         assert_eq!(f.keys().collect::<Vec<_>>(), ["commands/hello.md"]);
     }
+
+    #[test]
+    fn marketplace_sources_resolve_to_links() {
+        let market: Value = serde_json::from_str(r#"{
+            "metadata": {"pluginRoot": "./plugins"},
+            "plugins": [
+                {"name": "agent-sdk-dev", "description": "Agent SDK kit", "category": "development",
+                 "source": {"source": "git-subdir", "url": "https://github.com/anthropics/claude-plugins-official.git", "path": "plugins/agent-sdk-dev", "ref": "main"}},
+                {"name": "local", "source": "./local"},
+                {"name": "deep", "source": "./tools/deep"},
+                {"name": "gh", "source": {"source": "github", "repo": "acme/review-plugin"}},
+                {"name": "gh-ref", "source": {"source": "github", "repo": "acme/kit", "ref": "v2"}},
+                {"name": "npm", "source": {"source": "npm", "package": "@acme/plugin"}},
+                {"name": "gitlab", "source": {"source": "url", "url": "https://gitlab.com/acme/p.git"}}
+            ]}"#).unwrap();
+        let entries = market_entries(&market, ("acme/market", "main"));
+        let links: Vec<(&str, Option<&str>)> = entries.iter().map(|e| (e.name.as_str(), e.link.as_deref())).collect();
+        assert_eq!(links, [
+            ("agent-sdk-dev", Some("https://github.com/anthropics/claude-plugins-official/tree/main/plugins/agent-sdk-dev")),
+            ("local", Some("https://github.com/acme/market/tree/main/plugins/local")),
+            ("deep", Some("https://github.com/acme/market/tree/main/tools/deep")),
+            ("gh", Some("https://github.com/acme/review-plugin")),
+            ("gh-ref", Some("https://github.com/acme/kit/tree/v2")),
+            ("npm", None),
+            ("gitlab", None),
+        ]);
+        assert_eq!(entries[0].category, "development");
+        // Every link resolves to a download the importer knows.
+        for link in entries.iter().filter_map(|e| e.link.as_deref()) {
+            assert!(github_sources(link).is_ok(), "{link}");
+        }
+    }
+
+
+    #[test]
+    fn commands_that_run_shell_lines_ask_the_model_to_run_them() {
+        let real = "---\nallowed-tools: Bash(git add:*), Bash(git commit:*)\ndescription: Create a git commit\n---\n\n## Context\n\n- Current git status: !`git status`\n- Current branch: !`git branch --show-current`\n\n## Your task\n\nCreate a single git commit. $ARGUMENTS";
+        let skill = command_skill("commit", real);
+        assert_eq!(skill.description, "Create a git commit");
+        assert!(skill.body.contains("- Current git status: (run `git status` and use its output)"));
+        assert!(skill.body.contains("(run `git branch --show-current` and use its output)"));
+        assert!(!skill.body.contains("!`"));
+        assert!(!skill.body.contains("allowed-tools"));
+        assert_eq!(inline_commands("no commands, just `code`"), "no commands, just `code`");
+        assert_eq!(inline_commands("broken !`tail"), "broken !`tail");
+    }
+
 }

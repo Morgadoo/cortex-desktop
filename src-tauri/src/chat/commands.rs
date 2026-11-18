@@ -1334,6 +1334,13 @@ pub async fn chat_import_agent(app: AppHandle) -> Result<Option<String>, String>
     Ok(Some(if added.is_empty() { agent.name } else { format!("{} (with its tool servers {}; add their keys under Connectors)", agent.name, added.join(", ")) }))
 }
 
+/// The plugins of a Claude plugin marketplace on GitHub, to choose from; `None` when the link is
+/// a plugin rather than a marketplace.
+#[tauri::command]
+pub async fn chat_plugin_marketplace(link: String) -> Result<Option<Vec<super::plugins::MarketEntry>>, String> {
+    super::plugins::read_market(&link).await
+}
+
 /// Imports Claude plugins (or a marketplace of them) from a GitHub link, or from a folder the
 /// user picks when no link is given: their skills, commands, agents and tool servers.
 #[tauri::command]
