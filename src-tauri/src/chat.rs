@@ -60,6 +60,7 @@ pub mod libraries;
 pub mod links;
 pub mod media;
 pub mod videogen;
+pub mod batched_qwen2;
 pub mod local_models;
 pub mod functions;
 pub mod agent_market;
