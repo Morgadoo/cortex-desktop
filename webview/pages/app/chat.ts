@@ -4238,6 +4238,48 @@ async function saveToLibrary(anchor: HTMLElement, url: string) {
   );
 }
 
+interface ReaderArticle {
+  url: string;
+  title: string;
+  site: string;
+  byline: string;
+  published: string;
+  words: number;
+  blocks: { kind: 'h' | 'p' | 'li' | 'quote' | 'code'; text: string }[];
+}
+
+/** A source as an article in the side panel: plain text, nothing of the page runs. */
+function openReader(url: string, fallbackTitle: string, back: () => void) {
+  const body = h('div', { class: 'reader-body' }, h('div', { class: 'status-line' }, h('span', { class: 'dots' }), ' Loading the article…'));
+  const close = iconButton({ icon: 'close', title: 'Close', size: 'sm', onClick: closePanel });
+  const backBtn = iconButton({ icon: 'back', title: 'Back to the sources', size: 'sm', onClick: back });
+  const external = iconButton({ icon: 'globe', title: 'Open in the browser', size: 'sm', onClick: () => window.open(url, '_blank', 'noopener') });
+  openSidePanel(
+    `reader:${url}`,
+    h('div', { class: 'panel-inner reader-panel' }, h('div', { class: 'panel-head' }, backBtn, h('strong', { class: 'panel-title' }, host(url)), h('span', { class: 'spacer' }), external, close), body),
+    fallbackTitle
+  );
+  void tauriInvoke<ReaderArticle>('chat_read_article', { url })
+    .then((a) => {
+      const when = a.published && !Number.isNaN(Date.parse(a.published)) ? new Date(a.published).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : '';
+      const meta = [a.site, a.byline, when, `${Math.max(1, Math.round(a.words / 220))} min read`].filter(Boolean).join(' · ');
+      const blocks: HTMLElement[] = [];
+      let list: HTMLElement | null = null;
+      for (const b of a.blocks) {
+        if (b.kind !== 'li') list = null;
+        if (b.kind === 'li') {
+          if (!list) blocks.push((list = h('ul', {})));
+          list.append(h('li', {}, b.text));
+        } else if (b.kind === 'h') blocks.push(h('h3', {}, b.text));
+        else if (b.kind === 'quote') blocks.push(h('blockquote', {}, b.text));
+        else if (b.kind === 'code') blocks.push(h('pre', {}, b.text));
+        else blocks.push(h('p', {}, b.text));
+      }
+      clear(body, h('article', { class: 'reader-article no-translate' }, h('h2', {}, a.title || fallbackTitle), h('div', { class: 'reader-meta muted small' }, meta), ...blocks));
+    })
+    .catch((e) => clear(body, h('p', { class: 'error-text' }, String(e)), button({ variant: 'secondary', icon: 'globe', label: 'Open in the browser', onClick: () => window.open(url, '_blank', 'noopener') })));
+}
+
 function openSourcesPanel(sources: Source[]) {
   const close = iconButton({ icon: 'close', title: 'Close', size: 'sm', onClick: closePanel });
   openSidePanel(
@@ -4266,10 +4308,17 @@ function openSourcesPanel(sources: Source[]) {
             e.stopPropagation();
             void saveToLibrary(save, s.url);
           });
+          // Read it here, as plain text, without leaving the chat (Vibe's article reader).
+          const read = h('button', { class: 'icon-btn tiny source-save', title: 'Read here' }, icon('book', 14));
+          read.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openReader(s.url, s.title, () => openSourcesPanel(sources));
+          });
           return h(
             'a',
             { class: 'source-entry', href: s.url, target: '_blank', rel: 'noopener noreferrer' },
-            h('div', { class: 'source-site' }, siteIcon(s.url), h('span', { class: 'grow' }, host(s.url)), save),
+            h('div', { class: 'source-site' }, siteIcon(s.url), h('span', { class: 'grow' }, host(s.url)), read, save),
             title,
             snippet
           );

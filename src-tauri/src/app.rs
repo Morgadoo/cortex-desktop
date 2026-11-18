@@ -198,6 +198,7 @@ pub fn run() {
             chat::commands::chat_save_sync_settings,
             chat::commands::chat_sync_now,
             chat::commands::chat_share_link,
+            chat::commands::chat_read_article,
             chat::commands::chat_shared_links,
             chat::commands::chat_stop_share,
             chat::commands::chat_ui_languages,

@@ -899,6 +899,12 @@ pub fn chat_reset_ui_translations(app: AppHandle, code: String) -> Result<(), St
     super::ui_language::reset(&config_dir(&app)?, &code)
 }
 
+/// A source read as an article, for the reader in the side panel.
+#[tauri::command]
+pub async fn chat_read_article(url: String) -> Result<super::reader::Article, String> {
+    super::reader::read(&url).await
+}
+
 /// Shares a page (a conversation, an app) at a link on this computer's network.
 #[tauri::command]
 pub async fn chat_share_link(app: AppHandle, title: String, html: String, is_app: Option<bool>) -> Result<super::share::SharedLink, String> {

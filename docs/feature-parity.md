@@ -105,7 +105,7 @@ against the 5 that survived), and Mistral's documentation: docs.mistral.ai/vibe,
 | ask_user question picker | Same | Done |
 | Citations inline, Sources chip | Same | Done |
 | Citations with each site's favicon; hover card with site, copy, preview image, title and description; Sources chip with overlapping favicons; Sources side panel (favicon, domain, title, snippet) (Vibe screenshots, Nov 2026) | Same. Favicons and previews are fetched by the app, cached in `chat/favicons/` and `chat/previews/`, and shown as `data:` images, since the page loads nothing from the web | Done |
-| AFP article reader (Vibe's AFP partnership) | No news-agency feed; sources open in the browser | N/A |
+| AFP article reader (Vibe's AFP partnership) | A reader for any source: "Read here" on a source opens it in the side panel as plain text (title, site, author, date, reading time, headings, paragraphs, lists, quotes) without menus, ads or scripts, with Back to the sources and Open in the browser; sites that refuse say so plainly. No AFP news feed (that is Mistral's partnership). Verified live: a UXPin article read cleanly; nngroup.com refused (HTTP 530) and offered the browser | Done (no AFP feed) |
 | Actions row: rate, regenerate, copy, time | Same, plus edit-and-resend on your messages | Done |
 | Skill chip on a deep-research request | Skill, workflow, library, folder and canvas requests show as chips in your message; the plan panel follows the steps | Done |
 | Canvas card (edit, copy, download, expand) | Same, with versions, "Ask about this" on selected text, and a Preview / Code switch (the rendered document or its Markdown source); Markdown, Mermaid and Marp blocks in answers have the same switch | Done |

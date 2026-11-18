@@ -13,6 +13,7 @@
 pub mod agent_cli;
 pub mod agents;
 pub mod headless;
+pub mod reader;
 pub mod recorder;
 pub mod config_cli;
 pub mod share;

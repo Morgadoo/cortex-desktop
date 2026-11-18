@@ -1604,3 +1604,13 @@ button.usage-meter:hover { background: var(--hover); }
 
 .share-row{min-width:0}
 .share-row .share-url{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* The article reader in the side panel. */
+.reader-body{overflow:auto;padding:4px 22px 32px}
+.reader-article{max-width:640px;margin:0 auto;font-size:15px;line-height:1.65}
+.reader-article h2{font-size:1.35rem;line-height:1.3;margin:12px 0 6px}
+.reader-article h3{font-size:1.05rem;margin:22px 0 6px}
+.reader-article p{margin:0 0 14px}
+.reader-article blockquote{margin:0 0 14px;padding-left:14px;border-left:3px solid var(--accent);color:var(--muted)}
+.reader-article pre{white-space:pre-wrap;background:var(--card);padding:10px;border-radius:8px;font-size:13px}
+.reader-meta{margin-bottom:18px}
