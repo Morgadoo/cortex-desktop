@@ -12,6 +12,10 @@ use crate::{
 };
 
 pub fn run() {
+    // `-p "question"`: answer on standard output and exit, without a window (Vibe's headless run).
+    if let Some(code) = crate::chat::headless::maybe_run() {
+        std::process::exit(code);
+    }
     // The guard must outlive the event loop to prevent premature client shutdown.
     let _sentry = reporting::init();
     tauri::Builder::default()

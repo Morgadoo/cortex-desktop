@@ -12,6 +12,7 @@
 
 pub mod agent_cli;
 pub mod agents;
+pub mod headless;
 pub mod hooks;
 pub mod plugins;
 pub mod router;
