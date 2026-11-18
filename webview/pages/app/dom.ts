@@ -82,6 +82,7 @@ const ICONS: Record<string, string> = {
   stop: 'M7 7h10v10H7z',
   mic: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3',
   dot: 'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
+  play: 'M8 5v14l11-7z',
   wave: 'M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4',
   bolt: 'M13 3L5 14h6l-1 7 8-11h-6z',
   brain: 'M9 4a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 6 0V5a2 2 0 0 0-3-1zM15 4a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-6 0',
@@ -217,6 +218,11 @@ function renderMath(root: DocumentFragment, formulas: { tex: string; display: bo
   }
 }
 
+const RUNNABLE: Record<string, string> = { python: 'python', py: 'python', python3: 'python', javascript: 'javascript', js: 'javascript', node: 'javascript', bash: 'bash', sh: 'bash', shell: 'bash' };
+/** The sandbox's installed languages, learned once. */
+let runnable: string[] = [];
+void tauriInvoke<string[]>('chat_snippet_languages').then((l) => (runnable = l)).catch(() => undefined);
+
 const EXTENSIONS: Record<string, string> = {
   python: 'py', py: 'py', javascript: 'js', js: 'js', typescript: 'ts', ts: 'ts', rust: 'rs', go: 'go', java: 'java',
   c: 'c', cpp: 'cpp', csharp: 'cs', ruby: 'rb', php: 'php', swift: 'swift', kotlin: 'kt', bash: 'sh', sh: 'sh', shell: 'sh',
@@ -270,7 +276,39 @@ export function markdown(text: string, options: { breaks?: boolean } = {}): Docu
     // Save the block as a file, named by its language.
     const save = h('button', { class: 'code-copy', title: 'Download as a file' }, icon('download', 14));
     save.addEventListener('click', () => void saveFile(`snippet.${EXTENSIONS[lang.toLowerCase()] ?? 'txt'}`, new Blob([code?.textContent ?? ''], { type: 'text/plain' })));
-    const head = h('div', { class: 'code-head' }, h('span', {}, lang || 'code'), h('span', { class: 'code-actions' }, save, copy));
+    // Python, JavaScript and shell blocks run in the sandbox at a click, output below (Open WebUI).
+    const runLang = RUNNABLE[lang.toLowerCase()];
+    let run: HTMLElement | null = null;
+    if (runLang && runnable.includes(runLang)) {
+      const output = h('pre', { class: 'run-output' });
+      run = h('button', { class: 'code-copy', title: 'Run' }, icon('play', 14));
+      run.addEventListener('click', async () => {
+        run!.setAttribute('disabled', '');
+        output.textContent = 'Running…';
+        if (!output.isConnected) pre.after(output);
+        // A run that exits with an error still reports its output: show it the same way.
+        const show = (raw: string, error: boolean) => {
+          let result: { stdout?: string; stderr?: string; exit_code?: number; timed_out?: boolean } = {};
+          try {
+            result = JSON.parse(raw) as typeof result;
+          } catch {
+            result = error ? { stderr: raw, exit_code: 1 } : { stdout: raw };
+          }
+          const failed = error || (result.exit_code ?? 0) !== 0;
+          const tail = result.timed_out ? 'stopped: it ran too long' : failed && result.exit_code !== undefined ? `exit code ${result.exit_code}` : '';
+          output.textContent = [result.stdout?.trimEnd(), result.stderr?.trimEnd(), tail].filter(Boolean).join('\n') || '(no output)';
+          output.classList.toggle('failed', failed);
+        };
+        try {
+          show(await tauriInvoke<string>('chat_run_snippet', { language: runLang, code: code?.textContent ?? '' }), false);
+        } catch (e) {
+          show(String(e), true);
+        } finally {
+          run!.removeAttribute('disabled');
+        }
+      });
+    }
+    const head = h('div', { class: 'code-head' }, h('span', {}, lang || 'code'), h('span', { class: 'code-actions' }, run, save, copy));
     pre.before(head);
     const wrap = h('div', { class: 'code-block' });
     head.before(wrap);

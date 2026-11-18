@@ -1405,3 +1405,6 @@ button.usage-meter:hover { background: var(--hover); }
 
 .composer.expanded .composer-input { max-height: none; }
 .menu-check-space { display: inline-block; width: 15px; }
+
+.run-output { margin: 0; padding: 10px 12px; border-top: 1px dashed var(--border); background: var(--bg-hover); font-size: var(--fs-sm); white-space: pre-wrap; max-height: 320px; overflow: auto; }
+.run-output.failed { color: var(--danger); }

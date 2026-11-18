@@ -536,4 +536,4 @@ commands.allow = ["chat_computer_settings", "chat_save_computer_settings"]
 [[permission]]
 identifier = "allow-chat-context-and-feedback"
 description = "Read a conversation as text for context, and keep why a reply was rated down."
-commands.allow = ["chat_conversation_text", "chat_rate_reason", "chat_save_file"]
+commands.allow = ["chat_conversation_text", "chat_rate_reason", "chat_save_file", "chat_run_snippet", "chat_snippet_languages"]

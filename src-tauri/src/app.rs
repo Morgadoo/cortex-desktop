@@ -156,6 +156,8 @@ pub fn run() {
                 chat::commands::chat_conversation_text,
                 chat::commands::chat_rate_reason,
                 chat::commands::chat_save_file,
+                chat::commands::chat_run_snippet,
+                chat::commands::chat_snippet_languages,
                 chat::commands::chat_computer_settings,
                 chat::commands::chat_save_computer_settings,
                 chat::commands::chat_openapi_servers,

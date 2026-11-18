@@ -1190,6 +1190,23 @@ pub async fn chat_save_file(app: AppHandle, name: String, data: String) -> Resul
     Ok(true)
 }
 
+/// Runs a code block from an answer in the sandbox, at the user's click; returns its output.
+#[tauri::command]
+pub async fn chat_run_snippet(app: AppHandle, language: String, code: String) -> Result<String, String> {
+    let outcome = super::sandbox::run(&config_dir(&app)?, "snippets", &serde_json::json!({ "language": language, "code": code })).await;
+    if outcome.is_error {
+        Err(outcome.text)
+    } else {
+        Ok(outcome.text)
+    }
+}
+
+/// The languages code blocks can run in, for their Run buttons.
+#[tauri::command]
+pub fn chat_snippet_languages() -> Vec<&'static str> {
+    super::sandbox::languages()
+}
+
 /// A conversation as plain text, to add to another one as context.
 #[tauri::command]
 pub fn chat_conversation_text(app: AppHandle, id: String) -> Result<String, String> {
