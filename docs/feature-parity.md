@@ -222,17 +222,15 @@ items most likely to differ:
 Reviewed in November 2026 feature by feature against the docs of Open WebUI, LibreChat, LobeHub,
 Onyx, Osaurus and OpenBot (about 220 features). Every item of the review's shortlist is in the table
 below; every feature the review found missing or partial is tracked row by row, with evidence, in
-[review-coverage.md](review-coverage.md) (now 191 done, 0 partial, 1 missing, 31 out of scope).
+[review-coverage.md](review-coverage.md) (now 196 done, 0 partial, 1 missing, 26 out of scope).
 What was deliberately left out, and why:
 
 - **Team and enterprise features** (channels, comments, SSO, SCIM, tenants, admin plane, shared
   marketplaces): this is a single-user desktop app.
 - **A choice of vector database**: the local passage index with cached embeddings covers a person's
   libraries; a server database adds setup without benefit here.
-- **Video generation, voice cloning, realtime voice models**: provider-specific and outside rig's
-  current modalities; image generation, editing and voice conversation are covered.
-- **Filters and pipes** (code that rewrites every message or adds providers): user tools run in the
-  sandbox on demand; code in every request's path would sit outside it.
+- **Voice cloning and realtime voice models**: provider-specific and outside rig's current
+  modalities; image and video generation, editing and voice conversation are covered.
 
 | Feature | Seen in | Here | Status |
 |---|---|---|---|
@@ -413,6 +411,7 @@ What was deliberately left out, and why:
 | Connectors indexed into a library | onyx (connectors), open-webui | Libraries → Mirror a connector: an MCP connector's resources (pages, files, tickets) become library documents, searched and cited like any other, and kept in step every 10 minutes or on Sync now (added, re-read when changed, removed when gone; kept while the connector is unreachable). Verified live with an MCP wiki server: indexed, then a page changed, one removed and one added on the next sync | Done |
 | Chats and files as tabs, split panes | open-webui | The side panel holds tabs for apps, canvases, sources, Outputs, workspace files (Markdown, CSV as a table, text, images) and other chats (chat menu → Open beside this chat, kept up to date while it runs, with Swap). The split button shows two tabs side by side. Verified live | Done |
 | Built-in models (no install, offline) | osaurus, LM Studio, openbot.run | Settings → Providers → Built-in models: Qwen 2.5 (0.5B–7B) and Llama 3.2 (1B, 3B) chat models and Whisper (tiny to large-v3-turbo) run inside Lumo with candle, Hugging Face's pure-Rust runtime. Downloaded once from Hugging Face with progress and cancel, then offline. Chat models show in the model menu under Built-in (through an OpenAI-compatible endpoint on 127.0.0.1, so streaming works as for any provider; they get a short brief and no tools). Whisper is the Built-in speech-to-text engine for the microphone, audio attachments and dictation anywhere. Verified live: Qwen 0.5B answered in chat, Whisper tiny transcribed a recording word for word | Done |
+| Functions: filters and pipes | open-webui (Functions), onyx (custom code for PII and query rejection) | Settings → Permissions → Functions. A filter (Python, JavaScript or Bash) sees each message before it is sent and each answer before it is kept, and prints the new text, nothing, or `{"block": "why"}`; a refused message shows as Not sent with the reason. A pipe is a model made of code, in the model menu under Your functions. Both run in the code sandbox, with a Test button in the editor. Verified live: an email redacted, a customer number refused, an answer rewritten, a pipe answering | Done |
 
 ## Built for years of use
 

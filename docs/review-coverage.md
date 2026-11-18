@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 191 |
+| DONE | 58 | 196 |
 | PARTIAL | 86 | 0 |
 | MISSING | 48 | 1 |
-| OUT OF SCOPE | 31 | 31 |
+| OUT OF SCOPE | 31 | 26 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 45 / 0 / 0 / 9 · LibreChat 42 / 0 / 0 / 4 · LobeHub 29 / 0 / 0 / 5 · Onyx 21 / 0 / 0 / 5 · Osaurus 25 / 0 / 1 / 4 · OpenBot 29 / 0 / 0 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 48 / 0 / 0 / 6 · LibreChat 42 / 0 / 0 / 4 · LobeHub 30 / 0 / 0 / 4 · Onyx 22 / 0 / 0 / 4 · Osaurus 25 / 0 / 1 / 4 · OpenBot 29 / 0 / 0 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -40,9 +40,9 @@ Per app now (done / partial / missing / out of scope): Open WebUI 45 / 0 / 0 / 9
 | Open WebUI | Evaluation: arena, leaderboard | PARTIAL | DONE | parity L230 (blind compare, Elo `/leaderboard`) |
 | Open WebUI | Open Terminal (shell, files, site preview) | PARTIAL | DONE | Terminal and Files panels (parity L122, L208); a running command that prints a local address gets a preview button that opens the page in Lumo's browser window (terminal.ts, devsite.ts, chat_open_preview). Verified live with python -m http.server |
 | Open WebUI | Custom tools with editor, versions, Tool Search | PARTIAL | DONE | Editor with Test, `find_tools`, and versions (parity: Version history) |
-| Open WebUI | Filters (Functions) | MISSING | OUT OF SCOPE | Left out: "Filters and pipes" (parity L223) |
+| Open WebUI | Filters (Functions) | MISSING | DONE | Settings → Permissions → Functions → New filter: Python, JavaScript or Bash that sees each message before it is sent (inlet) and each answer before it is kept (outlet); it prints the new text, nothing, or {"block": "why"}. Runs in the code sandbox; a failing filter is skipped. Test button in the editor. Verified live: an email redacted before sending, a message refused, an answer rewritten |
 | Open WebUI | Actions: custom message-toolbar buttons | MISSING | DONE | parity: Answer actions (your own prompts under each answer, editable) |
-| Open WebUI | Pipes (providers from code) | MISSING | OUT OF SCOPE | Left out: "Filters and pipes" (parity L223) |
+| Open WebUI | Pipes (providers from code) | MISSING | DONE | Functions → New pipe: code that gets the conversation and prints the answer, listed in the model menu under Your functions (fn/<id>); can call any API or program from the sandbox. Verified live: a pipe answered in chat |
 | Open WebUI | OpenAPI tool servers | MISSING | DONE | parity L290 |
 | Open WebUI | Skills with supporting files and versions | PARTIAL | DONE | Versions (parity L278) and supporting files: a skill's folder holds templates, notes and scripts; the editor lists, views, edits, adds and removes them; `use_skill` lists them and reads one with `file` (skills.rs add_file/read_file/loaded). Verified live: the model loaded a skill, then read refs/temperatures.md for the answer |
 | Open WebUI | Prompts with variables and versions | PARTIAL | DONE | Variables in prompts and workflows; skills and workflows keep versions |
@@ -59,7 +59,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 45 / 0 / 0 / 9
 | Open WebUI | Hands-free voice and video calls, realtime | PARTIAL | DONE | Hands-free call (parity L236). Video and realtime models are left out (L221) |
 | Open WebUI | Voice cloning | MISSING | OUT OF SCOPE | Left out (parity L221) |
 | Open WebUI | Image generation and editing, ComfyUI | PARTIAL | DONE | Cloud image models (OpenAI, xAI, Together) with editing by reference, and a local image server: Stable Diffusion WebUI, Forge, SD.Next or Draw Things through the AUTOMATIC1111 API (txt2img, img2img for edits), its checkpoints listed as image models. ComfyUI's own workflow API is not used. Verified live against an AUTOMATIC1111-compatible server |
-| Open WebUI | Video generation | MISSING | OUT OF SCOPE | Left out (parity L221) |
+| Open WebUI | Video generation | MISSING | DONE | generate_video tool (xAI Grok Imagine): a clip from text or an image, saved in the workspace, shown in chat and under Outputs → Videos; Video model in Settings. Tested against a stand-in for xAI's service (no credit on the test account) |
 | Open WebUI | Chat overview (map with compaction marks) | MISSING | DONE | Outline in the chat header with the summarized point marked (parity: Chat outline) |
 | Open WebUI | Models search past chats | PARTIAL | DONE | parity L271 (`search_chats`, `read_chat`) |
 | Open WebUI | Reference chats | MISSING | DONE | parity L285 |
@@ -139,7 +139,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 45 / 0 / 0 / 9
 | LobeHub | Notion ZIP import | MISSING | DONE | parity: Import an export into a library (libraries.rs `import_archive`) |
 | LobeHub | Pages: long documents with a page list | PARTIAL | DONE | Apps → Documents and sheets lists every document and sheet canvas, newest first, with search, Download and Open (in its conversation). Verified live |
 | LobeHub | Image page (ratio, size, count, seed…) | PARTIAL | DONE | Image generation is a tool in the chat, as in Grok: Create an image (home suggestion or + menu) puts an Image chip on the message box with shape (1:1, 3:2, 2:3), how many (1 to 4), templates (mascot, logo, sticker, poster, product photo) that ask style and background first; generate_image takes count, quality, seed and a reference; results show as a grid and in Resources. Verified live |
-| LobeHub | Video generation | MISSING | OUT OF SCOPE | Left out (parity L221) |
+| LobeHub | Video generation | MISSING | DONE | generate_video tool, Tools menu → Video generation, the Image to video workflow; clips under Outputs → Videos. Tested against a stand-in for xAI's service |
 | LobeHub | Prompt Extend before generation | MISSING | DONE | parity: Improve prompt (Ctrl+E, Ctrl+Z undoes) |
 | LobeHub | Topic panel: status tabs, card/list views | PARTIAL | DONE | Archive, and the Chats page (grid button beside Chats in the sidebar): tabs All, Unread, Pinned, Scheduled runs, Archived with counts, a search, list or card view, archive/restore per chat (chatspage.ts). Verified live |
 | LobeHub | Sort and group chats | MISSING | DONE | Sort four ways and date groups Today, Yesterday, 7 and 30 days, months |
@@ -175,7 +175,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 45 / 0 / 0 / 9
 | Onyx | Collaboration | MISSING | OUT OF SCOPE | Team (parity L217) |
 | Onyx | Memory reference / update switches | PARTIAL | DONE | Context → Knowledge: Use knowledge and Save new facts are separate (`Memories.update`); with saving off, knowledge is read but remember, forget and knowledge_write are neither offered nor run (test `knowledge_can_be_used_without_being_changed`) |
 | Onyx | Enterprise features | MISSING | OUT OF SCOPE | parity L217 |
-| Onyx | Custom code for PII and query rejection | PARTIAL | OUT OF SCOPE | Filters left out (parity L223); personal-data filter exists (L265) |
+| Onyx | Custom code for PII and query rejection | PARTIAL | DONE | Filters (Functions) rewrite or refuse messages in code: personal data taken out before it is sent, messages matching a rule refused with the reason shown as Not sent. Verified live: an email address redacted and a customer number refused |
 | Onyx | Served as an MCP server | MISSING | DONE | `/mcp` on the local API: search_libraries, ask, list_models, list_tasks, run_task (parity: Lumo as an MCP server) |
 | Onyx | Extension, widget, Slack/Discord bots, CLI | MISSING | OUT OF SCOPE | Channels N/A (parity L256); scripts can use the local API (L292) |
 | Osaurus | Global hotkey | MISSING | DONE | parity L293 |

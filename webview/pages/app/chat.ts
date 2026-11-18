@@ -1516,7 +1516,10 @@ function renderLiveTurn(conversationId: string, live: LiveTurn): HTMLElement {
       )
     );
   }
-  if (live.error) {
+  if (live.error?.startsWith('Not sent. ')) {
+    // A filter of the user's refused the message: nothing failed, and nothing to continue.
+    el.append(h('div', { class: 'error-card notice' }, icon('shield', 16), h('div', { class: 'grow' }, h('strong', {}, 'Not sent'), h('div', {}, live.error.slice('Not sent. '.length)), h('p', { class: 'hint' }, 'A filter under Settings → Permissions → Functions stopped this message. Change it and send again.'))));
+  } else if (live.error) {
     const resume = h('button', { class: 'btn btn-secondary' }, icon('retry', 15), 'Continue');
     resume.addEventListener('click', () => {
       if (!state.model) return void toast('Choose a model first.', 'error');

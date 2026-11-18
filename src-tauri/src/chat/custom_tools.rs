@@ -99,12 +99,17 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
 
 /// The script with the call's arguments bound to `args` (`ARGS`, as JSON text, in Bash).
 pub fn program(tool: &CustomTool, args: &Value) -> String {
+    program_for(&tool.language, &tool.code, args)
+}
+
+/// `code` with `args` bound, in its language (also used by functions).
+pub fn program_for(language: &str, code: &str, args: &Value) -> String {
     let json = serde_json::to_string(args).unwrap_or_else(|_| "{}".into());
-    match tool.language.as_str() {
+    match language {
         // A JSON string literal is a valid Python string literal for `json.loads`.
-        "python" => format!("import json as __json\nargs = __json.loads({})\n{}", serde_json::to_string(&json).unwrap_or_default(), tool.code),
-        "javascript" => format!("const args = {json};\n{}", tool.code),
-        _ => format!("ARGS='{}'\n{}", json.replace('\'', "'\\''"), tool.code),
+        "python" => format!("import json as __json\nargs = __json.loads({})\n{}", serde_json::to_string(&json).unwrap_or_default(), code),
+        "javascript" => format!("const args = {json};\n{code}"),
+        _ => format!("ARGS='{}'\n{code}", json.replace('\'', "'\\''")),
     }
 }
 

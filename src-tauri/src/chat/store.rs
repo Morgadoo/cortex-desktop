@@ -52,7 +52,7 @@ pub fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
     std::fs::rename(&tmp, path).map_err(|e| format!("could not replace {path:?}: {e}"))
 }
 
-fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Option<T> {
+pub fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Option<T> {
     let text = crate::chat::at_rest::read_to_string(path).ok()?;
     match serde_json::from_str(&text) {
         Ok(value) => Some(value),

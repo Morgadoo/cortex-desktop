@@ -447,6 +447,14 @@ pub async fn run_turn(app: AppHandle, request: TurnRequest, cancel: watch::Recei
             }
         }
     }
+    // Filters see the finished answer too, and can rewrite it before it is shown for good.
+    if matches!(outcome, Ok(false)) {
+        if let Ok(dir) = config_dir(&app) {
+            if super::functions::has_filters(&dir) {
+                filter_answer(&dir, &id).await;
+            }
+        }
+    }
     match outcome {
         Ok(cancelled) => emit(&app, ChatEvent::Done { conversation_id: id, cancelled }),
         Err(message) => {
@@ -730,6 +738,36 @@ async fn cancelled(cancel: &mut watch::Receiver<bool>) {
     }
 }
 
+/// Runs the outlet filters over the last answer; a changed answer replaces it.
+async fn filter_answer(config_dir: &std::path::Path, id: &str) {
+    use rig_core::completion::message::AssistantContent;
+    let Ok(mut c) = store::load_conversation(config_dir, id) else { return };
+    let Some(Message::Assistant(last)) = c.messages.last() else { return };
+    if last.content.iter().any(|p| matches!(p, AssistantContent::ToolCall(_))) {
+        return;
+    }
+    let text = last.content.iter().filter_map(|p| if let AssistantContent::Text(t) = p { Some(t.text.as_str()) } else { None }).collect::<Vec<_>>().join("");
+    if text.trim().is_empty() {
+        return;
+    }
+    let model = c.model.clone().unwrap_or_default();
+    match super::functions::apply(config_dir, id, "outlet", &model, &text).await {
+        Ok(changed) if changed != text => {
+            if let Some(last) = c.messages.last_mut() {
+                *last = Message::assistant(changed);
+            }
+            let _ = store::save_conversation(config_dir, &c);
+        }
+        Ok(_) => {}
+        Err(reason) => {
+            if let Some(last) = c.messages.last_mut() {
+                *last = Message::assistant(format!("_The answer was withheld. {reason}_"));
+            }
+            let _ = store::save_conversation(config_dir, &c);
+        }
+    }
+}
+
 /// Returns whether the turn was cancelled.
 async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receiver<bool>) -> Result<bool, String> {
     let config_dir = config_dir(app)?;
@@ -745,12 +783,17 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         }
     };
     conversation.model = Some(request.model.clone());
+    // Filters see the message first: they can rewrite it or refuse it.
+    let mut text = request.text.trim().to_string();
+    if !text.is_empty() && super::functions::has_filters(&config_dir) {
+        text = super::functions::apply(&config_dir, id, "inlet", &request.model, &text).await.map_err(|reason| format!("Not sent. {reason}"))?;
+    }
 
     if let Some(index) = request.edit_index {
         let is_prompt = conversation.messages.get(index).is_some_and(|m| {
             matches!(m, Message::User { content } if content.iter().any(|c| matches!(c, rig_core::completion::message::UserContent::Text(_))))
         });
-        if !is_prompt || request.text.trim().is_empty() {
+        if !is_prompt || text.is_empty() {
             return Err("That message cannot be edited.".into());
         }
         // The old message and everything after it stay available as a branch.
@@ -761,7 +804,7 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
         if conversation.summary.as_ref().is_some_and(|s| s.upto > index) {
             conversation.summary = None;
         }
-        conversation.messages.push(Message::user(request.text.trim()));
+        conversation.messages.push(Message::user(text.as_str()));
         conversation.times.push((conversation.messages.len() - 1, Utc::now()));
     } else if request.resume {
         if conversation.messages.is_empty() {
@@ -776,7 +819,7 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
             return Err("There is nothing to regenerate yet.".into());
         }
     } else {
-        conversation.messages.push(user_message(request.text.trim(), &request.images)?);
+        conversation.messages.push(user_message(&text, &request.images)?);
         conversation.times.push((conversation.messages.len() - 1, Utc::now()));
     }
     conversation.updated_at = Utc::now();
@@ -786,6 +829,30 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
     }
     store::save_conversation(&config_dir, &conversation)?;
 
+    // A pipe (a function of the user's) answers with whatever its code prints.
+    if let Some(pipe) = super::functions::find_pipe(&config_dir, &request.model) {
+        let named = !conversation.title.is_empty();
+        let args = serde_json::json!({ "messages": super::functions::messages(&conversation), "model": pipe.id });
+        let answer = tokio::select! {
+            out = super::functions::run(&config_dir, id, &pipe, &args) => Some(out?),
+            _ = cancelled(&mut cancel) => None,
+        };
+        let Some(answer) = answer else { return Ok(true) };
+        if answer.trim().is_empty() {
+            return Err(format!("{} printed nothing.", pipe.name));
+        }
+        emit(app, ChatEvent::Text { conversation_id: id.into(), text: answer.clone() });
+        conversation.messages.push(Message::assistant(answer));
+        conversation.times.push((conversation.messages.len() - 1, Utc::now()));
+        conversation.updated_at = Utc::now();
+        store::save_conversation(&config_dir, &conversation)?;
+        if !named {
+            let app = app.clone();
+            let reference = request.model.clone();
+            tauri::async_runtime::spawn(async move { name_conversation(app, reference, conversation).await });
+        }
+        return Ok(false);
+    }
     // An ACP agent answers over the Agent Client Protocol, with its own tools.
     if let Some(acp_agent) = super::acp::find(&config_dir, &request.model) {
         let named = !conversation.title.is_empty();

@@ -55,6 +55,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Files', 'permissions', 'edit files folders allow'],
   ['Terminal', 'permissions', 'shell commands run bash'],
   ['Your tools', 'permissions', 'custom tools python javascript script'],
+  ['Functions', 'permissions', 'functions filters pipes inlet outlet redact block pii model from code'],
   ['Computer use', 'permissions', 'screen mouse keyboard screenshot click'],
   ['API tool servers (OpenAPI)', 'permissions', 'openapi swagger rest tools'],
   ['Privacy filter', 'permissions', 'redact personal data pii'],
@@ -1021,6 +1022,7 @@ async function renderPermissions(content: HTMLElement) {
     ),
     await computerCard(),
     await customToolsCard(),
+    await functionsCard(),
     mcpCard(),
     await calendarCard(),
     await hooksCard(),
@@ -1389,6 +1391,111 @@ function editTool(existing: CustomTool | null, onSaved: (tools: CustomTool[]) =>
         h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'),
         h('button', { class: 'btn btn-primary', on: { click: () => void save(true) } }, 'Save')
       )
+    );
+  });
+}
+
+interface LumoFunction {
+  id: string;
+  name: string;
+  kind: 'filter' | 'pipe';
+  description: string;
+  language: 'python' | 'javascript' | 'bash';
+  code: string;
+  enabled: boolean;
+}
+
+const FILTER_SAMPLE = `import re
+# Runs on each message before it is sent (stage "inlet") and on each answer (stage "outlet").
+# Print the new text; print nothing to keep it; print {"block": "why"} to refuse it.
+text = args['text']
+if args['stage'] == 'inlet':
+    text = re.sub(r'[\\w.+-]+@[\\w-]+\\.[\\w.]+', '[email]', text)
+print(text)`;
+
+const PIPE_SAMPLE = `# A model made of code: the conversation is in args['messages'] ({role, content}).
+# Print the answer.
+last = args['messages'][-1]['content']
+print(f"You said {len(last.split())} words. The longest was: {max(last.split(), key=len)}")`;
+
+/** Functions (Open WebUI's): filters that shape messages and answers, pipes that act as models. */
+async function functionsCard(): Promise<HTMLElement> {
+  const list = h('div', {});
+  const render = (all: LumoFunction[]) =>
+    clear(
+      list,
+      all.length
+        ? all.map((f) =>
+            h(
+              'div',
+              { class: 'setting-row' },
+              h('div', {}, h('strong', {}, f.name), h('small', { class: 'muted' }, `${f.kind === 'pipe' ? 'Pipe (a model)' : 'Filter'} · ${f.language}${f.description ? ` · ${f.description}` : ''}`)),
+              h('div', { class: 'row-actions' }, h('button', { class: 'link-btn', on: { click: () => void editFunction(f, render) } }, 'Edit'), switchInput(f.enabled, (v) => void tauriInvoke<LumoFunction[]>('chat_save_function', { function: { ...f, enabled: v } }).then((x) => { render(x); void reloadModels(); })))
+            )
+          )
+        : h('p', { class: 'muted' }, 'No functions yet.')
+    );
+  render(await tauriInvoke<LumoFunction[]>('chat_functions').catch(() => []));
+  const addFilter = button({ variant: 'secondary', icon: 'plus', label: 'New filter', onClick: () => void editFunction({ id: '', name: '', kind: 'filter', description: '', language: 'python', code: FILTER_SAMPLE, enabled: true }, render, true) });
+  const addPipe = button({ variant: 'secondary', icon: 'plus', label: 'New pipe', onClick: () => void editFunction({ id: '', name: '', kind: 'pipe', description: '', language: 'python', code: PIPE_SAMPLE, enabled: true }, render, true) });
+  return card(
+    h('h3', {}, 'Functions'),
+    h('p', { class: 'muted' }, 'Code that shapes your chats. A filter sees every message before it is sent and every answer before it is kept: it can take personal data out, add context, or refuse a message. A pipe is a model made of code, in the model menu under Your functions: it can call any API or program. Both run in the code sandbox.'),
+    list,
+    h('div', { class: 'card-actions' }, addFilter, addPipe)
+  );
+}
+
+function editFunction(f: LumoFunction, onSaved: (all: LumoFunction[]) => void, isNew = false): Promise<void> {
+  return modal((close) => {
+    const id = h('input', { class: 'input', value: f.id, placeholder: f.kind === 'pipe' ? 'word-counter' : 'redact-emails', disabled: !isNew });
+    const name = h('input', { class: 'input', value: f.name, placeholder: f.kind === 'pipe' ? 'Word counter' : 'Redact emails' });
+    const description = h('input', { class: 'input', value: f.description, placeholder: 'What it does' });
+    const language = h('select', { class: 'input' }, (['python', 'javascript', 'bash'] as const).map((l) => h('option', { value: l, selected: f.language === l }, l === 'python' ? 'Python' : l === 'javascript' ? 'JavaScript' : 'Bash')));
+    const code = h('textarea', { class: 'input textarea mono', rows: 12 });
+    code.value = f.code;
+    const sample = h('input', { class: 'input', value: f.kind === 'pipe' ? 'How long is this sentence really?' : 'Write to ana.silva@example.com about the invoice' });
+    const output = h('pre', { class: 'run-output' });
+    const error = h('p', { class: 'error-text' });
+    const current = (): LumoFunction => ({ id: id.value.trim(), name: name.value.trim(), kind: f.kind, description: description.value.trim(), language: language.value as LumoFunction['language'], code: code.value, enabled: f.enabled });
+    const save = async () => {
+      try {
+        onSaved(await tauriInvoke<LumoFunction[]>('chat_save_function', { function: current() }));
+        void reloadModels();
+        close();
+      } catch (e) {
+        error.textContent = String(e);
+      }
+    };
+    const test = async () => {
+      output.textContent = 'Running…';
+      if (!output.isConnected) sample.closest('.freq-row')?.after(output);
+      try {
+        output.textContent = await tauriInvoke<string>('chat_test_function', { function: current(), sample: sample.value });
+        output.classList.remove('failed');
+      } catch (e) {
+        output.textContent = String(e);
+        output.classList.add('failed');
+      }
+    };
+    const remove = !isNew
+      ? h('button', { class: 'btn btn-danger', on: { click: async () => { if (await confirmDialog('Delete function?', `“${f.name}” will stop running.`, 'Delete')) { onSaved(await tauriInvoke<LumoFunction[]>('chat_delete_function', { id: f.id })); void reloadModels(); close(); } } } }, 'Delete')
+      : null;
+    return h(
+      'div',
+      { class: 'dialog-small wide' },
+      modalHeader(isNew ? (f.kind === 'pipe' ? 'New pipe' : 'New filter') : `Edit ${f.name}`, close, { flush: true }),
+      h('div', { class: 'row-inline' }, h('div', { class: 'grow' }, h('label', { class: 'field-label' }, 'Id'), id), h('div', { class: 'grow' }, h('label', { class: 'field-label' }, 'Name'), name)),
+      h('label', { class: 'field-label' }, 'Description'),
+      description,
+      h('label', { class: 'field-label' }, 'Language'),
+      language,
+      h('label', { class: 'field-label' }, f.kind === 'pipe' ? 'Code — the conversation is in `args.messages`; print the answer' : 'Code — `args.stage` is inlet or outlet, `args.text` the text; print the new text, nothing, or {"block": "why"}'),
+      code,
+      h('label', { class: 'field-label' }, 'Try it with'),
+      h('div', { class: 'freq-row' }, h('div', { class: 'grow' }, sample), h('button', { class: 'btn btn-secondary', on: { click: () => void test() } }, icon('play', 14), 'Test')),
+      error,
+      h('div', { class: 'dialog-actions' }, remove, h('span', { class: 'spacer' }), h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Save'))
     );
   });
 }

@@ -90,6 +90,7 @@ pub async fn chat_list_models(app: AppHandle) -> Result<ModelList, String> {
     if let Ok(root) = super::local_models::root() {
         models.extend(super::local_models::models(&root));
     }
+    models.extend(super::functions::models(&dir));
     let default_model = file
         .default_model
         .clone()
@@ -659,6 +660,39 @@ pub fn chat_cancel_local_model(id: String) {
 #[tauri::command]
 pub fn chat_remove_local_model(id: String) -> Result<(), String> {
     super::local_models::remove(&super::local_models::root()?, &id)
+}
+
+#[tauri::command]
+pub fn chat_functions(app: AppHandle) -> Result<Vec<super::functions::Function>, String> {
+    Ok(super::functions::list(&config_dir(&app)?))
+}
+
+#[tauri::command]
+pub fn chat_save_function(app: AppHandle, function: super::functions::Function) -> Result<Vec<super::functions::Function>, String> {
+    super::functions::save(&config_dir(&app)?, function)
+}
+
+#[tauri::command]
+pub fn chat_delete_function(app: AppHandle, id: String) -> Result<Vec<super::functions::Function>, String> {
+    super::functions::delete(&config_dir(&app)?, &id)
+}
+
+/// Runs a function on a sample, without saving it, to see what it does.
+#[tauri::command]
+pub async fn chat_test_function(app: AppHandle, function: super::functions::Function, sample: String) -> Result<String, String> {
+    let dir = config_dir(&app)?;
+    let args = if function.kind == "pipe" {
+        serde_json::json!({ "messages": [{ "role": "user", "content": sample }], "model": function.id })
+    } else {
+        serde_json::json!({ "stage": "inlet", "text": sample, "model": "test" })
+    };
+    let out = super::functions::run(&dir, "function-test", &function, &args).await?;
+    Ok(match (function.kind.as_str(), super::functions::verdict(&out)) {
+        ("filter", super::functions::Verdict::Keep) => "Kept as it was.".into(),
+        ("filter", super::functions::Verdict::Block(reason)) => format!("Refused: {reason}"),
+        ("filter", super::functions::Verdict::Replace(t)) => format!("Becomes: {t}"),
+        _ => out,
+    })
 }
 
 #[tauri::command]
