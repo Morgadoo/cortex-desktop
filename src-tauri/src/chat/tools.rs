@@ -371,6 +371,16 @@ pub async fn execute(
     } else {
         matches!(mode, ApprovalMode::Autonomous | ApprovalMode::Auto)
     };
+    // The user's own tools: the same gate, then their script in the sandbox.
+    if connector_id == super::custom_tools::CONNECTOR {
+        let Ok(config_dir) = crate::settings::get_config_dir(app) else {
+            return Outcome { text: "The app's data folder is not available.".into(), is_error: true };
+        };
+        return match super::custom_tools::run(&config_dir, conversation_id, &tool.tool_name, &input).await {
+            Ok(text) => Outcome { text, is_error: false },
+            Err(e) => Outcome { text: e, is_error: true },
+        };
+    }
     // Computer use: the same gate, then the screen, mouse and keyboard.
     if connector_id == super::computer::CONNECTOR {
         return match super::computer::run(conversation_id, &input).await {

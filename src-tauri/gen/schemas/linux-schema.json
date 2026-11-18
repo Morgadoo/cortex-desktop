@@ -309,6 +309,12 @@
           "markdownDescription": "Create a document library."
         },
         {
+          "description": "Write, test and remove your own sandboxed tools.",
+          "type": "string",
+          "const": "allow-chat-custom-tools",
+          "markdownDescription": "Write, test and remove your own sandboxed tools."
+        },
+        {
           "description": "Read a session's raw history for the Debug panel.",
           "type": "string",
           "const": "allow-chat-debug",

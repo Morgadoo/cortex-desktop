@@ -220,8 +220,8 @@ below. What was deliberately left out, and why:
   libraries; a server database adds setup without benefit here.
 - **Video generation, voice cloning, realtime voice models**: provider-specific and outside rig's
   current modalities; image generation, editing and voice conversation are covered.
-- **Custom Python tools edited inside the app, filters and pipes**: MCP servers and OpenAPI tool
-  servers give the same reach without running user code inside the app process.
+- **Filters and pipes** (code that rewrites every message or adds providers): user tools run in the
+  sandbox on demand; code in every request's path would sit outside it.
 
 | Feature | Seen in | Here | Status |
 |---|---|---|---|
@@ -286,6 +286,7 @@ below. What was deliberately left out, and why:
 | Mermaid diagrams as SVG or PNG | LibreChat | SVG and PNG buttons on each diagram, saved through the system's save dialog (PNG at twice the size). Verified live | Done |
 | Copy as rich text; feedback with a reason; a taller editor | LibreChat, open-webui | Copy puts formatted HTML (for Office and mail) and Markdown on the clipboard; a thumbs down asks what was wrong and keeps the reason with the conversation; the expand button gives the composer a tall editor for long prompts. Reason saving verified live | Done |
 | Computer use | openbot.run, (Anthropic computer use) | Settings → Permissions → Computer use (off by default): a `computer` tool with screenshot, click, double/right click, move, type, key and scroll. Screenshots go to the model as scaled JPEGs (only the latest stays in the history); coordinates map back to the screen; every action except a screenshot passes the approval gate (Ask confirms each, Auto checks each against the request). Linux: xdotool and ImageMagick (X11), grim for Wayland screenshots; macOS: screencapture and cliclick. Verified live on Linux/X11: the model read the sidebar, clicked, saw it missed, corrected and reported the page title. The macOS path is untested here | Done |
+| Your own tools | open-webui (Tools), LibreChat | Settings → Permissions → Your tools: a Python, JavaScript or Bash script with a JSON input schema; arguments arrive in `args`, the output is what it prints. Each call runs in the code sandbox (isolated with bubblewrap), never in the app, and passes the approval gate; the editor has a Test button. Verified live: a tool written and tested in the editor, then called by the assistant | Done |
 | OpenAPI tool servers | open-webui (OpenAPI servers), lobehub | Settings → Permissions → API tool servers: add a spec address (and a bearer key, kept in the keychain); each operation becomes a tool (path and query parameters as arguments, the JSON body as `body`, local `$ref`s resolved). GET runs as a read; other methods go through the same approval and Auto check as connectors. Refresh, switch off or remove per server. Verified live against a local API: a weather read with the key and a note saved, from one request | Done |
 | Tasks started from outside (webhook routines) | openbot.run, osaurus | Through the local API: `GET /v1/tasks` lists scheduled tasks and `POST /v1/tasks/{id}/run` starts one now, with optional `input` added to its prompt; the result arrives as a new conversation. Verified with curl | Done |
 | Local OpenAI-compatible API | osaurus (OpenAI-, Anthropic- and Ollama-compatible endpoints) | Settings → General → Local API: `/v1/models` and `/v1/chat/completions` (plain and streamed) on 127.0.0.1, every request with the API key shown there; off by default, no CORS, any provider set up here. Verified with curl: refused without the key, 8 models listed, an answer and a streamed answer | Done |

@@ -423,6 +423,7 @@ async fn turn(app: &AppHandle, request: &TurnRequest, mut cancel: watch::Receive
     let mut offered = tools::available(&registry, request.connectors.as_deref());
     offered.splice(1..1, builtins::definitions(&config_dir));
     offered.extend(super::openapi::tools(&config_dir));
+    offered.extend(super::custom_tools::definitions(&config_dir));
     if super::computer::load(&config_dir).enabled {
         offered.push(super::computer::definition());
     }

@@ -14,6 +14,7 @@ pub mod agents;
 pub mod api_server;
 pub mod arena;
 pub mod audio;
+pub mod custom_tools;
 pub mod computer;
 pub mod openapi;
 pub mod embeddings;

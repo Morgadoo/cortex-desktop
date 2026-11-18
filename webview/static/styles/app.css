@@ -1417,3 +1417,6 @@ button.usage-meter:hover { background: var(--hover); }
 .leaderboard { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
 .leaderboard th, .leaderboard td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
 .leaderboard th { color: var(--text-muted); font-weight: 600; }
+
+/* Any dialog taller than the window scrolls inside its frame. */
+.modal > * { max-height: calc(100vh - 48px); overflow-y: auto; }

@@ -552,3 +552,8 @@ commands.allow = ["chat_skill_history", "chat_restore_skill"]
 identifier = "allow-chat-arena"
 description = "Record comparison results and show the model leaderboard."
 commands.allow = ["chat_arena_record", "chat_arena_board", "chat_arena_reset"]
+
+[[permission]]
+identifier = "allow-chat-custom-tools"
+description = "Write, test and remove your own sandboxed tools."
+commands.allow = ["chat_custom_tools", "chat_save_custom_tool", "chat_delete_custom_tool", "chat_test_custom_tool"]

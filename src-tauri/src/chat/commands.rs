@@ -1284,6 +1284,27 @@ pub fn chat_arena_reset(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn chat_custom_tools(app: AppHandle) -> Result<Vec<super::custom_tools::CustomTool>, String> {
+    Ok(super::custom_tools::list(&config_dir(&app)?))
+}
+
+#[tauri::command]
+pub fn chat_save_custom_tool(app: AppHandle, tool: super::custom_tools::CustomTool) -> Result<Vec<super::custom_tools::CustomTool>, String> {
+    super::custom_tools::save(&config_dir(&app)?, &tool)
+}
+
+#[tauri::command]
+pub fn chat_delete_custom_tool(app: AppHandle, name: String) -> Result<Vec<super::custom_tools::CustomTool>, String> {
+    super::custom_tools::delete(&config_dir(&app)?, &name)
+}
+
+/// Runs a tool with sample input from its editor, in the sandbox.
+#[tauri::command]
+pub async fn chat_test_custom_tool(app: AppHandle, name: String, args: serde_json::Value) -> Result<String, String> {
+    super::custom_tools::run(&config_dir(&app)?, "tool-tests", &name, &args).await
+}
+
+#[tauri::command]
 pub fn chat_search_settings(app: AppHandle) -> Result<super::search::SearchSettings, String> {
     Ok(super::search::load_settings(&config_dir(&app)?))
 }

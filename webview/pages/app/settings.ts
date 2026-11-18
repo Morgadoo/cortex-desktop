@@ -1,7 +1,7 @@
 /** The settings dialog: profile, providers, permissions, general and appearance. */
 import { tauriInvoke } from '../../shared/tauri';
 import { api, type AppSettings, type Provider } from './api';
-import { clear, h, icon, modal, toast } from './dom';
+import { clear, confirmDialog, h, icon, modal, toast } from './dom';
 import { changed, followUpsOn, setFollowUps, setTemporaryByDefault, state, temporaryByDefault } from './state';
 import { button, card, modalHeader, switchInput } from './ui';
 import { audioApi, refreshAudioSettings, speakText, type AudioView } from './audio';
@@ -554,9 +554,124 @@ async function renderPermissions(content: HTMLElement) {
       row('Allow shell commands', 'Lets the assistant run commands on this computer. Every command asks first unless you allow it.', switchInput(settings.bash_enabled, (v) => { settings.bash_enabled = v; void persist(settings); }))
     ),
     await computerCard(),
+    await customToolsCard(),
     mcpCard(),
     await openApiCard()
   );
+}
+
+interface CustomTool {
+  name: string;
+  description: string;
+  parameters: unknown;
+  language: 'python' | 'javascript' | 'bash';
+  code: string;
+  enabled: boolean;
+}
+
+/** Your own tools: a script and its input schema, run in the code sandbox on each call. */
+async function customToolsCard(): Promise<HTMLElement> {
+  const list = h('div', {});
+  const render = (tools: CustomTool[]) =>
+    clear(
+      list,
+      tools.length
+        ? tools.map((t) =>
+            h(
+              'div',
+              { class: 'setting-row' },
+              h('div', {}, h('strong', {}, t.name), h('small', { class: 'muted' }, `${t.language} · ${t.description}`)),
+              h('div', { class: 'row-actions' }, h('button', { class: 'link-btn', on: { click: () => void editTool(t, render) } }, 'Edit'), switchInput(t.enabled, (v) => void tauriInvoke<CustomTool[]>('chat_save_custom_tool', { tool: { ...t, enabled: v } }).then(render)))
+            )
+          )
+        : h('p', { class: 'muted' }, 'No tools of your own yet.')
+    );
+  render(await tauriInvoke<CustomTool[]>('chat_custom_tools'));
+  const add = h('button', { class: 'btn btn-primary' }, icon('plus', 15), 'New tool');
+  add.addEventListener('click', () => void editTool(null, render));
+  return card(
+    h('h3', {}, 'Your tools'),
+    h('p', { class: 'muted' }, 'Write a tool in Python, JavaScript or Bash: the assistant calls it with arguments that match its input schema (in the variable `args`) and reads what it prints. It runs in the code sandbox, and each call follows the approval mode.'),
+    list,
+    h('div', { class: 'card-actions' }, add)
+  );
+}
+
+function editTool(existing: CustomTool | null, onSaved: (tools: CustomTool[]) => void): Promise<void> {
+  return modal((close) => {
+    const name = h('input', { class: 'input', value: existing?.name ?? '', placeholder: 'convert_units', disabled: Boolean(existing) });
+    const description = h('input', { class: 'input', value: existing?.description ?? '', placeholder: 'What it does and when to use it' });
+    const language = h('select', { class: 'input' }, (['python', 'javascript', 'bash'] as const).map((l) => h('option', { value: l, selected: (existing?.language ?? 'python') === l }, l === 'python' ? 'Python' : l === 'javascript' ? 'JavaScript' : 'Bash')));
+    const schema = h('textarea', { class: 'input textarea mono', rows: 6 });
+    schema.value = JSON.stringify(existing?.parameters ?? { type: 'object', properties: { km: { type: 'number', description: 'Distance in kilometres' } }, required: ['km'] }, null, 2);
+    const code = h('textarea', { class: 'input textarea mono', rows: 8 });
+    code.value = existing?.code ?? "print(round(args['km'] * 0.621371, 2), 'miles')";
+    const sample = h('input', { class: 'input mono', value: '{"km": 10}' });
+    const output = h('pre', { class: 'run-output' });
+    const error = h('p', { class: 'error-text' });
+    const current = (): CustomTool | null => {
+      try {
+        return { name: name.value.trim(), description: description.value.trim(), parameters: JSON.parse(schema.value), language: language.value as CustomTool['language'], code: code.value, enabled: existing?.enabled ?? true };
+      } catch {
+        error.textContent = 'The input schema is not valid JSON.';
+        return null;
+      }
+    };
+    const save = async (andClose: boolean) => {
+      const tool = current();
+      if (!tool) return false;
+      try {
+        onSaved(await tauriInvoke<CustomTool[]>('chat_save_custom_tool', { tool }));
+        error.textContent = '';
+        if (andClose) close();
+        return true;
+      } catch (e) {
+        error.textContent = String(e);
+        return false;
+      }
+    };
+    const test = async () => {
+      let args: unknown;
+      try {
+        args = JSON.parse(sample.value || '{}');
+      } catch {
+        output.textContent = 'The sample input is not valid JSON.';
+        return;
+      }
+      if (!(await save(false))) return;
+      output.textContent = 'Running…';
+      if (!output.isConnected) sample.after(output);
+      try {
+        output.textContent = await tauriInvoke<string>('chat_test_custom_tool', { name: name.value.trim(), args });
+        output.classList.remove('failed');
+      } catch (e) {
+        output.textContent = String(e);
+        output.classList.add('failed');
+      }
+    };
+    const remove = existing
+      ? h('button', { class: 'btn btn-danger', on: { click: async () => { if (await confirmDialog('Delete tool?', `“${existing.name}” will no longer be offered to the assistant.`)) { onSaved(await tauriInvoke<CustomTool[]>('chat_delete_custom_tool', { name: existing.name })); close(); } } } }, 'Delete')
+      : null;
+    return h(
+      'div',
+      { class: 'dialog-small wide' },
+      modalHeader(existing ? `Edit ${existing.name}` : 'New tool', close, { flush: true }),
+      h('label', { class: 'field-label' }, 'Name'),
+      name,
+      h('label', { class: 'field-label' }, 'Description'),
+      description,
+      h('label', { class: 'field-label' }, 'Language'),
+      language,
+      h('label', { class: 'field-label' }, 'Input schema (JSON)'),
+      schema,
+      h('label', { class: 'field-label' }, 'Code — the arguments are in `args` (`$ARGS` as JSON in Bash); print the result'),
+      code,
+      h('label', { class: 'field-label' }, 'Try it with'),
+      h('div', { class: 'freq-row' }, h('div', { class: 'grow' }, sample), h('button', { class: 'btn btn-secondary', on: { click: () => void test() } }, icon('play', 14), 'Test')),
+      error,
+      h('div', { class: 'dialog-actions' }, remove, h('span', { class: 'spacer' }), h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save(true) } }, 'Save'))
+    );
+  });
 }
 
 /** Computer use: the assistant may see the screen and use the mouse and keyboard. */
