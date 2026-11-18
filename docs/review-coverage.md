@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 143 |
-| PARTIAL | 86 | 48 |
+| DONE | 58 | 148 |
+| PARTIAL | 86 | 43 |
 | MISSING | 48 | 1 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9 · LibreChat 34 / 8 / 0 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 17 / 4 / 0 / 5 · Osaurus 16 / 9 / 1 / 4 · OpenBot 21 / 8 / 0 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9 · LibreChat 37 / 5 / 0 / 4 · LobeHub 19 / 10 / 0 / 5 · Onyx 17 / 4 / 0 / 5 · Osaurus 16 / 9 / 1 / 4 · OpenBot 22 / 7 / 0 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -82,7 +82,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9
 | LibreChat | Switch model mid-chat | PARTIAL | DONE | `@model` and `/model` (parity L280, L282); the conversation stores its model (api.ts `Conversation.model`) |
 | LibreChat | Drafts saved locally | MISSING | DONE | parity L276 (text and attachments, across restarts) |
 | LibreChat | Collapse long user messages | MISSING | DONE | parity L276; chat.ts:710–720 |
-| LibreChat | Smooth streaming (fade-in, elapsed time) | PARTIAL | PARTIAL | Elapsed seconds while working (chat.ts:1041). Missing: fade-in of streamed text |
+| LibreChat | Smooth streaming (fade-in, elapsed time) | PARTIAL | DONE | Elapsed seconds while working, and new characters fade in once as they arrive (`fadeInFresh`, chat.ts), respecting reduced motion. Verified live: the newest words of a streamed reply faded in while earlier text stayed still |
 | LibreChat | Resumable streams | MISSING | OUT OF SCOPE | Server-only: a web client reconnecting to a server stream. Here the turn runs in the Rust process, not the page |
 | LibreChat | Fork options (visible, related, all; leave out files) | PARTIAL | DONE | Branch from a chosen answer, with or without attached files (parity: Branch from a chosen answer) |
 | LibreChat | Continue a cut-off reply | MISSING | DONE | parity L298; chat.ts:836–841 |
@@ -102,7 +102,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9
 | LibreChat | OCR | MISSING | DONE | parity L242 |
 | LibreChat | Mermaid as SVG/PNG | MISSING | DONE | parity L286 |
 | LibreChat | Artifact in a new window | MISSING | DONE | parity: Apps in a window of their own (chat_open_app_window; same sandbox) |
-| LibreChat | Pinned section (chats, models, agents, presets) | PARTIAL | PARTIAL | Pinned chats only (parity L192) |
+| LibreChat | Pinned section (chats, models, agents, presets) | PARTIAL | DONE | Pinned chats, and agents pinned from their page (Pin), which start a new chat with the agent from the sidebar; models are favourites in the model picker and command palette. Verified live: EU AI Brief appeared under Pinned |
 | LibreChat | Filter and sort chats | MISSING | DONE | Filter by tag, time, unread, scheduled runs; sort four ways (parity: Filter and group the chat list) |
 | LibreChat | Mark as unread | PARTIAL | DONE | parity L276; chat.ts:2811 |
 | LibreChat | Chat options incl. duplicate | PARTIAL | DONE | Rename, move, branch, archive, delete (chat.ts:2790–2831); "Branch into a new chat" copies the whole chat (commands.rs:1655) |
@@ -114,7 +114,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9
 | LibreChat | High-contrast theme | MISSING | DONE | High contrast in Settings → Appearance → Readability |
 | LibreChat | Multilingual UI | MISSING | DONE | parity: Interface languages (`i18n.ts`, `ui_language.rs`, `src-tauri/i18n/`; Settings → Appearance → Language). Verified live: Portuguese switched the whole interface (menus, composer, settings, greeting and numeric templates, toasts) while chat titles and project names stayed as written; Dutch, which does not ship, was translated by the chosen model (1787 strings in 15 requests) and applied |
 | LibreChat | Desktop notification and sound for finished replies | MISSING | DONE | Notification with an optional chime (parity: Sound and stream following) |
-| LibreChat | Every shortcut rebindable | PARTIAL | PARTIAL | Seven actions rebindable (shortcuts.ts:9–16). Missing: Ctrl+1–9, Shift+Tab, Ctrl+O, Ctrl+R |
+| LibreChat | Every shortcut rebindable | PARTIAL | DONE | Settings → General → Keyboard shortcuts: every shortcut can be rebound, including prompt history (Ctrl+R), folding activity (Ctrl+O), the mode cycle (Shift+Tab) and the nine chat shortcuts (Ctrl+1–9); prompt history and the mode cycle act only in the message box |
 | LibreChat | Settings search | MISSING | DONE | Search box at the top of Settings (parity: Search settings) |
 | LibreChat | Security / admin | MISSING | OUT OF SCOPE | Team/enterprise (parity L217) |
 | LibreChat | Image generation and editing, local server | PARTIAL | PARTIAL | Editing by reference (parity L234). Missing: a local image server |
@@ -137,7 +137,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9
 | LobeHub | Batch operations (folder upload, move, delete) | MISSING | DONE | Folders mirrored, several documents removed or moved at once (parity: Move documents between libraries) |
 | LobeHub | Relevance scores, excerpt preview | PARTIAL | DONE | Passage scores in Test a search; document preview (parity: Library document preview) |
 | LobeHub | Notion ZIP import | MISSING | DONE | parity: Import an export into a library (libraries.rs `import_archive`) |
-| LobeHub | Pages: long documents with a page list | PARTIAL | PARTIAL | Canvas documents. Missing: a list of all documents (the Apps page lists apps only) |
+| LobeHub | Pages: long documents with a page list | PARTIAL | DONE | Apps → Documents and sheets lists every document and sheet canvas, newest first, with search, Download and Open (in its conversation). Verified live |
 | LobeHub | Image page (ratio, size, count, seed…) | PARTIAL | PARTIAL | `generate_image` with a reference (parity L234). Missing: a page with those controls |
 | LobeHub | Video generation | MISSING | OUT OF SCOPE | Left out (parity L221) |
 | LobeHub | Prompt Extend before generation | MISSING | DONE | parity: Improve prompt (Ctrl+E, Ctrl+Z undoes) |
@@ -229,7 +229,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9
 | OpenBot | Marketplace | MISSING | OUT OF SCOPE | Shared marketplaces (parity L217) |
 | OpenBot | Add skills from a GitHub link | MISSING | DONE | Skills → Import → From a link (parity: Skills from a link) |
 | OpenBot | Vault access per agent | MISSING | DONE | parity: Vault (`vault.rs`; Settings → Permissions → Vault; agent editor → Secrets from the vault). Verified live: DEMO_TOKEN saved through Settings (value only in the keychain), granted to one agent; that agent's run_code saw it (length 20) while a plain chat's did not (False); a user tool that printed the key had it masked as [secret DEMO_TOKEN] everywhere in the saved chat |
-| OpenBot | Library views, favourites | PARTIAL | PARTIAL | Missing: views and favourites |
+| OpenBot | Library views, favourites | PARTIAL | DONE | Libraries: favourite libraries (★, listed first) and documents (★), a document filter and sorting by favourites, newest, name or size, remembered on this device. Verified live |
 | OpenBot | Local dictation (Parakeet, Whisper) | PARTIAL | PARTIAL | Missing: a built-in model |
 | OpenBot | Pause length before sending; keeps listening | PARTIAL | DONE | Pause length 0.8–4.5 s in Settings → Audio; the mic stays open for the next turn |
 | OpenBot | Image and video workflow steps | PARTIAL | PARTIAL | Image through `generate_image`; video left out (parity L221) |

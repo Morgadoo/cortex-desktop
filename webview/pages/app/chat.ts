@@ -6,6 +6,7 @@ import { api, newId, type ApprovalMode, type ChatParams, type Conversation, type
 import { fillVariables } from './variables';
 import { startVoiceConversation, voiceActive, voiceTurnEnded } from './voice';
 import { attachVim } from './vim';
+import { actionFor } from './shortcuts';
 import { clear, confirmDialog, greeting, h, icon, markdown, modal, popover, promptText, timeLabel, toast, clockHour12 } from './dom';
 import { changed, currentModel, followUpsOn, navigate, setMode, state, temporaryByDefault, type LiveTurn, followStreamOn } from './state';
 import { openSettings } from './settings';
@@ -642,7 +643,10 @@ function renderParts(parts: Part[], live: boolean, key: string, durations: numbe
       flush();
       const body = h('div', { class: 'markdown' });
       body.append(markdown(part.text));
-      if (live && i === parts.length - 1) body.classList.add('streaming');
+      if (live && i === parts.length - 1) {
+        body.classList.add('streaming');
+        fadeInFresh(body, part.text);
+      }
       out.push(body);
       return;
     }
@@ -652,6 +656,37 @@ function renderParts(parts: Part[], live: boolean, key: string, durations: numbe
   });
   flush();
   return out;
+}
+
+/** The streamed text at the last render, to know which characters are new. */
+let lastStreamed = '';
+
+/**
+ * Smooth streaming (LibreChat's fade-in): the characters that arrived since the last render are
+ * wrapped in a span that fades in, once; what was already shown is left as it is, so nothing
+ * flickers when the reply is rendered again.
+ */
+function fadeInFresh(body: HTMLElement, text: string) {
+  let fresh = text.startsWith(lastStreamed) ? text.length - lastStreamed.length : 0;
+  lastStreamed = text;
+  if (fresh <= 0 || fresh > 400 || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const nodes: Text[] = [];
+  const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) nodes.push(n as Text);
+  for (let k = nodes.length - 1; k >= 0 && fresh > 0; k--) {
+    const node = nodes[k]!;
+    if (!node.data.trim() || node.parentElement?.closest('pre, code, .katex')) {
+      fresh -= node.data.length;
+      continue;
+    }
+    const take = Math.min(fresh, node.data.length);
+    const tail = node.splitText(node.data.length - take);
+    const span = document.createElement('span');
+    span.className = 'fresh';
+    tail.replaceWith(span);
+    span.append(tail);
+    fresh -= take;
+  }
 }
 
 const KNOWLEDGE_TOOLS = ['remember', 'forget', 'knowledge_write', 'knowledge_read'];
@@ -1695,7 +1730,7 @@ class Composer {
         return;
       }
       // Shift+Tab cycles the modes, as in Claude. GTK names it ISO_Left_Tab, so match the code too.
-      if (e.shiftKey && (e.key === 'Tab' || e.code === 'Tab' || e.keyCode === 9)) {
+      if (actionFor(e) === 'cycleMode') {
         e.preventDefault();
         setMode(MODE_ORDER[(MODE_ORDER.indexOf(state.approval) + 1) % MODE_ORDER.length]!);
         this.renderBar();
@@ -1706,7 +1741,7 @@ class Composer {
         e.preventDefault();
         return;
       }
-      if (e.key === 'r' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+      if (actionFor(e) === 'promptHistory') {
         e.preventDefault();
         this.searchHistory();
         return;
@@ -3501,7 +3536,7 @@ export class ChatView {
     this.scroller.addEventListener('scroll', () => this.updateSticky());
     // Ctrl+O folds or unfolds every activity group at once.
     this.el.addEventListener('keydown', (e) => {
-      if (e.key === 'o' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+      if (actionFor(e) === 'toggleSteps') {
         e.preventDefault();
         const groups = [...this.transcript.querySelectorAll<HTMLDetailsElement>('details.activity'), ...this.liveSlot.querySelectorAll<HTMLDetailsElement>('details.activity')];
         const open = groups.some((g) => !g.open);

@@ -13,7 +13,7 @@ import { startUiLanguage } from './i18n';
 import { startWakeWord, stopWakeWord, wakePrefs } from './wakeword';
 import { ConnectorsPage, PlaceholderPage, openInstructions } from './pages';
 import { KnowledgePage, SkillsPage, reviewRecording } from './context';
-import { AgentPage, AgentsPage, avatar, editAgent, newAgent, reloadAgents } from './agents';
+import { AgentPage, AgentsPage, avatar, editAgent, newAgent, pinnedAgents, reloadAgents } from './agents';
 import { TasksPage } from './tasks';
 import { LibrariesPage } from './libraries';
 import { AppsPage } from './apps';
@@ -495,8 +495,14 @@ function renderConversations(): HTMLElement {
   const all = state.conversations.filter((c) => !c.archived && !c.projectId && !c.agentId && Boolean(c.workdir) === code);
   const pinned = all.filter((c) => c.pinned);
   const loose = sortChats(filterChats(all.filter((c) => !c.pinned)));
-  if (pinned.length) {
+  // Pinned agents (Work mode) start a new chat with the agent.
+  const agents = code ? [] : pinnedAgents().map((id) => state.agents.find((a) => a.id === id)).filter((a): a is NonNullable<typeof a> => !!a);
+  if (pinned.length || agents.length) {
     section.append(sectionHeading('Pinned'));
+    for (const a of agents) {
+      const active = state.view.kind === 'home' && state.view.agentId === a.id;
+      section.append(h('div', { class: `conv-link project${active ? ' active' : ''}`, title: `New chat with ${a.name}`, on: { click: () => navigate({ kind: 'home', agentId: a.id }) } }, avatar(a), h('span', { class: 'conv-title' }, a.name)));
+    }
     for (const c of pinned) section.append(conversationLink(c.id, c.title, true));
   }
   const sortBtn = h('button', { class: `icon-btn tiny${filtering() ? ' active' : ''}`, title: `Sort: ${CHAT_SORTS[chatSort]}${filtering() ? ' · filtered' : ''}` }, icon('list', 14));
@@ -913,18 +919,24 @@ async function start() {
     const mod = e.ctrlKey || e.metaKey;
     // Rebindable shortcuts (Settings → General → Keyboard shortcuts); a field being recorded wins.
     if (document.querySelector('.shortcut-recording')) return;
-    const action = actionFor(e);
+    const found = actionFor(e);
+    // These act where they apply (the message box, the conversation), so focus keys still work elsewhere.
+    const action = found === 'promptHistory' || found === 'toggleSteps' || found === 'cycleMode' ? null : found;
     if (action) {
       e.preventDefault();
       if (action === 'settings') {
         if (!document.querySelector('.modal .settings')) void openSettings();
+      } else if (/^chat[1-9]$/.test(action)) {
+        // The chats in the sidebar, in order.
+        const target = [...document.querySelectorAll<HTMLElement>('.sidebar [data-chat-id]')][Number(action.slice(4)) - 1];
+        if (target?.dataset.chatId) navigate({ kind: 'chat', id: target.dataset.chatId });
       } else if (action === 'search') openSearch();
       else if (action === 'searchAll') openSearchMode();
       else if (action === 'newChat') newChat();
       else if (action === 'sidebar') {
         state.sidebarCollapsed = !state.sidebarCollapsed;
         changed();
-      } else switchMode(action);
+      } else if (action === 'work' || action === 'code' || action === 'agents') switchMode(action);
       return;
     }
     // Zoom the interface: Ctrl+= (or Ctrl++), Ctrl+-, Ctrl+0.
@@ -936,14 +948,6 @@ async function start() {
     if (mod && e.shiftKey && e.key.toLowerCase() === 'o') {
       e.preventDefault();
       newChat();
-    } else if (mod && !e.shiftKey && /^[1-9]$/.test(e.key)) {
-      // Ctrl+1–9: the chats in the sidebar, in order.
-      const links = [...document.querySelectorAll<HTMLElement>('.sidebar [data-chat-id]')];
-      const target = links[Number(e.key) - 1];
-      if (target?.dataset.chatId) {
-        e.preventDefault();
-        navigate({ kind: 'chat', id: target.dataset.chatId });
-      }
     }
   });
 

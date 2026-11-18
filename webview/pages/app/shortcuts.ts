@@ -4,7 +4,7 @@
  * physical key, so Shift+1 stays "1" on every layout. Changes are kept on this device.
  */
 
-export type ShortcutAction = 'settings' | 'search' | 'searchAll' | 'newChat' | 'sidebar' | 'work' | 'code' | 'agents';
+export type ShortcutAction = 'settings' | 'search' | 'searchAll' | 'newChat' | 'sidebar' | 'work' | 'code' | 'agents' | 'promptHistory' | 'toggleSteps' | 'cycleMode' | 'chat1' | 'chat2' | 'chat3' | 'chat4' | 'chat5' | 'chat6' | 'chat7' | 'chat8' | 'chat9';
 
 export const SHORTCUTS: { action: ShortcutAction; label: string; fallback: string }[] = [
   { action: 'search', label: 'Command palette and search', fallback: 'Mod+K' },
@@ -15,6 +15,10 @@ export const SHORTCUTS: { action: ShortcutAction; label: string; fallback: strin
   { action: 'work', label: 'Work', fallback: 'Mod+Shift+1' },
   { action: 'code', label: 'Code', fallback: 'Mod+Shift+2' },
   { action: 'agents', label: 'Agents', fallback: 'Mod+Shift+3' },
+  { action: 'promptHistory', label: 'Search earlier prompts (in the message box)', fallback: 'Mod+R' },
+  { action: 'toggleSteps', label: 'Fold or unfold every activity group', fallback: 'Mod+O' },
+  { action: 'cycleMode', label: 'Next approval mode (in the message box)', fallback: 'Shift+Tab' },
+  ...([1, 2, 3, 4, 5, 6, 7, 8, 9] as const).map((n) => ({ action: `chat${n}` as ShortcutAction, label: `Open chat ${n} in the sidebar`, fallback: `Mod+${n}` })),
 ];
 
 const KEY = 'lumo.shortcuts';
@@ -51,7 +55,7 @@ export function setBinding(action: ShortcutAction, combo: string | null) {
 function keyName(e: KeyboardEvent): string {
   if (/^Key[A-Z]$/.test(e.code)) return e.code.slice(3);
   if (/^Digit\d$/.test(e.code)) return e.code.slice(5);
-  const named: Record<string, string> = { Comma: ',', Period: '.', Slash: '/', Semicolon: ';', Quote: "'", BracketLeft: '[', BracketRight: ']', Backslash: '\\', Minus: '-', Equal: '=', Backquote: '`', Space: 'Space' };
+  const named: Record<string, string> = { Comma: ',', Period: '.', Slash: '/', Semicolon: ';', Quote: "'", BracketLeft: '[', BracketRight: ']', Backslash: '\\', Minus: '-', Equal: '=', Backquote: '`', Space: 'Space', Tab: 'Tab' };
   return named[e.code] ?? (e.key.length === 1 ? e.key.toUpperCase() : e.key);
 }
 

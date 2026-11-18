@@ -73,7 +73,52 @@ function previewDocument(libraryId: string, documentId: string, name: string) {
   });
 }
 
+/** Favourite libraries and documents, and how documents are listed (kept on this device). */
+const FAV_KEY = 'lumo.libraryFavourites';
+const SORT_KEY = 'lumo.librarySort';
+type DocSort = 'favourites' | 'name' | 'newest' | 'largest';
+
+function favourites(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(FAV_KEY) ?? '[]') as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
+function toggleFavourite(id: string) {
+  const all = favourites();
+  if (all.has(id)) all.delete(id);
+  else all.add(id);
+  try {
+    localStorage.setItem(FAV_KEY, JSON.stringify([...all]));
+  } catch {
+    /* this session only */
+  }
+}
+
+function docSort(): DocSort {
+  try {
+    const v = localStorage.getItem(SORT_KEY);
+    return v === 'name' || v === 'newest' || v === 'largest' ? v : 'favourites';
+  } catch {
+    return 'favourites';
+  }
+}
+
+export function sortDocs<T extends { id: string; name: string; chars: number; addedAt: string }>(docs: T[], how: DocSort, favs: Set<string>, filter: string): T[] {
+  const shown = docs.filter((d) => !filter || d.name.toLowerCase().includes(filter.toLowerCase()));
+  const by = {
+    favourites: (a: T, b: T) => Number(favs.has(b.id)) - Number(favs.has(a.id)) || b.addedAt.localeCompare(a.addedAt),
+    name: (a: T, b: T) => a.name.localeCompare(b.name, undefined, { numeric: true }),
+    newest: (a: T, b: T) => b.addedAt.localeCompare(a.addedAt),
+    largest: (a: T, b: T) => b.chars - a.chars,
+  }[how];
+  return [...shown].sort(by);
+}
+
 export class LibrariesPage {
+  private docFilter = '';
   readonly el = h('div', { class: 'page' });
   readonly key = 'page:libraries';
   private libraries: Library[] = [];
@@ -114,7 +159,9 @@ export class LibrariesPage {
     const tabs = h(
       'div',
       { class: 'tabs' },
-      this.libraries.map((l) => h('button', { class: `tab${this.open === l.id ? ' active' : ''}`, on: { click: () => { this.open = l.id; this.render(); } } }, `${l.name} ${l.documents.length}`))
+      [...this.libraries]
+        .sort((a, b) => Number(favourites().has(b.id)) - Number(favourites().has(a.id)))
+        .map((l) => h('button', { class: `tab${this.open === l.id ? ' active' : ''}`, on: { click: () => { this.open = l.id; this.render(); } } }, `${favourites().has(l.id) ? '★ ' : ''}${l.name} ${l.documents.length}`))
     );
     const lib = this.libraries.find((l) => l.id === this.open) ?? this.libraries[0]!;
     const add = h('button', { class: 'btn btn-primary' }, icon('upload', 15), 'Add documents');
@@ -227,7 +274,29 @@ export class LibrariesPage {
           'div',
           { class: 'doc-list' },
           h('div', { class: 'doc-row doc-head' }, selectAll, h('span', { class: 'doc-name muted' }, `${lib.documents.length} documents`), h('span', { class: 'spacer' }), moveSelected, removeSelected),
-          lib.documents.map((d) => {
+          (() => {
+            const filter = h('input', { class: 'input doc-filter', placeholder: 'Filter documents', value: this.docFilter, 'aria-label': 'Filter documents' });
+            filter.addEventListener('change', () => {
+              this.docFilter = filter.value.trim();
+              this.render();
+            });
+            const sort = h(
+              'select',
+              { class: 'input doc-sort', 'aria-label': 'Sort documents' },
+              ...([['favourites', 'Favourites first'], ['newest', 'Newest'], ['name', 'Name'], ['largest', 'Largest']] as const).map(([v, label]) => h('option', { value: v, selected: docSort() === v }, label))
+            );
+            sort.addEventListener('change', () => {
+              try {
+                localStorage.setItem(SORT_KEY, sort.value);
+              } catch {
+                /* this session only */
+              }
+              this.render();
+            });
+            const libFav = h('button', { class: 'btn btn-secondary btn-sm', title: 'Favourite libraries come first', on: { click: () => { toggleFavourite(lib.id); this.render(); } } }, favourites().has(lib.id) ? '★ Favourite' : '☆ Favourite');
+            return h('div', { class: 'doc-row doc-tools' }, filter, sort, h('span', { class: 'spacer' }), libFav);
+          })(),
+          sortDocs(lib.documents, docSort(), favourites(), this.docFilter).map((d) => {
             const box = h('input', { type: 'checkbox', class: 'doc-select' });
             box.addEventListener('change', () => {
               if (box.checked) selected.add(d.id);
@@ -238,6 +307,7 @@ export class LibrariesPage {
               'div',
               { class: 'doc-row' },
               box,
+              h('button', { class: `icon-btn small fav-star${favourites().has(d.id) ? ' on' : ''}`, title: favourites().has(d.id) ? 'Remove from favourites' : 'Add to favourites', on: { click: () => { toggleFavourite(d.id); this.render(); } } }, favourites().has(d.id) ? '★' : '☆'),
               icon('file', 16),
               h('button', { class: 'doc-name link-like', title: 'Preview its text', on: { click: () => previewDocument(lib.id, d.id, d.name) } }, d.name),
               h('span', { class: 'muted' }, size(d.chars)),

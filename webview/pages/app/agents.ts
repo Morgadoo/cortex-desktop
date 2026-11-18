@@ -26,6 +26,25 @@ export async function reloadAgents() {
   changed();
 }
 
+/** Agents pinned to the sidebar's Pinned section (LibreChat's pinned agents), on this device. */
+export function pinnedAgents(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem('lumo.pinnedAgents') ?? '[]') as string[];
+  } catch {
+    return [];
+  }
+}
+
+export function togglePinnedAgent(id: string) {
+  const all = pinnedAgents();
+  const next = all.includes(id) ? all.filter((a) => a !== id) : [...all, id];
+  try {
+    localStorage.setItem('lumo.pinnedAgents', JSON.stringify(next));
+  } catch {
+    /* this session only */
+  }
+}
+
 export function avatar(agent: Agent, size: 'small' | 'large' = 'small'): HTMLElement {
   return h('span', { class: `agent-avatar ${size}` }, agent.avatar || agent.name.charAt(0).toUpperCase());
 }
@@ -394,7 +413,24 @@ export class AgentPage {
     clear(
       this.head,
       h('div', { class: 'agent-title' }, avatar(agent, 'large'), h('div', {}, h('h1', {}, agent.name), h('p', { class: 'muted' }, agent.description))),
-      h('div', { class: 'page-actions' }, exportBtn, edit, chat)
+      h(
+        'div',
+        { class: 'page-actions' },
+        exportBtn,
+        h('button', {
+          class: 'btn btn-secondary',
+          title: 'Pinned agents are in the sidebar, one click from a new chat',
+          on: {
+            click: (e: MouseEvent) => {
+              togglePinnedAgent(agent.id);
+              (e.currentTarget as HTMLElement).replaceChildren(icon('pin', 15), pinnedAgents().includes(agent.id) ? 'Unpin' : 'Pin');
+              changed();
+            },
+          },
+        }, icon('pin', 15), pinnedAgents().includes(agent.id) ? 'Unpin' : 'Pin'),
+        edit,
+        chat
+      )
     );
     const stat = (value: string, label: string) => h('div', { class: 'agent-stat' }, h('strong', {}, value), h('small', { class: 'muted' }, label));
     const s = this.spend;
