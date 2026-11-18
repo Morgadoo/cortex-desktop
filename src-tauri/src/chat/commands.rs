@@ -1127,7 +1127,15 @@ pub fn chat_rewrite_message(app: AppHandle, state: State<'_, ChatState>, id: Str
 pub async fn chat_export_agent(app: AppHandle, id: String) -> Result<bool, String> {
     use tauri_plugin_dialog::DialogExt;
     let dir = config_dir(&app)?;
-    let bundle = super::agents::bundle(&dir, &id)?;
+    let mut bundle = super::agents::bundle(&dir, &id)?;
+    // The tool servers it uses travel with it, without their secrets.
+    let account = crate::account::AccountId::parse(super::LOCAL_ACCOUNT)?;
+    let servers = crate::tools::connectors::load_mcp_servers(&app, &account).unwrap_or_else(|e| {
+        log::warn!("the agent's tool servers could not be read: {e}");
+        Vec::new()
+    });
+    let servers: Vec<serde_json::Value> = servers.into_iter().filter_map(|s| serde_json::to_value(s).ok()).collect();
+    bundle.mcp_servers = super::agents::shareable_mcp_servers(&bundle.agent, servers);
     let (tx, rx) = tokio::sync::oneshot::channel();
     app.dialog()
         .file()
@@ -1162,8 +1170,25 @@ pub async fn chat_import_agent(app: AppHandle) -> Result<Option<String>, String>
     let path = path.into_path().map_err(|e| e.to_string())?;
     let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     let bundle: super::agents::Bundle = serde_json::from_str(&text).map_err(|_| "This file is not an exported agent.".to_string())?;
+    let servers = bundle.mcp_servers.clone();
     let agent = super::agents::install(&config_dir(&app)?, bundle)?;
-    Ok(Some(agent.name))
+    // Its tool servers are added when this computer does not have them yet; their keys are set
+    // under Connectors.
+    let account = crate::account::AccountId::parse(super::LOCAL_ACCOUNT)?;
+    let existing = crate::tools::connectors::load_mcp_servers(&app, &account).unwrap_or_default();
+    let mut added = Vec::new();
+    for value in servers {
+        let Ok(server) = serde_json::from_value::<crate::tools::connectors::McpServerConfig>(value) else { continue };
+        if existing.iter().any(|s| s.id == server.id) {
+            continue;
+        }
+        let name = server.display_name.clone();
+        match crate::tools::commands::save_mcp_server(server, app.clone(), app.state(), app.state()).await {
+            Ok(()) => added.push(name),
+            Err(e) => log::warn!("could not add the agent's tool server {name}: {e}"),
+        }
+    }
+    Ok(Some(if added.is_empty() { agent.name } else { format!("{} (with its tool servers {}; add their keys under Connectors)", agent.name, added.join(", ")) }))
 }
 
 /// Writes a conversation as JSON, every message and tool step included, to a file the user picks.

@@ -78,6 +78,31 @@ pub struct Bundle {
     pub notebook: String,
     #[serde(default)]
     pub skills: Vec<BundledSkill>,
+    /// The MCP tool servers the agent's tool list names, without secrets (environment values
+    /// blanked; keys stay in the keychain they came from).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mcp_servers: Vec<serde_json::Value>,
+}
+
+/// The MCP servers an agent names in its tools (`mcp-<id>`), made safe to share: environment
+/// values are blanked, since a key may have been typed there instead of the keychain.
+pub fn shareable_mcp_servers(agent: &Agent, servers: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
+    let named = |id: &str| {
+        let connector = format!("mcp-{id}");
+        agent.tools.iter().chain(agent.ask_tools.iter()).any(|t| *t == connector || t.starts_with(&format!("{connector}__")))
+    };
+    servers
+        .into_iter()
+        .filter(|s| s.get("id").and_then(serde_json::Value::as_str).is_some_and(named))
+        .map(|mut s| {
+            if let Some(env) = s.get_mut("env").and_then(serde_json::Value::as_object_mut) {
+                for value in env.values_mut() {
+                    *value = serde_json::Value::String(String::new());
+                }
+            }
+            s
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -95,7 +120,7 @@ pub fn bundle(config_dir: &Path, id: &str) -> Result<Bundle, String> {
         .filter(|s| s.origin == "user" && agent.skills.contains(&s.name))
         .map(|s| BundledSkill { name: s.name, description: s.description, body: s.body })
         .collect();
-    Ok(Bundle { format: "lumo-agent".into(), version: 1, notebook: notebook(config_dir, id), skills, agent })
+    Ok(Bundle { format: "lumo-agent".into(), version: 1, notebook: notebook(config_dir, id), skills, agent, mcp_servers: Vec::new() })
 }
 
 /// Adds a bundled agent as a new one; skills of the same name already here are kept as they are.
@@ -443,6 +468,21 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn shared_agents_carry_their_tool_servers_without_secrets() {
+        let mut agent = templates().remove(0);
+        agent.tools = vec!["web_search".into(), "mcp-github".into()];
+        agent.ask_tools = vec!["mcp-linear__create_issue".into()];
+        let servers = vec![
+            serde_json::json!({ "id": "github", "display_name": "GitHub", "transport": "stdio", "command": "npx", "args": ["gh-mcp"], "env": { "GITHUB_TOKEN": "ghp_secret" }, "secret_env": [] }),
+            serde_json::json!({ "id": "linear", "display_name": "Linear", "transport": "http", "url": "https://mcp.linear.app/sse", "auth": { "type": "oauth" } }),
+            serde_json::json!({ "id": "notion", "display_name": "Notion", "transport": "http", "url": "https://mcp.notion.com", "auth": { "type": "none" } }),
+        ];
+        let shared = shareable_mcp_servers(&agent, servers);
+        assert_eq!(shared.iter().map(|s| s["id"].as_str().unwrap()).collect::<Vec<_>>(), ["github", "linear"], "only the servers it uses");
+        assert_eq!(shared[0]["env"]["GITHUB_TOKEN"], "", "values typed into env are not shared");
+    }
 
     #[test]
     fn agents_save_and_restrict_tools() {
