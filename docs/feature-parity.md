@@ -18,7 +18,7 @@ against the 5 that survived), and Mistral's documentation: docs.mistral.ai/vibe,
 | Vibe | Here | Status |
 |---|---|---|
 | Sidebar toggle, back / forward, search | Same; search is Ctrl+K over conversations | Done |
-| Hamburger app menu (top left) | The OS menu bar and tray carry these actions | Adapted |
+| Hamburger app menu (top left) | The menu button at the top left: new chat, search, search everything, settings, what's new, check for updates, about and quit (the tray carries the same). Verified live | Done |
 | Work / Code switch | Work / Code / **Agents**: a third mode for the agent workforce (openbot, grok-bot) | Done + extra |
 | New chat, Apps (Preview), Context, Scheduled | Same, with Context opening Skills, Agents, Knowledge, Connectors, Libraries, Workflows, Instructions | Done |
 | Projects, Conversations | Same; projects have an icon, tone, files and shared-chat context | Done |
@@ -210,7 +210,7 @@ items most likely to differ:
 | Custom MCP connector: name, Server URL, description; auth detected (none, Bearer/Basic, OAuth 2.1 with dynamic registration) | Same | Done |
 | Work Desktop: `+` → Folders → Add a folder, Remove all | Folders in the + menu | Done |
 | Code Desktop right panel: Files, Git Changes, Terminal, Debug, Background processes; diff Unified / Split | Files (filter, read with line numbers), Changes with Unified / Split, Terminal with background processes, and Debug (model, folder, tokens, summary, every message's raw JSON, copy) | Done |
-| Integrated browser with "Open in external browser?" | Links open in the system browser | Adapted |
+| Integrated browser with "Open in external browser?" | Settings → General → Open links in Lumo's browser: links from answers open in a Lumo window whose Page menu has Back, Forward, Reload, Copy link and Open in external browser; off, a link asks before opening in the system browser. The pages get no access to the app. Verified live (docs.rs opened, a link followed, Back) | Done |
 
 ## The inspiration apps
 
