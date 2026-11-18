@@ -13,10 +13,10 @@ import { button, emptyState, iconButton, modalHeader, pageHeader, switchInput, t
 // Skills
 
 /** Editor for a new or existing skill. A built-in skill opens as a copy the user can customize. */
-export function editSkill(skill: Skill | null, onSaved: (skills: Skill[]) => void): Promise<void> {
+export function editSkill(skill: Skill | null, onSaved: (skills: Skill[]) => void, draft = false): Promise<void> {
   return modal((close) => {
     const builtin = skill?.origin === 'builtin';
-    const name = h('input', { class: 'input', value: skill?.name ?? '', placeholder: 'weekly-report', disabled: Boolean(skill && !builtin) });
+    const name = h('input', { class: 'input', value: skill?.name ?? '', placeholder: 'weekly-report', disabled: Boolean(skill && !builtin && !draft) });
     const description = h('textarea', { class: 'input textarea short', rows: 2, placeholder: 'When should the assistant use this skill? e.g. “Use when the user asks for the Friday status report.”' });
     description.value = skill?.description ?? '';
     const body = h('textarea', { class: 'input textarea mono', rows: 14, placeholder: 'Step-by-step instructions the assistant follows when the skill applies.' });
@@ -26,14 +26,14 @@ export function editSkill(skill: Skill | null, onSaved: (skills: Skill[]) => voi
       try {
         const slug = name.value.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
         onSaved(await api.saveSkill(slug, description.value, body.value));
-        toast(builtin ? `Your copy of ${slug} replaces the built-in one.` : 'Skill saved.');
+        toast(builtin ? `Your copy of ${slug} replaces the built-in one.` : draft ? `Skill saved. Call it with /${slug}, or the assistant uses it when a request matches.` : 'Skill saved.');
         close();
       } catch (e) {
         error.textContent = String(e);
       }
     };
     const remove =
-      skill && !builtin
+      skill && !builtin && !draft
         ? h('button', {
             class: 'btn btn-danger',
             on: {
@@ -47,7 +47,7 @@ export function editSkill(skill: Skill | null, onSaved: (skills: Skill[]) => voi
         : null;
     // Earlier versions of the user's own skill, newest first, each restorable.
     const historyBtn =
-      skill && !builtin
+      skill && !builtin && !draft
         ? h('button', {
             class: 'btn btn-secondary',
             on: {
@@ -81,7 +81,7 @@ export function editSkill(skill: Skill | null, onSaved: (skills: Skill[]) => voi
     return h(
       'div',
       { class: 'dialog-small wide skill-editor' },
-      modalHeader(skill ? (builtin ? `Customize ${skill.name}` : `Edit ${skill.name}`) : 'New skill', close, { flush: true }),
+      modalHeader(draft ? 'Review the recorded skill' : skill ? (builtin ? `Customize ${skill.name}` : `Edit ${skill.name}`) : 'New skill', close, { flush: true }),
       builtin ? h('p', { class: 'hint' }, 'Built-in skills are read-only. Saving creates your own copy with the same name, which takes its place.') : null,
       h('label', { class: 'field-label' }, 'Name'),
       name,
@@ -264,6 +264,7 @@ export class SkillsPage {
         )
       );
     });
+    const record = button({ variant: 'secondary', icon: 'play', label: 'Record a task', title: 'Do a task once while Lumo watches; it becomes a skill you review', onClick: () => void recordTask() });
     const create = h('button', { class: 'btn btn-primary' }, icon('plus', 16), 'New skill');
     create.addEventListener('click', () => void editSkill(null, (skills) => this.set(skills)));
     const search = h('input', { class: 'input', placeholder: 'Search skills' });
@@ -272,7 +273,7 @@ export class SkillsPage {
       this.render();
     });
     this.el.append(
-      pageHeader('Skills', 'Instructions the assistant can reuse. Set them up once and it applies them when a request matches, or call one with /name.', importBtn, create),
+      pageHeader('Skills', 'Instructions the assistant can reuse. Set them up once and it applies them when a request matches, or call one with /name.', importBtn, record, create),
       this.tabs,
       h('div', { class: 'toolbar' }, h('div', { class: 'search-wrap' }, icon('search', 16), search)),
       this.list
@@ -588,4 +589,65 @@ export class KnowledgePage {
   }
 
   update() {}
+}
+
+/**
+ * Teach a task by recording (OpenBot): Lumo steps aside while the user does the task once; a
+ * Recording pill keeps time and stops it. Screenshots are taken when the screen changes, never
+ * keystrokes; see src-tauri/src/chat/recorder.rs.
+ */
+export async function recordTask() {
+  const ok = await confirmDialog(
+    'Record a task?',
+    'Lumo will step aside and take a screenshot whenever your screen changes, with the name of the window in front (never what you type). Do the task once, then press Stop on the Recording pill. Close anything private first: the screenshots go to your chosen model to write the skill, and are dropped afterwards.',
+    'Start recording',
+    false
+  );
+  if (!ok) return;
+  try {
+    await tauriInvoke('chat_record_start');
+  } catch (e) {
+    toast(String(e), 'error');
+  }
+}
+
+/** After Stop: what the task was, then the model's draft to review and save. */
+export function reviewRecording(status: { seconds: number; steps: number }) {
+  void modal((close) => {
+    const minutes = `${Math.floor(status.seconds / 60)}:${String(status.seconds % 60).padStart(2, '0')}`;
+    const note = h('textarea', { class: 'input textarea short', rows: 3, placeholder: 'What was the task, and anything to know? e.g. “Export last month’s invoices as PDF and email them to accounting.”' });
+    const error = h('p', { class: 'error-text' });
+    const discard = async () => {
+      await tauriInvoke('chat_record_discard').catch(() => undefined);
+      close();
+    };
+    const go = button({
+      variant: 'primary',
+      icon: 'sparkle',
+      label: 'Write the skill',
+      onClick: async () => {
+        if (!state.model) return void (error.textContent = 'Choose a model that reads images first.');
+        clear(error, h('span', { class: 'dots' }), ` ${state.model} is looking at the steps…`);
+        try {
+          const draft = await tauriInvoke<{ name: string; description: string; body: string }>('chat_record_draft', { model: state.model, note: note.value });
+          close();
+          void editSkill({ ...draft, origin: 'user' } as Skill, (skills) => {
+            state.skills = skills;
+          }, true);
+        } catch (e) {
+          error.textContent = String(e);
+        }
+      },
+    });
+    return h(
+      'div',
+      { class: 'dialog-small' },
+      modalHeader('Turn the recording into a skill', () => void discard(), { flush: true }),
+      h('p', { class: 'muted' }, status.steps ? `${status.steps} steps seen in ${minutes}.` : 'Nothing changed on screen while recording, so there is nothing to learn from. Try again.'),
+      h('label', { class: 'field-label' }, 'What was the task? (optional, helps the model)'),
+      note,
+      error,
+      h('div', { class: 'dialog-actions' }, button({ variant: 'secondary', label: 'Discard', onClick: () => void discard() }), status.steps ? go : null)
+    );
+  });
 }

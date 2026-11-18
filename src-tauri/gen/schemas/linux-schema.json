@@ -987,6 +987,12 @@
           "markdownDescription": "Opens a folder picker dialog."
         },
         {
+          "description": "The Recording pill shown while a task is recorded: its time, and Stop or Cancel.",
+          "type": "string",
+          "const": "allow-recorder-pill",
+          "markdownDescription": "The Recording pill shown while a task is recorded: its time, and Stop or Cancel."
+        },
+        {
           "description": "Registers run-scoped connector permissions for an accepted schedule run.",
           "type": "string",
           "const": "allow-register-schedule-execution-context",

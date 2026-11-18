@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 136 |
+| DONE | 58 | 137 |
 | PARTIAL | 86 | 54 |
-| MISSING | 48 | 2 |
+| MISSING | 48 | 1 |
 | OUT OF SCOPE | 31 | 31 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9 · LibreChat 34 / 8 / 0 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 15 / 6 / 0 / 5 · Osaurus 13 / 12 / 1 / 4 · OpenBot 19 / 9 / 1 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9 · LibreChat 34 / 8 / 0 / 4 · LobeHub 18 / 11 / 0 / 5 · Onyx 15 / 6 / 0 / 5 · Osaurus 13 / 12 / 1 / 4 · OpenBot 20 / 9 / 0 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -223,7 +223,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 37 / 8 / 0 / 9
 | OpenBot | Browser control, profiles | PARTIAL | PARTIAL | Missing: an app browser the agent drives, profiles |
 | OpenBot | Computer use | MISSING | DONE | parity L288 |
 | OpenBot | Routines: schedule or webhook | PARTIAL | DONE | parity L291, L196 |
-| OpenBot | Teach a task by recording | MISSING | MISSING |  |
+| OpenBot | Teach a task by recording | MISSING | DONE | parity: Teach a task by recording (`recorder.rs`, `record.ts`; Skills → Record a task). Verified live: a terminal task (cd, mkdir reports, date +%F > reports/today.txt, ls, cat) was recorded as 10 steps in 25 s with Lumo out of the way and the Recording pill on top; from the screenshots alone, the model drafted a skill with the right steps and checks, which was reviewed and saved as SKILL.md |
 | OpenBot | Agents learn from work into skills | PARTIAL | PARTIAL | Notebook and `save_skill` (parity L250, L62). Missing: learning without being asked |
 | OpenBot | Earlier-message lookup | MISSING | DONE | parity L271 |
 | OpenBot | Marketplace | MISSING | OUT OF SCOPE | Shared marketplaces (parity L217) |

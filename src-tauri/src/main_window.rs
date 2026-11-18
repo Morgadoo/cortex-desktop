@@ -154,7 +154,7 @@ pub fn show(app_handle: &AppHandle) -> Result<(), String> {
 }
 
 /// Closing the window keeps Lumo running in the tray; on macOS the Dock icon goes with it.
-fn hide(app_handle: &AppHandle) {
+pub(crate) fn hide(app_handle: &AppHandle) {
     let Some(window) = app_handle.get_window(LABEL) else {
         return;
     };

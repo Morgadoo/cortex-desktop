@@ -410,7 +410,7 @@ export function promptText(title: string, value = '', placeholder = ''): Promise
   }).then(() => result);
 }
 
-export function confirmDialog(title: string, body: string, action = 'Delete'): Promise<boolean> {
+export function confirmDialog(title: string, body: string, action = 'Delete', danger = true): Promise<boolean> {
   let ok = false;
   return modal((close) =>
     h(
@@ -422,7 +422,7 @@ export function confirmDialog(title: string, body: string, action = 'Delete'): P
         'div',
         { class: 'dialog-actions' },
         h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'),
-        h('button', { class: 'btn btn-danger', on: { click: () => { ok = true; close(); } } }, action)
+        h('button', { class: danger ? 'btn btn-danger' : 'btn btn-primary', on: { click: () => { ok = true; close(); } } }, action)
       )
     )
   ).then(() => ok);

@@ -194,6 +194,11 @@ pub fn run() {
             chat::commands::chat_sync_now,
             chat::commands::chat_ui_languages,
             chat::commands::chat_show_window,
+            chat::commands::chat_record_start,
+            chat::commands::chat_record_status,
+            chat::commands::chat_record_stop,
+            chat::commands::chat_record_draft,
+            chat::commands::chat_record_discard,
             chat::commands::chat_ui_translations,
             chat::commands::chat_ui_coverage,
             chat::commands::chat_translate_ui,
@@ -315,6 +320,7 @@ pub fn run() {
             app.manage(updater::UpdateState::default());
             app.manage(downloads::Downloads::default());
             app.manage(crate::dictation::Dictation::default());
+            app.manage(chat::recorder::Recorder::default());
             // First line of every launch: the log appends across sessions, and a bug report is
             // only useful with the version and platform it came from.
             info!(

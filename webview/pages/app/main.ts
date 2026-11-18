@@ -12,7 +12,7 @@ import { clear, h, icon, modal, popover, promptText, confirmDialog, toast } from
 import { startUiLanguage } from './i18n';
 import { startWakeWord, stopWakeWord, wakePrefs } from './wakeword';
 import { ConnectorsPage, PlaceholderPage, openInstructions } from './pages';
-import { KnowledgePage, SkillsPage } from './context';
+import { KnowledgePage, SkillsPage, reviewRecording } from './context';
 import { AgentPage, AgentsPage, avatar, editAgent, newAgent, reloadAgents } from './agents';
 import { TasksPage } from './tasks';
 import { LibrariesPage } from './libraries';
@@ -896,6 +896,8 @@ async function start() {
     stopWakeWord();
     if (wakePrefs().enabled) void startWake();
   });
+  // A task recording was stopped from its pill: turn it into a skill.
+  void listen<{ seconds: number; steps: number }>('chat://recorded', (status) => reviewRecording(status));
   // Background sync brought changes from another device.
   void listen<string>('chat://synced', (summary) => {
     window.dispatchEvent(new Event('chat:conversations-changed'));

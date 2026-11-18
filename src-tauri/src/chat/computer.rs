@@ -249,7 +249,7 @@ async fn wayland_act(action: &str, at: Option<(i64, i64)>, input: &Value) -> Res
 }
 
 /// The screen as PNG bytes.
-async fn capture() -> Result<Vec<u8>, String> {
+pub(crate) async fn capture() -> Result<Vec<u8>, String> {
     if cfg!(target_os = "macos") {
         let path = std::env::temp_dir().join(format!("lumo-screen-{}.png", uuid::Uuid::new_v4().simple()));
         let p = path.to_string_lossy().into_owned();
