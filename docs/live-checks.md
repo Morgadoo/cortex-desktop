@@ -39,7 +39,7 @@ account. Note what you see; if a step fails, Settings → General → Error repo
 ## Video generation
 
 1. Settings → Providers: add a provider with video models, e.g. xAI with an API key.
-2. Settings → Providers → Images and voice: set the video model (e.g. `xai/grok-imagine-video`).
+2. Settings → Providers → Images, video and voice: set the video model (e.g. `xai/grok-imagine-video`).
 3. In a chat: "Make a 5-second clip of waves at sunset."
    Expected: progress, then a playable video in the reply and in Outputs.
 
