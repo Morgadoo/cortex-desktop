@@ -1071,8 +1071,13 @@ pub async fn chat_read_article(url: String) -> Result<super::reader::Article, St
 
 /// Shares a page (a conversation, an app) at a link on this computer's network.
 #[tauri::command]
-pub async fn chat_share_link(app: AppHandle, title: String, html: String, is_app: Option<bool>) -> Result<super::share::SharedLink, String> {
-    super::share::share(&config_dir(&app)?, &title, &html, is_app.unwrap_or(false)).await
+pub async fn chat_share_link(app: AppHandle, title: String, html: String, is_app: Option<bool>, expires_hours: Option<u32>) -> Result<super::share::SharedLink, String> {
+    super::share::share(&config_dir(&app)?, &title, &html, is_app.unwrap_or(false), expires_hours).await
+}
+
+#[tauri::command]
+pub fn chat_set_share_expiry(app: AppHandle, token: String, hours: Option<u32>) -> Result<Option<chrono::DateTime<chrono::Utc>>, String> {
+    super::share::set_expiry(&config_dir(&app)?, &token, hours)
 }
 
 #[tauri::command]

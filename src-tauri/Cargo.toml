@@ -36,6 +36,8 @@ tokio = { version = "1.43.0", features = ["rt-multi-thread", "macros", "sync", "
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"] }
 # The built-in model runtime: chat models (GGUF) and Whisper run in-process, in pure Rust.
+# QR codes for share links.
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 candle-core = "0.11"
 candle-nn = "0.11"
 candle-transformers = "0.11"

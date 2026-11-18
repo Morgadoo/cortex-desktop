@@ -37,6 +37,15 @@ pub struct Share {
     /// An app (its script runs) rather than a conversation page.
     #[serde(default)]
     pub app: bool,
+    /// When the link stops working by itself; never when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+impl Share {
+    pub fn expired(&self, now: chrono::DateTime<chrono::Utc>) -> bool {
+        self.expires_at.is_some_and(|e| e <= now)
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -48,6 +57,16 @@ pub struct SharedLink {
     pub url: String,
     /// The same page on this computer.
     pub local_url: String,
+    /// The link as a QR code (SVG), for a phone to open.
+    pub qr_svg: String,
+}
+
+/// `text` as a QR code, an SVG image.
+pub fn qr_svg(text: &str) -> String {
+    match qrcode::QrCode::new(text.as_bytes()) {
+        Ok(code) => code.render::<qrcode::render::svg::Color>().min_dimensions(180, 180).quiet_zone(true).dark_color(qrcode::render::svg::Color("#000000")).light_color(qrcode::render::svg::Color("#ffffff")).build(),
+        Err(_) => String::new(),
+    }
 }
 
 fn dir(config_dir: &Path) -> PathBuf {
@@ -85,7 +104,8 @@ pub fn lan_address() -> IpAddr {
 fn link(share: Share, port: u16) -> SharedLink {
     let url = format!("http://{}:{port}/s/{}", lan_address(), share.token);
     let local_url = format!("http://127.0.0.1:{port}/s/{}", share.token);
-    SharedLink { share, url, local_url }
+    let qr_svg = qr_svg(&url);
+    SharedLink { share, url, local_url, qr_svg }
 }
 
 /// The port the share server listens on, once started.
@@ -120,7 +140,7 @@ async fn page(State(config_dir): State<PathBuf>, UrlPath(token): UrlPath<String>
         return not_found();
     }
     let mut shares = list(&config_dir);
-    let Some(share) = shares.iter_mut().find(|s| s.token == token) else { return not_found() };
+    let Some(share) = shares.iter_mut().find(|s| s.token == token && !s.expired(chrono::Utc::now())) else { return not_found() };
     let Ok(html) = crate::chat::at_rest::read_to_string(dir(&config_dir).join(format!("{token}.html"))) else { return not_found() };
     share.views += 1;
     let csp = if share.app { APP_CSP } else { CSP };
@@ -140,7 +160,7 @@ async fn page(State(config_dir): State<PathBuf>, UrlPath(token): UrlPath<String>
 }
 
 /// Shares `html` under a new link.
-pub async fn share(config_dir: &Path, title: &str, html: &str, app: bool) -> Result<SharedLink, String> {
+pub async fn share(config_dir: &Path, title: &str, html: &str, app: bool, expires_hours: Option<u32>) -> Result<SharedLink, String> {
     if html.len() > 64 * 1024 * 1024 {
         return Err("That is too large to share as one page.".into());
     }
@@ -149,7 +169,9 @@ pub async fn share(config_dir: &Path, title: &str, html: &str, app: bool) -> Res
     let token: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
     std::fs::create_dir_all(dir(config_dir)).map_err(|e| e.to_string())?;
     crate::chat::at_rest::write(dir(config_dir).join(format!("{token}.html")), html).map_err(|e| e.to_string())?;
-    let share = Share { token, title: title.trim().chars().take(200).collect(), created_at: chrono::Utc::now(), views: 0, app };
+    let now = chrono::Utc::now();
+    let expires_at = expires_hours.filter(|h| *h > 0).map(|h| now + chrono::Duration::hours(i64::from(h)));
+    let share = Share { token, title: title.trim().chars().take(200).collect(), created_at: now, views: 0, app, expires_at };
     let mut shares = list(config_dir);
     shares.insert(0, share.clone());
     write_list(config_dir, &shares)?;
@@ -158,6 +180,11 @@ pub async fn share(config_dir: &Path, title: &str, html: &str, app: bool) -> Res
 }
 
 pub async fn links(config_dir: &Path) -> Vec<SharedLink> {
+    // Expired links are taken down for good.
+    let now = chrono::Utc::now();
+    for s in list(config_dir).into_iter().filter(|s| s.expired(now)) {
+        let _ = stop(config_dir, &s.token);
+    }
     let shares = list(config_dir);
     if shares.is_empty() {
         return Vec::new();
@@ -177,6 +204,16 @@ pub fn stop(config_dir: &Path, token: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Sets when a link stops working (`None` or 0: never).
+pub fn set_expiry(config_dir: &Path, token: &str, hours: Option<u32>) -> Result<Option<chrono::DateTime<chrono::Utc>>, String> {
+    let mut shares = list(config_dir);
+    let share = shares.iter_mut().find(|s| s.token == token).ok_or("No such share.")?;
+    share.expires_at = hours.filter(|h| *h > 0).map(|h| chrono::Utc::now() + chrono::Duration::hours(i64::from(h)));
+    let at = share.expires_at;
+    write_list(config_dir, &shares)?;
+    Ok(at)
+}
+
 /// At start: serve what is still shared.
 pub fn start(app: &tauri::AppHandle) {
     let Ok(config_dir) = crate::settings::get_config_dir(app) else { return };
@@ -192,6 +229,17 @@ pub fn start(app: &tauri::AppHandle) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn links_expire_and_have_a_qr_code() {
+        let now = chrono::Utc::now();
+        let mut s = Share { token: "0".repeat(32), title: "t".into(), created_at: now, views: 0, app: false, expires_at: None };
+        assert!(!s.expired(now));
+        s.expires_at = Some(now - chrono::Duration::minutes(1));
+        assert!(s.expired(now));
+        let svg = qr_svg("http://192.168.1.20:8485/s/0123456789abcdef0123456789abcdef");
+        assert!(svg.starts_with("<?xml") && svg.contains("<svg") && svg.contains("#000000"));
+    }
+
     use super::*;
 
     #[test]
@@ -205,14 +253,14 @@ mod tests {
     #[tokio::test]
     async fn a_shared_page_is_served_until_stopped() {
         let dir = tempfile::tempdir().unwrap();
-        let shared = share(dir.path(), "Trip plan", "<h1>Porto</h1>", false).await.unwrap();
+        let shared = share(dir.path(), "Trip plan", "<h1>Porto</h1>", false, None).await.unwrap();
         assert!(shared.url.contains(&shared.share.token) && shared.local_url.starts_with("http://127.0.0.1:"));
         let body = reqwest::get(&shared.local_url).await.unwrap();
         assert_eq!(body.status(), 200);
         assert!(body.headers()["content-security-policy"].to_str().unwrap().contains("default-src 'none'"));
         assert_eq!(body.text().await.unwrap(), "<h1>Porto</h1>");
         assert_eq!(list(dir.path())[0].views, 1);
-        let app = share(dir.path(), "Counter", "<script>1</script>", true).await.unwrap();
+        let app = share(dir.path(), "Counter", "<script>1</script>", true, None).await.unwrap();
         let csp = reqwest::get(&app.local_url).await.unwrap().headers()["content-security-policy"].to_str().unwrap().to_string();
         assert!(csp.contains("script-src 'unsafe-inline'") && csp.contains("connect-src 'none'"));
         let base = shared.local_url.rsplit_once("/s/").unwrap().0;

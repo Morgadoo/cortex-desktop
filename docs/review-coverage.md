@@ -8,13 +8,13 @@ platform-only features, explained there under "deliberately left out".
 
 | Status | At the re-audit | Now |
 |---|---|---|
-| DONE | 58 | 196 |
+| DONE | 58 | 200 |
 | PARTIAL | 86 | 0 |
 | MISSING | 48 | 1 |
-| OUT OF SCOPE | 31 | 26 |
+| OUT OF SCOPE | 31 | 22 |
 | **Total** | **223** | **223** |
 
-Per app now (done / partial / missing / out of scope): Open WebUI 48 / 0 / 0 / 6 · LibreChat 42 / 0 / 0 / 4 · LobeHub 30 / 0 / 0 / 4 · Onyx 22 / 0 / 0 / 4 · Osaurus 25 / 0 / 1 / 4 · OpenBot 29 / 0 / 0 / 4.
+Per app now (done / partial / missing / out of scope): Open WebUI 49 / 0 / 0 / 5 · LibreChat 43 / 0 / 0 / 3 · LobeHub 31 / 0 / 0 / 3 · Onyx 23 / 0 / 0 / 3 · Osaurus 25 / 0 / 1 / 4 · OpenBot 29 / 0 / 0 / 4.
 
 | App | Feature | Was | Now | Evidence, or what is missing |
 |---|---|---|---|---|
@@ -64,7 +64,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 48 / 0 / 0 / 6
 | Open WebUI | Models search past chats | PARTIAL | DONE | parity L271 (`search_chats`, `read_chat`) |
 | Open WebUI | Reference chats | MISSING | DONE | parity L285 |
 | Open WebUI | Sidebar hover previews | MISSING | DONE | parity L281; main.ts:212–215 |
-| Open WebUI | Chat sharing links | MISSING | OUT OF SCOPE | Hosted links are server-only; the local equivalent "Share as web page" exists (parity L202) |
+| Open WebUI | Chat sharing links | MISSING | DONE | Share → Share a link: the conversation as a read-only page served by Lumo at http://<this computer>:8485/s/<128-bit token>, with a QR code, an expiry (never, 1 hour to 30 days), view counts and Stop sharing; Settings → Profile lists links. Reaches the local network, not the internet (no server). Verified live: link served, expiry set, an expired link refused (404) |
 | Open WebUI | Comments | MISSING | OUT OF SCOPE | Team feature (parity L217) |
 | Open WebUI | Data controls: uploaded-file management | PARTIAL | DONE | Archive, trash, export (parity L308), and Uploaded files in Settings → Profile: every file and image sent in any chat, filterable, with Open chat and Remove (the message keeps a note in its place) (uploads.rs). Verified live |
 | Open WebUI | Notes: rich editor with toolbar | PARTIAL | DONE | Canvas document editor: a formatting toolbar (bold, italic, strikethrough, code, H1–H3, lists, checklist, quote, link, table, code block) with Ctrl+B / Ctrl+I / Ctrl+K, undoable, toggling off what is already applied (`mdformat.ts`, checked by npm run check:i18n) |
@@ -106,7 +106,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 48 / 0 / 0 / 6
 | LibreChat | Filter and sort chats | MISSING | DONE | Filter by tag, time, unread, scheduled runs; sort four ways (parity: Filter and group the chat list) |
 | LibreChat | Mark as unread | PARTIAL | DONE | parity L276; chat.ts:2811 |
 | LibreChat | Chat options incl. duplicate | PARTIAL | DONE | Rename, move, branch, archive, delete (chat.ts:2790–2831); "Branch into a new chat" copies the whole chat (commands.rs:1655) |
-| LibreChat | Shareable links / QR | MISSING | OUT OF SCOPE | Server-only; local "Share as web page" (parity L202) |
+| LibreChat | Shareable links / QR | MISSING | DONE | Share links with a QR code for a phone on the same network, an expiry and Stop sharing; QR also from Settings → Profile → Shared links. Local network only. Verified live |
 | LibreChat | Temporary by default | PARTIAL | DONE | parity L281 |
 | LibreChat | Import from apps; export in several formats | PARTIAL | DONE | Import ChatGPT and Claude (parity L262); export Markdown, JSON (L297), web page (L202), everything (L264) |
 | LibreChat | Query parameters | MISSING | DONE | `lumo://new?prompt=…&model=…` (parity: Links into the app) |
@@ -147,7 +147,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 48 / 0 / 0 / 6
 | LobeHub | Open in new tab, right panel, new window | MISSING | DONE | Apps and canvases in the right panel or their own window; any chat opens in a window of its own from its menu (chat_open_chat_window), sidebar folded, both windows streaming the same chat. Verified live |
 | LobeHub | Duplicate, move, forward to another agent | MISSING | DONE | Branch (duplicate), move to project, Continue with an agent (parity: Continue a chat with an agent) |
 | LobeHub | Export as screenshot, text, PDF, JSON | PARTIAL | DONE | Markdown, JSON, PDF (print) and Export as image: the conversation drawn as one PNG in the current theme (chatimage.ts, chat_save_bytes). Verified live: a long briefing saved as a 1720×2020 PNG |
-| LobeHub | Share link | MISSING | OUT OF SCOPE | Server-only (parity L202) |
+| LobeHub | Share link | MISSING | DONE | Share → Share a link (local network), with QR code, expiry and view counts. Verified live |
 | LobeHub | Memory categories, weight, confidence, links | MISSING | DONE | parity: Memory categories, importance, confidence, links (memory.rs `Filing`) |
 | LobeHub | Filter memories | PARTIAL | DONE | Find, by source and by date (parity: Filter saved facts) |
 | LobeHub | Memory agent | PARTIAL | DONE | sanitize-my-knowledge skill (parity L60), and Review my knowledge weekly (Knowledge page): a background review of saved facts and knowledge pages leaves its proposals in an unread chat, changing nothing until the user answers (learning.rs). Verified live |
@@ -169,7 +169,7 @@ Per app now (done / partial / missing / out of scope): Open WebUI 48 / 0 / 0 / 6
 | Onyx | Cited vs found sources; add one in full | PARTIAL | DONE | Sources panel lists Cited, then Also found (search results the answer did not use); + attaches the page's full article text to the next message (chat.ts sourcesOf/openSourcesPanel). Verified live |
 | Onyx | Web search providers | PARTIAL | DONE | parity L294 |
 | Onyx | Document sets | PARTIAL | DONE | Libraries per project (`Project.libraryId`) and per agent (agent editor → Libraries, `Agent.libraries`, searched before answering) |
-| Onyx | Share a Craft app | MISSING | OUT OF SCOPE | Server-only (parity L202) |
+| Onyx | Share a Craft app | MISSING | DONE | An app's share button gives a link (its script runs, no network access), with QR code and expiry. Local network only. Verified live for conversations; apps use the same server and are covered by tests |
 | Onyx | Auto-send on pause | PARTIAL | DONE | parity L236 |
 | Onyx | Read, then listen again | PARTIAL | DONE | parity L236 |
 | Onyx | Collaboration | MISSING | OUT OF SCOPE | Team (parity L217) |

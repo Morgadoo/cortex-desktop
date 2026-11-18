@@ -212,6 +212,7 @@ pub fn run() {
             chat::commands::chat_usage_breakdown,
             chat::commands::chat_task_comment,
             chat::commands::chat_open_preview,
+            chat::commands::chat_set_share_expiry,
             chat::commands::chat_functions,
             chat::commands::chat_save_function,
             chat::commands::chat_delete_function,

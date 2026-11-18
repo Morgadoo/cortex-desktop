@@ -1837,3 +1837,7 @@ video.output-thumb { object-fit: cover; background: #000; }
 .local-progress { position: relative; }
 .local-progress-bar { height: 6px; border-radius: 3px; background: var(--accent, #7c5cff); min-width: 2px; flex: none; max-width: 85%; }
 .chip-ok { display: inline-flex; align-items: center; gap: 4px; color: var(--success, #3fb950); font-size: var(--fs-sm); }
+.share-body { display: flex; gap: 16px; align-items: flex-start; margin: 4px 0 8px; }
+.share-qr { flex: none; border-radius: 8px; background: #fff; padding: 4px; }
+.share-fields { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+@media (max-width: 520px) { .share-body { flex-direction: column; align-items: center; } }

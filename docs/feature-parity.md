@@ -222,7 +222,7 @@ items most likely to differ:
 Reviewed in November 2026 feature by feature against the docs of Open WebUI, LibreChat, LobeHub,
 Onyx, Osaurus and OpenBot (about 220 features). Every item of the review's shortlist is in the table
 below; every feature the review found missing or partial is tracked row by row, with evidence, in
-[review-coverage.md](review-coverage.md) (now 196 done, 0 partial, 1 missing, 26 out of scope).
+[review-coverage.md](review-coverage.md) (now 200 done, 0 partial, 1 missing, 22 out of scope).
 What was deliberately left out, and why:
 
 - **Team and enterprise features** (channels, comments, SSO, SCIM, tenants, admin plane, shared
@@ -412,6 +412,7 @@ What was deliberately left out, and why:
 | Chats and files as tabs, split panes | open-webui | The side panel holds tabs for apps, canvases, sources, Outputs, workspace files (Markdown, CSV as a table, text, images) and other chats (chat menu → Open beside this chat, kept up to date while it runs, with Swap). The split button shows two tabs side by side. Verified live | Done |
 | Built-in models (no install, offline) | osaurus, LM Studio, openbot.run | Settings → Providers → Built-in models: Qwen 2.5 (0.5B–7B) and Llama 3.2 (1B, 3B) chat models and Whisper (tiny to large-v3-turbo) run inside Lumo with candle, Hugging Face's pure-Rust runtime. Downloaded once from Hugging Face with progress and cancel, then offline. Chat models show in the model menu under Built-in (through an OpenAI-compatible endpoint on 127.0.0.1, so streaming works as for any provider; they get a short brief and no tools). Whisper is the Built-in speech-to-text engine for the microphone, audio attachments and dictation anywhere. Verified live: Qwen 0.5B answered in chat, Whisper tiny transcribed a recording word for word | Done |
 | Functions: filters and pipes | open-webui (Functions), onyx (custom code for PII and query rejection) | Settings → Permissions → Functions. A filter (Python, JavaScript or Bash) sees each message before it is sent and each answer before it is kept, and prints the new text, nothing, or `{"block": "why"}`; a refused message shows as Not sent with the reason. A pipe is a model made of code, in the model menu under Your functions. Both run in the code sandbox, with a Test button in the editor. Verified live: an email redacted, a customer number refused, an answer rewritten, a pipe answering | Done |
+| Share links with QR code and expiry | open-webui, LibreChat, lobehub, onyx | Share → Share a link serves a read-only page (or an app, which cannot reach the network) at `http://<this computer>:8485/s/<random token>`, with a QR code for a phone, an expiry (never, 1 hour to 30 days), view counts and Stop sharing. It reaches the same network, not the internet, since Lumo runs no server. Verified live, expiry included | Done |
 
 ## Built for years of use
 
@@ -454,4 +455,5 @@ What is not here, and why. Everything else in the Vibe tables is built and was r
 - **Pull requests on unknown hosts:** a host that is not recognised and prints no link during the
   push gets the branch pushed, and the pull request is opened there by hand.
 - **Built-in model speed:** built-in models run on the processor (no GPU or Metal yet). On this 4-core test machine the 0.5B chat model read about 7 prompt tokens and wrote about 8 tokens a second, and Whisper tiny transcribed 11 seconds of speech in 3 seconds; a recent laptop is faster, and larger models are slower.
+- **Share links** reach people on the same network while Lumo runs; a link anyone on the internet can open would need a server, which Lumo does not run. "Share as web page" gives a file that can be sent anywhere.
 - **Branding:** the app keeps the Lumo name and logo, as the owner chose.
