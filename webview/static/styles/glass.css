@@ -27,6 +27,12 @@ html[data-material="glass"] :is(.menu, .flyout, .modal, .sticky-prompt, .questio
   backdrop-filter: var(--glass-blur);
   box-shadow: inset 0 1px 0 var(--glass-rim-top), inset 0 0 0 1px var(--glass-rim), var(--glass-shadow);
 }
+/* A dialog sits inside .modal-backdrop, which already blurs the page; WebKitGTK draws no blur at
+   all when backdrop-filters nest, so the dialog keeps its tint and rim but not a second blur. */
+html[data-material="glass"] .modal-backdrop > .modal {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
 html[data-material="glass"] .composer-box {
   background: var(--glass-tint-input) !important;
   -webkit-backdrop-filter: var(--glass-blur);
