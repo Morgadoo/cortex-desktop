@@ -26,17 +26,8 @@ attribute vec2 aPos;
 void main() { gl_Position = vec4(aPos, 0.0, 1.0); }
 `;
 
-const FRAGMENT = `
-precision highp float;
-uniform vec2 uRes;
-uniform float uTime;
-uniform float uLevel;
-uniform float uSwirl;
-uniform float uDim;
-uniform vec3 uColor;
-
-const float PI = 3.14159265359;
-
+/** Value noise, fBm and ACES tone mapping, shared by the orb and the Nebula backdrop. */
+export const GLSL_NOISE = `
 float hash(vec3 p) {
   p = fract(p * 0.3183099 + vec3(0.1, 0.2, 0.3));
   p *= 17.0;
@@ -62,6 +53,22 @@ float fbm(vec3 p) {
   return v;
 }
 
+vec3 aces(vec3 x) {
+  return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+}
+`;
+
+const FRAGMENT = `
+precision highp float;
+uniform vec2 uRes;
+uniform float uTime;
+uniform float uLevel;
+uniform float uSwirl;
+uniform float uDim;
+uniform vec3 uColor;
+
+const float PI = 3.14159265359;
+${GLSL_NOISE}
 vec3 rotY(vec3 v, float a) {
   float c = cos(a), s = sin(a);
   return vec3(c * v.x + s * v.z, v.y, -s * v.x + c * v.z);
@@ -79,10 +86,6 @@ vec3 env(vec3 d) {
   float clouds = fbm(d * 2.6 + vec3(0.0, 0.0, uTime * 0.05 * uSwirl));
   col += uColor * smoothstep(0.45, 0.85, clouds) * 0.9;
   return col;
-}
-
-vec3 aces(vec3 x) {
-  return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
 }
 
 void main() {
@@ -155,7 +158,7 @@ export function setOrbColor(c: OrbColor) {
 }
 
 /** A CSS colour as 0–1 RGB: hex read directly, anything else resolved through the page. */
-function parseColor(css: string): [number, number, number] | null {
+export function parseColor(css: string): [number, number, number] | null {
   const v = css.trim();
   const hex = v.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)?.[1];
   if (hex) {
@@ -194,12 +197,19 @@ function compile(gl: WebGLRenderingContext, type: number, source: string): WebGL
   return shader;
 }
 
-/** Draws the orb into `canvas`, sized to its box; null where WebGL is not available. */
-export function createGlowOrb(canvas: HTMLCanvasElement): GlowOrb | null {
-  const gl = canvas.getContext('webgl', { alpha: true, premultipliedAlpha: true, antialias: false }) as WebGLRenderingContext | null;
+/**
+ * A WebGL context on `canvas` running `fragment` over one full-canvas quad (drawn with
+ * `gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)`); null where WebGL or the shader is not available.
+ */
+export function fullCanvasProgram(
+  canvas: HTMLCanvasElement,
+  fragment: string,
+  options: WebGLContextAttributes
+): { gl: WebGLRenderingContext; program: WebGLProgram } | null {
+  const gl = canvas.getContext('webgl', options) as WebGLRenderingContext | null;
   if (!gl) return null;
   const vs = compile(gl, gl.VERTEX_SHADER, VERTEX);
-  const fs = compile(gl, gl.FRAGMENT_SHADER, FRAGMENT);
+  const fs = compile(gl, gl.FRAGMENT_SHADER, fragment);
   if (!vs || !fs) return null;
   const program = gl.createProgram()!;
   gl.attachShader(program, vs);
@@ -213,6 +223,14 @@ export function createGlowOrb(canvas: HTMLCanvasElement): GlowOrb | null {
   const aPos = gl.getAttribLocation(program, 'aPos');
   gl.enableVertexAttribArray(aPos);
   gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+  return { gl, program };
+}
+
+/** Draws the orb into `canvas`, sized to its box; null where WebGL is not available. */
+export function createGlowOrb(canvas: HTMLCanvasElement): GlowOrb | null {
+  const setup = fullCanvasProgram(canvas, FRAGMENT, { alpha: true, premultipliedAlpha: true, antialias: false });
+  if (!setup) return null;
+  const { gl, program } = setup;
   const u = (name: string) => gl.getUniformLocation(program, name);
   const uRes = u('uRes');
   const uTime = u('uTime');

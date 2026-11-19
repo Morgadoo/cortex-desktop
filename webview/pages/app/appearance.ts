@@ -5,6 +5,7 @@
  */
 
 import { tauriInvoke } from '../../shared/tauri';
+import { createShaderBackdrop, renderShaderPreview, type ShaderBackdrop } from './backdropgl';
 
 export interface AccentPreset {
   id: string;
@@ -175,6 +176,7 @@ export function applyAppearance() {
   ];
   for (const [name, value] of set) root.style.setProperty(name, value);
   applyReadability(root, dark, surface.borderStrong);
+  shaderBackdrop?.recolor();
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -263,14 +265,77 @@ export function setBackground(id: string) {
 // ---------------------------------------------------------------------------------------------
 // Backdrop (OpenBot): a picture behind the conversation, under a veil that keeps text readable.
 
-export const BACKDROPS: { id: string; label: string; css: string }[] = [
+/** `shader` backdrops are drawn live with WebGL (backdropgl.ts); their `css` is only the tile's preview. */
+export const BACKDROPS: { id: string; label: string; css: string; shader?: boolean }[] = [
   { id: 'none', label: 'None', css: '' },
   { id: 'liquid', label: 'Liquid', css: 'radial-gradient(900px 640px at 12% 8%, rgba(120,90,255,.55), transparent 62%), radial-gradient(800px 600px at 92% 18%, rgba(0,190,255,.42), transparent 60%), radial-gradient(900px 700px at 70% 100%, rgba(255,90,160,.40), transparent 62%), radial-gradient(700px 520px at 5% 95%, rgba(255,170,60,.35), transparent 60%)' },
   { id: 'dusk', label: 'Dusk', css: 'radial-gradient(1200px 700px at 15% 10%, rgba(139,109,255,.35), transparent 60%), radial-gradient(900px 600px at 90% 90%, rgba(255,120,90,.28), transparent 60%)' },
   { id: 'aurora', label: 'Aurora', css: 'radial-gradient(1000px 600px at 80% 0%, rgba(52,211,153,.30), transparent 60%), radial-gradient(900px 700px at 0% 100%, rgba(56,132,255,.30), transparent 60%)' },
   { id: 'paper', label: 'Paper', css: 'repeating-linear-gradient(0deg, rgba(127,127,127,.06) 0 1px, transparent 1px 28px), repeating-linear-gradient(90deg, rgba(127,127,127,.06) 0 1px, transparent 1px 28px)' },
+  { id: 'nebula', label: 'Nebula', shader: true, css: 'radial-gradient(60% 70% at 25% 30%, rgba(120,90,255,.55), transparent 70%), radial-gradient(55% 60% at 75% 70%, rgba(204,41,5,.45), transparent 70%), radial-gradient(50% 55% at 70% 20%, rgba(5,115,122,.45), transparent 70%)' },
   { id: 'custom', label: 'Your picture', css: '' },
 ];
+
+/** The window the presets' pixel sizes were drawn for; a tile shows them at this proportion. */
+const PREVIEW_WINDOW = { width: 1280, height: 800 };
+
+/**
+ * The CSS background of a backdrop's tile in Settings: the backdrop in miniature, as it would sit
+ * behind a whole window. Gradient sizes become shares of the window, the paper's grid shrinks, the
+ * Nebula is a still frame of its shader, and your picture shows under its veil. Empty for none,
+ * and for your picture before one is chosen.
+ */
+export function backdropPreview(id: string): string {
+  const preset = BACKDROPS.find((b) => b.id === id);
+  if (!preset) return '';
+  if (preset.shader) {
+    const url = renderShaderPreview(340, 136);
+    return url ? `url("${url}") center / cover no-repeat` : preset.css;
+  }
+  if (id === 'custom') {
+    const image = read(BACKDROP_IMAGE_KEY);
+    if (!image) return '';
+    const veil = `color-mix(in srgb, var(--bg) ${Math.round(backdropVeil() * 100)}%, transparent)`;
+    return `linear-gradient(${veil}, ${veil}), url("${image}") center / cover no-repeat`;
+  }
+  return (
+    preset.css
+      // "900px 640px at": the ellipse's radii, as shares of the window.
+      .replace(/(\d+(?:\.\d+)?)px (\d+(?:\.\d+)?)px at/g, (_, w: string, hgt: string) =>
+        `${((Number(w) / PREVIEW_WINDOW.width) * 100).toFixed(1)}% ${((Number(hgt) / PREVIEW_WINDOW.height) * 100).toFixed(1)}% at`)
+      // A repeating pattern's spacing ("transparent 1px 28px"), shrunk with the window.
+      .replace(/transparent 1px (\d+)px/g, (_, gap: string) => `transparent 1px ${Math.max(4, Math.round(Number(gap) * 0.22))}px`)
+  );
+}
+
+/** The live canvas of a shader backdrop, kept across view changes; see `backdropLayer`. */
+let shaderCanvas: HTMLCanvasElement | null = null;
+let shaderBackdrop: ShaderBackdrop | null = null;
+
+/** The element `main` must keep as its first child while a shader backdrop is on, or null. */
+export function backdropLayer(): HTMLCanvasElement | null {
+  return shaderCanvas;
+}
+
+function setShaderBackdrop(main: HTMLElement, on: boolean) {
+  if (!on) {
+    shaderBackdrop?.destroy();
+    shaderBackdrop = null;
+    shaderCanvas?.remove();
+    shaderCanvas = null;
+    return;
+  }
+  if (!shaderCanvas) {
+    const canvas = document.createElement('canvas');
+    canvas.className = 'backdrop-canvas';
+    canvas.setAttribute('aria-hidden', 'true');
+    shaderBackdrop = createShaderBackdrop(canvas);
+    // Without WebGL the page's own background stays.
+    if (!shaderBackdrop) return;
+    shaderCanvas = canvas;
+  }
+  if (shaderCanvas.parentElement !== main) main.prepend(shaderCanvas);
+}
 
 const BACKDROP_KEY = 'lumo.backdrop';
 const BACKDROP_IMAGE_KEY = 'lumo.backdropImage';
@@ -292,9 +357,11 @@ export function applyBackdrop() {
   if (!main) return;
   const id = storedBackdrop();
   const image = id === 'custom' ? read(BACKDROP_IMAGE_KEY) : null;
-  const layer = id === 'custom' ? (image ? `url("${image}") center / cover no-repeat` : '') : (BACKDROPS.find((b) => b.id === id)?.css ?? '');
+  const preset = BACKDROPS.find((b) => b.id === id);
+  const layer = id === 'custom' ? (image ? `url("${image}") center / cover no-repeat` : '') : preset?.shader ? '' : (preset?.css ?? '');
   document.documentElement.dataset.material = storedMaterial();
-  main.classList.toggle('has-backdrop', Boolean(layer));
+  setShaderBackdrop(main, Boolean(preset?.shader));
+  main.classList.toggle('has-backdrop', Boolean(layer) || Boolean(shaderBackdrop));
   main.style.setProperty('--backdrop', layer || 'none');
   main.style.setProperty('--backdrop-veil', String(id === 'custom' ? backdropVeil() : 0));
 }

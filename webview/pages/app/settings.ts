@@ -10,7 +10,7 @@ import { SHORTCUTS, bindingFor, comboOf, display, setBinding } from './shortcuts
 import { EMOJI_STYLES, emojiStatus, emojiStyle, onEmojiStatus, setEmojiStyle, type EmojiStatus, type EmojiStyle } from './fluent';
 import { uploadsCard } from './uploads';
 import { setMaterial, storedMaterial, type Material } from './appearance';
-import { ACCENTS, BACKDROPS, BACKGROUNDS, backdropVeil, setBackdrop, setBackdropImage, setBackdropVeil, storedBackdrop, TEXT_SIZES, ZOOMS, accentHex, applyAppearance, readability, setAccent, setBackground, setReadability, storedAccent, storedBackground, type TextSize } from './appearance';
+import { ACCENTS, BACKDROPS, BACKGROUNDS, backdropPreview, backdropVeil, setBackdrop, setBackdropImage, setBackdropVeil, storedBackdrop, TEXT_SIZES, ZOOMS, accentHex, applyAppearance, readability, setAccent, setBackground, setReadability, storedAccent, storedBackground, type TextSize } from './appearance';
 import { setVoicePauseMs, voicePauseMs } from './dictation';
 import { setWakePrefs, wakePrefs } from './wakeword';
 import { setVimEnabled, vimEnabled } from './vim';
@@ -2418,18 +2418,35 @@ function renderAppearance(content: HTMLElement) {
     });
     input.click();
   };
-  const backdropTiles = BACKDROPS.map((b) =>
-    h(
+  const backdropTiles = BACKDROPS.map((b) => {
+    const preview = backdropPreview(b.id);
+    const empty = b.id === 'custom' && !preview;
+    return h(
       'button',
       {
         type: 'button',
         class: `bg-tile${backdrop === b.id ? ' active' : ''}`,
+        'aria-pressed': String(backdrop === b.id),
         on: { click: () => { if (b.id === 'custom') pick(); else { setBackdrop(b.id); rerender(); } } },
       },
-      h('span', { class: 'bg-thumb backdrop-thumb', style: { background: b.id === 'custom' ? 'var(--bg-input)' : `${b.css ? `${b.css}, ` : ''}var(--bg)` } }, b.id === 'custom' ? icon('upload', 18) : null),
+      // The backdrop in miniature in a sketch of the window: beside the sidebar (it fills only the
+      // main area, as in the app), under the glass message box and a reply bubble.
+      h(
+        'span',
+        { class: 'bg-thumb backdrop-thumb', style: { background: empty ? 'var(--bg-input)' : 'var(--bg)' } },
+        empty
+          ? icon('upload', 18)
+          : [
+              preview ? h('span', { class: 'backdrop-thumb-main', style: { background: preview } }) : null,
+              h('span', { class: 'bg-thumb-side', style: { background: 'var(--bg-sidebar)' } }),
+              h('span', { class: 'bg-thumb-card backdrop-thumb-glass' }),
+              h('span', { class: 'bg-thumb-bubble', style: { background: 'var(--bg-bubble)' } }),
+            ],
+        b.id === 'custom' && !empty ? h('span', { class: 'backdrop-thumb-change' }, icon('upload', 14)) : null
+      ),
       h('span', { class: 'bg-label' }, b.label, backdrop === b.id ? icon('check', 14) : null)
-    )
-  );
+    );
+  });
   const veil = h('input', { type: 'range', min: '0', max: '0.95', step: '0.05', value: String(backdropVeil()) });
   veil.addEventListener('input', () => setBackdropVeil(Number(veil.value)));
   content.append(

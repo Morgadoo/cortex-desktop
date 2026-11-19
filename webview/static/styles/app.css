@@ -1554,7 +1554,15 @@ button.usage-meter:hover { background: var(--hover); }
 .main.has-backdrop::after{content:"";position:absolute;inset:0;background:var(--bg);opacity:var(--backdrop-veil,0);z-index:0;pointer-events:none}
 .main.has-backdrop > *{position:relative;z-index:1}
 .main.has-backdrop .chat, .main.has-backdrop .home, .main.has-backdrop .chat-scroll{background:transparent}
-.backdrop-thumb{display:flex;align-items:center;justify-content:center;color:var(--text-muted)}
+/* A live shader backdrop (backdropgl.ts): drawn at half size and stretched, under the content. */
+.main.has-backdrop > canvas.backdrop-canvas{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;display:block}
+.backdrop-thumb{display:flex;align-items:center;justify-content:center;color:var(--text-muted);height:76px}
+.backdrop-thumb-main{position:absolute;inset:0 0 0 28%}
+/* The message box in a backdrop tile's sketch: tinted glass, so the backdrop shows through it. */
+.backdrop-thumb-glass{top:auto;bottom:24px;height:16px;background:color-mix(in srgb,var(--bg-elevated) 70%,transparent);border-color:color-mix(in srgb,var(--border-strong) 80%,transparent)}
+.backdrop-thumb .bg-thumb-bubble{left:36%;right:auto;top:12px;bottom:auto;width:30%;height:8px;opacity:.9}
+/* "Your picture" with a picture chosen: a small badge says a click changes it. */
+.backdrop-thumb-change{position:absolute;right:5px;top:5px;display:grid;place-items:center;width:22px;height:22px;border-radius:6px;background:color-mix(in srgb,var(--bg-elevated) 80%,transparent);color:var(--text)}
 /* An agent's chat in its avatar's colour (OpenBot): the bubbles and the answer edge. */
 .chat.agent-tinted .turn-user .bubble{background:hsl(var(--agent-hue) 55% 50% / .22);border:1px solid hsl(var(--agent-hue) 60% 55% / .35)}
 .chat.agent-tinted .turn-assistant{border-left:2px solid hsl(var(--agent-hue) 60% 55% / .45);padding-left:14px}

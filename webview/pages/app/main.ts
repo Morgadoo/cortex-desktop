@@ -21,7 +21,7 @@ import { ResourcesPage } from './outputs';
 import { ChatsPage } from './chatspage';
 import { WorkflowsPage } from './workflows';
 import { applyTheme, openSettings, reloadModels, setTheme, storedTheme } from './settings';
-import { stepZoom, applyBackdrop } from './appearance';
+import { stepZoom, applyBackdrop, backdropLayer } from './appearance';
 import { applyEvent, back, changed, finishNotificationsOn, finishSoundOn, forward, navigate, playChime, state, subscribe, type Page } from './state';
 import { button, emptyState, iconButton, modalHeader } from './ui';
 import { startFluentEmoji } from './fluent';
@@ -101,7 +101,8 @@ function renderMain() {
     viewCache.home = home;
     view = home;
   }
-  clear(main, view.el);
+  // A shader backdrop's canvas stays across views, so its WebGL context is not rebuilt.
+  clear(main, backdropLayer(), view.el);
 }
 
 // ---------------------------------------------------------------------------------------------
