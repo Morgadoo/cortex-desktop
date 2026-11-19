@@ -109,28 +109,38 @@ pub(crate) fn allow_microphone(window: &WebviewWindow) {
     use webkit2gtk::glib::prelude::*;
     use webkit2gtk::{PermissionRequestExt, UserMediaPermissionRequestExt, WebViewExt as _};
 
-    if let Err(e) = window.with_webview(|webview| {
+    // Under `tauri dev` the page comes from the CLI's own server, not from tauri://localhost.
+    let dev_url = window.config().build.dev_url.clone();
+    if let Err(e) = window.with_webview(move |webview| {
         // getUserMedia only exists with media streams on, which WebKitGTK leaves off.
         if let Some(settings) = webview.inner().settings() {
             use webkit2gtk::SettingsExt as _;
             settings.set_enable_media_stream(true);
         }
-        webview.inner().connect_permission_request(|view, request| {
-            let Some(media) = request.downcast_ref::<webkit2gtk::UserMediaPermissionRequest>()
-            else {
-                return false;
-            };
-            let on_web_app = view
-                .uri()
-                .and_then(|uri| uri.parse::<url::Url>().ok())
-                .is_some_and(|url| crate::microphone::is_allowed(&url));
-            if on_web_app && media.is_for_audio_device() && !media.is_for_video_device() {
-                media.allow();
-            } else {
-                media.deny();
-            }
-            true
-        });
+        webview
+            .inner()
+            .connect_permission_request(move |view, request| {
+                let Some(media) = request.downcast_ref::<webkit2gtk::UserMediaPermissionRequest>()
+                else {
+                    return false;
+                };
+                let on_web_app = view
+                    .uri()
+                    .and_then(|uri| uri.parse::<url::Url>().ok())
+                    .is_some_and(|url| crate::microphone::is_allowed_in(&url, dev_url.as_ref()));
+                if on_web_app && media.is_for_audio_device() && !media.is_for_video_device() {
+                    media.allow();
+                } else {
+                    warn!(
+                        "refused a media capture request from {:?} (audio {}, video {})",
+                        view.uri(),
+                        media.is_for_audio_device(),
+                        media.is_for_video_device()
+                    );
+                    media.deny();
+                }
+                true
+            });
     }) {
         warn!("could not hook microphone permissions: {e}");
     }

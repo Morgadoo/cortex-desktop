@@ -14,6 +14,16 @@ pub fn is_allowed(url: &url::Url) -> bool {
     hosted || (!crate::HOSTED_WEB_APP && is_app_page(url))
 }
 
+/// Like `is_allowed`, also allowing the page as `tauri dev` serves it: from its own server
+/// (`build.devUrl`, `http://127.0.0.1:1430` when the CLI serves the built page itself), in debug
+/// builds only, and only that exact origin.
+pub fn is_allowed_in(url: &url::Url, dev_url: Option<&url::Url>) -> bool {
+    is_allowed(url)
+        || (cfg!(debug_assertions)
+            && !crate::HOSTED_WEB_APP
+            && dev_url.is_some_and(|dev| dev.origin() == url.origin()))
+}
+
 /// The app's own bundled page: `tauri://localhost` on macOS and Linux, `http://tauri.localhost`
 /// on Windows.
 fn is_app_page(url: &url::Url) -> bool {
@@ -173,5 +183,21 @@ mod tests {
         assert!(!is_allowed(&url("lumoapp://localhost/app-id")));
         assert!(!is_allowed(&url("http://lumoapp.localhost/app-id")));
         assert!(!is_allowed(&url("http://tauri.localhost:8080/")));
+    }
+
+    #[test]
+    fn the_dev_server_page_may_dictate_in_debug_builds_only() {
+        let url = |s: &str| s.parse::<url::Url>().unwrap();
+        let dev = url("http://127.0.0.1:1430");
+        assert_eq!(
+            super::is_allowed_in(&url("http://127.0.0.1:1430/"), Some(&dev)),
+            cfg!(debug_assertions) && !crate::HOSTED_WEB_APP
+        );
+        // Another local server, or no dev server at all, is not the app's page.
+        assert!(!super::is_allowed_in(
+            &url("http://127.0.0.1:8000/"),
+            Some(&dev)
+        ));
+        assert!(!super::is_allowed_in(&url("http://127.0.0.1:1430/"), None));
     }
 }
