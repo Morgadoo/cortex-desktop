@@ -20,6 +20,10 @@ pub struct Learning {
     pub review_knowledge: bool,
     pub skills_from_work: bool,
     pub last_review: Option<DateTime<Utc>>,
+    /// Run the user's eval suites once a day and say when a score drops. Off by default: every
+    /// case costs model calls.
+    pub nightly_evals: bool,
+    pub last_evals: Option<DateTime<Utc>>,
 }
 
 fn path(config_dir: &Path) -> PathBuf {
@@ -35,6 +39,20 @@ pub fn load(config_dir: &Path) -> Learning {
 
 pub fn save(config_dir: &Path, learning: &Learning) -> Result<(), String> {
     write_json(&path(config_dir), learning)
+}
+
+/// Whether the daily eval run is due (turned on, and a day since the last); marks it started.
+pub fn take_evals(config_dir: &Path, now: DateTime<Utc>) -> bool {
+    let mut learning = load(config_dir);
+    if !learning.nightly_evals
+        || learning
+            .last_evals
+            .is_some_and(|t| now - t < Duration::days(1))
+    {
+        return false;
+    }
+    learning.last_evals = Some(now);
+    save(config_dir, &learning).is_ok()
 }
 
 /// Whether the weekly review is due; marks it started when it is.
@@ -136,6 +154,15 @@ pub fn keep(config_dir: &Path, agent: &str, skill: &LearnedSkill) -> Result<(), 
         skill.body
     );
     super::skills::save(config_dir, &skill.name, &skill.description, &body)?;
+    // A candidate until the user turns it on (and, with evals, until it measures up).
+    super::traces::register(
+        config_dir,
+        "skill",
+        &skill.name,
+        Some(&super::traces::hash(&body)),
+        Some(agent),
+        "candidate",
+    );
     super::skills::set_enabled(config_dir, &skill.name, false)
 }
 
@@ -191,5 +218,28 @@ mod tests {
             &existing
         )
         .contains("\"weekly-report\""));
+    }
+}
+
+#[cfg(test)]
+mod nightly_tests {
+    use super::*;
+
+    #[test]
+    fn nightly_evals_are_off_until_turned_on_and_then_daily() {
+        let dir = tempfile::tempdir().unwrap();
+        let now = Utc::now();
+        assert!(!take_evals(dir.path(), now));
+        save(
+            dir.path(),
+            &Learning {
+                nightly_evals: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(take_evals(dir.path(), now));
+        assert!(!take_evals(dir.path(), now + Duration::hours(3)));
+        assert!(take_evals(dir.path(), now + Duration::hours(25)));
     }
 }

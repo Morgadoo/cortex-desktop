@@ -132,6 +132,23 @@ pub fn program_for(language: &str, code: &str, args: &Value) -> String {
     }
 }
 
+/// A JavaScript tool that uses nothing outside the language (no Node modules, process or files).
+pub fn runs_in_wasm(tool: &CustomTool) -> bool {
+    tool.language == "javascript"
+        && ![
+            "require(",
+            "import ",
+            "import(",
+            "process.",
+            "__dirname",
+            "Deno.",
+            "Bun.",
+            "fetch(",
+        ]
+        .iter()
+        .any(|needle| tool.code.contains(needle))
+}
+
 /// Runs a tool in the sandbox; returns what it printed, or why it failed.
 pub async fn run(
     config_dir: &Path,
@@ -143,6 +160,21 @@ pub async fn run(
         .into_iter()
         .find(|t| t.name == name)
         .ok_or("That tool was removed.")?;
+    // JavaScript that needs nothing from Node runs in the WebAssembly sandbox, which works the same
+    // on every system; what it prints is its result. Anything else keeps the process sandbox.
+    if runs_in_wasm(&tool) {
+        let (result, _) = super::script_tools::sandbox::run(
+            &program(&tool, args),
+            "{}",
+            &Default::default(),
+            Default::default(),
+            None,
+        )
+        .await;
+        return result
+            .map(|out| out.trim().to_string())
+            .map_err(|e| format!("The tool failed: {e}"));
+    }
     let outcome = super::sandbox::run(
         config_dir,
         conversation_id,
@@ -274,5 +306,40 @@ mod tests {
             .await
             .unwrap_err()
             .contains("bad input"));
+    }
+}
+
+#[cfg(test)]
+mod wasm_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn plain_javascript_tools_run_in_the_wasm_sandbox() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = CustomTool {
+            name: "shout".into(),
+            description: "Upper-cases a text.".into(),
+            parameters: json!({ "type": "object", "properties": { "text": { "type": "string" } } }),
+            language: "javascript".into(),
+            code: "console.log(args.text.toUpperCase());".into(),
+            enabled: true,
+        };
+        assert!(runs_in_wasm(&tool));
+        save(dir.path(), &tool).unwrap();
+        assert_eq!(
+            run(dir.path(), "conv", "shout", &json!({ "text": "hi" }))
+                .await
+                .unwrap(),
+            "HI"
+        );
+        let node = CustomTool {
+            code: "const fs = require('fs'); console.log(1);".into(),
+            ..tool.clone()
+        };
+        assert!(!runs_in_wasm(&node));
+        assert!(!runs_in_wasm(&CustomTool {
+            language: "python".into(),
+            ..tool
+        }));
     }
 }

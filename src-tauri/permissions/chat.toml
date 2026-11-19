@@ -59,6 +59,31 @@ description = "Delete a conversation."
 commands.allow = ["chat_delete_conversation"]
 
 [[permission]]
+identifier = "allow-chat-revoke-tool"
+description = "Take back the network and file access of a tool the assistant wrote."
+commands.allow = ["chat_revoke_tool"]
+
+[[permission]]
+identifier = "allow-chat-version-diff"
+description = "Show what changed between two saved versions of an item."
+commands.allow = ["chat_version_diff"]
+
+[[permission]]
+identifier = "allow-chat-signal"
+description = "Record what the user did with an answer (copied it), as a signal in the run trace."
+commands.allow = ["chat_signal"]
+
+[[permission]]
+identifier = "allow-chat-artifacts"
+description = "List what the assistant made for itself (skills, script tools) and how it is used."
+commands.allow = ["chat_artifacts"]
+
+[[permission]]
+identifier = "allow-chat-set-artifact-critical"
+description = "Mark an artifact critical, so it is never retired for disuse."
+commands.allow = ["chat_set_artifact_critical"]
+
+[[permission]]
 identifier = "allow-chat-list-projects"
 description = "List projects."
 commands.allow = ["chat_list_projects"]

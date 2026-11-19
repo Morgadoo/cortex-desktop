@@ -1229,26 +1229,7 @@ pub fn passages(text: &str) -> Vec<String> {
 }
 
 /// Lowercased words without accents, so "regulação" matches "regulacao".
-pub fn tokens(text: &str) -> Vec<String> {
-    text.split(|c: char| !c.is_alphanumeric())
-        .filter(|w| w.chars().count() > 1)
-        .map(|w| {
-            w.to_lowercase()
-                .chars()
-                .map(|c| match c {
-                    'á' | 'à' | 'â' | 'ã' | 'ä' => 'a',
-                    'é' | 'è' | 'ê' | 'ë' => 'e',
-                    'í' | 'ì' | 'î' | 'ï' => 'i',
-                    'ó' | 'ò' | 'ô' | 'õ' | 'ö' => 'o',
-                    'ú' | 'ù' | 'û' | 'ü' => 'u',
-                    'ç' => 'c',
-                    'ñ' => 'n',
-                    other => other,
-                })
-                .collect()
-        })
-        .collect()
-}
+pub use super::retrieval::tokens;
 
 /// BM25 over the passages of the given libraries (all when `only` is empty).
 pub fn search(config_dir: &Path, only: &[String], query: &str, k: usize) -> Vec<Passage> {
@@ -1261,10 +1242,9 @@ pub fn search(config_dir: &Path, only: &[String], query: &str, k: usize) -> Vec<
         document: String,
         passage: usize,
         text: String,
-        terms: HashMap<String, f64>,
-        len: f64,
     }
     let mut docs = Vec::new();
+    let mut words = Vec::new();
     for library in list(config_dir)
         .into_iter()
         .filter(|l| only.is_empty() || only.contains(&l.id))
@@ -1279,60 +1259,29 @@ pub fn search(config_dir: &Path, only: &[String], query: &str, k: usize) -> Vec<
                 continue;
             };
             for (i, passage) in passages(&text).into_iter().enumerate() {
-                let words = tokens(&passage);
-                let mut terms = HashMap::new();
-                for w in &words {
-                    *terms.entry(w.clone()).or_insert(0.0) += 1.0;
-                }
+                words.push(tokens(&passage));
                 docs.push(Doc {
                     library: library.name.clone(),
                     document: document.name.clone(),
                     passage: i,
                     text: passage,
-                    len: words.len() as f64,
-                    terms,
                 });
             }
         }
     }
-    if docs.is_empty() {
-        return Vec::new();
-    }
-    let n = docs.len() as f64;
-    let avg = docs.iter().map(|d| d.len).sum::<f64>() / n;
-    let (k1, b) = (1.5, 0.75);
-    let idf: HashMap<&str, f64> = query_terms
-        .iter()
-        .map(|t| {
-            let df = docs.iter().filter(|d| d.terms.contains_key(t)).count() as f64;
-            (t.as_str(), ((n - df + 0.5) / (df + 0.5) + 1.0).ln())
-        })
-        .collect();
-    let mut scored: Vec<(f64, &Doc)> = docs
-        .iter()
-        .map(|d| {
-            let score = query_terms
-                .iter()
-                .map(|t| {
-                    let tf = d.terms.get(t).copied().unwrap_or(0.0);
-                    idf[t.as_str()] * tf * (k1 + 1.0)
-                        / (tf + k1 * (1.0 - b + b * d.len / avg.max(1.0)))
-                })
-                .sum::<f64>();
-            (score, d)
-        })
-        .filter(|(s, _)| *s > 0.0)
-        .collect();
-    scored.sort_by(|a, b| b.0.total_cmp(&a.0));
-    scored
+    super::retrieval::Corpus::new(words)
+        .rank(&query_terms)
         .into_iter()
         .take(k)
-        .map(|(score, d)| Passage {
-            library: d.library.clone(),
-            document: d.document.clone(),
-            passage: d.passage,
-            text: d.text.clone(),
-            score: (score * 100.0).round() / 100.0,
+        .map(|(i, score)| {
+            let d = &docs[i];
+            Passage {
+                library: d.library.clone(),
+                document: d.document.clone(),
+                passage: d.passage,
+                text: d.text.clone(),
+                score: (score * 100.0).round() / 100.0,
+            }
         })
         .collect()
 }
@@ -1661,14 +1610,6 @@ mod tests {
         assert!(parts.len() >= 4);
         assert!(parts.iter().all(|p| p.chars().count() <= PASSAGE));
         assert_eq!(passages("short").len(), 1);
-    }
-
-    #[test]
-    fn tokens_ignore_case_and_accents() {
-        assert_eq!(
-            tokens("Regulação da ERSE, 2026!"),
-            ["regulacao", "da", "erse", "2026"]
-        );
     }
 
     #[test]

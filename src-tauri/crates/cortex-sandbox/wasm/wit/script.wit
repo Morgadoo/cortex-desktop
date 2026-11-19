@@ -1,0 +1,25 @@
+package cortex:script@0.1.0;
+
+/// Everything a script tool can ask the host for. Each function is checked against the tool's
+/// capabilities; a tool with none can only compute.
+interface host {
+  record response {
+    status: u16,
+    body: list<u8>,
+  }
+
+  log: func(msg: string);
+  http-request: func(method: string, url: string, body: option<list<u8>>) -> result<response, string>;
+  workspace-read: func(path: string) -> result<list<u8>, string>;
+  /// Calls another approved tool by name with JSON arguments; its JSON result comes back.
+  call-tool: func(name: string, args: string) -> result<string, string>;
+}
+
+/// An interpreter for tools the assistant writes: it runs a script that defines
+/// `function main(args)`, with JSON arguments, and returns the result as JSON. A script without
+/// `main` runs as a program, and what it prints with `console.log` or `print` is the result.
+world script-tool {
+  import host;
+
+  export run: func(script: string, args: string) -> result<string, string>;
+}

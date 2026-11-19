@@ -14,15 +14,18 @@
 use std::io::{BufRead as _, Write as _};
 use std::path::Path;
 
-use futures::StreamExt;
-use rig_core::completion::message::{ToolResultContent, UserContent};
-use rig_core::completion::{CompletionRequest, Message};
-use rig_core::streaming::{Item, StreamEvent};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
+use rig_core::completion::message::UserContent;
+use rig_core::completion::Message;
 
 use super::builtins;
-use super::engine::Speed;
+use super::engine::{ChatEvent, Speed, TurnRequest};
+use super::host::Host;
 use super::store::{self, Conversation};
-use super::tools::ChatTool;
+use super::tools::{ApprovalMode, ChatTool};
+use crate::tools::registry::ApprovalDecision;
 
 const MAX_STEPS: usize = 8;
 
@@ -193,13 +196,10 @@ async fn run(model_arg: Option<String>, resume: Option<String>) -> i32 {
             return 1;
         }
     };
-    let mut model = match super::engine::connect_model(&config_dir, &reference).await {
-        Ok(m) => m,
-        Err(e) => {
-            eprintln!("cortex: {e}");
-            return 1;
-        }
-    };
+    if let Err(e) = super::engine::connect_model(&config_dir, &reference).await {
+        eprintln!("cortex: {e}");
+        return 1;
+    }
     let mut speed = Speed::Fast;
     let mut use_tools = true;
     println!("Cortex · {reference} · /help for commands, /exit to leave");
@@ -225,8 +225,7 @@ async fn run(model_arg: Option<String>, resume: Option<String>) -> i32 {
                 Command::Model(None) => println!("{reference}"),
                 Command::Model(Some(r)) => {
                     match super::engine::connect_model(&config_dir, &r).await {
-                        Ok(m) => {
-                            model = m;
+                        Ok(_) => {
                             reference = r;
                             println!("Now using {reference}.");
                         }
@@ -287,137 +286,169 @@ async fn run(model_arg: Option<String>, resume: Option<String>) -> i32 {
                 .collect();
         }
         conversation.model = Some(reference.clone());
-        conversation.messages.push(Message::user(line.clone()));
-        conversation
-            .times
-            .push((conversation.messages.len() - 1, chrono::Utc::now()));
-        if let Err(e) = turn(&config_dir, &model, &mut conversation, speed, use_tools).await {
-            println!("\n! {e}");
-        }
-        conversation.updated_at = chrono::Utc::now();
         if let Err(e) = store::save_conversation(&config_dir, &conversation) {
             eprintln!("cortex: could not save the conversation: {e}");
+            continue;
+        }
+        if let Err(e) = turn(
+            &config_dir,
+            &reference,
+            &conversation.id,
+            &line,
+            speed,
+            use_tools,
+        )
+        .await
+        {
+            println!("\n! {e}");
+        }
+        // The engine saved the turn; this is what it wrote.
+        if let Ok(latest) = store::load_conversation(&config_dir, &conversation.id) {
+            conversation = latest;
         }
     }
 }
 
-/// One reply, streamed to the terminal, with tool steps between.
+/// Prints a turn as it runs: the reply as it streams, a note while the model thinks, and a line
+/// per tool step.
+struct TerminalHost {
+    config_dir: std::path::PathBuf,
+    state: super::ChatState,
+    registry: crate::tools::registry::ToolRegistry,
+    /// Call id → tool name, for the line printed when the call ends.
+    calls: Mutex<HashMap<String, String>>,
+    /// (thinking shown, reply text printed)
+    printing: Mutex<(bool, bool)>,
+}
+
+#[async_trait::async_trait]
+impl Host for TerminalHost {
+    fn config_dir(&self) -> Result<std::path::PathBuf, String> {
+        Ok(self.config_dir.clone())
+    }
+
+    fn emit(&self, event: ChatEvent) {
+        let mut printing = self.printing.lock().unwrap_or_else(|p| p.into_inner());
+        let (thinking, printed) = &mut *printing;
+        match event {
+            ChatEvent::Reasoning { .. } if !*thinking && !*printed => {
+                *thinking = true;
+                print!("\x1b[2m(thinking…)\x1b[0m ");
+            }
+            ChatEvent::Text { text, .. } if !text.is_empty() => {
+                if *thinking {
+                    print!("\r\x1b[2K");
+                    *thinking = false;
+                }
+                *printed = true;
+                print!("{text}");
+            }
+            ChatEvent::ToolStart { call_id, name, .. } => {
+                if *printed {
+                    println!();
+                    *printed = false;
+                }
+                self.calls
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .insert(call_id, name);
+            }
+            ChatEvent::ToolEnd {
+                call_id, is_error, ..
+            } => {
+                let name = self
+                    .calls
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .remove(&call_id)
+                    .unwrap_or_default();
+                println!(
+                    "\x1b[2m  · {}{}\x1b[0m",
+                    name.replace('_', " "),
+                    if is_error { " (failed)" } else { "" }
+                );
+            }
+            ChatEvent::Notice { text, .. } => println!("\x1b[2m({text})\x1b[0m"),
+            ChatEvent::Done { .. } | ChatEvent::Error { .. } => {}
+            _ => {}
+        }
+        let _ = std::io::stdout().flush();
+    }
+
+    fn chat_state(&self) -> &super::ChatState {
+        &self.state
+    }
+
+    fn registry(&self) -> &crate::tools::registry::ToolRegistry {
+        &self.registry
+    }
+
+    async fn connect_model(
+        &self,
+        reference: &str,
+    ) -> Result<rig_core::DynModel<rig_core::operation::Completion>, String> {
+        super::engine::connect_model(&self.config_dir, reference).await
+    }
+
+    async fn approve(
+        &self,
+        _tool: &ChatTool,
+        _input: &serde_json::Value,
+        _reason: Option<&str>,
+    ) -> ApprovalDecision {
+        // The terminal offers only tools that read, which never ask.
+        ApprovalDecision::Deny
+    }
+
+    fn notify(&self, title: &str, _body: &str) {
+        println!("\x1b[2m({title})\x1b[0m");
+    }
+}
+
+/// One reply, streamed to the terminal, with tool steps between, through the app's agent loop.
 async fn turn(
     config_dir: &Path,
-    model: &rig_core::DynModel<rig_core::operation::Completion>,
-    conversation: &mut Conversation,
+    reference: &str,
+    conversation_id: &str,
+    line: &str,
     speed: Speed,
     use_tools: bool,
 ) -> Result<(), String> {
-    let tools: Vec<ChatTool> = if use_tools {
-        builtins::definitions(config_dir)
-            .into_iter()
-            .filter(|t| READ_ONLY.contains(&t.name.as_str()))
-            .collect()
-    } else {
-        Vec::new()
+    let host = Arc::new(TerminalHost {
+        config_dir: config_dir.to_path_buf(),
+        state: super::ChatState::default(),
+        registry: crate::tools::registry::ToolRegistry::new(),
+        calls: Mutex::new(HashMap::new()),
+        printing: Mutex::new((false, false)),
+    });
+    let request = TurnRequest {
+        conversation_id: conversation_id.to_string(),
+        text: line.to_string(),
+        model: reference.to_string(),
+        speed,
+        approval: ApprovalMode::Ask,
+        connectors: Some(Vec::new()),
+        max_steps: Some(MAX_STEPS + 1),
+        only_tools: Some(if use_tools {
+            READ_ONLY.iter().map(|t| t.to_string()).collect()
+        } else {
+            Vec::new()
+        }),
+        ..TurnRequest::default()
     };
-    let system = super::headless::preamble(config_dir).replace("answering one request from the command line. Nobody can answer questions back, so make reasonable assumptions and state them.", "chatting with the user in a terminal. Keep answers readable as plain text.");
-    for step in 0..=MAX_STEPS {
-        let last = step == MAX_STEPS;
-        let request_messages =
-            super::context::request_messages(&conversation.messages, conversation.summary.as_ref());
-        let Some((prompt, history)) = request_messages.split_last() else {
-            return Ok(());
-        };
-        let mut request = CompletionRequest::new(prompt.clone())
-            .messages(history.iter().cloned())
-            .preamble(system.clone());
-        if !last && !tools.is_empty() {
-            request = request.tools(tools.iter().filter_map(ChatTool::definition));
-        }
-        if let Some(effort) = speed.effort() {
-            request = request.reasoning(effort);
-        }
-        // Dropped connections and overloaded servers are retried, as in the app, while nothing
-        // has been printed yet.
-        let mut attempt = 0u32;
-        let (response, printed) = loop {
-            attempt += 1;
-            let mut stream = model.stream(request.clone()).map_err(|e| e.to_string())?;
-            let mut printed = false;
-            let mut thinking = false;
-            while let Some(item) = stream.next().await {
-                match item {
-                    Ok(Item::Event(StreamEvent::Reasoning { .. })) if !thinking && !printed => {
-                        thinking = true;
-                        print!("\x1b[2m(thinking…)\x1b[0m ");
-                        let _ = std::io::stdout().flush();
-                    }
-                    Ok(Item::Event(StreamEvent::Text { text, .. })) if !text.is_empty() => {
-                        if thinking {
-                            print!("\r\x1b[2K");
-                            thinking = false;
-                        }
-                        printed = true;
-                        print!("{text}");
-                        let _ = std::io::stdout().flush();
-                    }
-                    _ => {}
-                }
-            }
-            match stream.finish().await {
-                Ok(r) => break (r, printed),
-                Err(e) if e.is_retryable() && !printed && attempt < 4 => {
-                    if thinking {
-                        print!("\r\x1b[2K");
-                    }
-                    println!(
-                        "\x1b[2m(retrying: {})\x1b[0m",
-                        super::context::brief_error(&e.to_string())
-                    );
-                    tokio::time::sleep(std::time::Duration::from_secs(2u64.pow(attempt))).await;
-                }
-                Err(e) => return Err(super::context::short_error(&e.to_string())),
-            }
-        };
-        if printed {
-            println!();
-        }
-        conversation.usage.add(&response.usage);
-        let calls: Vec<_> = response.tool_calls().cloned().collect();
-        if let Some(message) = response.message() {
-            conversation.messages.push(message);
-        }
-        if calls.is_empty() {
-            conversation
-                .times
-                .push((conversation.messages.len() - 1, chrono::Utc::now()));
-            return Ok(());
-        }
-        let mut results = Vec::new();
-        for call in calls {
-            let name = call.function.name.as_str().to_string();
-            let outcome = if READ_ONLY.contains(&name.as_str()) {
-                builtins::run(
-                    config_dir,
-                    &name,
-                    &serde_json::Value::Object(call.function.arguments.clone()),
-                )
-                .await
-            } else {
-                super::tools::Outcome {
-                    text: format!("{name} is not available in the terminal."),
-                    is_error: true,
-                }
-            };
-            println!(
-                "\x1b[2m  · {}{}\x1b[0m",
-                name.replace('_', " "),
-                if outcome.is_error { " (failed)" } else { "" }
-            );
-            let mut result = call.result(vec![ToolResultContent::text(outcome.text)]);
-            result.is_error = outcome.is_error;
-            results.push(result);
-        }
-        conversation.messages.push(Message::tool_results(results));
+    let cancel = host
+        .state
+        .begin(conversation_id)
+        .ok_or("this conversation is busy")?;
+    let dyn_host: Arc<dyn Host> = host.clone();
+    let outcome = super::engine::turn(&dyn_host, &request, cancel).await;
+    host.state.finish(conversation_id);
+    if host.printing.lock().unwrap_or_else(|p| p.into_inner()).1 {
+        println!();
     }
-    Ok(())
+    outcome
+        .map(|_| ())
+        .map_err(|e| super::context::short_error(&e))
 }
 
 #[cfg(test)]

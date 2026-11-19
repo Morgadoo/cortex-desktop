@@ -953,6 +953,46 @@ mod tests {
     use serde_json::json;
     use tempfile::{tempdir, TempDir};
 
+    /// The kernel's guardrail: the agent cannot change its evaluator, its permissions or its audit
+    /// log. They live in Cortex's own folder, which tools cannot reach even under an allowed root.
+    #[tokio::test]
+    async fn the_eval_sets_traces_and_audit_log_are_out_of_reach() {
+        let home = tempdir().unwrap();
+        let config = home.path().join(".config").join("cortex");
+        for dir in ["evals/tool-selection/cases", "chat/audit"] {
+            std::fs::create_dir_all(config.join(dir)).unwrap();
+        }
+        std::fs::write(config.join("chat/traces.db"), b"").unwrap();
+        std::fs::write(config.join("connector_state.json"), b"{}").unwrap();
+        let core = FilesystemCore::new(
+            vec![home.path().to_path_buf()],
+            vec![config.canonicalize().unwrap()],
+            true,
+        );
+        for target in [
+            "evals/tool-selection/cases/new.json",
+            "chat/traces.db",
+            "chat/audit/2026-11.jsonl",
+            "connector_state.json",
+        ] {
+            let path = config.join(target);
+            let written = core
+                .fs_write(json!({ "path": path.to_string_lossy(), "content": "tampered" }))
+                .await;
+            assert!(
+                matches!(&written, Err(ToolError::AccessDenied(m)) if m.contains("not available to tools")),
+                "{target}: {written:?}"
+            );
+        }
+        // Elsewhere under the same root, writing works.
+        let ok = core
+            .fs_write(
+                json!({ "path": home.path().join("notes.txt").to_string_lossy(), "content": "x" }),
+            )
+            .await;
+        assert!(ok.is_ok(), "{ok:?}");
+    }
+
     fn core_rooted_at_temp_dir(write_enabled: bool) -> (TempDir, FilesystemCore) {
         let root = tempdir().unwrap();
         let core = FilesystemCore::new(vec![root.path().to_path_buf()], vec![], write_enabled);

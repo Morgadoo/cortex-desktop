@@ -175,7 +175,7 @@ async function viewSkillFile(name: string, path: string): Promise<void> {
 
 /** Learning on its own (learning.rs): a weekly knowledge review, and skills from agents' work. */
 function learningRows(): HTMLElement {
-  type Learning = { reviewKnowledge: boolean; skillsFromWork: boolean; lastReview?: string | null };
+  type Learning = { reviewKnowledge: boolean; skillsFromWork: boolean; lastReview?: string | null; nightlyEvals: boolean; lastEvals?: string | null };
   const box = h('div', {});
   void tauriInvoke<Learning>('chat_learning', { change: null }).then((l) => {
     const change = async (next: Partial<Learning>) => {
@@ -198,7 +198,43 @@ function learningRows(): HTMLElement {
         { class: 'setting-row' },
         h('div', {}, h('strong', {}, 'Agents learn skills from their work'), h('small', { class: 'muted' }, 'After an agent works through several steps, it considers whether the procedure is worth reusing and, if so, saves it as a skill, turned off until you review it.')),
         switchInput(l.skillsFromWork, (v) => void change({ skillsFromWork: v }))
-      )
+      ),
+      h(
+        'div',
+        { class: 'setting-row' },
+        h('div', {}, h('strong', {}, 'Run my eval suites daily'), h('small', { class: 'muted' }, `Once a day, the suites in the evals folder run on your default model, and you are told when a score drops. Each case costs a model call.${l.lastEvals ? ` Last run: ${new Date(l.lastEvals).toLocaleDateString()}.` : ''}`)),
+        switchInput(l.nightlyEvals, (v) => void change({ nightlyEvals: v }))
+      ),
+      artifactRows()
+    );
+  }).catch(() => undefined);
+  return box;
+}
+
+/**
+ * What the assistant made for itself (traces.rs's artifact registry): skills and tools it wrote
+ * or learned, how often each is used, and a switch that keeps one however rarely it is used.
+ */
+function artifactRows(): HTMLElement {
+  type Artifact = { kind: string; id: string; status: string; used: number; critical: boolean; provenance?: string | null };
+  const box = h('div', {});
+  void tauriInvoke<Artifact[]>('chat_artifacts').then((all) => {
+    const made = all.filter((a) => (a.kind === 'skill' || a.kind === 'script_tool') && a.provenance);
+    clear(
+      box,
+      h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'What the assistant made'), h('small', { class: 'muted' }, 'Skills and tools the assistant wrote or learned. Unused ones are retired after a month; mark one critical to keep it.'))),
+      ...(made.length
+        ? made.map((a) =>
+            h(
+              'div',
+              { class: 'setting-row' },
+              h('div', {}, h('strong', {}, a.id), h('small', { class: 'muted' }, `${a.kind === 'skill' ? 'Skill' : 'Tool'}, ${a.status}, used ${a.used} times`)),
+              h('label', { class: 'row-gap' }, h('small', { class: 'muted' }, 'Critical'), switchInput(a.critical, (v) => {
+                void tauriInvoke('chat_set_artifact_critical', { kind: a.kind, id: a.id, critical: v }).catch((e) => toast(String(e), 'error'));
+              }))
+            )
+          )
+        : [h('p', { class: 'muted small' }, 'Nothing yet.')])
     );
   }).catch(() => undefined);
   return box;

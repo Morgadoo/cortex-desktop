@@ -2477,5 +2477,14 @@
  "↑ summarized for the model": "↑ مُلخَّص للنموذج",
  "★ Favourite": "★ المفضلة",
  "☆ Favourite": "☆ المفضلة",
- "✓ {0} answered: “{1}”": "✓ أجاب {0}: “{1}”"
+ "✓ {0} answered: “{1}”": "✓ أجاب {0}: “{1}”",
+ "{0}, {1}, used {2} times": "{0}، {1}، استُخدم {2} مرة",
+ "Critical": "أساسي",
+ "Last run: {0}.": "آخر تشغيل: {0}.",
+ "Once a day, the suites in the evals folder run on your default model, and you are told when a score drops. Each case costs a model call.{0}": "مرة يوميًا، تعمل مجموعات التقييم في مجلد التقييمات على نموذجك الافتراضي، ويتم إعلامك عندما تنخفض نتيجة. كل حالة تكلّف استدعاءً للنموذج.{0}",
+ "Run my eval suites daily": "شغّل تقييماتي يوميًا",
+ "Skill": "مهارة",
+ "Skills and tools the assistant wrote or learned. Unused ones are retired after a month; mark one critical to keep it.": "مهارات وأدوات كتبها المساعد أو تعلّمها. تُسحب غير المستخدمة بعد شهر؛ علّم إحداها كأساسية للاحتفاظ بها.",
+ "Tool": "أداة",
+ "What the assistant made": "ما أنشأه المساعد"
 }

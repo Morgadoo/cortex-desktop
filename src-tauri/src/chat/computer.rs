@@ -101,11 +101,6 @@ pub fn definition() -> ChatTool {
     }
 }
 
-/// Whether this call only looks.
-pub fn is_screenshot(input: &Value) -> bool {
-    input.get("action").and_then(Value::as_str) == Some("screenshot")
-}
-
 /// Per conversation: the latest screenshot (JPEG, base64) waiting to go to the model, and the
 /// factor from screenshot pixels to screen pixels.
 fn shots() -> &'static Mutex<HashMap<String, String>> {
@@ -640,10 +635,23 @@ mod tests {
             (200, 100)
         );
         assert!(point("c", &json!({ "x": 1 })).is_err());
-        assert!(
-            is_screenshot(&json!({ "action": "screenshot" }))
-                && !is_screenshot(&json!({ "action": "click" }))
-        );
+        // A screenshot only reads; a click can change things (the kernel's approval policy).
+        let tool = super::super::tools::ChatTool {
+            name: TOOL.into(),
+            description: String::new(),
+            parameters: json!({}),
+            connector_id: Some(CONNECTOR.into()),
+            tool_name: TOOL.into(),
+            read_only: false,
+        };
+        assert!(cortex_kernel::approval::reads_only(
+            &tool,
+            &json!({ "action": "screenshot" })
+        ));
+        assert!(!cortex_kernel::approval::reads_only(
+            &tool,
+            &json!({ "action": "click" })
+        ));
     }
 
     #[test]

@@ -144,6 +144,9 @@ pub(crate) struct CallContext<'a> {
     pub conversation: Option<&'a str>,
     /// The connectors whose tools the model was offered, where narrower than every enabled one.
     pub offered: Option<&'a [String]>,
+    /// The caller keeps long results itself (the chat engine saves them to a file that lasts),
+    /// so the result comes back whole instead of as a preview in the in-memory store.
+    pub whole: bool,
 }
 
 pub struct ToolRegistry {
@@ -683,50 +686,21 @@ impl ToolRegistry {
         }
 
         let policy = self.get_tool_policy(connector_id, tool_name);
-        if policy == ToolPolicy::Disable {
-            return Err(ToolError::ToolDisabled);
-        }
         let tool = connector
             .tools()
             .into_iter()
             .find(|tool| tool.name == tool_name);
-        let exposure = self
-            .exposure_of(exposure_scope)
-            .with_unvetted_tools(self.offers_unvetted_tools(context.offered));
-        let gate = self.exposure().gate(
+        self.admit(
             connector_id,
             tool_name,
             tool.as_ref(),
             connector.vetted(),
+            policy,
             &input,
-            exposure_scope,
-            exposure,
-        );
-        let gate = if self.is_always_allowed(connector_id, tool_name) {
-            gate.always_allowed()
-        } else {
-            gate
-        };
-        let (needs_approval, reason) = match gate {
-            Gate::Refuse(why) => {
-                info!("refused {connector_id}.{tool_name}: {why}");
-                return Err(ToolError::AccessDenied(why.into()));
-            }
-            Gate::Ask(reason) => (true, Some(reason)),
-            Gate::Allow => (policy == ToolPolicy::Ask && !auto_approve, None),
-        };
-        if needs_approval {
-            match self
-                .request_approval(connector_id, tool_name, &input, reason.as_ref())
-                .await
-            {
-                ApprovalDecision::Deny => return Err(ToolError::ApprovalDenied),
-                ApprovalDecision::Once => {}
-                ApprovalDecision::Always => {
-                    self.remember_always(connector_id, tool_name, reason.as_ref())
-                }
-            }
-        }
+            auto_approve,
+            &context,
+        )
+        .await?;
 
         let scope = self.result_store.scope();
         let allow_file = connector_id == "filesystem"
@@ -744,15 +718,12 @@ impl ToolRegistry {
                 }
                 value
             });
-        let exposed = self.exposure().record(
+        self.record_exposure(
             connector_id,
             tool_name,
             exposure_scope,
             result.as_ref().ok(),
         );
-        if let Scope::Conversation(id) = exposure_scope {
-            self.expose_conversation(id, exposed);
-        }
         let has_remote = connector.as_credentialed().is_some() || connector.as_session().is_some();
         match &result {
             _ if !has_remote => {}
@@ -775,6 +746,7 @@ impl ToolRegistry {
             });
         }
         match result {
+            Ok(value) if context.whole => Ok(value),
             Ok(value) if file_transport => {
                 self.result_store
                     .preview_with_transport(scope, connector_id, value, allow_file)
@@ -815,6 +787,128 @@ impl ToolRegistry {
 
         session.drop_session().await;
         invoke(input).await
+    }
+
+    /// The checks every call passes before it runs: the per-tool policy, the untrusted-content
+    /// gate, and the user's approval when either asks for it. `auto_approve` says the caller
+    /// already has the user's go-ahead for the call, which settles the policy but not the gate.
+    #[allow(clippy::too_many_arguments)]
+    async fn admit(
+        &self,
+        connector_id: &str,
+        tool_name: &str,
+        tool: Option<&ToolDefinition>,
+        vetted: bool,
+        policy: ToolPolicy,
+        input: &Value,
+        auto_approve: bool,
+        context: &CallContext<'_>,
+    ) -> Result<(), ToolError> {
+        if policy == ToolPolicy::Disable {
+            return Err(ToolError::ToolDisabled);
+        }
+        let scope = Scope::of(context.run, context.conversation);
+        let exposure = self
+            .exposure_of(scope)
+            .with_unvetted_tools(self.offers_unvetted_tools(context.offered));
+        let gate = self.exposure().gate(
+            connector_id,
+            tool_name,
+            tool,
+            vetted,
+            input,
+            scope,
+            exposure,
+        );
+        let gate = if self.is_always_allowed(connector_id, tool_name) {
+            gate.always_allowed()
+        } else {
+            gate
+        };
+        let (needs_approval, reason) = match gate {
+            Gate::Refuse(why) => {
+                info!("refused {connector_id}.{tool_name}: {why}");
+                return Err(ToolError::AccessDenied(why.into()));
+            }
+            Gate::Ask(reason) => (true, Some(reason)),
+            Gate::Allow => (policy == ToolPolicy::Ask && !auto_approve, None),
+        };
+        if needs_approval {
+            match self
+                .request_approval(connector_id, tool_name, input, reason.as_ref())
+                .await
+            {
+                ApprovalDecision::Deny => return Err(ToolError::ApprovalDenied),
+                ApprovalDecision::Once => {}
+                ApprovalDecision::Always => {
+                    self.remember_always(connector_id, tool_name, reason.as_ref())
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Adds what a call's result put in front of the model to its run, session and conversation.
+    /// Called for failed calls too: an error can carry the remote's text.
+    fn record_exposure(
+        &self,
+        connector_id: &str,
+        tool_name: &str,
+        scope: Scope,
+        result: Option<&Value>,
+    ) {
+        let exposed = self
+            .exposure()
+            .record(connector_id, tool_name, scope, result);
+        if let Scope::Conversation(id) = scope {
+            self.expose_conversation(id, exposed);
+        }
+    }
+
+    /// Runs a tool that lives outside the registry (an OpenAPI server's operation, one of the
+    /// user's own tools, computer use) behind the same gate as a connector's: a policy the user
+    /// saved for it, and the untrusted-content gate, which treats a connector it does not know
+    /// as one that sends data out. With no saved policy nothing asks for the policy's sake; the
+    /// caller's approval mode has already decided that. The outer error is the gate's refusal,
+    /// the inner one the tool's own failure.
+    pub(crate) async fn dispatch_external<F, Fut>(
+        &self,
+        connector_id: &str,
+        tool: &ToolDefinition,
+        input: Value,
+        auto_approve: bool,
+        context: CallContext<'_>,
+        run: F,
+    ) -> Result<Result<String, String>, ToolError>
+    where
+        F: FnOnce(Value) -> Fut,
+        Fut: std::future::Future<Output = Result<String, String>>,
+    {
+        let policy = self
+            .saved_tool_policy(connector_id, &tool.name)
+            .unwrap_or(ToolPolicy::AutoApprove);
+        self.admit(
+            connector_id,
+            &tool.name,
+            Some(tool),
+            false,
+            policy,
+            &input,
+            auto_approve,
+            &context,
+        )
+        .await?;
+        let result = run(input).await;
+        let shown = Value::String(match &result {
+            Ok(text) | Err(text) => text.clone(),
+        });
+        self.record_exposure(
+            connector_id,
+            &tool.name,
+            Scope::of(context.run, context.conversation),
+            Some(&shown),
+        );
+        Ok(result)
     }
 
     /// Whether the model is offered tools from a server added by hand: among `offered`, or among

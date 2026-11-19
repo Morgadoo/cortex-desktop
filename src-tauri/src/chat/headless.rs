@@ -21,12 +21,16 @@ use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use rig_core::completion::message::ToolResultContent;
-use rig_core::completion::{CompletionRequest, Message};
+use std::sync::{Arc, Mutex};
+
+use rig_core::completion::Message;
 use serde::Serialize;
 
 use super::builtins;
-use super::tools::ChatTool;
+use super::engine::{ChatEvent, TurnRequest};
+use super::host::Host;
+use super::tools::{ApprovalMode, ChatTool};
+use crate::tools::registry::ApprovalDecision;
 
 /// Tool steps before the answer is asked for, unless `--max-turns` says otherwise.
 const MAX_STEPS: usize = 8;
@@ -194,7 +198,138 @@ pub fn write_export(dir: &Path, export: &Export) -> Result<(), String> {
     .map_err(|e| e.to_string())
 }
 
-/// One request, answered with the read-only tools, within the limits asked for.
+/// What a headless run needs from the engine's [`Host`]: no window, no connectors, nobody to
+/// approve. It keeps the turn's events for the export and stops the turn at a limit.
+pub(crate) struct HeadlessHost {
+    config_dir: PathBuf,
+    conversation: String,
+    state: super::ChatState,
+    registry: crate::tools::registry::ToolRegistry,
+    events: Mutex<Vec<ChatEvent>>,
+    max_tokens: Option<u64>,
+    max_price: Option<f64>,
+    /// Why the run was stopped before its answer, when a limit stopped it.
+    stopped: Mutex<Option<String>>,
+}
+
+impl HeadlessHost {
+    /// A host with no limits, for other command-line runs (evals).
+    pub(crate) fn new(config_dir: PathBuf) -> Self {
+        Self {
+            config_dir,
+            conversation: String::new(),
+            state: super::ChatState::default(),
+            registry: crate::tools::registry::ToolRegistry::new(),
+            events: Mutex::new(Vec::new()),
+            max_tokens: None,
+            max_price: None,
+            stopped: Mutex::new(None),
+        }
+    }
+
+    fn stop(&self, why: String) {
+        let mut stopped = self.stopped.lock().unwrap_or_else(|p| p.into_inner());
+        if stopped.is_none() {
+            *stopped = Some(why);
+            self.state.cancel(&self.conversation);
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl Host for HeadlessHost {
+    fn config_dir(&self) -> Result<PathBuf, String> {
+        Ok(self.config_dir.clone())
+    }
+
+    fn emit(&self, event: ChatEvent) {
+        match &event {
+            ChatEvent::ToolStart { name, .. } => eprintln!("cortex: used {name}"),
+            ChatEvent::Usage { usage, .. } => {
+                let tokens = usage.input_tokens + usage.output_tokens;
+                if let Some(limit) = self.max_tokens.filter(|l| tokens > *l) {
+                    self.stop(format!("the token limit of {limit} was reached"));
+                }
+                if let Some(limit) = self.max_price.filter(|l| usage.cost > *l) {
+                    self.stop(format!("the price limit of ${limit} was reached"));
+                }
+            }
+            _ => {}
+        }
+        self.events
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .push(event);
+    }
+
+    fn chat_state(&self) -> &super::ChatState {
+        &self.state
+    }
+
+    fn registry(&self) -> &crate::tools::registry::ToolRegistry {
+        &self.registry
+    }
+
+    async fn connect_model(
+        &self,
+        reference: &str,
+    ) -> Result<rig_core::DynModel<rig_core::operation::Completion>, String> {
+        super::engine::connect_model(&self.config_dir, reference).await
+    }
+
+    async fn approve(
+        &self,
+        _tool: &ChatTool,
+        _input: &serde_json::Value,
+        _reason: Option<&str>,
+    ) -> ApprovalDecision {
+        // Nobody is there to answer; the run is unattended, so the engine refuses first.
+        ApprovalDecision::Deny
+    }
+
+    fn notify(&self, title: &str, _body: &str) {
+        eprintln!("cortex: {title}");
+    }
+}
+
+/// The tool steps of a turn, from its events.
+fn steps_of(events: &[ChatEvent]) -> Vec<Step> {
+    let mut steps: Vec<(String, Step)> = Vec::new();
+    for event in events {
+        match event {
+            ChatEvent::ToolStart {
+                call_id,
+                name,
+                arguments,
+                ..
+            } => steps.push((
+                call_id.clone(),
+                Step {
+                    tool: name.clone(),
+                    input: arguments.clone(),
+                    output: String::new(),
+                    error: false,
+                },
+            )),
+            ChatEvent::ToolEnd {
+                call_id,
+                output,
+                is_error,
+                ..
+            } => {
+                if let Some((_, step)) = steps.iter_mut().rev().find(|(id, _)| id == call_id) {
+                    step.output = output.chars().take(4_000).collect();
+                    step.error = *is_error;
+                }
+            }
+            _ => {}
+        }
+    }
+    steps.into_iter().map(|(_, step)| step).collect()
+}
+
+/// One request, answered with the read-only tools, within the limits asked for. It runs through
+/// the app's own agent loop, unattended, in a temporary conversation that is deleted after.
 pub async fn run(args: &Args) -> Export {
     let started = Instant::now();
     let mut export = Export {
@@ -238,189 +373,165 @@ pub async fn run(args: &Args) -> Export {
         },
     };
     export.model = reference.clone();
-    let model = match super::engine::connect_model(&config_dir, &reference).await {
-        Ok(m) => m,
-        Err(e) => return end(export, Ending::UsageError, e),
-    };
-    let tools: Vec<ChatTool> = if args.tools {
-        builtins::definitions(&config_dir)
-            .into_iter()
-            .filter(|t| READ_ONLY.contains(&t.name.as_str()))
-            .collect()
-    } else {
-        Vec::new()
-    };
-    let system = preamble(&config_dir);
-    let max_steps = args.max_turns.unwrap_or(MAX_STEPS);
-    let deadline = args.time_limit.map(|s| started + Duration::from_secs(s));
-    let mut messages = vec![Message::user(args.prompt.clone())];
-    for step in 0..=max_steps {
-        let last = step == max_steps;
-        let request_messages = super::context::request_messages(&messages, None);
-        let Some((prompt, history)) = request_messages.split_last() else {
-            break;
-        };
-        let mut request = CompletionRequest::new(prompt.clone())
-            .messages(history.iter().cloned())
-            .preamble(if last {
-                format!("{system}\n\nNo more tool calls: answer now from what you found.")
-            } else {
-                system.clone()
-            });
-        if !last && !tools.is_empty() {
-            request = request.tools(tools.iter().filter_map(ChatTool::definition));
-        }
-        // Dropped connections and overloaded servers are retried, as in the app.
-        let mut attempt = 0u32;
-        let response = loop {
-            attempt += 1;
-            let wait = deadline.map_or(Duration::from_secs(300), |d| {
-                d.saturating_duration_since(Instant::now())
-                    .min(Duration::from_secs(300))
-            });
-            match tokio::time::timeout(wait, model.call(request.clone())).await {
-                Err(_) if deadline.is_some_and(|d| Instant::now() >= d) => {
-                    return end(
-                        export,
-                        Ending::Limit,
-                        format!(
-                            "the time limit of {} s was reached",
-                            args.time_limit.unwrap_or_default()
-                        ),
-                    )
-                }
-                Err(_) => {
-                    return end(
-                        export,
-                        Ending::ModelError,
-                        "the model did not answer in time".into(),
-                    )
-                }
-                Ok(Err(e))
-                    if e.is_retryable()
-                        && attempt < 4
-                        && deadline.is_none_or(|d| Instant::now() < d) =>
-                {
-                    eprintln!(
-                        "cortex: retrying ({})",
-                        super::context::brief_error(&e.to_string())
-                    );
-                    tokio::time::sleep(Duration::from_secs(2u64.pow(attempt))).await;
-                }
-                Ok(Err(e)) => {
-                    return end(
-                        export,
-                        Ending::ModelError,
-                        super::context::short_error(&e.to_string()),
-                    )
-                }
-                Ok(Ok(r)) => break r,
-            }
-        };
-        export.input_tokens += response.usage.input_tokens.unwrap_or(0);
-        export.output_tokens += response.usage.output_tokens.unwrap_or(0);
-        export.cost += response.usage.cost.map_or(0.0, |c| c.total);
-        let calls: Vec<_> = response.tool_calls().cloned().collect();
-        if let Some(message) = response.message() {
-            messages.push(message);
-        }
-        if calls.is_empty() {
-            let text = response.text();
-            export.answer = text.clone();
-            if text.trim().is_empty() {
-                return end(
-                    export,
-                    Ending::Limit,
-                    "the model gave no answer (it may have refused)".into(),
-                );
-            }
-            return end(export, Ending::Done, String::new());
-        }
-        if let Some(limit) = args
-            .max_tokens
-            .filter(|l| export.input_tokens + export.output_tokens > *l)
-        {
-            return end(
-                export,
-                Ending::Limit,
-                format!("the token limit of {limit} was reached"),
-            );
-        }
-        if let Some(limit) = args.max_price.filter(|l| export.cost > *l) {
-            return end(
-                export,
-                Ending::Limit,
-                format!("the price limit of ${limit} was reached"),
-            );
-        }
-        if deadline.is_some_and(|d| Instant::now() >= d) {
-            return end(
-                export,
-                Ending::Limit,
-                format!(
-                    "the time limit of {} s was reached",
-                    args.time_limit.unwrap_or_default()
-                ),
-            );
-        }
-        let mut results = Vec::new();
-        for call in calls {
-            let name = call.function.name.as_str().to_string();
-            let input = serde_json::Value::Object(call.function.arguments.clone());
-            let outcome = if READ_ONLY.contains(&name.as_str()) {
-                builtins::run(&config_dir, &name, &input).await
-            } else {
-                super::tools::Outcome {
-                    text: format!("{name} is not available in a headless run."),
-                    is_error: true,
-                }
-            };
-            eprintln!("cortex: used {name}");
-            export.steps.push(Step {
-                tool: name,
-                input,
-                output: outcome.text.chars().take(4_000).collect(),
-                error: outcome.is_error,
-            });
-            let mut result = call.result(vec![ToolResultContent::text(outcome.text)]);
-            result.is_error = outcome.is_error;
-            results.push(result);
-        }
-        messages.push(Message::tool_results(results));
+    // A model that cannot be reached at all is a settings problem, not a failed run.
+    if let Err(e) = super::engine::connect_model(&config_dir, &reference).await {
+        return end(export, Ending::UsageError, e);
     }
-    end(
-        export,
-        Ending::Limit,
-        format!("the run ended without an answer after {max_steps} tool steps"),
-    )
-}
+    let id = format!("headless-{}", uuid::Uuid::new_v4().simple());
+    // Named already, so the engine does not write a title after the run is gone.
+    let mut conversation =
+        super::store::Conversation::new(id.clone(), None, Some(reference.clone()));
+    conversation.temporary = true;
+    conversation.title = "Headless run".into();
+    if let Err(e) = super::store::save_conversation(&config_dir, &conversation) {
+        return end(export, Ending::UsageError, e);
+    }
+    let host = Arc::new(HeadlessHost {
+        config_dir: config_dir.clone(),
+        conversation: id.clone(),
+        state: super::ChatState::default(),
+        registry: crate::tools::registry::ToolRegistry::new(),
+        events: Mutex::new(Vec::new()),
+        max_tokens: args.max_tokens,
+        max_price: args.max_price,
+        stopped: Mutex::new(None),
+    });
+    let request = TurnRequest {
+        conversation_id: id.clone(),
+        text: args.prompt.clone(),
+        model: reference,
+        approval: ApprovalMode::Unattended,
+        temporary: true,
+        connectors: Some(Vec::new()),
+        // The last step answers, so `--max-turns` tool steps leave one more for the answer.
+        max_steps: Some(args.max_turns.unwrap_or(MAX_STEPS) + 1),
+        only_tools: Some(if args.tools {
+            READ_ONLY.iter().map(|t| t.to_string()).collect()
+        } else {
+            Vec::new()
+        }),
+        ..TurnRequest::default()
+    };
+    let cancel = host.state.begin(&id).expect("a new conversation");
+    if let Some(seconds) = args.time_limit {
+        let host = host.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(seconds)).await;
+            host.stop(format!("the time limit of {seconds} s was reached"));
+        });
+    }
+    let dyn_host: Arc<dyn Host> = host.clone();
+    let outcome = super::engine::turn(&dyn_host, &request, cancel).await;
+    host.state.finish(&id);
 
-pub fn preamble(config_dir: &Path) -> String {
-    let mut out = String::from(
-        "You are Cortex, answering one request from the command line. Nobody can answer questions \
-         back, so make reasonable assumptions and state them. Answer in the user's language, \
-         plainly, in Markdown only where it helps. When you are unsure, say so.",
-    );
-    out.push_str(&format!(
-        "\n\n{}",
-        super::engine::local_time_line(chrono::Local::now())
-    ));
-    let instructions = super::store::load_instructions(config_dir);
-    if !instructions.name.trim().is_empty() {
-        out.push_str(&format!(
-            " The user's name is {}.",
-            instructions.name.trim()
-        ));
+    let events = host
+        .events
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .clone();
+    export.steps = steps_of(&events);
+    if let Some(usage) = events.iter().rev().find_map(|e| match e {
+        ChatEvent::Usage { usage, .. } => Some(usage.clone()),
+        _ => None,
+    }) {
+        export.input_tokens = usage.input_tokens;
+        export.output_tokens = usage.output_tokens;
+        export.cost = usage.cost;
     }
-    if let Some(memory) = super::memory::prompt(&super::memory::load(config_dir)) {
-        out.push_str(&memory.replace("you can save lasting facts about the user with `remember` (preferences, their work, people and projects they mention, how they like answers) and remove wrong ones with `forget`. Save only what will help in future conversations, never secrets. ", ""));
+    let answer = super::store::load_conversation(&config_dir, &id)
+        .ok()
+        .and_then(|c| {
+            c.messages
+                .last()
+                .filter(|m| matches!(m, Message::Assistant(_)))
+                .map(super::context::message_text)
+        })
+        .unwrap_or_default();
+    // Nothing is kept: a temporary conversation is deleted outright.
+    let _ = super::store::delete_conversation(&config_dir, &id);
+    let stopped = host
+        .stopped
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .clone();
+    match outcome {
+        Err(e) => end(export, Ending::ModelError, super::context::short_error(&e)),
+        Ok(true) => end(
+            export,
+            Ending::Limit,
+            stopped.unwrap_or_else(|| "the run was stopped".into()),
+        ),
+        Ok(false) if answer.trim().is_empty() => end(
+            export,
+            Ending::Limit,
+            "the model gave no answer (it may have refused)".into(),
+        ),
+        Ok(false) => {
+            export.answer = answer;
+            end(export, Ending::Done, String::new())
+        }
     }
-    out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A limit reached mid-run stops the turn once, with the first reason.
+    #[test]
+    fn a_limit_cancels_the_running_turn() {
+        let host = HeadlessHost {
+            config_dir: PathBuf::new(),
+            conversation: "h".into(),
+            state: super::super::ChatState::default(),
+            registry: crate::tools::registry::ToolRegistry::new(),
+            events: Mutex::new(Vec::new()),
+            max_tokens: Some(100),
+            max_price: Some(0.5),
+            stopped: Mutex::new(None),
+        };
+        let mut cancel = host.state.begin("h").unwrap();
+        let usage = |tokens: u64, cost: f64| ChatEvent::Usage {
+            conversation_id: "h".into(),
+            usage: super::super::context::UsageTotals {
+                input_tokens: tokens,
+                cost,
+                ..Default::default()
+            },
+            context_window: 0,
+        };
+        host.emit(usage(50, 0.1));
+        assert!(!*cancel.borrow_and_update());
+        host.emit(usage(150, 0.9));
+        assert!(*cancel.borrow_and_update());
+        assert_eq!(
+            host.stopped.lock().unwrap().as_deref(),
+            Some("the token limit of 100 was reached")
+        );
+    }
+
+    #[test]
+    fn the_export_lists_each_tool_step_with_its_result() {
+        let events = vec![
+            ChatEvent::ToolStart {
+                conversation_id: "h".into(),
+                call_id: "1".into(),
+                name: "web_search".into(),
+                arguments: serde_json::json!({"query": "rust"}),
+            },
+            ChatEvent::ToolEnd {
+                conversation_id: "h".into(),
+                call_id: "1".into(),
+                output: "results".into(),
+                is_error: false,
+            },
+        ];
+        let steps = steps_of(&events);
+        assert_eq!(steps.len(), 1);
+        assert_eq!(steps[0].tool, "web_search");
+        assert_eq!(steps[0].output, "results");
+        assert!(!steps[0].error);
+    }
 
     fn args(list: &[&str]) -> Vec<String> {
         list.iter().map(|s| s.to_string()).collect()

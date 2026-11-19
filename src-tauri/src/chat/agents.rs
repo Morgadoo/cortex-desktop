@@ -313,6 +313,14 @@ pub fn save_notebook(config_dir: &Path, id: &str, text: &str) -> Result<(), Stri
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
+    // The notebook as it was stays restorable.
+    super::versions::keep(
+        config_dir,
+        "notebooks",
+        id,
+        &notebook(config_dir, id),
+        &text.to_string(),
+    )?;
     crate::chat::at_rest::write(path, text).map_err(|e| e.to_string())
 }
 
@@ -596,9 +604,21 @@ pub fn check_budget(config_dir: &Path, agent: &Agent) -> Result<(), String> {
     let Some(budget) = agent.monthly_budget.filter(|b| *b > 0.0) else {
         return Ok(());
     };
-    let spent = spend_this_month(config_dir)
-        .get(&agent.id)
-        .map_or(0.0, |s| s.cost);
+    // The trace database knows each run's cost; before any run is traced this month, the
+    // conversations are added up as before.
+    let month_start = {
+        use chrono::{Datelike, TimeZone};
+        let now = Utc::now();
+        Utc.with_ymd_and_hms(now.year(), now.month(), 1, 0, 0, 0)
+            .single()
+            .unwrap_or(now)
+    };
+    let spent =
+        super::traces::agent_cost(config_dir, &agent.id, month_start).unwrap_or_else(|| {
+            spend_this_month(config_dir)
+                .get(&agent.id)
+                .map_or(0.0, |s| s.cost)
+        });
     if spent >= budget {
         return Err(format!(
             "{} has used its monthly budget (${spent:.2} of ${budget:.2}). Raise the budget on its page to continue.",

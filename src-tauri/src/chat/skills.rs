@@ -635,7 +635,14 @@ pub async fn import_from_link(config_dir: &Path, link: &str) -> Result<String, S
 }
 
 /// The part of the system prompt that lists the enabled skills.
-pub fn prompt(skills: &[Skill]) -> Option<String> {
+/// Past this many skills, only the ones that fit the message are listed.
+pub const LIST_ALL: usize = 30;
+const LIST_RELEVANT: usize = 15;
+
+/// The skills section of the system prompt. With many skills, it names those that fit `query`
+/// (the user's message) and says how to find the rest, so the prompt stays the same size however
+/// many skills there are.
+pub fn prompt_for(skills: &[Skill], query: &str) -> Option<String> {
     let enabled: Vec<&Skill> = skills.iter().filter(|s| s.enabled).collect();
     if enabled.is_empty() {
         return None;
@@ -644,15 +651,73 @@ pub fn prompt(skills: &[Skill]) -> Option<String> {
         "\n\nSkills: when a request matches one of these, call `use_skill` with its name before \
          answering and follow the instructions it returns.",
     );
-    for s in enabled {
+    if enabled.len() <= LIST_ALL {
+        for s in enabled {
+            out.push_str(&format!("\n- {}: {}", s.name, s.description));
+        }
+        return Some(out);
+    }
+    let shown: Vec<&Skill> = relevant(&enabled, query)
+        .into_iter()
+        .take(LIST_RELEVANT)
+        .collect();
+    for s in &shown {
         out.push_str(&format!("\n- {}: {}", s.name, s.description));
     }
+    out.push_str(&format!(
+        "\n({} more skills are not listed. Call `use_skill` with a few words instead of a name to \
+         find one.)",
+        enabled.len() - shown.len()
+    ));
     Some(out)
+}
+
+/// Skills ranked by how well their name and description fit `query`, best first.
+pub fn relevant<'a>(skills: &[&'a Skill], query: &str) -> Vec<&'a Skill> {
+    use super::retrieval::{tokens, Corpus};
+    let corpus = Corpus::new(skills.iter().map(|s| {
+        let mut words = tokens(&s.name.replace('-', " "));
+        words.extend(tokens(&s.name.replace('-', " ")));
+        words.extend(tokens(&s.description));
+        words
+    }))
+    .with_prefixes();
+    corpus
+        .search(query)
+        .into_iter()
+        .map(|(i, _)| skills[i])
+        .collect()
 }
 
 #[cfg(test)]
 mod file_tests {
     use super::*;
+
+    /// With many skills, the prompt names the ones that fit the message and stays short.
+    #[test]
+    fn many_skills_are_narrowed_to_the_ones_that_fit() {
+        let skill = |name: &str, description: &str| Skill {
+            name: name.into(),
+            description: description.into(),
+            body: String::new(),
+            origin: "user",
+            enabled: true,
+            files: Vec::new(),
+        };
+        let mut skills: Vec<Skill> = (0..40)
+            .map(|i| skill(&format!("chore-{i}"), "Tidy something unrelated."))
+            .collect();
+        skills.push(skill(
+            "quarterly-invoice",
+            "Write the quarterly invoices for clients.",
+        ));
+        let few = prompt_for(&skills[..10], "anything").unwrap();
+        assert_eq!(few.matches("\n- ").count(), 10);
+        let many = prompt_for(&skills, "send the invoices to clients").unwrap();
+        assert!(many.contains("quarterly-invoice"), "{many}");
+        assert!(many.contains("more skills are not listed"));
+        assert!(many.matches("\n- ").count() <= LIST_RELEVANT);
+    }
 
     #[test]
     fn skills_carry_supporting_files() {
@@ -854,7 +919,9 @@ mod tests {
 
         set_enabled(dir.path(), "write-email", false).unwrap();
         assert!(!find(dir.path(), "write-email").unwrap().enabled);
-        assert!(!prompt(&list(dir.path())).unwrap().contains("write-email"));
+        assert!(!prompt_for(&list(dir.path()), "")
+            .unwrap()
+            .contains("write-email"));
 
         delete(dir.path(), "write-email").unwrap();
         assert_eq!(find(dir.path(), "write-email").unwrap().origin, "builtin");

@@ -20,7 +20,16 @@ use super::store::chat_dir;
 /// Versions kept per item.
 const KEEP: usize = 30;
 
-pub const KINDS: &[&str] = &["agents", "workflows", "tools"];
+pub const KINDS: &[&str] = &[
+    "agents",
+    "workflows",
+    "tools",
+    // What the assistant writes about itself and the user, so every change can be undone.
+    "memories",
+    "knowledge",
+    "notebooks",
+    "instructions",
+];
 
 fn dir(config_dir: &Path, kind: &str, id: &str) -> Result<PathBuf, String> {
     if !KINDS.contains(&kind) {
@@ -103,6 +112,30 @@ pub fn list(config_dir: &Path, kind: &str, id: &str) -> Result<Vec<Version>, Str
         .collect();
     out.sort_by(|a, b| b.id.cmp(&a.id));
     Ok(out)
+}
+
+/// What changed from version `id` of an item to the version after it (or to `current`, the item
+/// as it is now, when `id` is the newest), as a line diff.
+pub fn diff(
+    config_dir: &Path,
+    kind: &str,
+    id: &str,
+    version: &str,
+    current: Option<&Value>,
+) -> Result<String, String> {
+    let all = list(config_dir, kind, id)?;
+    let i = all
+        .iter()
+        .position(|v| v.id == version)
+        .ok_or("There is no such version.")?;
+    let pretty = |v: &Value| serde_json::to_string_pretty(v).unwrap_or_default();
+    let older = pretty(&all[i].value);
+    // `all` is newest first: the version after this one is at i - 1.
+    let newer = match i.checked_sub(1) {
+        Some(n) => pretty(&all[n].value),
+        None => current.map(pretty).ok_or("This is the newest version.")?,
+    };
+    Ok(cortex_kernel::diff::unified(&older, &newer))
 }
 
 /// The version marked production, and when it was marked.
@@ -212,5 +245,34 @@ mod tests {
             keep(dir.path(), "tools", "t", &json!(i), &json!(i + 1)).unwrap();
         }
         assert_eq!(list(dir.path(), "tools", "t").unwrap().len(), KEEP);
+    }
+}
+
+#[cfg(test)]
+mod diff_tests {
+    use super::*;
+
+    #[test]
+    fn a_version_diffs_against_the_one_after_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let one = serde_json::json!({ "text": "first", "n": 1 });
+        let two = serde_json::json!({ "text": "second", "n": 1 });
+        let three = serde_json::json!({ "text": "third", "n": 1 });
+        keep(d, "memories", "all", &one, &two).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        keep(d, "memories", "all", &two, &three).unwrap();
+        let versions = list(d, "memories", "all").unwrap();
+        let oldest = &versions[1].id;
+        let text = diff(d, "memories", "all", oldest, None).unwrap();
+        assert!(
+            text.contains("-   \"text\": \"first\"") && text.contains("+   \"text\": \"second\""),
+            "{text}"
+        );
+        let newest = &versions[0].id;
+        assert!(diff(d, "memories", "all", newest, Some(&three))
+            .unwrap()
+            .contains("third"));
+        assert!(diff(d, "memories", "all", newest, None).is_err());
     }
 }

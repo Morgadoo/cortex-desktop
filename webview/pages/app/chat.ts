@@ -1334,6 +1334,8 @@ function renderActions(conversation: Conversation, turn: Turn, isLast: boolean, 
       ? navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([text], { type: 'text/plain' }) })])
       : Promise.reject(new Error('no rich clipboard'));
     void rich.catch(() => navigator.clipboard.writeText(text));
+    // Copying an answer says it was useful; it goes into the run trace as a signal.
+    void tauriInvoke('chat_signal', { id: conversation.id, index: turn.index, kind: 'copied' }).catch(() => undefined);
     copy.replaceChildren(icon('check', 16));
     setTimeout(() => copy.replaceChildren(icon('copy', 16)), 1200);
   });

@@ -25,6 +25,10 @@ pub fn run() {
     if let Some(code) = crate::chat::terminal_chat::maybe_run() {
         std::process::exit(code);
     }
+    // `eval <suite>`: run an evaluation suite and print its score.
+    if let Some(code) = crate::chat::evals::maybe_run() {
+        std::process::exit(code);
+    }
     if let Some(code) = crate::chat::config_cli::maybe_run() {
         std::process::exit(code);
     }
@@ -101,6 +105,11 @@ pub fn run() {
                 chat::commands::chat_answer,
                 chat::commands::chat_update_conversation,
                 chat::commands::chat_delete_conversation,
+                chat::commands::chat_artifacts,
+                chat::commands::chat_signal,
+                chat::commands::chat_version_diff,
+                chat::commands::chat_revoke_tool,
+                chat::commands::chat_set_artifact_critical,
                 chat::commands::chat_list_projects,
                 chat::commands::chat_save_project,
                 chat::commands::chat_delete_project,

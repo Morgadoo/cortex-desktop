@@ -378,7 +378,20 @@ pub async fn run_in(
         let isolated = bubblewrap().is_some();
         let command = match bubblewrap() {
             Some(bwrap) => {
-                let mut c = tokio::process::Command::new(bwrap);
+                // Where a systemd user session can hold it, the run gets a scope of its own with a
+                // cap on its processes and threads, so a fork bomb stops at the cap.
+                let mut c = match task_scope() {
+                    Some(systemd_run) => {
+                        let mut c = tokio::process::Command::new(systemd_run);
+                        c.args(scope_args()).arg(bwrap);
+                        // systemd-run needs the session bus; the program inside does not get it.
+                        for var in SCOPE_VARS {
+                            c.args(["--unsetenv", var]);
+                        }
+                        c
+                    }
+                    None => tokio::process::Command::new(bwrap),
+                };
                 c.args([
                     "--ro-bind",
                     "/",
@@ -472,6 +485,13 @@ pub async fn run_in(
         }
     } else {
         command.env_clear().envs(vars);
+        if bench.is_none() && bubblewrap().is_some() && task_scope().is_some() {
+            for var in SCOPE_VARS {
+                if let Some(value) = std::env::var_os(var) {
+                    command.env(var, value);
+                }
+            }
+        }
         #[cfg(windows)]
         for key in ["SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT"] {
             if let Some(v) = std::env::var_os(key) {
@@ -484,6 +504,15 @@ pub async fn run_in(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    // The workbench's container has limits of its own.
+    #[cfg(target_os = "linux")]
+    let memory_limit = bench.is_none().then(|| {
+        let bytes = memory_limit();
+        limit_memory(&mut command, bytes);
+        bytes
+    });
+    #[cfg(not(target_os = "linux"))]
+    let memory_limit: Option<u64> = None;
 
     let started = Instant::now();
     let child = match command.spawn() {
@@ -543,6 +572,7 @@ pub async fn run_in(
         "isolated": isolated,
         "workbench": bench.is_some(),
         "gpu": bench == Some(true),
+        "memory_limit_mb": memory_limit.map(|bytes| bytes >> 20),
     });
     let failed = timed_out || exit_code != Some(0);
     let mut text = serde_json::to_string_pretty(&report).unwrap_or_default();
@@ -552,6 +582,109 @@ pub async fn run_in(
     Outcome {
         text,
         is_error: failed,
+    }
+}
+
+/// Processes and threads a run may have at once, when it runs in a scope of its own.
+const MAX_TASKS: u32 = 256;
+
+/// What `systemd-run` needs to reach the user's session; bubblewrap removes them again.
+const SCOPE_VARS: [&str; 2] = ["XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS"];
+
+/// The arguments that put a run in a transient systemd scope with a task cap.
+fn scope_args() -> Vec<String> {
+    vec![
+        "--user".into(),
+        "--scope".into(),
+        "--quiet".into(),
+        "--collect".into(),
+        "-p".into(),
+        format!("TasksMax={MAX_TASKS}"),
+        "--".into(),
+    ]
+}
+
+/// `systemd-run`, when this session can start a user scope with it (checked once). Not on macOS
+/// or Windows, nor in containers without a user session; there a run has its time limit and its
+/// own PID namespace instead.
+fn task_scope() -> Option<&'static Path> {
+    static SCOPE: OnceLock<Option<PathBuf>> = OnceLock::new();
+    SCOPE
+        .get_or_init(|| {
+            if !cfg!(target_os = "linux") {
+                return None;
+            }
+            let path = ["/usr/bin/systemd-run", "/bin/systemd-run"]
+                .iter()
+                .map(PathBuf::from)
+                .find(|p| p.exists())?;
+            let works = std::process::Command::new(&path)
+                .args(scope_args())
+                .arg("true")
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .is_ok_and(|s| s.success());
+            works.then_some(path)
+        })
+        .as_deref()
+}
+
+/// The least memory a run is allowed, however small the computer.
+#[cfg(target_os = "linux")]
+const MIN_MEMORY: u64 = 1 << 30;
+
+/// The most memory a run may hold: half of this computer's, so a runaway program fails on its
+/// own instead of pushing the desktop into swap.
+#[cfg(target_os = "linux")]
+fn memory_limit() -> u64 {
+    // SAFETY: `sysconf` has no preconditions.
+    let (pages, page) = unsafe {
+        (
+            libc::sysconf(libc::_SC_PHYS_PAGES),
+            libc::sysconf(libc::_SC_PAGESIZE),
+        )
+    };
+    let total = if pages > 0 && page > 0 {
+        pages as u64 * page as u64
+    } else {
+        0
+    };
+    (total / 2).max(MIN_MEMORY)
+}
+
+/// Caps a run's heap and other private writable memory (`RLIMIT_DATA`) at `bytes`, and turns
+/// off core dumps. Not the address space (`RLIMIT_AS`): runtimes such as V8 reserve far more of
+/// it than they use. There is no process limit: `RLIMIT_NPROC` counts every process the user
+/// runs, not only the run's, so it would stop runs on a busy desktop. The run's PID namespace
+/// and time limit bound what it starts instead.
+#[cfg(target_os = "linux")]
+fn limit_memory(command: &mut tokio::process::Command, bytes: u64) {
+    // SAFETY: the closure runs in the child between fork and exec, and calls only `getrlimit`
+    // and `setrlimit`, which are async-signal-safe and touch no memory the parent shares.
+    unsafe {
+        command.pre_exec(move || {
+            let mut current = libc::rlimit {
+                rlim_cur: 0,
+                rlim_max: 0,
+            };
+            if libc::getrlimit(libc::RLIMIT_DATA, &mut current) == 0 {
+                // A process may lower its hard limit, never raise it.
+                let cap = (bytes as libc::rlim_t).min(current.rlim_max);
+                let data = libc::rlimit {
+                    rlim_cur: cap,
+                    rlim_max: cap,
+                };
+                libc::setrlimit(libc::RLIMIT_DATA, &data);
+            }
+            let core = libc::rlimit {
+                rlim_cur: 0,
+                rlim_max: 0,
+            };
+            libc::setrlimit(libc::RLIMIT_CORE, &core);
+            Ok(())
+        });
     }
 }
 
@@ -746,6 +879,76 @@ mod tests {
     fn decodes_file_names() {
         assert_eq!(percent_decode("my%20chart.png"), "my chart.png");
         assert_eq!(percent_decode("100%"), "100%");
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod limit_tests {
+    use super::*;
+
+    /// With a user scope, a run cannot start more than its share of processes.
+    #[tokio::test]
+    async fn a_run_in_a_scope_cannot_start_unbounded_processes() {
+        let (Some(_), true) = (task_scope(), languages().contains(&"bash")) else {
+            return;
+        };
+        if bubblewrap().is_none() {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let out = run(
+            dir.path(),
+            "conv",
+            &json!({
+                "language": "bash",
+                "code": "for i in $(seq 1 400); do sleep 5 & done 2>/dev/null; jobs -r | wc -l; kill $(jobs -p) 2>/dev/null; true"
+            }),
+        )
+        .await;
+        let report: Value = serde_json::from_str(&out.text).unwrap();
+        let started: u32 = report["stdout"]
+            .as_str()
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap_or(0);
+        assert!(started < MAX_TASKS, "{started} processes started");
+        // The session bus that systemd-run needed does not reach the program.
+        let env = run(
+            dir.path(),
+            "conv",
+            &json!({ "language": "bash", "code": "echo \"${DBUS_SESSION_BUS_ADDRESS:-none} ${XDG_RUNTIME_DIR:-none}\"" }),
+        )
+        .await;
+        let report: Value = serde_json::from_str(&env.text).unwrap();
+        assert_eq!(report["stdout"].as_str().unwrap().trim(), "none none");
+    }
+
+    #[test]
+    fn a_run_gets_half_the_memory_and_at_least_a_gigabyte() {
+        let limit = memory_limit();
+        assert!(limit >= MIN_MEMORY);
+        assert!(limit < u64::MAX / 2);
+    }
+
+    /// A program that allocates past its limit fails on its own, and one within it runs.
+    #[tokio::test]
+    async fn memory_beyond_the_limit_is_refused() {
+        let Some(python) = interpreters().get("python").cloned() else {
+            return;
+        };
+        let run = |megabytes: usize| {
+            let mut command = tokio::process::Command::new(&python);
+            command
+                .arg("-c")
+                .arg(format!("x = bytearray({megabytes} * 1024 * 1024)"))
+                .stdout(Stdio::null())
+                .stderr(Stdio::null());
+            limit_memory(&mut command, 256 << 20);
+            command
+        };
+        assert!(run(32).status().await.unwrap().success());
+        assert!(!run(512).status().await.unwrap().success());
     }
 }
 

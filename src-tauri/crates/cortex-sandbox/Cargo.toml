@@ -1,0 +1,20 @@
+[package]
+name = "cortex-sandbox"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-only"
+publish = false
+description = "The WebAssembly sandbox that runs the tools Cortex's assistant writes."
+
+[dependencies]
+reqwest = "0.13.4"
+serde = { version = "1.0.218", features = ["derive"] }
+thiserror = "2.0.12"
+tokio = { version = "1.43.0", features = ["fs", "net", "time"] }
+url = "2.5.4"
+wasmtime = "50"
+wasmtime-wasi = "50"
+
+[dev-dependencies]
+tempfile = "3.18.0"
+tokio = { version = "1.43.0", features = ["macros", "rt-multi-thread"] }

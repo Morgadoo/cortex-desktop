@@ -1,0 +1,739 @@
+# Agent kernel plan for Cortex Desktop
+
+2026-11-19 · based on commit `39318b4` · line numbers are from that commit
+
+This plan compares Cortex Desktop with the "AI Agent Kernel Tools" document (v2.0) and its `agent-kernel`
+example, and sets out how to make the AI core more scalable and reusable.
+
+## 1. Conclusion
+
+Cortex already has most of the kernel's *features*: memory, skills, sub-agents, approvals, deferred tool
+loading, scheduling, a code sandbox. What it lacks is the kernel's *shape*. Each feature is wired by hand
+into one 730-line function, and the same concept is implemented several times.
+
+So the kernel document's build order (sandbox first, then registry) is the wrong order for Cortex. A
+registry or a WASM sandbox added now would cover one of two tool models and one of four agent loops. The
+order here is:
+
+1. Unify what exists: one tool model, one execution pipeline, one agent loop.
+2. Separate it from Tauri, so every front end reuses it.
+3. Then add the kernel pieces that are missing: traces, a real registry, the WASM sandbox, agent-written
+   tools, evals and lifecycle.
+
+Three things are missing outright and matter most: an **evaluation harness**, a **run trace the agent can
+read**, and a way for the **model to create executable tools**.
+
+## Progress (updated 2026-11-19)
+
+| Phase | Status |
+|---|---|
+| 0. Quick fixes | Done, except the process limit (dropped, see phase 0). |
+| 1. One tool pipeline | Done: `Host` seam, turn tests, handler table, one long-output store. |
+| 2. One loop | Done: headless, terminal chat and `delegate` workers run through `engine::turn`; the system prompt is assembled from named, budgeted sections. |
+| 3. Workspace split | Done (see phase 3): `cortex-kernel` holds the agent loop and its decisions; each step's I/O is the app's `TurnSteps`. |
+| 4. Traces and registry | Done: SQLite traces, feedback and artifact registry; `usage_stats`, `failure_summary`; trace-based budgets; versions for memories, pages, notebooks, instructions. |
+| 5. One retriever | Done for libraries, knowledge pages, tools and skills. Chat search keeps exact substring matching on purpose. |
+| 6. WASM sandbox | Done: `create_tool` / `promote_tool`, a Boa JavaScript interpreter as a WASI component, capability checks, limits, hash pinning. |
+| 7. Evals and lifecycle | Done: eval suites, compare, ablate, regressions, eval-gated promotion, `propose_change` with a review, a daily lifecycle job, opt-in nightly evals, one timing engine for both schedulers, and a Settings section for the artifact registry. |
+
+All work is on `claude/agent-kernel-phase-0`, not committed. 670 app tests, 17 integration tests and 44
+tests in the four crates pass (731).
+
+## Checked against the kernel document
+
+The kernel document was re-read on 2026-11-19 and every requirement checked against the code. Where the
+check found a gap, it was built; each row names where the requirement lives and the test that covers it.
+
+### The rules (document section 2)
+
+| Rule | Where | Test |
+|---|---|---|
+| Growth on disk, pointers in context | Skills, facts and tools past their limits are retrieved, not listed (`skills::prompt_for`, `memory::prompt_for`, `find_tools`); long results are references (`read_tool_output`); the prompt keeps to a budget (`cortex-kernel::prompt`) | `many_skills_are_narrowed…`, `many_facts_become_a_short_index…`, `over_budget_the_least_important…` |
+| Measured against a set the agent does not control | Eval suites in `<config>/evals/`, out of every tool's reach; promotion gated on them | `the_eval_sets_traces_and_audit_log_are_out_of_reach`, `a_promotion_is_gated_on_the_user_s_evals` |
+| Every self-modification versioned, attributed, reversible | `versions.rs` for memories, pages, notebooks, instructions, agents, workflows, tools; skill history; provenance on facts, skills and tools; `chat_version_diff` | `changing_memories_keeps_the_previous_version`, `a_version_diffs_against_the_one_after_it` |
+
+### The 14 tools (document section 4), operation by operation
+
+| Tool | Operation or requirement | Where | Test |
+|---|---|---|---|
+| 1 Sandbox | `run(code, limits)` | `cortex-sandbox::run`; `run_code` (bubblewrap) for native code | `a_script_computes_and_returns_json` |
+| | `load(binary, grants)`, `call(tool, args)` | `script_tools::promote`, `script_tools::call` | `a_tool_is_written_tested_promoted_and_pinned` |
+| | No ambient files, network or environment | Empty WASI context; capability-checked host functions | `nothing_is_reachable_without_a_capability` |
+| | CPU, memory, time limits; fresh instance per call | Fuel, `ResourceLimiter`, yielding epoch plus timeout; a `Store` per call | `an_endless_loop_is_stopped`, `a_memory_hog_is_stopped`, `a_busy_tool_does_not_starve_the_runtime` |
+| | Compose tools in one script | `tool(name, args)` host function, capability `tools`, three levels deep | `a_script_calls_only_the_tools_it_may`, `a_tool_calls_another_approved_tool` |
+| 2 Storage | `read`, `write`, `edit`, `list`, `search` | The filesystem connector; the sandbox workspace; libraries | `reading_a_file_returns_its_contents`, `runs_code_in_the_workspace_and_lists_its_files` |
+| | Separate areas for tools, skills, memory, evals, scratch | `chat/script-tools/`, `skills/`, `chat/memories.json`, `evals/`, `chat/sandbox/<chat>` | `suites_live_outside_the_folder_tools_write` |
+| | Per-user and shared scopes | Single-user app (section 8): scopes are everywhere, project and agent | `many_facts_become_a_short_index_and_scopes_apply` |
+| 3 Registry | `register` | `create_tool` (candidate), `promote_tool` (active) | `a_tool_written_in_one_chat_is_approved_and_used_in_another` |
+| | `search_tools`, `load_tool` | `find_tools`: BM25 fused with embeddings when an embedding model is set up; loads what it finds | `meaning_and_words_are_fused`, `defers_only_past_the_limit…` |
+| | `retire(name)` | `retire_tool` (under the approval mode), lifecycle, `script_tools::retire` | `unused_assistant_tools_retire…` |
+| | Namespaces, version history, status, content hash | `script__<name>`; `versions.rs`; candidate, active, deprecated, archived; SHA-256 pin | `a_tool_is_written_tested_promoted_and_pinned` |
+| | Search before create; update rather than duplicate | `create_tool` refuses a near-duplicate unless told `new_anyway` | `a_near_duplicate_is_refused_unless_asked_for` |
+| 4 Evals | `run_eval`, `compare`, `ablate` | `evals::run_suite`, `compare`, `ablate`; `cortex-desktop eval` | `an_eval_suite_runs_through_the_loop_and_is_graded`, `comparisons_name_the_cases_that_moved` |
+| | Human-owned sets; a part hidden from the agent | The whole set is hidden: no tool reads or writes `evals/` | `the_eval_sets_traces_and_audit_log_are_out_of_reach` |
+| | Regression suites per tool | Each script tool's checks: its good test run, re-run on every rewrite, at promotion and daily | `regression_checks_hold_a_tool_to_what_it_did` |
+| | Tool-selection tests | The `tool-selection` starter suite | `suites_live_outside…` |
+| 5 Traces | `query_traces(filter)`, `get_run(id)` | `query_traces`, `get_run` built-ins (`cortex-traces::runs`, `run_detail`) | `runs_can_be_queried_and_opened_with_what_they_used` |
+| | `failure_summary`, `usage_stats` | Built-ins of those names | `a_turn_is_traced_and_the_model_can_read_the_trace` |
+| | Question, tools, arguments, results, errors, latency, tokens | Runs, model and tool calls in SQLite; arguments and results in the encrypted conversation and activity log, linked by conversation id | `a_run_is_traced_and_summed_without_its_content` |
+| | Artifacts loaded versus used; user feedback | `run_artifacts` per run; ratings and implicit signals | `runs_can_be_queried…`, `ratings_are_kept…`, `implicit_signals_are_counted…` |
+| 6 Memory | `memory_read`, `memory_write`, `memory_search`, `memory_forget` | Facts in the prompt and `knowledge_read`; `remember`, `knowledge_write`; `memory_search`, `knowledge_search`; `forget` | `memory_tools_save_and_forget`, `many_facts_become_a_short_index…` |
+| | Facts, episodes, procedures | Facts and pages; past chats (`search_chats`, `read_chat`); skills | `memory_tools_save_and_forget`, `pages_are_written_found_and_recalled_by_relevance`, `skills_load_by_name` |
+| | Short index in context, bodies on demand | Past 40 facts: important and relevant ones plus a count; pages by title, recalled in full when relevant; skills by name | `many_facts_become_a_short_index…` |
+| | Scopes; provenance | `Memory::scope` (`project:`, `agent:`), set from the chat, never by the model; conversation id on each fact | `many_facts_become_a_short_index_and_scopes_apply` |
+| 7 Version control | `commit`, `log`, `revert`, `diff` | `versions::keep`, `list`, restore by saving an old version, `versions::diff` | `a_version_diffs_against_the_one_after_it` |
+| 8 Lifecycle | `score(artifact)` | `cortex-kernel::lifecycle::score`, shown by `chat_artifacts` | `scores_favour_what_is_used_and_fade_when_idle` |
+| | `promote`, `deprecate`, `archive` | `promote_tool`; the daily lifecycle pass | `only_the_assistant_s_unused…` |
+| | `consolidate(scope)` | `cortex-kernel::lifecycle::duplicates` finds facts that say the same thing within a scope; `memory::consolidate` merges them (versioned) in the daily pass; the weekly knowledge review proposes the rest | `facts_that_say_the_same_thing_in_the_same_scope_are_grouped`, `duplicate_facts_are_merged_and_the_old_list_kept` |
+| 9 Context | `load(ref)`, `unload(ref)` | `find_tools`, `use_skill`, `read_tool_output`; `unload_tools` | `tools_load_and_unload_on_demand_and_the_budget_can_be_read` |
+| | `compact(history)` | Before every step, once per turn on failure | `a_failed_summary_is_tried_once_per_turn` |
+| | `budget_status()` | `context_status` built-in | `tools_load_and_unload_on_demand_and_the_budget_can_be_read` |
+| | Fixed budget for the always-loaded part | The prompt assembler, a quarter of the window | `over_budget_the_least_important_and_largest_go_first` |
+| 10 World access | Search, fetch, docs; output is data | Web search, browser, MCP, OpenAPI; the exposure gate | `after_reading_mail_new_urls_and_outbound_tools_need_approval`, `tools_outside_the_registry_pass_the_same_gate_as_connectors` |
+| 11 Sub-agents | `spawn(role, task, tools)`, `collect`; isolated contexts | `delegate`: each task names an agent (role) and may name its tools (`subagents::task_tools`); workers are engine turns in temporary chats; reports come back in order | `a_task_gets_only_the_tools_it_names`, `a_delegate_worker_runs_through_the_same_loop`, `reports_render_as_json_in_order` |
+| | The author is not the only reviewer | A context-free reviewer reads every `promote_tool` and `propose_change` before the user | `a_proposed_change_is_reviewed…` |
+| 12 Human channel | `ask`, `propose(change, evidence)`, `request_approval` | `ask_user`, `propose_change`, approval cards | `a_change_asks_in_ask_mode…`, `a_proposed_change…` |
+| 13 Scheduler | `schedule(cron, task)`, `on_event` | `schedule_task`; folder and feed triggers; one timing engine | `tasks_and_schedules_share_one_timing_engine` |
+| | Nightly evals, regression checks, re-indexing, consolidation, demotions | Opt-in nightly evals; daily checks and lifecycle; library re-sync; weekly review | `nightly_evals_compare…`, `it_runs_once_a_day` |
+| 14 Permissions | `request_capability(scope, duration, reason)`, `revoke` | `request_capability` (always asks, for days); `chat_revoke_tool`; lapsed grants drop | `granted_access_lapses_and_can_be_revoked` |
+| | Scoped credentials, keys never seen, identity from the platform | Keychain and vault; scope and project ids filled by the app, not the model | `agents_get_only_their_secrets`, `values_are_masked_in_output` |
+
+### The other sections
+
+| Section | Where |
+|---|---|
+| 5 Evolution loop | Section 6a below, every step built |
+| 6 Layers of adaptation | `propose_change` (memory, skill, instruction), `create_tool`, the prompt; weights are out of scope (section 8) |
+| 7 Signals, attribution, two filters, traps | Evals, ratings, implicit signals, tool errors, cost; `run_artifacts` and `ablate`; the write-time filter in `remember` and `knowledge_write`, the read-time cut-off in retrieval; criticality apart from use |
+| 8 Keeping the context flat | Section 6a below |
+| 9 Guardrails | Section 6a below; the protected folders are tested |
+| 10.13 The example's open points | Section 7 below: all closed, the worker-starvation and tool-call points included |
+| 11–12 Build order, minimum kernel | Section 6a below |
+
+### Where the build differs from the first plan, and why
+
+- **The loop is in `cortex-kernel`; each step's work is in the app.** `cortex_kernel::agent_loop` holds
+  the loop's control flow (steps, the last step, guidance, cancelling) and is tested on its own; the
+  app's `TurnSteps` implements one step: stream a model call, run the tools it called. The step's work
+  stays in the app because it calls about 40 app modules, and a crate cannot depend back on the app
+  (phase 3).
+- **Python and Bash custom tools keep bubblewrap.** WebAssembly runs JavaScript here; plain JavaScript
+  custom tools now run in it (`custom_tools::runs_in_wasm`), on every system.
+
+### How each kernel tool stands now
+
+| # | Kernel tool | Where it lives |
+|---|---|---|
+| 1 | Code sandbox | `cortex-sandbox` (WASM, fuel, memory, time, capabilities) for written tools; bubblewrap with a memory cap for `run_code` |
+| 2 | Persistent storage | Encrypted files under `chat/`; `evals/` beside it, out of tools' reach |
+| 3 | Tool registry | `ToolRegistry` for connectors, `engine/handlers.rs` for the engine's own, `script_tools` with candidate/active/deprecated, artifact rows with version, hash and provenance |
+| 4 | Evaluation harness | `chat/evals.rs`: suites, grading, runs, `compare`, `ablate`, regressions; `cortex-desktop eval <suite>` |
+| 5 | Trace introspection | `cortex-traces`; the model reads it with `usage_stats` and `failure_summary` |
+| 6 | Memory | Facts, pages, notebooks, skills; every change versioned |
+| 7 | Version control | `versions.rs` for agents, workflows, tools, memories, pages, notebooks, instructions; skill and canvas history as before |
+| 8 | Lifecycle manager | `chat/lifecycle.rs`, daily: deprecate unused, archive, demote failing tools; critical artifacts and the user's own are never touched |
+| 9 | Context manager | Compaction every step, retrieval-ranked skills and tools, one persistent long-output store |
+| 10 | World access | As before |
+| 11 | Sub-agents | `delegate` workers are engine turns with the same gates; the proposal reviewer is a fresh, context-free model call |
+| 12 | Human channel | `ask_user`, approvals, `promote_tool` and `propose_change`, which always ask |
+| 13 | Scheduler and triggers | One timing engine for native tasks and the web app's schedules; the daily lifecycle pass and opt-in nightly evals |
+| 14 | Permissions and secrets | One gate for connector, OpenAPI, custom, computer and script tools; capability manifests for script tools; vault unchanged |
+
+Measured on the code, after phase 0:
+
+| Claim | Now |
+|---|---|
+| Agent loops | 4 (`engine`, `subagents`, `headless`, `terminal_chat`); only `engine` runs privacy, audit, hooks or vault |
+| `engine::turn` | 736 lines |
+| `Runner::run_inner` | 319 lines, 17 `if name == …` branches |
+| Tauri commands in `commands.rs` | 276 |
+| Traits in `chat/` | 0 |
+| BM25 implementations | 2 (`libraries.rs`, `knowledge.rs`) |
+| Version stores | 3 (`versions.rs`, skill history, canvas versions) |
+| Schedulers | 2 (`chat/tasks.rs`, `schedules/`) |
+
+Changes to the plan, from what phase 0 found:
+
+1. **Build the test seam first.** Phase 1 rewrites `run_inner`, which lives inside `turn()`, and nothing
+   tests a turn. So phase 1 now starts with phase 2's first two steps: the `Host` trait and the turn tests.
+2. **Close the sub-agent gap early.** Done: see phase 0.
+3. **Pull a minimal eval harness forward.** The test `Host` and scripted model the turn tests need are most
+   of an eval runner. A handful of tool-selection cases can ride on them right after the seam, instead of
+   waiting for phase 7, since learned skills and memory already change behaviour today.
+
+## 2. What the kernel document asks for
+
+Fourteen domain-independent tools in three tiers (create, improve, operate) and three rules:
+
+1. Growth happens on disk; the context holds only pointers.
+2. Nothing is "better" until it is measured against a test set the agent does not control.
+3. Every self-modification is versioned, attributed and reversible.
+
+Cortex follows rule 1 well, rule 3 in part, and rule 2 not at all.
+
+## 3. Cortex against the 14 kernel tools
+
+| # | Kernel tool | Cortex today | Gap |
+|---|---|---|---|
+| 1 | Code sandbox | **Partial.** `run_code` uses bubblewrap with a fresh process per call (`chat/sandbox.rs:295`); optional Podman workbench. | Time limit only: no CPU or memory limit. On macOS, Windows, or without bwrap it runs on the host. The bash connector and MCP stdio servers always run on the host. No WebAssembly. |
+| 2 | Persistent storage | **Yes.** Files under `<config>/chat/`, encrypted at rest, folder sync. | Whole-file JSON, rewritten on every change and scanned linearly. No areas for tools or evals. |
+| 3 | Tool registry | **Partial.** `ToolRegistry` holds connectors in memory (`tools/registry.rs:149`); policies and MCP fingerprints persist. | No per-tool record: no version, status, provenance or search index. Built-ins, OpenAPI, custom tools and computer use are outside it. |
+| 4 | Evaluation harness | **No.** 657 unit tests, live model tests and 14 e2e specs exist, but none scores answers or tool choice. | Everything. Ratings and arena Elo are stored but never aggregated. |
+| 5 | Trace introspection | **Partial.** Monthly audit log with tool, short arguments, outcome and milliseconds (`chat/audit.rs`). | No per-call tokens, latency or cost; usage is one total per conversation. The model cannot read any of it. |
+| 6 | Memory | **Yes, the strongest area.** Facts, knowledge pages, per-agent notebook, skills listed by one line and loaded on demand. | Three separate implementations. Scope is global or per agent only. Provenance is uneven. No history. |
+| 7 | Version control | **Partial.** | Three different mechanisms (`versions.rs`, skill `history/`, canvas versions). None for memories, knowledge, notebooks or instructions, which the model writes. |
+| 8 | Lifecycle manager | **Mostly no.** Learned skills are saved disabled; `versions.rs` has a "production" pin; a weekly review proposes changes. | No usage tracking, no scoring, no deprecation or archive. |
+| 9 | Context manager | **Yes.** Compaction at 60% of the window, old tool results clipped, deferred tools, context view. | Compaction runs once before the step loop (`engine.rs:1492`), so a 24-step turn can overflow. Two long-output stores, one lost on restart. |
+| 10 | World access | **Yes.** Web search, fetch, browser, MCP, OpenAPI. | None structural. |
+| 11 | Sub-agents | **Yes.** `delegate` (parallel, sequential, debate) and `message_agent`. | Workers run in a separate loop with no hooks, audit or compaction. No reviewer role for self-made changes. |
+| 12 | Human channel | **Yes.** `ask_user`, six approval modes, approval cards. | No "propose a change with evidence" flow. The gate is spread over several layers. |
+| 13 | Scheduler | **Yes, twice** (`chat/tasks.rs` and `schedules/`). | No maintenance jobs beyond re-sync and the weekly review. |
+| 14 | Permissions and secrets | **Partial.** Keychain, vault with output masking, and an exposure tracker for prompt injection that goes beyond the document. | No capability manifest per tool. Vault secrets are env vars that sandboxed code can read. Three tool kinds skip policy and exposure checks. |
+
+## 4. What blocks scale and reuse today
+
+These are the structural problems, in order of cost.
+
+**Four agent loops.** `engine::turn` (`engine.rs:1170`), `subagents::run_one` (`subagents.rs:197`),
+`headless.rs:257` and `terminal_chat.rs:305` each run their own step loop. Hooks, audit, privacy filtering,
+vault masking, compaction and model failover exist only in the first. The local API server makes raw model
+calls with no tools.
+
+This was a safety gap, not only duplication, and is now fixed for `delegate` workers (see phase 0). Workers
+called connector tools and built-ins with no audit entry, no `before_tool` hook, no vault, and no privacy
+filter on their requests. A user's blocking hook could be sidestepped by delegating. And the main loop puts
+the real personal data back into the `delegate` call's task before it runs, so with the filter on, the
+worker sent that task to a cloud model unfiltered. Headless mode, terminal chat and the API server still
+lack these layers until phase 2.
+
+**No boundary between engine and UI.** The engine takes `&AppHandle` everywhere; 53 files in the crate
+mention it, and `chat/` declares no traits. This is why the CLI modes had to copy the loop, and why no unit
+test can run a turn.
+
+**Two tool models and six side paths.** Connectors use `Connector` and `ToolDefinition`; chat flattens
+everything into `ChatTool` (`chat/tools.rs:53`). OpenAPI, custom tools, computer use and built-ins each
+dispatch on their own. About 20 tools are matched by name in a 300-line `if name == X` chain
+(`engine.rs:2069`). Adding one built-in touches three or four places.
+
+**Authorization is not one gate.** Registry policy, exposure, approval mode, inline per-tool checks, agent
+policy and hooks are checked in different places. Two consequences, both verified:
+
+- Every built-in is declared `read_only: true` with no connector (`builtins.rs:32`), and `needs_approval`
+  returns early for those (`chat/tools.rs:269`). `remember`, `save_skill` and `schedule_task` never ask.
+- OpenAPI, custom tools and computer use return from `execute` before the registry dispatch
+  (`chat/tools.rs:425-475`), so per-tool policy and exposure tracking do not apply to them.
+
+**One crate.** 77 flat `chat::` modules, 276 Tauri commands in one 4,839-line file, no compile-time
+boundaries, and a 32 GB target folder.
+
+**Repeated concepts.** Retrieval is written four times (BM25 in libraries and again in knowledge, substring
+search for chats, prefix scoring for tools). Versioning three times. Two schedulers. Two skill systems.
+
+## 5. Target architecture
+
+As built (phase 3 explains the change from the first sketch below): `crates/cortex-kernel` (the agent
+loop and its decisions), `cortex-retrieval`, `cortex-traces`, `cortex-sandbox`, and the app, whose
+`TurnSteps` does each step's I/O and whose `chat/host.rs` seam connects it to a window, a terminal, a
+worker or a test. The first sketch:
+
+```text
+src-tauri/                     Cargo workspace
+├── crates/
+│   ├── cortex-kernel          no Tauri: loop, Tool trait, pipeline, Host trait, context, prompt
+│   ├── cortex-store           files as source of truth, SQLite as index: artifacts, versions, traces
+│   ├── cortex-retrieval       one retriever: BM25 + embeddings + rank fusion
+│   ├── cortex-sandbox         one Sandbox trait: wasmtime, bubblewrap, Podman
+│   ├── cortex-tools           built-ins and connectors (filesystem, MCP, OpenAPI, browser, ...)
+│   └── cortex-evals           suites, runs, compare, ablate
+├── app                        Tauri shell: commands, webview, tray; implements Host
+└── cli                        headless, terminal chat, ACP, bots; implement Host
+```
+
+Four contracts hold it together.
+
+```rust
+/// One model for every tool: built-in, connector, MCP, OpenAPI, custom, WASM.
+pub trait Tool: Send + Sync {
+    fn spec(&self) -> &ToolSpec;
+    async fn call(&self, ctx: &CallCtx, args: Value) -> ToolResult;
+}
+
+pub struct ToolSpec {
+    pub name: ToolName,          // namespaced: source/name
+    pub description: String,
+    pub parameters: Value,       // JSON Schema
+    pub effects: Effects,        // read, write, destructive, open-world, executes code
+    pub source: Source,          // Builtin, Connector, Mcp, OpenApi, Custom, Wasm
+    pub version: u32,
+    pub hash: Option<String>,    // content hash, pinned at approval
+    pub status: Status,          // Candidate, Active, Deprecated, Archived
+}
+
+/// What a front end provides. The engine knows nothing else about the UI.
+pub trait Host: Send + Sync {
+    fn emit(&self, event: ChatEvent);
+    async fn approve(&self, request: ApprovalRequest) -> Decision;
+    async fn ask(&self, question: Question) -> Answer;
+}
+
+/// One ordered pipeline that every tool call passes through.
+pub trait Stage: Send + Sync {
+    async fn before(&self, call: &mut Call) -> Verdict;      // Proceed, Ask, Refuse
+    async fn after(&self, call: &Call, result: &mut ToolResult);
+}
+```
+
+The pipeline order is fixed: user hooks, tool and agent policy, exposure, approval mode and risk, secret
+injection, execution, secret masking, result store, trace. A tool cannot opt out of a stage; it can only
+declare `effects`, and the stages decide.
+
+### Own loop or rig's agent runner
+
+Cortex depends on `rig-core` only. The APIs the kernel example uses (`AgentBuilder`, `AgentHook`,
+`ToolServer`, `add_dynamic_tool`, `retrieved_tools`) live in the separate `rig-agent` crate, which is not a
+dependency today. `DynamicTool` and `ToolAnnotations` are in `rig-core`.
+
+Recommendation: keep Cortex's own loop and unify it behind the contracts above. It already does things the
+example does not: steering mid-turn, failover to a backup model, withholding tools on the last step,
+serial handling of calls that wait on the user. The kernel document itself warns that rig's tool and hook
+APIs changed between 0.43 and 0.46. Owning the traits keeps that churn in one adapter. Revisit `rig-agent`
+after phase 2, when the loop is small enough to compare fairly.
+
+## 6. Roadmap
+
+Each phase leaves the app shippable. Sizes are relative: S is days, M is one to two weeks, L is several
+weeks.
+
+### Phase 0. Quick fixes (S) — done on branch `claude/agent-kernel-phase-0`
+
+- Built-ins declare an effect (`builtins::Effect`: reads, memory, standing). `schedule_task` and
+  `save_skill` now follow the approval mode through the same gate as `manage_agents`: they ask in Ask
+  and Accept edits, are refused in Plan and unattended runs, and run in Full auto. Memory writes
+  (`remember`, `forget`, `knowledge_write`) still never ask; the user's switch in Settings governs them.
+- OpenAPI operations, custom tools and computer use go through the registry's per-tool policy and
+  untrusted-content gate (`ToolRegistry::dispatch_external`), and their results count toward the
+  conversation's exposure. A screenshot is classed as sending nothing.
+- Compaction is checked before every step, and a failed summary is not retried within the turn.
+- The bubblewrap runner (and the unsandboxed fallback on Linux) caps a run's private memory at half of
+  physical RAM with `RLIMIT_DATA`, and turns off core dumps.
+- `delegate` workers now run each tool call through `engine::guarded_call`, the wrapper the main loop
+  uses: `before_tool` and `after_tool` hooks, the agent's vault secrets (masked in results), and an
+  activity-log entry. On a cloud model with the privacy filter on, their requests carry placeholders and
+  their replies and tool calls are restored, as in the main loop.
+
+Done later:
+
+- **Process limit.** `RLIMIT_NPROC` counts every process the user runs, so it could not be used. Instead,
+  where a systemd user session can hold it, each bubblewrap run starts in a transient scope with
+  `TasksMax=256` (`sandbox::task_scope`), passing `systemd-run` the session bus and unsetting it inside.
+  Where there is no user session (macOS, Windows, some containers), a run keeps its PID namespace and
+  time limit; the Podman workbench has `--pids-limit`.
+- **Characterization tests for `engine::turn`.** The engine takes Tauri's `AppHandle<Wry>`, and Tauri's
+  mock app uses another runtime type, so a turn cannot run in a unit test. These tests move to the start
+  of phase 1: introduce the `Host` trait, then write them, then change the tool dispatch.
+
+### Phase 1. One tool model, one pipeline (M) — done
+
+What was built:
+
+- `chat/host.rs`: the `Host` trait (data folder, events, chat state, tool registry, model connection,
+  approvals, notifications, and the Tauri app for what is not behind it yet), `TauriHost` for the
+  window, and a `TestHost` with scripted models. `run_turn`, `turn`, the runner, `tools::execute` and
+  sub-agents take a `Host` instead of `AppHandle`.
+- `chat/engine/turn_tests.rs`: whole turns against rig's scripted model: a plain answer, a tool call, a
+  declined approval, Plan mode, steering, failover to the backup model, a provider error, compaction
+  failing once per turn, and a `delegate` worker.
+- `chat/engine/handlers.rs`: the engine's own tools in a table by name. `Runner::run_inner` went from
+  319 lines and 17 `if name == …` branches to 75 lines and none. `is_builtin` is gone; `builtins::NAMES`
+  is the list.
+- Chats take connector results whole (`CallContext::whole`) and keep long ones only in the persistent
+  `chat/tool-outputs/` store; the volatile `tool_results__read` is no longer offered in chats. The web
+  app's bridge still uses the result store.
+
+Left for later, on purpose: `ChatTool` stays as the description of an offered tool (20+ modules build
+one), and `Effects` exists for built-ins only. Replacing them is a rename across the crate with no
+behaviour change, best done during the workspace split.
+
+The original list:
+
+- First, the seam: define `Host`, implement it for Tauri, and write the turn tests with a test `Host` and
+  a scripted model (moved here from phase 2).
+- Introduce `Tool`, `ToolSpec` and the staged pipeline inside the current crate.
+- Wrap each existing kind in an adapter: `Connector` tools, MCP, OpenAPI, custom tools, computer.
+- Move the ~20 name-matched branches out of `Runner::run_inner` into registered tools, a few per change.
+- Delete `ChatTool`, `is_builtin` and the per-tool mode checks once nothing uses them.
+- Merge the two long-output stores into one that persists.
+
+Done when: the engine dispatches by registry lookup only, and adding a built-in means adding one file.
+
+### Phase 2. One loop behind a `Host` (L) — done
+
+What was built:
+
+- `TurnRequest` gained `max_steps`, `only_tools` and `system`, so a run with a narrow job uses the same
+  loop.
+- Headless mode (`headless.rs`) runs `engine::turn` with a `HeadlessHost`: unattended (so the engine's
+  own gates refuse changes), only the reading tools, in a temporary conversation deleted after. The host
+  stops the turn at the token, price and time limits and builds `export.json` from the turn's events.
+- Terminal chat (`terminal_chat.rs`) runs `engine::turn` with a `TerminalHost` that prints the stream.
+- `delegate` workers (`subagents.rs`) run `engine::turn` with a `WorkerHost` that relays progress to the
+  parent chat: a temporary conversation per worker, the brief as the whole system prompt, only the
+  reading tools. Hooks, vault, activity log, privacy filter and the backup model now apply to workers
+  because they are the engine's.
+- There is one step loop (`engine.rs`, `for step in 0..max_steps`). The local API server's model calls
+  proxy other apps' requests, which run their own loops; the rest are one-shot errands (titles,
+  compaction, Auto's check).
+
+- The prompt assembler (`cortex-kernel::prompt`): the system prompt is named sections (identity,
+  instructions, project, tools' guidance, memories, skills, libraries, notebook, team, knowledge pages,
+  plan mode…), each essential, useful or optional. Within a quarter of the model's window the optional
+  ones give way first, largest first. Each turn saves the parts it sent (`Conversation::prompt_parts`),
+  and the context view shows them as their own slices, with the remainder as tool definitions.
+
+`turn()` still holds its stages in one function; with the prompt and every decision moved out, what is
+left is the I/O sequence itself, covered by the turn tests.
+
+The original list:
+
+- Extend `Host` (built in phase 1) and the turn tests to every case: a plain answer, a tool call, an
+  approval, a steer, a failover, a compaction.
+- Split `turn()` into stages: load, select tools, assemble prompt, step loop, dispatch, post-turn.
+- Replace the ten string appends with a prompt assembler that takes named sections, each with a token
+  budget and a priority, so the context view reads the same structure the model receives.
+- Move sub-agents, headless, terminal chat and the API server onto the same loop with their own `Host`.
+
+Done when: there is one step loop in the code base, and a sub-agent's tool calls appear in the audit log.
+
+### Phase 3. Workspace split (M) — done, as functional core and imperative shell
+
+**The decision.** The plan's first idea was a `cortex-kernel` holding the whole loop. Measured, the loop
+calls about 40 app modules directly (store, memory, skills, agents, the browser, computer use, the ACP
+and coding-agent back ends, MCP connectors), 23 of the 88 `chat/` files and 14 of the `tools/` files use
+Tauri, and a crate cannot depend back on the app. Moving the loop would mean moving most of the app.
+Instead the kernel holds the loop itself and every decision it makes, with no window, files or
+network, tested on their own: `agent_loop::run` decides how many steps a turn takes, that the last one
+offers no tools, that guidance earns another step, and that cancelling stops at once. The app's
+`TurnSteps` (`chat/engine.rs`) implements `agent_loop::Steps`: one model call streamed, then the tools it
+called, run and saved. `Host` is the seam that
+lets the shell run in a test, the terminal, a worker or the window.
+
+`crates/cortex-kernel` (no Tauri, WebKitGTK or GTK in its dependency tree; `cargo test -p
+cortex-kernel`):
+
+- `agent_loop`: the loop, over a `Steps` trait the app implements.
+- `approval`: approval modes, the calls that are hard to undo, which calls only read, Auto's check,
+  and `change_gate` for changes outside the connectors.
+- `tool`: `ChatTool` (a tool as offered to the model), `Outcome`, name and schema rules.
+- `context`: what a request carries, clearing old results, compaction points, the context view.
+- `prompt`: the prompt assembler.
+- `privacy`: redaction and restoring.
+- `evals`: cases, grading, comparing runs, ablation sets.
+- `lifecycle`: what to deprecate, archive or demote, from the registry and a week of statistics.
+
+The app re-exports each (`chat::context`, `chat::tools::needs_approval`, …), so callers did not change.
+
+Three more crates hold the rest of the AI core that needs no window:
+
+- `crates/cortex-retrieval`: the tokenizer and BM25 corpus.
+- `crates/cortex-traces`: the SQLite trace store, feedback and artifact registry. It takes plain token and
+  cost numbers; the app adapts rig's usage report.
+- `crates/cortex-sandbox`: the WASM sandbox, its WIT contract and the interpreter component
+  (`wasm/js-runtime/`, rebuilt by `scripts/build-js-runtime.sh`). The app passes a file reader, so sealed
+  files are decrypted by the app, not the crate.
+
+CI formats, lints and tests the whole workspace.
+
+`commands.rs` (the IPC surface, 279 commands) is split by area into `chat/commands/*_commands.rs`:
+conversations, agents, tasks, libraries, knowledge, canvases, tools, voice, code, providers, settings and
+the rest. Shared helpers and types stay in `commands.rs`, which re-exports every area, so the app's
+handler list and the webview are unchanged.
+
+The original list:
+
+- Turn `src-tauri` into a workspace and move the code into the crates in section 5, kernel first.
+- `cortex-kernel` must compile without Tauri. Enforce it in CI.
+- Split `commands.rs` by area as the modules move.
+
+Done when: `cargo test -p cortex-kernel` runs without WebKitGTK installed.
+
+### Phase 4. Traces and the artifact registry (M) — done
+
+What was built (`cortex-traces`, wrapped by `chat/traces.rs`):
+
+- `chat/traces.db` with `runs`, `model_calls`, `tool_calls`, `feedback` and `artifacts`. Measurements
+  only: names, ids, times, tokens, cost, success. Arguments and results stay in the encrypted files,
+  because this database is not sealed at rest.
+- Every `engine::turn` is a run; each model call records its time, tokens, cost and failure kind; each
+  tool call through `guarded_call` records its time and outcome.
+- Ratings are recorded as feedback, per answer, with model and agent.
+- Artifacts: tools count a use per call, skills a load when listed and a use when opened, skills and
+  script tools a version (by content hash), status and provenance when saved.
+- Built-ins `usage_stats` and `failure_summary` let the model read its own record.
+- `check_budget` reads an agent's monthly cost from the trace, falling back to the old scan for a month
+  with no traced run.
+- `versions.rs` also keeps memories, knowledge pages, notebooks and instructions, so every change the
+  assistant makes to them can be undone.
+
+- Implicit signals: regenerating an answer, editing and resending a prompt, resuming a stopped turn
+  (recorded by the engine), exporting a chat and copying an answer (by their commands) go to a
+  `signals` table, and `usage_stats` reports them beside the ratings.
+
+The original list:
+
+- Add SQLite for derived and local data only: runs, steps, model calls (tokens, latency, cost), tool calls,
+  feedback, and one `artifacts` table for tools, skills, memories, pages and agents with version, status,
+  hash, provenance, and counts of times loaded and times used.
+- Keep files as the source of truth for everything that syncs or is encrypted at rest.
+- One versioning mechanism for every artifact, replacing the three in use, and extended to memories,
+  knowledge pages, notebooks and instructions.
+- Read-only tools for the agent: `query_traces`, `failure_summary`, `usage_stats`.
+- Agent budgets read from the trace table and stop scanning every conversation.
+
+Done when: "which tools failed most this week, and what did they cost" is one query, and the agent can ask
+it.
+
+### Phase 5. One retriever (M) — done
+
+What was built (`cortex-retrieval`): one tokenizer and one BM25 `Corpus`, with optional prefix matching.
+
+- Libraries and knowledge pages rank with it; their two copies of BM25 are gone.
+- `find_tools` ranks with it (name weighted three times, prefixes on), replacing the word-count heuristic.
+- Skills: past 30, the prompt lists the 15 that fit the user's message and says how to find the rest;
+  `use_skill` with words instead of a name searches the skills.
+
+Not changed on purpose: chat search (`index.rs`) keeps exact substring matching, which is what the
+search box promises. Embeddings stay with the libraries: using them for skills or tools would add an
+embedding call to every turn.
+
+The original list:
+
+- Extract the library search (BM25, embeddings, rank fusion, optional reranker) into `cortex-retrieval`.
+- Use it for knowledge pages, past chats, skills and tools.
+- `find_tools` searches every tool kind with it, and skills stop being listed in full once there are many.
+
+Done when: one index type backs all five, and the copies in `knowledge.rs`, `index.rs` and `deferred.rs`
+are gone.
+
+### Phase 6. WASM sandbox and agent-written tools (L) — done
+
+What was built:
+
+- `cortex-sandbox`: the example's host, adapted to a `script-tool` world (`run(script, args)`), with the
+  gaps in section 7 closed. Response bodies are capped while streaming; host names are resolved, private
+  addresses refused and the connection pinned (no DNS rebinding); the component compiles once per
+  process; limits are fuel, a memory limiter and an epoch deadline plus a timeout.
+- The interpreter (route B): `wasm/js-runtime/`, Boa JavaScript compiled to a 4 MB WASI component. A
+  script defines `function main(args)` and reaches only `log`, `fetch` and `read`, each capability-checked
+  by the host. Arguments enter as a JSON string literal, never as code.
+- `chat/script_tools/`: `create_tool` saves a candidate with no capabilities and test-runs it with none;
+  `promote_tool` always asks, showing the script, the description the model will read and the access
+  asked for; an active tool is offered as `script__<name>` in every chat, read-only when it has no
+  network, and refused if its script no longer matches the approved hash. The app's own tool names
+  cannot be taken.
+- Script tools go through the same gate as connectors (`dispatch_external`); with network access they
+  count as able to send data out.
+
+Tested end to end in `turn_tests.rs`: written in one chat, approved, offered and run in another; declined
+and never offered.
+
+Custom tools: plain JavaScript ones (no Node modules, process or files) now run in this runtime, in
+program mode, on every system (`custom_tools::runs_in_wasm`). Python, Bash and Node-dependent JavaScript
+keep bubblewrap, now with a memory cap, because WebAssembly runs only the interpreter built here. A known
+cost: the first sandbox call in a debug build waits about 15 s while the component compiles (release
+builds compile it far faster).
+
+Added after re-reading the kernel document: composition (`tool(name, args)` from a script, for the
+tools its capabilities name, three levels deep), regression checks per tool, near-duplicate refusal,
+`retire_tool`, `request_capability` with a duration and `chat_revoke_tool`, a rate limit per tool, and
+a guest that yields its thread instead of holding it.
+
+The original list:
+
+- Bring the example's `sandbox` crate in as `cortex-sandbox`, with its WIT contract, capability checks,
+  fuel, memory and time limits, and BLAKE3 hash pinning. Its 13 tests come with it.
+- Fix the example's known gaps before use (section 7).
+- Start with route B from the document: one audited component that embeds an interpreter, so the model
+  supplies only a script. No compiler toolchain on the user's machine.
+- New flow: the model calls `create_tool`; the tool is stored as a candidate with no capabilities; it runs
+  only in test calls; the user sees its code, description and requested capabilities and approves; it
+  becomes active, pinned to its hash.
+- Custom tools move to this runtime, which gives macOS and Windows a real sandbox for them.
+- `run_code` keeps bubblewrap and Podman: native Python with packages does not fit in WASM.
+
+Done when: the model can write a tool in one chat, the user approves it, and it is found by `find_tools` in
+another chat.
+
+### Phase 7. Evals and lifecycle (L) — done
+
+What was built:
+
+- `chat/evals.rs`: suites in `<config>/evals/<suite>/cases/*.json`, outside `chat/`. A case lists the tools
+  a good answer calls or avoids and the facts it states. Cases run through `engine::turn`, unattended, in
+  temporary chats, and are graded; runs are saved. `compare` names the cases that moved; `ablate` reruns
+  without a tool or skill (`TurnRequest::tools_off` and the new `skills_off`).
+- A starter suite (`tool-selection`), and `cortex-desktop eval <suite> [--model] [--without tool:x]`.
+- An answer the user rates down becomes a case in `regressions`, with the wrong answer in its note,
+  waiting for the user to say what a right answer contains.
+- Promotion is gated: with the user's suites, `promote_tool` runs each without and with the tool, and a
+  tool that makes one worse goes back to being a candidate.
+- `chat/proposals.rs`: `propose_change` (memory, skill or instruction, with evidence). A fresh model call
+  with none of the chat reviews it; the user sees the review and decides, in every mode.
+- `chat/lifecycle.rs`, run daily by the task scheduler: assistant-made skills and script tools unused for
+  30 days are deprecated, for 120 days archived, and a script tool failing more than half of at least 5
+  calls in a week is demoted to candidate. The user's own and critical artifacts are never touched.
+- Settings → Knowledge has a "What the assistant made" section (`chat_artifacts`,
+  `chat_set_artifact_critical`): each skill and tool the assistant wrote or learned, its status and use,
+  and a switch that marks it critical.
+- Nightly evals, opt-in (Settings → Knowledge, "Run my eval suites daily", `Learning::nightly_evals`):
+  once a day the suites with expectations run on the default model, each is compared with its last run,
+  and a notification says when a score drops.
+- One timing engine: native tasks (`chat/tasks.rs`) compute their next run with the `schedules` engine
+  (time zones, daylight saving, cron) for once, daily, weekly and monthly runs. Yearly tasks, folder and
+  feed triggers, and monthly runs on the 29th to 31st (which fall back to a short month's last day)
+  keep their own rules, which that engine does not express. The two run loops stay apart because they
+  serve different front ends: one hands runs to the hosted web app through its bridge, the other runs
+  native tasks through `engine::turn`.
+
+The original list:
+
+- `cortex-evals`: a suite is a folder of cases (prompt, expected facts or expected tool calls, grader). It
+  runs through the same kernel with a headless `Host`.
+- Three suites to begin: tool selection, memory recall, and regression cases saved from chats the user
+  rated down.
+- `compare(run_a, run_b)` and `ablate(artifact, suite)`: rerun with one skill, memory or tool removed.
+- Eval folders are outside every path the agent can write.
+- Gate promotion on evals: a learned skill or a candidate tool becomes active only if the suite does not
+  get worse.
+- Merge the two schedulers, then add maintenance jobs: nightly evals, usage scoring, deprecation of unused
+  artifacts, memory consolidation.
+
+Done when: a prompt or skill change shows a before and after score before it is enabled.
+
+## 6a. Coverage of the rest of the kernel document
+
+Section 3 covers the 14 tools. This maps the document's other sections to where each lands.
+
+### The evolution loop (document section 5)
+
+| Step | In Cortex | Phase |
+|---|---|---|
+| 1. Act | The agent loop | Exists; one loop in 2 |
+| 2. Observe | Run traces and ratings, readable by the agent (`query_traces`, `failure_summary`) | 4 |
+| 3. Diagnose | Asked of the model over `failure_summary`, inside the weekly review task that exists today (`learning.rs`) | 4, 7 |
+| 4. Propose | `propose_change` built-in: a change (memory, skill, tool, instructions) with its evidence, shown as an approval card | 7 |
+| 5. Test | Candidate tools run only in the WASM sandbox; suites run with and without the change (`compare`, `ablate`) | 6, 7 |
+| 6. Review | A `delegate` worker with a reviewer brief reads the change and its eval result before the card reaches the user; the author is never the only reviewer | 7 |
+| 7. Promote | `promote(artifact)`: new version, status `active`, hash pinned | 4, 6 |
+| 8. Monitor | A nightly job compares the last week's failure rate and rating per artifact with the week before; a drop demotes the artifact to its previous version | 7 |
+| 9. Prune | Unused for 30 days → `deprecated` (hidden, restorable); 90 days → `archived` | 7 |
+
+### Layers of adaptation (document section 6)
+
+| Layer | In Cortex | Status |
+|---|---|---|
+| 1. Memory entry | `remember`, `knowledge_write`, agent notebook | Exists; history and provenance in 4 |
+| 2. Skill | `save_skill`, learned skills | Exists, versioned; usage counts in 4 |
+| 3. Tool | Custom tools (user only); `create_tool` for the model | 6 |
+| 4. Prompt or configuration | Instructions, agent preambles; the prompt assembler makes them named, budgeted sections | 2 |
+| 5. Weights | Not in scope (section 8) | — |
+
+`propose_change` (phase 7) states its layer, and the review prompt asks whether a lower layer would do.
+
+### Telling useful from not useful (document section 7)
+
+| Signal | Source in Cortex | Phase |
+|---|---|---|
+| Eval result | `cortex-evals` suites | 7 |
+| Expert validation | The user's rating with a reason, on an answer | Exists; queryable in 4 |
+| Explicit feedback | Ratings, arena Elo | Exists; aggregated in 4 |
+| Implicit behaviour | Regenerate, edit-and-resend, copy, export, source opened; logged as trace events | 4 |
+| Technical outcome | Tool errors, empty results, retries, failover | 4 |
+| Cost | Tokens, latency and price per model call | 4 |
+
+- **Attribution:** every run records which artifacts were loaded (skills used, memories and pages in the
+  prompt, tools offered) and which were used (skill opened, tool called, page cited). Phase 4.
+- **Two filters:** the write-time check ("still true in a month, in another chat?") goes in the
+  `remember` and `knowledge_write` descriptions; the read-time check is the retriever's relevance cut-off
+  (phase 5).
+- **Traps:** criticality is a field separate from usage, so a rarely used but important memory is never
+  pruned; the trace tables and eval folders are not writable by any tool.
+
+### Keeping the context flat (document section 8)
+
+| Mechanism | Cortex | Phase |
+|---|---|---|
+| Deferred tool loading | `find_tools` past 30 tools, connector tools only | All tool kinds, retrieval-ranked, in 5 |
+| Skills as files | One line each, body on demand | Retrieved instead of listed once there are many, in 5 |
+| Memory as files | Facts always in the prompt (up to 200); pages retrieved | Facts retrieved past a budget, in 5 |
+| Code as composition | `run_code` in a workspace | Exists |
+| Sub-agents | `delegate` returns reports | Exists |
+| References | Long results saved, read with `read_tool_output` | One persistent store in 1 |
+| Compaction | Summary at 60%, every step | Done in 0 |
+
+### Guardrails (document section 9)
+
+| Guardrail | How | Phase |
+|---|---|---|
+| The agent cannot modify its evaluator, permissions or audit log | No tool writes eval folders, the trace database, the audit log, `connector_state.json` or approval settings; a test lists every write path a tool has and checks none is protected | 4, 7 |
+| Humans own the eval sets | Suites live outside the agent's writable paths; the user adds cases from rated answers | 7 |
+| Creating and testing is free; promotion needs approval | Candidate tools run only in test calls; `promote` always asks, in every mode | 6, 7 |
+| New tools start with no capabilities | `create_tool` stores an empty capability set; grants are asked for separately | 6 |
+| Read and write tools are separate; writes confirm | `Effects` on every tool; the approval mode decides from them | 0 (built-ins), 1 (all) |
+| Tool output is data, not instructions | The exposure gate; tool logs never reach the model | Exists; WASM logs in 6 |
+
+### Build order and minimum viable kernel (document sections 11 and 12)
+
+The document's minimum is sandbox, storage, registry and evaluation harness. Cortex has storage; the plan
+adds the registry in 1 and 4, the harness first in 1 (with the turn tests) and fully in 7, and the WASM
+sandbox in 6. Section 1 explains why the order differs: unifying the tool model and loop first means each
+new kernel piece covers everything once, instead of one path of several.
+
+## 7. Notes on the kernel example before adopting it
+
+The example is sound and its limits are stated honestly in its section 10.13. All of the points below
+are closed in `cortex-sandbox` and `script_tools`, and so are the example's own open points: DNS
+rebinding (resolve, refuse private addresses, pin), worker starvation (the guest yields every tick),
+write and tool-to-tool capabilities (tool calls by capability; files stay read-only), persistence
+(encrypted files and the trace database), and output handling (size caps, vault masking, a rate limit
+per tool). Points to fix when it moves into Cortex:
+
+- **Response size is checked after the download.** `http_request` reads the whole body, then compares it
+  with the 1 MiB cap. An allowed host can still exhaust memory. Read in chunks and stop at the cap.
+- **Tool names come from the tool.** `describe()` supplies the name, so a tool could call itself
+  `remember`. Namespace by source and reject collisions at registration.
+- **The description is untrusted text shown to the model.** The hash pin covers it, but the approval card
+  must show the description the model will see, not only the code.
+- **Read-only is inferred from network access.** That breaks as soon as write capabilities exist. Declare
+  effects per capability.
+- **`Component::new` compiles on every load.** Cache compiled components by hash.
+- **Dependency drift.** The example uses `reqwest` 0.12 and the `rig` facade; Cortex uses `reqwest` 0.13
+  and `rig-core`. Port the adapter to Cortex's own `Tool` trait and none of the `rig-agent` code is needed.
+- **Build cost.** `wasmtime` is a large dependency. Put it behind a Cargo feature until phase 6 ships.
+
+## 8. What not to copy from the document
+
+- **Fine-tuning** (adaptation layer 5). Out of scope for a desktop app that uses other people's models.
+- **Team and global scopes.** Cortex is single-user. The scopes that matter are global, project and agent.
+- **A hidden eval set.** In the document, humans own the test set and hide part of it from the agent. Here
+  the human is the user, so the rule becomes: eval folders are read-only to the agent, and saved bad
+  answers feed them.
+- **Git as the version store.** A versions table with diffs is enough and needs no git binary.
+
+## 9. Decisions to make
+
+| Decision | Recommendation |
+|---|---|
+| Own loop or `rig-agent` | Own loop, behind Cortex traits. Revisit after phase 2. |
+| SQLite | Yes, for traces and the artifact index only. Synced and encrypted content stays in files. |
+| Route for agent-written tools | Interpreter component first (route B). Compiled Rust tools later, if ever. |
+| Phase 3 timing | After phases 1 and 2. Splitting crates first would freeze the current coupling into crate APIs. |
+
+## 10. Risks
+
+- **Phase 2 is the risky one.** `turn()` mixes eight responsibilities, and behaviour such as steering and
+  failover is easy to break. The characterization tests at its start are what make it safe; do not skip
+  them.
+- **Sync conflicts.** Sync is last-writer-wins on whole files. More self-written artifacts mean more
+  conflicts in `memories.json` and `knowledge.json`. One file per artifact, in phase 4, removes most of it.
+- **Self-modification without measurement.** `save_skill` and auto-learned skills already change behaviour
+  with no evals. Until phase 7, keep learned artifacts disabled by default, as they are today.

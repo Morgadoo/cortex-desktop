@@ -90,6 +90,9 @@ pub struct Conversation {
     /// Kept out of the history and deleted on the next start.
     #[serde(default)]
     pub temporary: bool,
+    /// The parts of the system prompt the latest turn sent and their sizes, for the context view.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub prompt_parts: Vec<super::prompt::Part>,
     /// Hidden from the main list; still searchable and openable.
     #[serde(default)]
     pub archived: bool,
@@ -155,6 +158,7 @@ impl Conversation {
             task_id: None,
             unread: false,
             temporary: false,
+            prompt_parts: Vec::new(),
             archived: false,
             tags: Vec::new(),
             versions: None,
@@ -371,6 +375,13 @@ pub fn load_instructions(config_dir: &Path) -> Instructions {
 }
 
 pub fn save_instructions(config_dir: &Path, instructions: &Instructions) -> Result<(), String> {
+    super::versions::keep(
+        config_dir,
+        "instructions",
+        "user",
+        &load_instructions(config_dir),
+        instructions,
+    )?;
     write_json(&instructions_path(config_dir), instructions)
 }
 

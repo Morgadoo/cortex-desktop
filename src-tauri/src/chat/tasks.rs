@@ -215,10 +215,57 @@ fn days_in_month(year: i32, month: u32) -> u32 {
 }
 
 /// The first run strictly after `after`, or `None` when there is no other.
+/// The calendar rule of a time-based task in the app's one timing engine
+/// ([`crate::schedules`]: time zones, daylight saving, cron), in the user's time zone. `None` for
+/// what that engine does not express: yearly tasks, file and feed triggers, and monthly tasks on
+/// the 29th to 31st, which run on a short month's last day instead of skipping it.
+fn calendar(frequency: &Frequency) -> Option<crate::schedules::Timing> {
+    use crate::schedules::Timing;
+    let timezone = iana_time_zone::get_timezone()
+        .ok()
+        .filter(|z| !z.is_empty())?;
+    let hhmm = |time: &str| parse_time(time).ok().map(|t| t.format("%H:%M").to_string());
+    match frequency {
+        Frequency::Daily { time } => Some(Timing::Daily {
+            time: hhmm(time)?,
+            timezone,
+        }),
+        Frequency::Weekly { days, time } if days.iter().all(|d| *d <= 6) && !days.is_empty() => {
+            let mut iso: Vec<u8> = days.iter().map(|d| d + 1).collect();
+            iso.sort_unstable();
+            iso.dedup();
+            Some(Timing::Weekly {
+                days: iso,
+                time: hhmm(time)?,
+                timezone,
+            })
+        }
+        Frequency::Monthly { day, time } if (1..=28).contains(day) => Some(Timing::Monthly {
+            days: vec![*day],
+            time: hhmm(time)?,
+            timezone,
+        }),
+        _ => None,
+    }
+}
+
 pub fn next_run(
     frequency: &Frequency,
     after: DateTime<Utc>,
 ) -> Result<Option<DateTime<Utc>>, String> {
+    if let Some(timing) = calendar(frequency) {
+        let schedule = crate::schedules::Schedule {
+            id: "task".into(),
+            timing_revision: 0,
+            enabled: true,
+            timing,
+            missed_run_policy: crate::schedules::MissedRunPolicy::RunOnce,
+        };
+        // A rule the engine refuses falls through to the checks below, which say why.
+        if let Ok(next) = schedule.next_after(after) {
+            return Ok(next);
+        }
+    }
     let now = after.with_timezone(&Local);
     let today = now.date_naive();
     match frequency {
@@ -820,6 +867,44 @@ pub fn start(app: AppHandle) {
                         async move { super::engine::run_task(app, task).await },
                     );
                 }
+                // Once a day: retire what the assistant made and no longer uses (lifecycle.rs).
+                if let Some(report) = super::lifecycle::daily(&config_dir, Utc::now()) {
+                    if !report.is_empty() {
+                        info!("lifecycle: {report:?}");
+                    }
+                    // The same day: every active tool's regression checks; a failing one is demoted.
+                    let dir = config_dir.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let demoted = super::script_tools::check_all(&dir).await;
+                        if !demoted.is_empty() {
+                            info!("regression checks demoted: {}", demoted.join(", "));
+                        }
+                    });
+                }
+                // Once a day, when turned on: the user's eval suites, and a notice if one drops.
+                if super::learning::take_evals(&config_dir, Utc::now()) {
+                    if let Some(model) = super::providers::load(&config_dir).default_model {
+                        let host: std::sync::Arc<dyn super::host::Host> =
+                            std::sync::Arc::new(super::host::TauriHost::new(app.clone()));
+                        tauri::async_runtime::spawn(async move {
+                            for result in super::evals::nightly(&host, &model).await {
+                                info!("nightly evals: {result:?}");
+                                if result.before.is_some_and(|b| result.score + 1e-9 < b) {
+                                    host.notify(
+                                        "An eval score dropped",
+                                        &format!(
+                                            "{}: {:.2} (was {:.2}). Worse: {}",
+                                            result.suite,
+                                            result.score,
+                                            result.before.unwrap_or_default(),
+                                            result.worse.join(", ")
+                                        ),
+                                    );
+                                }
+                            }
+                        });
+                    }
+                }
                 // The weekly knowledge review, when turned on (learning.rs).
                 if super::learning::take_review(&config_dir, Utc::now()) {
                     info!("running the weekly knowledge review");
@@ -1276,5 +1361,53 @@ mod tests {
             .unwrap(),
             None
         );
+    }
+}
+
+#[cfg(test)]
+mod timing_tests {
+    use super::*;
+
+    /// Time-based tasks are timed by the same engine as the web app's schedules.
+    #[test]
+    fn tasks_and_schedules_share_one_timing_engine() {
+        if iana_time_zone::get_timezone().is_err() {
+            return;
+        }
+        let after = Utc::now();
+        for frequency in [
+            Frequency::Daily {
+                time: "09:30".into(),
+            },
+            Frequency::Weekly {
+                days: vec![0, 4],
+                time: "18:00".into(),
+            },
+            Frequency::Monthly {
+                day: 15,
+                time: "07:05".into(),
+            },
+        ] {
+            assert!(calendar(&frequency).is_some(), "{frequency:?}");
+            let next = next_run(&frequency, after).unwrap().unwrap();
+            assert!(next > after);
+            let local = next.with_timezone(&Local);
+            match &frequency {
+                Frequency::Daily { .. } => {
+                    assert_eq!(local.format("%H:%M").to_string(), "09:30")
+                }
+                Frequency::Weekly { .. } => {
+                    assert!(matches!(local.weekday(), Weekday::Mon | Weekday::Fri));
+                    assert_eq!(local.format("%H:%M").to_string(), "18:00");
+                }
+                _ => assert_eq!(local.day(), 15),
+            }
+        }
+        // The 31st runs on a short month's last day, so it keeps its own rule.
+        assert!(calendar(&Frequency::Monthly {
+            day: 31,
+            time: "09:00".into()
+        })
+        .is_none());
     }
 }

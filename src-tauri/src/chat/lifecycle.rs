@@ -1,0 +1,181 @@
+//! The lifecycle of what the assistant makes for itself (skills, script tools): what is not used
+//! is retired, and a tool that keeps failing goes back to being a candidate.
+//!
+//! It runs once a day from the scheduler. It only touches what the assistant made: an artifact
+//! whose provenance is unknown counts as the user's and is left alone, and so is one the user
+//! marked critical, however rarely it is used. Nothing is deleted: a deprecated artifact is
+//! hidden and restorable, an archived one is kept on disk.
+
+use std::path::Path;
+
+use chrono::{DateTime, Duration, Utc};
+use serde::{Deserialize, Serialize};
+
+use super::traces;
+
+use cortex_kernel::lifecycle::decide;
+#[cfg(test)]
+use cortex_kernel::lifecycle::{ARCHIVE_DAYS, UNUSED_DAYS};
+
+#[derive(Debug, Default, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Report {
+    pub deprecated: Vec<String>,
+    pub archived: Vec<String>,
+    pub demoted: Vec<String>,
+    /// Duplicate facts merged.
+    pub consolidated: usize,
+}
+
+impl Report {
+    pub fn is_empty(&self) -> bool {
+        self.deprecated.is_empty()
+            && self.archived.is_empty()
+            && self.demoted.is_empty()
+            && self.consolidated == 0
+    }
+}
+
+/// One pass of the lifecycle, as of `now`: the kernel decides, this applies.
+pub fn maintain(config_dir: &Path, now: DateTime<Utc>) -> Report {
+    let artifacts = traces::artifacts(config_dir, None);
+    let week = traces::usage(config_dir, now - Duration::days(7)).tools;
+    let decisions = decide(&artifacts, &week, now);
+    let mut report = Report::default();
+    for (kind, id) in decisions.deprecate {
+        match kind.as_str() {
+            "script_tool" => {
+                let _ = super::script_tools::retire(config_dir, &id);
+            }
+            "skill" => {
+                let _ = super::skills::set_enabled(config_dir, &id, false);
+            }
+            _ => {}
+        }
+        traces::set_status(config_dir, &kind, &id, "deprecated");
+        report.deprecated.push(format!("{kind}:{id}"));
+    }
+    for (kind, id) in decisions.archive {
+        traces::set_status(config_dir, &kind, &id, "archived");
+        report.archived.push(format!("{kind}:{id}"));
+    }
+    for name in decisions.demote {
+        if super::script_tools::demote(config_dir, &name).is_ok() {
+            report.demoted.push(format!("script_tool:{name}"));
+        }
+    }
+    // consolidate(scope): duplicate facts merged, scope by scope.
+    report.consolidated = super::memory::consolidate(config_dir, None).unwrap_or(0);
+    report
+}
+
+#[derive(Default, Serialize, Deserialize)]
+struct State {
+    last_run: Option<DateTime<Utc>>,
+}
+
+fn state_path(config_dir: &Path) -> std::path::PathBuf {
+    super::store::chat_dir(config_dir).join("lifecycle.json")
+}
+
+/// Runs [`maintain`] at most once a day; returns its report when it ran.
+pub fn daily(config_dir: &Path, now: DateTime<Utc>) -> Option<Report> {
+    let path = state_path(config_dir);
+    let state: State = crate::chat::at_rest::read_to_string(&path)
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default();
+    if state.last_run.is_some_and(|t| now - t < Duration::days(1)) {
+        return None;
+    }
+    let report = maintain(config_dir, now);
+    let _ = super::store::write_json(
+        &path,
+        &State {
+            last_run: Some(now),
+        },
+    );
+    Some(report)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn unused_assistant_tools_retire_and_the_user_s_and_critical_ones_stay() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let script = "function main() { return 1; }";
+        for (name, description) in [
+            ("old_tool", "Converts temperatures between scales."),
+            ("kept_tool", "Formats invoice numbers."),
+        ] {
+            super::super::script_tools::create(
+                d,
+                "chat-1",
+                &json!({ "name": name, "description": description, "script": script }),
+            )
+            .await
+            .unwrap();
+            super::super::script_tools::promote(d, name, None)
+                .await
+                .unwrap();
+        }
+        traces::set_critical(d, "script_tool", "kept_tool", true);
+        // Something the user made, used once: never touched.
+        traces::used(d, "skill", "my-own-skill");
+
+        let soon = maintain(d, Utc::now() + Duration::days(1));
+        assert!(soon.is_empty(), "{soon:?}");
+
+        let later = maintain(d, Utc::now() + Duration::days(UNUSED_DAYS + 1));
+        assert_eq!(later.deprecated, vec!["script_tool:old_tool".to_string()]);
+        assert!(super::super::script_tools::definitions(d)
+            .iter()
+            .all(|t| t.tool_name != "old_tool"));
+        assert_eq!(
+            traces::artifact(d, "skill", "my-own-skill").unwrap().status,
+            "active"
+        );
+
+        let much_later = maintain(d, Utc::now() + Duration::days(ARCHIVE_DAYS + 1));
+        assert_eq!(
+            much_later.archived,
+            vec!["script_tool:old_tool".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failing_tool_is_demoted() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        super::super::script_tools::create(
+            d,
+            "",
+            &json!({ "name": "flaky", "description": "x", "script": "function main() { return 1; }" }),
+        )
+        .await
+        .unwrap();
+        super::super::script_tools::promote(d, "flaky", None)
+            .await
+            .unwrap();
+        traces::start_run(d, "r", "c", None, "m");
+        for ok in [false, false, false, false, true] {
+            traces::tool_call(d, "r", "script__flaky", 5, ok);
+        }
+        let report = maintain(d, Utc::now());
+        assert_eq!(report.demoted, vec!["script_tool:flaky".to_string()]);
+        assert!(super::super::script_tools::definitions(d).is_empty());
+    }
+
+    #[test]
+    fn it_runs_once_a_day() {
+        let dir = tempfile::tempdir().unwrap();
+        let now = Utc::now();
+        assert!(daily(dir.path(), now).is_some());
+        assert!(daily(dir.path(), now + Duration::hours(2)).is_none());
+        assert!(daily(dir.path(), now + Duration::hours(25)).is_some());
+    }
+}

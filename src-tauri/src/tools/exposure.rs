@@ -163,6 +163,10 @@ fn sends_data(
         ("proton_mail", "list_messages" | "search_messages" | "read_message") => false,
         ("filesystem" | "echo", _) => false,
         ("luminance", _) => !read_only,
+        // A screenshot sends nothing; a click or keystroke can submit anything on screen.
+        ("computer", _) => !read_only,
+        // A tool the assistant wrote reaches the network only when the user granted it hosts.
+        ("script", _) => !read_only,
         (id, _) if id.starts_with("mcp-") => !vetted || !read_only || open_world,
         _ => true,
     }

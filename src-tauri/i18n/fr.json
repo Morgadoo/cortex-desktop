@@ -2477,5 +2477,14 @@
  "↑ summarized for the model": "↑ résumé pour le modèle",
  "★ Favourite": "★ Favori",
  "☆ Favourite": "☆ Favori",
- "✓ {0} answered: “{1}”": "✓ {0} a répondu : “{1}”"
+ "✓ {0} answered: “{1}”": "✓ {0} a répondu : “{1}”",
+ "{0}, {1}, used {2} times": "{0}, {1}, utilisé {2} fois",
+ "Critical": "Essentiel",
+ "Last run: {0}.": "Dernière exécution : {0}.",
+ "Once a day, the suites in the evals folder run on your default model, and you are told when a score drops. Each case costs a model call.{0}": "Une fois par jour, les suites du dossier d'évaluations s'exécutent sur votre modèle par défaut, et vous êtes prévenu quand un score baisse. Chaque cas coûte un appel au modèle.{0}",
+ "Run my eval suites daily": "Lancer mes évaluations chaque jour",
+ "Skill": "Compétence",
+ "Skills and tools the assistant wrote or learned. Unused ones are retired after a month; mark one critical to keep it.": "Compétences et outils que l'assistant a écrits ou appris. Ceux qui ne servent pas sont retirés au bout d'un mois ; marquez-en un comme essentiel pour le garder.",
+ "Tool": "Outil",
+ "What the assistant made": "Ce que l'assistant a créé"
 }
