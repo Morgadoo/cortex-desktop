@@ -324,7 +324,11 @@ pub fn trial_folder(config_dir: &Path) -> Result<TrialFolder, String> {
             // A top-level folder that is a link (a synced `chat`, say) is followed; inside it,
             // links are left out.
             let kind = if from == root {
-                std::fs::metadata(&path)?.file_type()
+                // A link that leads nowhere (an unmounted drive) is skipped, not an error.
+                match std::fs::metadata(&path) {
+                    Ok(meta) => meta.file_type(),
+                    Err(_) => continue,
+                }
             } else {
                 entry.file_type()?
             };
@@ -811,6 +815,17 @@ mod tests {
         // On macOS the local models share this folder.
         std::fs::create_dir_all(d.join("models")).unwrap();
         std::fs::write(d.join("models").join("weights.bin"), "big").unwrap();
+        // A `skills` folder that is a link (synced from elsewhere) is followed; a link that leads
+        // nowhere (an unmounted drive) is skipped, and the trial still sets up.
+        #[cfg(unix)]
+        let synced = tempfile::tempdir().unwrap();
+        #[cfg(unix)]
+        {
+            std::fs::create_dir_all(synced.path().join("writing")).unwrap();
+            std::fs::write(synced.path().join("writing").join("SKILL.md"), "x").unwrap();
+            std::os::unix::fs::symlink(synced.path(), d.join("skills")).unwrap();
+            std::os::unix::fs::symlink(d.join("no-such-drive"), d.join("chat-old")).unwrap();
+        }
         std::fs::write(chat.join("trash").join("old.json"), "{}").unwrap();
         let folder = trial_folder(d).unwrap();
         let copy = folder.dir.clone();
@@ -827,6 +842,12 @@ mod tests {
             !copy.join("models").exists(),
             "nothing large outside chat, skills and evals"
         );
+        #[cfg(unix)]
+        assert!(copy
+            .join("skills")
+            .join("writing")
+            .join("SKILL.md")
+            .exists());
         // The trial's own trace database is opened, as a trial's turns do, and let go on drop.
         super::super::traces::start_run(&copy, "r", "c", None, "m");
         assert!(copy.join("chat").join("traces.db").exists());

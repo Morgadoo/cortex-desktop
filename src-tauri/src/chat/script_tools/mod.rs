@@ -88,6 +88,10 @@ pub struct ScriptTool {
     /// When the user last approved it: the lifecycle and the monitor judge only calls since.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub approved_at: Option<DateTime<Utc>>,
+    /// Versions (by approval hash) the user set aside by bringing back an earlier one from
+    /// History: the monitor never rolls forward to them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub set_aside: Vec<String>,
 }
 
 /// Each capability item with its key: `http:host`, `read:folder`, and so on.
@@ -248,6 +252,7 @@ fn signed_part(tool: &ScriptTool) -> Vec<u8> {
         "expires": tool.expires,
         "approvedAt": tool.approved_at,
         "checks": tool.checks,
+        "setAside": tool.set_aside,
     }))
     .unwrap_or_default()
 }
@@ -634,6 +639,7 @@ pub async fn create(config_dir: &Path, conversation: &str, args: &Value) -> Resu
         expires: Default::default(),
         monitor_reverted_at: None,
         approved_at: None,
+        set_aside: Vec::new(),
     };
     let mut tool = tool;
     save_resigned(config_dir, &tool)?;
@@ -764,6 +770,9 @@ async fn promote_with(
     tool.status = Status::Active;
     tool.approved_at = Some(Utc::now());
     tool.approved_hash = Some(approval_hash(&tool));
+    // Approved again by the user: no longer set aside.
+    let approved = approval_hash(&tool);
+    tool.set_aside.retain(|h| h != &approved);
     // The user saw it on the card and approved it: signed afresh.
     save_resigned(config_dir, &tool)?;
     super::traces::register(
@@ -911,6 +920,17 @@ pub fn restore_version(config_dir: &Path, mut old: ScriptTool) -> Result<(), Str
         old.approved_at = Some(now);
     }
     old.monitor_reverted_at = None;
+    // The version it replaces is set aside: the monitor never rolls forward to it.
+    if let Some(current) = current.as_ref().filter(|c| verifies(config_dir, c)) {
+        old.set_aside = current.set_aside.clone();
+        let replaced = approval_hash(current);
+        if current.status == Status::Active
+            && approval_hash(&old) != replaced
+            && !old.set_aside.contains(&replaced)
+        {
+            old.set_aside.push(replaced);
+        }
+    }
     save_resigned(config_dir, &old)?;
     super::traces::register(
         config_dir,
@@ -967,7 +987,11 @@ pub async fn revert(config_dir: &Path, name: &str, checks: &[Check]) -> Result<b
         let approved = old.status == Status::Active
             && old.approved_hash.as_deref() == Some(approval_hash(&old).as_str())
             && verifies(config_dir, &old);
-        if !approved || old.script == current.script {
+        // Never forward to a version the user set aside by restoring an earlier one.
+        if !approved
+            || old.script == current.script
+            || current.set_aside.contains(&approval_hash(&old))
+        {
             continue;
         }
         if failing_checks(&old.script, checks).await.is_empty() {
@@ -993,6 +1017,7 @@ pub async fn revert(config_dir: &Path, name: &str, checks: &[Check]) -> Result<b
             // within the week on the failures of the version it replaced.
             back.approved_at = Some(Utc::now());
             back.monitor_reverted_at = Some(Utc::now());
+            back.set_aside = current.set_aside.clone();
             save(config_dir, &back)?;
             super::traces::register(
                 config_dir,
@@ -1578,6 +1603,30 @@ mod tests {
         super::super::versions::keep(d, "tools", "script-count_words", &forged, &current).unwrap();
         assert_eq!(revert(d, "count_words", &current.checks).await, Ok(false));
         assert_eq!(load(d, "count_words").unwrap().script, SCRIPT);
+    }
+
+    /// The rate limit is kept per data folder: a trial's copy does not use up the live tool's minute.
+    #[tokio::test]
+    async fn a_trial_copy_has_its_own_rate_limit() {
+        let live = tempfile::tempdir().unwrap();
+        let copy = tempfile::tempdir().unwrap();
+        for d in [live.path(), copy.path()] {
+            create(d, "", &json!({ "name": "rate_split", "description": "Split the limit.", "script": "function main() { return 1; }" }))
+                .await
+                .unwrap();
+            promote(d, "rate_split", None).await.unwrap();
+        }
+        for _ in 0..CALLS_PER_MINUTE {
+            call(live.path(), "rate_split", &json!({}), None)
+                .await
+                .unwrap();
+        }
+        assert!(call(live.path(), "rate_split", &json!({}), None)
+            .await
+            .is_err());
+        assert!(call(copy.path(), "rate_split", &json!({}), None)
+            .await
+            .is_ok());
     }
 
     /// The rate limit holds through `call`, not only in its helper.
