@@ -38,6 +38,8 @@ const RUNTIME: &[u8] = include_bytes!("../wasm/js-runtime.wasm");
 const TICK: Duration = Duration::from_millis(10);
 const MAX_READ_BYTES: u64 = 1 << 20;
 const MAX_WRITE_BYTES: usize = 1 << 20;
+/// What a script may return.
+const MAX_RESULT_BYTES: usize = 1 << 20;
 const MAX_HTTP_BODY_BYTES: usize = 1 << 20;
 const MAX_LOG_LINES: usize = 200;
 
@@ -188,13 +190,15 @@ pub enum SandboxError {
     Crashed(String),
 }
 
-/// The folder `read` and `write` can reach, and how its files are read and written (the app
-/// seals what it writes and opens what it sealed).
+/// The folder `read` and `write` can reach, and how its files' bytes are encoded on disk.
 #[derive(Clone)]
 pub struct Workspace {
     pub root: PathBuf,
-    pub read: fn(&Path) -> std::io::Result<Vec<u8>>,
-    pub write: fn(&Path, &[u8]) -> std::io::Result<()>,
+    /// Turns a file's bytes, as they are on disk, into what the script reads (the app opens what
+    /// it sealed). The sandbox does the reading itself, safely.
+    pub read: fn(&Path, Vec<u8>) -> std::io::Result<Vec<u8>>,
+    /// Turns what the script writes into the bytes to put on disk (the app seals them).
+    pub write: fn(&Path, &[u8]) -> std::io::Result<Vec<u8>>,
 }
 
 /// Per-call state, dropped with the instance when the call ends.
@@ -325,13 +329,7 @@ impl Host for HostState {
         else {
             return Err("denied: this call has no workspace".into());
         };
-        let relative = Path::new(&path);
-        if !relative
-            .components()
-            .all(|part| matches!(part, PathPart::Normal(_)))
-        {
-            return Err(format!("denied: `{path}` is not a plain relative path"));
-        }
+        let relative = plain_relative(&path)?;
         if !self
             .capabilities
             .read_prefixes
@@ -340,39 +338,17 @@ impl Host for HostState {
         {
             return Err(format!("denied: no read capability for `{path}`"));
         }
-        // Resolve symlinks, then confirm the target is still inside the workspace.
         let root = tokio::fs::canonicalize(&workspace)
             .await
             .map_err(|_| "the workspace is empty".to_string())?;
-        let target = tokio::fs::canonicalize(root.join(relative))
-            .await
-            .map_err(|_| format!("not found: `{path}`"))?;
-        if !target.starts_with(&root) {
-            return Err(format!("denied: `{path}` leaves the workspace"));
-        }
-        // The granted folder is checked again where the link led: a link inside a granted
-        // folder that points into another folder of the workspace is refused too.
-        let resolved = target.strip_prefix(&root).unwrap_or(&target);
-        if !self
-            .capabilities
-            .read_prefixes
-            .iter()
-            .any(|prefix| prefix.is_empty() || resolved.starts_with(prefix))
-        {
-            return Err(format!(
-                "denied: `{path}` leads outside the folders this tool may read"
-            ));
-        }
-        let size = tokio::fs::metadata(&target)
-            .await
-            .map_err(|_| format!("not found: `{path}`"))?
-            .len();
-        if size > MAX_READ_BYTES {
-            return Err(format!(
-                "denied: `{path}` is larger than {MAX_READ_BYTES} bytes"
-            ));
-        }
-        read(&target).map_err(|_| format!("could not read `{path}`"))
+        // Opened by walking down from the workspace without following a link at any level, so
+        // nothing swapped in between a check and the read can lead it outside.
+        let bytes =
+            tokio::task::spawn_blocking(move || beneath::read(&root, &relative, MAX_READ_BYTES))
+                .await
+                .map_err(|e| e.to_string())?
+                .map_err(|e| e.describe(&path, "read"))?;
+        read(Path::new(&path), bytes).map_err(|_| format!("could not read `{path}`"))
     }
 
     async fn workspace_write(&mut self, path: String, data: Vec<u8>) -> Result<(), String> {
@@ -384,14 +360,7 @@ impl Host for HostState {
         else {
             return Err("denied: this call has no workspace".into());
         };
-        let relative = Path::new(&path);
-        if path.is_empty()
-            || !relative
-                .components()
-                .all(|part| matches!(part, PathPart::Normal(_)))
-        {
-            return Err(format!("denied: `{path}` is not a plain relative path"));
-        }
+        let relative = plain_relative(&path)?;
         if !self
             .capabilities
             .write_prefixes
@@ -411,34 +380,14 @@ impl Host for HostState {
         let root = tokio::fs::canonicalize(&workspace)
             .await
             .map_err(|e| e.to_string())?;
-        // Folders are made one at a time inside the workspace: a link anywhere on the way is
-        // refused before anything is made past it, so nothing is created outside.
-        let mut parent = root.clone();
-        let folders: Vec<_> = relative.components().collect();
-        let (file, folders) = folders.split_last().ok_or("denied: no file name")?;
-        for folder in folders {
-            parent.push(folder);
-            match tokio::fs::symlink_metadata(&parent).await {
-                Ok(m) if m.file_type().is_symlink() => {
-                    return Err(format!(
-                        "denied: `{path}` leaves the workspace through a link"
-                    ))
-                }
-                Ok(m) if m.is_dir() => {}
-                Ok(_) => return Err(format!("denied: `{path}` goes through a file")),
-                Err(_) => tokio::fs::create_dir(&parent)
-                    .await
-                    .map_err(|_| format!("could not make the folder for `{path}`"))?,
-            }
-        }
-        let target = parent.join(file);
-        if tokio::fs::symlink_metadata(&target)
+        let bytes =
+            write(&root.join(&relative), &data).map_err(|_| format!("could not write `{path}`"))?;
+        // Folders are made and the file opened one level at a time from the workspace, never
+        // through a link: nothing is made or written outside, whatever changes meanwhile.
+        tokio::task::spawn_blocking(move || beneath::write(&root, &relative, &bytes))
             .await
-            .is_ok_and(|m| m.file_type().is_symlink() || m.is_dir())
-        {
-            return Err(format!("denied: `{path}` is a link or a folder"));
-        }
-        write(&target, &data).map_err(|_| format!("could not write `{path}`"))
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.describe(&path, "write"))
     }
 
     async fn call_tool(&mut self, name: String, args: String) -> Result<String, String> {
@@ -523,6 +472,217 @@ fn push_capped(body: &mut Vec<u8>, chunk: &[u8], cap: usize) -> Result<(), Strin
     }
     body.extend_from_slice(chunk);
     Ok(())
+}
+
+/// A script's path, if it is plain and relative: no root, no `..`, no `.`.
+fn plain_relative(path: &str) -> Result<PathBuf, String> {
+    let relative = Path::new(path);
+    if path.is_empty()
+        || !relative
+            .components()
+            .all(|part| matches!(part, PathPart::Normal(_)))
+    {
+        return Err(format!("denied: `{path}` is not a plain relative path"));
+    }
+    Ok(relative.to_path_buf())
+}
+
+/// Why a file in the workspace could not be reached.
+#[derive(Debug)]
+enum Reach {
+    Link,
+    NotFound,
+    TooLarge,
+    NotAFile,
+    Io(std::io::Error),
+}
+
+impl Reach {
+    fn describe(self, path: &str, verb: &str) -> String {
+        match self {
+            Reach::Link => format!(
+                "denied: `{path}` goes through a link, which may lead outside the folders this tool may {verb}, or that leaves the workspace"
+            ),
+            Reach::NotFound => format!("not found: `{path}`"),
+            Reach::TooLarge => format!("denied: `{path}` is larger than {MAX_READ_BYTES} bytes"),
+            Reach::NotAFile => format!("denied: `{path}` is a folder, not a file"),
+            Reach::Io(e) => format!("could not {verb} `{path}`: {e}"),
+        }
+    }
+}
+
+/// Files under the workspace, reached without following links: each folder is opened from the
+/// one above it (`openat` with `O_NOFOLLOW`), so a link anywhere on the way, or one swapped in
+/// mid-call, is refused rather than followed.
+#[cfg(unix)]
+mod beneath {
+    use super::Reach;
+    use std::ffi::CString;
+    use std::fs::File;
+    use std::io::{Read, Write};
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+    use std::os::unix::ffi::OsStrExt;
+    use std::path::{Component, Path};
+
+    fn name(part: &std::ffi::OsStr) -> Result<CString, Reach> {
+        CString::new(part.as_bytes()).map_err(|_| Reach::NotFound)
+    }
+
+    fn error() -> Reach {
+        let e = std::io::Error::last_os_error();
+        match e.raw_os_error() {
+            Some(libc::ELOOP) | Some(libc::ENOTDIR) => Reach::Link,
+            Some(libc::ENOENT) => Reach::NotFound,
+            Some(libc::EISDIR) => Reach::NotAFile,
+            _ => Reach::Io(e),
+        }
+    }
+
+    fn open_root(root: &Path) -> Result<OwnedFd, Reach> {
+        let root = CString::new(root.as_os_str().as_bytes()).map_err(|_| Reach::NotFound)?;
+        // SAFETY: a valid C string; the returned descriptor is owned below.
+        let fd = unsafe {
+            libc::open(
+                root.as_ptr(),
+                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC,
+            )
+        };
+        if fd < 0 {
+            return Err(error());
+        }
+        // SAFETY: `fd` is a fresh descriptor nobody else owns.
+        Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+    }
+
+    /// The folder `parts` names under `dir`, made where missing when `create`.
+    fn folder(dir: OwnedFd, parts: &[Component], create: bool) -> Result<OwnedFd, Reach> {
+        let mut dir = dir;
+        for part in parts {
+            let Component::Normal(part) = part else {
+                return Err(Reach::NotFound);
+            };
+            let part = name(part)?;
+            let flags = libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC;
+            // SAFETY: valid descriptor and C string.
+            let mut fd = unsafe { libc::openat(dir.as_raw_fd(), part.as_ptr(), flags) };
+            if fd < 0
+                && create
+                && std::io::Error::last_os_error().raw_os_error() == Some(libc::ENOENT)
+            {
+                // SAFETY: as above; mkdirat makes a folder, never follows a link.
+                if unsafe { libc::mkdirat(dir.as_raw_fd(), part.as_ptr(), 0o755) } != 0 {
+                    return Err(error());
+                }
+                // SAFETY: as above.
+                fd = unsafe { libc::openat(dir.as_raw_fd(), part.as_ptr(), flags) };
+            }
+            if fd < 0 {
+                return Err(error());
+            }
+            // SAFETY: `fd` is fresh and owned here.
+            dir = unsafe { OwnedFd::from_raw_fd(fd) };
+        }
+        Ok(dir)
+    }
+
+    fn file(dir: &OwnedFd, part: &Component, flags: i32) -> Result<File, Reach> {
+        let Component::Normal(part) = part else {
+            return Err(Reach::NotFound);
+        };
+        let part = name(part)?;
+        // SAFETY: valid descriptor and C string; O_NOFOLLOW refuses a link in the file's place.
+        let fd = unsafe {
+            libc::openat(
+                dir.as_raw_fd(),
+                part.as_ptr(),
+                flags | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                0o644 as libc::c_uint,
+            )
+        };
+        if fd < 0 {
+            return Err(error());
+        }
+        // SAFETY: `fd` is fresh and owned by the File.
+        Ok(unsafe { File::from_raw_fd(fd) })
+    }
+
+    pub fn read(root: &Path, relative: &Path, max: u64) -> Result<Vec<u8>, Reach> {
+        let parts: Vec<Component> = relative.components().collect();
+        let (last, folders) = parts.split_last().ok_or(Reach::NotFound)?;
+        let dir = folder(open_root(root)?, folders, false)?;
+        let mut f = file(&dir, last, libc::O_RDONLY)?;
+        let meta = f.metadata().map_err(Reach::Io)?;
+        if !meta.is_file() {
+            return Err(Reach::NotAFile);
+        }
+        if meta.len() > max {
+            return Err(Reach::TooLarge);
+        }
+        let mut out = Vec::new();
+        Read::take(&mut f, max + 1)
+            .read_to_end(&mut out)
+            .map_err(Reach::Io)?;
+        if out.len() as u64 > max {
+            return Err(Reach::TooLarge);
+        }
+        Ok(out)
+    }
+
+    pub fn write(root: &Path, relative: &Path, bytes: &[u8]) -> Result<(), Reach> {
+        let parts: Vec<Component> = relative.components().collect();
+        let (last, folders) = parts.split_last().ok_or(Reach::NotFound)?;
+        let dir = folder(open_root(root)?, folders, true)?;
+        let mut f = file(&dir, last, libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC)?;
+        if !f.metadata().map_err(Reach::Io)?.is_file() {
+            return Err(Reach::NotAFile);
+        }
+        f.write_all(bytes).map_err(Reach::Io)
+    }
+}
+
+/// Elsewhere, the same rules by path: each level checked for a link before it is used.
+#[cfg(not(unix))]
+mod beneath {
+    use super::Reach;
+    use std::path::Path;
+
+    fn walk(root: &Path, relative: &Path, create: bool) -> Result<std::path::PathBuf, Reach> {
+        let mut at = root.to_path_buf();
+        let parts: Vec<_> = relative.components().collect();
+        for (i, part) in parts.iter().enumerate() {
+            at.push(part);
+            match std::fs::symlink_metadata(&at) {
+                Ok(m) if m.file_type().is_symlink() => return Err(Reach::Link),
+                Ok(_) => {}
+                Err(_) if create && i + 1 < parts.len() => {
+                    std::fs::create_dir(&at).map_err(Reach::Io)?
+                }
+                Err(_) if create => {}
+                Err(_) => return Err(Reach::NotFound),
+            }
+        }
+        Ok(at)
+    }
+
+    pub fn read(root: &Path, relative: &Path, max: u64) -> Result<Vec<u8>, Reach> {
+        let at = walk(root, relative, false)?;
+        let meta = std::fs::metadata(&at).map_err(Reach::Io)?;
+        if !meta.is_file() {
+            return Err(Reach::NotAFile);
+        }
+        if meta.len() > max {
+            return Err(Reach::TooLarge);
+        }
+        std::fs::read(at).map_err(Reach::Io)
+    }
+
+    pub fn write(root: &Path, relative: &Path, bytes: &[u8]) -> Result<(), Reach> {
+        let at = walk(root, relative, true)?;
+        if at.is_dir() {
+            return Err(Reach::NotAFile);
+        }
+        std::fs::write(at, bytes).map_err(Reach::Io)
+    }
 }
 
 /// The first public address a name resolved to; none when every one is private.
@@ -722,6 +882,9 @@ pub async fn run_with_secrets(
     let logs = std::mem::take(&mut store.data_mut().logs);
     let result = match outcome {
         Err(_elapsed) => Err(SandboxError::Timeout),
+        Ok(Ok(Ok(output))) if output.len() > MAX_RESULT_BYTES => Err(SandboxError::Script(
+            format!("the result is larger than {MAX_RESULT_BYTES} bytes; return less, or write it to a file"),
+        )),
         Ok(Ok(Ok(output))) => Ok(output),
         Ok(Ok(Err(message))) => Err(SandboxError::Script(message)),
         Ok(Err(trap)) => Err(if store.data().memory_exceeded {
@@ -963,8 +1126,8 @@ mod tests {
             let script = format!("function main() {{ return read('{path}'); }}");
             let workspace = Workspace {
                 root: dir.path().to_path_buf(),
-                read: |p| std::fs::read(p),
-                write: |p, b| std::fs::write(p, b),
+                read: |_, bytes| Ok(bytes),
+                write: |_, b| Ok(b.to_vec()),
             };
             async move {
                 run(&script, "{}", &caps, Limits::default(), Some(workspace))
@@ -998,8 +1161,8 @@ mod tests {
             );
             let workspace = Workspace {
                 root: dir.path().to_path_buf(),
-                read: |p| std::fs::read(p),
-                write: |p, b| std::fs::write(p, b),
+                read: |_, bytes| Ok(bytes),
+                write: |_, b| Ok(b.to_vec()),
             };
             async move {
                 run(&script, "{}", &caps, Limits::default(), Some(workspace))
@@ -1044,8 +1207,8 @@ mod tests {
             Limits::default(),
             Some(Workspace {
                 root: dir.path().to_path_buf(),
-                read: |p| std::fs::read(p),
-                write: |p, b| std::fs::write(p, b),
+                read: |_, bytes| Ok(bytes),
+                write: |_, b| Ok(b.to_vec()),
             }),
         )
         .await
@@ -1240,6 +1403,50 @@ mod tests {
         assert_eq!(err, SandboxError::OutOfFuel);
     }
 
+    /// The race: another process swaps a link in and out of the file's place while a tool writes
+    /// it. The file is opened from the workspace without following links, so nothing ever lands
+    /// outside, however the timing falls.
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_link_swapped_in_mid_write_is_never_followed() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let target = outside.path().join("victim.txt");
+        std::fs::create_dir_all(dir.path().join("out")).unwrap();
+        let place = dir.path().join("out/x.txt");
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let swapper = {
+            let (place, target, stop) = (place.clone(), target.clone(), stop.clone());
+            std::thread::spawn(move || {
+                while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                    let _ = std::os::unix::fs::symlink(&target, &place);
+                    let _ = std::fs::remove_file(&place);
+                }
+            })
+        };
+        let caps = Capabilities {
+            write_prefixes: vec!["out".into()],
+            ..Default::default()
+        };
+        for _ in 0..200 {
+            let _ = run(
+                "function main() { write('out/x.txt', 'pwned'); }",
+                "{}",
+                &caps,
+                Limits::default(),
+                Some(Workspace {
+                    root: dir.path().to_path_buf(),
+                    read: |_, bytes| Ok(bytes),
+                    write: |_, b| Ok(b.to_vec()),
+                }),
+            )
+            .await;
+        }
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        swapper.join().unwrap();
+        assert!(!target.exists(), "a write went through the link");
+    }
+
     /// Output handling: reads and writes past 1 MiB are refused.
     #[tokio::test]
     async fn reads_and_writes_are_capped() {
@@ -1253,8 +1460,8 @@ mod tests {
         let workspace = || {
             Some(Workspace {
                 root: dir.path().to_path_buf(),
-                read: |p| std::fs::read(p),
-                write: |p, b| std::fs::write(p, b),
+                read: |_, bytes| Ok(bytes),
+                write: |_, b| Ok(b.to_vec()),
             })
         };
         let (read, _) = run(
@@ -1276,6 +1483,16 @@ mod tests {
         .await;
         assert!(wrote.unwrap_err().to_string().contains("at most"));
         assert!(!dir.path().join("out.txt").exists());
+        // And what a script returns is capped too.
+        let (big, _) = run(
+            "function main() { return 'x'.repeat(1048577); }",
+            "{}",
+            &caps,
+            Limits::default(),
+            None,
+        )
+        .await;
+        assert!(big.unwrap_err().to_string().contains("larger than"));
     }
 
     /// A link inside a granted folder that points into another folder of the workspace is
@@ -1303,8 +1520,8 @@ mod tests {
                     Limits::default(),
                     Some(Workspace {
                         root,
-                        read: |p| std::fs::read(p),
-                        write: |p, b| std::fs::write(p, b),
+                        read: |_, bytes| Ok(bytes),
+                        write: |_, b| Ok(b.to_vec()),
                     }),
                 )
                 .await
@@ -1368,8 +1585,8 @@ mod tests {
             Limits::default(),
             Some(Workspace {
                 root: dir.path().to_path_buf(),
-                read: |p| std::fs::read(p),
-                write: |p, b| std::fs::write(p, b),
+                read: |_, bytes| Ok(bytes),
+                write: |_, b| Ok(b.to_vec()),
             }),
         )
         .await;

@@ -169,7 +169,8 @@ pub fn decide(artifacts: &[Artifact], week: &[ToolStat], now: DateTime<Utc>) -> 
             "active" if idle > Duration::days(UNUSED_DAYS) => {
                 d.deprecate.push((a.kind.clone(), a.id.clone()))
             }
-            "deprecated" if idle > Duration::days(ARCHIVE_DAYS) => {
+            // Deprecated, or written and never approved, and idle this long: archived.
+            "deprecated" | "candidate" if idle > Duration::days(ARCHIVE_DAYS) => {
                 d.archive.push((a.kind.clone(), a.id.clone()))
             }
             _ => {}
@@ -263,6 +264,7 @@ mod tests {
             artifact("skill", "active", None, 400, false),
             artifact("script_tool", "active", Some("chat-2"), 10, false),
             artifact("script_tool", "deprecated", Some("chat-3"), 200, false),
+            artifact("script_tool", "candidate", Some("chat-4"), 200, false),
             artifact("tool", "active", Some("x"), 400, false),
         ];
         let d = decide(&all, &[], Utc::now());
@@ -272,7 +274,10 @@ mod tests {
         );
         assert_eq!(
             d.archive,
-            vec![("script_tool".into(), "script_tool-deprecated-200".into())]
+            vec![
+                ("script_tool".into(), "script_tool-deprecated-200".into()),
+                ("script_tool".into(), "script_tool-candidate-200".into())
+            ]
         );
         let failing = ToolStat {
             tool: "script__flaky".into(),

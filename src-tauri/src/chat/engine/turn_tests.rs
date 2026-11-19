@@ -827,6 +827,8 @@ async fn a_promotion_is_gated_on_the_user_s_evals() {
             // The trial, before the card: the suite without the tool, then with it.
             says(base_answer),
             says(with_answer),
+            // A worse run is checked once more; a run that held is not.
+            says(with_answer),
             says("Done."),
         ]);
         *host.answer.lock().unwrap() = ApprovalDecision::Once;
@@ -1103,6 +1105,7 @@ async fn a_change_that_makes_the_evals_worse_is_never_offered() {
         // The suite before the change, then after it.
         says("Back up first, then move the files."),
         says("Just move it."),
+        says("Just move it."),
         says("It made things worse, so I left it."),
     ]);
     with_reviewer(&host, "SUPPORT: shorter answers.");
@@ -1301,6 +1304,178 @@ async fn an_ask_first_agent_still_shows_the_skill_s_review() {
     assert_eq!(cards.len(), 1, "asked once: {cards:?}");
     assert!(cards[0]["review"].is_string(), "{cards:?}");
     assert!(crate::chat::skills::find(d, "weekly-report").is_some());
+}
+
+/// One worse run is not enough: the suite runs again, and a change whose second run holds is
+/// offered as usual.
+#[tokio::test]
+async fn one_unlucky_run_does_not_sink_a_change() {
+    use crate::chat::{evals, proposals::PROPOSE_CHANGE};
+    let (host, _) = host_with(vec![
+        calls(
+            PROPOSE_CHANGE,
+            json!({ "summary": "Answer in one line", "evidence": "x", "change": { "layer": "instructions", "text": "Answer in one line." } }),
+        ),
+        says("Back up first, then move the files."),
+        says("Just move it."),
+        says("Back up first, then move the files."),
+        says("Done."),
+    ]);
+    with_reviewer(&host, "SUPPORT: shorter.");
+    evals::add_case(
+        host.dir.path(),
+        "plans",
+        &evals::Case {
+            id: "move".into(),
+            prompt: "Plan the move.".into(),
+            facts: vec!["back up".into()],
+            ..evals::Case::default()
+        },
+    )
+    .unwrap();
+    *host.answer.lock().unwrap() = ApprovalDecision::Once;
+    run(&host, &request("Be brief", ApprovalMode::Ask))
+        .await
+        .unwrap();
+    assert_eq!(host.cards.lock().unwrap().len(), 1, "offered");
+    assert!(store::load_instructions(host.dir.path())
+        .custom
+        .contains("Answer in one line"));
+}
+
+/// An eval case counts a tool as called only if it ran: a call to a tool the turn did not offer
+/// is not the answer choosing it.
+#[tokio::test]
+async fn an_eval_counts_only_calls_that_ran() {
+    use crate::chat::evals;
+    let (host, _) = host_with(vec![
+        calls(builtins::REMEMBER, json!({ "fact": "x" })),
+        says("Saved."),
+    ]);
+    let case = evals::Case {
+        id: "remembers".into(),
+        prompt: "Remember x".into(),
+        tools: vec![builtins::REMEMBER.into()],
+        ..evals::Case::default()
+    };
+    let dyn_host: Arc<dyn Host> = host.clone();
+    // Eval turns are temporary: `remember` is not offered, so the call is refused.
+    let result = evals::run_case(&dyn_host, MODEL, &case, &evals::Without::default()).await;
+    assert!(!result.passed, "{result:?}");
+    assert!(result.tools_called.is_empty(), "{result:?}");
+}
+
+/// Rewriting an approved tool takes it out of use, so in an attended chat it asks first.
+#[tokio::test]
+async fn rewriting_an_approved_tool_asks_first() {
+    use crate::chat::script_tools;
+    let (host, _) = host_with(vec![
+        calls(
+            script_tools::CREATE_TOOL,
+            json!({ "name": "counter", "description": "Counts.", "script": "function main() { return 5; }" }),
+        ),
+        says("Kept."),
+    ]);
+    let d = host.dir.path();
+    script_tools::create(
+        d,
+        "",
+        &json!({ "name": "counter", "description": "Counts.", "script": "function main() { return 4; }" }),
+    )
+    .await
+    .unwrap();
+    script_tools::promote(d, "counter", None).await.unwrap();
+    run(&host, &request("Improve the counter", ApprovalMode::Auto))
+        .await
+        .unwrap();
+    assert_eq!(
+        host.approvals.lock().unwrap().clone(),
+        vec![script_tools::CREATE_TOOL.to_string()]
+    );
+    assert_eq!(
+        script_tools::load(d, "counter").unwrap().status,
+        script_tools::Status::Active,
+        "declined: still in use"
+    );
+}
+
+/// Access granted mid-turn counts from the next call: the tool is no longer treated as only
+/// reading, so in Ask mode its call now asks.
+#[tokio::test]
+async fn access_granted_mid_turn_changes_how_the_tool_is_called() {
+    use crate::chat::script_tools;
+    let (host, _) = host_with(vec![
+        calls(
+            script_tools::REQUEST_CAPABILITY,
+            json!({ "name": "lookup", "http_hosts": ["api.example.com"], "reason": "Live data." }),
+        ),
+        calls("script__lookup", json!({})),
+        says("Done."),
+    ]);
+    let d = host.dir.path();
+    script_tools::create(
+        d,
+        "",
+        &json!({ "name": "lookup", "description": "Look it up.", "script": "function main() { return 1; }" }),
+    )
+    .await
+    .unwrap();
+    script_tools::promote(d, "lookup", None).await.unwrap();
+    *host.answer.lock().unwrap() = ApprovalDecision::Once;
+    run(&host, &request("Look it up live", ApprovalMode::Ask))
+        .await
+        .unwrap();
+    assert_eq!(
+        host.approvals.lock().unwrap().clone(),
+        vec![
+            script_tools::REQUEST_CAPABILITY.to_string(),
+            "script__lookup".to_string()
+        ]
+    );
+}
+
+/// The trial runs the tool itself: in the copy it is active with nothing granted, a case that
+/// needs it calls it, and only then does the suite do better with it.
+#[tokio::test]
+async fn a_tool_is_tried_by_running_it_in_the_copy() {
+    use crate::chat::{evals, script_tools};
+    let (host, _) = host_with(vec![
+        calls(
+            script_tools::CREATE_TOOL,
+            json!({ "name": "counter", "description": "Counts words.", "script": "function main() { return { words: 4 }; }" }),
+        ),
+        calls(script_tools::PROMOTE_TOOL, json!({ "name": "counter" })),
+        // Before: no such tool yet. After: the case calls it, in the copy, and answers.
+        says("I cannot count that."),
+        calls("script__counter", json!({})),
+        says("It has 4 words."),
+        says("Promoted."),
+    ]);
+    *host.answer.lock().unwrap() = ApprovalDecision::Once;
+    evals::add_case(
+        host.dir.path(),
+        "counting",
+        &evals::Case {
+            id: "count".into(),
+            prompt: "How many words?".into(),
+            tools: vec!["script__counter".into()],
+            facts: vec!["4 words".into()],
+            ..evals::Case::default()
+        },
+    )
+    .unwrap();
+    run(&host, &request("Make a counter", ApprovalMode::Ask))
+        .await
+        .unwrap();
+    let cards = host.cards.lock().unwrap().clone();
+    assert_eq!(cards[0]["evals"][0]["before"], 0.0, "{cards:?}");
+    assert_eq!(cards[0]["evals"][0]["after"], 1.0, "{cards:?}");
+    assert_eq!(
+        script_tools::load(host.dir.path(), "counter")
+            .unwrap()
+            .status,
+        script_tools::Status::Active
+    );
 }
 
 /// A saved skill changes every later chat, so it asks in every mode, Auto included.

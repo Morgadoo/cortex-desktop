@@ -196,6 +196,8 @@ struct RecordingHost {
     parent: Arc<dyn Host>,
     state: super::ChatState,
     called: Mutex<Vec<String>>,
+    /// Calls started, by id, until they end.
+    started: Mutex<std::collections::HashMap<String, String>>,
 }
 
 #[async_trait::async_trait]
@@ -205,11 +207,31 @@ impl Host for RecordingHost {
     }
 
     fn emit(&self, event: ChatEvent) {
-        if let ChatEvent::ToolStart { name, .. } = event {
-            self.called
-                .lock()
-                .unwrap_or_else(|p| p.into_inner())
-                .push(name);
+        // A tool counts as called only once it ran: a call refused, or one to a tool that is not
+        // there, is not the answer choosing that tool.
+        match event {
+            ChatEvent::ToolStart { call_id, name, .. } => {
+                self.started
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .insert(call_id, name);
+            }
+            ChatEvent::ToolEnd {
+                call_id, is_error, ..
+            } => {
+                let name = self
+                    .started
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .remove(&call_id);
+                if let (Some(name), false) = (name, is_error) {
+                    self.called
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .push(name);
+                }
+            }
+            _ => {}
         }
     }
 
@@ -311,6 +333,8 @@ pub fn trial_folder(config_dir: &Path) -> Result<TrialFolder, String> {
     };
     copy(config_dir, &folder.dir, config_dir)
         .map_err(|e| format!("Could not set up the trial: {e}"))?;
+    // Tools in the copy are held to the live folder's signatures.
+    super::script_tools::share_signing_key(config_dir, &folder.dir);
     Ok(folder)
 }
 
@@ -384,6 +408,7 @@ pub async fn run_case(
         parent: host.clone(),
         state: super::ChatState::default(),
         called: Mutex::new(Vec::new()),
+        started: Mutex::new(Default::default()),
     });
     let request = TurnRequest {
         conversation_id: id.clone(),
@@ -419,6 +444,8 @@ pub async fn run_case(
         None => String::new(),
     };
     let _ = super::store::delete_conversation(&config_dir, &id);
+    // Its exposure goes with it, so the user's saved state keeps only real conversations.
+    host.registry().forget_conversation(&id);
     let called = recorder
         .called
         .lock()
@@ -787,6 +814,30 @@ mod tests {
             chat.join("memories.json").exists(),
             "the live data is untouched"
         );
+    }
+
+    /// A tool file changed outside the app is refused in a trial's copy too: the copy is held to
+    /// the live folder's signatures.
+    #[tokio::test]
+    async fn a_trial_copy_refuses_what_the_app_refuses() {
+        use super::super::script_tools as st;
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        st::set_signing_key(d, [3; 32]);
+        st::create(d, "", &serde_json::json!({ "name": "counter", "description": "Counts.", "script": "function main() { return 1; }" }))
+            .await
+            .unwrap();
+        st::promote(d, "counter", None).await.unwrap();
+        let mut forged = st::load(d, "counter").unwrap();
+        forged.script = "function main() { return 2; }".into();
+        forged.approved_hash = Some(st::approval_hash(&forged));
+        let file = d.join("chat").join("script-tools").join("counter.json");
+        std::fs::write(&file, serde_json::to_string(&forged).unwrap()).unwrap();
+        let folder = trial_folder(d).unwrap();
+        let err = st::call(&folder.dir, "counter", &serde_json::json!({}), None)
+            .await
+            .unwrap_err();
+        assert!(err.contains("changed outside the app"), "{err}");
     }
 
     #[test]

@@ -85,6 +85,9 @@ pub struct ScriptTool {
     /// back again.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub monitor_reverted_at: Option<DateTime<Utc>>,
+    /// When the user last approved it: the lifecycle and the monitor judge only calls since.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approved_at: Option<DateTime<Utc>>,
 }
 
 /// Each capability item with its key: `http:host`, `read:folder`, and so on.
@@ -137,6 +140,14 @@ pub fn set_signing_key(config_dir: &Path, key: [u8; 32]) {
     let mut keys = keys().write().unwrap_or_else(|p| p.into_inner());
     keys.retain(|(dir, _)| dir != config_dir);
     keys.push((config_dir.to_path_buf(), key));
+}
+
+/// Gives a trial's copy the live folder's key, so a file changed outside the app is refused there
+/// as it is in the app.
+pub fn share_signing_key(from: &Path, to: &Path) {
+    if let Some(key) = signing_key(from) {
+        set_signing_key(to, key);
+    }
 }
 
 /// Drops the key for a folder that is going away (a trial's copy).
@@ -614,6 +625,7 @@ pub async fn create(config_dir: &Path, conversation: &str, args: &Value) -> Resu
         signature: None,
         expires: Default::default(),
         monitor_reverted_at: None,
+        approved_at: None,
     };
     let mut tool = tool;
     save_resigned(config_dir, &tool)?;
@@ -695,26 +707,40 @@ pub async fn promote_as_shown(
     shown: &ScriptTool,
     days: Option<i64>,
 ) -> Result<String, String> {
-    let now = load(config_dir, &shown.name).ok_or("There is no tool by that name.")?;
-    if approval_hash(&now) != approval_hash(shown) || now.requested != shown.requested {
-        return Err(format!(
-            "`{}` changed after the user was shown it, so it was not promoted; promote it again so they see what it is now.",
-            shown.name
-        ));
-    }
-    promote(config_dir, &shown.name, days).await
+    promote_with(config_dir, &shown.name, days, Some(shown)).await
 }
 
 pub async fn promote(config_dir: &Path, name: &str, days: Option<i64>) -> Result<String, String> {
+    promote_with(config_dir, name, days, None).await
+}
+
+async fn promote_with(
+    config_dir: &Path,
+    name: &str,
+    days: Option<i64>,
+    shown: Option<&ScriptTool>,
+) -> Result<String, String> {
     sandbox::cache_in(config_dir);
     #[cfg(not(test))]
     ensure_signing_key(config_dir).await;
-    let mut tool = load(config_dir, name).ok_or("There is no tool by that name.")?;
-    let failing = failing_checks(&tool.script, &tool.checks).await;
+    let first = load(config_dir, name).ok_or("There is no tool by that name.")?;
+    let failing = failing_checks(&first.script, &first.checks).await;
     if !failing.is_empty() {
         return Err(format!(
             "`{name}` fails its regression checks, so it was not promoted: {}",
             failing.join("; ")
+        ));
+    }
+    // Loaded again after the waits above, and promoted only if it is still what was checked and,
+    // for a card, what the user was shown: nothing written in between is approved unseen.
+    let mut tool = load(config_dir, name).ok_or("There is no tool by that name.")?;
+    let expected = shown.unwrap_or(&first);
+    if approval_hash(&tool) != approval_hash(expected)
+        || tool.requested != expected.requested
+        || approval_hash(&tool) != approval_hash(&first)
+    {
+        return Err(format!(
+            "`{name}` changed after the user was shown it, so it was not promoted; promote it again so they see what it is now."
         ));
     }
     if let Some(check) = tool.pending_check.take() {
@@ -728,6 +754,7 @@ pub async fn promote(config_dir: &Path, name: &str, days: Option<i64>) -> Result
     tool.granted = tool.requested.clone();
     tool.expires.clear();
     tool.status = Status::Active;
+    tool.approved_at = Some(Utc::now());
     tool.approved_hash = Some(approval_hash(&tool));
     // The user saw it on the card and approved it: signed afresh.
     save_resigned(config_dir, &tool)?;
@@ -811,11 +838,20 @@ pub fn extend(
     let until = days
         .filter(|d| *d > 0)
         .map(|d| now + chrono::Duration::days(d));
+    let had = keyed(&active);
     for key in keyed(wanted) {
+        // Asked for again, a grant keeps whichever lasts longer: lasting beats any date.
+        let lasting_already = had.contains(&key) && !expires.contains_key(&key);
         match until {
-            Some(until) => expires.insert(key, until),
-            None => expires.remove(&key),
-        };
+            _ if lasting_already => {}
+            Some(until) => {
+                let later = expires.get(&key).map_or(until, |&e| e.max(until));
+                expires.insert(key, later);
+            }
+            None => {
+                expires.remove(&key);
+            }
+        }
     }
     tool.granted = active.with(wanted);
     tool.requested = tool.granted.clone();
@@ -906,6 +942,17 @@ pub async fn revert(config_dir: &Path, name: &str, checks: &[Check]) -> Result<b
             continue;
         }
         if failing_checks(&old.script, checks).await.is_empty() {
+            // Checking took a while: a revoke or any other change meanwhile wins, and the
+            // rollback waits for the next pass.
+            let latest = load(config_dir, name).ok_or("There is no tool by that name.")?;
+            if latest.granted != current.granted
+                || latest.requested != current.requested
+                || latest.expires != current.expires
+                || latest.status != current.status
+                || approval_hash(&latest) != approval_hash(&current)
+            {
+                return Ok(false);
+            }
             // The script goes back; the access does not grow: it keeps only what the tool may
             // reach now, so a revoke or a lapse is never undone by a rollback.
             let mut back = old;
@@ -960,6 +1007,11 @@ fn within_rate(name: &str) -> bool {
 pub fn retire(config_dir: &Path, name: &str) -> Result<(), String> {
     let mut tool = load(config_dir, name).ok_or("There is no tool by that name.")?;
     tool.status = Status::Deprecated;
+    // A file changed outside the app is retired with no access, so signing it signs nothing new.
+    if !verifies(config_dir, &tool) {
+        tool.granted = Capabilities::default();
+        tool.expires.clear();
+    }
     save_resigned(config_dir, &tool)?;
     super::traces::set_status(config_dir, "script_tool", name, Status::Deprecated.as_str());
     Ok(())
@@ -1035,8 +1087,8 @@ fn call_at(
         let workspace = workspace.map(|root| sandbox::Workspace {
             root,
             // Files the app sealed at rest are opened with its key, and what is written is sealed.
-            read: |p| crate::chat::at_rest::read(p),
-            write: |p, bytes| crate::chat::at_rest::write(p, bytes),
+            read: |_, bytes| crate::chat::at_rest::open_bytes(bytes),
+            write: |p, bytes| crate::chat::at_rest::seal_for(p, bytes),
         });
         // The vault secrets its granted credentials name, for hosts it may reach: the host
         // attaches them to requests, and they are masked in whatever comes back.
@@ -1082,14 +1134,38 @@ fn call_at(
         }
         // What it returns is scanned for secrets (keys, tokens, passwords) before anything reads
         // it, whatever host it fetched them from.
-        result.map_err(|e| e.to_string()).map(|out| {
-            let out = super::vault::mask(&out, &shown);
-            let (masked, found) = cortex_kernel::privacy::mask_secrets(&out);
+        // Masked whether it succeeded or failed: an error can quote a response, and with it a
+        // credential. A callee's result is masked before it reaches its caller.
+        let mask = |text: String| {
+            let text = super::vault::mask(&text, &shown);
+            let (masked, found) = cortex_kernel::privacy::mask_secrets(&text);
             if found > 0 {
                 log::warn!("[script tool {name}] {found} secret(s) masked in its output");
             }
             masked
-        })
+        };
+        let result = result.map(mask).map_err(|e| mask(e.to_string()));
+        // A call from another tool does not pass the chat's own record: it is logged here, so the
+        // activity log shows every tool that ran.
+        if depth > 0 {
+            super::audit::record(
+                &config_dir,
+                super::audit::Entry {
+                    at: Utc::now(),
+                    kind: "tool".into(),
+                    conversation: String::new(),
+                    agent: None,
+                    tool: format!("{CONNECTOR}__{name} (called by a tool)"),
+                    arguments: super::audit::short(&args.to_string()),
+                    outcome: if result.is_ok() { "ok" } else { "error" }.into(),
+                    detail: super::audit::short(match &result {
+                        Ok(text) | Err(text) => text,
+                    }),
+                    millis: started.elapsed().as_millis() as u64,
+                },
+            );
+        }
+        result
     })
 }
 
@@ -1563,6 +1639,54 @@ mod tests {
         assert!(err.contains("changed after"), "{err}");
     }
 
+    /// Asking again for something a tool already has for good does not put a date on it.
+    #[tokio::test]
+    async fn a_short_request_does_not_shorten_a_lasting_grant_of_the_same_thing() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        create(d, "", &json!({ "name": "fetcher", "description": "Fetch pages.", "script": "function main() { return 1; }", "http_hosts": ["a.example.com"] }))
+            .await
+            .unwrap();
+        promote(d, "fetcher", None).await.unwrap();
+        let shown = load(d, "fetcher").unwrap();
+        let a = Capabilities {
+            http_hosts: vec!["a.example.com".into()],
+            ..Default::default()
+        };
+        extend(d, &shown, &a, Some(1)).unwrap();
+        let tool = load(d, "fetcher").unwrap();
+        assert!(
+            !tool.expires.contains_key("http:a.example.com"),
+            "{:?}",
+            tool.expires
+        );
+        let next_month = Utc::now() + chrono::Duration::days(30);
+        assert_eq!(
+            active_grants(&tool, next_month).http_hosts,
+            vec!["a.example.com"]
+        );
+    }
+
+    /// A tool's errors are masked like its results: an error quoting a token does not show it.
+    #[tokio::test]
+    async fn secrets_in_a_tool_s_error_are_masked() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        create(d, "", &json!({ "name": "leaky_error", "description": "Fail loudly.", "script": "function main() { throw new Error('upstream said token: ghp_abcdefghijklmnopqrstuvwxyz12'); }" }))
+            .await
+            .unwrap();
+        promote(d, "leaky_error", None).await.ok();
+        let mut tool = load(d, "leaky_error").unwrap();
+        if tool.status != Status::Active {
+            tool.status = Status::Active;
+            tool.approved_hash = Some(approval_hash(&tool));
+            save_resigned(d, &tool).unwrap();
+        }
+        let err = call(d, "leaky_error", &json!({}), None).await.unwrap_err();
+        assert!(!err.contains("ghp_"), "{err}");
+        assert!(err.contains("[secret removed]"), "{err}");
+    }
+
     /// The promotion grants what the card showed, not what is on disk when the user says yes.
     #[tokio::test]
     async fn a_promotion_grants_only_what_the_card_showed() {
@@ -1620,6 +1744,10 @@ mod tests {
         let err = extend(d, &shown, &Capabilities::default(), None).unwrap_err();
         assert!(err.contains("changed outside the app"), "{err}");
         assert!(!verifies(d, &load(d, "fetcher").unwrap()));
+        // Retiring it signs it with no access, not with the forged grant.
+        retire(d, "fetcher").unwrap();
+        let retired = load(d, "fetcher").unwrap();
+        assert!(retired.granted.is_empty() && verifies(d, &retired));
     }
 
     /// A tool that reads the date or draws random numbers keeps passing its check: checks run on a

@@ -989,6 +989,22 @@ impl ToolRegistry {
         }
     }
 
+    /// Forgets what a conversation was exposed to, once it is gone for good (an eval case's): the
+    /// saved state keeps only conversations that can still continue.
+    pub fn forget_conversation(&self, id: &str) {
+        let removed = {
+            let mut state = self.state.write().expect("state lock poisoned");
+            state
+                .exposed_conversations
+                .remove(id)
+                .is_some()
+                .then(|| state.clone())
+        };
+        if let Some(state) = removed {
+            self.persist(&state);
+        }
+    }
+
     /// "Don't ask again" on an approval card: the tool stops asking for its own sake, as the
     /// Auto-approve setting does. It never becomes [`always_allow`](Self::always_allow)ed: the
     /// hosted web app can answer approval cards, so overriding untrusted content needs Settings.

@@ -254,6 +254,24 @@ pub async fn execute(
     mode: ApprovalMode,
     conversation_id: &str,
 ) -> Outcome {
+    // A written tool's effect is read now, not when the turn began: access granted mid-turn
+    // makes it change something from that call on.
+    let fresh;
+    let tool = match (tool.connector_id.as_deref(), host.config_dir()) {
+        (Some(super::script_tools::CONNECTOR), Ok(dir)) => {
+            match super::script_tools::load(&dir, &tool.tool_name) {
+                Some(written) => {
+                    fresh = ChatTool {
+                        read_only: !super::script_tools::has_effects(&dir, &written),
+                        ..tool.clone()
+                    };
+                    &fresh
+                }
+                None => tool,
+            }
+        }
+        _ => tool,
+    };
     let Some(connector_id) = tool.connector_id.as_deref() else {
         return Outcome {
             text: "This tool is handled by the app.".into(),

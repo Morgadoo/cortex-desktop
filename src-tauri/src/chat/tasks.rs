@@ -791,7 +791,11 @@ pub fn save(config_dir: &Path, mut task: Task) -> Result<Vec<Task>, String> {
     }
     let mut tasks = load(config_dir);
     match tasks.iter_mut().find(|t| t.id == task.id) {
-        Some(existing) => *existing = task,
+        Some(existing) => {
+            // The task as it was stays restorable, like the rest of what can act on its own.
+            super::versions::keep(config_dir, "tasks", &task.id, &*existing, &task)?;
+            *existing = task;
+        }
         None => tasks.push(task),
     }
     store(config_dir, &tasks)?;
@@ -1137,6 +1141,29 @@ mod tests {
         assert_eq!(body, "trips: 0.50 (was 0.75). Worse: porto");
         assert!(drop_notice(&result(0.75, Some(0.75))).is_none());
         assert!(drop_notice(&result(0.1, None)).is_none());
+    }
+
+    /// A task is versioned like the rest of what acts on its own: an edit can be undone.
+    #[test]
+    fn a_task_edit_can_be_undone() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let mut task = super::super::learning::review_task(d);
+        task.id = "report".into();
+        task.prompt = "Write the weekly report.".into();
+        task.frequency = Frequency::Weekly {
+            days: vec![0],
+            time: "09:00".into(),
+        };
+        save(d, task.clone()).unwrap();
+        let mut changed = task.clone();
+        changed.prompt = "Email everyone the report.".into();
+        save(d, changed).unwrap();
+        let before = super::super::versions::list(d, "tasks", "report")
+            .unwrap()
+            .remove(0);
+        super::super::versions::restore(d, "tasks", "report", &before.id).unwrap();
+        assert_eq!(load(d)[0].prompt, "Write the weekly report.");
     }
 
     #[test]

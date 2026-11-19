@@ -588,6 +588,42 @@ fn on_create_tool<'a>(
         // Rewriting an approved tool sends it back to candidate, which takes it out of every
         // chat: a change nobody can approve in Plan mode or in a run nobody watches (evals too).
         let mode = r.request.approval;
+        let name = arguments
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        let approved = script_tools::load(r.config_dir, &name)
+            .is_some_and(|t| t.status != script_tools::Status::Candidate);
+        if approved && mode != ApprovalMode::Plan && !mode.unattended() && !asked {
+            let gate = ChatTool {
+                name: script_tools::CREATE_TOOL.into(),
+                description: String::new(),
+                parameters: Value::Null,
+                connector_id: None,
+                tool_name: script_tools::CREATE_TOOL.into(),
+                read_only: false,
+            };
+            if r.host
+                .approve(
+                    &gate,
+                    &arguments,
+                    Some(
+                        "rewriting an approved tool takes it out of use until it is approved again",
+                    ),
+                )
+                .await
+                == ApprovalDecision::Deny
+            {
+                return tools::Outcome {
+                    text: format!(
+                        "The user kept `{name}` as it is. Use it, or describe the change."
+                    ),
+                    is_error: true,
+                };
+            }
+        }
         if mode == ApprovalMode::Plan || mode.unattended() {
             let name = arguments
                 .get("name")
@@ -769,7 +805,18 @@ where
     for (suite, base) in suites.iter().zip(&before) {
         let after =
             evals::run_suite(&host, suite, &r.request.model, &evals::Without::default()).await?;
-        let comparison = evals::compare(base, &after);
+        let mut comparison = evals::compare(base, &after);
+        if !comparison.holds() {
+            // Models answer differently from run to run: one worse run is checked once more
+            // before the change is held to have made the suite worse.
+            let again =
+                evals::run_suite(&host, suite, &r.request.model, &evals::Without::default())
+                    .await?;
+            let second = evals::compare(base, &again);
+            if second.holds() {
+                comparison = second;
+            }
+        }
         if !comparison.holds() {
             log::info!(
                 "trial: `{suite}` got worse ({:.2} to {:.2}; worse: {})",

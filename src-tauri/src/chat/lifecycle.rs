@@ -42,7 +42,32 @@ impl Report {
 /// One pass of the lifecycle, as of `now`: the kernel decides, this applies.
 pub async fn maintain(config_dir: &Path, now: DateTime<Utc>) -> Report {
     let artifacts = traces::artifacts(config_dir, None);
-    let week = traces::usage(config_dir, now - Duration::days(7)).tools;
+    // Each tool in use is judged on its calls since the user last approved it, within the week:
+    // failures of a version the user has since replaced do not count against the new one.
+    let tools = super::script_tools::list(config_dir);
+    let mut week = Vec::new();
+    let mut fortnight = Vec::new();
+    for tool in tools
+        .iter()
+        .filter(|t| t.status == super::script_tools::Status::Active)
+    {
+        let name = format!("{}__{}", super::script_tools::CONNECTOR, tool.name);
+        let start = tool.approved_at.map_or(now - Duration::days(7), |at| {
+            at.max(now - Duration::days(7))
+        });
+        week.push(traces::tool_stat(
+            config_dir,
+            &name,
+            start,
+            now + Duration::seconds(1),
+        ));
+        fortnight.push(traces::tool_stat(
+            config_dir,
+            &name,
+            start - Duration::days(7),
+            now + Duration::seconds(1),
+        ));
+    }
     let decisions = decide(&artifacts, &week, now);
     let mut report = Report::default();
     for (kind, id) in decisions.deprecate {
@@ -64,7 +89,6 @@ pub async fn maintain(config_dir: &Path, now: DateTime<Utc>) -> Report {
     }
     // Monitor: a tool that fails more this week than last goes back to its previous version, or,
     // with no earlier version that passes its checks, back to candidate.
-    let fortnight = traces::usage(config_dir, now - Duration::days(14)).tools;
     for name in cortex_kernel::lifecycle::regressed(&week, &fortnight) {
         // Only a tool in use is monitored: a retired or candidate one is not brought back.
         let Some(tool) = super::script_tools::load(config_dir, &name)
@@ -93,6 +117,12 @@ pub async fn maintain(config_dir: &Path, now: DateTime<Utc>) -> Report {
     for name in decisions.demote {
         let id = format!("script_tool:{name}");
         if report.reverted.contains(&id) || report.demoted.contains(&id) {
+            continue;
+        }
+        // Only a tool in use is demoted; a retired one stays retired.
+        if !super::script_tools::load(config_dir, &name)
+            .is_some_and(|t| t.status == super::script_tools::Status::Active)
+        {
             continue;
         }
         if super::script_tools::demote(config_dir, &name).is_ok() {
@@ -205,6 +235,41 @@ mod tests {
         assert!(super::super::script_tools::definitions(d).is_empty());
     }
 
+    /// A tool the user just approved again is judged on its own calls: the failures of the version
+    /// it replaced do not demote it.
+    #[tokio::test]
+    async fn a_fresh_approval_is_judged_on_its_own_calls() {
+        use super::super::script_tools as st;
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        st::create(d, "chat-1", &json!({ "name": "fixed_tool", "description": "Fixed.", "script": "function main() { return 1; }" }))
+            .await
+            .unwrap();
+        traces::start_run(d, "r", "c", None, "m");
+        // The broken version failed five of six calls yesterday...
+        for ok in [false, false, false, false, false, true] {
+            traces::tool_call_at(
+                d,
+                "r",
+                "script__fixed_tool",
+                Utc::now() - Duration::days(1),
+                5,
+                ok,
+            );
+        }
+        // ...and the user approves the fixed one today.
+        st::promote(d, "fixed_tool", None).await.unwrap();
+        let report = maintain(d, Utc::now()).await;
+        assert!(
+            report.demoted.is_empty() && report.reverted.is_empty(),
+            "{report:?}"
+        );
+        assert_eq!(
+            st::load(d, "fixed_tool").unwrap().status,
+            st::Status::Active
+        );
+    }
+
     /// A tool the assistant wrote and keeps calling is used, so it is not retired.
     #[tokio::test]
     async fn a_tool_in_use_is_kept() {
@@ -255,6 +320,8 @@ mod tests {
             st::promote(d, name, None).await.unwrap();
             let mut tool = st::load(d, name).unwrap();
             tool.checks.clear();
+            // Approved a while ago: the weeks below are its own.
+            tool.approved_at = Some(Utc::now() - Duration::days(20));
             st::save(d, &tool).unwrap();
         };
         write("rates_v", "function main() { return 1; }").await;

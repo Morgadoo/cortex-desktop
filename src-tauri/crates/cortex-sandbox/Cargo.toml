@@ -13,10 +13,14 @@ sha2 = "0.10"
 # The seeded generator a deterministic run gives the guest, of the version wasmtime-wasi takes.
 rand = { version = "0.10", default-features = false, features = ["std_rng"] }
 thiserror = "2.0.12"
-tokio = { version = "1.43.0", features = ["fs", "net", "time"] }
+tokio = { version = "1.43.0", features = ["fs", "net", "rt", "time"] }
 url = "2.5.4"
 wasmtime = "50"
 wasmtime-wasi = "50"
+
+[target.'cfg(unix)'.dependencies]
+# openat with O_NOFOLLOW: workspace files are reached without following a link.
+libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3.18.0"

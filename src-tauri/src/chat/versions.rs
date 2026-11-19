@@ -29,6 +29,8 @@ pub const KINDS: &[&str] = &[
     "knowledge",
     "notebooks",
     "instructions",
+    // Scheduled tasks: what runs on its own, and when.
+    "tasks",
 ];
 
 fn dir(config_dir: &Path, kind: &str, id: &str) -> Result<PathBuf, String> {
@@ -209,6 +211,12 @@ pub fn now(config_dir: &Path, kind: &str, id: &str) -> Option<Value> {
                 .find(|w| w.id == workflow)?,
         )
         .ok(),
+        ("tasks", task) => serde_json::to_value(
+            super::tasks::load(config_dir)
+                .into_iter()
+                .find(|t| t.id == task)?,
+        )
+        .ok(),
         ("tools", name) => match name.strip_prefix("script-") {
             Some(script) => {
                 serde_json::to_value(super::script_tools::load(config_dir, script)?).ok()
@@ -254,6 +262,7 @@ pub fn restore(config_dir: &Path, kind: &str, id: &str, version: &str) -> Result
             super::script_tools::restore_version(config_dir, parse(value)?)
         }
         ("tools", _) => super::custom_tools::save(config_dir, &parse(value)?).map(drop),
+        ("tasks", _) => super::tasks::save(config_dir, parse(value)?).map(drop),
         _ => Err(format!("{kind} cannot be restored.")),
     }
 }

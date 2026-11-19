@@ -574,8 +574,10 @@ pub fn register(
     with(config_dir, |c| {
         ensure(c, kind, id)?;
         c.execute(
-            "UPDATE artifacts SET version = CASE WHEN hash IS NULL OR hash = ?3 THEN version ELSE version + 1 END, hash = ?3, provenance = COALESCE(?4, provenance), status = ?5 WHERE kind = ?1 AND id = ?2",
-            params![kind, id, hash, provenance, status],
+            // Made active (approved, promoted again) is a fresh start for the lifecycle's idle
+            // clock, so a tool approved after a long wait is not retired the next day.
+            "UPDATE artifacts SET version = CASE WHEN hash IS NULL OR hash = ?3 THEN version ELSE version + 1 END, hash = ?3, provenance = COALESCE(?4, provenance), status = ?5, last_used = CASE WHEN ?5 = 'active' THEN MAX(COALESCE(last_used, 0), ?6) ELSE last_used END WHERE kind = ?1 AND id = ?2",
+            params![kind, id, hash, provenance, status, now()],
         )
     });
 }
@@ -671,6 +673,36 @@ pub struct Usage {
     pub cost: f64,
     pub tools: Vec<ToolStat>,
     pub models: Vec<ModelStat>,
+}
+
+/// One tool's calls and failures between `from` and `to`.
+pub fn tool_stat(
+    config_dir: &Path,
+    tool: &str,
+    from: DateTime<Utc>,
+    to: DateTime<Utc>,
+) -> ToolStat {
+    let empty = ToolStat {
+        tool: tool.to_string(),
+        calls: 0,
+        failures: 0,
+        avg_ms: 0,
+    };
+    with(config_dir, |c| {
+        c.query_row(
+            "SELECT COUNT(*), COALESCE(SUM(ok = 0), 0), CAST(COALESCE(AVG(millis), 0) AS INTEGER) FROM tool_calls WHERE tool = ?1 AND at >= ?2 AND at < ?3",
+            params![tool, from.timestamp_millis(), to.timestamp_millis()],
+            |r| {
+                Ok(ToolStat {
+                    tool: tool.to_string(),
+                    calls: r.get(0)?,
+                    failures: r.get(1)?,
+                    avg_ms: r.get(2)?,
+                })
+            },
+        )
+    })
+    .unwrap_or(empty)
 }
 
 /// Usage since `since`: runs, cost, and per tool and model, most used first.
@@ -904,10 +936,15 @@ mod tests {
         signal(d, "c", Some(3), "regenerated");
         signal(d, "c", None, "exported");
         signal(d, "c", None, "deleted_everything");
+        signal(d, "c", Some(4), "opened_source");
         let counts = signal_counts(d, Utc::now() - chrono::Duration::days(1));
         assert_eq!(
             counts,
-            vec![("exported".into(), 1), ("regenerated".into(), 2)]
+            vec![
+                ("exported".into(), 1),
+                ("opened_source".into(), 1),
+                ("regenerated".into(), 2)
+            ]
         );
         assert!(usage_report(d, 1).contains("regenerated"));
         // A tool that worked and returned nothing is a technical signal.
@@ -946,5 +983,13 @@ mod tests {
         assert!(a.critical);
         assert_eq!(a.status, "deprecated");
         assert_eq!(artifacts(d, Some("skill")).len(), 1);
+        // Made active again (a new approval) starts the idle clock afresh.
+        register(d, "script_tool", "late", None, Some("chat-1"), "candidate");
+        assert_eq!(artifact(d, "script_tool", "late").unwrap().last_used, None);
+        register(d, "script_tool", "late", Some("h"), None, "active");
+        assert!(artifact(d, "script_tool", "late")
+            .unwrap()
+            .last_used
+            .is_some());
     }
 }
