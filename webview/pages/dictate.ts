@@ -1,9 +1,10 @@
 /**
  * Cortex desktop: the dictation pill, opened by the dictation shortcut from any app.
  *
- * Records until the shortcut is pressed again (or a pause, if chosen), transcribes with the
- * speech-to-text set in Settings → Audio, and hands the text to `dictation_insert`, which types
- * or pastes it into the app that had focus. The window never takes focus itself.
+ * Records until the shortcut is pressed again (or let go, with hold-to-talk, or a pause, if
+ * chosen), transcribes with the speech-to-text set in Settings → Audio, and hands the text to
+ * `dictation_insert`, which types or pastes it into the app that had focus. The window never
+ * takes focus itself.
  */
 import { logError } from '../shared/logger';
 import { tauriInvoke } from '../shared/tauri';
@@ -12,6 +13,7 @@ import { startRecording, toBase64, type Recording } from './app/dictation';
 interface Prefs {
   shortcut: string;
   stopOnPause: boolean;
+  holdToTalk: boolean;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -21,7 +23,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const level = document.getElementById('level') as HTMLElement;
   let recording: Recording | null = null;
   let finishing = false;
-  let prefs: Prefs = { shortcut: 'Ctrl+Alt+D', stopOnPause: false };
+  /** Asked to finish while the microphone was still opening (a short hold, a quick second press). */
+  let starting = false;
+  let stopWhenStarted = false;
+  let prefs: Prefs = { shortcut: 'Ctrl+Alt+D', stopOnPause: false, holdToTalk: false };
 
   const show = (title: string, detail: string, kind: '' | 'busy' | 'error' = '') => {
     stateEl.textContent = title;
@@ -39,13 +44,15 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const start = async () => {
-    if (recording || finishing) return;
+    if (recording || finishing || starting) return;
+    starting = true;
+    stopWhenStarted = false;
     try {
       prefs = await tauriInvoke<Prefs>('dictation_prefs');
     } catch {
       /* keep the defaults */
     }
-    show('Listening…', `Press ${prefs.shortcut} again to insert`);
+    show('Listening…', prefs.holdToTalk ? `Let go of ${prefs.shortcut} to insert (after a quick tap, press it again)` : `Press ${prefs.shortcut} again to insert`);
     level.style.width = '0';
     try {
       recording = await startRecording({
@@ -55,10 +62,17 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     } catch (e) {
       fail(`The microphone is not available: ${String(e)}`);
+    } finally {
+      starting = false;
     }
+    if (recording && stopWhenStarted) void finish();
   };
 
   const finish = async () => {
+    if (starting) {
+      stopWhenStarted = true;
+      return;
+    }
     if (!recording || finishing) return;
     finishing = true;
     const rec = recording;

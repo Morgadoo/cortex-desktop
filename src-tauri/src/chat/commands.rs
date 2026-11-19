@@ -526,6 +526,12 @@ pub async fn chat_transcribe(
     super::audio::transcribe(&dir, bytes, &format!("speech.{ext}"), &settings).await
 }
 
+/// Whether the Hex dictation app is running here, and its speech models, for Settings → Audio.
+#[tauri::command]
+pub async fn chat_hex_status() -> crate::chat::hex::Status {
+    crate::chat::hex::status().await
+}
+
 /// Reads text aloud; returns base64 audio and its media type.
 #[tauri::command]
 pub async fn chat_speak(app: AppHandle, text: String) -> Result<SpeechOut, String> {

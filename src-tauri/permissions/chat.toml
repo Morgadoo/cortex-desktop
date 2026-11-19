@@ -430,6 +430,11 @@ description = "Read the audio settings."
 commands.allow = ["chat_audio_settings"]
 
 [[permission]]
+identifier = "allow-chat-hex-status"
+description = "See whether the Hex dictation app is running and which speech models it has."
+commands.allow = ["chat_hex_status"]
+
+[[permission]]
 identifier = "allow-chat-save-audio-settings"
 description = "Save the audio settings and keys."
 commands.allow = ["chat_save_audio_settings"]

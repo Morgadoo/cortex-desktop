@@ -154,6 +154,7 @@ pub fn run() {
                 chat::commands::chat_speak,
                 chat::commands::chat_steer,
                 chat::commands::chat_audio_settings,
+                chat::commands::chat_hex_status,
                 chat::commands::chat_save_audio_settings,
                 chat::commands::chat_audio_voices,
                 chat::commands::chat_search,
@@ -567,12 +568,20 @@ pub fn run() {
             app.handle().plugin(
                 tauri_plugin_global_shortcut::Builder::new()
                     .with_handler(move |_app, shortcut, event| {
-                        if event.state() == ShortcutState::Pressed {
-                            if crate::dictation::is_shortcut(&app_handle, shortcut) {
-                                crate::dictation::toggle(&app_handle);
-                            } else if let Err(e) = quick_ask::window::show(&app_handle) {
-                                error!("could not show search window: {e}");
+                        let dictation = crate::dictation::is_shortcut(&app_handle, shortcut);
+                        match event.state() {
+                            ShortcutState::Pressed if dictation => {
+                                crate::dictation::pressed(&app_handle)
                             }
+                            ShortcutState::Released if dictation => {
+                                crate::dictation::released(&app_handle)
+                            }
+                            ShortcutState::Pressed => {
+                                if let Err(e) = quick_ask::window::show(&app_handle) {
+                                    error!("could not show search window: {e}");
+                                }
+                            }
+                            ShortcutState::Released => {}
                         }
                     })
                     .build(),

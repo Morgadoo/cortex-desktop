@@ -6,6 +6,8 @@
  * without. MediaRecorder is the fallback where Web Audio is unavailable.
  */
 
+import { createVad } from './vad';
+
 export interface Recording {
   /** Stops recording and returns the audio. */
   stop(): Promise<Blob>;
@@ -42,38 +44,17 @@ export function setVoicePauseMs(ms: number) {
   }
 }
 
-/** RMS above this counts as sound. */
-const SPEECH_LEVEL = 0.02;
-/** Sound shorter than this in total (a click, a cough) is not speech. */
-const MIN_SPEECH_MS = 400;
-
-/** Feeds sample blocks; reports the level, and calls `onPause` once after speech and a pause. */
+/**
+ * Feeds sample blocks; reports the level, and calls `onPause` once after speech and a pause.
+ * Speech is told from the room by an adaptive detector (`vad.ts`), so steady noise such as a fan
+ * does not hold a turn open.
+ */
 function pauseDetector(listening: Listening, sampleRate: number): (samples: Float32Array) => void {
-  let speechMs = 0;
-  let quietSince = 0;
-  let paused = false;
+  const vad = createVad({ sampleRate, pauseMs: listening.pauseMs ?? voicePauseMs() });
   return (samples) => {
-    let sum = 0;
-    for (const v of samples) sum += v * v;
-    const level = Math.sqrt(sum / samples.length);
-    listening.onLevel?.(Math.min(1, level * 8));
-    const now = performance.now();
-    const pauseMs = listening.pauseMs ?? voicePauseMs();
-    if (level > SPEECH_LEVEL) {
-      speechMs += (samples.length / sampleRate) * 1000;
-      quietSince = 0;
-    } else if (!paused) {
-      quietSince ||= now;
-      if (now - quietSince > pauseMs) {
-        if (speechMs >= MIN_SPEECH_MS) {
-          paused = true;
-          listening.onPause?.();
-        } else {
-          // A lone blip followed by quiet was not speech.
-          speechMs = 0;
-        }
-      }
-    }
+    const state = vad.push(samples);
+    listening.onLevel?.(state.level);
+    if (state.paused) listening.onPause?.();
   };
 }
 

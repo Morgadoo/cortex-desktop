@@ -1927,7 +1927,6 @@
  "Type a prompt first.": "Escribe primero un prompt.",
  "Type it into the app": "Escribirlo en la aplicación",
  "Type your answer…": "Escribe tu respuesta…",
- "Typing works on X11 and Wayland (xdotool, wtype or ydotool); macOS and Windows paste it. Terminals paste with Ctrl+Shift+V, so typing suits them better.": "Escribir funciona en X11 y Wayland (xdotool, wtype o ydotool); en macOS y Windows se pega. Los terminales pegan con Ctrl+Shift+V, así que escribir les conviene más.",
  "Unarchive": "Desarchivar",
  "Uncommitted changes in this folder": "Cambios sin confirmar en esta carpeta",
  "Undo": "Deshacer",
@@ -2477,5 +2476,17 @@
  "↑ summarized for the model": "↑ resumido para el modelo",
  "★ Favourite": "★ Favorito",
  "☆ Favourite": "☆ Favorito",
- "✓ {0} answered: “{1}”": "✓ {0} respondió: “{1}”"
+ "✓ {0} answered: “{1}”": "✓ {0} respondió: “{1}”",
+ "{0} Until it is, the built-in Whisper is used.": "{0} Hasta entonces, se usa el Whisper integrado.",
+ "Hex (on this computer)": "Hex (en este equipo)",
+ "Hex could not be asked.": "No se pudo consultar a Hex.",
+ "Hex is a fast speech-to-text app (Parakeet and Whisper models) that runs on this computer. Install it from anoma.ly/hex and download a model there.": "Hex es una aplicación rápida de voz a texto (modelos Parakeet y Whisper) que se ejecuta en este equipo. Instálala desde anoma.ly/hex y descarga allí un modelo.",
+ "Hex is running. When it is closed, the built-in Whisper takes over.": "Hex se está ejecutando. Cuando se cierre, el Whisper integrado toma el relevo.",
+ "Hex model": "Modelo de Hex",
+ "Hold to talk": "Mantener pulsado para hablar",
+ "Listen while the shortcut is held and insert when you let go. A quick tap still starts and stops as usual.": "Escucha mientras se mantiene pulsado el atajo e inserta al soltarlo. Un toque rápido sigue iniciando y deteniendo como siempre.",
+ "Looking for Hex…": "Buscando Hex…",
+ "The best one downloaded in Hex": "El mejor descargado en Hex",
+ "Typing works on X11 and Wayland (xdotool, wtype or ydotool); macOS and Windows paste it. GNOME on Wayland pastes by default, as it lets no app type into another. Terminals paste with Ctrl+Shift+V, so typing suits them better.": "Escribir funciona en X11 y Wayland (xdotool, wtype o ydotool); macOS y Windows lo pegan. GNOME en Wayland pega por defecto, ya que no deja que ninguna aplicación escriba en otra. Los terminales pegan con Ctrl+Shift+V, así que escribir les va mejor.",
+ "Hex is not running. Until it is, the built-in Whisper is used.": "Hex no se está ejecutando. Hasta entonces, se usa el Whisper integrado."
 }
