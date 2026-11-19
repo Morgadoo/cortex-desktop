@@ -930,9 +930,13 @@ pub fn restore_version(config_dir: &Path, mut old: ScriptTool) -> Result<(), Str
     }
     // Every version approved after the one brought back, the current one included, is set
     // aside by the user's choice: the monitor never rolls forward to any of them.
-    // Only an approved version has a place in the line of approvals; a draft brought back sets
-    // aside only the version in use, never the approved ones before it.
-    let restored_from = old.approved_at.filter(|_| approved);
+    // An approved version is placed by when it was approved; a draft, or a version that does not
+    // verify, by when it was written: the approvals after that are set aside, never those before.
+    let restored_from = if approved {
+        old.approved_at.or(Some(old.created_at))
+    } else {
+        Some(old.created_at)
+    };
     let restored = approval_hash(&old);
     let mut set_aside = current
         .as_ref()
@@ -1889,6 +1893,51 @@ mod tests {
         assert!(!now.set_aside.contains(&v1), "{:?}", now.set_aside);
         assert_eq!(revert(d, "draft_t", &[]).await, Ok(true));
         assert!(load(d, "draft_t").unwrap().script.contains("return 1"));
+    }
+
+    /// A draft written between two approvals and brought back from History sets aside the
+    /// approvals made after it was written, so the monitor rolls back to the one before it.
+    #[tokio::test]
+    async fn restoring_a_draft_sets_aside_the_approvals_after_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let write =
+            |s: &str| json!({ "name": "between_t", "description": "Between.", "script": s });
+        let approve = || async {
+            promote(d, "between_t", None).await.unwrap();
+            let mut t = load(d, "between_t").unwrap();
+            t.checks.clear();
+            save(d, &t).unwrap();
+            approval_hash(&t)
+        };
+        create(d, "", &write("function main() { return 1; }"))
+            .await
+            .unwrap();
+        let v1 = approve().await;
+        create(d, "", &write("function main() { return 2; }"))
+            .await
+            .unwrap();
+        create(d, "", &write("function main() { return 3; }"))
+            .await
+            .unwrap();
+        let v3 = approve().await;
+        create(d, "", &write("function main() { return 4; }"))
+            .await
+            .unwrap();
+        let v4 = approve().await;
+        let draft = super::super::versions::list(d, "tools", "script-between_t")
+            .unwrap()
+            .into_iter()
+            .find(|v| v.value["script"] == "function main() { return 2; }")
+            .unwrap();
+        super::super::versions::restore(d, "tools", "script-between_t", &draft.id).unwrap();
+        promote(d, "between_t", None).await.unwrap();
+        let now = load(d, "between_t").unwrap();
+        assert!(now.script.contains("return 2"));
+        assert!(now.set_aside.contains(&v3) && now.set_aside.contains(&v4));
+        assert!(!now.set_aside.contains(&v1), "{:?}", now.set_aside);
+        assert_eq!(revert(d, "between_t", &[]).await, Ok(true));
+        assert!(load(d, "between_t").unwrap().script.contains("return 1"));
     }
 
     /// A file changed outside the app is not re-signed by a later change, and History brings back
