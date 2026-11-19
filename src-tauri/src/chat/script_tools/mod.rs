@@ -243,7 +243,9 @@ fn hmac(key: &[u8; 32], message: &[u8]) -> String {
         .collect()
 }
 
-/// What the signature covers: what the user approved and what the tool may reach.
+/// What the signature covers: what the user approved, what the tool may reach, and everything
+/// the monitor and History go by, so a file changed outside the app can neither widen a tool nor
+/// quiet the monitor.
 fn signed_part(tool: &ScriptTool) -> Vec<u8> {
     serde_json::to_vec(&json!({
         "name": tool.name,
@@ -259,6 +261,10 @@ fn signed_part(tool: &ScriptTool) -> Vec<u8> {
         "checks": tool.checks,
         "setAside": tool.set_aside,
         "restoredAt": tool.restored_at,
+        "monitorRevertedAt": tool.monitor_reverted_at,
+        "createdAt": tool.created_at,
+        "pendingCheck": tool.pending_check,
+        "requested": tool.requested,
     }))
     .unwrap_or_default()
 }
@@ -1860,8 +1866,8 @@ mod tests {
         assert!(tool.granted.is_empty());
     }
 
-    /// Bringing back a draft from History and approving it leaves the approved version before it
-    /// to roll back to: only the version in use at the time is set aside.
+    /// Bringing back a draft from History and approving it leaves the approved version written
+    /// before it to roll back to.
     #[tokio::test]
     async fn restoring_a_draft_keeps_the_earlier_approved_version_to_roll_back_to() {
         let dir = tempfile::tempdir().unwrap();
@@ -1942,6 +1948,43 @@ mod tests {
 
     /// A file changed outside the app is not re-signed by a later change, and History brings back
     /// an old version's script without its old access.
+    #[tokio::test]
+    async fn every_field_the_monitor_or_history_goes_by_is_signed() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        set_signing_key(d, [6; 32]);
+        create(d, "", &json!({ "name": "watched", "description": "Watched.", "script": "function main() { return 1; }" }))
+            .await
+            .unwrap();
+        promote(d, "watched", None).await.unwrap();
+        let signed = load(d, "watched").unwrap();
+        assert!(verifies(d, &signed));
+        let edits: [fn(&mut ScriptTool); 5] = [
+            // A far-off rollback date would skip the week-over-week check for good.
+            |t| t.monitor_reverted_at = Some(Utc::now() + chrono::Duration::days(30_000)),
+            |t| t.restored_at = Some(Utc::now() + chrono::Duration::days(30_000)),
+            |t| t.created_at -= chrono::Duration::days(365),
+            |t| t.requested.http_hosts = vec!["evil.example.com".into()],
+            |t| {
+                t.pending_check = Some(Check {
+                    args: json!({}),
+                    expected: "1".into(),
+                })
+            },
+        ];
+        for edit in edits {
+            let mut forged = signed.clone();
+            edit(&mut forged);
+            assert!(!verifies(d, &forged));
+            std::fs::write(
+                path(d, "watched").unwrap(),
+                serde_json::to_string(&forged).unwrap(),
+            )
+            .unwrap();
+            assert!(definitions(d).iter().all(|t| t.tool_name != "watched"));
+        }
+    }
+
     #[tokio::test]
     async fn tampered_files_are_not_signed_and_restores_do_not_widen_access() {
         let dir = tempfile::tempdir().unwrap();
