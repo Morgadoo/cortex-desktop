@@ -246,6 +246,8 @@ fn signed_part(tool: &ScriptTool) -> Vec<u8> {
         "granted": tool.granted,
         "grantedUntil": tool.granted_until,
         "expires": tool.expires,
+        "approvedAt": tool.approved_at,
+        "checks": tool.checks,
     }))
     .unwrap_or_default()
 }
@@ -373,7 +375,13 @@ fn save_resigned(config_dir: &Path, tool: &ScriptTool) -> Result<(), String> {
 pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
     list(config_dir)
         .into_iter()
-        .filter(|t| t.status == Status::Active)
+        // Only what the user approved and the app saved: a tool whose file was changed outside
+        // the app is not offered, so its description never reaches the model.
+        .filter(|t| {
+            t.status == Status::Active
+                && t.approved_hash.as_deref() == Some(approval_hash(t).as_str())
+                && verifies(config_dir, t)
+        })
         .map(|t| ChatTool {
             name: super::tools::safe_name(&format!("{CONNECTOR}__{}", t.name)),
             description: format!(
@@ -778,6 +786,7 @@ pub fn demote(config_dir: &Path, name: &str) -> Result<(), String> {
     tool.status = Status::Candidate;
     tool.granted = Capabilities::default();
     tool.expires.clear();
+    forget_approval_if_tampered(config_dir, &mut tool);
     save_resigned(config_dir, &tool)?;
     super::traces::set_status(config_dir, "script_tool", name, Status::Candidate.as_str());
     Ok(())
@@ -790,7 +799,21 @@ pub fn revoke(config_dir: &Path, name: &str) -> Result<(), String> {
     tool.requested = Capabilities::default();
     tool.granted_until = None;
     tool.expires.clear();
+    forget_approval_if_tampered(config_dir, &mut tool);
     save_resigned(config_dir, &tool)
+}
+
+/// Before a path that re-signs a file (taking access away, retiring), a file changed outside the
+/// app loses its approval: it is signed only as a candidate the user must approve again, never
+/// as the active tool it now claims to be.
+fn forget_approval_if_tampered(config_dir: &Path, tool: &mut ScriptTool) {
+    if !verifies(config_dir, tool) {
+        tool.approved_hash = None;
+        tool.approved_at = None;
+        if tool.status == Status::Active {
+            tool.status = Status::Candidate;
+        }
+    }
 }
 
 /// What a capability request would change, for its card: what the tool may reach now, what lapsed
@@ -960,7 +983,10 @@ pub async fn revert(config_dir: &Path, name: &str, checks: &[Check]) -> Result<b
             back.requested = back.requested.within(&current.requested);
             back.expires = current.expires.clone();
             back.granted_until = current.granted_until;
-            back.monitor_reverted_at = current.monitor_reverted_at;
+            // Back in use from now: judged on its calls from here, and not rolled back again
+            // within the week on the failures of the version it replaced.
+            back.approved_at = Some(Utc::now());
+            back.monitor_reverted_at = Some(Utc::now());
             save(config_dir, &back)?;
             super::traces::register(
                 config_dir,
@@ -1007,10 +1033,13 @@ fn within_rate(name: &str) -> bool {
 pub fn retire(config_dir: &Path, name: &str) -> Result<(), String> {
     let mut tool = load(config_dir, name).ok_or("There is no tool by that name.")?;
     tool.status = Status::Deprecated;
-    // A file changed outside the app is retired with no access, so signing it signs nothing new.
+    // A file changed outside the app is retired with no access and no approval, so signing it
+    // signs nothing new.
     if !verifies(config_dir, &tool) {
         tool.granted = Capabilities::default();
         tool.expires.clear();
+        tool.approved_hash = None;
+        tool.approved_at = None;
     }
     save_resigned(config_dir, &tool)?;
     super::traces::set_status(config_dir, "script_tool", name, Status::Deprecated.as_str());
@@ -1744,10 +1773,28 @@ mod tests {
         let err = extend(d, &shown, &Capabilities::default(), None).unwrap_err();
         assert!(err.contains("changed outside the app"), "{err}");
         assert!(!verifies(d, &load(d, "fetcher").unwrap()));
+        // A tool whose file does not verify is not offered: its description never reaches the model.
+        assert!(definitions(d).is_empty());
         // Retiring it signs it with no access, not with the forged grant.
         retire(d, "fetcher").unwrap();
         let retired = load(d, "fetcher").unwrap();
         assert!(retired.granted.is_empty() && verifies(d, &retired));
+        assert!(retired.approved_hash.is_none());
+        // Revoking access from a tampered file does not make it an approved, signed tool either.
+        restore_version(d, first.clone()).unwrap();
+        let mut forged = load(d, "fetcher").unwrap();
+        forged.script = "function main() { return 666; }".into();
+        forged.approved_hash = Some(approval_hash(&forged));
+        std::fs::write(
+            path(d, "fetcher").unwrap(),
+            serde_json::to_string(&forged).unwrap(),
+        )
+        .unwrap();
+        revoke(d, "fetcher").unwrap();
+        let revoked = load(d, "fetcher").unwrap();
+        assert_eq!(revoked.status, Status::Candidate);
+        assert!(call(d, "fetcher", &json!({}), None).await.is_err());
+        assert!(definitions(d).is_empty());
     }
 
     /// A tool that reads the date or draws random numbers keeps passing its check: checks run on a

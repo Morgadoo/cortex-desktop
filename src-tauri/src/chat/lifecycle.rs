@@ -330,10 +330,11 @@ mod tests {
         let now = Utc::now();
         traces::start_run(d, "r", "c", None, "m");
         for tool in ["script__rates_v", "script__lonely"] {
-            // Last week: ten calls, none failed; this week: ten calls, four failed.
+            // Last week: ten calls, none failed; this week: ten calls, six failed: past the demotion
+            // threshold too, so the next day's pass must not demote the version rolled back to.
             for i in 0..10 {
                 traces::tool_call_at(d, "r", tool, now - Duration::days(10), 5, true);
-                traces::tool_call_at(d, "r", tool, now - Duration::days(1), 5, i >= 4);
+                traces::tool_call_at(d, "r", tool, now - Duration::days(1), 5, i >= 6);
             }
         }
         let report = maintain(d, now).await;
@@ -344,7 +345,14 @@ mod tests {
         // The next day the same week's failures do not flip it back to the broken version.
         let next = maintain(d, now + Duration::days(1)).await;
         assert!(next.reverted.is_empty(), "{next:?}");
-        assert!(st::load(d, "rates_v").unwrap().script.contains("return 1"));
+        // Nor demote the version it went back to, for the failures of the one it replaced.
+        assert!(
+            !next.demoted.contains(&"script_tool:rates_v".to_string()),
+            "{next:?}"
+        );
+        let back = st::load(d, "rates_v").unwrap();
+        assert!(back.script.contains("return 1"));
+        assert_eq!(back.status, st::Status::Active);
     }
 
     /// A retired tool is not brought back by the monitor, however its last week went.

@@ -2339,8 +2339,9 @@ where
     if let Some(trace) = trace {
         if name.starts_with("script__") {
             // A written tool records its own runs where it actually ran (also when another tool
-            // calls it), so a refusal before it runs (declined, nobody to approve, a lapsed or
-            // changed tool) is not counted against it as a failure.
+            // calls it), so a refusal before it runs (declined, nobody to approve, a changed or
+            // unapproved tool, the rate limit) is not counted against it as a failure. A run that
+            // fails, a lapsed grant's denial included, is.
             if !outcome.is_error {
                 super::traces::attribute(config_dir, trace, "tool", name, true);
             }

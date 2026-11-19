@@ -297,6 +297,9 @@ fn is_private(ip: IpAddr) -> bool {
                 || (s[..6] == [0; 6] && embedded(low))
                 // NAT64 64:ff9b::/96
                 || (s[0] == 0x64 && s[1] == 0xff9b && s[2..6] == [0; 4] && embedded(low))
+                // Local-use NAT64 64:ff9b:1::/48, and documentation 2001:db8::/32
+                || (s[0] == 0x64 && s[1] == 0xff9b && s[2] == 1)
+                || (s[0] == 0x2001 && s[1] == 0x0db8)
                 // 6to4 2002:aabb:ccdd::/48
                 || (s[0] == 0x2002
                     && embedded([
@@ -595,7 +598,9 @@ mod beneath {
             libc::openat(
                 dir.as_raw_fd(),
                 part.as_ptr(),
-                flags | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                // O_NONBLOCK: a FIFO in the workspace returns at once instead of blocking a
+                // thread forever; anything but a plain file is then refused.
+                flags | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK,
                 0o644 as libc::c_uint,
             )
         };
@@ -1403,6 +1408,46 @@ mod tests {
         assert_eq!(err, SandboxError::OutOfFuel);
     }
 
+    /// A FIFO in the workspace (which `run_code` can make) is refused at once, not waited on.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_fifo_in_the_workspace_does_not_hang_the_call() {
+        let dir = tempfile::tempdir().unwrap();
+        let fifo =
+            std::ffi::CString::new(dir.path().join("pipe").as_os_str().to_str().unwrap()).unwrap();
+        // SAFETY: a valid C string path.
+        assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o644) }, 0);
+        // Compile first, so the clock below times only the call.
+        let _ = js(
+            "function main() { return 1; }",
+            "{}",
+            Capabilities::default(),
+            Limits::default(),
+        )
+        .await;
+        let started = std::time::Instant::now();
+        let (out, _) = run(
+            "function main() { return read('pipe'); }",
+            "{}",
+            &Capabilities {
+                read_prefixes: vec!["".into()],
+                ..Default::default()
+            },
+            Limits {
+                timeout: Duration::from_secs(10),
+                ..Limits::default()
+            },
+            Some(Workspace {
+                root: dir.path().to_path_buf(),
+                read: |_, bytes| Ok(bytes),
+                write: |_, b| Ok(b.to_vec()),
+            }),
+        )
+        .await;
+        assert!(out.unwrap_err().to_string().contains("not a file"));
+        assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
     /// The race: another process swaps a link in and out of the file's place while a tool writes
     /// it. The file is opened from the workspace without following links, so nothing ever lands
     /// outside, however the timing falls.
@@ -1646,6 +1691,8 @@ mod tests {
             "64:ff9b::a00:1",
             "2002:a00:1::",
             "2001:0:4136:e378:8000:63bf:3fff:fdd2",
+            "64:ff9b:1::a00:1",
+            "2001:db8::1",
         ] {
             assert!(is_private(ip.parse().unwrap()), "{ip}");
         }
