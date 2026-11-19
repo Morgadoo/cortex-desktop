@@ -9,7 +9,7 @@ import { tauriInvoke } from '../../shared/tauri';
 import { speakText, type Playback } from './audio';
 import { openMicrophone, toBase64, type Microphone } from './dictation';
 import { h, icon, toast } from './dom';
-import { createGlowOrb } from './orbgl';
+import { createGlowOrb, orbCssColor } from './orbgl';
 
 export interface VoiceHooks {
   /** Sends what was said; false when it could not be sent. */
@@ -46,7 +46,9 @@ export function startVoiceConversation(hooks: VoiceHooks) {
   const orb = h('button', { class: 'voice-orb', title: 'Tap to interrupt or pause' });
   // The glowing glass orb, where WebGL is available; the CSS orb otherwise.
   const canvas = h('canvas', { class: 'voice-orb-gl', 'aria-hidden': 'true' });
-  orb.append(canvas);
+  // The light the orb casts into the room around it: its colour, swelling with the voice.
+  const atmosphere = h('span', { class: 'voice-atmosphere', 'aria-hidden': 'true' });
+  orb.append(atmosphere, canvas);
   const glow = createGlowOrb(canvas);
   if (glow) orb.classList.add('gl');
   else canvas.remove();
@@ -59,6 +61,7 @@ export function startVoiceConversation(hooks: VoiceHooks) {
   const heard = h('div', { class: 'voice-heard' });
   const end = h('button', { class: 'btn btn-secondary voice-end' }, icon('close', 15), 'End');
   const overlay = h('div', { class: 'voice-overlay', role: 'dialog', 'aria-label': 'Voice conversation' }, h('div', { class: 'voice-card' }, orb, status, heard, end));
+  overlay.style.setProperty('--orb-color', orbCssColor());
   document.body.append(overlay);
 
   const show = (next: Phase, line?: string) => {

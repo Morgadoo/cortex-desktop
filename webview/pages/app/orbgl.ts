@@ -188,6 +188,14 @@ function orbColor(): [number, number, number] {
   return peak > 0 ? (accent.map((c) => (c * 0.5) / peak) as [number, number, number]) : EMBER;
 }
 
+/** The orb's hue at full brightness, as CSS: the colour of the light it casts around it. */
+export function orbCssColor(): string {
+  const c = orbColor();
+  const peak = Math.max(...c) || 1;
+  const [r, g, b] = c.map((v) => Math.round((v / peak) * 255));
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
 function compile(gl: WebGLRenderingContext, type: number, source: string): WebGLShader | null {
   const shader = gl.createShader(type);
   if (!shader) return null;
