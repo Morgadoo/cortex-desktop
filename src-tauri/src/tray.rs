@@ -87,9 +87,17 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     #[cfg(target_os = "macos")]
     app.set_menu(app_menu)?;
     #[cfg(not(target_os = "macos"))]
-    app.get_webview_window(main_window::LABEL)
-        .ok_or(tauri::Error::WindowNotFound)?
-        .set_menu(app_menu)?;
+    {
+        let window = app
+            .get_webview_window(main_window::LABEL)
+            .ok_or(tauri::Error::WindowNotFound)?;
+        window.set_menu(app_menu)?;
+        // On Linux the menu would be a bar of its own under the title bar, with only "Lumo" in
+        // it: the title said twice. It stays attached, hidden, so its shortcuts (Ctrl+, for
+        // Settings, Ctrl+Q to quit) keep working; the same items are in the tray menu.
+        #[cfg(target_os = "linux")]
+        window.hide_menu()?;
+    }
 
     let menu = Menu::with_items(
         app,

@@ -147,6 +147,10 @@ pub fn show(app_handle: &AppHandle) -> Result<(), String> {
             .map_err(|e| e.to_string())?;
 
         window.show().map_err(|e| e.to_string())?;
+        // GTK shows every part of a window as it appears, the hidden menu bar included; it stays
+        // hidden (see tray.rs), its shortcuts still working.
+        #[cfg(target_os = "linux")]
+        window.hide_menu().map_err(|e| e.to_string())?;
         window.unminimize().map_err(|e| e.to_string())?;
         window.set_focus().map_err(|e| e.to_string())?;
     }
