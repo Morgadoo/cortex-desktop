@@ -28,6 +28,37 @@ pub const READ_CHAT: &str = "read_chat";
 pub const NOTIFY: &str = "notify";
 pub const CALENDAR_EVENTS: &str = "calendar_events";
 pub const FIND_CONTACT: &str = "find_contact";
+pub const MEMORY_SEARCH: &str = "memory_search";
+/// The assistant's recent runs, filtered.
+pub const QUERY_TRACES: &str = "query_traces";
+/// One run in full: its model and tool calls, and what it had in front of it and used.
+pub const GET_RUN: &str = "get_run";
+/// The assistant's own run history: what it used and what it cost.
+pub const USAGE_STATS: &str = "usage_stats";
+/// What failed in the assistant's recent runs, most often first.
+pub const FAILURE_SUMMARY: &str = "failure_summary";
+
+/// What a built-in can change, which decides how it meets the approval mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Effect {
+    /// Reads, searches or shows something, and changes nothing.
+    Reads,
+    /// Writes the assistant's own memory, which the user can switch off and edit in Settings.
+    /// It never asks, so the assistant can keep notes as it goes.
+    Memory,
+    /// Leaves something behind that acts later or changes how the assistant works: a scheduled
+    /// task, a saved skill. It follows the approval mode like a connector tool that changes
+    /// something.
+    Standing,
+}
+
+pub fn effect(name: &str) -> Effect {
+    match name {
+        REMEMBER | FORGET | KNOWLEDGE_WRITE => Effect::Memory,
+        SCHEDULE_TASK | SAVE_SKILL => Effect::Standing,
+        _ => Effect::Reads,
+    }
+}
 
 fn tool(name: &str, description: &str, parameters: Value) -> ChatTool {
     ChatTool {
@@ -36,7 +67,7 @@ fn tool(name: &str, description: &str, parameters: Value) -> ChatTool {
         parameters,
         connector_id: None,
         tool_name: name.into(),
-        read_only: true,
+        read_only: effect(name) == Effect::Reads,
     }
 }
 
@@ -99,7 +130,8 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
                         "properties": {
                             "title": { "type": "string", "description": "A few words." },
                             "instructions": { "type": "string", "description": "What to find or check, and what to report." },
-                            "agent": { "type": "string", "description": "Optional: the name of an agent from your team to do this task." }
+                            "agent": { "type": "string", "description": "Optional: the name of an agent from your team to do this task." },
+                            "tools": { "type": "array", "items": { "type": "string" }, "description": "Optional: only these tools for this task (web_search, use_skill, browser__fetch…); all reading tools when left out." }
                         },
                         "required": ["title", "instructions"]
                     }
@@ -150,8 +182,9 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             "properties": {
                 "title": { "type": "string", "description": "A few words for the task list." },
                 "prompt": { "type": "string", "description": "What to do on each run, written to stand alone." },
-                "frequency": { "type": "string", "enum": ["once", "daily", "weekly", "monthly", "yearly"] },
-                "time": { "type": "string", "description": "24-hour local time, HH:MM." },
+                "frequency": { "type": "string", "enum": ["once", "daily", "weekly", "monthly", "yearly", "cron"] },
+                "time": { "type": "string", "description": "24-hour local time, HH:MM (not used with cron)." },
+                "cron": { "type": "string", "description": "For frequency cron: five fields, minute hour day-of-month month day-of-week, local time; e.g. \"*/30 9-17 * * 1-5\" is every half hour in working hours." },
                 "days": { "type": "array", "items": { "type": "string" }, "description": "Weekly: day names, e.g. [\"monday\"]." },
                 "month": { "type": "integer", "minimum": 1, "maximum": 12, "description": "For yearly: the month, 1–12." },
                 "day_of_month": { "type": "integer", "minimum": 1, "maximum": 31 },
@@ -238,6 +271,7 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             KNOWLEDGE_WRITE,
             "Create or update a knowledge page: lasting, detailed context worth keeping across \
              conversations (a project, a client, a process, how the user wants something done). \
+             Write only what will still be true and relevant in a month, in another conversation. \
              Updating replaces the body, so include what should stay. Name your sources.",
             json!({
                 "type": "object",
@@ -279,17 +313,26 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             "Read an earlier conversation's messages, by the id search_chats returned.",
             json!({ "type": "object", "properties": { "id": { "type": "string" } }, "required": ["id"] }),
         ));
+        out.push(tool(
+            MEMORY_SEARCH,
+            "Search the facts saved about the user, including those not listed in your \
+             instructions.",
+            json!({ "type": "object", "properties": { "query": { "type": "string" } }, "required": ["query"] }),
+        ));
         if memories.update {
             out.push(tool(
             REMEMBER,
-            "Save one lasting fact about the user for future conversations.",
+            "Save one lasting fact about the user for future conversations. Before saving, ask: \
+             will this still be true and useful in a month, in another conversation? If not, do \
+             not save it.",
             json!({
                 "type": "object",
                 "properties": {
                     "fact": { "type": "string", "description": "A short, self-contained fact." },
                     "category": { "type": "string", "enum": ["preference", "work", "person", "project", "habit", "fact"], "description": "What it is about." },
                     "importance": { "type": "string", "enum": ["low", "normal", "high"], "description": "high: keep it in mind always (a strong preference, a constraint); low: a passing detail." },
-                    "inferred": { "type": "boolean", "description": "true when you concluded it rather than the user saying it." }
+                    "inferred": { "type": "boolean", "description": "true when you concluded it rather than the user saying it." },
+                    "scope": { "type": "string", "enum": ["everywhere", "project", "agent"], "description": "Where it applies: everywhere (the default), only in this project, or only for this agent." }
                 },
                 "required": ["fact"]
             }),
@@ -372,30 +415,80 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
     out.extend(super::media::definition(config_dir));
     out.extend(super::videogen::definition(config_dir));
     out.push(super::animation::definition());
+    let days = json!({
+        "type": "object",
+        "properties": {
+            "days": { "type": "integer", "minimum": 1, "maximum": 365, "default": 7, "description": "How many days back." }
+        }
+    });
+    out.push(tool(
+        QUERY_TRACES,
+        "List your recent runs, newest first: when, which model, how they ended, how many tool calls \
+         failed, what they cost. Filter by outcome (done, cancelled, error), by a tool they called, \
+         or to runs where a tool failed. Measurements only; open the chat with read_chat to see what \
+         was said.",
+        json!({
+            "type": "object",
+            "properties": {
+                "days": { "type": "integer", "minimum": 1, "maximum": 365, "default": 7 },
+                "outcome": { "type": "string", "enum": ["done", "cancelled", "error"] },
+                "tool": { "type": "string" },
+                "failed_tools": { "type": "boolean" },
+                "limit": { "type": "integer", "minimum": 1, "maximum": 200, "default": 20 }
+            }
+        }),
+    ));
+    out.push(tool(
+        GET_RUN,
+        "Open one run from query_traces: each model call (time, tokens, errors), each tool call \
+         (time, success), and which skills it had in front of it and which it used.",
+        json!({ "type": "object", "properties": { "id": { "type": "string" } }, "required": ["id"] }),
+    ));
+    out.push(tool(
+        USAGE_STATS,
+        "Your own recent activity, measured: runs, cost, and per tool and model how often each was          used, how often it failed and how long it took. No messages or results, only numbers. Use it          when the user asks what you have been doing or spending, or to see which tools work. \
+         With `artifact` (kind:id, e.g. skill:summarize, script_tool:count_words, tool:web_search), \
+         that one thing: how often it was offered and used, and its score.",
+        json!({
+            "type": "object",
+            "properties": {
+                "days": { "type": "integer", "minimum": 1, "maximum": 365, "default": 7, "description": "How many days back." },
+                "artifact": { "type": "string", "description": "kind:id of one skill, tool, page or fact." }
+            }
+        }),
+    ));
+    out.push(tool(
+        FAILURE_SUMMARY,
+        "What failed in your recent runs, most often first: tools that returned errors and models          that failed. Use it to find out why things went wrong before proposing a fix.",
+        days,
+    ));
     out
 }
 
-pub fn is_builtin(name: &str) -> bool {
-    matches!(
-        name,
-        WEB_SEARCH
-            | CALENDAR_EVENTS
-            | FIND_CONTACT
-            | REMEMBER
-            | FORGET
-            | USE_SKILL
-            | UPDATE_PLAN
-            | SCHEDULE_TASK
-            | SEARCH_LIBRARY
-            | READ_DOCUMENT
-            | SAVE_SKILL
-            | KNOWLEDGE_WRITE
-            | KNOWLEDGE_READ
-            | KNOWLEDGE_SEARCH
-            | SEARCH_CHATS
-            | READ_CHAT
-    )
-}
+/// The built-ins [`run`] answers.
+pub const NAMES: &[&str] = &[
+    QUERY_TRACES,
+    GET_RUN,
+    MEMORY_SEARCH,
+    USAGE_STATS,
+    FAILURE_SUMMARY,
+    WEB_SEARCH,
+    CALENDAR_EVENTS,
+    FIND_CONTACT,
+    REMEMBER,
+    FORGET,
+    USE_SKILL,
+    UPDATE_PLAN,
+    SCHEDULE_TASK,
+    SEARCH_LIBRARY,
+    READ_DOCUMENT,
+    SAVE_SKILL,
+    KNOWLEDGE_WRITE,
+    KNOWLEDGE_READ,
+    KNOWLEDGE_SEARCH,
+    SEARCH_CHATS,
+    READ_CHAT,
+];
 
 fn ok(text: impl Into<String>) -> Outcome {
     Outcome {
@@ -471,7 +564,18 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
                     .and_then(Value::as_bool)
                     .unwrap_or(false),
                 conversation: Some(str_arg("conversation")).filter(|c| !c.is_empty()),
+                scope: None,
             };
+            let scope = match str_arg("scope").as_str() {
+                "project" => Some(str_arg("_project"))
+                    .filter(|p| !p.is_empty())
+                    .map(|p| format!("project:{p}")),
+                "agent" => Some(str_arg("_agent"))
+                    .filter(|a| !a.is_empty())
+                    .map(|a| format!("agent:{a}")),
+                _ => None,
+            };
+            let filing = memory::Filing { scope, ..filing };
             if let Some(reason) = memory::refuse_sensitive(&memories, &str_arg("fact")) {
                 return err(reason);
             }
@@ -583,23 +687,113 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
                     .unwrap_or_default(),
             )
         }
+        MEMORY_SEARCH => {
+            let memories = memory::load(config_dir);
+            let project = Some(str_arg("_project")).filter(|p| !p.is_empty());
+            let agent = Some(str_arg("_agent")).filter(|a| !a.is_empty());
+            let found: Vec<String> = memory::search(
+                &memories,
+                &str_arg("query"),
+                project.as_deref(),
+                agent.as_deref(),
+            )
+            .into_iter()
+            .take(15)
+            .map(|m| format!("- {}: {}", &m.id[..8.min(m.id.len())], m.text))
+            .collect();
+            if found.is_empty() {
+                ok("No saved fact matches.")
+            } else {
+                ok(found.join("\n"))
+            }
+        }
+        QUERY_TRACES => {
+            let days = args
+                .get("days")
+                .and_then(Value::as_i64)
+                .unwrap_or(7)
+                .clamp(1, 365);
+            let filter = super::traces::RunFilter {
+                since: Some(chrono::Utc::now() - chrono::Duration::days(days)),
+                outcome: Some(str_arg("outcome")).filter(|o| !o.is_empty()),
+                tool: Some(str_arg("tool")).filter(|t| !t.is_empty()),
+                failed_tools: args
+                    .get("failed_tools")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+                limit: args.get("limit").and_then(Value::as_u64).unwrap_or(20) as usize,
+            };
+            ok(
+                serde_json::to_string_pretty(&super::traces::runs(config_dir, &filter))
+                    .unwrap_or_default(),
+            )
+        }
+        GET_RUN => match super::traces::run_detail(config_dir, &str_arg("id")) {
+            Some(detail) => ok(serde_json::to_string_pretty(&detail).unwrap_or_default()),
+            None => err("There is no run with that id; list them with query_traces."),
+        },
+        USAGE_STATS if !str_arg("artifact").is_empty() => {
+            // One artifact: how often it was in front of the model and used, and its score.
+            let wanted = str_arg("artifact");
+            let Some((kind, id)) = wanted.split_once(':') else {
+                return err(
+                    "Name the artifact as kind:id, e.g. skill:summarize or tool:web_search.",
+                );
+            };
+            match super::traces::artifact(config_dir, kind, id) {
+                Some(a) => ok(serde_json::to_string_pretty(&json!({
+                    "artifact": wanted,
+                    "status": a.status,
+                    "version": a.version,
+                    "loaded": a.loaded,
+                    "used": a.used,
+                    "lastUsed": a.last_used,
+                    "critical": a.critical,
+                    "score": cortex_kernel::lifecycle::score(&a, chrono::Utc::now()),
+                }))
+                .unwrap_or_default()),
+                None => err("Nothing by that name has been recorded."),
+            }
+        }
+        USAGE_STATS | FAILURE_SUMMARY => {
+            let days = args.get("days").and_then(Value::as_i64).unwrap_or(7);
+            ok(if name == USAGE_STATS {
+                super::traces::usage_report(config_dir, days)
+            } else {
+                super::traces::failure_report(config_dir, days)
+            })
+        }
         READ_CHAT => match super::store::load_conversation(config_dir, &str_arg("id")) {
             Ok(c) if !c.temporary => ok(chat_transcript(&c, READ_CHAT_LIMIT)),
             _ => err("There is no conversation with that id; use an id from search_chats."),
         },
-        SAVE_SKILL => match skills::save(
-            config_dir,
-            &str_arg("name"),
-            &str_arg("description"),
-            &str_arg("instructions"),
-        ) {
-            Ok(()) => ok(format!(
-                "Saved the skill `{}`. The user can call it with /{}.",
-                str_arg("name"),
-                str_arg("name")
-            )),
-            Err(e) => err(e),
-        },
+        SAVE_SKILL => {
+            let provenance =
+                skill_provenance(config_dir, &str_arg("name"), &str_arg("conversation"));
+            match skills::save(
+                config_dir,
+                &str_arg("name"),
+                &str_arg("description"),
+                &str_arg("instructions"),
+            ) {
+                Ok(()) => {
+                    super::traces::register(
+                        config_dir,
+                        "skill",
+                        &str_arg("name"),
+                        Some(&super::traces::hash(&str_arg("instructions"))),
+                        Some(&provenance),
+                        "active",
+                    );
+                    ok(format!(
+                        "Saved the skill `{}`. The user can call it with /{}.",
+                        str_arg("name"),
+                        str_arg("name")
+                    ))
+                }
+                Err(e) => err(e),
+            }
+        }
         CALENDAR_EVENTS => {
             let today = chrono::Local::now().date_naive();
             let date =
@@ -730,7 +924,9 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
                 ok(format!("Plan shown to the user ({steps} steps)."))
             }
         }
-        USE_SKILL => match skills::find(config_dir, &str_arg("name")) {
+        USE_SKILL => match skills::find(config_dir, &str_arg("name"))
+            .inspect(|skill| super::traces::used(config_dir, "skill", &skill.name))
+        {
             Some(skill) if skill.enabled && !str_arg("file").trim().is_empty() => {
                 match skills::read_file(config_dir, &skill.name, str_arg("file").trim()) {
                     Ok(text) => ok(text),
@@ -746,9 +942,43 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
             }
             Some(skill) if skill.enabled => ok(skills::loaded(&skill)),
             Some(_) => err("That skill is turned off."),
-            None => err("There is no skill with that name."),
+            None => {
+                // Not a name: search the skills with the words given.
+                let all = skills::list(config_dir);
+                let enabled: Vec<&skills::Skill> = all.iter().filter(|s| s.enabled).collect();
+                let found: Vec<String> = skills::relevant(&enabled, &str_arg("name"))
+                    .into_iter()
+                    .take(5)
+                    .map(|s| format!("- {}: {}", s.name, s.description))
+                    .collect();
+                if found.is_empty() {
+                    err("There is no skill with that name, and none matches those words.")
+                } else {
+                    ok(format!(
+                        "No skill has that exact name. These match; call use_skill again with one \
+                         of their names:\n{}",
+                        found.join("\n")
+                    ))
+                }
+            }
         },
         _ => err(format!("Unknown built-in tool {name}.")),
+    }
+}
+
+/// Who a skill counts as made by, for the lifecycle: a skill the user wrote stays theirs when the
+/// assistant updates it, so it is never retired as the assistant's; a new one is the assistant's,
+/// with the chat it came from.
+pub(crate) fn skill_provenance(config_dir: &Path, name: &str, conversation: &str) -> String {
+    let users = skills::find(config_dir, name).is_some_and(|s| s.origin == "user")
+        && super::traces::artifact(config_dir, "skill", name)
+            .is_none_or(|a| a.provenance.as_deref().is_none_or(|p| p == "user"));
+    if users {
+        "user".into()
+    } else if conversation.is_empty() {
+        "assistant".into()
+    } else {
+        conversation.into()
     }
 }
 
@@ -801,6 +1031,9 @@ fn schedule(config_dir: &Path, args: &Value) -> Outcome {
                 .unwrap_or(1)
                 .clamp(1, 31) as u8,
             time,
+        },
+        "cron" => Frequency::Cron {
+            expression: s("cron"),
         },
         other => return err(format!("Unknown frequency `{other}`.")),
     };
@@ -921,6 +1154,29 @@ Date: {}
 mod tests {
     use super::*;
 
+    #[test]
+    fn built_ins_that_change_something_are_not_offered_as_read_only() {
+        let config = tempfile::tempdir().unwrap();
+        let offered = definitions(config.path());
+        let read_only = |name: &str| {
+            offered
+                .iter()
+                .find(|t| t.name == name)
+                .unwrap_or_else(|| panic!("{name} is offered"))
+                .read_only
+        };
+        for name in [SCHEDULE_TASK, SAVE_SKILL, REMEMBER, FORGET, KNOWLEDGE_WRITE] {
+            assert!(!read_only(name), "{name} changes something");
+        }
+        for name in [WEB_SEARCH, USE_SKILL, KNOWLEDGE_SEARCH, SEARCH_CHATS] {
+            assert!(read_only(name), "{name} only reads");
+        }
+        assert_eq!(effect(SCHEDULE_TASK), Effect::Standing);
+        assert_eq!(effect(SAVE_SKILL), Effect::Standing);
+        assert_eq!(effect(REMEMBER), Effect::Memory);
+        assert_eq!(effect(READ_CHAT), Effect::Reads);
+    }
+
     #[tokio::test]
     async fn scheduling_from_chat_creates_a_task() {
         let dir = tempfile::tempdir().unwrap();
@@ -952,6 +1208,55 @@ mod tests {
         assert_eq!(
             tasks.iter().find(|t| t.title == "Other").unwrap().reply_in,
             None
+        );
+    }
+
+    /// `query_traces` and `get_run`, as the model calls them: list runs, then open one.
+    #[tokio::test]
+    async fn the_model_lists_runs_and_opens_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        super::super::traces::start_run(d, "run-ok", "c1", None, "m/a");
+        super::super::traces::tool_call(d, "run-ok", "web_search", 12, true);
+        super::super::traces::end_run(d, "run-ok", "done");
+        super::super::traces::start_run(d, "run-bad", "c2", None, "m/a");
+        super::super::traces::tool_call(d, "run-bad", "read_chat", 7, false);
+        super::super::traces::end_run(d, "run-bad", "error");
+        let listed = run(d, QUERY_TRACES, &json!({ "failed_tools": true })).await;
+        assert!(!listed.is_error, "{}", listed.text);
+        let runs: Value = serde_json::from_str(&listed.text).unwrap();
+        assert_eq!(runs.as_array().unwrap().len(), 1);
+        let id = runs[0]["id"].as_str().unwrap();
+        assert_eq!(id, "run-bad");
+        let opened = run(d, GET_RUN, &json!({ "id": id })).await;
+        assert!(opened.text.contains("read_chat"), "{}", opened.text);
+        assert!(run(d, GET_RUN, &json!({ "id": "nope" })).await.is_error);
+    }
+
+    /// `usage_stats(artifact)`: one thing's use and score.
+    #[tokio::test]
+    async fn usage_stats_can_be_read_for_one_artifact() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        super::super::traces::loaded(d, "skill", &["summarize".into(), "summarize".into()]);
+        super::super::traces::used(d, "skill", "summarize");
+        let out = run(d, USAGE_STATS, &json!({ "artifact": "skill:summarize" })).await;
+        assert!(!out.is_error, "{}", out.text);
+        let v: Value = serde_json::from_str(&out.text).unwrap();
+        assert_eq!(
+            (v["loaded"].as_i64(), v["used"].as_i64()),
+            (Some(2), Some(1))
+        );
+        assert!(v["score"].as_f64().unwrap() > 0.0);
+        assert!(
+            run(d, USAGE_STATS, &json!({ "artifact": "skill:nothing" }))
+                .await
+                .is_error
+        );
+        assert!(
+            run(d, USAGE_STATS, &json!({ "artifact": "nonsense" }))
+                .await
+                .is_error
         );
     }
 
@@ -1002,8 +1307,20 @@ mod tests {
         let loaded = run(dir.path(), USE_SKILL, &json!({"name": "write-email"})).await;
         assert!(!loaded.is_error);
         assert!(loaded.text.starts_with("# Skill: write-email"));
+        // Not a name: the words search the skills, and nothing matching is an error.
+        let found = run(
+            dir.path(),
+            USE_SKILL,
+            &json!({"name": "chart a spreadsheet"}),
+        )
+        .await;
         assert!(
-            run(dir.path(), USE_SKILL, &json!({"name": "missing"}))
+            !found.is_error && found.text.contains("data-analysis"),
+            "{}",
+            found.text
+        );
+        assert!(
+            run(dir.path(), USE_SKILL, &json!({"name": "zzqxv"}))
                 .await
                 .is_error
         );
@@ -1037,9 +1354,14 @@ mod tests {
                 SCHEDULE_TASK,
                 SEARCH_CHATS,
                 READ_CHAT,
+                MEMORY_SEARCH,
                 REMEMBER,
                 FORGET,
-                USE_SKILL
+                USE_SKILL,
+                QUERY_TRACES,
+                GET_RUN,
+                USAGE_STATS,
+                FAILURE_SUMMARY
             ]
         );
         memory::save(
@@ -1073,7 +1395,11 @@ mod tests {
                 DELEGATE,
                 CANVAS,
                 SCHEDULE_TASK,
-                USE_SKILL
+                USE_SKILL,
+                QUERY_TRACES,
+                GET_RUN,
+                USAGE_STATS,
+                FAILURE_SUMMARY
             ]
         );
     }
@@ -1102,7 +1428,7 @@ mod tests {
             .any(|n| n == REMEMBER || n == FORGET || n == KNOWLEDGE_WRITE));
         let refused = run(dir.path(), REMEMBER, &json!({"fact": "Lives in Porto"})).await;
         assert!(refused.is_error && memory::load(dir.path()).items.is_empty());
-        let prompt = memory::prompt(&memory::load(dir.path())).unwrap();
+        let prompt = memory::prompt_for(&memory::load(dir.path()), "", None, None).unwrap();
         assert!(prompt.contains("turned off saving") && !prompt.contains("`remember`"));
     }
 

@@ -59,6 +59,41 @@ description = "Delete a conversation."
 commands.allow = ["chat_delete_conversation"]
 
 [[permission]]
+identifier = "allow-chat-revoke-tool"
+description = "Take back the network and file access of a tool the assistant wrote."
+commands.allow = ["chat_revoke_tool"]
+
+[[permission]]
+identifier = "allow-chat-version-diff"
+description = "Show what changed between two saved versions of an item."
+commands.allow = ["chat_version_diff"]
+
+[[permission]]
+identifier = "allow-chat-restore-version"
+description = "Bring back an earlier version of a memory list, knowledge pages, instructions, a notebook, an agent, a workflow or a tool."
+commands.allow = ["chat_restore_version"]
+
+[[permission]]
+identifier = "allow-chat-eval-cases"
+description = "List, write and delete the cases of the user's eval suites."
+commands.allow = ["chat_eval_suites", "chat_save_eval_case", "chat_delete_eval_case"]
+
+[[permission]]
+identifier = "allow-chat-signal"
+description = "Record what the user did with an answer (copied it), as a signal in the run trace."
+commands.allow = ["chat_signal"]
+
+[[permission]]
+identifier = "allow-chat-artifacts"
+description = "List what the assistant made for itself (skills, script tools) and how it is used."
+commands.allow = ["chat_artifacts"]
+
+[[permission]]
+identifier = "allow-chat-set-artifact-critical"
+description = "Mark an artifact critical, so it is never retired for disuse."
+commands.allow = ["chat_set_artifact_critical"]
+
+[[permission]]
 identifier = "allow-chat-list-projects"
 description = "List projects."
 commands.allow = ["chat_list_projects"]
@@ -366,7 +401,7 @@ commands.allow = ["chat_delete_knowledge_page"]
 [[permission]]
 identifier = "allow-chat-read-spreadsheet"
 description = "Read an uploaded workbook."
-commands.allow = ["chat_read_spreadsheet", "chat_read_document", "chat_notify", "chat_take_link", "chat_bookmark", "chat_versions", "chat_document_text", "chat_api_server_log", "chat_import_skill_url", "chat_add_web_page", "chat_diagnostics_prefs", "chat_set_diagnostics_prefs", "chat_export_diagnostics", "chat_backup_model", "chat_set_backup_model", "chat_move_document", "chat_get_defaults", "chat_set_defaults", "chat_version_texts", "chat_list_canvases", "chat_improve_text", "chat_recent_files", "chat_remember_files", "chat_forget_recent_file", "chat_delete_exchanges", "chat_import_plugin", "chat_import_archive", "chat_open_app_window", "chat_plugin_marketplace", "chat_get_hooks", "chat_save_hooks", "chat_create_worktree", "chat_file_memory", "chat_router_models", "chat_set_router_models", "chat_complete_prompt", "chat_search_everything", "chat_answer_from_results", "chat_calendar_sources", "chat_set_calendar_sources", "chat_pick_calendar_file", "browser_prefs", "set_browser_prefs", "app_menu_action", "chat_set_keep_sensitive_out", "chat_set_memory_update", "dictation_prefs", "set_dictation_prefs", "chat_vault_list", "chat_vault_save", "chat_vault_delete", "chat_sync_settings", "chat_save_sync_settings", "chat_sync_now", "chat_encryption_status", "chat_set_encryption", "chat_share_link", "chat_usage_breakdown", "chat_task_comment", "chat_open_preview",
+commands.allow = ["chat_read_spreadsheet", "chat_read_document", "chat_notify", "chat_take_link", "chat_bookmark", "chat_versions", "chat_document_text", "chat_api_server_log", "chat_import_skill_url", "chat_add_web_page", "chat_diagnostics_prefs", "chat_set_diagnostics_prefs", "chat_export_diagnostics", "chat_backup_model", "chat_set_backup_model", "chat_review_model", "chat_set_review_model", "chat_move_document", "chat_get_defaults", "chat_set_defaults", "chat_version_texts", "chat_list_canvases", "chat_improve_text", "chat_recent_files", "chat_remember_files", "chat_forget_recent_file", "chat_delete_exchanges", "chat_import_plugin", "chat_import_archive", "chat_open_app_window", "chat_plugin_marketplace", "chat_get_hooks", "chat_save_hooks", "chat_create_worktree", "chat_file_memory", "chat_router_models", "chat_set_router_models", "chat_complete_prompt", "chat_search_everything", "chat_answer_from_results", "chat_calendar_sources", "chat_set_calendar_sources", "chat_pick_calendar_file", "browser_prefs", "set_browser_prefs", "app_menu_action", "chat_set_keep_sensitive_out", "chat_set_memory_update", "dictation_prefs", "set_dictation_prefs", "chat_vault_list", "chat_vault_save", "chat_vault_delete", "chat_sync_settings", "chat_save_sync_settings", "chat_sync_now", "chat_encryption_status", "chat_set_encryption", "chat_share_link", "chat_usage_breakdown", "chat_task_comment", "chat_open_preview",
   "chat_check_vector_store",
   "chat_export_skill_catalog",
   "chat_skill_catalog",

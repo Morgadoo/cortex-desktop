@@ -6,13 +6,12 @@
 //! listed by title so the model can read or search them. The model writes and updates pages with
 //! tools, the user edits them on the Knowledge page, and answers cite the pages they used.
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use super::libraries::tokens;
+use super::retrieval::tokens;
 use super::store::write_json;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -49,7 +48,15 @@ pub fn load(config_dir: &Path) -> Vec<Page> {
         .unwrap_or_default()
 }
 
-fn save_all(config_dir: &Path, pages: &[Page]) -> Result<(), String> {
+pub(crate) fn save_all(config_dir: &Path, pages: &[Page]) -> Result<(), String> {
+    // The pages as they were stay restorable.
+    super::versions::keep(
+        config_dir,
+        "knowledge",
+        "pages",
+        &load(config_dir),
+        &pages.to_vec(),
+    )?;
     write_json(&path(config_dir), &pages)
 }
 
@@ -133,45 +140,30 @@ pub fn delete(config_dir: &Path, id: &str) -> Result<Vec<Page>, String> {
 
 /// Pages ranked by BM25 against `query`, best first, with their scores; the title counts twice.
 pub fn rank<'a>(pages: &'a [Page], query: &str) -> Vec<(&'a Page, f64)> {
-    let query_terms = tokens(query);
-    if query_terms.is_empty() || pages.is_empty() {
-        return Vec::new();
-    }
-    let docs: Vec<(HashMap<String, f64>, f64)> = pages
+    let corpus = super::retrieval::Corpus::new(pages.iter().map(|p| {
+        let mut words = tokens(&p.title);
+        words.extend(tokens(&p.title));
+        words.extend(tokens(&p.body));
+        words
+    }));
+    corpus
+        .search(query)
+        .into_iter()
+        .map(|(i, score)| (&pages[i], score))
+        .collect()
+}
+
+/// The pages that come into the prompt in full for `query`: clear matches only, within reach of
+/// the best score and above a floor.
+pub fn recalled<'a>(pages: &'a [Page], query: &str) -> Vec<&'a Page> {
+    let ranked = rank(pages, query);
+    let best = ranked.first().map_or(0.0, |r| r.1);
+    ranked
         .iter()
-        .map(|p| {
-            let mut words = tokens(&p.title);
-            words.extend(tokens(&p.title));
-            words.extend(tokens(&p.body));
-            let mut terms = HashMap::new();
-            for w in &words {
-                *terms.entry(w.clone()).or_insert(0.0) += 1.0;
-            }
-            (terms, words.len() as f64)
-        })
-        .collect();
-    let n = docs.len() as f64;
-    let avg = docs.iter().map(|d| d.1).sum::<f64>() / n;
-    let (k1, b) = (1.5, 0.75);
-    let mut scored: Vec<(&Page, f64)> = pages
-        .iter()
-        .zip(&docs)
-        .map(|(page, (terms, len))| {
-            let score = query_terms
-                .iter()
-                .map(|q| {
-                    let df = docs.iter().filter(|d| d.0.contains_key(q)).count() as f64;
-                    let idf = ((n - df + 0.5) / (df + 0.5) + 1.0).ln();
-                    let tf = terms.get(q).copied().unwrap_or(0.0);
-                    idf * tf * (k1 + 1.0) / (tf + k1 * (1.0 - b + b * len / avg.max(1.0)))
-                })
-                .sum::<f64>();
-            (page, score)
-        })
-        .filter(|(_, s)| *s > 0.0)
-        .collect();
-    scored.sort_by(|a, b| b.1.total_cmp(&a.1));
-    scored
+        .filter(|(_, s)| *s >= 1.0 && *s >= best * 0.5)
+        .take(RECALL_PAGES)
+        .map(|(p, _)| *p)
+        .collect()
 }
 
 /// The system-prompt section: the pages that matter for `query` in full, the rest by title.
@@ -183,15 +175,7 @@ pub fn prompt(pages: &[Page], query: &str) -> Option<String> {
                 .into(),
         );
     }
-    let ranked = rank(pages, query);
-    let best = ranked.first().map_or(0.0, |r| r.1);
-    // Recall only clear matches: within reach of the best score, and above a floor.
-    let recalled: Vec<&Page> = ranked
-        .iter()
-        .filter(|(_, s)| *s >= 1.0 && *s >= best * 0.5)
-        .take(RECALL_PAGES)
-        .map(|(p, _)| *p)
-        .collect();
+    let recalled = recalled(pages, query);
     let mut out = String::from(
         "\n\nKnowledge pages: the user's knowledge base. Pages relevant to this message are below; \
          read others with `knowledge_read`, search with `knowledge_search`, and create or update one \

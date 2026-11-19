@@ -231,6 +231,12 @@
           "markdownDescription": "Record comparison results and show the model leaderboard."
         },
         {
+          "description": "List what the assistant made for itself (skills, script tools) and how it is used.",
+          "type": "string",
+          "const": "allow-chat-artifacts",
+          "markdownDescription": "List what the assistant made for itself (skills, script tools) and how it is used."
+        },
+        {
           "description": "Read the audio settings.",
           "type": "string",
           "const": "allow-chat-audio-settings",
@@ -391,6 +397,12 @@
           "type": "string",
           "const": "allow-chat-embeddings",
           "markdownDescription": "Set up semantic search for libraries and embed their documents."
+        },
+        {
+          "description": "List, write and delete the cases of the user's eval suites.",
+          "type": "string",
+          "const": "allow-chat-eval-cases",
+          "markdownDescription": "List, write and delete the cases of the user's eval suites."
         },
         {
           "description": "Delete a message and its reply, export and import agents, export a conversation as JSON.",
@@ -603,6 +615,18 @@
           "markdownDescription": "Restore a deleted conversation."
         },
         {
+          "description": "Bring back an earlier version of a memory list, knowledge pages, instructions, a notebook, an agent, a workflow or a tool.",
+          "type": "string",
+          "const": "allow-chat-restore-version",
+          "markdownDescription": "Bring back an earlier version of a memory list, knowledge pages, instructions, a notebook, an agent, a workflow or a tool."
+        },
+        {
+          "description": "Take back the network and file access of a tool the assistant wrote.",
+          "type": "string",
+          "const": "allow-chat-revoke-tool",
+          "markdownDescription": "Take back the network and file access of a tool the assistant wrote."
+        },
+        {
           "description": "Run a scheduled task now.",
           "type": "string",
           "const": "allow-chat-run-task",
@@ -711,6 +735,12 @@
           "markdownDescription": "Send a message and stream the reply."
         },
         {
+          "description": "Mark an artifact critical, so it is never retired for disuse.",
+          "type": "string",
+          "const": "allow-chat-set-artifact-critical",
+          "markdownDescription": "Mark an artifact critical, so it is never retired for disuse."
+        },
+        {
           "description": "Set whether code runs without asking.",
           "type": "string",
           "const": "allow-chat-set-code-runs-allowed",
@@ -751,6 +781,12 @@
           "type": "string",
           "const": "allow-chat-set-skill-enabled",
           "markdownDescription": "Turn a skill on or off."
+        },
+        {
+          "description": "Record what the user did with an answer (copied it), as a signal in the run trace.",
+          "type": "string",
+          "const": "allow-chat-signal",
+          "markdownDescription": "Record what the user did with an answer (copied it), as a signal in the run trace."
         },
         {
           "description": "List and restore earlier versions of a skill.",
@@ -847,6 +883,12 @@
           "type": "string",
           "const": "allow-chat-usage-month",
           "markdownDescription": "Read this month's usage."
+        },
+        {
+          "description": "Show what changed between two saved versions of an item.",
+          "type": "string",
+          "const": "allow-chat-version-diff",
+          "markdownDescription": "Show what changed between two saved versions of an item."
         },
         {
           "description": "Build the agent workbench image.",

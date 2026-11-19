@@ -15,6 +15,11 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::watch;
 
+use std::sync::Arc;
+
+use cortex_kernel::agent_loop::{Reply, Steps};
+
+use super::host::{Host, TauriHost};
 use super::store::{self, Conversation, Instructions, Project};
 use super::tools::{self, ApprovalMode, ChatTool, ASK_USER};
 use super::{
@@ -24,7 +29,7 @@ use super::{
 use super::{ChatState, EVENT, LOCAL_ACCOUNT};
 use crate::account::AccountId;
 use crate::tools::auth::keychain_secrets;
-use crate::tools::registry::{ApprovalDecision, ToolRegistry};
+use crate::tools::registry::ApprovalDecision;
 
 /// Model calls in one turn before the engine stops a tool loop that does not converge. The last
 /// step withholds the tools, so a long research run still ends in an answer.
@@ -200,7 +205,7 @@ impl Speed {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TurnRequest {
     pub conversation_id: String,
@@ -242,6 +247,27 @@ pub struct TurnRequest {
     /// `web_search`, …).
     #[serde(default)]
     pub tools_off: Vec<String>,
+    /// Model calls before the turn must answer; [`MAX_STEPS`] when absent.
+    #[serde(default)]
+    pub max_steps: Option<usize>,
+    /// Offer only these tools, by name. For runs with a narrow job, such as a headless run that
+    /// only reads.
+    #[serde(default)]
+    pub only_tools: Option<Vec<String>>,
+    /// The whole system prompt, for a run that brings its own brief (a `delegate` worker).
+    #[serde(default)]
+    pub system: Option<String>,
+    /// Skills left out of this turn, to measure what one contributes (an eval's ablation).
+    #[serde(default)]
+    pub skills_off: Vec<String>,
+    /// Saved facts (by id) and knowledge pages (by id) left out of this turn, and whether the
+    /// user's standing instructions are: the rest of an eval's ablation.
+    #[serde(default)]
+    pub facts_off: Vec<String>,
+    #[serde(default)]
+    pub pages_off: Vec<String>,
+    #[serde(default)]
+    pub instructions_off: bool,
 }
 
 pub(super) fn emit(app: &AppHandle, event: ChatEvent) {
@@ -310,24 +336,33 @@ pub struct Context<'a> {
     pub libraries: &'a [libraries::Library],
     /// Summaries of the project's other conversations, when the project shares them.
     pub project_digest: Option<String>,
+    /// The user's latest message, to pick what fits it when there is too much to list.
+    pub query: &'a str,
 }
 
 pub fn preamble(context: &Context<'_>, tools: &[ChatTool]) -> String {
+    preamble_prompt(context, tools).render()
+}
+
+/// The system prompt's base, as named sections (see [`super::prompt`]).
+pub fn preamble_prompt(context: &Context<'_>, tools: &[ChatTool]) -> super::prompt::Prompt {
+    use super::prompt::{Prompt, ESSENTIAL, OPTIONAL, USEFUL};
     let default_instructions = Instructions::default();
     let instructions = context.instructions.unwrap_or(&default_instructions);
     let project = context.project;
     let workdir = context.workdir;
-    let mut out = String::new();
+    let mut p = Prompt::new();
+    let mut identity = String::new();
     if let Some(agent) = context.agent {
-        out.push_str(&format!("You are {}", agent.label()));
+        identity.push_str(&format!("You are {}", agent.label()));
         if !agent.description.trim().is_empty() {
-            out.push_str(&format!(": {}", agent.description.trim()));
+            identity.push_str(&format!(": {}", agent.description.trim()));
         }
-        out.push_str("\n\n");
-        out.push_str(&agent.role_prompt());
+        identity.push_str("\n\n");
+        identity.push_str(&agent.role_prompt());
         if !agent.instructions.trim().is_empty() {
-            out.push_str(agent.instructions.trim());
-            out.push_str("\n\n");
+            identity.push_str(agent.instructions.trim());
+            identity.push_str("\n\n");
         }
         let own: Vec<&libraries::Library> = agent
             .libraries
@@ -340,23 +375,23 @@ pub fn preamble(context: &Context<'_>, tools: &[ChatTool]) -> String {
                 .iter()
                 .map(|l| format!("\"{}\" ({} documents)", l.name, l.documents.len()))
                 .collect();
-            out.push_str(&format!(
+            identity.push_str(&format!(
                 "Your reference material is in the {} {}; search it with `search_library` before answering questions it may cover, and cite what you use.\n\n",
                 if own.len() == 1 { "library" } else { "libraries" },
                 names.join(", ")
             ));
         }
     }
-    out.push_str(
+    identity.push_str(
         "You are a helpful, accurate assistant running in a desktop app. Answer in the user's \
          language. Use Markdown: short paragraphs, lists and tables where they help, fenced code \
          blocks with a language tag. When you write a text for the user to send or publish (an \
          email, a message, a post, a letter), put that text alone between a `:::writing` line and a \
          `:::` line, so they can copy it. When you are unsure, say so instead of guessing.",
     );
-    out.push_str(&format!("\n\n{}", local_time_line(chrono::Local::now())));
+    identity.push_str(&format!("\n\n{}", local_time_line(chrono::Local::now())));
     if !instructions.name.trim().is_empty() {
-        out.push_str(&format!(
+        identity.push_str(&format!(
             " The user's name is {}.",
             instructions.name.trim()
         ));
@@ -366,21 +401,28 @@ pub fn preamble(context: &Context<'_>, tools: &[ChatTool]) -> String {
         .filter(|t| !t.is_empty())
         .unwrap_or(&instructions.tone);
     if let Some((_, tone)) = TONES.iter().find(|(id, _)| *id == tone_id) {
-        out.push_str("\n\n");
-        out.push_str(tone);
+        identity.push_str("\n\n");
+        identity.push_str(tone);
     }
+    p.push("identity", ESSENTIAL, identity);
     if !instructions.custom.trim().is_empty() {
-        out.push_str("\n\nThe user's instructions:\n");
-        out.push_str(instructions.custom.trim());
+        p.push(
+            "your instructions",
+            ESSENTIAL,
+            format!(
+                "\n\nThe user's instructions:\n{}",
+                instructions.custom.trim()
+            ),
+        );
     }
     if let Some(project) = project {
-        out.push_str(&format!(
+        let mut text = format!(
             "\n\nThis conversation belongs to the project \"{}\".",
             project.name
-        ));
+        );
         if !project.instructions.trim().is_empty() {
-            out.push_str(" Project instructions:\n");
-            out.push_str(project.instructions.trim());
+            text.push_str(" Project instructions:\n");
+            text.push_str(project.instructions.trim());
         }
         if let Some(library) = project
             .library_id
@@ -388,58 +430,71 @@ pub fn preamble(context: &Context<'_>, tools: &[ChatTool]) -> String {
             .and_then(|id| context.libraries.iter().find(|l| &l.id == id))
         {
             if !library.documents.is_empty() {
-                out.push_str(&format!(
+                text.push_str(&format!(
                     "\nThe project's files are in the library \"{}\" ({} documents); search it with `search_library` before answering questions they may cover.",
                     library.name,
                     library.documents.len()
                 ));
             }
         }
+        p.push("project", ESSENTIAL, text);
         if let Some(digest) = &context.project_digest {
-            out.push_str("\nOther conversations in this project, most recent first (build on them when relevant):\n");
-            out.push_str(digest);
+            p.push(
+                "project's other chats",
+                OPTIONAL,
+                format!("\nOther conversations in this project, most recent first (build on them when relevant):\n{digest}"),
+            );
         }
     }
     if let Some(dir) = workdir {
-        out.push_str(&super::code::prompt(dir));
+        p.push("code session", ESSENTIAL, super::code::prompt(dir));
     }
+    let mut guidance = String::new();
     if tools.iter().any(|t| t.name == builtins::WEB_SEARCH) {
-        out.push_str(
+        guidance.push_str(
             "\n\nWhen an answer depends on current or specific facts, search the web first. Cite \
              what you use inline as Markdown links whose text is the site's name, like \
              ([rust-lang.org](https://www.rust-lang.org/)), right after the claim they support.",
         );
     }
     if tools.iter().any(|t| t.connector_id.is_some()) {
-        out.push_str(
+        guidance.push_str(
             "\n\nYou can use tools on the user's computer and services. Use them when they help, \
              explain briefly what you are doing, and never claim a tool ran when it did not. \
              The user may decline a call; respect that.",
         );
     }
     if tools.iter().any(|t| t.name == builtins::DELEGATE) {
-        out.push_str(
+        guidance.push_str(
             "\n\nFor work with several steps, show a plan with `update_plan` first and keep it \
              current. When a task splits into independent parts (several topics, sources or \
              files), hand them to `delegate` so sub-agents research them in parallel, then \
              combine their reports. Call independent tools in the same step; they run at once.",
         );
     }
-    if let Some(memories) = context.memories.and_then(memory::prompt) {
-        out.push_str(&memories);
+    p.push("how to use tools", USEFUL, guidance);
+    if let Some(memories) = context.memories.and_then(|m| {
+        memory::prompt_for(
+            m,
+            context.query,
+            project.map(|p| p.id.as_str()),
+            context.agent.map(|a| a.id.as_str()),
+        )
+    }) {
+        p.push("memories", USEFUL, memories);
     }
-    if let Some(skills) = skills::prompt(context.skills) {
-        out.push_str(&skills);
+    if let Some(skills) = skills::prompt_for(context.skills, context.query) {
+        p.push("skills", USEFUL, skills);
     }
     if let Some(canvases) = canvas::prompt(context.canvases) {
-        out.push_str(&canvases);
+        p.push("canvases", OPTIONAL, canvases);
     }
     if tools.iter().any(|t| t.name == builtins::SEARCH_LIBRARY) {
         if let Some(libraries) = libraries::prompt(context.libraries) {
-            out.push_str(&libraries);
+            p.push("libraries", USEFUL, libraries);
         }
     }
-    out
+    p
 }
 
 /// The API key for `vendor` from the keychain, if one is saved.
@@ -538,37 +593,40 @@ fn rewind_to_last_prompt(conversation: &mut Conversation) -> bool {
 
 /// Runs a turn to its end. Always emits `Done` or `Error` last.
 pub async fn run_turn(app: AppHandle, request: TurnRequest, cancel: watch::Receiver<bool>) {
+    run_turn_on(Arc::new(TauriHost::new(app)), request, cancel).await
+}
+
+/// [`run_turn`] on any [`Host`].
+pub(crate) async fn run_turn_on(
+    host: Arc<dyn Host>,
+    request: TurnRequest,
+    cancel: watch::Receiver<bool>,
+) {
     let id = request.conversation_id.clone();
-    emit(
-        &app,
-        ChatEvent::Started {
-            conversation_id: id.clone(),
-        },
-    );
-    let request = match auto_route(&app, request) {
+    host.emit(ChatEvent::Started {
+        conversation_id: id.clone(),
+    });
+    let request = match auto_route(host.as_ref(), request) {
         Ok(r) => r,
         Err(message) => {
-            app.state::<ChatState>().finish(&id);
-            emit(
-                &app,
-                ChatEvent::Error {
-                    conversation_id: id,
-                    message,
-                },
-            );
+            host.chat_state().finish(&id);
+            host.emit(ChatEvent::Error {
+                conversation_id: id,
+                message,
+            });
             return;
         }
     };
-    let request = route_to_agent(&app, request).await;
-    let outcome = turn(&app, &request, cancel).await;
-    app.state::<ChatState>().finish(&id);
+    let request = route_to_agent(host.as_ref(), request).await;
+    let outcome = turn(&host, &request, cancel).await;
+    host.chat_state().finish(&id);
     if matches!(outcome, Ok(false)) {
-        let (app, id) = (app.clone(), id.clone());
-        tauri::async_runtime::spawn(async move { learn_from_turn(&app, &id).await });
+        let (host, id) = (host.clone(), id.clone());
+        tauri::async_runtime::spawn(async move { learn_from_turn(host.as_ref(), &id).await });
     }
     if let Ok(cancelled) = outcome {
         // The user's turn_end hooks, without holding up the next message.
-        if let Ok(dir) = config_dir(&app) {
+        if let Ok(dir) = host.config_dir() {
             if super::hooks::load(&dir)
                 .iter()
                 .any(|h| h.enabled && h.event == "turn_end")
@@ -610,36 +668,30 @@ pub async fn run_turn(app: AppHandle, request: TurnRequest, cancel: watch::Recei
     }
     // Filters see the finished answer too, and can rewrite it before it is shown for good.
     if matches!(outcome, Ok(false)) {
-        if let Ok(dir) = config_dir(&app) {
+        if let Ok(dir) = host.config_dir() {
             if super::functions::has_filters(&dir) {
                 filter_answer(&dir, &id).await;
             }
         }
     }
     match outcome {
-        Ok(cancelled) => emit(
-            &app,
-            ChatEvent::Done {
-                conversation_id: id,
-                cancelled,
-            },
-        ),
+        Ok(cancelled) => host.emit(ChatEvent::Done {
+            conversation_id: id,
+            cancelled,
+        }),
         Err(message) => {
             warn!("chat turn failed: {message}");
             // A conversation whose first reply failed still gets a name in the sidebar.
-            if let Ok(dir) = config_dir(&app) {
+            if let Ok(dir) = host.config_dir() {
                 if let Ok(mut c) = store::load_conversation(&dir, &id) {
                     if c.title.is_empty() && !c.messages.is_empty() {
                         c.title = fallback_title(&c);
                         let title = c.title.clone();
                         if store::save_conversation(&dir, &c).is_ok() {
-                            emit(
-                                &app,
-                                ChatEvent::Title {
-                                    conversation_id: id.clone(),
-                                    title,
-                                },
-                            );
+                            host.emit(ChatEvent::Title {
+                                conversation_id: id.clone(),
+                                title,
+                            });
                         }
                     }
                 }
@@ -651,19 +703,16 @@ pub async fn run_turn(app: AppHandle, request: TurnRequest, cancel: watch::Recei
                 } else {
                     message
                 };
-            emit(
-                &app,
-                ChatEvent::Error {
-                    conversation_id: id,
-                    message,
-                },
-            );
+            host.emit(ChatEvent::Error {
+                conversation_id: id,
+                message,
+            });
         }
     }
 }
 
 type QueuedTurn = (
-    AppHandle,
+    Arc<dyn Host>,
     TurnRequest,
     watch::Receiver<bool>,
     tokio::sync::oneshot::Sender<()>,
@@ -672,7 +721,7 @@ type QueuedTurn = (
 /// Runs a turn from inside another one (an agent messaging an agent). The turn goes through a
 /// queue to a task of its own, since a turn cannot spawn its own kind directly.
 fn queue_turn(
-    app: &AppHandle,
+    host: &Arc<dyn Host>,
     request: TurnRequest,
     cancel: watch::Receiver<bool>,
 ) -> tokio::sync::oneshot::Receiver<()> {
@@ -681,9 +730,9 @@ fn queue_turn(
     let queue = QUEUE.get_or_init(|| {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<QueuedTurn>();
         tauri::async_runtime::spawn(async move {
-            while let Some((app, request, cancel, done)) = rx.recv().await {
+            while let Some((host, request, cancel, done)) = rx.recv().await {
                 tauri::async_runtime::spawn(async move {
-                    run_turn(app, request, cancel).await;
+                    run_turn_on(host, request, cancel).await;
                     let _ = done.send(());
                 });
             }
@@ -691,7 +740,7 @@ fn queue_turn(
         tx
     });
     let (done, wait) = tokio::sync::oneshot::channel();
-    let _ = queue.send((app.clone(), request, cancel, done));
+    let _ = queue.send((host.clone(), request, cancel, done));
     wait
 }
 
@@ -700,7 +749,7 @@ static MESSAGE_DEPTH: std::sync::atomic::AtomicUsize = std::sync::atomic::Atomic
 /// `message_agent`: the receiving agent answers in a new chat of its own (unread, so the user
 /// sees it), and its reply comes back as the tool's result.
 async fn message_agent(
-    app: &AppHandle,
+    host: &Arc<dyn Host>,
     config_dir: &std::path::Path,
     from_chat: &str,
     from: Option<&agents::Agent>,
@@ -776,10 +825,7 @@ async fn message_agent(
         c.agent_id = Some(target.id.clone());
         c.unread = true;
         store::save_conversation(config_dir, &c)?;
-        let cancel = app
-            .state::<ChatState>()
-            .begin(&id)
-            .ok_or("That chat is busy.")?;
+        let cancel = host.chat_state().begin(&id).ok_or("That chat is busy.")?;
         let request = TurnRequest {
             conversation_id: id.clone(),
             text: agents::message_text(&sender, &s("message"), &files),
@@ -803,9 +849,16 @@ async fn message_agent(
             connectors: None,
             route_note: None,
             tools_off: Vec::new(),
+            max_steps: None,
+            only_tools: None,
+            system: None,
+            skills_off: Vec::new(),
+            facts_off: Vec::new(),
+            pages_off: Vec::new(),
+            instructions_off: false,
         };
         // A turn of its own, so the other agent's events stream to its chat as usual.
-        queue_turn(app, request, cancel)
+        queue_turn(host, request, cancel)
             .await
             .map_err(|_| "The other agent's turn stopped.".to_string())?;
         let done = store::load_conversation(config_dir, &id)?;
@@ -836,8 +889,8 @@ async fn message_agent(
 
 /// Skills from work (learning.rs): after an agent's turn with several tool steps, a reflection
 /// may turn the procedure into a skill, saved turned off; the chat says so.
-async fn learn_from_turn(app: &AppHandle, id: &str) {
-    let Ok(dir) = config_dir(app) else { return };
+async fn learn_from_turn(host: &dyn Host, id: &str) {
+    let Ok(dir) = host.config_dir() else { return };
     if !super::learning::load(&dir).skills_from_work {
         return;
     }
@@ -937,19 +990,16 @@ async fn learn_from_turn(app: &AppHandle, id: &str) {
         c.notices.push((c.messages.len(), note.clone()));
         let _ = store::save_conversation(&dir, &c);
     }
-    emit(
-        app,
-        ChatEvent::Notice {
-            conversation_id: id.into(),
-            text: note,
-        },
-    );
+    host.emit(ChatEvent::Notice {
+        conversation_id: id.into(),
+        text: note,
+    });
 }
 
 /// The orchestrator: a new Work chat goes to the agent that fits it best, when that is turned on
 /// and one clearly fits; the chat says so. Any failure leaves the chat as it was.
-async fn route_to_agent(app: &AppHandle, mut request: TurnRequest) -> TurnRequest {
-    let Ok(dir) = config_dir(app) else {
+async fn route_to_agent(host: &dyn Host, mut request: TurnRequest) -> TurnRequest {
+    let Ok(dir) = host.config_dir() else {
         return request;
     };
     let fresh = store::load_conversation(&dir, &request.conversation_id).is_err();
@@ -989,11 +1039,11 @@ async fn route_to_agent(app: &AppHandle, mut request: TurnRequest) -> TurnReques
 }
 
 /// The Auto model: picks the fast or the strong model for this message and says which.
-fn auto_route(app: &AppHandle, mut request: TurnRequest) -> Result<TurnRequest, String> {
+fn auto_route(host: &dyn Host, mut request: TurnRequest) -> Result<TurnRequest, String> {
     if request.model != super::router::AUTO {
         return Ok(request);
     }
-    let dir = config_dir(app)?;
+    let dir = host.config_dir()?;
     let (fast, strong) = super::router::models(&providers::load(&dir))
         .ok_or("Choose Auto's fast and strong models under Settings → Providers & models first.")?;
     // Regenerating: the message being answered again decides.
@@ -1105,6 +1155,9 @@ fn read_tool_output_tool() -> ChatTool {
     }
 }
 
+/// What a back end that needs the desktop app says where there is none.
+const NO_APP: &str = "This model runs only in the desktop app.";
+
 /// Waits for the turn to be cancelled; never resolves otherwise.
 async fn cancelled(cancel: &mut watch::Receiver<bool>) {
     loop {
@@ -1166,13 +1219,32 @@ async fn filter_answer(config_dir: &std::path::Path, id: &str) {
     }
 }
 
-/// Returns whether the turn was cancelled.
-async fn turn(
-    app: &AppHandle,
+/// Returns whether the turn was cancelled. Every turn is traced (see [`super::traces`]).
+pub(crate) async fn turn(
+    host: &Arc<dyn Host>,
+    request: &TurnRequest,
+    cancel: watch::Receiver<bool>,
+) -> Result<bool, String> {
+    let run = uuid::Uuid::new_v4().to_string();
+    let outcome = traced_turn(host, request, cancel, &run).await;
+    if let Ok(dir) = host.config_dir() {
+        let ending = match &outcome {
+            Ok(false) => "done",
+            Ok(true) => "cancelled",
+            Err(_) => "error",
+        };
+        super::traces::end_run(&dir, &run, ending);
+    }
+    outcome
+}
+
+async fn traced_turn(
+    host: &Arc<dyn Host>,
     request: &TurnRequest,
     mut cancel: watch::Receiver<bool>,
+    run: &str,
 ) -> Result<bool, String> {
-    let config_dir = config_dir(app)?;
+    let config_dir = host.config_dir()?;
     let id = request.conversation_id.as_str();
     let mut conversation = match store::load_conversation(&config_dir, id) {
         Ok(c) => c,
@@ -1237,17 +1309,27 @@ async fn turn(
             .push((conversation.messages.len() - 1, Utc::now()));
     }
     conversation.updated_at = Utc::now();
+    // What the user did says something about the last answer, rated or not.
+    let signal = if request.edit_index.is_some() {
+        Some("edited")
+    } else if request.resume {
+        Some("resumed")
+    } else if request.text.trim().is_empty() {
+        Some("regenerated")
+    } else {
+        None
+    };
+    if let Some(kind) = signal {
+        super::traces::signal(&config_dir, id, request.edit_index, kind);
+    }
     if let Some(note) = &request.route_note {
         conversation
             .notices
             .push((conversation.messages.len(), note.clone()));
-        emit(
-            app,
-            ChatEvent::Notice {
-                conversation_id: id.into(),
-                text: note.clone(),
-            },
-        );
+        host.emit(ChatEvent::Notice {
+            conversation_id: id.into(),
+            text: note.clone(),
+        });
     }
     store::save_conversation(&config_dir, &conversation)?;
 
@@ -1265,13 +1347,10 @@ async fn turn(
         if answer.trim().is_empty() {
             return Err(format!("{} printed nothing.", pipe.name));
         }
-        emit(
-            app,
-            ChatEvent::Text {
-                conversation_id: id.into(),
-                text: answer.clone(),
-            },
-        );
+        host.emit(ChatEvent::Text {
+            conversation_id: id.into(),
+            text: answer.clone(),
+        });
         conversation.messages.push(Message::assistant(answer));
         conversation
             .times
@@ -1279,10 +1358,10 @@ async fn turn(
         conversation.updated_at = Utc::now();
         store::save_conversation(&config_dir, &conversation)?;
         if !named {
-            let app = app.clone();
+            let host = host.clone();
             let reference = request.model.clone();
             tauri::async_runtime::spawn(async move {
-                name_conversation(app, reference, conversation).await
+                name_conversation(host, reference, conversation).await
             });
         }
         return Ok(false);
@@ -1290,13 +1369,19 @@ async fn turn(
     // An ACP agent answers over the Agent Client Protocol, with its own tools.
     if let Some(acp_agent) = super::acp::find(&config_dir, &request.model) {
         let named = !conversation.title.is_empty();
-        let cancelled =
-            super::acp::run(app, &config_dir, conversation.clone(), &acp_agent, cancel).await?;
+        let cancelled = super::acp::run(
+            host.app().ok_or(NO_APP)?,
+            &config_dir,
+            conversation.clone(),
+            &acp_agent,
+            cancel,
+        )
+        .await?;
         if !named {
-            let app = app.clone();
+            let host = host.clone();
             let reference = request.model.clone();
             tauri::async_runtime::spawn(async move {
-                name_conversation(app, reference, conversation).await
+                name_conversation(host, reference, conversation).await
             });
         }
         return Ok(cancelled);
@@ -1304,20 +1389,26 @@ async fn turn(
     // A coding agent program (Claude Code, Codex, Gemini CLI) answers with its own tools.
     if let Some(cli) = super::agent_cli::find(&request.model) {
         let named = !conversation.title.is_empty();
-        let cancelled =
-            super::agent_cli::run(app, &config_dir, conversation.clone(), cli, cancel).await?;
+        let cancelled = super::agent_cli::run(
+            host.app().ok_or(NO_APP)?,
+            &config_dir,
+            conversation.clone(),
+            cli,
+            cancel,
+        )
+        .await?;
         if !named {
-            let app = app.clone();
+            let host = host.clone();
             let reference = request.model.clone();
             tauri::async_runtime::spawn(async move {
-                name_conversation(app, reference, conversation).await
+                name_conversation(host, reference, conversation).await
             });
         }
         return Ok(cancelled);
     }
 
-    let mut model = connect_model(&config_dir, &request.model).await?;
-    let registry = app.state::<ToolRegistry>();
+    let model = host.connect_model(&request.model).await?;
+    let registry = host.registry();
     let agent = conversation
         .agent_id
         .as_deref()
@@ -1325,17 +1416,31 @@ async fn turn(
     if let Some(agent) = &agent {
         agents::check_budget(&config_dir, agent)?;
     }
+    super::traces::start_run(
+        &config_dir,
+        run,
+        id,
+        agent.as_ref().map(|a| a.id.as_str()),
+        &request.model,
+    );
+    let model_ref = request.model.clone();
     // The backup model, tried once when the main one fails before anything streamed.
-    let mut fallback = agent
+    let fallback = agent
         .as_ref()
         .and_then(|a| a.fallback_model.clone())
         .or_else(|| providers::load(&config_dir).backup_model)
         .filter(|f| f != &request.model);
-    let mut offered = tools::available(&registry, request.connectors.as_deref());
+    let mut offered = tools::available(registry, request.connectors.as_deref());
     offered.splice(1..1, builtins::definitions(&config_dir));
     offered.push(read_tool_output_tool());
     offered.extend(super::openapi::tools(&config_dir));
     offered.extend(super::custom_tools::definitions(&config_dir));
+    // Tools the assistant wrote and the user approved, and the way to write more.
+    offered.extend(super::script_tools::definitions(&config_dir));
+    offered.extend(super::script_tools::builtin_definitions());
+    if !conversation.temporary {
+        offered.push(super::proposals::definition());
+    }
     if super::computer::load(&config_dir).enabled {
         offered.push(super::computer::definition());
     }
@@ -1350,6 +1455,9 @@ async fn turn(
                 .iter()
                 .any(|off| off == &t.name || t.name.starts_with(&format!("{off}__")))
         });
+    }
+    if let Some(only) = &request.only_tools {
+        offered.retain(|t| only.contains(&t.name));
     }
     if request.approval.unattended() {
         // Nobody can answer a question during a scheduled run.
@@ -1369,31 +1477,75 @@ async fn turn(
     }
     if conversation.temporary {
         // A temporary chat leaves no trace: it does not add to or change knowledge.
+        // Nor the assistant's own tools and skills: an eval case or a worker runs in one.
         offered.retain(|t| {
-            t.name != builtins::REMEMBER
-                && t.name != builtins::FORGET
-                && t.name != builtins::KNOWLEDGE_WRITE
+            !matches!(
+                t.name.as_str(),
+                builtins::REMEMBER
+                    | builtins::FORGET
+                    | builtins::KNOWLEDGE_WRITE
+                    | builtins::SAVE_SKILL
+                    | super::script_tools::CREATE_TOOL
+                    | super::script_tools::PROMOTE_TOOL
+                    | super::script_tools::RETIRE_TOOL
+                    | super::script_tools::REQUEST_CAPABILITY
+            )
         });
     }
     // Past a few dozen connector tools, the rest load on demand (Vibe's "Found tools").
     let defer = deferred::should_defer(&offered);
     if defer {
         offered.push(deferred::find_tools_tool());
+        offered.push(handlers::unload_tools_tool());
     }
+    offered.push(handlers::context_status_tool());
     let project = conversation.project_id.as_ref().and_then(|pid| {
         store::load_projects(&config_dir)
             .into_iter()
             .find(|p| &p.id == pid)
     });
-    let instructions = store::load_instructions(&config_dir);
-    let memories = memory::load(&config_dir);
+    let instructions = if request.instructions_off {
+        store::Instructions::default()
+    } else {
+        store::load_instructions(&config_dir)
+    };
+    let mut memories = memory::load(&config_dir);
+    memories
+        .items
+        .retain(|m| !request.facts_off.contains(&m.id));
+    let mut pages = knowledge::load(&config_dir);
+    pages.retain(|p| !request.pages_off.contains(&p.id));
     let mut skill_list = skills::list(&config_dir);
     if let Some(agent) = agent.as_ref().filter(|a| !a.skills.is_empty()) {
         skill_list.retain(|s| agent.skills.contains(&s.name));
     }
+    skill_list.retain(|s| !request.skills_off.contains(&s.name));
+    let listed_skills: Vec<String> = skill_list
+        .iter()
+        .filter(|s| s.enabled)
+        .map(|s| s.name.clone())
+        .collect();
+    super::traces::loaded(&config_dir, "skill", &listed_skills);
+    for name in &listed_skills {
+        super::traces::attribute(&config_dir, run, "skill", name, false);
+    }
     let canvases = canvas::list_for(&config_dir, id);
+    let latest_prompt = store::last_prompt(&conversation)
+        .and_then(|i| conversation.messages.get(i))
+        .map(super::context::message_text)
+        .unwrap_or_default();
+    attribute_loaded(
+        &config_dir,
+        run,
+        &offered,
+        &memories,
+        &pages,
+        &latest_prompt,
+        project.as_ref().map(|p| p.id.as_str()),
+        agent.as_ref().map(|a| a.id.as_str()),
+    );
     let library_list = libraries::list(&config_dir);
-    let system = preamble(
+    let mut prompt = preamble_prompt(
         &Context {
             instructions: Some(&instructions),
             project: project.as_ref(),
@@ -1407,116 +1559,233 @@ async fn turn(
                 .as_ref()
                 .filter(|p| p.share_chats)
                 .and_then(|p| store::project_digest(&config_dir, &p.id, id)),
+            query: &latest_prompt,
         },
         &offered,
     );
-    let mut system = system;
+    use super::prompt::{ESSENTIAL, OPTIONAL, USEFUL};
     // A built-in model runs on this computer's processor: it gets a short brief and no tools, so
     // it starts answering in seconds rather than reading thousands of tokens of tool manuals.
     if request.model.starts_with("local/") {
         offered.clear();
-        system = super::local_models::brief(
-            &instructions,
-            project.as_ref().map(|p| p.instructions.as_str()),
-            agent
-                .as_ref()
-                .map(|a| (a.name.as_str(), a.instructions.as_str())),
+        prompt.replace_all(
+            "brief",
+            super::local_models::brief(
+                &instructions,
+                project.as_ref().map(|p| p.instructions.as_str()),
+                agent
+                    .as_ref()
+                    .map(|a| (a.name.as_str(), a.instructions.as_str())),
+            ),
         );
     }
     if let Some(secrets) = super::vault::prompt(&super::vault::granted(
         &super::vault::list(&config_dir),
         agent.as_ref(),
     )) {
-        system.push_str(&secrets);
+        prompt.push("vault", ESSENTIAL, secrets);
     }
     if !conversation.params.instructions.is_empty() {
-        system.push_str(&format!(
-            "\n\n## Instructions for this conversation\n{}",
-            conversation.params.instructions
-        ));
+        prompt.push(
+            "chat instructions",
+            ESSENTIAL,
+            format!(
+                "\n\n## Instructions for this conversation\n{}",
+                conversation.params.instructions
+            ),
+        );
     }
     if defer {
-        system.push_str(&deferred::prompt(&offered, &conversation.loaded_tools));
+        prompt.push(
+            "tools to load",
+            ESSENTIAL,
+            deferred::prompt(&offered, &conversation.loaded_tools),
+        );
     }
     if let Some(agent) = &agent {
-        system.push_str(&agents::notebook_prompt(&agents::notebook(
-            &config_dir,
-            &agent.id,
-        )));
+        prompt.push(
+            "notebook",
+            ESSENTIAL,
+            agents::notebook_prompt(&agents::notebook(&config_dir, &agent.id)),
+        );
         if agent.can_manage_agents {
-            system.push_str(&super::org::prompt(&agents::load(&config_dir), agent));
+            prompt.push(
+                "organization",
+                USEFUL,
+                super::org::prompt(&agents::load(&config_dir), agent),
+            );
         }
     }
     if offered.iter().any(|t| t.name == builtins::DELEGATE) {
         let all = agents::load(&config_dir);
         // A group hosts its members; any other chat may call on the whole team.
         match agent.as_ref().and_then(|a| agents::group_prompt(&all, a)) {
-            Some(group) => system.push_str(&group),
+            Some(group) => prompt.push("group", USEFUL, group),
             None => {
                 if let Some(team) = agents::team_prompt(&all, agent.as_ref().map(|a| a.id.as_str()))
                 {
-                    system.push_str(&team);
+                    prompt.push("team", OPTIONAL, team);
                 }
             }
         }
     }
     // Knowledge pages that matter for this message come in full; the rest by title.
-    let system = if memories.enabled {
-        let query = store::last_prompt(&conversation)
-            .and_then(|i| conversation.messages.get(i))
-            .map(super::context::message_text)
-            .unwrap_or_default();
-        match knowledge::prompt(&knowledge::load(&config_dir), &query) {
-            Some(section) => format!("{system}{section}"),
-            None => system,
+    if memories.enabled {
+        if let Some(section) = knowledge::prompt(&pages, &latest_prompt) {
+            prompt.push("knowledge pages", OPTIONAL, section);
         }
-    } else {
-        system
-    };
-    let system = if request.approval == ApprovalMode::Plan {
-        format!(
-            "{system}\n\nPlan mode is on. Investigate with read-only tools, then present a numbered plan \
+    }
+    if request.approval == ApprovalMode::Plan {
+        prompt.push(
+            "plan mode",
+            ESSENTIAL,
+            "\n\nPlan mode is on. Investigate with read-only tools, then present a numbered plan \
              of the changes you would make (files, commands, risks) and stop. Do not try to change \
-             anything; the user approves the plan and then switches to an editing mode."
-        )
-    } else {
-        system
-    };
+             anything; the user approves the plan and then switches to an editing mode.",
+        );
+    }
+    if let Some(brief) = &request.system {
+        prompt.replace_all("brief", brief.clone());
+    }
     let reasoning = providers::supports_reasoning(&request.model);
     let window = context::context_window(&request.model);
+    // Within its budget, the least useful sections give way; the context view shows what stayed.
+    let (system, parts, dropped) = prompt.fit(window);
+    if !dropped.is_empty() {
+        info!(
+            "left out of the prompt to fit the window: {}",
+            dropped.join(", ")
+        );
+    }
+    conversation.prompt_parts = parts;
     // Personal data in what the user typed is swapped for placeholders before a cloud request.
     let filter = privacy::load(&config_dir).enabled
         && providers::split_reference(&request.model)
             .is_some_and(|(vendor, _)| privacy::is_cloud(vendor));
-    let mut redactions = privacy::Redactions::default();
-    compact_if_needed(app, &model, &mut conversation, window, &config_dir).await;
+    let redactions = privacy::Redactions::default();
+    // Checked before every step, not only the first: tool results can fill the window within one
+    // turn. A failed summary is not retried in the same turn, so it costs one call at most.
+    let compaction_failed = false;
+    let max_steps = request.max_steps.unwrap_or(MAX_STEPS).max(1);
 
-    for step in 0..MAX_STEPS {
+    let mut steps = TurnSteps {
+        host,
+        request,
+        cancel,
+        conversation,
+        model,
+        model_ref,
+        fallback,
+        redactions,
+        compaction_failed,
+        system,
+        offered,
+        defer,
+        agent,
+        config_dir,
+        id,
+        window,
+        filter,
+        reasoning,
+        run,
+        calls: Vec::new(),
+    };
+    if cortex_kernel::agent_loop::run(&mut steps, max_steps).await? {
+        return Ok(true);
+    }
+    let conversation = steps.conversation;
+
+    if conversation.title.is_empty() {
+        let host = host.clone();
+        let reference = request.model.clone();
+        tauri::async_runtime::spawn(async move {
+            name_conversation(host, reference, conversation).await
+        });
+    }
+    Ok(false)
+}
+
+/// A turn's state across its steps, for the kernel's loop ([`cortex_kernel::agent_loop`]): each
+/// step streams one model call, then runs the tools it called.
+struct TurnSteps<'a> {
+    host: &'a Arc<dyn Host>,
+    request: &'a TurnRequest,
+    cancel: watch::Receiver<bool>,
+    conversation: Conversation,
+    model: DynModel<Completion>,
+    model_ref: String,
+    fallback: Option<String>,
+    redactions: privacy::Redactions,
+    compaction_failed: bool,
+    system: String,
+    offered: Vec<ChatTool>,
+    defer: bool,
+    agent: Option<agents::Agent>,
+    config_dir: std::path::PathBuf,
+    id: &'a str,
+    window: u64,
+    filter: bool,
+    reasoning: bool,
+    run: &'a str,
+    /// The tool calls of the step just made, for `run_calls`.
+    calls: Vec<ToolCall>,
+}
+
+#[async_trait::async_trait]
+impl Steps for TurnSteps<'_> {
+    async fn call_model(&mut self, step: usize, last: bool) -> Result<Reply, String> {
+        let TurnSteps {
+            host,
+            request,
+            cancel,
+            conversation,
+            model,
+            model_ref,
+            fallback,
+            redactions,
+            compaction_failed,
+            system,
+            offered,
+            defer,
+            agent,
+            config_dir,
+            id,
+            window,
+            filter,
+            reasoning,
+            run,
+            calls: pending,
+        } = self;
+        let (host, request, id, run) = (*host, *request, *id, *run);
+        let (defer, window, filter, reasoning) = (*defer, *window, *filter, *reasoning);
+        let config_dir = config_dir.as_path();
         // Guidance the user sent while this turn was running joins the conversation here.
-        for text in app.state::<ChatState>().take_steering(id) {
+        for text in host.chat_state().take_steering(id) {
             conversation.messages.push(Message::user(format!(
                 "(Sent while you were working) {text}"
             )));
             conversation
                 .times
                 .push((conversation.messages.len() - 1, Utc::now()));
-            emit(
-                app,
-                ChatEvent::Steered {
-                    conversation_id: id.into(),
-                    text,
-                },
-            );
+            host.emit(ChatEvent::Steered {
+                conversation_id: id.into(),
+                text,
+            });
+        }
+        if !*compaction_failed {
+            *compaction_failed =
+                compact_if_needed(host.as_ref(), model, conversation, window, config_dir).await
+                    == Compaction::Failed;
         }
         let mut carried =
             context::request_messages(&conversation.messages, conversation.summary.as_ref());
         if filter {
-            carried = privacy::redact_messages(&carried, &mut redactions);
+            carried = privacy::redact_messages(&carried, redactions);
         }
         let Some((prompt, history)) = carried.split_last() else {
             return Err("empty conversation".into());
         };
-        let last_step = step + 1 == MAX_STEPS;
+        let last_step = last;
         let mut step_system = match &conversation.summary {
             Some(summary) => format!(
                 "{system}\n\nSummary of the earlier part of this conversation (those messages are no longer shown):\n{}",
@@ -1565,7 +1834,7 @@ async fn turn(
         // This conversation's own model settings, then the app-wide defaults.
         let params = conversation
             .params
-            .or_defaults(&store::chat_defaults(&config_dir));
+            .or_defaults(&store::chat_defaults(config_dir));
         if let Some(t) = params.temperature {
             call = call.temperature(t);
         }
@@ -1582,6 +1851,7 @@ async fn turn(
         // Transient failures (dropped connections, rate limits, overloaded servers) are retried
         // with backoff, as long as nothing reached the user yet.
         let mut attempt = 0u32;
+        let call_started = std::time::Instant::now();
         // When the model started and stopped thinking, for "Thought for 4s".
         let mut thought_ms: Option<u32>;
         let response = loop {
@@ -1593,7 +1863,7 @@ async fn turn(
             let mut held = String::new();
             let was_cancelled = loop {
                 tokio::select! {
-                    _ = cancelled(&mut cancel) => break true,
+                    _ = cancelled(cancel) => break true,
                     item = stream.next() => match item {
                         None => break false,
                         Some(Err(_)) => break false, // finish() reports it
@@ -1604,23 +1874,23 @@ async fn turn(
                                 if let Some((_, end @ None)) = &mut thinking {
                                     *end = Some(std::time::Instant::now());
                                 }
-                                let text = if filter { restore_streamed(&redactions, &mut held, &text) } else { text };
+                                let text = if filter { restore_streamed(redactions, &mut held, &text) } else { text };
                                 streamed_text.push_str(&text);
                                 if !text.is_empty() {
-                                    emit(app, ChatEvent::Text { conversation_id: id.into(), text });
+                                    host.emit(ChatEvent::Text { conversation_id: id.into(), text });
                                 }
                             }
                             StreamEvent::Reasoning { text, .. } => {
                                 streamed_anything = true;
                                 thinking.get_or_insert((std::time::Instant::now(), None));
-                                emit(app, ChatEvent::Reasoning { conversation_id: id.into(), text });
+                                host.emit(ChatEvent::Reasoning { conversation_id: id.into(), text });
                             }
                             StreamEvent::Start { kind: PartKind::ToolCall, name: Some(name), .. } => {
                                 streamed_anything = true;
                                 if let Some((_, end @ None)) = &mut thinking {
                                     *end = Some(std::time::Instant::now());
                                 }
-                                emit(app, ChatEvent::ToolPending { conversation_id: id.into(), name: name.to_string() });
+                                host.emit(ChatEvent::ToolPending { conversation_id: id.into(), name: name.to_string() });
                             }
                             _ => {}
                         },
@@ -1638,8 +1908,8 @@ async fn turn(
                         .push((conversation.messages.len() - 1, Utc::now()));
                 }
                 conversation.updated_at = Utc::now();
-                store::save_conversation(&config_dir, &conversation)?;
-                return Ok(true);
+                store::save_conversation(config_dir, conversation)?;
+                return Ok(Reply::Cancelled);
             }
 
             thought_ms = thinking.map(|(start, end)| {
@@ -1648,13 +1918,40 @@ async fn turn(
                     .as_millis()
                     .min(u32::MAX as u128) as u32
             });
-            match stream.finish().await {
-                Ok(response) => break response,
+            let finished = stream.finish().await;
+            if let Err(e) = &finished {
+                super::traces::model_call(
+                    config_dir,
+                    run,
+                    step,
+                    model_ref,
+                    call_started.elapsed().as_millis() as u64,
+                    None,
+                    Some(if e.is_retryable() {
+                        "transient"
+                    } else {
+                        "failed"
+                    }),
+                );
+            }
+            match finished {
+                Ok(response) => {
+                    super::traces::model_call(
+                        config_dir,
+                        run,
+                        step,
+                        model_ref,
+                        call_started.elapsed().as_millis() as u64,
+                        Some(&response.usage),
+                        None,
+                    );
+                    break response;
+                }
                 Err(e) if e.is_retryable() && !streamed_anything && attempt < MAX_ATTEMPTS => {
                     let wait = std::time::Duration::from_secs(2u64.pow(attempt));
                     warn!("model call failed ({e}); retrying in {}s", wait.as_secs());
                     tokio::select! {
-                        _ = cancelled(&mut cancel) => return Ok(true),
+                        _ = cancelled(cancel) => return Ok(Reply::Cancelled),
                         _ = tokio::time::sleep(wait) => {}
                     }
                 }
@@ -1662,9 +1959,10 @@ async fn turn(
                     // Fail over to the agent's backup model, once, and say so.
                     let backup = fallback.take().unwrap_or_default();
                     warn!("model call failed ({e}); switching to {backup}");
-                    match connect_model(&config_dir, &backup).await {
+                    match host.connect_model(&backup).await {
                         Ok(next) => {
-                            model = next;
+                            *model = next;
+                            model_ref.clone_from(&backup);
                             attempt = 0;
                             let label = backup.rsplit('/').next().unwrap_or(&backup).to_string();
                             let text = format!(
@@ -1674,38 +1972,32 @@ async fn turn(
                             conversation
                                 .notices
                                 .push((conversation.messages.len(), text.clone()));
-                            emit(
-                                app,
-                                ChatEvent::Notice {
-                                    conversation_id: id.into(),
-                                    text,
-                                },
-                            );
+                            host.emit(ChatEvent::Notice {
+                                conversation_id: id.into(),
+                                text,
+                            });
                         }
                         Err(_) => {
-                            store::save_conversation(&config_dir, &conversation)?;
+                            store::save_conversation(config_dir, conversation)?;
                             return Err(e.to_string());
                         }
                     }
                 }
                 Err(e) => {
-                    store::save_conversation(&config_dir, &conversation)?;
+                    store::save_conversation(config_dir, conversation)?;
                     return Err(e.to_string());
                 }
             }
         };
         conversation.usage.add(&response.usage);
-        emit(
-            app,
-            ChatEvent::Usage {
-                conversation_id: id.into(),
-                usage: conversation.usage.clone(),
-                context_window: window,
-            },
-        );
+        host.emit(ChatEvent::Usage {
+            conversation_id: id.into(),
+            usage: conversation.usage.clone(),
+            context_window: window,
+        });
         let message = response.message().map(|m| {
             if filter {
-                privacy::restore_message(m, &redactions)
+                privacy::restore_message(m, redactions)
             } else {
                 m
             }
@@ -1737,26 +2029,40 @@ async fn turn(
             conversation
                 .times
                 .push((conversation.messages.len() - 1, Utc::now()));
-            store::save_conversation(&config_dir, &conversation)?;
-            // The user added guidance while the answer streamed: answer that too.
-            if app.state::<ChatState>().has_steering(id) && step + 1 < MAX_STEPS {
-                continue;
-            }
-            break;
+            store::save_conversation(config_dir, conversation)?;
+            return Ok(Reply::Answered);
         }
-        store::save_conversation(&config_dir, &conversation)?;
+        store::save_conversation(config_dir, conversation)?;
         info!("chat step {step}: {} tool call(s)", calls.len());
+        *pending = calls;
+        Ok(Reply::CalledTools)
+    }
 
+    async fn run_calls(&mut self, _step: usize) -> Result<bool, String> {
+        let TurnSteps {
+            host,
+            request,
+            cancel,
+            conversation,
+            model,
+            offered,
+            agent,
+            config_dir,
+            id,
+            run,
+            calls: pending,
+            ..
+        } = self;
+        let (host, request, id, run) = (*host, *request, *id, *run);
+        let config_dir = config_dir.as_path();
+        let calls = std::mem::take(pending);
         for call in &calls {
-            emit(
-                app,
-                ChatEvent::ToolStart {
-                    conversation_id: id.into(),
-                    call_id: call.id.to_string(),
-                    name: call.function.name.to_string(),
-                    arguments: Value::Object(call.function.arguments.clone()),
-                },
-            );
+            host.emit(ChatEvent::ToolStart {
+                conversation_id: id.into(),
+                call_id: call.id.to_string(),
+                name: call.function.name.to_string(),
+                arguments: Value::Object(call.function.arguments.clone()),
+            });
         }
 
         // Calls that wait on the user run one at a time; everything else runs at once.
@@ -1779,11 +2085,11 @@ async fn turn(
         let sequential: Vec<bool> = calls.iter().map(waits_on_user).collect();
         let mut outcomes: Vec<Option<tools::Outcome>> = (0..calls.len()).map(|_| None).collect();
         let runner = Runner {
-            app,
-            config_dir: &config_dir,
-            registry: &registry,
-            offered: &offered,
-            model: &model,
+            host,
+            run,
+            config_dir,
+            offered: offered.as_slice(),
+            model: &*model,
             request,
             id,
             agent: agent.as_ref(),
@@ -1800,7 +2106,7 @@ async fn turn(
                 }),
         );
         let finished = tokio::select! {
-            _ = cancelled(&mut cancel) => None,
+            _ = cancelled(cancel) => None,
             done = concurrent => Some(done),
         };
         if let Some(done) = finished {
@@ -1817,10 +2123,10 @@ async fn turn(
             {
                 tools::Outcome { text: "Nobody is available to answer during this scheduled run; continue with your best judgement and state your assumptions.".into(), is_error: false }
             } else if call.function.name.as_str() == ASK_USER {
-                ask_user(app, id, call, &mut cancel).await
+                ask_user(host.as_ref(), id, call, cancel).await
             } else {
                 tokio::select! {
-                    _ = cancelled(&mut cancel) => cancelled_outcome(),
+                    _ = cancelled(cancel) => cancelled_outcome(),
                     outcome = runner.run(call) => outcome,
                 }
             };
@@ -1830,15 +2136,12 @@ async fn turn(
         let mut results = Vec::with_capacity(calls.len());
         for (call, outcome) in calls.iter().zip(outcomes) {
             let outcome = outcome.unwrap_or_else(cancelled_outcome);
-            emit(
-                app,
-                ChatEvent::ToolEnd {
-                    conversation_id: id.into(),
-                    call_id: call.id.to_string(),
-                    output: outcome.text.clone(),
-                    is_error: outcome.is_error,
-                },
-            );
+            host.emit(ChatEvent::ToolEnd {
+                conversation_id: id.into(),
+                call_id: call.id.to_string(),
+                output: outcome.text.clone(),
+                is_error: outcome.is_error,
+            });
             if call.function.name.as_str() == deferred::FIND_TOOLS && !outcome.is_error {
                 // What it found is loaded for the next step and the rest of the conversation.
                 if let Ok(found) = serde_json::from_str::<Value>(&outcome.text) {
@@ -1854,11 +2157,25 @@ async fn turn(
                     }
                 }
             }
+            if call.function.name.as_str() == handlers::UNLOAD_TOOLS && !outcome.is_error {
+                // Unloaded tools leave the next request; find_tools brings them back.
+                if let Ok(gone) = serde_json::from_str::<Value>(&outcome.text) {
+                    let gone: Vec<&str> = gone["unloaded"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(Value::as_str)
+                        .collect();
+                    conversation
+                        .loaded_tools
+                        .retain(|t| !gone.contains(&t.as_str()));
+                }
+            }
             // A long output is kept whole in a file; the conversation keeps its start and end,
             // which is what the model reads, with how to read the rest.
             let mut text = outcome.text;
             if text.chars().count() > context::MAX_RESULT_CHARS {
-                match save_tool_output(&config_dir, id, &call.id.to_string(), &text) {
+                match save_tool_output(config_dir, id, &call.id.to_string(), &text) {
                     Ok(()) => text = context::head_and_tail(&text, &call.id.to_string()),
                     Err(e) => warn!("could not keep a long tool output: {e}"),
                 }
@@ -1881,21 +2198,14 @@ async fn turn(
         }
         conversation.messages.push(Message::tool_results(results));
         conversation.updated_at = Utc::now();
-        store::save_conversation(&config_dir, &conversation)?;
+        store::save_conversation(config_dir, conversation)?;
 
-        if *cancel.borrow() {
-            return Ok(true);
-        }
+        Ok(*cancel.borrow())
     }
 
-    if conversation.title.is_empty() {
-        let app = app.clone();
-        let reference = request.model.clone();
-        tauri::async_runtime::spawn(async move {
-            name_conversation(app, reference, conversation).await
-        });
+    fn has_new_guidance(&self) -> bool {
+        self.host.chat_state().has_steering(self.id)
     }
-    Ok(false)
 }
 
 /// Restores placeholders in streamed text. A placeholder can arrive split across chunks, so an
@@ -1924,6 +2234,8 @@ fn session_allowances() -> &'static std::sync::Mutex<std::collections::HashSet<(
     SET.get_or_init(Default::default)
 }
 
+use cortex_kernel::approval::{change_gate, ChangeGate};
+
 fn session_allowed(conversation: &str, tool: &str) -> bool {
     session_allowances()
         .lock()
@@ -1936,11 +2248,143 @@ fn allow_for_session(conversation: &str, tool: &str) {
     }
 }
 
+/// Attribution: what this run had in front of it, beyond skills: the tools offered, the facts
+/// listed and the knowledge pages recalled in full. A tool called, a page read and a skill opened
+/// are marked used as they happen, so a good or bad run can be traced to what it had and used.
+#[allow(clippy::too_many_arguments)]
+fn attribute_loaded(
+    config_dir: &std::path::Path,
+    run: &str,
+    offered: &[tools::ChatTool],
+    memories: &memory::Memories,
+    pages: &[knowledge::Page],
+    query: &str,
+    project: Option<&str>,
+    agent: Option<&str>,
+) {
+    for tool in offered {
+        super::traces::attribute(config_dir, run, "tool", &tool.name, false);
+    }
+    let facts: Vec<String> = memory::shown(memories, query, project, agent)
+        .into_iter()
+        .map(|m| m.id)
+        .collect();
+    super::traces::loaded(config_dir, "memory", &facts);
+    for id in &facts {
+        super::traces::attribute(config_dir, run, "memory", id, false);
+    }
+    if memories.enabled {
+        let recalled: Vec<String> = knowledge::recalled(pages, query)
+            .into_iter()
+            .map(|p| p.id.clone())
+            .collect();
+        super::traces::loaded(config_dir, "page", &recalled);
+        for id in &recalled {
+            super::traces::attribute(config_dir, run, "page", id, false);
+        }
+    }
+}
+
+/// Runs one tool call, `run`, the way every loop that calls tools must: between the user's
+/// `before_tool` and `after_tool` hooks, with `agent`'s vault secrets reaching the processes it
+/// starts and masked in what comes back, and recorded in the activity log.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn guarded_call<F>(
+    config_dir: &std::path::Path,
+    conversation_id: &str,
+    trace: Option<&str>,
+    agent: Option<&agents::Agent>,
+    workdir: Option<&std::path::Path>,
+    name: &str,
+    arguments: &Value,
+    run: F,
+) -> tools::Outcome
+where
+    F: std::future::Future<Output = tools::Outcome>,
+{
+    if let Some(reason) =
+        super::hooks::before_tool(config_dir, conversation_id, name, arguments, workdir).await
+    {
+        return tools::Outcome {
+            text: format!("A hook blocked this call: {reason}"),
+            is_error: true,
+        };
+    }
+    // The agent's vault secrets reach the processes this call starts, and never the model.
+    let secrets = super::vault::env_for(config_dir, agent).await;
+    let started = std::time::Instant::now();
+    // A written tool records its runs itself, in this run's trace.
+    let run = super::script_tools::in_run(trace.unwrap_or_default().to_string(), run);
+    let mut outcome = super::vault::scope(secrets.clone(), run).await;
+    if !secrets.is_empty() {
+        outcome.text = super::vault::mask(&outcome.text, &secrets);
+    }
+    let shown_args = if secrets.is_empty() {
+        arguments.to_string()
+    } else {
+        super::vault::mask(&arguments.to_string(), &secrets)
+    };
+    super::audit::record(
+        config_dir,
+        super::audit::Entry {
+            at: Utc::now(),
+            kind: "tool".into(),
+            conversation: conversation_id.to_string(),
+            agent: agent.map(|a| a.name.clone()),
+            tool: name.to_string(),
+            arguments: super::audit::short(&shown_args),
+            outcome: if outcome.is_error { "error" } else { "ok" }.into(),
+            detail: super::audit::short(&outcome.text),
+            millis: started.elapsed().as_millis() as u64,
+        },
+    );
+    if let Some(trace) = trace {
+        if name.starts_with("script__") {
+            // A written tool records its own runs where it actually ran (also when another tool
+            // calls it), so a refusal before it runs (declined, nobody to approve, a changed or
+            // unapproved tool, the rate limit) is not counted against it as a failure. A run that
+            // fails, a lapsed grant's denial included, is.
+            if !outcome.is_error {
+                super::traces::attribute(config_dir, trace, "tool", name, true);
+            }
+        } else {
+            super::traces::tool_call(
+                config_dir,
+                trace,
+                name,
+                started.elapsed().as_millis() as u64,
+                !outcome.is_error,
+            );
+        }
+    }
+    if !outcome.is_error && super::traces::empty_result(&outcome.text) {
+        super::traces::signal(config_dir, conversation_id, None, "empty_result");
+    }
+    let notes = super::hooks::after_tool(
+        config_dir,
+        conversation_id,
+        name,
+        arguments,
+        &outcome.text,
+        outcome.is_error,
+        workdir,
+    )
+    .await;
+    if !notes.is_empty() {
+        outcome.text.push_str(&format!(
+            "\n\n[From the user's hooks]\n{}",
+            notes.join("\n")
+        ));
+    }
+    outcome
+}
+
 /// What one tool call needs to run, shared by the calls of a step.
 struct Runner<'a> {
-    app: &'a AppHandle,
+    host: &'a Arc<dyn Host>,
+    /// The trace this turn records into.
+    run: &'a str,
     config_dir: &'a std::path::Path,
-    registry: &'a ToolRegistry,
     offered: &'a [ChatTool],
     model: &'a DynModel<Completion>,
     request: &'a TurnRequest,
@@ -1953,60 +2397,67 @@ struct Runner<'a> {
 impl Runner<'_> {
     /// Runs a call between the user's `before_tool` and `after_tool` hooks.
     async fn run(&self, call: &ToolCall) -> tools::Outcome {
-        let name = call.function.name.as_str();
         let arguments = Value::Object(call.function.arguments.clone());
-        let workdir = self.workdir.as_deref().map(std::path::Path::new);
-        if let Some(reason) =
-            super::hooks::before_tool(self.config_dir, self.id, name, &arguments, workdir).await
-        {
-            return tools::Outcome {
-                text: format!("A hook blocked this call: {reason}"),
-                is_error: true,
-            };
-        }
-        // The agent's vault secrets reach the processes this call starts, and never the model.
-        let secrets = super::vault::env_for(self.config_dir, self.agent).await;
-        let started = std::time::Instant::now();
-        let mut outcome = super::vault::scope(secrets.clone(), self.run_inner(call)).await;
-        if !secrets.is_empty() {
-            outcome.text = super::vault::mask(&outcome.text, &secrets);
-        }
-        let shown_args = if secrets.is_empty() {
-            arguments.to_string()
-        } else {
-            super::vault::mask(&arguments.to_string(), &secrets)
-        };
-        super::audit::record(
-            self.config_dir,
-            super::audit::Entry {
-                at: Utc::now(),
-                kind: "tool".into(),
-                conversation: self.id.to_string(),
-                agent: self.agent.map(|a| a.name.clone()),
-                tool: name.to_string(),
-                arguments: super::audit::short(&shown_args),
-                outcome: if outcome.is_error { "error" } else { "ok" }.into(),
-                detail: super::audit::short(&outcome.text),
-                millis: started.elapsed().as_millis() as u64,
-            },
-        );
-        let notes = super::hooks::after_tool(
+        guarded_call(
             self.config_dir,
             self.id,
-            name,
+            Some(self.run),
+            self.agent,
+            self.workdir.as_deref().map(std::path::Path::new),
+            call.function.name.as_str(),
             &arguments,
-            &outcome.text,
-            outcome.is_error,
-            workdir,
+            self.run_inner(call),
         )
-        .await;
-        if !notes.is_empty() {
-            outcome.text.push_str(&format!(
-                "\n\n[From the user's hooks]\n{}",
-                notes.join("\n")
-            ));
+        .await
+    }
+
+    /// A change made outside the connectors (the organization, a scheduled task, a saved skill)
+    /// under the approval mode; see [`change_gate`]. `Err` carries the refusal for the model.
+    /// `connector` labels the approval card; `None` shows the tool on its own.
+    async fn confirm_change(
+        &self,
+        name: &str,
+        connector: Option<String>,
+        arguments: &Value,
+        asked: bool,
+        in_plan: &str,
+        unattended: &str,
+    ) -> Result<(), tools::Outcome> {
+        let refuse = |text: &str| {
+            Err(tools::Outcome {
+                text: text.into(),
+                is_error: true,
+            })
+        };
+        match change_gate(
+            self.request.approval,
+            asked || session_allowed(self.id, name),
+        ) {
+            ChangeGate::Run => Ok(()),
+            ChangeGate::RefuseInPlan => refuse(in_plan),
+            ChangeGate::RefuseUnattended => refuse(unattended),
+            ChangeGate::Ask => {
+                let gate = ChatTool {
+                    name: name.into(),
+                    description: String::new(),
+                    parameters: Value::Null,
+                    connector_id: connector,
+                    tool_name: name.into(),
+                    read_only: false,
+                };
+                match self.host.approve(&gate, arguments, None).await {
+                    ApprovalDecision::Deny => refuse(
+                        "The user declined this change. Do not retry it; ask what they would like instead.",
+                    ),
+                    // "Always allow" lasts for this conversation, as in Vibe.
+                    ApprovalDecision::Always => {
+                        allow_for_session(self.id, name);
+                        Ok(())
+                    }
+                    ApprovalDecision::Once => Ok(()),
+                }
+            }
         }
-        outcome
     }
 
     /// `manage_agents`: a manager agent changes its organization, under the approval mode (it
@@ -2021,41 +2472,26 @@ impl Runner<'_> {
             return refuse("Only agents can manage agents.");
         };
         if super::org::changes(arguments) {
-            match self.request.approval {
-                ApprovalMode::Plan => {
-                    return refuse("Plan mode changes nothing: describe the agents you would create or change, and the user can switch modes to go ahead.");
-                }
-                ApprovalMode::Unattended => {
-                    return refuse("Nobody is watching this scheduled run to approve changes to your organization; make them in a chat.");
-                }
-                ApprovalMode::Ask | ApprovalMode::AcceptEdits
-                    if !asked && !session_allowed(self.id, super::org::MANAGE_AGENTS) =>
-                {
-                    let gate = ChatTool {
-                        name: super::org::MANAGE_AGENTS.into(),
-                        description: String::new(),
-                        parameters: Value::Null,
-                        connector_id: Some(agent.name.clone()),
-                        tool_name: super::org::MANAGE_AGENTS.into(),
-                        read_only: false,
-                    };
-                    match tools::request_approval(self.app, &gate, arguments).await {
-                        ApprovalDecision::Deny => {
-                            return refuse("The user declined this change. Do not retry it; ask what they would like instead.");
-                        }
-                        ApprovalDecision::Always => {
-                            allow_for_session(self.id, super::org::MANAGE_AGENTS)
-                        }
-                        ApprovalDecision::Once => {}
-                    }
-                }
-                _ => {}
+            if let Err(refused) = self
+                .confirm_change(
+                    super::org::MANAGE_AGENTS,
+                    Some(agent.name.clone()),
+                    arguments,
+                    asked,
+                    "Plan mode changes nothing: describe the agents you would create or change, and the user can switch modes to go ahead.",
+                    "Nobody is watching this scheduled run to approve changes to your organization; make them in a chat.",
+                )
+                .await
+            {
+                return refused;
             }
         }
         match super::org::apply(self.config_dir, &agent.id, arguments) {
             Ok((text, changed)) => {
                 if changed {
-                    let _ = self.app.emit("chat://agents-changed", ());
+                    if let Some(app) = self.host.app() {
+                        let _ = app.emit("chat://agents-changed", ());
+                    }
                 }
                 tools::Outcome {
                     text,
@@ -2075,9 +2511,28 @@ impl Runner<'_> {
                 is_error: true,
             };
         }
-        // The agent's "ask first" policy covers every tool, built-in and reading ones included.
+        // Only what this turn offered runs: an agent's allowed tools, a worker's or eval's
+        // `only_tools`, the composer's tools turned off, a temporary chat's missing memory tools.
+        // A model that names anything else, from an injected page or a guess, is refused.
+        if !self.offered.iter().any(|t| t.name == name) {
+            return tools::Outcome {
+                text: format!("There is no tool named {name} here."),
+                is_error: true,
+            };
+        }
+        // The agent's "ask first" policy covers every tool, built-in and reading ones included,
+        // except those that always ask with their own fuller card (review, scores, access): asking
+        // first would replace that card with a plain one.
         let mut asked = false;
-        if self.agent.is_some_and(|a| agents::asks_first(a, name))
+        let asks_with_its_own_card = matches!(
+            name,
+            builtins::SAVE_SKILL
+                | super::script_tools::PROMOTE_TOOL
+                | super::script_tools::REQUEST_CAPABILITY
+                | super::proposals::PROPOSE_CHANGE
+        );
+        if !asks_with_its_own_card
+            && self.agent.is_some_and(|a| agents::asks_first(a, name))
             && !session_allowed(self.id, name)
         {
             if self.request.approval.unattended() {
@@ -2094,7 +2549,7 @@ impl Runner<'_> {
                 tool_name: name.into(),
                 read_only: false,
             };
-            match tools::request_approval(self.app, &gate, &arguments).await {
+            match self.host.approve(&gate, &arguments, None).await {
                 ApprovalDecision::Deny => {
                     return tools::Outcome { text: "The user declined this tool call. Do not retry it; ask what they would like instead.".into(), is_error: true };
                 }
@@ -2104,237 +2559,14 @@ impl Runner<'_> {
             }
             asked = true;
         }
-        if name == builtins::DELEGATE {
-            return match subagents::parse_tasks(&arguments) {
-                Ok(tasks) => {
-                    let reports = subagents::run_all(
-                        self.app,
-                        self.config_dir,
-                        self.model,
-                        self.offered,
-                        self.id,
-                        &call.id.to_string(),
-                        tasks,
-                        subagents::Mode::parse(&arguments),
-                    )
-                    .await;
-                    tools::Outcome {
-                        text: subagents::render(&reports),
-                        is_error: reports.iter().all(|r| r.status != "done"),
-                    }
-                }
-                Err(e) => tools::Outcome {
-                    text: e,
-                    is_error: true,
-                },
-            };
-        }
-        if name == agents::MESSAGE_AGENT {
-            return message_agent(
-                self.app,
-                self.config_dir,
-                self.id,
-                self.agent,
-                &arguments,
-                self.workdir.as_deref(),
-                self.request.approval,
-            )
-            .await;
-        }
-        if name == super::org::MANAGE_AGENTS {
-            return self.manage_agents(&arguments, asked).await;
-        }
-        if name == deferred::FIND_TOOLS {
-            return tools::Outcome {
-                text: deferred::find(self.offered, &arguments).0,
-                is_error: false,
-            };
-        }
-        if name == agents::NOTEBOOK_TOOL {
-            let Some(agent_id) = store::load_conversation(self.config_dir, self.id)
-                .ok()
-                .and_then(|c| c.agent_id)
-            else {
-                return tools::Outcome {
-                    text: "Only agents keep a notebook.".into(),
-                    is_error: true,
-                };
-            };
-            let content = arguments
-                .get("content")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-            return match agents::save_notebook(self.config_dir, &agent_id, content) {
-                Ok(()) => tools::Outcome {
-                    text: "Notebook saved.".into(),
-                    is_error: false,
-                },
-                Err(e) => tools::Outcome {
-                    text: e,
-                    is_error: true,
-                },
-            };
-        }
-        if name == builtins::CANVAS {
-            let text = |k: &str| arguments.get(k).and_then(Value::as_str).map(str::to_string);
-            // A bigger app comes as several files.
-            let files: Option<Vec<canvas::AppFile>> = arguments
-                .get("files")
-                .and_then(|f| serde_json::from_value(f.clone()).ok())
-                .filter(|f: &Vec<canvas::AppFile>| !f.is_empty());
-            let content = match files {
-                Some(files) => match canvas::bundle(&files) {
-                    Ok(c) => Some(c),
-                    Err(e) => {
-                        return tools::Outcome {
-                            text: e,
-                            is_error: true,
-                        }
-                    }
-                },
-                None => text("content").filter(|c| !c.trim().is_empty()),
-            };
-            let Some(content) = content else {
-                return tools::Outcome {
-                    text: "Give the canvas content.".into(),
-                    is_error: true,
-                };
-            };
-            let id = text("id").filter(|i| !i.trim().is_empty());
-            let kind = if arguments.get("files").is_some() {
-                Some("app".to_string())
-            } else {
-                text("kind")
-            };
-            return match canvas::write_kind(self.config_dir, self.id, id.as_deref(), text("title").as_deref(), &content, "assistant", kind.as_deref()) {
-                Ok(c) => tools::Outcome {
-                    text: serde_json::json!({ "id": c.id, "title": c.title, "kind": c.kind, "version": c.versions.len() }).to_string(),
-                    is_error: false,
-                },
-                Err(e) => tools::Outcome { text: e, is_error: true },
-            };
-        }
-        if name == sandbox::RUN_CODE {
-            return self.run_code(&arguments).await;
-        }
-        if name == terminal::START || name == terminal::READ || name == terminal::STOP {
-            return self.terminal(name, &arguments).await;
-        }
-        if name == super::webpage::BROWSER_ACT {
-            // Using a page can change things (submit, sign up, post), so it asks unless the
-            // chat runs on its own by choice.
-            if !asked
-                && !matches!(
-                    self.request.approval,
-                    ApprovalMode::Auto | ApprovalMode::Autonomous
-                )
-            {
-                if self.request.approval.unattended() {
-                    return tools::Outcome { text: "Using web pages needs the user's approval, and nobody is watching this run.".into(), is_error: true };
-                }
-                let gate = ChatTool {
-                    name: name.into(),
-                    description: String::new(),
-                    parameters: Value::Null,
-                    connector_id: Some("browser".into()),
-                    tool_name: name.into(),
-                    read_only: false,
-                };
-                if matches!(
-                    tools::request_approval(self.app, &gate, &arguments).await,
-                    ApprovalDecision::Deny
-                ) {
-                    return tools::Outcome { text: "The user declined this. Do not retry it; ask what they would like instead.".into(), is_error: true };
-                }
-            }
-            return super::webpage::act(
-                self.config_dir,
-                self.id,
-                self.agent.map(|a| a.id.as_str()),
-                &arguments,
-            )
-            .await;
-        }
-        if name == super::webpage::BROWSER_VIEW {
-            return super::webpage::view(
-                self.config_dir,
-                self.id,
-                self.agent.map(|a| a.id.as_str()),
-                &arguments,
-            )
-            .await;
-        }
-        if name == media::GENERATE_IMAGE {
-            return media::generate(self.config_dir, self.id, &arguments).await;
-        }
-        if name == super::animation::MAKE_ANIMATION {
-            return super::animation::make(self.config_dir, self.id, &arguments).await;
-        }
-        if name == super::videogen::GENERATE_VIDEO {
-            return super::videogen::generate(self.config_dir, self.id, &arguments).await;
-        }
-        if name == builtins::NOTIFY {
-            let text = |k: &str| {
-                arguments
-                    .get(k)
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .chars()
-                    .take(240)
-                    .collect::<String>()
-            };
-            let title = text("title");
-            if title.trim().is_empty() {
-                return tools::Outcome {
-                    text: "Give the notification a title.".into(),
-                    is_error: true,
-                };
-            }
-            notify(self.app, &title, &text("body"));
-            return tools::Outcome {
-                text: "Notification shown.".into(),
-                is_error: false,
-            };
-        }
-        if name == READ_TOOL_OUTPUT {
-            let call_id = arguments
-                .get("call_id")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-            let offset = arguments.get("offset").and_then(Value::as_u64).unwrap_or(0) as usize;
-            return match read_tool_output(self.config_dir, self.id, call_id, offset) {
-                Ok(text) => tools::Outcome {
-                    text,
-                    is_error: false,
-                },
-                Err(text) => tools::Outcome {
-                    text,
-                    is_error: true,
-                },
-            };
-        }
-        if builtins::is_builtin(name) {
-            let mut arguments = arguments;
-            // A follow-up in this chat: the task needs to know which one.
-            if name == builtins::SCHEDULE_TASK {
-                if let Some(map) = arguments.as_object_mut() {
-                    map.insert("reply_in".into(), Value::String(self.id.to_string()));
-                }
-            }
-            // A saved fact keeps a link to the chat it was learned in.
-            if name == builtins::REMEMBER {
-                if let Some(map) = arguments.as_object_mut() {
-                    map.insert("conversation".into(), Value::String(self.id.to_string()));
-                }
-            }
-            return builtins::run(self.config_dir, name, &arguments).await;
+        if let Some(handler) = handlers::find(name) {
+            return handler(self, call, arguments, asked).await;
         }
         match self.offered.iter().find(|t| t.name == name) {
             // Approved just now under the agent's policy: do not ask a second time.
             Some(tool) if asked => {
                 tools::execute(
-                    self.app,
-                    self.registry,
+                    self.host.as_ref(),
                     tool,
                     arguments,
                     ApprovalMode::Auto,
@@ -2346,24 +2578,18 @@ impl Runner<'_> {
                 let mode = agents::mode_for(self.agent, name, self.request.approval);
                 // Auto: what Ask mode would confirm gets a quick check against the request.
                 if mode == ApprovalMode::Auto
-                    && tools::risk(tool, &arguments).is_none()
+                    && tools::risk_here(Some(self.config_dir), tool, &arguments).is_none()
                     && tools::needs_approval(tool, &arguments, ApprovalMode::Ask)
                 {
                     if let Some(reason) = self.auto_check(name, &arguments).await {
-                        if tools::request_approval_because(
-                            self.app,
-                            tool,
-                            &arguments,
-                            Some(&reason),
-                        )
-                        .await
+                        if self.host.approve(tool, &arguments, Some(&reason)).await
                             == ApprovalDecision::Deny
                         {
                             return tools::Outcome { text: "The user declined this tool call. Do not retry it; ask what they would like instead.".into(), is_error: true };
                         }
                     }
                 }
-                tools::execute(self.app, self.registry, tool, arguments, mode, self.id).await
+                tools::execute(self.host.as_ref(), tool, arguments, mode, self.id).await
             }
             None => tools::Outcome {
                 text: format!("There is no tool named {name}."),
@@ -2435,8 +2661,9 @@ impl Runner<'_> {
                     tool_name: "start".into(),
                     read_only: false,
                 };
-                // Smart-approve: a command that is hard to undo asks even in Full auto.
-                let risky = tools::risk(&gate, arguments);
+                // Smart-approve: a command that is hard to undo, or that names the app's own
+                // data, asks even in Full auto.
+                let risky = tools::risk_here(Some(self.config_dir), &gate, arguments);
                 match agents::mode_for(self.agent, terminal::START, self.request.approval) {
                     ApprovalMode::Plan => return fail("Plan mode: nothing is started yet. Put this command in your plan."),
                     ApprovalMode::Unattended => return fail("This scheduled run may not start commands."),
@@ -2447,13 +2674,13 @@ impl Runner<'_> {
                     // Auto: the harness evaluates the command against the request.
                     ApprovalMode::Auto if risky.is_none() => {
                         if let Some(reason) = self.auto_check(terminal::START, arguments).await {
-                            if tools::request_approval_because(self.app, &gate, arguments, Some(&reason)).await == ApprovalDecision::Deny {
+                            if self.host.approve(&gate, arguments, Some(&reason)).await == ApprovalDecision::Deny {
                                 return fail("The user declined to start this command. Do not retry it; ask what they would like instead.");
                             }
                         }
                     }
                     _ => {
-                        if tools::request_approval(self.app, &gate, arguments).await == ApprovalDecision::Deny {
+                        if self.host.approve(&gate, arguments, None).await == ApprovalDecision::Deny {
                             return fail("The user declined to start this command. Do not retry it; ask what they would like instead.");
                         }
                     }
@@ -2499,26 +2726,23 @@ impl Runner<'_> {
         }
     }
 
-    /// Runs code once the user allows it: every run in "ask" modes, unless they allowed all.
+    /// Runs code once the user allows it: every run in "ask" modes, unless they allowed all, and
+    /// every run in every mode where it would not be isolated.
     async fn run_code(&self, arguments: &Value) -> tools::Outcome {
-        match self.request.approval {
-            ApprovalMode::Unattended => return tools::Outcome {
-                text:
-                    "This scheduled run may not run code; the user can allow changes for this task."
-                        .into(),
-                is_error: true,
-            },
-            ApprovalMode::Plan => {
+        let gate = sandbox::code_gate(
+            self.request.approval,
+            sandbox::isolated(self.config_dir),
+            sandbox::always_allowed(self.config_dir),
+        );
+        match gate {
+            sandbox::CodeGate::Refuse(text) => {
                 return tools::Outcome {
-                    text: "Plan mode: code is not run yet. Put this step in your plan instead."
-                        .into(),
+                    text: text.into(),
                     is_error: true,
                 }
             }
-            ApprovalMode::Autonomous | ApprovalMode::Auto => {}
-            ApprovalMode::Ask | ApprovalMode::AcceptEdits
-                if sandbox::always_allowed(self.config_dir) => {}
-            ApprovalMode::Ask | ApprovalMode::AcceptEdits => {
+            sandbox::CodeGate::Run => {}
+            sandbox::CodeGate::Ask(reason) => {
                 let Some(tool) = self.offered.iter().find(|t| t.name == sandbox::RUN_CODE) else {
                     return tools::Outcome {
                         text: "Running code is not available.".into(),
@@ -2529,19 +2753,20 @@ impl Runner<'_> {
                     connector_id: Some("sandbox".into()),
                     ..tool.clone()
                 };
-                match tools::request_approval(self.app, &gate, arguments).await {
+                match self.host.approve(&gate, arguments, reason).await {
                     ApprovalDecision::Deny => {
                         return tools::Outcome {
                             text: "The user declined to run this code. Do not retry it; ask what they would like instead.".into(),
                             is_error: true,
                         }
                     }
-                    ApprovalDecision::Always => {
+                    // "Always" covers isolated runs; an unsandboxed one asks every time.
+                    ApprovalDecision::Always if reason.is_none() => {
                         if let Err(e) = sandbox::set_always_allowed(self.config_dir, true) {
                             warn!("could not save the code-run permission: {e}");
                         }
                     }
-                    ApprovalDecision::Once => {}
+                    ApprovalDecision::Always | ApprovalDecision::Once => {}
                 }
             }
         }
@@ -2555,7 +2780,7 @@ impl Runner<'_> {
 
 /// Puts the model's question to the user and waits for the answer.
 async fn ask_user(
-    app: &AppHandle,
+    host: &dyn Host,
     id: &str,
     call: &ToolCall,
     cancel: &mut watch::Receiver<bool>,
@@ -2577,17 +2802,14 @@ async fn ask_user(
                 .collect()
         })
         .unwrap_or_default();
-    let state = app.state::<ChatState>();
+    let state = host.chat_state();
     let answer = state.ask(&call_id);
-    emit(
-        app,
-        ChatEvent::Question {
-            conversation_id: id.into(),
-            call_id: call_id.clone(),
-            question,
-            options,
-        },
-    );
+    host.emit(ChatEvent::Question {
+        conversation_id: id.into(),
+        call_id: call_id.clone(),
+        question,
+        options,
+    });
     tokio::select! {
         _ = cancelled(cancel) => {
             state.forget_question(&call_id);
@@ -2601,13 +2823,22 @@ async fn ask_user(
 }
 
 /// Summarizes the turns before the last few once the conversation nears the model's window.
+/// What [`compact_if_needed`] did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Compaction {
+    /// The context fits, or there is nothing older than the recent turns to summarize.
+    NotNeeded,
+    Done,
+    Failed,
+}
+
 async fn compact_if_needed(
-    app: &AppHandle,
+    host: &dyn Host,
     model: &DynModel<Completion>,
     conversation: &mut Conversation,
     window: u64,
     config_dir: &std::path::Path,
-) {
+) -> Compaction {
     let measured = if conversation.usage.context_tokens > 0 {
         conversation.usage.context_tokens
     } else {
@@ -2617,19 +2848,16 @@ async fn compact_if_needed(
         ))
     };
     if !context::should_compact(measured, window) {
-        return;
+        return Compaction::NotNeeded;
     }
     let covered = conversation.summary.as_ref().map_or(0, |s| s.upto);
     let Some(point) = context::compaction_point(&conversation.messages, covered) else {
-        return;
+        return Compaction::NotNeeded;
     };
     let id = conversation.id.clone();
-    emit(
-        app,
-        ChatEvent::Compacting {
-            conversation_id: id.clone(),
-        },
-    );
+    host.emit(ChatEvent::Compacting {
+        conversation_id: id.clone(),
+    });
     let transcript = context::transcript(&conversation.messages[covered..point]);
     let prompt = context::summary_prompt(
         conversation.summary.as_ref().map(|s| s.text.as_str()),
@@ -2650,23 +2878,19 @@ async fn compact_if_needed(
             if let Err(e) = store::save_conversation(config_dir, conversation) {
                 warn!("could not save compacted conversation: {e}");
             }
-            emit(
-                app,
-                ChatEvent::Compacted {
-                    conversation_id: id,
-                    upto: point,
-                },
-            );
+            host.emit(ChatEvent::Compacted {
+                conversation_id: id,
+                upto: point,
+            });
+            Compaction::Done
         }
         Ok(Ok(_)) | Ok(Err(_)) | Err(_) => {
             warn!("compaction failed; continuing with tool-result clearing only");
-            emit(
-                app,
-                ChatEvent::Compacted {
-                    conversation_id: id,
-                    upto: covered,
-                },
-            );
+            host.emit(ChatEvent::Compacted {
+                conversation_id: id,
+                upto: covered,
+            });
+            Compaction::Failed
         }
     }
 }
@@ -2753,6 +2977,13 @@ pub async fn run_task(app: AppHandle, task: tasks::Task) {
         connectors: None,
         route_note: None,
         tools_off: Vec::new(),
+        max_steps: None,
+        only_tools: None,
+        system: None,
+        skills_off: Vec::new(),
+        facts_off: Vec::new(),
+        pages_off: Vec::new(),
+        instructions_off: false,
     };
     run_turn(app.clone(), request, cancel).await;
     let finished = store::load_conversation(&config_dir, &id).ok();
@@ -2846,8 +3077,8 @@ pub fn fallback_title(conversation: &Conversation) -> String {
 }
 
 /// Asks the same model for a short title, falling back to the first message.
-async fn name_conversation(app: AppHandle, reference: String, mut conversation: Conversation) {
-    let Ok(config_dir) = config_dir(&app) else {
+async fn name_conversation(host: Arc<dyn Host>, reference: String, mut conversation: Conversation) {
+    let Ok(config_dir) = host.config_dir() else {
         return;
     };
     let mut title = fallback_title(&conversation);
@@ -2872,13 +3103,10 @@ async fn name_conversation(app: AppHandle, reference: String, mut conversation: 
     if latest.title.is_empty() {
         latest.title.clone_from(&title);
         if store::save_conversation(&config_dir, &latest).is_ok() {
-            emit(
-                &app,
-                ChatEvent::Title {
-                    conversation_id: latest.id,
-                    title,
-                },
-            );
+            host.emit(ChatEvent::Title {
+                conversation_id: latest.id,
+                title,
+            });
         }
     }
 }
@@ -2914,9 +3142,28 @@ fn drop_old_screenshots(messages: &mut [Message]) {
     }
 }
 
+mod handlers;
+
+#[cfg(test)]
+mod turn_tests;
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn changes_outside_the_connectors_follow_the_approval_mode() {
+        use ApprovalMode::*;
+        assert_eq!(change_gate(Ask, false), ChangeGate::Ask);
+        assert_eq!(change_gate(AcceptEdits, false), ChangeGate::Ask);
+        // Approved just now under an agent's policy, or "Always allow" earlier in the chat.
+        assert_eq!(change_gate(Ask, true), ChangeGate::Run);
+        assert_eq!(change_gate(Auto, false), ChangeGate::Run);
+        assert_eq!(change_gate(Autonomous, false), ChangeGate::Run);
+        // An approval never lets a change through where changes are refused.
+        assert_eq!(change_gate(Plan, true), ChangeGate::RefuseInPlan);
+        assert_eq!(change_gate(Unattended, true), ChangeGate::RefuseUnattended);
+    }
 
     #[test]
     fn the_prompt_uses_the_users_local_time() {

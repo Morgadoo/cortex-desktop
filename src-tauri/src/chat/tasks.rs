@@ -44,6 +44,27 @@ pub enum Frequency {
     /// Whenever an RSS or Atom feed at `url` has new items (checked every 10 minutes).
     #[serde(rename_all = "camelCase")]
     NewFeedItems { url: String },
+    /// A five-field cron expression (minute hour day-of-month month day-of-week), in local time:
+    /// `0 9 * * 1-5` is 9:00 on weekdays.
+    #[serde(rename_all = "camelCase")]
+    Cron { expression: String },
+}
+
+/// The next time a cron expression fires after `after`, in the user's local time.
+fn next_cron(expression: &str, after: DateTime<Utc>) -> Result<Option<DateTime<Utc>>, String> {
+    let fields = expression.split_whitespace().count();
+    if fields != 5 {
+        return Err(format!(
+            "`{expression}` is not a five-field cron expression like `0 9 * * 1-5`."
+        ));
+    }
+    let cron: croner::Cron = expression
+        .parse()
+        .map_err(|e| format!("`{expression}` is not a cron expression: {e}"))?;
+    Ok(cron
+        .find_next_occurrence(&after.with_timezone(&Local), false)
+        .ok()
+        .map(|at| at.with_timezone(&Utc)))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
@@ -215,10 +236,57 @@ fn days_in_month(year: i32, month: u32) -> u32 {
 }
 
 /// The first run strictly after `after`, or `None` when there is no other.
+/// The calendar rule of a time-based task in the app's one timing engine
+/// ([`crate::schedules`]: time zones, daylight saving, cron), in the user's time zone. `None` for
+/// what that engine does not express: yearly tasks, file and feed triggers, and monthly tasks on
+/// the 29th to 31st, which run on a short month's last day instead of skipping it.
+fn calendar(frequency: &Frequency) -> Option<crate::schedules::Timing> {
+    use crate::schedules::Timing;
+    let timezone = iana_time_zone::get_timezone()
+        .ok()
+        .filter(|z| !z.is_empty())?;
+    let hhmm = |time: &str| parse_time(time).ok().map(|t| t.format("%H:%M").to_string());
+    match frequency {
+        Frequency::Daily { time } => Some(Timing::Daily {
+            time: hhmm(time)?,
+            timezone,
+        }),
+        Frequency::Weekly { days, time } if days.iter().all(|d| *d <= 6) && !days.is_empty() => {
+            let mut iso: Vec<u8> = days.iter().map(|d| d + 1).collect();
+            iso.sort_unstable();
+            iso.dedup();
+            Some(Timing::Weekly {
+                days: iso,
+                time: hhmm(time)?,
+                timezone,
+            })
+        }
+        Frequency::Monthly { day, time } if (1..=28).contains(day) => Some(Timing::Monthly {
+            days: vec![*day],
+            time: hhmm(time)?,
+            timezone,
+        }),
+        _ => None,
+    }
+}
+
 pub fn next_run(
     frequency: &Frequency,
     after: DateTime<Utc>,
 ) -> Result<Option<DateTime<Utc>>, String> {
+    if let Some(timing) = calendar(frequency) {
+        let schedule = crate::schedules::Schedule {
+            id: "task".into(),
+            timing_revision: 0,
+            enabled: true,
+            timing,
+            missed_run_policy: crate::schedules::MissedRunPolicy::RunOnce,
+        };
+        // A rule the engine refuses falls through to the checks below, which say why.
+        if let Ok(next) = schedule.next_after(after) {
+            return Ok(next);
+        }
+    }
     let now = after.with_timezone(&Local);
     let today = now.date_naive();
     match frequency {
@@ -272,6 +340,7 @@ pub fn next_run(
         }
         // Started by files or feeds, not by the clock.
         Frequency::NewFiles { .. } | Frequency::NewFeedItems { .. } => Ok(None),
+        Frequency::Cron { expression } => next_cron(expression, after),
         Frequency::Yearly { month, day, time } => {
             if *month == 0 || *month > 12 || *day == 0 || *day > 31 {
                 return Err(
@@ -308,6 +377,7 @@ pub fn describe(frequency: &Frequency) -> String {
     match frequency {
         Frequency::Once { date, time } => format!("Once on {date} at {time}"),
         Frequency::Daily { time } => format!("Every day at {time}"),
+        Frequency::Cron { expression } => format!("On the schedule `{expression}`"),
         Frequency::Weekly { days, time } => {
             let mut days = days.clone();
             days.sort_unstable();
@@ -721,7 +791,11 @@ pub fn save(config_dir: &Path, mut task: Task) -> Result<Vec<Task>, String> {
     }
     let mut tasks = load(config_dir);
     match tasks.iter_mut().find(|t| t.id == task.id) {
-        Some(existing) => *existing = task,
+        Some(existing) => {
+            // The task as it was stays restorable, like the rest of what can act on its own.
+            super::versions::keep(config_dir, "tasks", &task.id, &*existing, &task)?;
+            *existing = task;
+        }
         None => tasks.push(task),
     }
     store(config_dir, &tasks)?;
@@ -820,14 +894,25 @@ pub fn start(app: AppHandle) {
                         async move { super::engine::run_task(app, task).await },
                     );
                 }
-                // The weekly knowledge review, when turned on (learning.rs).
-                if super::learning::take_review(&config_dir, Utc::now()) {
-                    info!("running the weekly knowledge review");
-                    let app = app.clone();
-                    tauri::async_runtime::spawn(async move {
-                        super::engine::run_task(app, super::learning::review_task()).await
-                    });
-                }
+                // The kernel's maintenance jobs: lifecycle and regression checks daily, evals
+                // nightly when on, the review weekly when on (`maintenance`, tested on its own).
+                let due = maintenance(&config_dir, Utc::now()).await;
+                let (evals_app, review_app) = (app.clone(), app.clone());
+                dispatch(
+                    due,
+                    move |model| {
+                        let host: std::sync::Arc<dyn super::host::Host> =
+                            std::sync::Arc::new(super::host::TauriHost::new(evals_app));
+                        tauri::async_runtime::spawn(async move {
+                            super::evals::nightly_and_notify(&host, &model).await
+                        });
+                    },
+                    move |task| {
+                        tauri::async_runtime::spawn(async move {
+                            super::engine::run_task(review_app, task).await
+                        });
+                    },
+                );
                 for task in take_new_files(&config_dir, std::time::SystemTime::now()) {
                     info!("new files started task {}", task.title);
                     let app = app.clone();
@@ -869,8 +954,217 @@ pub fn run_now(app: &AppHandle, id: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// What one tick of the scheduler's maintenance found due, and did where it needs no running app.
+#[derive(Debug, Default)]
+pub struct Maintenance {
+    /// The daily lifecycle pass, when it ran.
+    pub lifecycle: Option<super::lifecycle::Report>,
+    /// The daily regression checks, run with the lifecycle pass.
+    pub checked: Option<super::script_tools::Checked>,
+    /// The model to run the user's eval suites on, when the nightly run is due.
+    pub evals_on: Option<String>,
+    /// The weekly review to run, when due.
+    pub review: Option<Task>,
+}
+
+/// Starts what [`maintenance`] found due that needs the app: the eval suites on their model, and
+/// the review as a task. What already ran is logged.
+pub fn dispatch(
+    due: Maintenance,
+    start_evals: impl FnOnce(String),
+    start_review: impl FnOnce(Task),
+) {
+    if due.lifecycle.as_ref().is_some_and(|r| !r.is_empty()) {
+        info!("lifecycle: {:?}", due.lifecycle);
+    }
+    if due
+        .checked
+        .as_ref()
+        .is_some_and(|c| c != &Default::default())
+    {
+        info!("regression checks: {:?}", due.checked);
+    }
+    if let Some(model) = due.evals_on {
+        start_evals(model);
+    }
+    if let Some(task) = due.review {
+        info!("running the weekly knowledge review");
+        start_review(task);
+    }
+}
+
+/// The kernel's scheduled maintenance, as of `now`: the lifecycle pass and every written tool's
+/// regression checks once a day; the eval suites nightly and the knowledge review (with the
+/// week's failures) weekly, when turned on. The loop runs what this returns that needs the app.
+pub async fn maintenance(config_dir: &Path, now: DateTime<Utc>) -> Maintenance {
+    let mut due = Maintenance::default();
+    if let Some(report) = super::lifecycle::daily(config_dir, now).await {
+        due.lifecycle = Some(report);
+        due.checked = Some(super::script_tools::check_all(config_dir).await);
+    }
+    if super::learning::take_evals(config_dir, now) {
+        due.evals_on = super::providers::load(config_dir).default_model;
+    }
+    if super::learning::take_review(config_dir, now) {
+        due.review = Some(super::learning::review_task(config_dir));
+    }
+    due
+}
+
 #[cfg(test)]
 mod tests {
+
+    /// The scheduler's maintenance: each job runs when due and not again before its time, and
+    /// what needs the app (the evals, the review turn) comes back for the loop to start.
+    #[tokio::test]
+    async fn maintenance_runs_each_job_when_it_is_due() {
+        use super::super::{learning, providers, script_tools};
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let now = Utc::now();
+        // A tool whose check now fails: the daily pass sends it back to candidate.
+        script_tools::create(
+            d,
+            "",
+            &serde_json::json!({ "name": "count_words", "description": "Count words.", "script": "function main(a) { return 2; }", "test_args": {} }),
+        )
+        .await
+        .unwrap();
+        script_tools::promote(d, "count_words", None).await.unwrap();
+        let mut tool = script_tools::load(d, "count_words").unwrap();
+        tool.checks[0].expected = "3".into();
+        script_tools::save(d, &tool).unwrap();
+        learning::save(
+            d,
+            &learning::Learning {
+                review_knowledge: true,
+                nightly_evals: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let mut models = providers::load(d);
+        models.default_model = Some("anthropic/claude-haiku-5-5".into());
+        providers::save(d, &models).unwrap();
+
+        let due = maintenance(d, now).await;
+        assert!(due.lifecycle.is_some());
+        assert_eq!(
+            due.checked.unwrap().demoted,
+            vec!["count_words".to_string()]
+        );
+        assert_eq!(due.evals_on.as_deref(), Some("anthropic/claude-haiku-5-5"));
+        assert_eq!(due.review.unwrap().title, "Weekly knowledge review");
+
+        // An hour later nothing is due; a day later the daily jobs and evals, not the review.
+        let later = maintenance(d, now + chrono::Duration::hours(1)).await;
+        assert!(later.lifecycle.is_none() && later.checked.is_none());
+        assert!(later.evals_on.is_none() && later.review.is_none());
+        let tomorrow = maintenance(d, now + chrono::Duration::hours(25)).await;
+        assert!(tomorrow.lifecycle.is_some() && tomorrow.evals_on.is_some());
+        assert!(tomorrow.review.is_none());
+    }
+
+    /// `schedule(cron, task)`: a cron expression, in local time, through the same next-run path.
+    #[test]
+    fn cron_tasks_run_on_their_expression() {
+        use chrono::Timelike;
+        let cron = |e: &str| Frequency::Cron {
+            expression: e.into(),
+        };
+        let after = Local
+            .with_ymd_and_hms(2030, 1, 7, 8, 0, 0) // a Monday
+            .single()
+            .unwrap()
+            .with_timezone(&Utc);
+        let next = next_run(&cron("30 9 * * 1-5"), after).unwrap().unwrap();
+        let local = next.with_timezone(&Local);
+        assert_eq!((local.day(), local.hour(), local.minute()), (7, 9, 30));
+        let saturday = Local
+            .with_ymd_and_hms(2030, 1, 12, 8, 0, 0)
+            .single()
+            .unwrap()
+            .with_timezone(&Utc);
+        let monday = next_run(&cron("30 9 * * 1-5"), saturday)
+            .unwrap()
+            .unwrap()
+            .with_timezone(&Local);
+        assert_eq!(monday.day(), 14, "skips the weekend");
+        assert!(next_run(&cron("every day"), after).is_err());
+        assert!(next_run(&cron("61 9 * * *"), after).is_err());
+        assert_eq!(describe(&cron("0 9 * * *")), "On the schedule `0 9 * * *`");
+    }
+
+    /// The loop's part: what is due is started, and nothing else.
+    #[test]
+    fn the_scheduler_starts_what_is_due() {
+        let started = std::cell::RefCell::new(Vec::new());
+        let due = Maintenance {
+            evals_on: Some("m/a".into()),
+            review: Some(super::super::learning::review_task(std::path::Path::new(
+                "/nonexistent",
+            ))),
+            ..Maintenance::default()
+        };
+        dispatch(
+            due,
+            |model| started.borrow_mut().push(format!("evals on {model}")),
+            |task| started.borrow_mut().push(task.title),
+        );
+        assert_eq!(
+            started.into_inner(),
+            vec![
+                "evals on m/a".to_string(),
+                "Weekly knowledge review".to_string()
+            ]
+        );
+        let nothing = std::cell::Cell::new(0);
+        dispatch(
+            Maintenance::default(),
+            |_| nothing.set(nothing.get() + 1),
+            |_| nothing.set(nothing.get() + 1),
+        );
+        assert_eq!(nothing.get(), 0);
+    }
+
+    #[test]
+    fn a_nightly_drop_is_announced() {
+        use super::super::evals::{drop_notice, Nightly};
+        let result = |score: f64, before: Option<f64>| Nightly {
+            suite: "trips".into(),
+            score,
+            before,
+            worse: vec!["porto".into()],
+        };
+        let (title, body) = drop_notice(&result(0.5, Some(0.75))).unwrap();
+        assert_eq!(title, "An eval score dropped");
+        assert_eq!(body, "trips: 0.50 (was 0.75). Worse: porto");
+        assert!(drop_notice(&result(0.75, Some(0.75))).is_none());
+        assert!(drop_notice(&result(0.1, None)).is_none());
+    }
+
+    /// A task is versioned like the rest of what acts on its own: an edit can be undone.
+    #[test]
+    fn a_task_edit_can_be_undone() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let mut task = super::super::learning::review_task(d);
+        task.id = "report".into();
+        task.prompt = "Write the weekly report.".into();
+        task.frequency = Frequency::Weekly {
+            days: vec![0],
+            time: "09:00".into(),
+        };
+        save(d, task.clone()).unwrap();
+        let mut changed = task.clone();
+        changed.prompt = "Email everyone the report.".into();
+        save(d, changed).unwrap();
+        let before = super::super::versions::list(d, "tasks", "report")
+            .unwrap()
+            .remove(0);
+        super::super::versions::restore(d, "tasks", "report", &before.id).unwrap();
+        assert_eq!(load(d)[0].prompt, "Write the weekly report.");
+    }
 
     #[test]
     fn the_calendar_lists_planned_runs_in_range() {
@@ -1276,5 +1570,58 @@ mod tests {
             .unwrap(),
             None
         );
+    }
+}
+
+#[cfg(test)]
+mod timing_tests {
+    use super::*;
+
+    /// Time-based tasks are timed by the same engine as the web app's schedules.
+    #[test]
+    fn tasks_and_schedules_share_one_timing_engine() {
+        if iana_time_zone::get_timezone().is_err() {
+            // In CI the runner has a time zone, so a skip there would hide a failure.
+            assert!(
+                std::env::var_os("CI").is_none(),
+                "CI needs a time zone for this test"
+            );
+            return;
+        }
+        let after = Utc::now();
+        for frequency in [
+            Frequency::Daily {
+                time: "09:30".into(),
+            },
+            Frequency::Weekly {
+                days: vec![0, 4],
+                time: "18:00".into(),
+            },
+            Frequency::Monthly {
+                day: 15,
+                time: "07:05".into(),
+            },
+        ] {
+            assert!(calendar(&frequency).is_some(), "{frequency:?}");
+            let next = next_run(&frequency, after).unwrap().unwrap();
+            assert!(next > after);
+            let local = next.with_timezone(&Local);
+            match &frequency {
+                Frequency::Daily { .. } => {
+                    assert_eq!(local.format("%H:%M").to_string(), "09:30")
+                }
+                Frequency::Weekly { .. } => {
+                    assert!(matches!(local.weekday(), Weekday::Mon | Weekday::Fri));
+                    assert_eq!(local.format("%H:%M").to_string(), "18:00");
+                }
+                _ => assert_eq!(local.day(), 15),
+            }
+        }
+        // The 31st runs on a short month's last day, so it keeps its own rule.
+        assert!(calendar(&Frequency::Monthly {
+            day: 31,
+            time: "09:00".into()
+        })
+        .is_none());
     }
 }

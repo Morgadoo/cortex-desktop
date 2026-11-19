@@ -280,6 +280,13 @@ pub async fn run_message(
         connectors: None,
         route_note: Some(format!("Sent from {title}")),
         tools_off: Vec::new(),
+        max_steps: None,
+        only_tools: None,
+        system: None,
+        skills_off: Vec::new(),
+        facts_off: Vec::new(),
+        pages_off: Vec::new(),
+        instructions_off: false,
     };
     run_turn(app.clone(), request, cancel).await;
     let answer = match super::store::load_conversation(config_dir, &id) {

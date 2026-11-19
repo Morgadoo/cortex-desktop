@@ -167,6 +167,13 @@ pub async fn env_for(config_dir: &Path, agent: Option<&Agent>) -> Vec<(String, S
     out
 }
 
+/// One secret's value, read from the keychain: for a tool the user granted that secret by name.
+pub async fn value(config_dir: &Path, name: &str) -> Option<String> {
+    list(config_dir).iter().find(|s| s.name == name)?;
+    let store = keychain_secrets(AccountId::parse(LOCAL_ACCOUNT).ok()?);
+    store.load(&keychain_name(name)).await.ok().flatten()
+}
+
 /// Runs `f` with `env` as the secrets of the current tool call.
 pub async fn scope<F: std::future::Future>(env: Vec<(String, String)>, f: F) -> F::Output {
     ENV.scope(env, f).await

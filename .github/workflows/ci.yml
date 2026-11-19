@@ -27,7 +27,7 @@ env:
 jobs:
   webview:
     name: Webview (types, build, translations)
-    runs-on: ubuntu-24.04
+    runs-on: cortex-desktop-ci
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -45,7 +45,7 @@ jobs:
 
   rust:
     name: Rust (format, lints, tests)
-    runs-on: ubuntu-24.04
+    runs-on: cortex-desktop-ci
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -71,18 +71,21 @@ jobs:
       - run: npm ci && npm run build:webview
       - name: Format
         working-directory: src-tauri
-        run: cargo fmt --check
+        run: cargo fmt --all --check
       - name: Lints
         working-directory: src-tauri
-        run: cargo clippy --features test-utils --all-targets -- -D warnings
+        run: cargo clippy --workspace --features cortex/test-utils --all-targets -- -D warnings
       - name: Unit and integration tests
         working-directory: src-tauri
-        run: cargo test --features test-utils
+        run: cargo test --workspace --features cortex/test-utils
+      # Every test docs/agent-kernel-plan.md cites as evidence must exist and pass.
+      - name: The kernel plan's evidence
+        run: python3 scripts/check-kernel-plan.py
 
   live:
     name: Live (Qdrant, Tika, built-in models)
     needs: rust
-    runs-on: ubuntu-24.04
+    runs-on: cortex-desktop-ci
     timeout-minutes: 60
     services:
       qdrant:

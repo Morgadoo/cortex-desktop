@@ -32,8 +32,8 @@ export function editTask(existing: Task | null, onSaved: (tasks: Task[]) => void
     const kind = h(
       'select',
       { class: 'input' },
-      (['once', 'daily', 'weekly', 'monthly', 'yearly', 'newFiles', 'newFeedItems'] as const).map((k) =>
-        h('option', { value: k, selected: freq.kind === k }, k === 'once' ? 'Once' : k === 'newFiles' ? 'When new files arrive in a folder' : k === 'newFeedItems' ? 'When a feed has new items' : k.charAt(0).toUpperCase() + k.slice(1))
+      (['once', 'daily', 'weekly', 'monthly', 'yearly', 'cron', 'newFiles', 'newFeedItems'] as const).map((k) =>
+        h('option', { value: k, selected: freq.kind === k }, k === 'once' ? 'Once' : k === 'cron' ? 'Custom (cron)' : k === 'newFiles' ? 'When new files arrive in a folder' : k === 'newFeedItems' ? 'When a feed has new items' : k.charAt(0).toUpperCase() + k.slice(1))
       )
     );
     const time = h('input', { class: 'input', type: 'time', value: 'time' in freq ? freq.time : '09:00' });
@@ -43,6 +43,8 @@ export function editTask(existing: Task | null, onSaved: (tasks: Task[]) => void
     const timeField = h('div', {}, h('label', { class: 'field-label' }, 'Time'), time);
     // Event trigger: an RSS or Atom feed to follow.
     const feed = h('input', { class: 'input', type: 'url', value: freq.kind === 'newFeedItems' ? freq.url : '', placeholder: 'https://example.com/feed.xml' });
+    // A custom rule: five cron fields, in local time.
+    const cron = h('input', { class: 'input', value: freq.kind === 'cron' ? freq.expression : '', placeholder: '30 9 * * 1-5' });
     folderBtn.addEventListener('click', async () => {
       const dir = await api.pickDirectory();
       if (!dir) return;
@@ -79,9 +81,12 @@ export function editTask(existing: Task | null, onSaved: (tasks: Task[]) => void
           : null,
         kind.value === 'newFeedItems'
           ? h('div', {}, h('label', { class: 'field-label' }, 'Feed address (RSS or Atom)'), feed, h('small', { class: 'muted' }, 'Checked every 10 minutes. What the feed shows today is left alone; new items start a run, with their titles and links added to the prompt.'))
+          : null,
+        kind.value === 'cron'
+          ? h('div', {}, h('label', { class: 'field-label' }, 'Cron expression'), cron, h('small', { class: 'muted' }, 'Minute, hour, day of the month, month, day of the week, in your time zone. 30 9 * * 1-5 is 9:30 on weekdays.'))
           : null
       );
-      timeField.hidden = kind.value === 'newFiles' || kind.value === 'newFeedItems';
+      timeField.hidden = kind.value === 'newFiles' || kind.value === 'newFeedItems' || kind.value === 'cron';
     };
     kind.addEventListener('change', renderExtra);
     renderExtra();
@@ -113,7 +118,9 @@ export function editTask(existing: Task | null, onSaved: (tasks: Task[]) => void
         }
       }
       const frequency: Frequency =
-        kind.value === 'newFiles'
+        kind.value === 'cron'
+          ? { kind: 'cron', expression: cron.value.trim() }
+          : kind.value === 'newFiles'
           ? { kind: 'newFiles', folder }
           : kind.value === 'newFeedItems'
           ? { kind: 'newFeedItems', url: feed.value.trim() }
@@ -372,6 +379,8 @@ function describe(f: Frequency): string {
       }
       return `When ${host} posts something new`;
     }
+    case 'cron':
+      return `On the schedule ${f.expression}`;
   }
 }
 

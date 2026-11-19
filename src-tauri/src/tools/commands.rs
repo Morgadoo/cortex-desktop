@@ -366,6 +366,8 @@ pub async fn invoke_tool(
                 run: run_id.as_deref(),
                 conversation: conversation_id.as_deref(),
                 offered: authorization.connector_ids.as_deref(),
+                // The web app reads long results through the result store.
+                whole: false,
             },
         )
         .await

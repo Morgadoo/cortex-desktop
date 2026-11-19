@@ -116,6 +116,37 @@ pub fn read_to_string<P: AsRef<Path>>(path: P) -> io::Result<String> {
     String::from_utf8(read(path)?).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
 }
 
+/// A file's bytes as read from disk, opened when sealed: for code that reads the file itself.
+pub fn open_bytes(data: Vec<u8>) -> io::Result<Vec<u8>> {
+    if !data.starts_with(MAGIC) {
+        return Ok(data);
+    }
+    match STATE.read().unwrap().as_ref() {
+        Some((_, key)) => open(key, &data),
+        None => Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "this file is encrypted and the key is not available",
+        )),
+    }
+}
+
+/// What to put on disk for `contents` at `path`: sealed when [`write`] would seal it. For code
+/// that writes the file itself.
+pub fn seal_for(path: &Path, contents: &[u8]) -> io::Result<Vec<u8>> {
+    if LOCKED
+        .read()
+        .unwrap()
+        .as_ref()
+        .is_some_and(|root| path.starts_with(root))
+    {
+        return Err(io::Error::new(io::ErrorKind::PermissionDenied, "Cortex's data is encrypted and locked (the keychain did not give the key); nothing is saved until it is unlocked"));
+    }
+    match STATE.read().unwrap().as_ref() {
+        Some((root, key)) if sealed_path(root, path) => seal(key, contents),
+        _ => Ok(contents.to_vec()),
+    }
+}
+
 /// Writes a file, sealing it when encryption is on and it is in the settings folder.
 pub fn write<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, contents: C) -> io::Result<()> {
     let path = path.as_ref();

@@ -53,48 +53,63 @@ pub fn find_tools_tool() -> ChatTool {
     }
 }
 
-fn words(text: &str) -> Vec<String> {
-    text.to_lowercase()
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|w| w.len() > 2)
-        .map(str::to_string)
+/// The deferred tools that best match `query`, by shared words in name and description.
+pub fn search<'a>(offered: &'a [ChatTool], query: &str, limit: usize) -> Vec<&'a ChatTool> {
+    use super::retrieval::{tokens, Corpus};
+    let candidates: Vec<&ChatTool> = offered.iter().filter(|t| deferrable(t)).collect();
+    // The name counts three times; words match as prefixes, so `email` finds `emails`.
+    let corpus = Corpus::new(candidates.iter().map(|t| {
+        let name = tokens(&t.name.replace("__", " ").replace('_', " "));
+        let mut words = name.clone();
+        words.extend(name.clone());
+        words.extend(name);
+        words.extend(tokens(&t.description));
+        words
+    }))
+    .with_prefixes();
+    corpus
+        .search(query)
+        .into_iter()
+        .take(limit)
+        .map(|(i, _)| candidates[i])
         .collect()
 }
 
-/// The deferred tools that best match `query`, by shared words in name and description.
-pub fn search<'a>(offered: &'a [ChatTool], query: &str, limit: usize) -> Vec<&'a ChatTool> {
-    let terms = words(query);
-    let mut scored: Vec<(usize, &ChatTool)> = offered
-        .iter()
-        .filter(|t| deferrable(t))
-        .map(|t| {
-            let name = words(&t.name.replace("__", " ").replace('_', " "));
-            let description = words(&t.description);
-            let score = terms
-                .iter()
-                .map(|w| {
-                    3 * name.iter().filter(|n| n.starts_with(w.as_str())).count()
-                        + description
-                            .iter()
-                            .filter(|d| d.starts_with(w.as_str()))
-                            .count()
-                })
-                .sum();
-            (score, t)
-        })
-        .filter(|(score, _)| *score > 0)
-        .collect();
-    scored.sort_by_key(|a| std::cmp::Reverse(a.0));
-    scored.into_iter().take(limit).map(|(_, t)| t).collect()
+/// Runs `find_tools`: the matches, as the tool result, and the names to load.
+#[cfg(test)]
+pub fn find(offered: &[ChatTool], args: &Value) -> (String, Vec<String>) {
+    find_with(offered, args, None)
 }
 
-/// Runs `find_tools`: the matches, as the tool result, and the names to load.
-pub fn find(offered: &[ChatTool], args: &Value) -> (String, Vec<String>) {
+/// [`find`], with a semantic ranking of the deferrable tools (best first, by name) fused in.
+pub fn find_with(
+    offered: &[ChatTool],
+    args: &Value,
+    semantic: Option<Vec<String>>,
+) -> (String, Vec<String>) {
     let query = args
         .get("query")
         .and_then(Value::as_str)
         .unwrap_or_default();
-    let found = search(offered, query, MATCHES);
+    let lexical = search(offered, query, MATCHES * 3);
+    let found: Vec<&ChatTool> = match semantic {
+        Some(semantic) => {
+            let candidates: Vec<&ChatTool> = offered.iter().filter(|t| deferrable(t)).collect();
+            let index = |name: &str| candidates.iter().position(|t| t.name == name);
+            let by_words: Vec<usize> = lexical.iter().filter_map(|t| index(&t.name)).collect();
+            let by_meaning: Vec<usize> = semantic
+                .iter()
+                .filter_map(|n| index(n))
+                .take(MATCHES * 3)
+                .collect();
+            super::retrieval::fuse_ranks(&[by_words, by_meaning])
+                .into_iter()
+                .take(MATCHES)
+                .map(|i| candidates[i])
+                .collect()
+        }
+        None => lexical.into_iter().take(MATCHES).collect(),
+    };
     if found.is_empty() {
         return (
             json!({ "query": query, "matches": [], "note": "No tool matched; try other words." })
@@ -181,5 +196,36 @@ mod tests {
 
         let p = prompt(&offered, &loaded);
         assert!(p.contains("crm (30)") && !p.contains("calendar"));
+    }
+}
+
+#[cfg(test)]
+mod semantic_tests {
+    use super::*;
+
+    /// A semantic ranking finds a tool its words alone would miss, and both rankings are fused.
+    #[test]
+    fn meaning_and_words_are_fused() {
+        let tool = |name: &str, description: &str| ChatTool {
+            name: name.into(),
+            description: description.into(),
+            parameters: json!({}),
+            connector_id: Some("mcp-x".into()),
+            tool_name: name.into(),
+            read_only: true,
+        };
+        let offered = vec![
+            tool("mcp-x__send_mail", "Send an email message."),
+            tool("mcp-x__list_events", "List calendar events."),
+        ];
+        let args = json!({ "query": "my schedule tomorrow" });
+        // Words alone find nothing for "schedule".
+        assert!(find(&offered, &args).1.is_empty());
+        let semantic = Some(vec![
+            "mcp-x__list_events".to_string(),
+            "mcp-x__send_mail".to_string(),
+        ]);
+        let (_, names) = find_with(&offered, &args, semantic);
+        assert_eq!(names[0], "mcp-x__list_events");
     }
 }
