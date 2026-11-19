@@ -152,11 +152,22 @@ pub fn set_signing_key(config_dir: &Path, key: [u8; 32]) {
     keys.push((config_dir.to_path_buf(), key));
 }
 
-/// Gives a trial's copy the live folder's key, so a file changed outside the app is refused there
-/// as it is in the app.
+/// Gives a trial's copy the live folder's key and its record of each tool's latest signature, so
+/// a file changed outside the app is refused there as it is in the app. The copy's record is never
+/// kept in the keychain.
 pub fn share_signing_key(from: &Path, to: &Path) {
     if let Some(key) = signing_key(from) {
         set_signing_key(to, key);
+    }
+    let mut ledger = ledger().lock().unwrap_or_else(|p| p.into_inner());
+    let shared: Vec<(String, String)> = ledger
+        .latest
+        .iter()
+        .filter(|((dir, _), _)| dir == from)
+        .map(|((_, name), sig)| (name.clone(), sig.clone()))
+        .collect();
+    for (name, sig) in shared {
+        ledger.latest.insert((to.to_path_buf(), name), sig);
     }
 }
 
@@ -166,6 +177,113 @@ pub fn forget_signing_key(config_dir: &Path) {
         .write()
         .unwrap_or_else(|p| p.into_inner())
         .retain(|(dir, _)| dir != config_dir);
+    let mut ledger = ledger().lock().unwrap_or_else(|p| p.into_inner());
+    ledger.latest.retain(|(dir, _), _| dir != config_dir);
+    ledger.stores.retain(|(dir, _)| dir != config_dir);
+}
+
+/// Each tool's latest signature, per folder. A signature only shows the app wrote a state; this
+/// record shows which state is the latest, so an earlier signed state put back over a tool's file
+/// does not verify. It is kept in the keychain, outside the data folder, for the folders whose key
+/// came from there.
+#[derive(Default)]
+struct Ledger {
+    latest: std::collections::HashMap<(PathBuf, String), String>,
+    stores: Vec<(PathBuf, crate::tools::auth::Secrets)>,
+}
+
+fn ledger() -> &'static std::sync::Mutex<Ledger> {
+    static LEDGER: std::sync::OnceLock<std::sync::Mutex<Ledger>> = std::sync::OnceLock::new();
+    LEDGER.get_or_init(Default::default)
+}
+
+/// The keychain entry holding a folder's record of latest signatures.
+fn latest_entry(config_dir: &Path) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(config_dir.to_string_lossy().as_bytes());
+    let short: String = digest.iter().take(8).map(|b| format!("{b:02x}")).collect();
+    format!("tool-signing-latest-{short}")
+}
+
+/// Whether the app ever signed a tool by this name in this folder.
+fn ever_signed(config_dir: &Path, name: &str) -> bool {
+    ledger()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .latest
+        .contains_key(&(config_dir.to_path_buf(), name.to_string()))
+}
+
+/// Records a tool's latest signature and keeps the folder's record in the keychain.
+fn record_latest(config_dir: &Path, name: &str, signature: &str) {
+    let store = {
+        let mut ledger = ledger().lock().unwrap_or_else(|p| p.into_inner());
+        ledger.latest.insert(
+            (config_dir.to_path_buf(), name.to_string()),
+            signature.to_string(),
+        );
+        ledger
+            .stores
+            .iter()
+            .find(|(dir, _)| dir == config_dir)
+            .map(|(_, store)| store.clone())
+    };
+    if let Some(store) = store {
+        let config_dir = config_dir.to_path_buf();
+        tauri::async_runtime::spawn(async move { keep_latest(&config_dir, &store).await });
+    }
+}
+
+/// Writes a folder's record to the keychain as it stands when the write runs, one write at a time,
+/// so a slower earlier write never leaves an older record behind.
+async fn keep_latest(config_dir: &Path, store: &crate::tools::auth::Secrets) {
+    static WRITING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _one_at_a_time = WRITING.lock().await;
+    let record: std::collections::BTreeMap<String, String> = ledger()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .latest
+        .iter()
+        .filter(|((dir, _), _)| dir == config_dir)
+        .map(|((_, name), sig)| (name.clone(), sig.clone()))
+        .collect();
+    let text = serde_json::to_string(&record).unwrap_or_default();
+    if let Err(e) = store.store(&latest_entry(config_dir), &text).await {
+        log::warn!("the record of tools' latest signatures was not kept: {e}");
+    }
+}
+
+/// Loads a folder's record of latest signatures from the keychain. A tool signed before there was
+/// a record (an earlier build) is recorded as it is now.
+async fn load_latest(config_dir: &Path, store: &crate::tools::auth::Secrets) {
+    let record: std::collections::BTreeMap<String, String> = store
+        .load(&latest_entry(config_dir))
+        .await
+        .ok()
+        .flatten()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default();
+    {
+        let mut ledger = ledger().lock().unwrap_or_else(|p| p.into_inner());
+        for (name, sig) in record {
+            ledger.latest.insert((config_dir.to_path_buf(), name), sig);
+        }
+        ledger.stores.retain(|(dir, _)| dir != config_dir);
+        ledger
+            .stores
+            .push((config_dir.to_path_buf(), store.clone()));
+    }
+    for tool in list(config_dir) {
+        if !ever_signed(config_dir, &tool.name) && signed_by_app(config_dir, &tool) {
+            if let Some(sig) = &tool.signature {
+                let mut ledger = ledger().lock().unwrap_or_else(|p| p.into_inner());
+                ledger
+                    .latest
+                    .insert((config_dir.to_path_buf(), tool.name.clone()), sig.clone());
+            }
+        }
+    }
+    keep_latest(config_dir, store).await;
 }
 
 fn signing_key(config_dir: &Path) -> Option<[u8; 32]> {
@@ -213,7 +331,10 @@ pub async fn ensure_signing_key_in(config_dir: &Path, store: &crate::tools::auth
         <[u8; 32]>::try_from(bytes?).ok()
     });
     match parsed {
-        Some(key) => set_signing_key(config_dir, key),
+        Some(key) => {
+            set_signing_key(config_dir, key);
+            load_latest(config_dir, store).await;
+        }
         None => log::warn!("tools the assistant wrote are not signed: no keychain key"),
     }
 }
@@ -275,12 +396,28 @@ fn sign(config_dir: &Path, tool: &ScriptTool) -> Option<String> {
     Some(hmac(&key, &signed_part(tool)))
 }
 
-/// Whether a tool's file is as the app last saved it. True when there is no key to check with.
-fn verifies(config_dir: &Path, tool: &ScriptTool) -> bool {
+/// Whether the app signed this state of a tool, at some time: for History entries and other
+/// earlier states. True when there is no key to check with.
+fn signed_by_app(config_dir: &Path, tool: &ScriptTool) -> bool {
     match sign(config_dir, tool) {
         None => true,
         Some(expected) => tool.signature.as_deref() == Some(expected.as_str()),
     }
+}
+
+/// Whether a tool's file is as the app last saved it: signed by the app, and the latest state it
+/// signed, not an earlier one put back. True when there is no key to check with.
+fn verifies(config_dir: &Path, tool: &ScriptTool) -> bool {
+    signed_by_app(config_dir, tool)
+        && match ledger()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .latest
+            .get(&(config_dir.to_path_buf(), tool.name.clone()))
+        {
+            None => true,
+            Some(latest) => tool.signature.as_deref() == Some(latest.as_str()),
+        }
 }
 
 /// A regression check: these arguments must keep giving this result.
@@ -384,8 +521,10 @@ fn save_resigned(config_dir: &Path, tool: &ScriptTool) -> Result<(), String> {
     }
     let text = serde_json::to_string_pretty(tool).map_err(|e| e.to_string())?;
     crate::chat::at_rest::write(path, &text).map_err(|e| e.to_string())?;
-    // The last state the app signed, kept apart from the file the tool runs from.
-    if tool.signature.is_some() {
+    // The last state the app signed, kept apart from the file the tool runs from, and its
+    // signature recorded as the latest.
+    if let Some(signature) = &tool.signature {
+        record_latest(config_dir, &tool.name, signature);
         let copy = signed_copy(config_dir, &tool.name)?;
         if let Some(parent) = copy.parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -789,7 +928,7 @@ fn last_signed(config_dir: &Path, name: &str) -> Option<ScriptTool> {
             .unwrap_or_default()
             .into_iter()
             .filter_map(|v| serde_json::from_value::<ScriptTool>(v.value).ok())
-            .find(|v| v.name == name && verifies(config_dir, v))
+            .find(|v| v.name == name && signed_by_app(config_dir, v))
     })
 }
 
@@ -817,7 +956,7 @@ fn take_vouched(config_dir: &Path, tool: &mut ScriptTool) -> Result<(), String> 
         // Never signed at all (written before the key was loaded, or by a build that did not
         // sign): nothing was vouched for, so nothing is taken away; it is promoted as written,
         // with no rollback or restore date of its own.
-        if tool.signature.is_none() {
+        if tool.signature.is_none() && !ever_signed(config_dir, &tool.name) {
             tool.monitor_reverted_at = None;
             tool.restored_at = None;
             return Ok(());
@@ -1054,7 +1193,7 @@ pub fn restore_version(config_dir: &Path, mut old: ScriptTool) -> Result<(), Str
         .filter(|c| verifies(config_dir, c))
         .map(|c| active_grants(c, now))
         .unwrap_or_default();
-    let approved = verifies(config_dir, &old)
+    let approved = signed_by_app(config_dir, &old)
         && old.approved_hash.as_deref() == Some(approval_hash(&old).as_str());
     if !approved {
         old.status = Status::Candidate;
@@ -1071,7 +1210,7 @@ pub fn restore_version(config_dir: &Path, mut old: ScriptTool) -> Result<(), Str
     // verify, by when it was written: the approvals after that are set aside, never those before.
     // A History entry changed outside the app proves nothing about when it was written: every
     // approval is set aside, and its checks are the last signed ones, never its own.
-    let verified = verifies(config_dir, &old);
+    let verified = signed_by_app(config_dir, &old);
     let restored_from = if approved {
         old.approved_at.or(Some(old.created_at))
     } else if verified {
@@ -1189,7 +1328,7 @@ pub async fn revert(config_dir: &Path, name: &str, checks: &[Check]) -> Result<b
         // signature shows nobody wrote it into the history from outside.
         let approved = old.status == Status::Active
             && old.approved_hash.as_deref() == Some(approval_hash(&old).as_str())
-            && verifies(config_dir, &old);
+            && signed_by_app(config_dir, &old);
         // Never forward to a version the user set aside by restoring an earlier one.
         if !approved
             || old.script == current.script
@@ -2695,5 +2834,139 @@ mod tests {
             kept,
             "B dropped from set_aside; revert={rolled:?} now runs {script}"
         );
+    }
+
+    /// An earlier state the app signed, put back over a tool's file, does not verify: only the
+    /// latest one does. Putting back the state from before a revoke does not undo the revoke, and
+    /// putting back a version the user set aside does not bring it back.
+    #[tokio::test]
+    async fn an_earlier_signed_state_put_back_does_not_verify() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        set_signing_key(d, [12; 32]);
+        create(d, "", &json!({ "name": "replayed", "description": "Replayed.", "script": "function main() { return 1; }", "http_hosts": ["a.example.com"] }))
+            .await
+            .unwrap();
+        promote(d, "replayed", None).await.unwrap();
+        let before_revoke = load(d, "replayed").unwrap();
+        assert!(signed_by_app(d, &before_revoke));
+        revoke(d, "replayed").unwrap();
+        std::fs::write(
+            path(d, "replayed").unwrap(),
+            serde_json::to_string(&before_revoke).unwrap(),
+        )
+        .unwrap();
+        let put_back = load(d, "replayed").unwrap();
+        assert!(signed_by_app(d, &put_back) && !verifies(d, &put_back));
+        assert!(definitions(d).is_empty());
+        assert!(call(d, "replayed", &json!({}), None).await.is_err());
+
+        // A version the user set aside by restoring an earlier one.
+        let write = |s: &str| json!({ "name": "aside_r", "description": "Aside.", "script": s });
+        create(d, "", &write("function main() { return 1; }"))
+            .await
+            .unwrap();
+        promote(d, "aside_r", None).await.unwrap();
+        let mut t = load(d, "aside_r").unwrap();
+        t.checks.clear();
+        save(d, &t).unwrap();
+        create(d, "", &write("function main() { return 2; }"))
+            .await
+            .unwrap();
+        promote(d, "aside_r", None).await.unwrap();
+        let second = load(d, "aside_r").unwrap();
+        let first = super::super::versions::list(d, "tools", "script-aside_r")
+            .unwrap()
+            .into_iter()
+            .find(|v| {
+                v.value["script"] == "function main() { return 1; }"
+                    && v.value["status"] == "active"
+            })
+            .unwrap();
+        super::super::versions::restore(d, "tools", "script-aside_r", &first.id).unwrap();
+        std::fs::write(
+            path(d, "aside_r").unwrap(),
+            serde_json::to_string(&second).unwrap(),
+        )
+        .unwrap();
+        assert!(definitions(d).iter().all(|t| t.tool_name != "aside_r"));
+    }
+
+    /// A tool the app signed is not taken for one it never signed once its signature, its signed
+    /// copy and its History are removed: it is written again, not promoted as written.
+    #[tokio::test]
+    async fn a_stripped_tool_with_its_records_removed_is_not_promoted_as_never_signed() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        set_signing_key(d, [13; 32]);
+        create(d, "", &json!({ "name": "stripped", "description": "Stripped.", "script": "function main() { return 1; }" }))
+            .await
+            .unwrap();
+        promote(d, "stripped", None).await.unwrap();
+        let mut forged = load(d, "stripped").unwrap();
+        forged.signature = None;
+        forged.checks.clear();
+        std::fs::write(
+            path(d, "stripped").unwrap(),
+            serde_json::to_string(&forged).unwrap(),
+        )
+        .unwrap();
+        std::fs::remove_dir_all(chat_dir(d).join("versions")).unwrap();
+        std::fs::remove_dir_all(chat_dir(d).join("script-tools-signed")).unwrap();
+        let err = promote(d, "stripped", None).await.unwrap_err();
+        assert!(err.contains("write it again"), "{err}");
+        assert!(definitions(d).is_empty());
+    }
+
+    /// The record of each tool's latest signature is kept in the keychain, outside the data
+    /// folder, so after a restart an earlier signed state put back still does not verify. A tool
+    /// signed before there was a record is recorded as it stands at the next start.
+    #[tokio::test]
+    async fn the_latest_signatures_are_kept_in_the_keychain() {
+        let store = crate::tools::auth::InMemorySecrets::with(&[]);
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        ensure_signing_key_in(d, &store).await;
+        create(d, "", &json!({ "name": "kept_r", "description": "Kept.", "script": "function main() { return 1; }", "http_hosts": ["a.example.com"] }))
+            .await
+            .unwrap();
+        promote(d, "kept_r", None).await.unwrap();
+        let before_revoke = load(d, "kept_r").unwrap();
+        revoke(d, "kept_r").unwrap();
+        keep_latest(d, &store).await;
+        let kept = store.load(&latest_entry(d)).await.unwrap().unwrap();
+        assert!(kept.contains("kept_r"), "{kept}");
+        // Another start: the record comes back from the keychain.
+        forget_signing_key(d);
+        ensure_signing_key_in(d, &store).await;
+        std::fs::write(
+            path(d, "kept_r").unwrap(),
+            serde_json::to_string(&before_revoke).unwrap(),
+        )
+        .unwrap();
+        assert!(!verifies(d, &load(d, "kept_r").unwrap()));
+        assert!(definitions(d).is_empty());
+        // A tool signed by an earlier build, with no record yet, is recorded at the next start.
+        let other = tempfile::tempdir().unwrap();
+        let o = other.path();
+        set_signing_key(o, signing_key(d).unwrap());
+        create(o, "", &json!({ "name": "older_r", "description": "Older.", "script": "function main() { return 1; }", "http_hosts": ["a.example.com"] }))
+            .await
+            .unwrap();
+        promote(o, "older_r", None).await.unwrap();
+        let first = load(o, "older_r").unwrap();
+        revoke(o, "older_r").unwrap();
+        let current = load(o, "older_r").unwrap();
+        forget_signing_key(o);
+        ensure_signing_key_in(
+            o,
+            &crate::tools::auth::InMemorySecrets::with(&[(
+                SIGNING_KEY_NAME,
+                &store.load(SIGNING_KEY_NAME).await.unwrap().unwrap(),
+            )]),
+        )
+        .await;
+        assert!(verifies(o, &current));
+        assert!(!verifies(o, &first));
     }
 }
