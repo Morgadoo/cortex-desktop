@@ -1478,6 +1478,58 @@ async fn a_tool_is_tried_by_running_it_in_the_copy() {
     );
 }
 
+/// A written tool's runs are in its turn's trace, a failure included, so `get_run` and
+/// `query_traces` find them; and a call it makes to another tool is in the activity log.
+#[tokio::test]
+async fn a_written_tool_s_runs_are_in_its_turn_s_trace() {
+    use crate::chat::script_tools;
+    let (host, _) = host_with(vec![calls("script__broken", json!({})), says("It failed.")]);
+    let d = host.dir.path();
+    script_tools::create(
+        d,
+        "",
+        &json!({ "name": "broken", "description": "Always fails.", "script": "function main() { throw new Error('nope'); }" }),
+    )
+    .await
+    .unwrap();
+    let mut tool = script_tools::load(d, "broken").unwrap();
+    tool.status = script_tools::Status::Active;
+    tool.approved_hash = Some(script_tools::approval_hash(&tool));
+    script_tools::save(d, &tool).unwrap();
+    run(&host, &request("Use it", ApprovalMode::Auto))
+        .await
+        .unwrap();
+    let failed = super::super::traces::runs(
+        d,
+        &super::super::traces::RunFilter {
+            failed_tools: true,
+            tool: Some("script__broken".into()),
+            limit: 10,
+            ..Default::default()
+        },
+    );
+    assert_eq!(failed.len(), 1, "{failed:?}");
+    let detail = super::super::traces::run_detail(d, &failed[0].id).unwrap();
+    assert_eq!(detail.tool_calls[0].0, "script__broken");
+    assert!(!detail.tool_calls[0].2, "recorded as failed");
+
+    // A call one tool makes to another is in the activity log.
+    script_tools::create(d, "", &json!({ "name": "inner_one", "description": "Inner step.", "script": "function main() { return 1; }" }))
+        .await
+        .unwrap();
+    script_tools::promote(d, "inner_one", None).await.unwrap();
+    script_tools::create(d, "", &json!({ "name": "outer_one", "description": "Outer step.", "script": "function main() { return tool('inner_one', {}); }", "tools": ["inner_one"] }))
+        .await
+        .unwrap();
+    script_tools::promote(d, "outer_one", None).await.unwrap();
+    script_tools::call(d, "outer_one", &json!({}), None)
+        .await
+        .unwrap();
+    assert!(crate::chat::audit::entries(d, None)
+        .iter()
+        .any(|e| e.tool.starts_with("script__inner_one") && e.tool.contains("called by a tool")));
+}
+
 /// A saved skill changes every later chat, so it asks in every mode, Auto included.
 #[tokio::test]
 async fn saving_a_skill_asks_even_in_auto() {

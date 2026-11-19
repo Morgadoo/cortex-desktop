@@ -620,6 +620,10 @@ mod beneath {
         if !meta.is_file() {
             return Err(Reach::NotAFile);
         }
+        // A hard link names a file that may live in a folder the tool was not granted.
+        if std::os::unix::fs::MetadataExt::nlink(&meta) > 1 {
+            return Err(Reach::Link);
+        }
         if meta.len() > max {
             return Err(Reach::TooLarge);
         }
@@ -637,10 +641,16 @@ mod beneath {
         let parts: Vec<Component> = relative.components().collect();
         let (last, folders) = parts.split_last().ok_or(Reach::NotFound)?;
         let dir = folder(open_root(root)?, folders, true)?;
-        let mut f = file(&dir, last, libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC)?;
-        if !f.metadata().map_err(Reach::Io)?.is_file() {
+        // Not truncated on open: a hard-linked file is refused before anything in it changes.
+        let mut f = file(&dir, last, libc::O_WRONLY | libc::O_CREAT)?;
+        let meta = f.metadata().map_err(Reach::Io)?;
+        if !meta.is_file() {
             return Err(Reach::NotAFile);
         }
+        if std::os::unix::fs::MetadataExt::nlink(&meta) > 1 {
+            return Err(Reach::Link);
+        }
+        f.set_len(0).map_err(Reach::Io)?;
         f.write_all(bytes).map_err(Reach::Io)
     }
 }
@@ -1406,6 +1416,49 @@ mod tests {
         .await
         .unwrap_err();
         assert_eq!(err, SandboxError::OutOfFuel);
+    }
+
+    /// A hard link in a granted folder to a file in another one is refused, for reads and writes,
+    /// and the linked file is left as it was.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_hard_link_into_an_ungranted_folder_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("data")).unwrap();
+        std::fs::create_dir_all(dir.path().join("private")).unwrap();
+        std::fs::write(dir.path().join("private/y.txt"), "secret").unwrap();
+        std::fs::hard_link(
+            dir.path().join("private/y.txt"),
+            dir.path().join("data/x.txt"),
+        )
+        .unwrap();
+        let caps = Capabilities {
+            read_prefixes: vec!["data".into()],
+            write_prefixes: vec!["data".into()],
+            ..Default::default()
+        };
+        for script in [
+            "function main() { return read('data/x.txt'); }",
+            "function main() { write('data/x.txt', 'overwritten'); }",
+        ] {
+            let (out, _) = run(
+                script,
+                "{}",
+                &caps,
+                Limits::default(),
+                Some(Workspace {
+                    root: dir.path().to_path_buf(),
+                    read: |_, bytes| Ok(bytes),
+                    write: |_, b| Ok(b.to_vec()),
+                }),
+            )
+            .await;
+            assert!(out.unwrap_err().to_string().contains("link"), "{script}");
+        }
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("private/y.txt")).unwrap(),
+            "secret"
+        );
     }
 
     /// A FIFO in the workspace (which `run_code` can make) is refused at once, not waited on.

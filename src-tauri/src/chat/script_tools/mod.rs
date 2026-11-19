@@ -905,6 +905,12 @@ pub fn restore_version(config_dir: &Path, mut old: ScriptTool) -> Result<(), Str
         old.expires = current.expires.clone();
         old.granted_until = current.granted_until;
     }
+    // Back in use from now, by the user's choice: judged on its own calls from here, never on
+    // the failures of the version it replaces.
+    if old.status == Status::Active {
+        old.approved_at = Some(now);
+    }
+    old.monitor_reverted_at = None;
     save_resigned(config_dir, &old)?;
     super::traces::register(
         config_dir,
@@ -1046,6 +1052,17 @@ pub fn retire(config_dir: &Path, name: &str) -> Result<(), String> {
     Ok(())
 }
 
+tokio::task_local! {
+    /// The run a tool call belongs to, set by the engine around the call: a written tool's runs,
+    /// and those of the tools it calls, are recorded in that run's trace.
+    static RUN: String;
+}
+
+/// Runs `call` as part of `run`'s trace.
+pub async fn in_run<F: std::future::Future>(run: String, call: F) -> F::Output {
+    RUN.scope(run, call).await
+}
+
 /// How deep tools may call tools: a script calling a tool that calls a tool, and no further.
 const MAX_DEPTH: usize = 3;
 
@@ -1152,7 +1169,7 @@ fn call_at(
         // from another tool counts too, so a tool used only that way is not retired as unused.
         super::traces::tool_call(
             &config_dir,
-            "",
+            &RUN.try_with(Clone::clone).unwrap_or_default(),
             &format!("{CONNECTOR}__{name}"),
             started.elapsed().as_millis() as u64,
             result.is_ok(),

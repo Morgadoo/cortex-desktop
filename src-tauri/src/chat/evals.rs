@@ -285,6 +285,11 @@ const NOT_COPIED: &[&str] = &[
     "chat/shares",
 ];
 
+/// The data folder's top-level folders a trial copies: what shapes an answer (memories, pages,
+/// instructions, tools, agents and providers live in `chat`), the skills, and the suites. The
+/// top-level settings files come too.
+const COPIED_FOLDERS: &[&str] = &["chat", "skills", "evals"];
+
 /// A throwaway copy of the data folder in which a change is tried before the user is asked. The
 /// live data is never touched. The copy is removed when this is dropped, also when the turn is
 /// stopped; one left by a crash or a quit mid-trial is swept at the next start
@@ -317,6 +322,14 @@ pub fn trial_folder(config_dir: &Path) -> Result<TrialFolder, String> {
                 continue;
             }
             let kind = entry.file_type()?;
+            // At the top, only the folders that shape an answer: anything else there (on macOS
+            // the local models and caches share this folder) stays out of the copy.
+            if kind.is_dir()
+                && from == root
+                && !COPIED_FOLDERS.iter().any(|f| relative == Path::new(f))
+            {
+                continue;
+            }
             if kind.is_dir() {
                 copy(&path, &to.join(entry.file_name()), root)?;
             } else if kind.is_file() {
@@ -789,6 +802,9 @@ mod tests {
         )
         .unwrap();
         std::fs::create_dir_all(chat.join("trash")).unwrap();
+        // On macOS the local models share this folder.
+        std::fs::create_dir_all(d.join("models")).unwrap();
+        std::fs::write(d.join("models").join("weights.bin"), "big").unwrap();
         std::fs::write(chat.join("trash").join("old.json"), "{}").unwrap();
         let folder = trial_folder(d).unwrap();
         let copy = folder.dir.clone();
@@ -801,6 +817,10 @@ mod tests {
         );
         assert!(!copy.join("chat").join("traces.db").exists());
         assert!(!copy.join("cache").exists(), "no copy of itself");
+        assert!(
+            !copy.join("models").exists(),
+            "nothing large outside chat, skills and evals"
+        );
         // The trial's own trace database is opened, as a trial's turns do, and let go on drop.
         super::super::traces::start_run(&copy, "r", "c", None, "m");
         assert!(copy.join("chat").join("traces.db").exists());

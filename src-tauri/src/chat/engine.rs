@@ -2313,6 +2313,8 @@ where
     // The agent's vault secrets reach the processes this call starts, and never the model.
     let secrets = super::vault::env_for(config_dir, agent).await;
     let started = std::time::Instant::now();
+    // A written tool records its runs itself, in this run's trace.
+    let run = super::script_tools::in_run(trace.unwrap_or_default().to_string(), run);
     let mut outcome = super::vault::scope(secrets.clone(), run).await;
     if !secrets.is_empty() {
         outcome.text = super::vault::mask(&outcome.text, &secrets);

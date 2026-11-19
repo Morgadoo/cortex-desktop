@@ -270,6 +270,61 @@ mod tests {
         );
     }
 
+    /// A version brought back from History is judged on its own calls from then on: the failures
+    /// of the version it replaced do not demote it the next day.
+    #[tokio::test]
+    async fn a_version_restored_from_history_is_judged_on_its_own_calls() {
+        use super::super::script_tools as st;
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        for script in [
+            "function main() { return 1; }",
+            "function main() { return 2; }",
+        ] {
+            st::create(
+                d,
+                "chat-1",
+                &json!({ "name": "rates_h", "description": "Rates.", "script": script }),
+            )
+            .await
+            .unwrap();
+            st::promote(d, "rates_h", None).await.unwrap();
+            let mut tool = st::load(d, "rates_h").unwrap();
+            tool.checks.clear();
+            tool.approved_at = Some(Utc::now() - Duration::days(10));
+            st::save(d, &tool).unwrap();
+        }
+        traces::start_run(d, "r", "c", None, "m");
+        // The second version failed five of six calls over the last two days...
+        for ok in [false, false, false, false, false, true] {
+            traces::tool_call_at(
+                d,
+                "r",
+                "script__rates_h",
+                Utc::now() - Duration::days(1),
+                5,
+                ok,
+            );
+        }
+        // ...and the user brings the first back from History.
+        let first = super::super::versions::list(d, "tools", "script-rates_h")
+            .unwrap()
+            .into_iter()
+            .find(|v| {
+                v.value["script"] == "function main() { return 1; }"
+                    && v.value["status"] == "active"
+            })
+            .unwrap();
+        super::super::versions::restore(d, "tools", "script-rates_h", &first.id).unwrap();
+        assert!(st::load(d, "rates_h").unwrap().script.contains("return 1"));
+        let report = maintain(d, Utc::now() + Duration::hours(1)).await;
+        assert!(
+            report.demoted.is_empty() && report.reverted.is_empty(),
+            "{report:?}"
+        );
+        assert_eq!(st::load(d, "rates_h").unwrap().status, st::Status::Active);
+    }
+
     /// A tool the assistant wrote and keeps calling is used, so it is not retired.
     #[tokio::test]
     async fn a_tool_in_use_is_kept() {
