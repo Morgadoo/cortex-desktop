@@ -706,6 +706,7 @@ async fn message_agent(
     from: Option<&agents::Agent>,
     arguments: &Value,
     workdir: Option<&str>,
+    approval: ApprovalMode,
 ) -> tools::Outcome {
     use std::sync::atomic::Ordering;
     let fail = |text: String| tools::Outcome {
@@ -788,7 +789,10 @@ async fn message_agent(
             } else {
                 Speed::Fast
             },
-            approval: ApprovalMode::Unattended,
+            // The sender's mode: the same person is (or is not) there to approve. From a chat in
+            // Auto the other agent runs its code and makes its changes; from Ask it asks; from a
+            // scheduled run nobody watches it stays unattended.
+            approval,
             project_id: None,
             agent_id: Some(target.id.clone()),
             images: Vec::new(),
@@ -2133,6 +2137,7 @@ impl Runner<'_> {
                 self.agent,
                 &arguments,
                 self.workdir.as_deref(),
+                self.request.approval,
             )
             .await;
         }
