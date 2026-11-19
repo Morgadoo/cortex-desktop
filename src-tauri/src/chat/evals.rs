@@ -303,6 +303,7 @@ impl Drop for TrialFolder {
         // Its trace database and signing key are let go first, so the folder can be removed.
         super::traces::forget(&self.dir);
         super::script_tools::forget_signing_key(&self.dir);
+        super::script_tools::forget_rates(&self.dir);
         let _ = std::fs::remove_dir_all(&self.dir);
     }
 }
@@ -326,6 +327,15 @@ pub fn trial_folder(config_dir: &Path) -> Result<TrialFolder, String> {
             let kind = if from == root {
                 // A link that leads nowhere (an unmounted drive) is skipped, not an error.
                 match std::fs::metadata(&path) {
+                    // Not one that leads back up to the data folder or above: that would copy
+                    // the copy into itself.
+                    Ok(_)
+                        if std::fs::canonicalize(&path).is_ok_and(|target| {
+                            std::fs::canonicalize(root).is_ok_and(|r| r.starts_with(&target))
+                        }) =>
+                    {
+                        continue
+                    }
                     Ok(meta) => meta.file_type(),
                     Err(_) => continue,
                 }
@@ -787,6 +797,24 @@ mod tests {
         assert!(cases(dir.path(), STARTER)
             .iter()
             .any(|c| c.facts == vec!["1.99".to_string()]));
+    }
+
+    /// A top-level link that leads back up to the data folder, or above it, is left out of a
+    /// trial's copy rather than copying the copy into itself.
+    #[test]
+    #[cfg(unix)]
+    fn a_link_back_up_to_the_data_folder_is_not_copied() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        std::fs::create_dir_all(d.join("chat")).unwrap();
+        std::fs::write(d.join("chat").join("memories.json"), "{}").unwrap();
+        // A `skills` link to the data folder itself, or one above it, would copy the copy.
+        std::os::unix::fs::symlink(d, d.join("skills")).unwrap();
+        std::os::unix::fs::symlink(d.parent().unwrap(), d.join("evals")).unwrap();
+        let folder = trial_folder(d).unwrap();
+        assert!(folder.dir.join("chat").join("memories.json").exists());
+        assert!(!folder.dir.join("skills").exists());
+        assert!(!folder.dir.join("evals").exists());
     }
 
     /// A trial's copy has what shapes an answer and none of the conversations or traces, and is

@@ -96,6 +96,15 @@ pub async fn maintain(config_dir: &Path, now: DateTime<Utc>) -> Report {
         else {
             continue;
         };
+        // A version the user brought back from History is compared week over week only once it
+        // has a week of its own calls as the baseline; until then "last week" is the versions the
+        // user set aside. The failure-rate demotion still applies.
+        if tool
+            .restored_at
+            .is_some_and(|at| at > now - Duration::days(14))
+        {
+            continue;
+        }
         // The week that made it roll back still holds the failures that did; judging it on them
         // again would flip it back and forth. It is judged again once a new week has passed.
         if tool
@@ -323,32 +332,154 @@ mod tests {
             "{report:?}"
         );
         assert_eq!(st::load(d, "rates_h").unwrap().status, st::Status::Active);
-        // Nor rolled forward again: the replaced version's clean week is no baseline for the one
-        // the user chose, which a couple of failures today would otherwise "regress" from.
-        traces::start_run(d, "r2", "c", None, "m");
-        for _ in 0..10 {
-            traces::tool_call_at(
+    }
+
+    /// Until a restored version has a week of its own calls, it is not compared with the weeks of
+    /// the versions the user set aside: a clean week of theirs is no baseline for it.
+    #[tokio::test]
+    async fn a_restored_version_is_not_judged_against_the_weeks_it_set_aside() {
+        use super::super::script_tools as st;
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let now = Utc::now();
+        for (script, approved) in [
+            ("function main() { return 1; }", now - Duration::days(30)),
+            ("function main() { return 2; }", now - Duration::days(20)),
+        ] {
+            st::create(
                 d,
-                "r2",
-                "script__rates_h",
-                Utc::now() - Duration::days(4),
-                5,
-                true,
-            );
+                "chat-1",
+                &json!({ "name": "rates_b", "description": "Rates.", "script": script }),
+            )
+            .await
+            .unwrap();
+            st::promote(d, "rates_b", None).await.unwrap();
+            let mut tool = st::load(d, "rates_b").unwrap();
+            tool.checks.clear();
+            tool.approved_at = Some(approved);
+            st::save(d, &tool).unwrap();
         }
+        // The second version ran clean all week...
+        traces::start_run(d, "r", "c", None, "m");
+        for _ in 0..10 {
+            traces::tool_call_at(d, "r", "script__rates_b", now - Duration::days(4), 5, true);
+        }
+        // ...and the user still brings the first back from History.
+        let first = super::super::versions::list(d, "tools", "script-rates_b")
+            .unwrap()
+            .into_iter()
+            .find(|v| {
+                v.value["script"] == "function main() { return 1; }"
+                    && v.value["status"] == "active"
+            })
+            .unwrap();
+        super::super::versions::restore(d, "tools", "script-rates_b", &first.id).unwrap();
+        // Two of its first six calls fail: worse than the set-aside version's week, but that is
+        // the user's choice, not a regression.
         for ok in [false, false, true, true, true, true] {
             traces::tool_call_at(
                 d,
-                "r2",
-                "script__rates_h",
+                "r",
+                "script__rates_b",
                 Utc::now() + Duration::minutes(30),
                 5,
                 ok,
             );
         }
         let report = maintain(d, Utc::now() + Duration::hours(2)).await;
+        assert!(
+            report.reverted.is_empty() && report.demoted.is_empty(),
+            "{report:?}"
+        );
+        let tool = st::load(d, "rates_b").unwrap();
+        assert!(tool.script.contains("return 1"));
+        assert_eq!(tool.status, st::Status::Active);
+    }
+
+    /// Restoring a version from History sets aside every version approved after it, not only the
+    /// current one: the monitor never rolls forward to any of them. A rewrite keeps that list, and
+    /// bringing back a set-aside version takes it off.
+    #[tokio::test]
+    async fn restoring_sets_aside_every_later_version() {
+        use super::super::script_tools as st;
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let now = Utc::now();
+        for (script, approved) in [
+            ("function main() { return 1; }", now - Duration::days(60)),
+            ("function main() { return 2; }", now - Duration::days(50)),
+            ("function main() { return 3; }", now - Duration::days(40)),
+        ] {
+            st::create(
+                d,
+                "chat-1",
+                &json!({ "name": "rates_i", "description": "Rates.", "script": script }),
+            )
+            .await
+            .unwrap();
+            st::promote(d, "rates_i", None).await.unwrap();
+            let mut tool = st::load(d, "rates_i").unwrap();
+            tool.checks.clear();
+            tool.approved_at = Some(approved);
+            st::save(d, &tool).unwrap();
+        }
+        let active = |script: &str| {
+            super::super::versions::list(d, "tools", "script-rates_i")
+                .unwrap()
+                .into_iter()
+                .find(|v| v.value["script"] == script && v.value["status"] == "active")
+                .unwrap()
+        };
+        let first = active("function main() { return 1; }");
+        super::super::versions::restore(d, "tools", "script-rates_i", &first.id).unwrap();
+        assert_eq!(st::load(d, "rates_i").unwrap().set_aside.len(), 2);
+        // Weeks later the first version has a bad week against its own earlier one: it is not
+        // rolled forward to the second version, the one before the current at the time.
+        let mut tool = st::load(d, "rates_i").unwrap();
+        tool.approved_at = Some(now - Duration::days(30));
+        tool.restored_at = Some(now - Duration::days(30));
+        st::save(d, &tool).unwrap();
+        traces::start_run(d, "r", "c", None, "m");
+        for i in 0..10 {
+            traces::tool_call_at(d, "r", "script__rates_i", now - Duration::days(10), 5, true);
+            traces::tool_call_at(
+                d,
+                "r",
+                "script__rates_i",
+                now - Duration::days(1),
+                5,
+                i >= 6,
+            );
+        }
+        let report = maintain(d, now).await;
         assert!(report.reverted.is_empty(), "{report:?}");
-        assert!(st::load(d, "rates_h").unwrap().script.contains("return 1"));
+        assert!(st::load(d, "rates_i").unwrap().script.contains("return 1"));
+
+        // A rewrite keeps the list.
+        let mut tool = st::load(d, "rates_i").unwrap();
+        tool.status = st::Status::Active;
+        st::save(d, &tool).unwrap();
+        let before = st::load(d, "rates_i").unwrap().set_aside;
+        st::create(
+            d,
+            "chat-1",
+            &json!({ "name": "rates_i", "description": "Rates.", "script": "function main() { return 4; }" }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(st::load(d, "rates_i").unwrap().set_aside, before);
+
+        // Bringing back the third version takes it off the list.
+        let third = active("function main() { return 3; }");
+        let third_hash = st::approval_hash(&serde_json::from_value(third.value.clone()).unwrap());
+        super::super::versions::restore(d, "tools", "script-rates_i", &third.id).unwrap();
+        let back = st::load(d, "rates_i").unwrap();
+        assert!(back.script.contains("return 3"));
+        assert!(
+            !back.set_aside.contains(&third_hash),
+            "{:?}",
+            back.set_aside
+        );
     }
 
     /// A freshly promoted version that does worse than the one it replaced goes back to it.

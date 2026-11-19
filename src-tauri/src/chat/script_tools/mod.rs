@@ -92,6 +92,11 @@ pub struct ScriptTool {
     /// History: the monitor never rolls forward to them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub set_aside: Vec<String>,
+    /// When the user last brought back an earlier version from History: until the version has a
+    /// week of its own calls as a baseline, it is not compared week over week, since "last week"
+    /// would be the versions the user set aside.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub restored_at: Option<DateTime<Utc>>,
 }
 
 /// Each capability item with its key: `http:host`, `read:folder`, and so on.
@@ -253,6 +258,7 @@ fn signed_part(tool: &ScriptTool) -> Vec<u8> {
         "approvedAt": tool.approved_at,
         "checks": tool.checks,
         "setAside": tool.set_aside,
+        "restoredAt": tool.restored_at,
     }))
     .unwrap_or_default()
 }
@@ -639,7 +645,12 @@ pub async fn create(config_dir: &Path, conversation: &str, args: &Value) -> Resu
         expires: Default::default(),
         monitor_reverted_at: None,
         approved_at: None,
-        set_aside: Vec::new(),
+        // A rewrite keeps what the user set aside; only approving a set-aside version clears it.
+        set_aside: previous
+            .as_ref()
+            .map(|t| t.set_aside.clone())
+            .unwrap_or_default(),
+        restored_at: None,
     };
     let mut tool = tool;
     save_resigned(config_dir, &tool)?;
@@ -770,9 +781,10 @@ async fn promote_with(
     tool.status = Status::Active;
     tool.approved_at = Some(Utc::now());
     tool.approved_hash = Some(approval_hash(&tool));
-    // Approved again by the user: no longer set aside.
+    // Approved again by the user: no longer set aside, and judged as any approval is.
     let approved = approval_hash(&tool);
     tool.set_aside.retain(|h| h != &approved);
+    tool.restored_at = None;
     // The user saw it on the card and approved it: signed afresh.
     save_resigned(config_dir, &tool)?;
     super::traces::register(
@@ -914,23 +926,44 @@ pub fn restore_version(config_dir: &Path, mut old: ScriptTool) -> Result<(), Str
         old.expires = current.expires.clone();
         old.granted_until = current.granted_until;
     }
-    // Back in use from now, by the user's choice: judged on its own calls from here, never on
-    // the failures of the version it replaces.
-    if old.status == Status::Active {
-        old.approved_at = Some(now);
+    // Every version approved after the one brought back, the current one included, is set
+    // aside by the user's choice: the monitor never rolls forward to any of them.
+    let restored_from = old.approved_at;
+    let restored = approval_hash(&old);
+    let mut set_aside = current
+        .as_ref()
+        .filter(|c| verifies(config_dir, c))
+        .map(|c| c.set_aside.clone())
+        .unwrap_or_default();
+    let mut later: Vec<String> =
+        super::versions::list(config_dir, "tools", &format!("script-{}", old.name))
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|v| serde_json::from_value::<ScriptTool>(v.value).ok())
+            .filter(|v| v.status == Status::Active && v.approved_at > restored_from)
+            .map(|v| approval_hash(&v))
+            .collect();
+    if let Some(current) = current
+        .as_ref()
+        .filter(|c| verifies(config_dir, c) && c.status == Status::Active)
+    {
+        later.push(approval_hash(current));
     }
-    old.monitor_reverted_at = None;
-    // The version it replaces is set aside: the monitor never rolls forward to it.
-    if let Some(current) = current.as_ref().filter(|c| verifies(config_dir, c)) {
-        old.set_aside = current.set_aside.clone();
-        let replaced = approval_hash(current);
-        if current.status == Status::Active
-            && approval_hash(&old) != replaced
-            && !old.set_aside.contains(&replaced)
-        {
-            old.set_aside.push(replaced);
+    for hash in later {
+        if hash != restored && !set_aside.contains(&hash) {
+            set_aside.push(hash);
         }
     }
+    // Brought back, it is no longer set aside itself.
+    set_aside.retain(|h| h != &restored);
+    old.set_aside = set_aside;
+    // Back in use from now, by the user's choice: judged on its own calls from here, never on
+    // the calls of the versions it set aside.
+    if old.status == Status::Active {
+        old.approved_at = Some(now);
+        old.restored_at = Some(now);
+    }
+    old.monitor_reverted_at = None;
     save_resigned(config_dir, &old)?;
     super::traces::register(
         config_dir,
@@ -1018,6 +1051,7 @@ pub async fn revert(config_dir: &Path, name: &str, checks: &[Check]) -> Result<b
             back.approved_at = Some(Utc::now());
             back.monitor_reverted_at = Some(Utc::now());
             back.set_aside = current.set_aside.clone();
+            back.restored_at = None;
             save(config_dir, &back)?;
             super::traces::register(
                 config_dir,
@@ -1037,15 +1071,27 @@ pub async fn revert(config_dir: &Path, name: &str, checks: &[Check]) -> Result<b
 const CALLS_PER_MINUTE: usize = 30;
 
 /// Per data folder and tool: a trial's copy does not use up the live tool's minute.
-fn within_rate(name: &str) -> bool {
-    use std::collections::{HashMap, VecDeque};
-    use std::sync::{Mutex, OnceLock};
-    use std::time::{Duration, Instant};
-    static CALLS: OnceLock<Mutex<HashMap<String, VecDeque<Instant>>>> = OnceLock::new();
-    let mut calls = CALLS
-        .get_or_init(|| Mutex::new(HashMap::new()))
+type Calls = std::sync::Mutex<
+    std::collections::HashMap<String, std::collections::VecDeque<std::time::Instant>>,
+>;
+
+fn rate_calls() -> &'static Calls {
+    static CALLS: std::sync::OnceLock<Calls> = std::sync::OnceLock::new();
+    CALLS.get_or_init(Default::default)
+}
+
+/// Drops a folder's rate counters, for a folder that is going away (a trial's copy).
+pub fn forget_rates(config_dir: &Path) {
+    let prefix = format!("{}:", config_dir.display());
+    rate_calls()
         .lock()
-        .unwrap_or_else(|p| p.into_inner());
+        .unwrap_or_else(|p| p.into_inner())
+        .retain(|key, _| !key.starts_with(&prefix));
+}
+
+fn within_rate(name: &str) -> bool {
+    use std::time::{Duration, Instant};
+    let mut calls = rate_calls().lock().unwrap_or_else(|p| p.into_inner());
     let recent = calls.entry(name.to_string()).or_default();
     let now = Instant::now();
     while recent
