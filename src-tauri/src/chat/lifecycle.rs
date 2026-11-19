@@ -791,4 +791,173 @@ mod tests {
         assert!(daily(dir.path(), now + Duration::hours(2)).await.is_none());
         assert!(daily(dir.path(), now + Duration::hours(25)).await.is_some());
     }
+
+    /// Three approved versions, the second brought back from History two months ago.
+    async fn restored_two_months_ago(d: &std::path::Path, name: &str) {
+        use super::super::script_tools as st;
+        st::set_signing_key(d, [9; 32]);
+        let now = Utc::now();
+        for script in [
+            "function main() { return 1; }",
+            "function main() { return 2; }",
+            "function main() { return 3; }",
+        ] {
+            st::create(
+                d,
+                "chat-1",
+                &json!({ "name": name, "description": "Rates.", "script": script }),
+            )
+            .await
+            .unwrap();
+            st::promote(d, name, None).await.unwrap();
+            let mut tool = st::load(d, name).unwrap();
+            tool.checks.clear();
+            st::save(d, &tool).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let second = super::super::versions::list(d, "tools", &format!("script-{name}"))
+            .unwrap()
+            .into_iter()
+            .find(|v| {
+                v.value["script"] == "function main() { return 2; }"
+                    && v.value["status"] == "active"
+            })
+            .unwrap();
+        super::super::versions::restore(d, "tools", &format!("script-{name}"), &second.id).unwrap();
+        // As the app would have stamped it, two months ago.
+        let mut t = st::load(d, name).unwrap();
+        t.approved_at = Some(now - Duration::days(60));
+        t.restored_at = Some(now - Duration::days(60));
+        st::save(d, &t).unwrap();
+    }
+
+    async fn reapproved_after_a_clean_week(d: &std::path::Path, name: &str) -> Report {
+        use super::super::script_tools as st;
+        let now = Utc::now();
+        // The user approves the same, long-restored version again (to renew its access, say).
+        st::promote(d, name, None).await.unwrap();
+        assert!(st::load(d, name).unwrap().script.contains("return 2"));
+        traces::start_run(d, "r", "c", None, "m");
+        let tool = format!("script__{name}");
+        for _ in 0..10 {
+            traces::tool_call_at(d, "r", &tool, now - Duration::days(4), 5, true);
+        }
+        for ok in [false, false, true, true, true, true] {
+            traces::tool_call_at(d, "r", &tool, Utc::now() + Duration::minutes(30), 5, ok);
+        }
+        maintain(d, Utc::now() + Duration::hours(2)).await
+    }
+
+    /// Approving again a version restored long ago (to renew its access, say) does not restart
+    /// its restore mark: a regression after the approval goes back a version as any would.
+    #[tokio::test]
+    async fn a_reapproval_long_after_a_restore_is_monitored() {
+        use super::super::script_tools as st;
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        restored_two_months_ago(d, "rates_y").await;
+        let report = reapproved_after_a_clean_week(d, "rates_y").await;
+        let t = st::load(d, "rates_y").unwrap();
+        assert_eq!(
+            report.reverted,
+            vec!["script_tool:rates_y".to_string()],
+            "{report:?} restored_at={:?}",
+            t.restored_at
+        );
+    }
+
+    /// A far-off rollback date written into the file outside the app is not signed by the next
+    /// promotion: the monitor still compares the tool week over week.
+    #[tokio::test]
+    async fn a_promotion_does_not_sign_a_rollback_date_written_outside_the_app() {
+        use super::super::script_tools as st;
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        st::set_signing_key(d, [8; 32]);
+        let now = Utc::now();
+        for (script, approved) in [
+            ("function main() { return 1; }", now - Duration::days(30)),
+            ("function main() { return 2; }", now - Duration::days(20)),
+        ] {
+            st::create(
+                d,
+                "chat-1",
+                &json!({ "name": "rates_z", "description": "Rates.", "script": script }),
+            )
+            .await
+            .unwrap();
+            st::promote(d, "rates_z", None).await.unwrap();
+            let mut tool = st::load(d, "rates_z").unwrap();
+            tool.checks.clear();
+            tool.approved_at = Some(approved);
+            st::save(d, &tool).unwrap();
+        }
+        // Outside the app: a rollback date far ahead, and the regression checks emptied.
+        let mut forged = st::load(d, "rates_z").unwrap();
+        forged.monitor_reverted_at = Some(now + Duration::days(30_000));
+        std::fs::write(
+            d.join("chat").join("script-tools").join("rates_z.json"),
+            serde_json::to_string(&forged).unwrap(),
+        )
+        .unwrap();
+        assert!(st::definitions(d).iter().all(|t| t.tool_name != "rates_z"));
+        // The model asks to promote it again; the card shows the same script and no access.
+        st::promote(d, "rates_z", None).await.unwrap();
+        let after = st::load(d, "rates_z").unwrap();
+        assert!(st::definitions(d).iter().any(|t| t.tool_name == "rates_z"));
+        traces::start_run(d, "r", "c", None, "m");
+        for _ in 0..10 {
+            traces::tool_call_at(d, "r", "script__rates_z", now - Duration::days(4), 5, true);
+        }
+        for ok in [false, false, true, true, true, true] {
+            traces::tool_call_at(
+                d,
+                "r",
+                "script__rates_z",
+                Utc::now() + Duration::minutes(30),
+                5,
+                ok,
+            );
+        }
+        assert_eq!(after.monitor_reverted_at, None);
+        let report = maintain(d, Utc::now() + Duration::hours(2)).await;
+        // The regression is acted on. The checks came back from the last version the app signed,
+        // and the first version fails them, so it is taken out of use rather than rolled back.
+        assert_eq!(
+            report.demoted,
+            vec!["script_tool:rates_z".to_string()],
+            "{report:?}"
+        );
+    }
+
+    /// Regression checks emptied outside the app come back from the last signed version when the
+    /// tool is promoted again.
+    #[tokio::test]
+    async fn a_promotion_does_not_sign_checks_emptied_outside_the_app() {
+        use super::super::script_tools as st;
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        st::set_signing_key(d, [8; 32]);
+        st::create(d, "chat-1", &json!({ "name": "checked_v", "description": "Checked.", "script": "function main() { return 1; }" }))
+            .await
+            .unwrap();
+        st::promote(d, "checked_v", None).await.unwrap();
+        assert_eq!(st::load(d, "checked_v").unwrap().checks.len(), 1);
+        let mut forged = st::load(d, "checked_v").unwrap();
+        forged.checks.clear();
+        std::fs::write(
+            d.join("chat").join("script-tools").join("checked_v.json"),
+            serde_json::to_string(&forged).unwrap(),
+        )
+        .unwrap();
+        st::promote(d, "checked_v", None).await.unwrap();
+        assert!(st::definitions(d)
+            .iter()
+            .any(|t| t.tool_name == "checked_v"));
+        assert_eq!(
+            st::load(d, "checked_v").unwrap().checks.len(),
+            1,
+            "checks laundered away"
+        );
+    }
 }

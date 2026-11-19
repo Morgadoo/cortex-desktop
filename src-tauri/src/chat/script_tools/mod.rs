@@ -747,6 +747,31 @@ pub async fn promote(config_dir: &Path, name: &str, days: Option<i64>) -> Result
     promote_with(config_dir, name, days, None).await
 }
 
+/// For a file changed outside the app, what the signature vouched for and the approval card does
+/// not show (its regression checks, the versions set aside, the monitor's dates) is taken from the
+/// last version the app signed, so a promotion never signs what was written around it.
+fn take_vouched(config_dir: &Path, tool: &mut ScriptTool) {
+    if verifies(config_dir, tool) {
+        return;
+    }
+    let last = super::versions::list(config_dir, "tools", &format!("script-{}", tool.name))
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|v| serde_json::from_value::<ScriptTool>(v.value).ok())
+        .find(|v| v.name == tool.name && verifies(config_dir, v));
+    let mut checks = last.as_ref().map(|l| l.checks.clone()).unwrap_or_default();
+    if let Some(check) = last.as_ref().and_then(|l| l.pending_check.clone()) {
+        if !checks.iter().any(|c| c.args == check.args) {
+            checks.push(check);
+        }
+    }
+    tool.checks = checks;
+    tool.pending_check = None;
+    tool.set_aside = last.map(|l| l.set_aside).unwrap_or_default();
+    tool.monitor_reverted_at = None;
+    tool.restored_at = None;
+}
+
 async fn promote_with(
     config_dir: &Path,
     name: &str,
@@ -756,7 +781,8 @@ async fn promote_with(
     sandbox::cache_in(config_dir);
     #[cfg(not(test))]
     ensure_signing_key(config_dir).await;
-    let first = load(config_dir, name).ok_or("There is no tool by that name.")?;
+    let mut first = load(config_dir, name).ok_or("There is no tool by that name.")?;
+    take_vouched(config_dir, &mut first);
     let failing = failing_checks(&first.script, &first.checks).await;
     if !failing.is_empty() {
         return Err(format!(
@@ -767,6 +793,7 @@ async fn promote_with(
     // Loaded again after the waits above, and promoted only if it is still what was checked and,
     // for a card, what the user was shown: nothing written in between is approved unseen.
     let mut tool = load(config_dir, name).ok_or("There is no tool by that name.")?;
+    take_vouched(config_dir, &mut tool);
     let expected = shown.unwrap_or(&first);
     if approval_hash(&tool) != approval_hash(expected)
         || tool.requested != expected.requested
@@ -787,15 +814,21 @@ async fn promote_with(
     tool.granted = tool.requested.clone();
     tool.expires.clear();
     tool.status = Status::Active;
+    // A version brought back from History and not approved since (a draft, say) has its own week
+    // to build from this approval before it is compared week over week, not the weeks of the
+    // versions it set aside. A restore already approved keeps its date and so its 14 days; any
+    // other approval is compared with the version it replaces.
+    let restore_unapproved = tool
+        .restored_at
+        .is_some_and(|at| tool.approved_at.is_none_or(|approved| at > approved));
+    if restore_unapproved {
+        tool.restored_at = Some(Utc::now());
+    }
     tool.approved_at = Some(Utc::now());
     tool.approved_hash = Some(approval_hash(&tool));
     // Approved again by the user: no longer set aside.
     let approved = approval_hash(&tool);
     tool.set_aside.retain(|h| h != &approved);
-    // A version brought back from History (a draft, say) and approved now has its own week to
-    // build before it is compared week over week, not the weeks of the versions it set aside; any
-    // other approval is compared with the version it replaces.
-    tool.restored_at = tool.restored_at.map(|_| Utc::now());
     // The user saw it on the card and approved it: signed afresh.
     save_resigned(config_dir, &tool)?;
     super::traces::register(
