@@ -1355,6 +1355,7 @@ version = "0.1.0"
 name = "cortex-sandbox"
 version = "0.1.0"
 dependencies = [
+ "rand 0.10.2",
  "reqwest",
  "serde",
  "sha2 0.10.9",

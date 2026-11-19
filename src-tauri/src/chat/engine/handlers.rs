@@ -715,7 +715,7 @@ fn on_promote_tool<'a>(
             ApprovalDecision::Deny => refuse(
                 "The user declined this tool. Do not promote it again unless they ask; describe what it would do instead.",
             ),
-            _ => match script_tools::promote(r.config_dir, name, days).await {
+            _ => match script_tools::promote_as_shown(r.config_dir, &tool, days).await {
                 Ok(text) => tools::Outcome {
                     text: format!("{text}{}", scores_note(&scores)),
                     is_error: false,
@@ -1102,6 +1102,7 @@ fn on_request_capability<'a>(
             "forDays": days,
             "reason": arguments.get("reason"),
             "script": before.script,
+            "access": script_tools::access_card(&before, &wanted),
         });
         match r
             .host
@@ -1111,9 +1112,7 @@ fn on_request_capability<'a>(
             ApprovalDecision::Deny => {
                 refuse("The user declined; the tool keeps the access it had.")
             }
-            _ => match script_tools::request(r.config_dir, name, wanted)
-                .and_then(|_| script_tools::grant(r.config_dir, name, days))
-            {
+            _ => match script_tools::extend(r.config_dir, &before, &wanted, days) {
                 Ok(()) => tools::Outcome {
                     text: format!(
                         "`{name}` may now reach what it asked for{}.",

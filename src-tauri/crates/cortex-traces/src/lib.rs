@@ -105,14 +105,31 @@ pub struct Spent {
 /// A data folder's database and its connection, kept for the life of the process.
 type Open = (PathBuf, &'static Mutex<Connection>);
 
+fn opened() -> std::sync::MutexGuard<'static, Vec<Open>> {
+    static OPEN: OnceLock<Mutex<Vec<Open>>> = OnceLock::new();
+    OPEN.get_or_init(|| Mutex::new(Vec::new()))
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+}
+
+/// Closes a data folder's database, for a folder that is going away (a trial's copy): its file
+/// is released, and a later use opens it afresh.
+pub fn forget(config_dir: &Path) {
+    let path = chat_dir(config_dir).join("traces.db");
+    let mut open = opened();
+    if let Some(i) = open.iter().position(|(p, _)| *p == path) {
+        let (_, conn) = open.remove(i);
+        if let Ok(memory) = Connection::open_in_memory() {
+            // Dropping the old connection closes the file.
+            *conn.lock().unwrap_or_else(|p| p.into_inner()) = memory;
+        }
+    }
+}
+
 /// One connection per data folder, opened on first use.
 fn connection(config_dir: &Path) -> Option<&'static Mutex<Connection>> {
-    static OPEN: OnceLock<Mutex<Vec<Open>>> = OnceLock::new();
     let path = chat_dir(config_dir).join("traces.db");
-    let mut open = OPEN
-        .get_or_init(|| Mutex::new(Vec::new()))
-        .lock()
-        .unwrap_or_else(|p| p.into_inner());
+    let mut open = opened();
     if let Some((_, conn)) = open.iter().find(|(p, _)| *p == path) {
         return Some(conn);
     }
@@ -222,7 +239,10 @@ pub fn tool_call_at(
     if let Some(name) = tool.strip_prefix("script__") {
         used_at(config_dir, "script_tool", name, at);
     }
-    attribute(config_dir, run, "tool", tool, true);
+    // A run of no turn (a tool called by another tool) counts as a use, attributed to no run.
+    if !run.is_empty() {
+        attribute(config_dir, run, "tool", tool, true);
+    }
 }
 
 /// The artifact registry's row for something the assistant can use or change.

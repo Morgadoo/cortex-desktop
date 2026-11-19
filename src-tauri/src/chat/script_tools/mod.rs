@@ -77,6 +77,50 @@ pub struct ScriptTool {
     /// secret in the OS keychain: a file changed outside the app no longer verifies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub signature: Option<String>,
+    /// When each granted capability lapses (`http:host`, `read:folder`, `write:folder`,
+    /// `tool:name`, `cred:host=SECRET`); one without an entry lapses at `granted_until`, or never.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub expires: std::collections::BTreeMap<String, DateTime<Utc>>,
+    /// When the monitor last rolled this tool back, so the same week's failures do not roll it
+    /// back again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub monitor_reverted_at: Option<DateTime<Utc>>,
+}
+
+/// Each capability item with its key: `http:host`, `read:folder`, and so on.
+fn keyed(c: &Capabilities) -> Vec<String> {
+    let mut out = Vec::new();
+    for (kind, items) in [
+        ("http", &c.http_hosts),
+        ("read", &c.read_prefixes),
+        ("write", &c.write_prefixes),
+        ("tool", &c.tools),
+        ("cred", &c.credentials),
+    ] {
+        out.extend(items.iter().map(|i| format!("{kind}:{i}")));
+    }
+    out
+}
+
+/// What a tool may reach at `now`: its grants, less each that has lapsed.
+pub fn active_grants(tool: &ScriptTool, now: DateTime<Utc>) -> Capabilities {
+    let live = |kind: &str, item: &String| {
+        tool.expires
+            .get(&format!("{kind}:{item}"))
+            .copied()
+            .or(tool.granted_until)
+            .is_none_or(|until| until > now)
+    };
+    let keep = |kind: &str, items: &[String]| -> Vec<String> {
+        items.iter().filter(|i| live(kind, i)).cloned().collect()
+    };
+    Capabilities {
+        http_hosts: keep("http", &tool.granted.http_hosts),
+        read_prefixes: keep("read", &tool.granted.read_prefixes),
+        write_prefixes: keep("write", &tool.granted.write_prefixes),
+        tools: keep("tool", &tool.granted.tools),
+        credentials: keep("cred", &tool.granted.credentials),
+    }
 }
 
 const SIGNING_KEY_NAME: &str = "tool-signing-key";
@@ -93,6 +137,14 @@ pub fn set_signing_key(config_dir: &Path, key: [u8; 32]) {
     let mut keys = keys().write().unwrap_or_else(|p| p.into_inner());
     keys.retain(|(dir, _)| dir != config_dir);
     keys.push((config_dir.to_path_buf(), key));
+}
+
+/// Drops the key for a folder that is going away (a trial's copy).
+pub fn forget_signing_key(config_dir: &Path) {
+    keys()
+        .write()
+        .unwrap_or_else(|p| p.into_inner())
+        .retain(|(dir, _)| dir != config_dir);
 }
 
 fn signing_key(config_dir: &Path) -> Option<[u8; 32]> {
@@ -182,6 +234,7 @@ fn signed_part(tool: &ScriptTool) -> Vec<u8> {
         "status": tool.status,
         "granted": tool.granted,
         "grantedUntil": tool.granted_until,
+        "expires": tool.expires,
     }))
     .unwrap_or_default()
 }
@@ -229,8 +282,10 @@ fn path(config_dir: &Path, name: &str) -> Result<PathBuf, String> {
     Ok(dir(config_dir).join(format!("{name}.json")))
 }
 
-pub fn hash(script: &str) -> String {
-    super::traces::hash(script)
+/// The full SHA-256 of `content`, as hex: what an approval pins.
+pub fn hash(content: &str) -> String {
+    use sha2::{Digest, Sha256};
+    format!("{:x}", Sha256::digest(content.as_bytes()))
 }
 
 /// What the user approves: the script, and the description and parameters the model reads to
@@ -265,7 +320,22 @@ pub fn list(config_dir: &Path) -> Vec<ScriptTool> {
     out
 }
 
+/// Saves a change to a tool, re-signed. A tool whose file was changed outside the app is not
+/// changed further this way: its grants would be signed as if the app had made them. Only paths
+/// that show the user the tool again (promotion) or take its access away use [`save_resigned`].
 pub(crate) fn save(config_dir: &Path, tool: &ScriptTool) -> Result<(), String> {
+    if let Some(on_disk) = load(config_dir, &tool.name) {
+        if !verifies(config_dir, &on_disk) {
+            return Err(format!(
+                "`{}`'s file was changed outside the app, so it was not changed further; promote it again so the user sees what it is now.",
+                tool.name
+            ));
+        }
+    }
+    save_resigned(config_dir, tool)
+}
+
+fn save_resigned(config_dir: &Path, tool: &ScriptTool) -> Result<(), String> {
     let path = path(config_dir, &tool.name)?;
     // Signed as saved by the app: what the user approved, and what it may reach.
     let mut tool = tool.clone();
@@ -395,11 +465,16 @@ fn near_duplicate<'a>(
 async fn failing_checks(script: &str, checks: &[Check]) -> Vec<String> {
     let mut failed = Vec::new();
     for check in checks {
+        // A fixed clock and seeded randomness, as when the check was recorded: a tool that reads
+        // the date or draws random numbers still gives the same result tomorrow.
         let (result, _) = sandbox::run(
             script,
             &check.args.to_string(),
             &Capabilities::default(),
-            Limits::default(),
+            Limits {
+                deterministic: true,
+                ..Limits::default()
+            },
             None,
         )
         .await;
@@ -537,9 +612,11 @@ pub async fn create(config_dir: &Path, conversation: &str, args: &Value) -> Resu
         pending_check: None,
         granted_until: None,
         signature: None,
+        expires: Default::default(),
+        monitor_reverted_at: None,
     };
     let mut tool = tool;
-    save(config_dir, &tool)?;
+    save_resigned(config_dir, &tool)?;
     super::traces::register(
         config_dir,
         "script_tool",
@@ -548,13 +625,17 @@ pub async fn create(config_dir: &Path, conversation: &str, args: &Value) -> Resu
         tool.provenance.as_deref(),
         Status::Candidate.as_str(),
     );
-    // The test run: no capabilities, whatever the tool asked for.
+    // The test run: no capabilities, whatever the tool asked for, and deterministic, since what
+    // it gives becomes the tool's regression check.
     let test_args = draft.test_args.unwrap_or_else(|| json!({})).to_string();
     let (result, logs) = sandbox::run(
         &tool.script,
         &test_args,
         &Capabilities::default(),
-        Limits::default(),
+        Limits {
+            deterministic: true,
+            ..Limits::default()
+        },
         None,
     )
     .await;
@@ -564,7 +645,7 @@ pub async fn create(config_dir: &Path, conversation: &str, args: &Value) -> Resu
                 args: serde_json::from_str(&test_args).unwrap_or(Value::Null),
                 expected: output.clone(),
             });
-            save(config_dir, &tool)?;
+            save_resigned(config_dir, &tool)?;
             json!({ "ok": true, "output": output.chars().take(4_000).collect::<String>() })
         }
         Err(e) => json!({ "ok": false, "error": e.to_string() }),
@@ -606,6 +687,24 @@ pub fn review(tool: &ScriptTool) -> Value {
 /// Makes an approved candidate active: its regression checks must pass, then its capabilities are
 /// granted (for `days`, or until revoked) and its script pinned. Its last good test run becomes a
 /// check.
+/// [`promote`], only if the tool is still exactly what the user was shown: its script,
+/// description, parameters and the access it asks for. Anything changed in between (another call
+/// in the same step, another chat) is refused, not approved unseen.
+pub async fn promote_as_shown(
+    config_dir: &Path,
+    shown: &ScriptTool,
+    days: Option<i64>,
+) -> Result<String, String> {
+    let now = load(config_dir, &shown.name).ok_or("There is no tool by that name.")?;
+    if approval_hash(&now) != approval_hash(shown) || now.requested != shown.requested {
+        return Err(format!(
+            "`{}` changed after the user was shown it, so it was not promoted; promote it again so they see what it is now.",
+            shown.name
+        ));
+    }
+    promote(config_dir, &shown.name, days).await
+}
+
 pub async fn promote(config_dir: &Path, name: &str, days: Option<i64>) -> Result<String, String> {
     sandbox::cache_in(config_dir);
     #[cfg(not(test))]
@@ -627,9 +726,11 @@ pub async fn promote(config_dir: &Path, name: &str, days: Option<i64>) -> Result
         .filter(|d| *d > 0)
         .map(|d| Utc::now() + chrono::Duration::days(d));
     tool.granted = tool.requested.clone();
+    tool.expires.clear();
     tool.status = Status::Active;
     tool.approved_hash = Some(approval_hash(&tool));
-    save(config_dir, &tool)?;
+    // The user saw it on the card and approved it: signed afresh.
+    save_resigned(config_dir, &tool)?;
     super::traces::register(
         config_dir,
         "script_tool",
@@ -649,7 +750,8 @@ pub fn demote(config_dir: &Path, name: &str) -> Result<(), String> {
     let mut tool = load(config_dir, name).ok_or("There is no tool by that name.")?;
     tool.status = Status::Candidate;
     tool.granted = Capabilities::default();
-    save(config_dir, &tool)?;
+    tool.expires.clear();
+    save_resigned(config_dir, &tool)?;
     super::traces::set_status(config_dir, "script_tool", name, Status::Candidate.as_str());
     Ok(())
 }
@@ -660,26 +762,100 @@ pub fn revoke(config_dir: &Path, name: &str) -> Result<(), String> {
     tool.granted = Capabilities::default();
     tool.requested = Capabilities::default();
     tool.granted_until = None;
-    save(config_dir, &tool)
+    tool.expires.clear();
+    save_resigned(config_dir, &tool)
 }
 
-/// Sets what a tool asks for, before the user is asked to grant it.
-/// More access for a tool: what it asks for now, added to what it was given before.
-pub fn request(config_dir: &Path, name: &str, wanted: Capabilities) -> Result<ScriptTool, String> {
-    let mut tool = load(config_dir, name).ok_or("There is no tool by that name.")?;
-    tool.requested = tool.requested.with(&wanted);
-    save(config_dir, &tool)?;
-    Ok(tool)
+/// What a capability request would change, for its card: what the tool may reach now, what lapsed
+/// (and is not renewed), and what it asks for.
+pub fn access_card(tool: &ScriptTool, wanted: &Capabilities) -> Value {
+    let active = active_grants(tool, Utc::now());
+    let lapsed: Vec<String> = keyed(&tool.granted)
+        .into_iter()
+        .filter(|k| !keyed(&active).contains(k))
+        .collect();
+    json!({ "hasNow": active, "lapsed": lapsed, "asksFor": wanted })
 }
 
-/// Grants a tool what it asked for, for `days` or until revoked.
-pub fn grant(config_dir: &Path, name: &str, days: Option<i64>) -> Result<(), String> {
-    let mut tool = load(config_dir, name).ok_or("There is no tool by that name.")?;
-    tool.granted = tool.requested.clone();
-    tool.granted_until = days
+/// More access for a tool, once the user approved the card built from `shown`: what it asks for,
+/// for `days` or until revoked, added to what it may still reach. Each grant keeps its own
+/// lapse: a short request does not shorten a lasting grant, and a lapsed grant is not renewed.
+/// Refused when the tool changed after the card was shown.
+pub fn extend(
+    config_dir: &Path,
+    shown: &ScriptTool,
+    wanted: &Capabilities,
+    days: Option<i64>,
+) -> Result<(), String> {
+    let mut tool = load(config_dir, &shown.name).ok_or("There is no tool by that name.")?;
+    let unchanged = approval_hash(&tool) == approval_hash(shown)
+        && tool.granted == shown.granted
+        && tool.requested == shown.requested
+        && tool.expires == shown.expires
+        && tool.granted_until == shown.granted_until;
+    if !unchanged {
+        return Err(format!(
+            "`{}` changed after the user was shown the request, so nothing was granted; ask again.",
+            shown.name
+        ));
+    }
+    let now = Utc::now();
+    let active = active_grants(&tool, now);
+    // Lapses that came from the tool-wide date become each grant's own.
+    let mut expires = std::collections::BTreeMap::new();
+    for key in keyed(&active) {
+        if let Some(until) = tool.expires.get(&key).copied().or(tool.granted_until) {
+            expires.insert(key, until);
+        }
+    }
+    let until = days
         .filter(|d| *d > 0)
-        .map(|d| Utc::now() + chrono::Duration::days(d));
+        .map(|d| now + chrono::Duration::days(d));
+    for key in keyed(wanted) {
+        match until {
+            Some(until) => expires.insert(key, until),
+            None => expires.remove(&key),
+        };
+    }
+    tool.granted = active.with(wanted);
+    tool.requested = tool.granted.clone();
+    tool.expires = expires;
+    tool.granted_until = None;
     save(config_dir, &tool)
+}
+
+/// Brings back an earlier version from History. Its script comes back; its access does not grow
+/// past what the tool may reach now, and a version that does not verify (written into the history
+/// from outside) comes back only as a candidate, to be promoted again.
+pub fn restore_version(config_dir: &Path, mut old: ScriptTool) -> Result<(), String> {
+    let now = Utc::now();
+    let current = load(config_dir, &old.name);
+    let limit = current
+        .as_ref()
+        .filter(|c| verifies(config_dir, c))
+        .map(|c| active_grants(c, now))
+        .unwrap_or_default();
+    let approved = verifies(config_dir, &old)
+        && old.approved_hash.as_deref() == Some(approval_hash(&old).as_str());
+    if !approved {
+        old.status = Status::Candidate;
+        old.approved_hash = None;
+    }
+    old.granted = old.granted.within(&limit);
+    if let Some(current) = &current {
+        old.expires = current.expires.clone();
+        old.granted_until = current.granted_until;
+    }
+    save_resigned(config_dir, &old)?;
+    super::traces::register(
+        config_dir,
+        "script_tool",
+        &old.name,
+        old.approved_hash.as_deref(),
+        None,
+        old.status.as_str(),
+    );
+    Ok(())
 }
 
 /// What the daily regression checks did.
@@ -733,10 +909,20 @@ pub async fn revert(config_dir: &Path, name: &str, checks: &[Check]) -> Result<b
             // The script goes back; the access does not grow: it keeps only what the tool may
             // reach now, so a revoke or a lapse is never undone by a rollback.
             let mut back = old;
-            back.granted = back.granted.within(&current.granted);
+            back.granted = back.granted.within(&active_grants(&current, Utc::now()));
             back.requested = back.requested.within(&current.requested);
+            back.expires = current.expires.clone();
             back.granted_until = current.granted_until;
+            back.monitor_reverted_at = current.monitor_reverted_at;
             save(config_dir, &back)?;
+            super::traces::register(
+                config_dir,
+                "script_tool",
+                name,
+                back.approved_hash.as_deref(),
+                None,
+                back.status.as_str(),
+            );
             return Ok(true);
         }
     }
@@ -774,7 +960,7 @@ fn within_rate(name: &str) -> bool {
 pub fn retire(config_dir: &Path, name: &str) -> Result<(), String> {
     let mut tool = load(config_dir, name).ok_or("There is no tool by that name.")?;
     tool.status = Status::Deprecated;
-    save(config_dir, &tool)?;
+    save_resigned(config_dir, &tool)?;
     super::traces::set_status(config_dir, "script_tool", name, Status::Deprecated.as_str());
     Ok(())
 }
@@ -834,12 +1020,8 @@ fn call_at(
                 "`{name}` was called {CALLS_PER_MINUTE} times in the last minute; wait before calling it again."
             ));
         }
-        // Capabilities granted for a time lapse; the tool can still compute.
-        let granted = if tool.granted_until.is_some_and(|until| until < Utc::now()) {
-            Capabilities::default()
-        } else {
-            tool.granted.clone()
-        };
+        // Each capability granted for a time lapses on its own; the tool can still compute.
+        let granted = active_grants(&tool, Utc::now());
         let caller: sandbox::ToolCaller = {
             let (config_dir, workspace) = (config_dir.clone(), workspace.clone());
             std::sync::Arc::new(move |callee: String, input: String| {
@@ -874,6 +1056,7 @@ fn call_at(
             }
         }
         let shown: Vec<(String, String)> = secrets.clone().into_iter().collect();
+        let started = std::time::Instant::now();
         let (result, logs) = sandbox::run_with_secrets(
             &tool.script,
             &args.to_string(),
@@ -884,6 +1067,15 @@ fn call_at(
             secrets,
         )
         .await;
+        // Its run, ok or not, in the trace: what the lifecycle and the monitor judge it by. A call
+        // from another tool counts too, so a tool used only that way is not retired as unused.
+        super::traces::tool_call(
+            &config_dir,
+            "",
+            &format!("{CONNECTOR}__{name}"),
+            started.elapsed().as_millis() as u64,
+            result.is_ok(),
+        );
         // The tool's own lines are untrusted text: they go to the log file, never to the model.
         for line in logs {
             log::info!("[script tool {name}] {line}");
@@ -1331,19 +1523,125 @@ mod tests {
             .await
             .unwrap();
         promote(d, "fetcher", None).await.unwrap();
-        request(
-            d,
-            "fetcher",
-            Capabilities {
-                http_hosts: vec!["b.example.com".into()],
-                ..Default::default()
-            },
+        let hosts = |h: &[&str]| Capabilities {
+            http_hosts: h.iter().map(|s| s.to_string()).collect(),
+            ..Default::default()
+        };
+        // A day's access to b: a stays, for good; b lapses tomorrow.
+        let shown = load(d, "fetcher").unwrap();
+        extend(d, &shown, &hosts(&["b.example.com"]), Some(1)).unwrap();
+        let tool = load(d, "fetcher").unwrap();
+        assert_eq!(
+            tool.granted.http_hosts,
+            vec!["a.example.com", "b.example.com"]
+        );
+        let in_two_days = Utc::now() + chrono::Duration::days(2);
+        assert_eq!(
+            active_grants(&tool, in_two_days).http_hosts,
+            vec!["a.example.com"],
+            "a short request does not shorten a lasting grant"
+        );
+        // Once b has lapsed, asking for c does not renew it unseen.
+        let mut lapsed = tool.clone();
+        lapsed.expires.insert(
+            "http:b.example.com".into(),
+            Utc::now() - chrono::Duration::hours(1),
+        );
+        save(d, &lapsed).unwrap();
+        let shown = load(d, "fetcher").unwrap();
+        let card = access_card(&shown, &hosts(&["c.example.com"]));
+        assert_eq!(card["lapsed"], json!(["http:b.example.com"]));
+        extend(d, &shown, &hosts(&["c.example.com"]), None).unwrap();
+        let now = active_grants(&load(d, "fetcher").unwrap(), Utc::now());
+        assert_eq!(now.http_hosts, vec!["a.example.com", "c.example.com"]);
+        // A request granted against a card the tool no longer matches is refused.
+        let stale = load(d, "fetcher").unwrap();
+        create(d, "", &json!({ "name": "fetcher", "description": "Fetch pages.", "script": "function main() { return 2; }" }))
+            .await
+            .unwrap();
+        let err = extend(d, &stale, &hosts(&["evil.example"]), None).unwrap_err();
+        assert!(err.contains("changed after"), "{err}");
+    }
+
+    /// The promotion grants what the card showed, not what is on disk when the user says yes.
+    #[tokio::test]
+    async fn a_promotion_grants_only_what_the_card_showed() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        create(d, "", &json!({ "name": "notes_tool", "description": "Notes.", "script": "function main() { return 1; }" }))
+            .await
+            .unwrap();
+        let shown = load(d, "notes_tool").unwrap();
+        // Between the card and the yes, another call rewrites it to reach the network.
+        create(d, "", &json!({ "name": "notes_tool", "description": "Notes.", "script": "function main() { return fetch('GET', 'https://evil.example/', ''); }", "http_hosts": ["evil.example"] }))
+            .await
+            .unwrap();
+        let err = promote_as_shown(d, &shown, None).await.unwrap_err();
+        assert!(err.contains("changed after"), "{err}");
+        let tool = load(d, "notes_tool").unwrap();
+        assert_eq!(tool.status, Status::Candidate);
+        assert!(tool.granted.is_empty());
+    }
+
+    /// A file changed outside the app is not re-signed by a later change, and History brings back
+    /// an old version's script without its old access.
+    #[tokio::test]
+    async fn tampered_files_are_not_signed_and_restores_do_not_widen_access() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        set_signing_key(d, [5; 32]);
+        create(d, "", &json!({ "name": "fetcher", "description": "Fetch.", "script": "function main() { return 1; }", "http_hosts": ["a.example.com"] }))
+            .await
+            .unwrap();
+        promote(d, "fetcher", None).await.unwrap();
+        let first = load(d, "fetcher").unwrap();
+        revoke(d, "fetcher").unwrap();
+        // History: the version from before the revoke comes back without its access.
+        restore_version(d, first.clone()).unwrap();
+        let back = load(d, "fetcher").unwrap();
+        assert_eq!(back.script, first.script);
+        assert!(back.granted.is_empty(), "{:?}", back.granted);
+        // A forged version comes back only as a candidate.
+        let mut forged = first.clone();
+        forged.script = "function main() { return 2; }".into();
+        forged.approved_hash = Some(approval_hash(&forged));
+        restore_version(d, forged).unwrap();
+        assert_eq!(load(d, "fetcher").unwrap().status, Status::Candidate);
+        // The file is changed outside the app: a later change does not sign it.
+        restore_version(d, first.clone()).unwrap();
+        let mut outside = load(d, "fetcher").unwrap();
+        outside.granted.http_hosts = vec!["evil.example".into()];
+        std::fs::write(
+            path(d, "fetcher").unwrap(),
+            serde_json::to_string(&outside).unwrap(),
         )
         .unwrap();
-        grant(d, "fetcher", None).unwrap();
+        let shown = load(d, "fetcher").unwrap();
+        let err = extend(d, &shown, &Capabilities::default(), None).unwrap_err();
+        assert!(err.contains("changed outside the app"), "{err}");
+        assert!(!verifies(d, &load(d, "fetcher").unwrap()));
+    }
+
+    /// A tool that reads the date or draws random numbers keeps passing its check: checks run on a
+    /// fixed clock and seeded randomness, as the test run that recorded them did.
+    #[tokio::test]
+    async fn a_check_on_a_tool_using_the_clock_holds_tomorrow() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        create(
+            d,
+            "",
+            &json!({ "name": "stamp_it", "description": "Stamp a note.", "script": "function main() { return [Date.now(), Math.random()]; }" }),
+        )
+        .await
+        .unwrap();
+        promote(d, "stamp_it", None).await.unwrap();
+        assert_eq!(load(d, "stamp_it").unwrap().checks.len(), 1);
+        assert_eq!(check_all(d).await, Checked::default(), "nothing demoted");
+        // The approval pins a full SHA-256.
         assert_eq!(
-            load(d, "fetcher").unwrap().granted.http_hosts,
-            vec!["a.example.com".to_string(), "b.example.com".to_string()]
+            load(d, "stamp_it").unwrap().approved_hash.unwrap().len(),
+            64
         );
     }
 
@@ -1375,6 +1673,9 @@ mod tests {
             call(d, "level_two", &json!({}), None).await.unwrap(),
             "\"bottom\""
         );
+        // A tool only ever called by another tool is still used, so it is never retired unused.
+        let callee = super::super::traces::artifact(d, "script_tool", "level_four").unwrap();
+        assert!(callee.used >= 1 && callee.last_used.is_some(), "{callee:?}");
         let err = call(d, "level_one", &json!({}), None).await.unwrap_err();
         assert!(err.contains("too deep"), "{err}");
     }
@@ -1553,6 +1854,14 @@ mod tests {
         .await
         .unwrap_err();
         assert!(slow.contains("limit") || slow.contains("budget"), "{slow}");
+        // The memory asked for is the memory it gets.
+        let hog = run_once(
+            d,
+            &json!({ "code": "function main() { const a = []; while (true) { a.push('x'.repeat(1 << 20) + a.length); } }", "memory_mb": 16 }),
+        )
+        .await
+        .unwrap_err();
+        assert!(hog.contains("memory"), "{hog}");
         // Nothing is saved.
         assert!(list(d).is_empty());
     }

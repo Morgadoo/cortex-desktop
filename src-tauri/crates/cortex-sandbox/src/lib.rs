@@ -118,6 +118,48 @@ pub struct Limits {
     pub memory_bytes: usize,
     /// Wall-clock time, including time spent waiting on host calls.
     pub timeout: Duration,
+    /// A fixed clock and a seeded random generator, so the same arguments give the same result:
+    /// what a regression check needs from a tool that reads the date or draws random numbers.
+    pub deterministic: bool,
+}
+
+/// The time a deterministic run sees: 2026-01-01T00:00:00Z, standing still.
+struct FixedWallClock;
+
+impl wasmtime_wasi::HostWallClock for FixedWallClock {
+    fn resolution(&self) -> Duration {
+        Duration::from_secs(1)
+    }
+    fn now(&self) -> Duration {
+        Duration::from_secs(1_767_225_600)
+    }
+}
+
+struct FixedMonotonicClock;
+
+impl wasmtime_wasi::HostMonotonicClock for FixedMonotonicClock {
+    fn resolution(&self) -> u64 {
+        1
+    }
+    fn now(&self) -> u64 {
+        0
+    }
+}
+
+/// The guest's WASI context: empty, inheriting nothing; for a deterministic run, also a fixed
+/// clock and seeded randomness.
+fn wasi_context(deterministic: bool) -> WasiCtx {
+    use rand::SeedableRng;
+    let mut builder = WasiCtxBuilder::new();
+    if deterministic {
+        builder
+            .wall_clock(FixedWallClock)
+            .monotonic_clock(FixedMonotonicClock)
+            .secure_random(rand::rngs::StdRng::seed_from_u64(7))
+            .insecure_random(rand::rngs::StdRng::seed_from_u64(7))
+            .insecure_random_seed(7);
+    }
+    builder.build()
 }
 
 impl Default for Limits {
@@ -126,6 +168,7 @@ impl Default for Limits {
             fuel: 5_000_000_000,
             memory_bytes: 128 << 20,
             timeout: Duration::from_secs(20),
+            deterministic: false,
         }
     }
 }
@@ -307,6 +350,19 @@ impl Host for HostState {
         if !target.starts_with(&root) {
             return Err(format!("denied: `{path}` leaves the workspace"));
         }
+        // The granted folder is checked again where the link led: a link inside a granted
+        // folder that points into another folder of the workspace is refused too.
+        let resolved = target.strip_prefix(&root).unwrap_or(&target);
+        if !self
+            .capabilities
+            .read_prefixes
+            .iter()
+            .any(|prefix| prefix.is_empty() || resolved.starts_with(prefix))
+        {
+            return Err(format!(
+                "denied: `{path}` leads outside the folders this tool may read"
+            ));
+        }
         let size = tokio::fs::metadata(&target)
             .await
             .map_err(|_| format!("not found: `{path}`"))?
@@ -453,15 +509,20 @@ impl Host for HostState {
             .await
             .map_err(|e| format!("request failed: {}", e.without_url()))?
         {
-            if body.len() + chunk.len() > MAX_HTTP_BODY_BYTES {
-                return Err(format!(
-                    "denied: the response is larger than {MAX_HTTP_BODY_BYTES} bytes"
-                ));
-            }
-            body.extend_from_slice(&chunk);
+            push_capped(&mut body, &chunk, MAX_HTTP_BODY_BYTES)?;
         }
         Ok(Response { status, body })
     }
+}
+
+/// Adds a chunk of a response as it arrives, and stops the download the moment it passes `cap`:
+/// a large response is refused without being held in memory.
+fn push_capped(body: &mut Vec<u8>, chunk: &[u8], cap: usize) -> Result<(), String> {
+    if body.len() + chunk.len() > cap {
+        return Err(format!("denied: the response is larger than {cap} bytes"));
+    }
+    body.extend_from_slice(chunk);
+    Ok(())
 }
 
 /// The first public address a name resolved to; none when every one is private.
@@ -631,7 +692,7 @@ pub async fn run_with_secrets(
     };
     let state = HostState {
         // Nothing inherited: no stdio, arguments, environment, folders or network.
-        wasi: WasiCtxBuilder::new().build(),
+        wasi: wasi_context(limits.deterministic),
         table: ResourceTable::new(),
         capabilities: capabilities.clone(),
         workspace,
@@ -1215,6 +1276,78 @@ mod tests {
         .await;
         assert!(wrote.unwrap_err().to_string().contains("at most"));
         assert!(!dir.path().join("out.txt").exists());
+    }
+
+    /// A link inside a granted folder that points into another folder of the workspace is
+    /// refused: the grant is checked where the link leads.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_read_cannot_follow_a_link_into_an_ungranted_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("data")).unwrap();
+        std::fs::create_dir_all(dir.path().join("private")).unwrap();
+        std::fs::write(dir.path().join("private/x.txt"), "secret").unwrap();
+        std::os::unix::fs::symlink("../private/x.txt", dir.path().join("data/x.txt")).unwrap();
+        std::fs::write(dir.path().join("data/ok.txt"), "fine").unwrap();
+        let read = |file: &str| {
+            let script = format!("function main() {{ return read('{file}'); }}");
+            let root = dir.path().to_path_buf();
+            async move {
+                run(
+                    &script,
+                    "{}",
+                    &Capabilities {
+                        read_prefixes: vec!["data".into()],
+                        ..Default::default()
+                    },
+                    Limits::default(),
+                    Some(Workspace {
+                        root,
+                        read: |p| std::fs::read(p),
+                        write: |p, b| std::fs::write(p, b),
+                    }),
+                )
+                .await
+                .0
+            }
+        };
+        assert_eq!(read("data/ok.txt").await.unwrap(), "\"fine\"");
+        let err = read("data/x.txt").await.unwrap_err().to_string();
+        assert!(err.contains("outside the folders"), "{err}");
+    }
+
+    /// Output handling: a response is cut off as soon as it passes the cap, chunk by chunk.
+    #[test]
+    fn a_response_past_the_cap_is_refused_as_it_arrives() {
+        let mut body = Vec::new();
+        assert!(push_capped(&mut body, &[1; 600], 1000).is_ok());
+        let err = push_capped(&mut body, &[1; 600], 1000).unwrap_err();
+        assert!(err.contains("larger than 1000 bytes"), "{err}");
+        assert_eq!(body.len(), 600, "the chunk past the cap is not kept");
+        assert_eq!(MAX_HTTP_BODY_BYTES, 1 << 20);
+    }
+
+    /// A deterministic run sees a fixed clock and seeded randomness: the same arguments give the
+    /// same result, today and tomorrow. An ordinary run sees the real time.
+    #[tokio::test]
+    async fn a_deterministic_run_gives_the_same_result_every_time() {
+        let script = "function main() { return [Date.now(), Math.random()]; }";
+        let fixed = Limits {
+            deterministic: true,
+            ..Limits::default()
+        };
+        let first = js(script, "{}", Capabilities::default(), fixed)
+            .await
+            .unwrap();
+        let second = js(script, "{}", Capabilities::default(), fixed)
+            .await
+            .unwrap();
+        assert_eq!(first, second);
+        assert!(first.starts_with("[1767225600000,"), "{first}");
+        let real = js(script, "{}", Capabilities::default(), Limits::default())
+            .await
+            .unwrap();
+        assert!(!real.starts_with("[1767225600000,"), "{real}");
     }
 
     /// Reads cannot leave the workspace through a link.

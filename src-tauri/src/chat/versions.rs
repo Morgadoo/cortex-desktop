@@ -251,7 +251,7 @@ pub fn restore(config_dir: &Path, kind: &str, id: &str, version: &str) -> Result
         ("tools", name) if name.starts_with("script-") => {
             // The version keeps the hash the user approved for its own script, so an approved
             // version comes back approved and an unapproved one stays a candidate.
-            super::script_tools::save(config_dir, &parse(value)?)
+            super::script_tools::restore_version(config_dir, parse(value)?)
         }
         ("tools", _) => super::custom_tools::save(config_dir, &parse(value)?).map(drop),
         _ => Err(format!("{kind} cannot be restored.")),

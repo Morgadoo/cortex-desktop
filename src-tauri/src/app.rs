@@ -19,6 +19,8 @@ pub fn run() {
     // The key that signs the tools the assistant wrote, when there are any.
     if let Some(config_dir) = crate::reporting::early_config_dir() {
         crate::chat::script_tools::unlock_signing(&config_dir);
+        // Trial copies of the data that a crash or a quit left behind.
+        crate::chat::evals::sweep_trials(&config_dir);
     }
     // `-p "question"`: answer on standard output and exit, without a window (Vibe's headless run).
     if let Some(code) = crate::chat::headless::maybe_run() {

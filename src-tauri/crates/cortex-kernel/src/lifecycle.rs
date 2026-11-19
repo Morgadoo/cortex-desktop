@@ -61,6 +61,42 @@ pub fn duplicates(facts: &[Fact]) -> Vec<(String, Vec<String>)> {
             .collect()
     };
     let sets: Vec<HashSet<String>> = facts.iter().map(|f| words(&f.text)).collect();
+    // "Is allergic" and "is not allergic" share nearly every word and say the opposite: a fact
+    // and its correction are never merged. Short words count here, so "no" and "not" do.
+    let negated = |t: &str| -> bool {
+        t.to_lowercase()
+            .split(|c: char| !c.is_alphanumeric() && c != '\'')
+            .any(|w| {
+                matches!(
+                    w,
+                    "not"
+                        | "no"
+                        | "never"
+                        | "none"
+                        | "nobody"
+                        | "nothing"
+                        | "neither"
+                        | "nor"
+                        | "without"
+                        | "isn't"
+                        | "aren't"
+                        | "wasn't"
+                        | "weren't"
+                        | "don't"
+                        | "doesn't"
+                        | "didn't"
+                        | "can't"
+                        | "cannot"
+                        | "won't"
+                        | "shouldn't"
+                        | "não"
+                        | "nunca"
+                        | "nem"
+                        | "sem"
+                )
+            })
+    };
+    let negations: Vec<bool> = facts.iter().map(|f| negated(&f.text)).collect();
     let mut taken = vec![false; facts.len()];
     let mut groups = Vec::new();
     // The most important facts lead their group.
@@ -74,11 +110,15 @@ pub fn duplicates(facts: &[Fact]) -> Vec<(String, Vec<String>)> {
             .iter()
             .copied()
             .filter(|&j| {
-                j != i && !taken[j] && facts[j].scope == facts[i].scope && {
-                    let shared = sets[i].intersection(&sets[j]).count() as f64;
-                    let union = sets[i].union(&sets[j]).count().max(1) as f64;
-                    shared / union >= 0.8
-                }
+                j != i
+                    && !taken[j]
+                    && facts[j].scope == facts[i].scope
+                    && negations[j] == negations[i]
+                    && {
+                        let shared = sets[i].intersection(&sets[j]).count() as f64;
+                        let union = sets[i].union(&sets[j]).count().max(1) as f64;
+                        shared / union >= 0.8
+                    }
             })
             .collect();
         if same.is_empty() {
@@ -193,6 +233,12 @@ mod tests {
             duplicates(&facts),
             vec![("b".to_string(), vec!["a".to_string()])]
         );
+        // A fact and its correction say the opposite: they are never merged.
+        let corrected = [
+            fact("x", "The user is allergic to peanuts", 2, None),
+            fact("y", "The user is not allergic to peanuts", 3, None),
+        ];
+        assert!(duplicates(&corrected).is_empty());
     }
 
     #[test]

@@ -10,6 +10,8 @@ description = "The WebAssembly sandbox that runs the tools Cortex's assistant wr
 reqwest = "0.13.4"
 serde = { version = "1.0.218", features = ["derive"] }
 sha2 = "0.10"
+# The seeded generator a deterministic run gives the guest, of the version wasmtime-wasi takes.
+rand = { version = "0.10", default-features = false, features = ["std_rng"] }
 thiserror = "2.0.12"
 tokio = { version = "1.43.0", features = ["fs", "net", "time"] }
 url = "2.5.4"

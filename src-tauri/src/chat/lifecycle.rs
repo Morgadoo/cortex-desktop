@@ -66,10 +66,25 @@ pub async fn maintain(config_dir: &Path, now: DateTime<Utc>) -> Report {
     // with no earlier version that passes its checks, back to candidate.
     let fortnight = traces::usage(config_dir, now - Duration::days(14)).tools;
     for name in cortex_kernel::lifecycle::regressed(&week, &fortnight) {
-        let checks = super::script_tools::load(config_dir, &name)
-            .map(|t| t.checks)
-            .unwrap_or_default();
-        if super::script_tools::revert(config_dir, &name, &checks).await == Ok(true) {
+        // Only a tool in use is monitored: a retired or candidate one is not brought back.
+        let Some(tool) = super::script_tools::load(config_dir, &name)
+            .filter(|t| t.status == super::script_tools::Status::Active)
+        else {
+            continue;
+        };
+        // The week that made it roll back still holds the failures that did; judging it on them
+        // again would flip it back and forth. It is judged again once a new week has passed.
+        if tool
+            .monitor_reverted_at
+            .is_some_and(|at| now - at < Duration::days(7))
+        {
+            continue;
+        }
+        if super::script_tools::revert(config_dir, &name, &tool.checks).await == Ok(true) {
+            if let Some(mut back) = super::script_tools::load(config_dir, &name) {
+                back.monitor_reverted_at = Some(now);
+                let _ = super::script_tools::save(config_dir, &back);
+            }
             report.reverted.push(format!("script_tool:{name}"));
         } else if super::script_tools::demote(config_dir, &name).is_ok() {
             report.demoted.push(format!("script_tool:{name}"));
@@ -259,6 +274,61 @@ mod tests {
         assert_eq!(report.demoted, vec!["script_tool:lonely".to_string()]);
         assert!(st::load(d, "rates_v").unwrap().script.contains("return 1"));
         assert_eq!(st::load(d, "lonely").unwrap().status, st::Status::Candidate);
+        // The next day the same week's failures do not flip it back to the broken version.
+        let next = maintain(d, now + Duration::days(1)).await;
+        assert!(next.reverted.is_empty(), "{next:?}");
+        assert!(st::load(d, "rates_v").unwrap().script.contains("return 1"));
+    }
+
+    /// A retired tool is not brought back by the monitor, however its last week went.
+    #[tokio::test]
+    async fn the_monitor_leaves_a_retired_tool_retired() {
+        use super::super::script_tools as st;
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        for script in [
+            "function main() { return 1; }",
+            "function main() { return 2; }",
+        ] {
+            st::create(
+                d,
+                "chat-1",
+                &json!({ "name": "old_rates", "description": "Rates.", "script": script }),
+            )
+            .await
+            .unwrap();
+            st::promote(d, "old_rates", None).await.unwrap();
+            let mut tool = st::load(d, "old_rates").unwrap();
+            tool.checks.clear();
+            st::save(d, &tool).unwrap();
+        }
+        st::retire(d, "old_rates").unwrap();
+        let now = Utc::now();
+        traces::start_run(d, "r", "c", None, "m");
+        for i in 0..10 {
+            traces::tool_call_at(
+                d,
+                "r",
+                "script__old_rates",
+                now - Duration::days(10),
+                5,
+                true,
+            );
+            traces::tool_call_at(
+                d,
+                "r",
+                "script__old_rates",
+                now - Duration::days(1),
+                5,
+                i >= 4,
+            );
+        }
+        let report = maintain(d, now).await;
+        assert!(report.reverted.is_empty(), "{report:?}");
+        assert_eq!(
+            st::load(d, "old_rates").unwrap().status,
+            st::Status::Deprecated
+        );
     }
 
     #[tokio::test]

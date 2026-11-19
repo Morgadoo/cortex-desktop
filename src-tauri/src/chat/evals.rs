@@ -13,6 +13,7 @@
 //!
 //! ```text
 //! cortex-desktop eval tool-selection [--model vendor/model] [--without tool:web_search]
+//! cortex-desktop eval office --without fact:<id> --without instructions
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -256,19 +257,32 @@ const NOT_COPIED: &[&str] = &[
     "chat/traces.db",
     "chat/traces.db-wal",
     "chat/traces.db-shm",
+    "chat/trash",
+    "chat/quarantine",
+    "chat/libraries",
+    "chat/shares",
 ];
 
 /// A throwaway copy of the data folder in which a change is tried before the user is asked. The
-/// live data is never touched, and the copy is removed when this is dropped, also when the turn is
-/// stopped or the app quits mid-trial.
+/// live data is never touched. The copy is removed when this is dropped, also when the turn is
+/// stopped; one left by a crash or a quit mid-trial is swept at the next start
+/// ([`sweep_trials`]).
 pub struct TrialFolder {
     pub dir: PathBuf,
 }
 
 impl Drop for TrialFolder {
     fn drop(&mut self) {
+        // Its trace database and signing key are let go first, so the folder can be removed.
+        super::traces::forget(&self.dir);
+        super::script_tools::forget_signing_key(&self.dir);
         let _ = std::fs::remove_dir_all(&self.dir);
     }
+}
+
+/// Removes trial copies a crash or a quit left behind; run at start, before any trial.
+pub fn sweep_trials(config_dir: &Path) {
+    let _ = std::fs::remove_dir_all(config_dir.join("cache").join("trials"));
 }
 
 pub fn trial_folder(config_dir: &Path) -> Result<TrialFolder, String> {
@@ -443,15 +457,28 @@ pub async fn run_suite(
         score,
         cases: results,
     };
-    let dir = suite_dir(&config_dir, suite)?.join("runs");
+    save_run(&config_dir, &run)?;
+    Ok(run)
+}
+
+/// Keeps a run beside its suite, where later runs are compared with it.
+pub fn save_run(config_dir: &Path, run: &SuiteRun) -> Result<(), String> {
+    let dir = suite_dir(config_dir, &run.suite)?.join("runs");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let stamp = run.at.format("%Y%m%dT%H%M%S%3fZ");
     crate::chat::at_rest::write(
         dir.join(format!("{stamp}.json")),
-        serde_json::to_string_pretty(&run).map_err(|e| e.to_string())?,
+        serde_json::to_string_pretty(run).map_err(|e| e.to_string())?,
     )
-    .map_err(|e| e.to_string())?;
-    Ok(run)
+    .map_err(|e| e.to_string())
+}
+
+/// A host whose turns run against a throwaway copy of `host`'s data: what an eval runs on, so
+/// nothing a case does (a fact it saves, a tool it writes, a use it counts) reaches the live data.
+pub fn on_a_copy(host: &Arc<dyn Host>) -> Result<(TrialFolder, Arc<dyn Host>), String> {
+    let folder = trial_folder(&host.config_dir()?)?;
+    let copy: Arc<dyn Host> = Arc::new(InFolder::new(host.clone(), folder.dir.clone()));
+    Ok((folder, copy))
 }
 
 /// The latest saved run of `suite`, if any.
@@ -466,6 +493,24 @@ pub fn last_run(config_dir: &Path, suite: &str) -> Option<SuiteRun> {
     files.sort();
     let text = crate::chat::at_rest::read_to_string(files.last()?).ok()?;
     serde_json::from_str(&text).ok()
+}
+
+/// The latest full run of `suite` on `model`: what a new run on that model is compared with. A
+/// run on another model, or one that left something out, is no baseline.
+pub fn last_full_run(config_dir: &Path, suite: &str, model: &str) -> Option<SuiteRun> {
+    let dir = suite_dir(config_dir, suite).ok()?.join("runs");
+    let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "json"))
+        .collect();
+    files.sort();
+    files.iter().rev().find_map(|file| {
+        let run: SuiteRun =
+            serde_json::from_str(&crate::chat::at_rest::read_to_string(file).ok()?).ok()?;
+        (run.without.is_empty() && run.model == model).then_some(run)
+    })
 }
 
 /// One suite's nightly result: its score, and the cases that got worse since the last full run.
@@ -483,6 +528,10 @@ pub async fn nightly(host: &Arc<dyn Host>, model: &str) -> Vec<Nightly> {
     let Ok(config_dir) = host.config_dir() else {
         return Vec::new();
     };
+    // The cases run on a copy of the data; only their scores come back, as the next baseline.
+    let Ok((_folder, copy)) = on_a_copy(host) else {
+        return Vec::new();
+    };
     let mut out = Vec::new();
     for suite in suites(&config_dir) {
         if !cases(&config_dir, &suite)
@@ -491,10 +540,13 @@ pub async fn nightly(host: &Arc<dyn Host>, model: &str) -> Vec<Nightly> {
         {
             continue;
         }
-        let previous = last_run(&config_dir, &suite).filter(|r| r.without.is_empty());
-        let Ok(run) = run_suite(host, &suite, model, &Without::default()).await else {
+        let previous = last_full_run(&config_dir, &suite, model);
+        let Ok(run) = run_suite(&copy, &suite, model, &Without::default()).await else {
             continue;
         };
+        if let Err(e) = save_run(&config_dir, &run) {
+            log::warn!("nightly evals: could not keep the {suite} run: {e}");
+        }
         let comparison = previous.as_ref().map(|p| compare(p, &run));
         out.push(Nightly {
             suite,
@@ -603,7 +655,7 @@ pub fn maybe_run() -> Option<i32> {
     }
     let Some(suite) = args.get(2).cloned() else {
         eprintln!(
-            "cortex: eval <suite> [--model vendor/model] [--without tool:<name>|skill:<name>]"
+            "cortex: eval <suite> [--model vendor/model] [--without tool:<name>|skill:<name>|fact:<id>|page:<id>|instructions]"
         );
         return Some(1);
     };
@@ -639,14 +691,17 @@ pub fn maybe_run() -> Option<i32> {
         eprintln!("cortex: no model: pass --model vendor/model, or choose one in the app first");
         return Some(1);
     };
+    let live = config_dir.clone();
     let host: Arc<dyn Host> = Arc::new(super::headless::HeadlessHost::new(config_dir));
     let report = tauri::async_runtime::block_on(async {
-        if without.tools.is_empty() && without.skills.is_empty() {
-            run_suite(&host, &suite, &model, &without)
-                .await
-                .map(|run| serde_json::to_string_pretty(&run).unwrap_or_default())
+        // On a copy of the data, like the nightly runs; a full run's score is kept as a baseline.
+        let (_folder, copy) = on_a_copy(&host)?;
+        if without.labels().is_empty() {
+            let run = run_suite(&copy, &suite, &model, &without).await?;
+            save_run(&live, &run)?;
+            Ok(serde_json::to_string_pretty(&run).unwrap_or_default())
         } else {
-            ablate(&host, &suite, &model, &without)
+            ablate(&copy, &suite, &model, &without)
                 .await
                 .map(|(_, _, c)| serde_json::to_string_pretty(&c).unwrap_or_default())
         }
@@ -706,15 +761,28 @@ mod tests {
             },
         )
         .unwrap();
+        std::fs::create_dir_all(chat.join("trash")).unwrap();
+        std::fs::write(chat.join("trash").join("old.json"), "{}").unwrap();
         let folder = trial_folder(d).unwrap();
         let copy = folder.dir.clone();
         assert!(copy.join("chat").join("memories.json").exists());
         assert_eq!(cases(&copy, "s").len(), 1);
         assert!(!copy.join("chat").join("conversations").exists());
+        assert!(
+            !copy.join("chat").join("trash").exists(),
+            "deleted chats stay out"
+        );
         assert!(!copy.join("chat").join("traces.db").exists());
         assert!(!copy.join("cache").exists(), "no copy of itself");
+        // The trial's own trace database is opened, as a trial's turns do, and let go on drop.
+        super::super::traces::start_run(&copy, "r", "c", None, "m");
+        assert!(copy.join("chat").join("traces.db").exists());
         drop(folder);
         assert!(!copy.exists());
+        // A copy left by a crash is swept at the next start.
+        std::fs::create_dir_all(d.join("cache").join("trials").join("left")).unwrap();
+        sweep_trials(d);
+        assert!(!d.join("cache").join("trials").exists());
         assert!(
             chat.join("memories.json").exists(),
             "the live data is untouched"

@@ -1477,10 +1477,19 @@ async fn traced_turn(
     }
     if conversation.temporary {
         // A temporary chat leaves no trace: it does not add to or change knowledge.
+        // Nor the assistant's own tools and skills: an eval case or a worker runs in one.
         offered.retain(|t| {
-            t.name != builtins::REMEMBER
-                && t.name != builtins::FORGET
-                && t.name != builtins::KNOWLEDGE_WRITE
+            !matches!(
+                t.name.as_str(),
+                builtins::REMEMBER
+                    | builtins::FORGET
+                    | builtins::KNOWLEDGE_WRITE
+                    | builtins::SAVE_SKILL
+                    | super::script_tools::CREATE_TOOL
+                    | super::script_tools::PROMOTE_TOOL
+                    | super::script_tools::RETIRE_TOOL
+                    | super::script_tools::REQUEST_CAPABILITY
+            )
         });
     }
     // Past a few dozen connector tools, the rest load on demand (Vibe's "Found tools").
@@ -2328,13 +2337,22 @@ where
         },
     );
     if let Some(trace) = trace {
-        super::traces::tool_call(
-            config_dir,
-            trace,
-            name,
-            started.elapsed().as_millis() as u64,
-            !outcome.is_error,
-        );
+        if name.starts_with("script__") {
+            // A written tool records its own runs where it actually ran (also when another tool
+            // calls it), so a refusal before it runs (declined, nobody to approve, a lapsed or
+            // changed tool) is not counted against it as a failure.
+            if !outcome.is_error {
+                super::traces::attribute(config_dir, trace, "tool", name, true);
+            }
+        } else {
+            super::traces::tool_call(
+                config_dir,
+                trace,
+                name,
+                started.elapsed().as_millis() as u64,
+                !outcome.is_error,
+            );
+        }
     }
     if !outcome.is_error && super::traces::empty_result(&outcome.text) {
         super::traces::signal(config_dir, conversation_id, None, "empty_result");
@@ -2490,9 +2508,28 @@ impl Runner<'_> {
                 is_error: true,
             };
         }
-        // The agent's "ask first" policy covers every tool, built-in and reading ones included.
+        // Only what this turn offered runs: an agent's allowed tools, a worker's or eval's
+        // `only_tools`, the composer's tools turned off, a temporary chat's missing memory tools.
+        // A model that names anything else, from an injected page or a guess, is refused.
+        if !self.offered.iter().any(|t| t.name == name) {
+            return tools::Outcome {
+                text: format!("There is no tool named {name} here."),
+                is_error: true,
+            };
+        }
+        // The agent's "ask first" policy covers every tool, built-in and reading ones included,
+        // except those that always ask with their own fuller card (review, scores, access): asking
+        // first would replace that card with a plain one.
         let mut asked = false;
-        if self.agent.is_some_and(|a| agents::asks_first(a, name))
+        let asks_with_its_own_card = matches!(
+            name,
+            builtins::SAVE_SKILL
+                | super::script_tools::PROMOTE_TOOL
+                | super::script_tools::REQUEST_CAPABILITY
+                | super::proposals::PROPOSE_CHANGE
+        );
+        if !asks_with_its_own_card
+            && self.agent.is_some_and(|a| agents::asks_first(a, name))
             && !session_allowed(self.id, name)
         {
             if self.request.approval.unattended() {
