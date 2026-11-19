@@ -35,6 +35,9 @@ fn request(text: &str, approval: ApprovalMode) -> TurnRequest {
         only_tools: None,
         system: None,
         skills_off: Vec::new(),
+        facts_off: Vec::new(),
+        pages_off: Vec::new(),
+        instructions_off: false,
     }
 }
 
@@ -497,6 +500,31 @@ async fn the_model_cannot_choose_a_fact_s_scope() {
         .find(|m| m.text.contains("trains"))
         .expect("saved");
     assert_eq!(fact.scope, None, "{fact:?}");
+
+    // In a project's chat, the scope is that project's, whatever the model wrote.
+    let (host, _) = host_with(vec![
+        calls(
+            builtins::REMEMBER,
+            json!({ "fact": "The release is on Friday.", "scope": "project", "_project": "someone-else" }),
+        ),
+        says("Noted."),
+    ]);
+    *host.answer.lock().unwrap() = ApprovalDecision::Once;
+    let mut chat = Conversation::new("chat-1".into(), None, Some(MODEL.into()));
+    chat.project_id = Some("launch".into());
+    store::save_conversation(host.dir.path(), &chat).unwrap();
+    run(
+        &host,
+        &request("Remember the release day", ApprovalMode::Ask),
+    )
+    .await
+    .unwrap();
+    let fact = crate::chat::memory::load(host.dir.path())
+        .items
+        .into_iter()
+        .find(|m| m.text.contains("Friday"))
+        .expect("saved");
+    assert_eq!(fact.scope.as_deref(), Some("project:launch"));
 }
 
 /// Long results are kept whole as a reference, and read back in parts; nothing outside the
@@ -735,11 +763,56 @@ async fn ablating_a_skill_shows_whether_it_helps() {
     assert!(!prompt(1).contains("porto-guide"));
 }
 
+/// Ablation of what is remembered: a fact and the instructions can be left out of a run, and the
+/// comparison shows what they contributed.
+#[tokio::test]
+async fn ablating_a_fact_and_the_instructions_shows_what_they_add() {
+    use crate::chat::evals;
+    let (host, model) = host_with(vec![
+        says("Your office is in Porto."),
+        says("I do not know."),
+    ]);
+    let d = host.dir.path();
+    let mut memories = crate::chat::memory::load(d);
+    let fact =
+        crate::chat::memory::add(&mut memories, "The user's office is in Porto.", "user").unwrap();
+    crate::chat::memory::save(d, &memories).unwrap();
+    let mut instructions = store::load_instructions(d);
+    instructions.custom = "Always answer in one sentence.".into();
+    store::save_instructions(d, &instructions).unwrap();
+    evals::add_case(
+        d,
+        "office",
+        &evals::Case {
+            id: "where".into(),
+            prompt: "Where is my office?".into(),
+            facts: vec!["Porto".into()],
+            ..evals::Case::default()
+        },
+    )
+    .unwrap();
+    let without =
+        evals::Without::parse(&[format!("fact:{}", fact.id), "instructions".into()]).unwrap();
+    let dyn_host: Arc<dyn Host> = host.clone();
+    let (with, without_run, comparison) = evals::ablate(&dyn_host, "office", MODEL, &without)
+        .await
+        .unwrap();
+    assert_eq!((with.score, without_run.score), (1.0, 0.0));
+    assert_eq!(comparison.worse, vec!["where".to_string()]);
+    assert_eq!(
+        without_run.without,
+        vec![format!("fact:{}", fact.id), "instructions".to_string()]
+    );
+    let prompt = |i: usize| format!("{:?}", model.requests()[i]);
+    assert!(prompt(0).contains("office is in Porto") && prompt(0).contains("one sentence"));
+    assert!(!prompt(1).contains("office is in Porto") && !prompt(1).contains("one sentence"));
+}
+
 /// With the user's eval suites, a promotion measures the suite without and with the tool, and a
 /// tool that makes it worse goes back to being a candidate.
 #[tokio::test]
 async fn a_promotion_is_gated_on_the_user_s_evals() {
-    use crate::chat::{evals, script_tools};
+    use crate::chat::{evals, script_tools, versions};
     let gated = |base_answer: &'static str, with_answer: &'static str| async move {
         let (host, _) = host_with(vec![
             calls(
@@ -747,7 +820,7 @@ async fn a_promotion_is_gated_on_the_user_s_evals() {
                 json!({ "name": "counter", "description": "Counts.", "script": "function main() { return 4; }" }),
             ),
             calls(script_tools::PROMOTE_TOOL, json!({ "name": "counter" })),
-            // The suite without the tool, then with it.
+            // The trial, before the card: the suite without the tool, then with it.
             says(base_answer),
             says(with_answer),
             says("Done."),
@@ -768,20 +841,45 @@ async fn a_promotion_is_gated_on_the_user_s_evals() {
             run(&host, &request("Make a counter", ApprovalMode::Ask)).await,
             Ok(false)
         );
+        let d = host.dir.path();
+        // The trial ran in a copy: nothing of it is left, and the live history holds no version
+        // the user did not approve.
+        let left = std::fs::read_dir(d.join("cache").join("trials"))
+            .map(|r| r.count())
+            .unwrap_or(0);
+        assert_eq!(left, 0);
+        let unapproved_active = versions::list(d, "tools", "script-counter")
+            .unwrap()
+            .into_iter()
+            .filter(|v| v.value["status"] == "active")
+            .count();
         let ends = tool_ends(&host);
-        let active = script_tools::load(host.dir.path(), "counter").map(|t| t.status);
-        (ends[1].clone(), active)
+        let active = script_tools::load(d, "counter").map(|t| t.status);
+        let cards = host.cards.lock().unwrap().clone();
+        (ends[1].clone(), active, cards, unapproved_active)
     };
-    let ((text, failed), status) = gated("I don't know.", "It has 4 words.").await;
-    assert!(!failed && text.contains("did not get worse"), "{text}");
-    assert_eq!(status, Some(script_tools::Status::Active));
-
-    let ((text, failed), status) = gated("It has 4 words.", "I don't know.").await;
+    // Measured before the card: the user sees the scores; the model is only told it held.
+    let ((text, failed), status, cards, history) = gated("I don't know.", "It has 4 words.").await;
     assert!(
-        failed && text.contains("made the `counting` eval suite worse"),
+        !failed && text.contains("none got worse") && !text.contains("1.00"),
+        "{text}"
+    );
+    assert_eq!(status, Some(script_tools::Status::Active));
+    assert_eq!(cards.len(), 1);
+    assert_eq!(cards[0]["evals"][0]["suite"], "counting");
+    assert_eq!(cards[0]["evals"][0]["before"], 0.0);
+    assert_eq!(cards[0]["evals"][0]["after"], 1.0);
+    assert_eq!(history, 0);
+
+    // Worse with it: never offered, still a candidate, and the model learns nothing about cases.
+    let ((text, failed), status, cards, history) = gated("It has 4 words.", "I don't know.").await;
+    assert!(
+        failed && text.contains("not offered") && !text.contains("count"),
         "{text}"
     );
     assert_eq!(status, Some(script_tools::Status::Candidate));
+    assert!(cards.is_empty(), "never asked");
+    assert_eq!(history, 0);
 }
 
 /// A proposed change is reviewed, shown to the user with the review, and applied only on yes.
@@ -832,6 +930,146 @@ async fn a_proposed_change_is_reviewed_and_applied_only_when_approved() {
         .is_empty());
 }
 
+/// The fallback reviewer: with no Reviewer model (or the chat's own one set as it), the chat's
+/// model reviews in a fresh request that holds only the review prompt, and gives one line.
+#[tokio::test]
+async fn without_a_reviewer_model_the_chat_s_model_reviews_afresh() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    assert_eq!(super::handlers::reviewer_reference(d, MODEL), None);
+    let mut providers = crate::chat::providers::load(d);
+    providers.review_model = Some(MODEL.into());
+    crate::chat::providers::save(d, &providers).unwrap();
+    assert_eq!(
+        super::handlers::reviewer_reference(d, MODEL),
+        None,
+        "the same model is no second reviewer"
+    );
+    providers.review_model = Some("mock/review".into());
+    crate::chat::providers::save(d, &providers).unwrap();
+    assert_eq!(
+        super::handlers::reviewer_reference(d, MODEL).as_deref(),
+        Some("mock/review")
+    );
+
+    let chat_model = MockCompletionModel::from_turns([rig_core::test_utils::MockTurn::text(
+        "DOUBT: it asks for more access than it needs.\nMore detail here.",
+    )]);
+    let verdict =
+        super::handlers::review_with(&chat_model.clone().erase(), "Review this tool.").await;
+    assert_eq!(verdict, "DOUBT: it asks for more access than it needs.");
+    let request = &chat_model.requests()[0];
+    assert_eq!(request.chat_history.len(), 1, "only the review prompt");
+    assert!(format!("{:?}", request.chat_history).contains("Review this tool."));
+    // A model that does not answer leaves the user to judge.
+    let silent = MockCompletionModel::from_turns(Vec::<rig_core::test_utils::MockTurn>::new());
+    assert!(super::handlers::review_with(&silent.erase(), "x")
+        .await
+        .contains("could not be reached"));
+}
+
+/// On a machine where `run_code` would not be isolated, a run asks the user even in Auto, and
+/// says why; declined, nothing runs.
+#[tokio::test]
+async fn unsandboxed_code_asks_even_in_auto() {
+    let (host, _) = host_with(vec![
+        calls(
+            sandbox::RUN_CODE,
+            json!({ "language": "python", "code": "open('ran.txt', 'w').write('yes')" }),
+        ),
+        says("I did not run it."),
+    ]);
+    if sandbox::definition(host.dir.path()).is_none() {
+        // In CI the runner has Python, so a skip there would hide a failure.
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "CI needs Python for this test"
+        );
+        return;
+    }
+    sandbox::unsandboxed_for_test()
+        .lock()
+        .unwrap()
+        .push(host.dir.path().to_path_buf());
+    run(&host, &request("Run this", ApprovalMode::Auto))
+        .await
+        .unwrap();
+    assert_eq!(
+        host.approvals.lock().unwrap().clone(),
+        vec![sandbox::RUN_CODE.to_string()]
+    );
+    assert_eq!(
+        host.reasons.lock().unwrap().clone(),
+        vec![sandbox::UNSANDBOXED.to_string()]
+    );
+    let ends = tool_ends(&host);
+    assert!(ends[0].1 && ends[0].0.contains("declined"), "{ends:?}");
+    let workspace = sandbox::workspace(host.dir.path(), "chat-1").unwrap();
+    assert!(!workspace.join("ran.txt").exists());
+}
+
+/// `find_tools` by meaning: the query and each tool are embedded, and the tool closest in meaning
+/// comes first even with no word in common; each tool is embedded once.
+#[tokio::test]
+async fn tools_are_ranked_by_meaning_from_their_embeddings() {
+    let tool = |name: &str, description: &str| ChatTool {
+        name: name.into(),
+        description: description.into(),
+        parameters: json!({}),
+        connector_id: Some("mcp-x".into()),
+        tool_name: name.into(),
+        read_only: true,
+    };
+    let offered = vec![
+        tool("mcp-x__send_mail", "Send an email message."),
+        tool("mcp-x__list_events", "List calendar events."),
+    ];
+    // A stand-in embedding model: dates and plans point one way, mail the other.
+    let vector = |text: &str| {
+        let t = text.to_lowercase();
+        if t.contains("schedule") || t.contains("calendar") {
+            vec![1.0, 0.1]
+        } else {
+            vec![0.1, 1.0]
+        }
+    };
+    let asked = std::sync::Mutex::new(Vec::new());
+    let ranked = super::handlers::rank_by_meaning(
+        &offered,
+        "my schedule tomorrow",
+        "test-embedder-ranking",
+        |texts: Vec<String>| {
+            asked.lock().unwrap().push(texts.clone());
+            async move { Ok(texts.iter().map(|t| vector(t)).collect()) }
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(ranked, vec!["mcp-x__list_events", "mcp-x__send_mail"]);
+    assert_eq!(asked.lock().unwrap()[0][0], "my schedule tomorrow");
+    // A second search embeds only the query: the tools' vectors are kept.
+    super::handlers::rank_by_meaning(
+        &offered,
+        "send a note",
+        "test-embedder-ranking",
+        |texts: Vec<String>| {
+            asked.lock().unwrap().push(texts.clone());
+            async move { Ok(texts.iter().map(|t| vector(t)).collect()) }
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(asked.lock().unwrap()[1], vec!["send a note".to_string()]);
+    // An embedding server that fails leaves the word ranking alone.
+    assert!(
+        super::handlers::rank_by_meaning(&offered, "x", "test-embedder-failing", |_| async {
+            Err::<Vec<Vec<f32>>, String>("down".into())
+        })
+        .await
+        .is_none()
+    );
+}
+
 /// A separate model reviews: `reviewer` answers every review.
 fn with_reviewer(host: &TestHost, verdict: &str) -> MockCompletionModel {
     let reviewer = MockCompletionModel::from_turns(
@@ -844,9 +1082,10 @@ fn with_reviewer(host: &TestHost, verdict: &str) -> MockCompletionModel {
     reviewer
 }
 
-/// Measured against the user's evals: an approved change that makes a suite worse is undone.
+/// Measured against the user's evals before the user is asked: a change that makes a suite worse
+/// is taken back out and never offered.
 #[tokio::test]
-async fn an_approved_change_that_makes_the_evals_worse_is_undone() {
+async fn a_change_that_makes_the_evals_worse_is_never_offered() {
     use crate::chat::{evals, proposals::PROPOSE_CHANGE};
     let (host, _) = host_with(vec![
         calls(
@@ -860,7 +1099,7 @@ async fn an_approved_change_that_makes_the_evals_worse_is_undone() {
         // The suite before the change, then after it.
         says("Back up first, then move the files."),
         says("Just move it."),
-        says("It made things worse, so it was undone."),
+        says("It made things worse, so I left it."),
     ]);
     with_reviewer(&host, "SUPPORT: shorter answers.");
     evals::add_case(
@@ -879,13 +1118,90 @@ async fn an_approved_change_that_makes_the_evals_worse_is_undone() {
         .await
         .unwrap();
     let ends = tool_ends(&host);
-    assert!(
-        ends[0].1 && ends[0].0.contains("so it was undone"),
-        "{ends:?}"
-    );
+    assert!(ends[0].1 && ends[0].0.contains("not offered"), "{ends:?}");
+    assert!(host.approvals.lock().unwrap().is_empty(), "never asked");
     assert!(!store::load_instructions(host.dir.path())
         .custom
         .contains("Answer in one line"));
+}
+
+/// A skill is tried in a copy of the data before the user decides: declined, it leaves nothing in
+/// the live skills, the artifact registry or the suites' baseline, and the card showed the scores.
+#[tokio::test]
+async fn a_declined_skill_leaves_nothing_behind() {
+    use crate::chat::evals;
+    let (host, _) = host_with(vec![
+        calls(
+            builtins::SAVE_SKILL,
+            json!({ "name": "move-plans", "description": "Use when planning a move.", "instructions": "Back up first." }),
+        ),
+        says("Back up first, then move."),
+        says("Back up first, then move."),
+        says("Fine."),
+    ]);
+    let d = host.dir.path();
+    evals::add_case(
+        d,
+        "plans",
+        &evals::Case {
+            id: "move".into(),
+            prompt: "Plan the move.".into(),
+            facts: vec!["back up".into()],
+            ..evals::Case::default()
+        },
+    )
+    .unwrap();
+    run(&host, &request("Keep this as a skill", ApprovalMode::Auto))
+        .await
+        .unwrap();
+    let cards = host.cards.lock().unwrap().clone();
+    assert_eq!(cards[0]["evals"][0]["after"], 1.0, "{cards:?}");
+    assert!(cards[0]["review"].is_string());
+    assert!(crate::chat::skills::find(d, "move-plans").is_none());
+    assert!(super::super::traces::artifact(d, "skill", "move-plans").is_none());
+    assert!(
+        evals::last_run(d, "plans").is_none(),
+        "trial runs are no baseline"
+    );
+}
+
+/// In Plan mode and in runs nobody watches (scheduled tasks, evals), the model cannot rewrite an
+/// approved tool, which would take it out of every chat; a new candidate is still free.
+#[tokio::test]
+async fn an_approved_tool_is_not_rewritten_where_nobody_can_approve() {
+    use crate::chat::script_tools;
+    for mode in [ApprovalMode::Plan, ApprovalMode::Unattended] {
+        let (host, _) = host_with(vec![
+            calls(
+                script_tools::CREATE_TOOL,
+                json!({ "name": "counter", "description": "Counts.", "script": "function main() { return 5; }" }),
+            ),
+            calls(
+                script_tools::CREATE_TOOL,
+                json!({ "name": "fresh_idea", "description": "Something new.", "script": "function main() { return 1; }" }),
+            ),
+            says("Done."),
+        ]);
+        let d = host.dir.path();
+        script_tools::create(
+            d,
+            "",
+            &json!({ "name": "counter", "description": "Counts.", "script": "function main() { return 4; }" }),
+        )
+        .await
+        .unwrap();
+        script_tools::promote(d, "counter", None).await.unwrap();
+        run(&host, &request("Improve the counter", mode))
+            .await
+            .unwrap();
+        let ends = tool_ends(&host);
+        assert!(ends[0].1 && ends[0].0.contains("approved tool"), "{ends:?}");
+        assert_eq!(
+            script_tools::load(d, "counter").unwrap().status,
+            script_tools::Status::Active
+        );
+        assert!(!ends[1].1, "a new candidate is free: {ends:?}");
+    }
 }
 
 /// A saved skill changes every later chat, so it asks in every mode, Auto included.
@@ -982,9 +1298,14 @@ async fn nightly_evals_compare_each_suite_with_its_last_run() {
     let first = evals::nightly(&dyn_host, MODEL).await;
     assert_eq!(first.len(), 1);
     assert_eq!((first[0].score, first[0].before), (1.0, None));
-    let second = evals::nightly(&dyn_host, MODEL).await;
+    let second = evals::nightly_and_notify(&dyn_host, MODEL).await;
     assert_eq!((second[0].score, second[0].before), (0.0, Some(1.0)));
     assert_eq!(second[0].worse, vec!["four".to_string()]);
+    // The drop reached the user as a notification.
+    assert!(host.events().iter().any(|e| matches!(
+        e,
+        ChatEvent::Notice { text, .. } if text == "notification: An eval score dropped"
+    )));
 }
 
 /// The context manager's operations: past 30 connector tools the rest wait to be loaded;

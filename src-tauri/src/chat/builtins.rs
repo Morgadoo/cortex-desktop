@@ -182,8 +182,9 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             "properties": {
                 "title": { "type": "string", "description": "A few words for the task list." },
                 "prompt": { "type": "string", "description": "What to do on each run, written to stand alone." },
-                "frequency": { "type": "string", "enum": ["once", "daily", "weekly", "monthly", "yearly"] },
-                "time": { "type": "string", "description": "24-hour local time, HH:MM." },
+                "frequency": { "type": "string", "enum": ["once", "daily", "weekly", "monthly", "yearly", "cron"] },
+                "time": { "type": "string", "description": "24-hour local time, HH:MM (not used with cron)." },
+                "cron": { "type": "string", "description": "For frequency cron: five fields, minute hour day-of-month month day-of-week, local time; e.g. \"*/30 9-17 * * 1-5\" is every half hour in working hours." },
                 "days": { "type": "array", "items": { "type": "string" }, "description": "Weekly: day names, e.g. [\"monday\"]." },
                 "month": { "type": "integer", "minimum": 1, "maximum": 12, "description": "For yearly: the month, 1–12." },
                 "day_of_month": { "type": "integer", "minimum": 1, "maximum": 31 },
@@ -445,8 +446,16 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
     ));
     out.push(tool(
         USAGE_STATS,
-        "Your own recent activity, measured: runs, cost, and per tool and model how often each was          used, how often it failed and how long it took. No messages or results, only numbers. Use it          when the user asks what you have been doing or spending, or to see which tools work.",
-        days.clone(),
+        "Your own recent activity, measured: runs, cost, and per tool and model how often each was          used, how often it failed and how long it took. No messages or results, only numbers. Use it          when the user asks what you have been doing or spending, or to see which tools work. \
+         With `artifact` (kind:id, e.g. skill:summarize, script_tool:count_words, tool:web_search), \
+         that one thing: how often it was offered and used, and its score.",
+        json!({
+            "type": "object",
+            "properties": {
+                "days": { "type": "integer", "minimum": 1, "maximum": 365, "default": 7, "description": "How many days back." },
+                "artifact": { "type": "string", "description": "kind:id of one skill, tool, page or fact." }
+            }
+        }),
     ));
     out.push(tool(
         FAILURE_SUMMARY,
@@ -723,6 +732,29 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
             Some(detail) => ok(serde_json::to_string_pretty(&detail).unwrap_or_default()),
             None => err("There is no run with that id; list them with query_traces."),
         },
+        USAGE_STATS if !str_arg("artifact").is_empty() => {
+            // One artifact: how often it was in front of the model and used, and its score.
+            let wanted = str_arg("artifact");
+            let Some((kind, id)) = wanted.split_once(':') else {
+                return err(
+                    "Name the artifact as kind:id, e.g. skill:summarize or tool:web_search.",
+                );
+            };
+            match super::traces::artifact(config_dir, kind, id) {
+                Some(a) => ok(serde_json::to_string_pretty(&json!({
+                    "artifact": wanted,
+                    "status": a.status,
+                    "version": a.version,
+                    "loaded": a.loaded,
+                    "used": a.used,
+                    "lastUsed": a.last_used,
+                    "critical": a.critical,
+                    "score": cortex_kernel::lifecycle::score(&a, chrono::Utc::now()),
+                }))
+                .unwrap_or_default()),
+                None => err("Nothing by that name has been recorded."),
+            }
+        }
         USAGE_STATS | FAILURE_SUMMARY => {
             let days = args.get("days").and_then(Value::as_i64).unwrap_or(7);
             ok(if name == USAGE_STATS {
@@ -735,35 +767,33 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
             Ok(c) if !c.temporary => ok(chat_transcript(&c, READ_CHAT_LIMIT)),
             _ => err("There is no conversation with that id; use an id from search_chats."),
         },
-        SAVE_SKILL => match skills::save(
-            config_dir,
-            &str_arg("name"),
-            &str_arg("description"),
-            &str_arg("instructions"),
-        ) {
-            Ok(()) => {
-                // Written by the assistant: registered with the chat it came from.
-                let provenance = str_arg("conversation");
-                super::traces::register(
-                    config_dir,
-                    "skill",
-                    &str_arg("name"),
-                    Some(&super::traces::hash(&str_arg("instructions"))),
-                    Some(if provenance.is_empty() {
-                        "assistant"
-                    } else {
-                        provenance.as_str()
-                    }),
-                    "active",
-                );
-                ok(format!(
-                    "Saved the skill `{}`. The user can call it with /{}.",
-                    str_arg("name"),
-                    str_arg("name")
-                ))
+        SAVE_SKILL => {
+            let provenance =
+                skill_provenance(config_dir, &str_arg("name"), &str_arg("conversation"));
+            match skills::save(
+                config_dir,
+                &str_arg("name"),
+                &str_arg("description"),
+                &str_arg("instructions"),
+            ) {
+                Ok(()) => {
+                    super::traces::register(
+                        config_dir,
+                        "skill",
+                        &str_arg("name"),
+                        Some(&super::traces::hash(&str_arg("instructions"))),
+                        Some(&provenance),
+                        "active",
+                    );
+                    ok(format!(
+                        "Saved the skill `{}`. The user can call it with /{}.",
+                        str_arg("name"),
+                        str_arg("name")
+                    ))
+                }
+                Err(e) => err(e),
             }
-            Err(e) => err(e),
-        },
+        }
         CALENDAR_EVENTS => {
             let today = chrono::Local::now().date_naive();
             let date =
@@ -936,6 +966,22 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
     }
 }
 
+/// Who a skill counts as made by, for the lifecycle: a skill the user wrote stays theirs when the
+/// assistant updates it, so it is never retired as the assistant's; a new one is the assistant's,
+/// with the chat it came from.
+pub(crate) fn skill_provenance(config_dir: &Path, name: &str, conversation: &str) -> String {
+    let users = skills::find(config_dir, name).is_some_and(|s| s.origin == "user")
+        && super::traces::artifact(config_dir, "skill", name)
+            .is_none_or(|a| a.provenance.as_deref().is_none_or(|p| p == "user"));
+    if users {
+        "user".into()
+    } else if conversation.is_empty() {
+        "assistant".into()
+    } else {
+        conversation.into()
+    }
+}
+
 fn schedule(config_dir: &Path, args: &Value) -> Outcome {
     use super::tasks::{self, Frequency};
     let s = |k: &str| {
@@ -985,6 +1031,9 @@ fn schedule(config_dir: &Path, args: &Value) -> Outcome {
                 .unwrap_or(1)
                 .clamp(1, 31) as u8,
             time,
+        },
+        "cron" => Frequency::Cron {
+            expression: s("cron"),
         },
         other => return err(format!("Unknown frequency `{other}`.")),
     };
@@ -1159,6 +1208,55 @@ mod tests {
         assert_eq!(
             tasks.iter().find(|t| t.title == "Other").unwrap().reply_in,
             None
+        );
+    }
+
+    /// `query_traces` and `get_run`, as the model calls them: list runs, then open one.
+    #[tokio::test]
+    async fn the_model_lists_runs_and_opens_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        super::super::traces::start_run(d, "run-ok", "c1", None, "m/a");
+        super::super::traces::tool_call(d, "run-ok", "web_search", 12, true);
+        super::super::traces::end_run(d, "run-ok", "done");
+        super::super::traces::start_run(d, "run-bad", "c2", None, "m/a");
+        super::super::traces::tool_call(d, "run-bad", "read_chat", 7, false);
+        super::super::traces::end_run(d, "run-bad", "error");
+        let listed = run(d, QUERY_TRACES, &json!({ "failed_tools": true })).await;
+        assert!(!listed.is_error, "{}", listed.text);
+        let runs: Value = serde_json::from_str(&listed.text).unwrap();
+        assert_eq!(runs.as_array().unwrap().len(), 1);
+        let id = runs[0]["id"].as_str().unwrap();
+        assert_eq!(id, "run-bad");
+        let opened = run(d, GET_RUN, &json!({ "id": id })).await;
+        assert!(opened.text.contains("read_chat"), "{}", opened.text);
+        assert!(run(d, GET_RUN, &json!({ "id": "nope" })).await.is_error);
+    }
+
+    /// `usage_stats(artifact)`: one thing's use and score.
+    #[tokio::test]
+    async fn usage_stats_can_be_read_for_one_artifact() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        super::super::traces::loaded(d, "skill", &["summarize".into(), "summarize".into()]);
+        super::super::traces::used(d, "skill", "summarize");
+        let out = run(d, USAGE_STATS, &json!({ "artifact": "skill:summarize" })).await;
+        assert!(!out.is_error, "{}", out.text);
+        let v: Value = serde_json::from_str(&out.text).unwrap();
+        assert_eq!(
+            (v["loaded"].as_i64(), v["used"].as_i64()),
+            (Some(2), Some(1))
+        );
+        assert!(v["score"].as_f64().unwrap() > 0.0);
+        assert!(
+            run(d, USAGE_STATS, &json!({ "artifact": "skill:nothing" }))
+                .await
+                .is_error
+        );
+        assert!(
+            run(d, USAGE_STATS, &json!({ "artifact": "nonsense" }))
+                .await
+                .is_error
         );
     }
 

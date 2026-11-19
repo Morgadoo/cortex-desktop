@@ -433,9 +433,11 @@ fn on_builtin<'a>(
 ) -> BoxFuture<'a, tools::Outcome> {
     Box::pin(async move {
         let name = call.function.name.as_str();
-        // A saved skill changes how every later chat works: like a tool's promotion, it asks the
-        // user in every mode, Auto and Full auto included, unless the agent's policy already did.
-        if name == builtins::SAVE_SKILL && !asked {
+        // A saved skill changes how every later chat works: like a tool's promotion, it is
+        // reviewed and measured, and asks the user in every mode, Auto and Full auto included,
+        // unless the agent's policy already did. It is measured either way.
+        let mut skill_scores = None;
+        if name == builtins::SAVE_SKILL {
             match r.request.approval {
                 ApprovalMode::Plan => {
                     return tools::Outcome {
@@ -452,28 +454,59 @@ fn on_builtin<'a>(
                 },
                 _ => {}
             }
-            let gate = ChatTool {
-                name: name.into(),
-                description: String::new(),
-                parameters: Value::Null,
-                connector_id: None,
-                tool_name: name.into(),
-                read_only: false,
-            };
-            if r.host
-                .approve(
-                    &gate,
-                    &arguments,
-                    Some("a new skill changes every later chat"),
-                )
-                .await
-                == ApprovalDecision::Deny
+            let draft = &arguments;
+            skill_scores = match trial(r, |dir| async move {
+                let outcome = builtins::run(&dir, name, draft).await;
+                if outcome.is_error {
+                    Err(outcome.text)
+                } else {
+                    Ok(())
+                }
+            })
+            .await
             {
-                return tools::Outcome {
-                    text: "The user declined this skill. Do not save it again unless they ask."
-                        .into(),
-                    is_error: true,
+                Ok(scores) => scores,
+                Err(why) => {
+                    return tools::Outcome {
+                        text: why,
+                        is_error: true,
+                    }
+                }
+            };
+            if !asked {
+                let verdict = independent_review(
+                    r,
+                    &format!(
+                        "You review a skill an AI assistant wrote for itself: instructions it will \
+                         follow in every later chat where they apply. You did not write it. Check \
+                         that it is general, correct, safe, and not a near copy of a common default.\n\n{}\n\n\
+                         Reply with one line: SUPPORT: and a reason, or DOUBT: and a reason, under 25 words.",
+                        serde_json::to_string_pretty(&arguments).unwrap_or_default()
+                    ),
+                )
+                .await;
+                let mut card = arguments.clone();
+                if let Some(map) = card.as_object_mut() {
+                    map.insert("review".into(), Value::String(verdict.clone()));
+                    if let Some(scores) = &skill_scores {
+                        map.insert("evals".into(), scores.clone());
+                    }
+                }
+                let gate = ChatTool {
+                    name: name.into(),
+                    description: String::new(),
+                    parameters: Value::Null,
+                    connector_id: None,
+                    tool_name: name.into(),
+                    read_only: false,
                 };
+                if r.host.approve(&gate, &card, Some(&verdict)).await == ApprovalDecision::Deny {
+                    return tools::Outcome {
+                        text: "The user declined this skill. Do not save it again unless they ask."
+                            .into(),
+                        is_error: true,
+                    };
+                }
             }
         } else if builtins::effect(name) == builtins::Effect::Standing {
             if let Err(refused) = r
@@ -519,35 +552,10 @@ fn on_builtin<'a>(
                 }
             }
         }
-        let outcome = if name == builtins::SAVE_SKILL {
-            // Kept only if the user's eval suites do not get worse with it.
-            let skill = arguments
-                .get("name")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-            let undo = Undo::skill(r.config_dir, skill);
-            let measured = apply_measured(r, undo, async {
-                let outcome = builtins::run(r.config_dir, name, &arguments).await;
-                if outcome.is_error {
-                    Err(outcome.text)
-                } else {
-                    Ok(outcome.text)
-                }
-            })
-            .await;
-            match measured {
-                Ok(text) => tools::Outcome {
-                    text,
-                    is_error: false,
-                },
-                Err(text) => tools::Outcome {
-                    text,
-                    is_error: true,
-                },
-            }
-        } else {
-            builtins::run(r.config_dir, name, &arguments).await
-        };
+        let mut outcome = builtins::run(r.config_dir, name, &arguments).await;
+        if !outcome.is_error {
+            outcome.text.push_str(&scores_note(&skill_scores));
+        }
         // Attribution: this run used the skill it opened.
         if name == builtins::USE_SKILL && !outcome.is_error {
             if let Some(skill) = arguments.get("name").and_then(Value::as_str) {
@@ -576,7 +584,25 @@ fn on_create_tool<'a>(
     asked: bool,
 ) -> BoxFuture<'a, tools::Outcome> {
     Box::pin(async move {
-        match crate::chat::script_tools::create(r.config_dir, r.id, &arguments).await {
+        use crate::chat::script_tools;
+        // Rewriting an approved tool sends it back to candidate, which takes it out of every
+        // chat: a change nobody can approve in Plan mode or in a run nobody watches (evals too).
+        let mode = r.request.approval;
+        if mode == ApprovalMode::Plan || mode.unattended() {
+            let name = arguments
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if script_tools::load(r.config_dir, name.trim())
+                .is_some_and(|t| t.status != script_tools::Status::Candidate)
+            {
+                return tools::Outcome {
+                    text: format!("`{name}` is an approved tool; rewriting it needs the user, who is not here. Use it as it is, or describe the change."),
+                    is_error: true,
+                };
+            }
+        }
+        match script_tools::create(r.config_dir, r.id, &arguments).await {
             Ok(text) => tools::Outcome {
                 text,
                 is_error: false,
@@ -664,9 +690,24 @@ fn on_promote_tool<'a>(
             ),
         )
         .await;
+        let days = arguments.get("days").and_then(Value::as_i64);
+        // Tried first, in a copy of the data, with nothing granted: it is not approved yet.
+        let scores = match trial(r, |dir| async move {
+            script_tools::promote(&dir, name, None).await?;
+            let mut tried = script_tools::load(&dir, name).ok_or("gone")?;
+            tried.granted = script_tools::Capabilities::default();
+            script_tools::save(&dir, &tried)
+        })
+        .await
+        {
+            Ok(scores) => scores,
+            Err(why) => return refuse(&why),
+        };
         let mut card = script_tools::review(&tool);
         card["review"] = Value::String(verdict.clone());
-        let days = arguments.get("days").and_then(Value::as_i64);
+        if let Some(scores) = &scores {
+            card["evals"] = scores.clone();
+        }
         if let Some(days) = days {
             card["accessForDays"] = days.into();
         }
@@ -675,12 +716,9 @@ fn on_promote_tool<'a>(
                 "The user declined this tool. Do not promote it again unless they ask; describe what it would do instead.",
             ),
             _ => match script_tools::promote(r.config_dir, name, days).await {
-                Ok(text) => match gate_on_evals(r, name).await {
-                    Ok(note) => tools::Outcome {
-                        text: format!("{text}{note}"),
-                        is_error: false,
-                    },
-                    Err(why) => refuse(&why),
+                Ok(text) => tools::Outcome {
+                    text: format!("{text}{}", scores_note(&scores)),
+                    is_error: false,
                 },
                 Err(e) => refuse(&e),
             },
@@ -688,9 +726,6 @@ fn on_promote_tool<'a>(
     })
 }
 
-/// With the user's eval suites, a promoted tool stays only if no suite does worse with it than
-/// without it; otherwise it goes back to being a candidate. Without suites there is nothing to
-/// measure against, and the user's approval stands alone.
 /// The user's suites that have something to check.
 fn runnable_suites(config_dir: &std::path::Path) -> Vec<String> {
     use crate::chat::evals;
@@ -704,123 +739,66 @@ fn runnable_suites(config_dir: &std::path::Path) -> Vec<String> {
         .collect()
 }
 
-/// How a skill, instruction or memory change is undone when the evals say it made things worse.
-enum Undo {
-    Memories(crate::chat::memory::Memories),
-    Instructions(crate::chat::store::Instructions),
-    Skill {
-        name: String,
-        previous: Option<(String, String)>,
-    },
-}
-
-impl Undo {
-    /// What to put back if `change` is undone, taken before it is applied.
-    fn before(config_dir: &std::path::Path, change: &crate::chat::proposals::Change) -> Self {
-        use crate::chat::proposals::Change;
-        match change {
-            Change::Memory { .. } => Undo::Memories(crate::chat::memory::load(config_dir)),
-            Change::Instructions { .. } => Undo::Instructions(store::load_instructions(config_dir)),
-            Change::Skill { name, .. } => Undo::skill(config_dir, name),
-        }
-    }
-
-    fn skill(config_dir: &std::path::Path, name: &str) -> Self {
-        Undo::Skill {
-            name: name.to_string(),
-            previous: crate::chat::skills::find(config_dir, name)
-                .filter(|s| s.origin == "user")
-                .map(|s| (s.description, s.body)),
-        }
-    }
-
-    fn run(self, config_dir: &std::path::Path) -> Result<(), String> {
-        match self {
-            Undo::Memories(m) => crate::chat::memory::save(config_dir, &m),
-            Undo::Instructions(i) => store::save_instructions(config_dir, &i),
-            Undo::Skill {
-                name,
-                previous: Some((description, body)),
-            } => crate::chat::skills::save(config_dir, &name, &description, &body),
-            Undo::Skill {
-                name,
-                previous: None,
-            } => crate::chat::skills::delete(config_dir, &name).map(drop),
-        }
-    }
-}
-
-/// Measured against a set the agent does not control: with the user's eval suites, an approved
-/// change to a skill, the instructions or the memories is applied only after each suite is run
-/// before it, and stays only if no suite does worse after it; otherwise it is undone (the undo
-/// is itself kept as a version). Without suites, the user's approval stands alone.
-async fn apply_measured(
-    r: &Runner<'_>,
-    undo: Undo,
-    apply: impl std::future::Future<Output = Result<String, String>>,
-) -> Result<String, String> {
+/// Measured against a set the agent does not control, before the user is asked: with the
+/// user's eval suites, the change is made in a throwaway copy of the data folder, and each suite
+/// runs there before and after it. The live data is never touched, so a stopped turn, a declined
+/// change or two trials at once leave nothing behind, and trial runs never become a baseline.
+/// The scores go on the approval card; a change that makes any suite worse is never offered.
+/// The model is told only that, not the scores or the cases, so it cannot fit itself to the
+/// suites. `Ok(None)` without suites: the user's approval stands alone.
+async fn trial<F, Fut>(r: &Runner<'_>, apply: F) -> Result<Option<Value>, String>
+where
+    F: FnOnce(std::path::PathBuf) -> Fut,
+    Fut: std::future::Future<Output = Result<(), String>>,
+{
     use crate::chat::evals;
     let suites = runnable_suites(r.config_dir);
     if suites.is_empty() {
-        return apply.await;
+        return Ok(None);
     }
+    let folder = evals::trial_folder(r.config_dir)?;
+    let host: Arc<dyn Host> = Arc::new(evals::InFolder::new(r.host.clone(), folder.dir.clone()));
     let mut before = Vec::new();
     for suite in &suites {
         before.push(
-            evals::run_suite(r.host, suite, &r.request.model, &evals::Without::default()).await?,
+            evals::run_suite(&host, suite, &r.request.model, &evals::Without::default()).await?,
         );
     }
-    let text = apply.await?;
+    apply(folder.dir.clone()).await?;
+    let mut scores = Vec::new();
     for (suite, base) in suites.iter().zip(&before) {
         let after =
-            evals::run_suite(r.host, suite, &r.request.model, &evals::Without::default()).await?;
+            evals::run_suite(&host, suite, &r.request.model, &evals::Without::default()).await?;
         let comparison = evals::compare(base, &after);
         if !comparison.holds() {
-            undo.run(r.config_dir)?;
-            return Err(format!(
-                "The change made the `{suite}` eval suite worse ({:.2} before, {:.2} after; worse cases: {}), so it was undone.",
+            log::info!(
+                "trial: `{suite}` got worse ({:.2} to {:.2}; worse: {})",
                 comparison.before,
                 comparison.after,
                 comparison.worse.join(", ")
-            ));
+            );
+            return Err(
+                "Tried against the user's eval suites, it made one worse, so it was not offered. \
+                 Leave it, or propose something else."
+                    .into(),
+            );
         }
+        scores.push(serde_json::json!({
+            "suite": suite,
+            "before": comparison.before,
+            "after": comparison.after,
+            "better": comparison.better,
+        }));
     }
-    Ok(format!(
-        "{text} The eval suites ({}) did not get worse with it.",
-        suites.join(", ")
-    ))
+    Ok(Some(Value::Array(scores)))
 }
 
-async fn gate_on_evals(r: &Runner<'_>, name: &str) -> Result<String, String> {
-    use crate::chat::{evals, script_tools};
-    let suites = runnable_suites(r.config_dir);
-    if suites.is_empty() {
-        return Ok(String::new());
+/// What the result says: that it was measured, not the scores (those are for the user).
+fn scores_note(scores: &Option<Value>) -> String {
+    match scores {
+        Some(_) => " It was measured against the user's eval suites, and none got worse.".into(),
+        None => String::new(),
     }
-    let tool = format!("{}__{name}", script_tools::CONNECTOR);
-    let without = evals::Without {
-        tools: vec![tool],
-        ..evals::Without::default()
-    };
-    for suite in &suites {
-        let base = evals::run_suite(r.host, suite, &r.request.model, &without).await?;
-        let with =
-            evals::run_suite(r.host, suite, &r.request.model, &evals::Without::default()).await?;
-        let comparison = evals::compare(&base, &with);
-        if !comparison.holds() {
-            let _ = script_tools::demote(r.config_dir, name);
-            return Err(format!(
-                "`{name}` made the `{suite}` eval suite worse ({:.2} without it, {:.2} with it; worse cases: {}), so it went back to being a candidate.",
-                comparison.before,
-                comparison.after,
-                comparison.worse.join(", ")
-            ));
-        }
-    }
-    Ok(format!(
-        " The eval suites ({}) did not get worse with it.",
-        suites.join(", ")
-    ))
 }
 
 /// `propose_change`: a reviewer that did not write the proposal reads it first, then the user
@@ -863,30 +841,33 @@ fn on_propose_change<'a>(
             tool_name: proposals::PROPOSE_CHANGE.into(),
             read_only: false,
         };
+        let change = &proposal.change;
+        let scores = match trial(r, |dir| async move {
+            proposals::apply(&dir, r.id, change).map(drop)
+        })
+        .await
+        {
+            Ok(scores) => scores,
+            Err(why) => return refuse(&why),
+        };
         let card = serde_json::json!({
             "summary": proposal.summary,
             "evidence": proposal.evidence,
             "change": arguments.get("change"),
             "review": verdict,
+            "evals": scores,
         });
         match r.host.approve(&gate, &card, Some(&verdict)).await {
             ApprovalDecision::Deny => {
                 refuse("The user declined this change. Do not propose it again unless they ask.")
             }
-            _ => {
-                let undo = Undo::before(r.config_dir, &proposal.change);
-                match apply_measured(r, undo, async {
-                    proposals::apply(r.config_dir, r.id, &proposal.change)
-                })
-                .await
-                {
-                    Ok(text) => tools::Outcome {
-                        text: format!("{text} (Reviewer: {verdict})"),
-                        is_error: false,
-                    },
-                    Err(e) => refuse(&e),
-                }
-            }
+            _ => match proposals::apply(r.config_dir, r.id, &proposal.change) {
+                Ok(text) => tools::Outcome {
+                    text: format!("{text} (Reviewer: {verdict}){}", scores_note(&scores)),
+                    is_error: false,
+                },
+                Err(e) => refuse(&e),
+            },
         }
     })
 }
@@ -987,18 +968,27 @@ fn on_unload_tools<'a>(
 /// A review by a reviewer that is not the author: the review model when one is set (a different
 /// model), else the chat's model in a fresh request that holds none of this chat. One line back.
 async fn independent_review(r: &Runner<'_>, prompt: &str) -> String {
+    let reviewer = match reviewer_reference(r.config_dir, &r.request.model) {
+        Some(reference) => r.host.connect_model(&reference).await.ok(),
+        None => None,
+    };
+    review_with(reviewer.as_ref().unwrap_or(r.model), prompt).await
+}
+
+/// The Reviewer model from Settings, when one is set and it is not the chat's own model; else
+/// the chat's model reviews, in a fresh request.
+pub(super) fn reviewer_reference(config_dir: &std::path::Path, chat_model: &str) -> Option<String> {
+    crate::chat::providers::load(config_dir)
+        .review_model
+        .filter(|m| m != chat_model)
+}
+
+/// One review: a fresh request holding only `prompt`, none of the chat, answered in one line.
+pub(super) async fn review_with(model: &DynModel<Completion>, prompt: &str) -> String {
     let review = rig_core::completion::CompletionRequest::new(rig_core::completion::Message::user(
         prompt.to_string(),
     ))
     .max_tokens(200u64);
-    let reviewer = match crate::chat::providers::load(r.config_dir)
-        .review_model
-        .filter(|m| m != &r.request.model)
-    {
-        Some(reference) => r.host.connect_model(&reference).await.ok(),
-        None => None,
-    };
-    let model = reviewer.as_ref().unwrap_or(r.model);
     match tokio::time::timeout(std::time::Duration::from_secs(60), model.call(review)).await {
         Ok(Ok(response)) if !response.text().trim().is_empty() => response
             .text()
@@ -1087,6 +1077,7 @@ fn on_request_capability<'a>(
             http_hosts: strings("http_hosts"),
             read_prefixes: strings("read_prefixes"),
             write_prefixes: strings("write_prefixes"),
+            credentials: strings("credentials"),
             tools: strings("tools"),
         };
         let days = arguments.get("days").and_then(Value::as_i64);
@@ -1106,6 +1097,7 @@ fn on_request_capability<'a>(
             "network": wanted.http_hosts,
             "reads": wanted.read_prefixes,
             "writes": wanted.write_prefixes,
+            "credentials": wanted.credentials,
             "calls": wanted.tools,
             "forDays": days,
             "reason": arguments.get("reason"),
@@ -1143,11 +1135,33 @@ async fn semantic_tool_ranking(
     query: &str,
 ) -> Option<Vec<String>> {
     use crate::chat::embeddings;
+    let settings = embeddings::load(config_dir);
+    if !embeddings::ready(&settings) {
+        return None;
+    }
+    rank_by_meaning(offered, query, &settings.model, |texts| async {
+        embeddings::embed(&settings, texts).await
+    })
+    .await
+}
+
+/// The ranking itself: `embed` turns the query and each tool's name and description into
+/// vectors (with `model`'s cache), and tools come back closest in meaning first.
+pub(super) async fn rank_by_meaning<F, Fut>(
+    offered: &[ChatTool],
+    query: &str,
+    model: &str,
+    embed: F,
+) -> Option<Vec<String>>
+where
+    F: FnOnce(Vec<String>) -> Fut,
+    Fut: std::future::Future<Output = Result<Vec<Vec<f32>>, String>>,
+{
+    use crate::chat::embeddings;
     use std::collections::HashMap;
     use std::sync::{Mutex, OnceLock};
     static CACHE: OnceLock<Mutex<HashMap<String, Vec<f32>>>> = OnceLock::new();
-    let settings = embeddings::load(config_dir);
-    if !embeddings::ready(&settings) || query.trim().is_empty() {
+    if query.trim().is_empty() {
         return None;
     }
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
@@ -1159,7 +1173,7 @@ async fn semantic_tool_ranking(
             t.description
         )
     };
-    let key = |t: &ChatTool| format!("{}\n{}", settings.model, text(t));
+    let key = |t: &ChatTool| format!("{model}\n{}", text(t));
     let missing: Vec<String> = {
         let cache = cache.lock().unwrap_or_else(|p| p.into_inner());
         tools
@@ -1170,12 +1184,12 @@ async fn semantic_tool_ranking(
     };
     let mut wanted = vec![query.to_string()];
     wanted.extend(missing.iter().cloned());
-    let vectors = embeddings::embed(&settings, wanted).await.ok()?;
+    let vectors = embed(wanted).await.ok()?;
     let (query_vector, new) = vectors.split_first()?;
     {
         let mut cache = cache.lock().unwrap_or_else(|p| p.into_inner());
         for (text, vector) in missing.iter().zip(new) {
-            cache.insert(format!("{}\n{text}", settings.model), vector.clone());
+            cache.insert(format!("{model}\n{text}"), vector.clone());
         }
     }
     let cache = cache.lock().unwrap_or_else(|p| p.into_inner());

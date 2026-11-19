@@ -235,6 +235,118 @@ impl Host for RecordingHost {
     fn notify(&self, _title: &str, _body: &str) {}
 }
 
+/// What a trial copy of the data folder leaves out: the large and the private (conversations, the
+/// code sandboxes, backups, the activity log), and what a trial must not share (the trace database,
+/// earlier versions, caches). Everything that shapes an answer comes along: memories, pages,
+/// instructions, skills, tools, agents, providers and the eval suites.
+const NOT_COPIED: &[&str] = &[
+    "cache",
+    "chat/conversations",
+    "chat/sandbox",
+    "chat/tool-outputs",
+    "chat/backups",
+    "chat/previews",
+    "chat/favicons",
+    "chat/audit",
+    "chat/index",
+    "chat/workbench",
+    "chat/agent-envs",
+    "chat/canvases",
+    "chat/versions",
+    "chat/traces.db",
+    "chat/traces.db-wal",
+    "chat/traces.db-shm",
+];
+
+/// A throwaway copy of the data folder in which a change is tried before the user is asked. The
+/// live data is never touched, and the copy is removed when this is dropped, also when the turn is
+/// stopped or the app quits mid-trial.
+pub struct TrialFolder {
+    pub dir: PathBuf,
+}
+
+impl Drop for TrialFolder {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+pub fn trial_folder(config_dir: &Path) -> Result<TrialFolder, String> {
+    fn copy(from: &Path, to: &Path, root: &Path) -> std::io::Result<()> {
+        std::fs::create_dir_all(to)?;
+        for entry in std::fs::read_dir(from)?.flatten() {
+            let path = entry.path();
+            let relative = path.strip_prefix(root).unwrap_or(&path);
+            if NOT_COPIED.iter().any(|skip| relative == Path::new(skip)) {
+                continue;
+            }
+            let kind = entry.file_type()?;
+            if kind.is_dir() {
+                copy(&path, &to.join(entry.file_name()), root)?;
+            } else if kind.is_file() {
+                std::fs::copy(&path, to.join(entry.file_name()))?;
+            }
+        }
+        Ok(())
+    }
+    let folder = TrialFolder {
+        dir: config_dir
+            .join("cache")
+            .join("trials")
+            .join(uuid::Uuid::new_v4().simple().to_string()),
+    };
+    copy(config_dir, &folder.dir, config_dir)
+        .map_err(|e| format!("Could not set up the trial: {e}"))?;
+    Ok(folder)
+}
+
+/// Runs turns on `parent`'s models against another data folder: a trial's copy.
+pub struct InFolder {
+    parent: Arc<dyn Host>,
+    dir: PathBuf,
+    state: super::ChatState,
+}
+
+impl InFolder {
+    pub fn new(parent: Arc<dyn Host>, dir: PathBuf) -> Self {
+        Self {
+            parent,
+            dir,
+            state: super::ChatState::default(),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl Host for InFolder {
+    fn config_dir(&self) -> Result<PathBuf, String> {
+        Ok(self.dir.clone())
+    }
+
+    fn emit(&self, _event: ChatEvent) {}
+
+    fn chat_state(&self) -> &super::ChatState {
+        &self.state
+    }
+
+    fn registry(&self) -> &crate::tools::registry::ToolRegistry {
+        self.parent.registry()
+    }
+
+    async fn connect_model(
+        &self,
+        reference: &str,
+    ) -> Result<rig_core::DynModel<rig_core::operation::Completion>, String> {
+        self.parent.connect_model(reference).await
+    }
+
+    async fn approve(&self, _: &ChatTool, _: &Value, _: Option<&str>) -> ApprovalDecision {
+        ApprovalDecision::Deny
+    }
+
+    fn notify(&self, _title: &str, _body: &str) {}
+}
+
 pub async fn run_case(
     host: &Arc<dyn Host>,
     model: &str,
@@ -267,6 +379,9 @@ pub async fn run_case(
         temporary: true,
         tools_off: without.tools.clone(),
         skills_off: without.skills.clone(),
+        facts_off: without.facts.clone(),
+        pages_off: without.pages.clone(),
+        instructions_off: without.instructions,
         ..TurnRequest::default()
     };
     let answer = match recorder.state.begin(&id) {
@@ -389,6 +504,18 @@ pub async fn nightly(host: &Arc<dyn Host>, model: &str) -> Vec<Nightly> {
         });
     }
     out
+}
+
+/// The nightly run: every suite, and a notification for each whose score dropped.
+pub async fn nightly_and_notify(host: &Arc<dyn Host>, model: &str) -> Vec<Nightly> {
+    let results = nightly(host, model).await;
+    for result in &results {
+        log::info!("nightly evals: {result:?}");
+        if let Some((title, body)) = drop_notice(result) {
+            host.notify(title, &body);
+        }
+    }
+    results
 }
 
 /// The notice for a nightly result whose score dropped since the last full run, if it did.
@@ -555,6 +682,43 @@ mod tests {
         assert!(cases(dir.path(), STARTER)
             .iter()
             .any(|c| c.facts == vec!["1.99".to_string()]));
+    }
+
+    /// A trial's copy has what shapes an answer and none of the conversations or traces, and is
+    /// gone once dropped, however the trial ended.
+    #[test]
+    fn a_trial_copy_is_partial_and_removed_when_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let chat = d.join("chat");
+        std::fs::create_dir_all(chat.join("conversations")).unwrap();
+        std::fs::write(chat.join("conversations").join("c.json"), "{}").unwrap();
+        std::fs::write(chat.join("memories.json"), "{}").unwrap();
+        std::fs::write(chat.join("traces.db"), "x").unwrap();
+        add_case(
+            d,
+            "s",
+            &Case {
+                id: "a".into(),
+                prompt: "p".into(),
+                facts: vec!["f".into()],
+                ..Case::default()
+            },
+        )
+        .unwrap();
+        let folder = trial_folder(d).unwrap();
+        let copy = folder.dir.clone();
+        assert!(copy.join("chat").join("memories.json").exists());
+        assert_eq!(cases(&copy, "s").len(), 1);
+        assert!(!copy.join("chat").join("conversations").exists());
+        assert!(!copy.join("chat").join("traces.db").exists());
+        assert!(!copy.join("cache").exists(), "no copy of itself");
+        drop(folder);
+        assert!(!copy.exists());
+        assert!(
+            chat.join("memories.json").exists(),
+            "the live data is untouched"
+        );
     }
 
     #[test]

@@ -54,14 +54,47 @@ pub struct Capabilities {
     pub write_prefixes: Vec<String>,
     /// Other approved tools it may call, by name.
     pub tools: Vec<String>,
+    /// Credentials for its requests, as `host=SECRET`: the host attaches the vault secret named
+    /// SECRET to requests to that host. The script never sees the value.
+    pub credentials: Vec<String>,
 }
 
 impl Capabilities {
+    /// Both sets together.
+    pub fn with(&self, more: &Capabilities) -> Capabilities {
+        let join = |a: &[String], b: &[String]| {
+            let mut out = a.to_vec();
+            out.extend(b.iter().filter(|x| !a.contains(x)).cloned());
+            out
+        };
+        Capabilities {
+            http_hosts: join(&self.http_hosts, &more.http_hosts),
+            read_prefixes: join(&self.read_prefixes, &more.read_prefixes),
+            write_prefixes: join(&self.write_prefixes, &more.write_prefixes),
+            tools: join(&self.tools, &more.tools),
+            credentials: join(&self.credentials, &more.credentials),
+        }
+    }
+
+    /// Only what is also in `limit`.
+    pub fn within(&self, limit: &Capabilities) -> Capabilities {
+        let keep =
+            |a: &[String], b: &[String]| a.iter().filter(|x| b.contains(x)).cloned().collect();
+        Capabilities {
+            http_hosts: keep(&self.http_hosts, &limit.http_hosts),
+            read_prefixes: keep(&self.read_prefixes, &limit.read_prefixes),
+            write_prefixes: keep(&self.write_prefixes, &limit.write_prefixes),
+            tools: keep(&self.tools, &limit.tools),
+            credentials: keep(&self.credentials, &limit.credentials),
+        }
+    }
+
     pub fn is_empty(&self) -> bool {
         self.http_hosts.is_empty()
             && self.read_prefixes.is_empty()
             && self.write_prefixes.is_empty()
             && self.tools.is_empty()
+            && self.credentials.is_empty()
     }
 }
 
@@ -128,9 +161,26 @@ struct HostState {
     capabilities: Capabilities,
     workspace: Option<Workspace>,
     tools: Option<ToolCaller>,
+    /// Secret values by name, for the credentials the tool was granted.
+    secrets: std::collections::HashMap<String, String>,
     memory_limit: usize,
     memory_exceeded: bool,
     logs: Vec<String>,
+}
+
+/// The secret to send to `host`: one the tool was granted for that host, whose value is known.
+fn credential_for<'a>(
+    capabilities: &Capabilities,
+    secrets: &'a std::collections::HashMap<String, String>,
+    host: &str,
+) -> Option<&'a str> {
+    capabilities.credentials.iter().find_map(|c| {
+        let (for_host, name) = c.split_once('=')?;
+        for_host
+            .eq_ignore_ascii_case(host)
+            .then(|| secrets.get(name).map(String::as_str))
+            .flatten()
+    })
 }
 
 impl WasiView for HostState {
@@ -170,20 +220,46 @@ impl ResourceLimiter for HostState {
 fn is_private(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => {
+            let [a, b, ..] = v4.octets();
             v4.is_private()
                 || v4.is_loopback()
                 || v4.is_link_local()
                 || v4.is_unspecified()
                 || v4.is_broadcast()
                 || v4.is_documentation()
-                || v4.octets()[0] == 100 && (v4.octets()[1] & 0xc0) == 64 // carrier-grade NAT
+                || v4.is_multicast()
+                || a == 0 // "this network"
+                || a == 100 && (b & 0xc0) == 64 // carrier-grade NAT
+                || a == 192 && b == 0 && v4.octets()[2] == 0 // IETF protocol assignments
+                || a == 198 && (b & 0xfe) == 18 // benchmarking
+                || a >= 240 // reserved
         }
         IpAddr::V6(v6) => {
+            let s = v6.segments();
+            // An IPv4 address carried inside an IPv6 one is judged as that IPv4 address.
+            let embedded = |v4: [u8; 4]| is_private(IpAddr::V4(v4.into()));
+            let low = [(s[6] >> 8) as u8, s[6] as u8, (s[7] >> 8) as u8, s[7] as u8];
             v6.is_loopback()
                 || v6.is_unspecified()
-                || (v6.segments()[0] & 0xfe00) == 0xfc00 // unique local
-                || (v6.segments()[0] & 0xffc0) == 0xfe80 // link local
+                || v6.is_multicast()
+                || (s[0] & 0xfe00) == 0xfc00 // unique local
+                || (s[0] & 0xffc0) == 0xfe80 // link local
+                || (s[0] & 0xffc0) == 0xfec0 // site local (deprecated)
                 || v6.to_ipv4_mapped().is_some_and(|v4| is_private(IpAddr::V4(v4)))
+                // IPv4-compatible ::a.b.c.d
+                || (s[..6] == [0; 6] && embedded(low))
+                // NAT64 64:ff9b::/96
+                || (s[0] == 0x64 && s[1] == 0xff9b && s[2..6] == [0; 4] && embedded(low))
+                // 6to4 2002:aabb:ccdd::/48
+                || (s[0] == 0x2002
+                    && embedded([
+                        (s[1] >> 8) as u8,
+                        s[1] as u8,
+                        (s[2] >> 8) as u8,
+                        s[2] as u8,
+                    ]))
+                // Teredo 2001::/32 hides the client's address; refuse it whole.
+                || (s[0] == 0x2001 && s[1] == 0)
         }
     }
 }
@@ -279,20 +355,27 @@ impl Host for HostState {
         let root = tokio::fs::canonicalize(&workspace)
             .await
             .map_err(|e| e.to_string())?;
-        let target = root.join(relative);
-        let parent = target.parent().unwrap_or(&root).to_path_buf();
-        // Folders are made one by one inside the workspace; a link anywhere on the way that
-        // leads out is refused, and so is a link in the file's own place.
-        tokio::fs::create_dir_all(&parent)
-            .await
-            .map_err(|_| format!("could not make the folder for `{path}`"))?;
-        let parent = tokio::fs::canonicalize(&parent)
-            .await
-            .map_err(|_| format!("could not make the folder for `{path}`"))?;
-        if !parent.starts_with(&root) {
-            return Err(format!("denied: `{path}` leaves the workspace"));
+        // Folders are made one at a time inside the workspace: a link anywhere on the way is
+        // refused before anything is made past it, so nothing is created outside.
+        let mut parent = root.clone();
+        let folders: Vec<_> = relative.components().collect();
+        let (file, folders) = folders.split_last().ok_or("denied: no file name")?;
+        for folder in folders {
+            parent.push(folder);
+            match tokio::fs::symlink_metadata(&parent).await {
+                Ok(m) if m.file_type().is_symlink() => {
+                    return Err(format!(
+                        "denied: `{path}` leaves the workspace through a link"
+                    ))
+                }
+                Ok(m) if m.is_dir() => {}
+                Ok(_) => return Err(format!("denied: `{path}` goes through a file")),
+                Err(_) => tokio::fs::create_dir(&parent)
+                    .await
+                    .map_err(|_| format!("could not make the folder for `{path}`"))?,
+            }
         }
-        let target = parent.join(target.file_name().unwrap_or_default());
+        let target = parent.join(file);
         if tokio::fs::symlink_metadata(&target)
             .await
             .is_ok_and(|m| m.file_type().is_symlink() || m.is_dir())
@@ -356,6 +439,9 @@ impl Host for HostState {
         if let Some(body) = body {
             request = request.body(body);
         }
+        if let Some(secret) = credential_for(&self.capabilities, &self.secrets, &host) {
+            request = request.bearer_auth(secret);
+        }
         let mut response = request
             .send()
             .await
@@ -389,6 +475,8 @@ fn pinned_client(host: &str, address: SocketAddr) -> Result<reqwest::Client, Str
     reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .timeout(Duration::from_secs(15))
+        // A proxy would look the name up again, past the check and the pin.
+        .no_proxy()
         .resolve(host, address)
         .build()
         .map_err(|e| e.to_string())
@@ -515,6 +603,28 @@ pub async fn run_with_tools(
     workspace: Option<Workspace>,
     tools: Option<ToolCaller>,
 ) -> (Result<String, SandboxError>, Vec<String>) {
+    run_with_secrets(
+        script,
+        args,
+        capabilities,
+        limits,
+        workspace,
+        tools,
+        Default::default(),
+    )
+    .await
+}
+
+/// [`run_with_tools`], with the values of the vault secrets its `credentials` name.
+pub async fn run_with_secrets(
+    script: &str,
+    args: &str,
+    capabilities: &Capabilities,
+    limits: Limits,
+    workspace: Option<Workspace>,
+    tools: Option<ToolCaller>,
+    secrets: std::collections::HashMap<String, String>,
+) -> (Result<String, SandboxError>, Vec<String>) {
     let runtime = match runtime() {
         Ok(r) => r,
         Err(e) => return (Err(SandboxError::Crashed(e)), Vec::new()),
@@ -526,6 +636,7 @@ pub async fn run_with_tools(
         capabilities: capabilities.clone(),
         workspace,
         tools,
+        secrets,
         memory_limit: limits.memory_bytes,
         memory_exceeded: false,
         logs: Vec::new(),
@@ -856,6 +967,13 @@ mod tests {
                 .to_string();
             assert!(err.contains("leaves the workspace"), "{err}");
             assert!(!outside.path().join("x.txt").exists());
+            // A link in the folders on the way: refused before any folder is made past it.
+            let err = write("out/escape/new/deeper/x.txt", "x")
+                .await
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains("leaves the workspace"), "{err}");
+            assert!(!outside.path().join("new").exists(), "nothing made outside");
         }
         // Without the capability nothing is written, even with a workspace.
         let none = run(
@@ -1025,7 +1143,12 @@ mod tests {
                 .await
                 .unwrap();
         });
+        // A proxy in the environment is not used: it would look the name up again.
+        std::env::set_var("HTTP_PROXY", "http://127.0.0.1:9");
+        std::env::set_var("http_proxy", "http://127.0.0.1:9");
         let client = pinned_client("rebind.invalid", address).unwrap();
+        std::env::remove_var("HTTP_PROXY");
+        std::env::remove_var("http_proxy");
         let body = client
             .get(format!("http://rebind.invalid:{}/", address.port()))
             .send()
@@ -1056,6 +1179,44 @@ mod tests {
         assert_eq!(err, SandboxError::OutOfFuel);
     }
 
+    /// Output handling: reads and writes past 1 MiB are refused.
+    #[tokio::test]
+    async fn reads_and_writes_are_capped() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("big.txt"), vec![b'x'; (1 << 20) + 1]).unwrap();
+        let caps = Capabilities {
+            read_prefixes: vec!["".into()],
+            write_prefixes: vec!["".into()],
+            ..Default::default()
+        };
+        let workspace = || {
+            Some(Workspace {
+                root: dir.path().to_path_buf(),
+                read: |p| std::fs::read(p),
+                write: |p, b| std::fs::write(p, b),
+            })
+        };
+        let (read, _) = run(
+            "function main() { return read('big.txt').length; }",
+            "{}",
+            &caps,
+            Limits::default(),
+            workspace(),
+        )
+        .await;
+        assert!(read.unwrap_err().to_string().contains("larger than"));
+        let (wrote, _) = run(
+            "function main() { write('out.txt', 'x'.repeat(1048577)); }",
+            "{}",
+            &caps,
+            Limits::default(),
+            workspace(),
+        )
+        .await;
+        assert!(wrote.unwrap_err().to_string().contains("at most"));
+        assert!(!dir.path().join("out.txt").exists());
+    }
+
     /// Reads cannot leave the workspace through a link.
     #[cfg(unix)]
     #[tokio::test]
@@ -1083,6 +1244,35 @@ mod tests {
         assert!(err.contains("leaves the workspace"), "{err}");
     }
 
+    /// Credentials: only for the host they were granted for, and only when the value is known.
+    #[test]
+    fn a_credential_goes_only_to_its_host() {
+        let caps = Capabilities {
+            http_hosts: vec!["api.example.com".into(), "other.example.com".into()],
+            credentials: vec!["api.example.com=EXAMPLE_TOKEN".into()],
+            ..Default::default()
+        };
+        let secrets: std::collections::HashMap<String, String> =
+            [("EXAMPLE_TOKEN".to_string(), "s3cret-value".to_string())].into();
+        assert_eq!(
+            credential_for(&caps, &secrets, "API.example.com"),
+            Some("s3cret-value")
+        );
+        assert_eq!(credential_for(&caps, &secrets, "other.example.com"), None);
+        assert_eq!(
+            credential_for(&caps, &Default::default(), "api.example.com"),
+            None
+        );
+        // Attached as a bearer token on the request itself.
+        let request = pinned_client("api.example.com", "93.184.216.34:443".parse().unwrap())
+            .unwrap()
+            .get("https://api.example.com/")
+            .bearer_auth(credential_for(&caps, &secrets, "api.example.com").unwrap())
+            .build()
+            .unwrap();
+        assert_eq!(request.headers()["authorization"], "Bearer s3cret-value");
+    }
+
     #[test]
     fn private_addresses_are_recognized() {
         for ip in [
@@ -1095,10 +1285,27 @@ mod tests {
             "fd00::1",
             "fe80::1",
             "::ffff:10.0.0.1",
+            // Ranges that are not on the internet, and IPv4 inside IPv6.
+            "0.1.2.3",
+            "224.0.0.1",
+            "198.18.0.1",
+            "240.0.0.1",
+            "192.0.0.8",
+            "ff02::1",
+            "::10.0.0.1",
+            "64:ff9b::a00:1",
+            "2002:a00:1::",
+            "2001:0:4136:e378:8000:63bf:3fff:fdd2",
         ] {
             assert!(is_private(ip.parse().unwrap()), "{ip}");
         }
-        for ip in ["1.1.1.1", "93.184.216.34", "2606:4700::1111"] {
+        for ip in [
+            "1.1.1.1",
+            "93.184.216.34",
+            "2606:4700::1111",
+            "64:ff9b::5db8:d822",
+            "2002:5db8:d822::",
+        ] {
             assert!(!is_private(ip.parse().unwrap()), "{ip}");
         }
     }

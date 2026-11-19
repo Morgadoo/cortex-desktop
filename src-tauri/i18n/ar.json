@@ -2511,5 +2511,9 @@
  "Revoke {0}'s access?": "إلغاء وصول {0}؟",
  "Revoke access": "إلغاء الوصول",
  "Show changes": "إظهار التغييرات",
- "What changed after this version": "ما الذي تغير بعد هذا الإصدار"
+ "What changed after this version": "ما الذي تغير بعد هذا الإصدار",
+ "Cron expression": "تعبير cron",
+ "Custom (cron)": "مخصص (cron)",
+ "On the schedule {0}": "وفق الجدول {0}",
+ "Minute, hour, day of the month, month, day of the week, in your time zone. 30 9 * * 1-5 is 9:30 on weekdays.": "الدقيقة، الساعة، يوم الشهر، الشهر، يوم الأسبوع، بتوقيتك المحلي. ‎30 9 * * 1-5 تعني 9:30 في أيام العمل."
 }

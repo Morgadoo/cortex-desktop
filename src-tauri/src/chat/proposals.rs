@@ -87,13 +87,14 @@ pub fn apply(config_dir: &Path, conversation: &str, change: &Change) -> Result<S
             description,
             instructions,
         } => {
+            let provenance = super::builtins::skill_provenance(config_dir, name, conversation);
             super::skills::save(config_dir, name, description, instructions)?;
             super::traces::register(
                 config_dir,
                 "skill",
                 name,
                 Some(&super::traces::hash(instructions)),
-                Some(conversation),
+                Some(&provenance),
                 "active",
             );
             Ok(format!("Saved the skill `{name}`."))
@@ -176,6 +177,27 @@ mod tests {
         assert!(apply(d, "chat-1", &secret)
             .unwrap_err()
             .contains("a password, key or token"));
+
+        // An update to a skill the user wrote keeps it the user's, so the lifecycle never
+        // retires it as the assistant's.
+        super::super::skills::save(d, "my-report", "Use for my report.", "1. Mine.").unwrap();
+        apply(
+            d,
+            "chat-1",
+            &Change::Skill {
+                name: "my-report".into(),
+                description: "Use for my report.".into(),
+                instructions: "1. Mine, improved.".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            super::super::traces::artifact(d, "skill", "my-report")
+                .unwrap()
+                .provenance
+                .as_deref(),
+            Some("user")
+        );
 
         let p = parse(&json!({
             "summary": "Prefer metric",

@@ -260,6 +260,14 @@ pub struct TurnRequest {
     /// Skills left out of this turn, to measure what one contributes (an eval's ablation).
     #[serde(default)]
     pub skills_off: Vec<String>,
+    /// Saved facts (by id) and knowledge pages (by id) left out of this turn, and whether the
+    /// user's standing instructions are: the rest of an eval's ablation.
+    #[serde(default)]
+    pub facts_off: Vec<String>,
+    #[serde(default)]
+    pub pages_off: Vec<String>,
+    #[serde(default)]
+    pub instructions_off: bool,
 }
 
 pub(super) fn emit(app: &AppHandle, event: ChatEvent) {
@@ -845,6 +853,9 @@ async fn message_agent(
             only_tools: None,
             system: None,
             skills_off: Vec::new(),
+            facts_off: Vec::new(),
+            pages_off: Vec::new(),
+            instructions_off: false,
         };
         // A turn of its own, so the other agent's events stream to its chat as usual.
         queue_turn(host, request, cancel)
@@ -1484,8 +1495,17 @@ async fn traced_turn(
             .into_iter()
             .find(|p| &p.id == pid)
     });
-    let instructions = store::load_instructions(&config_dir);
-    let memories = memory::load(&config_dir);
+    let instructions = if request.instructions_off {
+        store::Instructions::default()
+    } else {
+        store::load_instructions(&config_dir)
+    };
+    let mut memories = memory::load(&config_dir);
+    memories
+        .items
+        .retain(|m| !request.facts_off.contains(&m.id));
+    let mut pages = knowledge::load(&config_dir);
+    pages.retain(|p| !request.pages_off.contains(&p.id));
     let mut skill_list = skills::list(&config_dir);
     if let Some(agent) = agent.as_ref().filter(|a| !a.skills.is_empty()) {
         skill_list.retain(|s| agent.skills.contains(&s.name));
@@ -1510,6 +1530,7 @@ async fn traced_turn(
         run,
         &offered,
         &memories,
+        &pages,
         &latest_prompt,
         project.as_ref().map(|p| p.id.as_str()),
         agent.as_ref().map(|a| a.id.as_str()),
@@ -1601,7 +1622,7 @@ async fn traced_turn(
     }
     // Knowledge pages that matter for this message come in full; the rest by title.
     if memories.enabled {
-        if let Some(section) = knowledge::prompt(&knowledge::load(&config_dir), &latest_prompt) {
+        if let Some(section) = knowledge::prompt(&pages, &latest_prompt) {
             prompt.push("knowledge pages", OPTIONAL, section);
         }
     }
@@ -2221,11 +2242,13 @@ fn allow_for_session(conversation: &str, tool: &str) {
 /// Attribution: what this run had in front of it, beyond skills: the tools offered, the facts
 /// listed and the knowledge pages recalled in full. A tool called, a page read and a skill opened
 /// are marked used as they happen, so a good or bad run can be traced to what it had and used.
+#[allow(clippy::too_many_arguments)]
 fn attribute_loaded(
     config_dir: &std::path::Path,
     run: &str,
     offered: &[tools::ChatTool],
     memories: &memory::Memories,
+    pages: &[knowledge::Page],
     query: &str,
     project: Option<&str>,
     agent: Option<&str>,
@@ -2242,8 +2265,7 @@ fn attribute_loaded(
         super::traces::attribute(config_dir, run, "memory", id, false);
     }
     if memories.enabled {
-        let pages = knowledge::load(config_dir);
-        let recalled: Vec<String> = knowledge::recalled(&pages, query)
+        let recalled: Vec<String> = knowledge::recalled(pages, query)
             .into_iter()
             .map(|p| p.id.clone())
             .collect();
@@ -2919,6 +2941,9 @@ pub async fn run_task(app: AppHandle, task: tasks::Task) {
         only_tools: None,
         system: None,
         skills_off: Vec::new(),
+        facts_off: Vec::new(),
+        pages_off: Vec::new(),
+        instructions_off: false,
     };
     run_turn(app.clone(), request, cancel).await;
     let finished = store::load_conversation(&config_dir, &id).ok();

@@ -44,6 +44,27 @@ pub enum Frequency {
     /// Whenever an RSS or Atom feed at `url` has new items (checked every 10 minutes).
     #[serde(rename_all = "camelCase")]
     NewFeedItems { url: String },
+    /// A five-field cron expression (minute hour day-of-month month day-of-week), in local time:
+    /// `0 9 * * 1-5` is 9:00 on weekdays.
+    #[serde(rename_all = "camelCase")]
+    Cron { expression: String },
+}
+
+/// The next time a cron expression fires after `after`, in the user's local time.
+fn next_cron(expression: &str, after: DateTime<Utc>) -> Result<Option<DateTime<Utc>>, String> {
+    let fields = expression.split_whitespace().count();
+    if fields != 5 {
+        return Err(format!(
+            "`{expression}` is not a five-field cron expression like `0 9 * * 1-5`."
+        ));
+    }
+    let cron: croner::Cron = expression
+        .parse()
+        .map_err(|e| format!("`{expression}` is not a cron expression: {e}"))?;
+    Ok(cron
+        .find_next_occurrence(&after.with_timezone(&Local), false)
+        .ok()
+        .map(|at| at.with_timezone(&Utc)))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
@@ -319,6 +340,7 @@ pub fn next_run(
         }
         // Started by files or feeds, not by the clock.
         Frequency::NewFiles { .. } | Frequency::NewFeedItems { .. } => Ok(None),
+        Frequency::Cron { expression } => next_cron(expression, after),
         Frequency::Yearly { month, day, time } => {
             if *month == 0 || *month > 12 || *day == 0 || *day > 31 {
                 return Err(
@@ -355,6 +377,7 @@ pub fn describe(frequency: &Frequency) -> String {
     match frequency {
         Frequency::Once { date, time } => format!("Once on {date} at {time}"),
         Frequency::Daily { time } => format!("Every day at {time}"),
+        Frequency::Cron { expression } => format!("On the schedule `{expression}`"),
         Frequency::Weekly { days, time } => {
             let mut days = days.clone();
             days.sort_unstable();
@@ -870,35 +893,22 @@ pub fn start(app: AppHandle) {
                 // The kernel's maintenance jobs: lifecycle and regression checks daily, evals
                 // nightly when on, the review weekly when on (`maintenance`, tested on its own).
                 let due = maintenance(&config_dir, Utc::now()).await;
-                if due.lifecycle.as_ref().is_some_and(|r| !r.is_empty()) {
-                    info!("lifecycle: {:?}", due.lifecycle);
-                }
-                if due
-                    .checked
-                    .as_ref()
-                    .is_some_and(|c| c != &Default::default())
-                {
-                    info!("regression checks: {:?}", due.checked);
-                }
-                if let Some(model) = due.evals_on {
-                    let host: std::sync::Arc<dyn super::host::Host> =
-                        std::sync::Arc::new(super::host::TauriHost::new(app.clone()));
-                    tauri::async_runtime::spawn(async move {
-                        for result in super::evals::nightly(&host, &model).await {
-                            info!("nightly evals: {result:?}");
-                            if let Some((title, body)) = super::evals::drop_notice(&result) {
-                                host.notify(title, &body);
-                            }
-                        }
-                    });
-                }
-                if let Some(task) = due.review {
-                    info!("running the weekly knowledge review");
-                    let app = app.clone();
-                    tauri::async_runtime::spawn(
-                        async move { super::engine::run_task(app, task).await },
-                    );
-                }
+                let (evals_app, review_app) = (app.clone(), app.clone());
+                dispatch(
+                    due,
+                    move |model| {
+                        let host: std::sync::Arc<dyn super::host::Host> =
+                            std::sync::Arc::new(super::host::TauriHost::new(evals_app));
+                        tauri::async_runtime::spawn(async move {
+                            super::evals::nightly_and_notify(&host, &model).await
+                        });
+                    },
+                    move |task| {
+                        tauri::async_runtime::spawn(async move {
+                            super::engine::run_task(review_app, task).await
+                        });
+                    },
+                );
                 for task in take_new_files(&config_dir, std::time::SystemTime::now()) {
                     info!("new files started task {}", task.title);
                     let app = app.clone();
@@ -951,6 +961,32 @@ pub struct Maintenance {
     pub evals_on: Option<String>,
     /// The weekly review to run, when due.
     pub review: Option<Task>,
+}
+
+/// Starts what [`maintenance`] found due that needs the app: the eval suites on their model, and
+/// the review as a task. What already ran is logged.
+pub fn dispatch(
+    due: Maintenance,
+    start_evals: impl FnOnce(String),
+    start_review: impl FnOnce(Task),
+) {
+    if due.lifecycle.as_ref().is_some_and(|r| !r.is_empty()) {
+        info!("lifecycle: {:?}", due.lifecycle);
+    }
+    if due
+        .checked
+        .as_ref()
+        .is_some_and(|c| c != &Default::default())
+    {
+        info!("regression checks: {:?}", due.checked);
+    }
+    if let Some(model) = due.evals_on {
+        start_evals(model);
+    }
+    if let Some(task) = due.review {
+        info!("running the weekly knowledge review");
+        start_review(task);
+    }
 }
 
 /// The kernel's scheduled maintenance, as of `now`: the lifecycle pass and every written tool's
@@ -1023,6 +1059,68 @@ mod tests {
         let tomorrow = maintenance(d, now + chrono::Duration::hours(25)).await;
         assert!(tomorrow.lifecycle.is_some() && tomorrow.evals_on.is_some());
         assert!(tomorrow.review.is_none());
+    }
+
+    /// `schedule(cron, task)`: a cron expression, in local time, through the same next-run path.
+    #[test]
+    fn cron_tasks_run_on_their_expression() {
+        use chrono::Timelike;
+        let cron = |e: &str| Frequency::Cron {
+            expression: e.into(),
+        };
+        let after = Local
+            .with_ymd_and_hms(2030, 1, 7, 8, 0, 0) // a Monday
+            .single()
+            .unwrap()
+            .with_timezone(&Utc);
+        let next = next_run(&cron("30 9 * * 1-5"), after).unwrap().unwrap();
+        let local = next.with_timezone(&Local);
+        assert_eq!((local.day(), local.hour(), local.minute()), (7, 9, 30));
+        let saturday = Local
+            .with_ymd_and_hms(2030, 1, 12, 8, 0, 0)
+            .single()
+            .unwrap()
+            .with_timezone(&Utc);
+        let monday = next_run(&cron("30 9 * * 1-5"), saturday)
+            .unwrap()
+            .unwrap()
+            .with_timezone(&Local);
+        assert_eq!(monday.day(), 14, "skips the weekend");
+        assert!(next_run(&cron("every day"), after).is_err());
+        assert!(next_run(&cron("61 9 * * *"), after).is_err());
+        assert_eq!(describe(&cron("0 9 * * *")), "On the schedule `0 9 * * *`");
+    }
+
+    /// The loop's part: what is due is started, and nothing else.
+    #[test]
+    fn the_scheduler_starts_what_is_due() {
+        let started = std::cell::RefCell::new(Vec::new());
+        let due = Maintenance {
+            evals_on: Some("m/a".into()),
+            review: Some(super::super::learning::review_task(std::path::Path::new(
+                "/nonexistent",
+            ))),
+            ..Maintenance::default()
+        };
+        dispatch(
+            due,
+            |model| started.borrow_mut().push(format!("evals on {model}")),
+            |task| started.borrow_mut().push(task.title),
+        );
+        assert_eq!(
+            started.into_inner(),
+            vec![
+                "evals on m/a".to_string(),
+                "Weekly knowledge review".to_string()
+            ]
+        );
+        let nothing = std::cell::Cell::new(0);
+        dispatch(
+            Maintenance::default(),
+            |_| nothing.set(nothing.get() + 1),
+            |_| nothing.set(nothing.get() + 1),
+        );
+        assert_eq!(nothing.get(), 0);
     }
 
     #[test]

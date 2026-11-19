@@ -154,12 +154,28 @@ pub fn languages() -> Vec<&'static str> {
 /// it does not (macOS, Windows, a Linux without user namespaces), code runs on the user's machine,
 /// and every run asks first.
 pub fn isolated(config_dir: &Path) -> bool {
+    #[cfg(test)]
+    if unsandboxed_for_test()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .iter()
+        .any(|d| d == config_dir)
+    {
+        return false;
+    }
     bubblewrap().is_some()
         || (super::workbench::enabled(config_dir)
             && matches!(
                 super::workbench::status_now(),
                 Some(super::workbench::Status::Ready { .. })
             ))
+}
+
+/// Data folders whose runs a test treats as unsandboxed, as on a machine without bubblewrap.
+#[cfg(test)]
+pub(crate) fn unsandboxed_for_test() -> &'static std::sync::Mutex<Vec<PathBuf>> {
+    static DIRS: OnceLock<std::sync::Mutex<Vec<PathBuf>>> = OnceLock::new();
+    DIRS.get_or_init(Default::default)
 }
 
 /// What a `run_code` call needs before it runs.

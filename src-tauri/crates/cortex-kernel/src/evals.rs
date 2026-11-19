@@ -97,17 +97,29 @@ pub fn grade(case: &Case, called: &[String], answer: &str) -> CaseResult {
 pub struct Without {
     pub tools: Vec<String>,
     pub skills: Vec<String>,
+    /// Saved facts and knowledge pages, by id.
+    pub facts: Vec<String>,
+    pub pages: Vec<String>,
+    /// The user's standing instructions.
+    pub instructions: bool,
 }
 
 impl Without {
-    /// From `tool:name` and `skill:name` items.
+    /// From `tool:<name>`, `skill:<name>`, `fact:<id>`, `page:<id>` and `instructions` items.
     pub fn parse(items: &[String]) -> Result<Self, String> {
         let mut out = Self::default();
         for item in items {
             match item.split_once(':') {
                 Some(("tool", name)) => out.tools.push(name.to_string()),
                 Some(("skill", name)) => out.skills.push(name.to_string()),
-                _ => return Err(format!("`{item}`: write tool:<name> or skill:<name>")),
+                Some(("fact", id)) => out.facts.push(id.to_string()),
+                Some(("page", id)) => out.pages.push(id.to_string()),
+                None if item == "instructions" => out.instructions = true,
+                _ => {
+                    return Err(format!(
+                        "`{item}`: write tool:<name>, skill:<name>, fact:<id>, page:<id> or instructions"
+                    ))
+                }
             }
         }
         Ok(out)
@@ -118,6 +130,9 @@ impl Without {
             .iter()
             .map(|t| format!("tool:{t}"))
             .chain(self.skills.iter().map(|s| format!("skill:{s}")))
+            .chain(self.facts.iter().map(|f| format!("fact:{f}")))
+            .chain(self.pages.iter().map(|p| format!("page:{p}")))
+            .chain(self.instructions.then(|| "instructions".to_string()))
             .collect()
     }
 }

@@ -110,10 +110,19 @@ pub async fn ensure_signing_key(config_dir: &Path) {
     if signing_key(config_dir).is_some() {
         return;
     }
+    match crate::account::AccountId::parse(crate::chat::LOCAL_ACCOUNT) {
+        Ok(account) => {
+            let store = crate::tools::auth::keychain_secrets(account);
+            ensure_signing_key_in(config_dir, &store).await
+        }
+        Err(e) => log::warn!("tools the assistant wrote are not signed: {e}"),
+    }
+}
+
+/// [`ensure_signing_key`] with `store` for the keychain: reads the key, or makes and keeps one and
+/// reads it back to be sure it is there.
+pub async fn ensure_signing_key_in(config_dir: &Path, store: &crate::tools::auth::Secrets) {
     let key = async {
-        let store = crate::tools::auth::keychain_secrets(crate::account::AccountId::parse(
-            crate::chat::LOCAL_ACCOUNT,
-        )?);
         if let Some(hex) = store.load(SIGNING_KEY_NAME).await? {
             return Ok::<_, String>(Some(hex));
         }
@@ -339,6 +348,9 @@ struct Draft {
     read_prefixes: Vec<String>,
     #[serde(default)]
     write_prefixes: Vec<String>,
+    /// Vault secrets for its requests, as `host=SECRET`.
+    #[serde(default)]
+    credentials: Vec<String>,
     /// Other approved tools it calls with `tool(name, args)`.
     #[serde(default)]
     tools: Vec<String>,
@@ -514,6 +526,7 @@ pub async fn create(config_dir: &Path, conversation: &str, args: &Value) -> Resu
             read_prefixes: draft.read_prefixes,
             write_prefixes: draft.write_prefixes,
             tools: draft.tools,
+            credentials: draft.credentials,
         },
         granted: Capabilities::default(),
         status: Status::Candidate,
@@ -584,6 +597,7 @@ pub fn review(tool: &ScriptTool) -> Value {
         "network": tool.requested.http_hosts,
         "reads": tool.requested.read_prefixes,
         "writes": tool.requested.write_prefixes,
+        "credentials": tool.requested.credentials,
         "calls": tool.requested.tools,
         "script": tool.script,
     })
@@ -650,9 +664,10 @@ pub fn revoke(config_dir: &Path, name: &str) -> Result<(), String> {
 }
 
 /// Sets what a tool asks for, before the user is asked to grant it.
+/// More access for a tool: what it asks for now, added to what it was given before.
 pub fn request(config_dir: &Path, name: &str, wanted: Capabilities) -> Result<ScriptTool, String> {
     let mut tool = load(config_dir, name).ok_or("There is no tool by that name.")?;
-    tool.requested = wanted;
+    tool.requested = tool.requested.with(&wanted);
     save(config_dir, &tool)?;
     Ok(tool)
 }
@@ -715,7 +730,13 @@ pub async fn revert(config_dir: &Path, name: &str, checks: &[Check]) -> Result<b
             continue;
         }
         if failing_checks(&old.script, checks).await.is_empty() {
-            save(config_dir, &old)?;
+            // The script goes back; the access does not grow: it keeps only what the tool may
+            // reach now, so a revoke or a lapse is never undone by a rollback.
+            let mut back = old;
+            back.granted = back.granted.within(&current.granted);
+            back.requested = back.requested.within(&current.requested);
+            back.granted_until = current.granted_until;
+            save(config_dir, &back)?;
             return Ok(true);
         }
     }
@@ -835,13 +856,32 @@ fn call_at(
             read: |p| crate::chat::at_rest::read(p),
             write: |p, bytes| crate::chat::at_rest::write(p, bytes),
         });
-        let (result, logs) = sandbox::run_with_tools(
+        // The vault secrets its granted credentials name, for hosts it may reach: the host
+        // attaches them to requests, and they are masked in whatever comes back.
+        let mut secrets = std::collections::HashMap::new();
+        for credential in &granted.credentials {
+            let Some((host, secret)) = credential.split_once('=') else {
+                continue;
+            };
+            if granted
+                .http_hosts
+                .iter()
+                .any(|h| h.eq_ignore_ascii_case(host))
+            {
+                if let Some(value) = super::vault::value(&config_dir, secret).await {
+                    secrets.insert(secret.to_string(), value);
+                }
+            }
+        }
+        let shown: Vec<(String, String)> = secrets.clone().into_iter().collect();
+        let (result, logs) = sandbox::run_with_secrets(
             &tool.script,
             &args.to_string(),
             &granted,
             Limits::default(),
             workspace,
             Some(caller),
+            secrets,
         )
         .await;
         // The tool's own lines are untrusted text: they go to the log file, never to the model.
@@ -851,6 +891,7 @@ fn call_at(
         // What it returns is scanned for secrets (keys, tokens, passwords) before anything reads
         // it, whatever host it fetched them from.
         result.map_err(|e| e.to_string()).map(|out| {
+            let out = super::vault::mask(&out, &shown);
             let (masked, found) = cortex_kernel::privacy::mask_secrets(&out);
             if found > 0 {
                 log::warn!("[script tool {name}] {found} secret(s) masked in its output");
@@ -910,6 +951,7 @@ pub fn builtin_definitions() -> Vec<ChatTool> {
                     "http_hosts": { "type": "array", "items": { "type": "string" }, "description": "Exact host names it needs to reach over https, if any." },
                     "read_prefixes": { "type": "array", "items": { "type": "string" }, "description": "Folders of the chat's workspace it needs to read, if any." },
                     "write_prefixes": { "type": "array", "items": { "type": "string" }, "description": "Folders of the chat's workspace it needs to write, if any; `write(path, text)` writes there." },
+                    "credentials": { "type": "array", "items": { "type": "string" }, "description": "Vault secrets its requests need, as host=SECRET_NAME; the app sends them as a bearer token to that host. The script never sees them." },
                     "tools": { "type": "array", "items": { "type": "string" }, "description": "Other tools you wrote that it calls with tool(name, args), so their results never pass through the chat." },
                     "new_anyway": { "type": "boolean", "description": "Save it although a similar tool exists (you were told which); prefer updating that one." }
                 },
@@ -949,6 +991,7 @@ pub fn builtin_definitions() -> Vec<ChatTool> {
                     "http_hosts": { "type": "array", "items": { "type": "string" } },
                     "read_prefixes": { "type": "array", "items": { "type": "string" } },
                     "write_prefixes": { "type": "array", "items": { "type": "string" } },
+                    "credentials": { "type": "array", "items": { "type": "string" } },
                     "tools": { "type": "array", "items": { "type": "string" } },
                     "days": { "type": "integer", "minimum": 1 },
                     "reason": { "type": "string" }
@@ -1200,6 +1243,110 @@ mod tests {
         assert!(err.contains("no capability to call"), "{err}");
     }
 
+    /// A version written into a tool's history from outside the app does not verify, so the
+    /// monitor never rolls back to it.
+    #[tokio::test]
+    async fn a_forged_version_is_never_rolled_back_to() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        set_signing_key(d, [9; 32]);
+        create(d, "", &json!({ "name": "count_words", "description": "Count words.", "script": SCRIPT, "test_args": { "text": "a b c" } }))
+            .await
+            .unwrap();
+        promote(d, "count_words", None).await.unwrap();
+        let current = load(d, "count_words").unwrap();
+        // A forged "approved" version, with a matching hash but no valid signature.
+        let mut forged = current.clone();
+        forged.script = "function main(a) { return { words: 3 }; }".into();
+        forged.approved_hash = Some(approval_hash(&forged));
+        forged.granted.http_hosts = vec!["evil.example".into()];
+        super::super::versions::keep(d, "tools", "script-count_words", &forged, &current).unwrap();
+        assert_eq!(revert(d, "count_words", &current.checks).await, Ok(false));
+        assert_eq!(load(d, "count_words").unwrap().script, SCRIPT);
+    }
+
+    /// The rate limit holds through `call`, not only in its helper.
+    #[tokio::test]
+    async fn calls_past_the_rate_limit_are_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        create(d, "", &json!({ "name": "rate_probe", "description": "Probe the limit.", "script": "function main() { return 1; }" }))
+            .await
+            .unwrap();
+        promote(d, "rate_probe", None).await.unwrap();
+        for _ in 0..CALLS_PER_MINUTE {
+            call(d, "rate_probe", &json!({}), None).await.unwrap();
+        }
+        let err = call(d, "rate_probe", &json!({}), None).await.unwrap_err();
+        assert!(err.contains("in the last minute"), "{err}");
+    }
+
+    /// The rig-core API the app is built on is pinned to one exact version.
+    #[test]
+    fn rig_core_is_pinned_exactly() {
+        for manifest in [
+            include_str!("../../../Cargo.toml"),
+            include_str!("../../../crates/cortex-kernel/Cargo.toml"),
+        ] {
+            let line = manifest
+                .lines()
+                .find(|l| l.starts_with("rig-core"))
+                .expect("rig-core is a dependency");
+            assert!(line.contains("version = \"=0.46.0\""), "{line}");
+        }
+    }
+
+    /// A rollback brings the old script back, never old access: a revoke stays revoked.
+    #[tokio::test]
+    async fn a_rollback_does_not_undo_a_revoke() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let draft = |script: &str| json!({ "name": "count_words", "description": "Count words.", "script": script, "test_args": { "text": "a b c" } });
+        create(d, "", &draft(SCRIPT)).await.unwrap();
+        promote(d, "count_words", None).await.unwrap();
+        let mut v1 = load(d, "count_words").unwrap();
+        v1.granted.http_hosts = vec!["api.example.com".into()];
+        v1.requested.http_hosts = vec!["api.example.com".into()];
+        save(d, &v1).unwrap();
+        let letters = "function main(a) { return { words: a.text.length }; }";
+        create(d, "", &draft(letters)).await.unwrap();
+        let mut v2 = load(d, "count_words").unwrap();
+        v2.status = Status::Active;
+        v2.approved_hash = Some(approval_hash(&v2));
+        save(d, &v2).unwrap();
+        revoke(d, "count_words").unwrap();
+        assert_eq!(check_all(d).await.reverted, vec!["count_words".to_string()]);
+        let back = load(d, "count_words").unwrap();
+        assert_eq!(back.script, SCRIPT);
+        assert!(back.granted.http_hosts.is_empty(), "{:?}", back.granted);
+        assert!(back.requested.http_hosts.is_empty());
+    }
+
+    /// Asking for more adds to what a tool has; it does not replace it.
+    #[tokio::test]
+    async fn a_capability_request_adds_to_what_the_tool_has() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        create(d, "", &json!({ "name": "fetcher", "description": "Fetch pages.", "script": "function main() { return 1; }", "http_hosts": ["a.example.com"] }))
+            .await
+            .unwrap();
+        promote(d, "fetcher", None).await.unwrap();
+        request(
+            d,
+            "fetcher",
+            Capabilities {
+                http_hosts: vec!["b.example.com".into()],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        grant(d, "fetcher", None).unwrap();
+        assert_eq!(
+            load(d, "fetcher").unwrap().granted.http_hosts,
+            vec!["a.example.com".to_string(), "b.example.com".to_string()]
+        );
+    }
+
     /// Tools call tools three levels deep at most.
     #[tokio::test]
     async fn tools_call_tools_three_levels_deep_at_most() {
@@ -1408,6 +1555,27 @@ mod tests {
         assert!(slow.contains("limit") || slow.contains("budget"), "{slow}");
         // Nothing is saved.
         assert!(list(d).is_empty());
+    }
+
+    /// The signing key: made once and kept in the keychain, then read back on later starts, so
+    /// signatures made before a restart still verify.
+    #[tokio::test]
+    async fn the_signing_key_is_made_once_and_kept_in_the_keychain() {
+        let store = crate::tools::auth::InMemorySecrets::with(&[]);
+        let first = tempfile::tempdir().unwrap();
+        ensure_signing_key_in(first.path(), &store).await;
+        let key = signing_key(first.path()).expect("made");
+        let kept = store.load(SIGNING_KEY_NAME).await.unwrap().unwrap();
+        assert_eq!(kept.len(), 64);
+        // Another start (here, another folder that has no key loaded) reads the same key.
+        let second = tempfile::tempdir().unwrap();
+        ensure_signing_key_in(second.path(), &store).await;
+        assert_eq!(signing_key(second.path()), Some(key));
+        // A keychain that holds no usable key leaves tools unsigned, held by their hash pin.
+        let broken = crate::tools::auth::InMemorySecrets::with(&[(SIGNING_KEY_NAME, "not hex")]);
+        let third = tempfile::tempdir().unwrap();
+        ensure_signing_key_in(third.path(), &broken).await;
+        assert_eq!(signing_key(third.path()), None);
     }
 
     #[test]

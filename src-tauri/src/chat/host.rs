@@ -120,6 +120,8 @@ pub(crate) mod testing {
         pub approvals: Mutex<Vec<String>>,
         /// The reason shown with each approval, as the card carries it.
         pub reasons: Mutex<Vec<String>>,
+        /// What each approval card showed.
+        pub cards: Mutex<Vec<Value>>,
         pub answer: Mutex<ApprovalDecision>,
     }
 
@@ -133,6 +135,7 @@ pub(crate) mod testing {
                 events: Mutex::new(Vec::new()),
                 approvals: Mutex::new(Vec::new()),
                 reasons: Mutex::new(Vec::new()),
+                cards: Mutex::new(Vec::new()),
                 answer: Mutex::new(ApprovalDecision::Deny),
             }
         }
@@ -191,10 +194,11 @@ pub(crate) mod testing {
         async fn approve(
             &self,
             tool: &ChatTool,
-            _input: &Value,
+            input: &Value,
             reason: Option<&str>,
         ) -> ApprovalDecision {
             self.approvals.lock().unwrap().push(tool.name.clone());
+            self.cards.lock().unwrap().push(input.clone());
             self.reasons
                 .lock()
                 .unwrap()

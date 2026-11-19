@@ -2511,5 +2511,9 @@
  "Revoke {0}'s access?": "Revogar o acesso de {0}?",
  "Revoke access": "Revogar acesso",
  "Show changes": "Mostrar alterações",
- "What changed after this version": "O que mudou depois desta versão"
+ "What changed after this version": "O que mudou depois desta versão",
+ "Cron expression": "Expressão cron",
+ "Custom (cron)": "Personalizado (cron)",
+ "On the schedule {0}": "No horário {0}",
+ "Minute, hour, day of the month, month, day of the week, in your time zone. 30 9 * * 1-5 is 9:30 on weekdays.": "Minuto, hora, dia do mês, mês, dia da semana, no seu fuso horário. 30 9 * * 1-5 é às 9:30 nos dias úteis."
 }
