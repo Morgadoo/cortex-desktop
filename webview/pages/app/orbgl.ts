@@ -91,15 +91,23 @@ vec3 env(vec3 d) {
 void main() {
   float s = min(uRes.x, uRes.y);
   vec2 p = (gl_FragCoord.xy - 0.5 * uRes) / (0.5 * s);
-  float radius = 0.62 * (1.0 + uLevel * 0.10);
+  // The orb fills the middle of the canvas; the rest is room for its light to spread.
+  float radius = 0.3875 * (1.0 + uLevel * 0.10);
   float r = length(p);
   float px = 2.0 / s;
+  // Distance from the centre in orb radii.
+  float u = r / radius;
 
   // Outside: the light the orb casts around it, as the point light inside each orb does.
-  vec3 halo = uColor * (0.10 + 0.55 * uLevel) * exp(-6.0 * max(r - radius, 0.0)) * uDim;
-  float haloA = clamp(length(halo) * 1.4, 0.0, 1.0);
+  vec3 halo = uColor * (0.10 + 0.55 * uLevel) * exp(-3.7 * max(u - 1.0, 0.0)) * uDim;
+  // Bloom: the hot core's light spilling past the glass, as a lens shows a bright light; a tight
+  // glow and a wide soft tail, swelling with the voice.
+  vec3 bloom = uColor * (1.2 + 1.8 * uLevel) * (exp(-u * u * 1.1) + 0.35 * exp(-u * u * 0.45)) * uDim;
+  vec3 around = aces(halo + bloom * 0.55);
+  float aroundA = clamp(max(around.r, max(around.g, around.b)) * 1.25, 0.0, 1.0);
   if (r > radius + px) {
-    gl_FragColor = vec4(aces(halo) * haloA, haloA);
+    // Premultiplied: the light adds onto whatever is behind the canvas.
+    gl_FragColor = vec4(around, aroundA);
     return;
   }
 
@@ -128,10 +136,10 @@ void main() {
   col += uColor * 0.6 * pow(max(dot(R, normalize(vec3(0.6, -0.55, 0.5))), 0.0), 40.0);
   col *= uDim;
 
+  // The bloom lies over the glass too, so the rim glows instead of cutting the light off.
+  vec3 inside = min(aces(col) + aces(bloom) * 0.22, vec3(1.0));
   float edge = smoothstep(radius + px, radius - px, r);
-  vec3 outCol = mix(aces(halo), aces(col), edge);
-  float a = max(edge, haloA);
-  gl_FragColor = vec4(outCol * a, a);
+  gl_FragColor = vec4(mix(around, inside, edge), max(edge, aroundA));
 }
 `;
 
