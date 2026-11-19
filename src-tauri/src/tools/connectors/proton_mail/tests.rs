@@ -426,7 +426,7 @@ async fn live_bridge_starttls_smoke_test() {
     let config = ProtonMailConfig {
         imap_port: 1143,
         smtp_port: 1025,
-        username: "lumo-bridge-smoke-test@invalid".into(),
+        username: "cortex-bridge-smoke-test@invalid".into(),
         imap_security: ConnectionSecurity::StartTls,
         smtp_security: ConnectionSecurity::StartTls,
     };

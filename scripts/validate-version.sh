@@ -36,7 +36,7 @@ echo "tauri.conf.json=$conf_version package.json=$pkg_version Cargo.toml=$cargo_
 [ "$conf_version" = "$cargo_version" ] ||
     fail "src-tauri/Cargo.toml version ($cargo_version) != tauri.conf.json ($conf_version)"
 
-# The bundler runs in build-macos-unsigned, before lumo-mac:sign, so any updater
+# The bundler runs in build-macos-unsigned, before cortex-mac:sign, so any updater
 # artifact it produced would contain the unsigned app. package-macos builds the
 # archive from the signed bundle instead; see scripts/make-update-archive.sh.
 if grep -q createUpdaterArtifacts src-tauri/tauri.conf.json; then
@@ -45,7 +45,7 @@ fi
 
 # `tauri add updater` injects updater:default here. capabilities/default.json is
 # windows:["*"] with remote.urls, so that would hand the update trigger to the
-# remote webapp loaded in lumo-window.
+# remote webapp loaded in cortex-window.
 if grep -q '"updater:' src-tauri/capabilities/default.json; then
     fail "updater plugin permissions must not be in the remote-exposed default capability"
 fi

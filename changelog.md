@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Renamed the app from Lumo Desktop to Cortex Desktop, with the bundle identifier `io.github.morgadoo.cortex-desktop`. Settings, chats, preferences and keychain secrets from Lumo Desktop carry over on first launch.
+
 ## [0.5.9]
 
 ### Security

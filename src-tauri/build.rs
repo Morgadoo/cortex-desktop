@@ -1,10 +1,10 @@
 fn main() {
     println!("cargo:rerun-if-changed=tauri.conf.json");
     println!("cargo:rerun-if-env-changed=LUMO_URL");
-    println!("cargo:rerun-if-env-changed=LUMO_SENTRY_DSN_KEY_MACOS");
-    println!("cargo:rerun-if-env-changed=LUMO_SENTRY_DSN_KEY_WINDOWS");
-    println!("cargo:rerun-if-env-changed=LUMO_SENTRY_DSN_KEY_LINUX");
-    println!("cargo:rerun-if-env-changed=LUMO_UPDATE_MANIFEST_URL");
+    println!("cargo:rerun-if-env-changed=CORTEX_SENTRY_DSN_KEY_MACOS");
+    println!("cargo:rerun-if-env-changed=CORTEX_SENTRY_DSN_KEY_WINDOWS");
+    println!("cargo:rerun-if-env-changed=CORTEX_SENTRY_DSN_KEY_LINUX");
+    println!("cargo:rerun-if-env-changed=CORTEX_UPDATE_MANIFEST_URL");
 
     let dist = std::path::Path::new("dist");
     if dist.exists() {

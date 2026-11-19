@@ -1,4 +1,4 @@
-//! Claude plugins and plugin marketplaces brought in as Lumo's own parts (Osaurus imports Claude
+//! Claude plugins and plugin marketplaces brought in as Cortex's own parts (Osaurus imports Claude
 //! plugins too). A plugin is a folder:
 //!
 //! - `skills/<name>/SKILL.md` become skills, as they are;
@@ -732,7 +732,7 @@ pub fn install(config_dir: &Path, plugin: &PluginDraft, out: &mut Imported) -> R
             out.skipped.extend(
                 unsupported
                     .into_iter()
-                    .map(|e| format!("{e} hooks (no such moment in Lumo)")),
+                    .map(|e| format!("{e} hooks (no such moment in Cortex)")),
             );
         }
         None if plugin.has_hooks => out

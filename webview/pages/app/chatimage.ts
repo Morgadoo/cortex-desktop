@@ -76,7 +76,7 @@ export async function conversationPng(title: string, messages: ImageMessage[]): 
   const width = 860;
   const pad = 40;
   const bubbleMax = width - pad * 2;
-  const font = css('--lumo-font-sans', 'Inter, system-ui, sans-serif');
+  const font = css('--cortex-font-sans', 'Inter, system-ui, sans-serif');
   const colors = {
     bg: css('--bg', '#17171b'),
     text: css('--text', '#ececf1'),
@@ -113,7 +113,7 @@ export async function conversationPng(title: string, messages: ImageMessage[]): 
   ctx.fillText(wrap(ctx, title || 'Conversation', width - pad * 2)[0]!, pad, 36);
   ctx.fillStyle = colors.muted;
   ctx.font = `13px ${font}`;
-  ctx.fillText(`Lumo · ${new Date().toLocaleString()}`, pad, 70);
+  ctx.fillText(`Cortex · ${new Date().toLocaleString()}`, pad, 70);
   let y = head;
   for (const b of blocks) {
     if (b.role === 'user') {

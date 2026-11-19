@@ -155,7 +155,7 @@ mod tests {
 
     #[tokio::test]
     async fn one_query_finds_libraries_knowledge_and_chats() {
-        let dir = std::env::temp_dir().join(format!("lumo-searchall-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("cortex-searchall-{}", std::process::id()));
         let lib = super::super::libraries::create(&dir, "Company docs", "").unwrap();
         super::super::libraries::add_text(
             &dir,

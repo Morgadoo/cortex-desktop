@@ -13,6 +13,7 @@ mod microphone;
 mod notifications;
 mod pdf_export;
 mod quick_ask;
+mod rename_migration;
 mod reporting;
 mod reset;
 mod schedules;
@@ -56,5 +57,5 @@ pub const LUMO_URL: &str = match option_env!("LUMO_URL") {
 pub const HOSTED_WEB_APP: bool = option_env!("LUMO_HOSTED").is_some();
 
 pub fn e2e_testing_enabled() -> bool {
-    std::env::var_os("LUMO_E2E_TESTING").is_some_and(|v| !v.is_empty())
+    std::env::var_os("CORTEX_E2E_TESTING").is_some_and(|v| !v.is_empty())
 }

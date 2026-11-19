@@ -6,11 +6,11 @@
 
 /// Whether a page at `url` may use the microphone: the exact `LUMO_URL` origin, and in the
 /// native app its own bundled page (for dictation in the composer). Mini apps run on the
-/// `lumoapp` scheme in sandboxed frames and never qualify.
+/// `cortexapp` scheme in sandboxed frames and never qualify.
 pub fn is_allowed(url: &url::Url) -> bool {
     let hosted = crate::LUMO_URL
         .parse::<url::Url>()
-        .is_ok_and(|lumo| lumo.origin() == url.origin());
+        .is_ok_and(|cortex| cortex.origin() == url.origin());
     hosted || (!crate::HOSTED_WEB_APP && is_app_page(url))
 }
 
@@ -180,8 +180,8 @@ mod tests {
             is_allowed(&url("http://tauri.localhost/index.html")),
             !crate::HOSTED_WEB_APP
         );
-        assert!(!is_allowed(&url("lumoapp://localhost/app-id")));
-        assert!(!is_allowed(&url("http://lumoapp.localhost/app-id")));
+        assert!(!is_allowed(&url("cortexapp://localhost/app-id")));
+        assert!(!is_allowed(&url("http://cortexapp.localhost/app-id")));
         assert!(!is_allowed(&url("http://tauri.localhost:8080/")));
     }
 

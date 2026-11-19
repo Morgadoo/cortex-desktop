@@ -115,7 +115,7 @@ async fn fetch_image(client: &reqwest::Client, url: &str) -> Option<String> {
 async fn fetch(host: &str) -> Option<String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(6))
-        .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Lumo")
+        .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Cortex")
         .build()
         .ok()?;
     if let Some(icon) = fetch_image(&client, &format!("https://{host}/favicon.ico")).await {

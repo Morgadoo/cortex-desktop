@@ -13,14 +13,14 @@ const assert = (condition, message) => { if (!condition) throw new Error(message
 try {
   assert(formats[platform] && paths.length, 'usage: make-version-manifest.mjs <macos|linux|windows> <file>...');
   const { version } = JSON.parse(await readFile(new URL('../src-tauri/tauri.conf.json', import.meta.url), 'utf8'));
-  const base = process.env.LUMO_DOWNLOAD_BASE_URL || process.env.LUMO_UPDATE_BASE_URL;
-  assert(base, 'set LUMO_DOWNLOAD_BASE_URL (or LUMO_UPDATE_BASE_URL) to the public installer directory');
+  const base = process.env.CORTEX_DOWNLOAD_BASE_URL || process.env.CORTEX_UPDATE_BASE_URL;
+  assert(base, 'set CORTEX_DOWNLOAD_BASE_URL (or CORTEX_UPDATE_BASE_URL) to the public installer directory');
   const baseUrl = new URL(`${base.replace(/\/+$/, '')}/`);
   assert(['http:', 'https:'].includes(baseUrl.protocol) && !baseUrl.search && !baseUrl.hash, 'base URL must be an HTTP(S) directory without a query or fragment');
 
   // Metadata is shared across platforms or supplied separately to each job.
-  const metadata = process.env.LUMO_RELEASE_METADATA
-    ? JSON.parse(await readFile(process.env.LUMO_RELEASE_METADATA, 'utf8')) : {};
+  const metadata = process.env.CORTEX_RELEASE_METADATA
+    ? JSON.parse(await readFile(process.env.CORTEX_RELEASE_METADATA, 'utf8')) : {};
   assert(metadata && typeof metadata === 'object' && !Array.isArray(metadata), 'release metadata must be an object');
   const allowed = ['CategoryName', 'ReleaseDate', 'ReleaseNotes', 'SystemVersion', 'RolloutProportion', 'ManualUpdate', 'Checksum'];
   assert(Object.keys(metadata).every(key => allowed.includes(key)), 'unsupported release metadata field');
@@ -68,8 +68,8 @@ try {
 
   // Optional history is an existing platform version.json; replace a rerun of
   // the same version/channel and keep other releases in their existing order.
-  const history = process.env.LUMO_VERSION_HISTORY
-    ? JSON.parse(await readFile(process.env.LUMO_VERSION_HISTORY, 'utf8')) : { Releases: [] };
+  const history = process.env.CORTEX_VERSION_HISTORY
+    ? JSON.parse(await readFile(process.env.CORTEX_VERSION_HISTORY, 'utf8')) : { Releases: [] };
   assert(Array.isArray(history.Releases), 'history must contain a Releases array');
   const Releases = [release, ...history.Releases.filter(item =>
     item.Version !== version || item.CategoryName !== release.CategoryName)];

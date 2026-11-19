@@ -38,7 +38,7 @@ export async function reloadAgents() {
 /** Agents pinned to the sidebar's Pinned section (LibreChat's pinned agents), on this device. */
 export function pinnedAgents(): string[] {
   try {
-    return JSON.parse(localStorage.getItem('lumo.pinnedAgents') ?? '[]') as string[];
+    return JSON.parse(localStorage.getItem('cortex.pinnedAgents') ?? '[]') as string[];
   } catch {
     return [];
   }
@@ -48,7 +48,7 @@ export function togglePinnedAgent(id: string) {
   const all = pinnedAgents();
   const next = all.includes(id) ? all.filter((a) => a !== id) : [...all, id];
   try {
-    localStorage.setItem('lumo.pinnedAgents', JSON.stringify(next));
+    localStorage.setItem('cortex.pinnedAgents', JSON.stringify(next));
   } catch {
     /* this session only */
   }

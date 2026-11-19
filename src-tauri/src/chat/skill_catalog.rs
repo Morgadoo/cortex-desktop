@@ -73,13 +73,14 @@ pub fn repo_of(input: &str) -> Option<String> {
 }
 
 fn raw_base() -> String {
-    std::env::var("LUMO_GITHUB_RAW").unwrap_or_else(|_| "https://raw.githubusercontent.com".into())
+    std::env::var("CORTEX_GITHUB_RAW")
+        .unwrap_or_else(|_| "https://raw.githubusercontent.com".into())
 }
 
 fn client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .timeout(Duration::from_secs(20))
-        .user_agent("Lumo")
+        .user_agent("Cortex")
         .build()
         .map_err(|e| e.to_string())
 }
@@ -287,7 +288,8 @@ pub async fn install(
         super::skills::parse(&text).ok_or("That skill has no name and description.")?;
     super::skills::save(config_dir, &name, &description, &body)?;
     // Its scripts, references and templates: listed by GitHub's API, fetched from raw files.
-    let api = std::env::var("LUMO_GITHUB_API").unwrap_or_else(|_| "https://api.github.com".into());
+    let api =
+        std::env::var("CORTEX_GITHUB_API").unwrap_or_else(|_| "https://api.github.com".into());
     let tree = match client
         .get(format!("{api}/repos/{repo}/git/trees/{branch}?recursive=1"))
         .send()
@@ -391,8 +393,8 @@ pub fn export(
     };
     let market = serde_json::json!({
         "name": slug,
-        "owner": { "name": if author.trim().is_empty() { "Lumo user" } else { author.trim() } },
-        "metadata": { "description": format!("Skills shared from Lumo: {}", names.join(", ")), "version": "1.0.0" },
+        "owner": { "name": if author.trim().is_empty() { "Cortex user" } else { author.trim() } },
+        "metadata": { "description": format!("Skills shared from Cortex: {}", names.join(", ")), "version": "1.0.0" },
         "plugins": [{ "name": slug, "description": catalog_name.trim(), "source": "./", "strict": false, "skills": paths }]
     });
     std::fs::write(
@@ -400,7 +402,7 @@ pub fn export(
         serde_json::to_string_pretty(&market).map_err(|e| e.to_string())?,
     )
     .map_err(|e| e.to_string())?;
-    let readme = format!("# {}\n\nSkills shared from Lumo. Add this catalogue in Lumo (Skills → Import → Browse skill catalogues → Add catalogue, then `owner/repo`), or with any app that reads `.claude-plugin/marketplace.json`.\n\n{}\n", catalog_name.trim(), names.iter().map(|n| format!("- {n}")).collect::<Vec<_>>().join("\n"));
+    let readme = format!("# {}\n\nSkills shared from Cortex. Add this catalogue in Cortex (Skills → Import → Browse skill catalogues → Add catalogue, then `owner/repo`), or with any app that reads `.claude-plugin/marketplace.json`.\n\n{}\n", catalog_name.trim(), names.iter().map(|n| format!("- {n}")).collect::<Vec<_>>().join("\n"));
     if !dest.join("README.md").exists() {
         std::fs::write(dest.join("README.md"), readme).map_err(|e| e.to_string())?;
     }
@@ -489,11 +491,11 @@ mod tests {
         assert!(export(dir.path(), &[], &out, "x", "").is_err());
     }
 
-    /// Against the real public catalogue (`LUMO_TEST_NETWORK=1`).
+    /// Against the real public catalogue (`CORTEX_TEST_NETWORK=1`).
     #[tokio::test]
     #[ignore]
     async fn anthropics_catalogue_is_browsed_and_a_skill_added() {
-        if std::env::var("LUMO_TEST_NETWORK").is_err() {
+        if std::env::var("CORTEX_TEST_NETWORK").is_err() {
             return;
         }
         let dir = tempfile::tempdir().unwrap();

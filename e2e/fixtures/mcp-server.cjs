@@ -24,7 +24,7 @@ function handle({ method, params }) {
             return {
                 protocolVersion: params.protocolVersion,
                 capabilities: { tools: {} },
-                serverInfo: { name: 'lumo-e2e', version: '1.0.0' },
+                serverInfo: { name: 'cortex-e2e', version: '1.0.0' },
             };
         case 'ping':
             return {};
@@ -33,7 +33,7 @@ function handle({ method, params }) {
         case 'tools/call': {
             if (!tools.some((tool) => tool.name === params.name)) throw new Error('Unknown tool');
             const entry = { tool: params.name, marker: params.arguments.marker };
-            fs.appendFileSync(process.env.LUMO_E2E_MCP_JOURNAL, `${JSON.stringify(entry)}\n`);
+            fs.appendFileSync(process.env.CORTEX_E2E_MCP_JOURNAL, `${JSON.stringify(entry)}\n`);
             return { content: [{ type: 'text', text: JSON.stringify(entry) }] };
         }
         default:

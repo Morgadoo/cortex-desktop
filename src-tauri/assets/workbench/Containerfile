@@ -24,4 +24,4 @@ ENV LANG=C.UTF-8 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-LABEL org.lumo.workbench="1"
+LABEL org.cortex.workbench="1"

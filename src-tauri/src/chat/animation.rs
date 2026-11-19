@@ -1,7 +1,7 @@
 //! The `make_animation` tool: animated videos written as code and rendered on this computer, for
 //! explainers, infographics, kinetic titles, charts, product films and slides that move.
 //!
-//! Two engines, each an open-source program Lumo runs (fetched on first use, never bundled):
+//! Two engines, each an open-source program Cortex runs (fetched on first use, never bundled):
 //!
 //! - **HyperFrames** (HeyGen, Apache-2.0): the composition is an HTML page animated with GSAP,
 //!   CSS or any web animation library; `npx hyperframes render` captures it frame by frame in
@@ -297,18 +297,18 @@ mod tests {
         );
     }
 
-    /// With Node.js and network (`LUMO_TEST_ANIMATION=1`): a real HyperFrames render.
+    /// With Node.js and network (`CORTEX_TEST_ANIMATION=1`): a real HyperFrames render.
     #[tokio::test]
     #[ignore]
     async fn hyperframes_renders_a_composition() {
-        if std::env::var("LUMO_TEST_ANIMATION").is_err() {
+        if std::env::var("CORTEX_TEST_ANIMATION").is_err() {
             return;
         }
         let dir = tempfile::tempdir().unwrap();
         let html = r##"<!doctype html><html><head><script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
 <style>html,body{margin:0;width:640px;height:360px;background:#123}#t{color:#fff;font:600 48px sans-serif;position:absolute;top:150px;left:60px}</style></head>
 <body><div id="root" data-composition-id="main" data-start="0" data-duration="2" data-width="640" data-height="360">
-<h1 id="t" class="clip" data-start="0" data-duration="2" data-track-index="0">Lumo</h1></div>
+<h1 id="t" class="clip" data-start="0" data-duration="2" data-track-index="0">Cortex</h1></div>
 <script>const tl=gsap.timeline({paused:true});tl.fromTo("#t",{opacity:0},{opacity:1,duration:1},0);window.__timelines["main"]=tl;tl.seek(0);</script></body></html>"##;
         let out = make(
             dir.path(),

@@ -27,7 +27,7 @@
 //! it. It has its own key (`api-widget`, safe to put in a page: it can do nothing else), answers
 //! only pages from the origins listed, keeps the page from setting instructions, and caps how
 //! much history it takes. Pages opened on this computer reach it (an intranet page, your own
-//! site, documentation); for visitors elsewhere it would need a server, which Lumo does not run.
+//! site, documentation); for visitors elsewhere it would need a server, which Cortex does not run.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -146,7 +146,7 @@ pub async fn token(regenerate: bool) -> Result<String, String> {
         }
     }
     let fresh = format!(
-        "lumo-{}{}",
+        "cortex-{}{}",
         uuid::Uuid::new_v4().simple(),
         uuid::Uuid::new_v4().simple()
     );
@@ -162,7 +162,7 @@ pub async fn widget_token(regenerate: bool) -> Result<String, String> {
             return Ok(existing);
         }
     }
-    let fresh = format!("lumo-widget-{}", uuid::Uuid::new_v4().simple());
+    let fresh = format!("cortex-widget-{}", uuid::Uuid::new_v4().simple());
     secrets.store(WIDGET_SECRET, &fresh).await?;
     Ok(fresh)
 }
@@ -441,8 +441,8 @@ async fn models(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
         .await
         .into_iter()
         .map(|m| json!({ "id": m.reference, "object": "model", "owned_by": m.vendor, "name": m.name }))
-        .chain(super::local_models::root().map(|r| super::local_models::models(&r)).unwrap_or_default().into_iter().map(|m| json!({ "id": m.reference, "object": "model", "owned_by": "lumo-built-in", "name": m.name })))
-        .chain(super::agents::load(&ctx.config_dir).into_iter().map(|a| json!({ "id": format!("{AGENT_PREFIX}{}", a.id), "object": "model", "owned_by": "lumo-agent", "name": a.name })))
+        .chain(super::local_models::root().map(|r| super::local_models::models(&r)).unwrap_or_default().into_iter().map(|m| json!({ "id": m.reference, "object": "model", "owned_by": "cortex-built-in", "name": m.name })))
+        .chain(super::agents::load(&ctx.config_dir).into_iter().map(|a| json!({ "id": format!("{AGENT_PREFIX}{}", a.id), "object": "model", "owned_by": "cortex-agent", "name": a.name })))
         .collect();
     Json(json!({ "object": "list", "data": data })).into_response()
 }
@@ -790,7 +790,7 @@ async fn widget_chat(
     let Some(origin) = widget_origin(&ctx, &headers) else {
         let asked = any_origin(&ctx, &headers).unwrap_or_default();
         record("widget", &asked, StatusCode::FORBIDDEN, started);
-        let refused = error(StatusCode::FORBIDDEN, "This page may not use the Lumo widget. Add its origin in Lumo → Settings → Local API → Website widget.");
+        let refused = error(StatusCode::FORBIDDEN, "This page may not use the Cortex widget. Add its origin in Cortex → Settings → Local API → Website widget.");
         return if asked.is_empty() {
             refused
         } else {
@@ -800,7 +800,7 @@ async fn widget_chat(
     let response = if !authorized(&headers, &ctx.widget) {
         error(
             StatusCode::UNAUTHORIZED,
-            "The widget key is wrong; copy the snippet again from Lumo.",
+            "The widget key is wrong; copy the snippet again from Cortex.",
         )
     } else {
         match body
@@ -981,32 +981,32 @@ async fn messages_inner(
 /// The MCP protocol version this server speaks when a client names none it knows.
 const MCP_VERSION: &str = "2025-06-18";
 
-/// The tools Lumo offers MCP clients.
+/// The tools Cortex offers MCP clients.
 pub fn mcp_tools() -> Value {
     json!([
         {
             "name": "search_libraries",
-            "description": "Search the user's document libraries in Lumo and get the most relevant passages with their document names.",
+            "description": "Search the user's document libraries in Cortex and get the most relevant passages with their document names.",
             "inputSchema": { "type": "object", "properties": { "query": { "type": "string" }, "library": { "type": "string", "description": "A library name, to search only that one." } }, "required": ["query"] }
         },
         {
             "name": "ask",
-            "description": "Ask one of the user's models or agents in Lumo and get its answer. `model` is an id from list_models (`vendor/model` or `agent/<id>`); the default model when left out.",
+            "description": "Ask one of the user's models or agents in Cortex and get its answer. `model` is an id from list_models (`vendor/model` or `agent/<id>`); the default model when left out.",
             "inputSchema": { "type": "object", "properties": { "prompt": { "type": "string" }, "model": { "type": "string" } }, "required": ["prompt"] }
         },
         {
             "name": "list_models",
-            "description": "The models and agents Lumo can answer with.",
+            "description": "The models and agents Cortex can answer with.",
             "inputSchema": { "type": "object", "properties": {} }
         },
         {
             "name": "list_tasks",
-            "description": "The user's scheduled tasks in Lumo.",
+            "description": "The user's scheduled tasks in Cortex.",
             "inputSchema": { "type": "object", "properties": {} }
         },
         {
             "name": "run_task",
-            "description": "Start one of the user's scheduled tasks now, with optional input added to its prompt; its result arrives in Lumo as a conversation.",
+            "description": "Start one of the user's scheduled tasks now, with optional input added to its prompt; its result arrives in Cortex as a conversation.",
             "inputSchema": { "type": "object", "properties": { "id": { "type": "string" }, "input": { "type": "string" } }, "required": ["id"] }
         }
     ])
@@ -1099,8 +1099,8 @@ async fn mcp_answer(ctx: &Ctx, message: &Value) -> Option<Value> {
                 json!({
                     "protocolVersion": version,
                     "capabilities": { "tools": { "listChanged": false } },
-                    "serverInfo": { "name": "lumo", "title": "Lumo", "version": env!("CARGO_PKG_VERSION") },
-                    "instructions": "Lumo is the user's desktop assistant. Search their document libraries, ask their models or agents, and start their scheduled tasks."
+                    "serverInfo": { "name": "cortex", "title": "Cortex", "version": env!("CARGO_PKG_VERSION") },
+                    "instructions": "Cortex is the user's desktop assistant. Search their document libraries, ask their models or agents, and start their scheduled tasks."
                 }),
             )
         }
@@ -1174,7 +1174,7 @@ async fn mcp_call(ctx: &Ctx, name: &str, args: &Value) -> Value {
                 m if m.is_empty() => match super::providers::load(&ctx.config_dir).default_model {
                     Some(m) => m,
                     None => {
-                        return tool_text("No default model is set in Lumo; pass `model`.", true)
+                        return tool_text("No default model is set in Cortex; pass `model`.", true)
                     }
                 },
                 m => m,
@@ -1254,7 +1254,7 @@ async fn mcp_call(ctx: &Ctx, name: &str, args: &Value) -> Value {
             let app = ctx.app.clone();
             tauri::async_runtime::spawn(async move { super::engine::run_task(app, task).await });
             tool_text(
-                format!("Started “{title}”. Its result will be a new conversation in Lumo."),
+                format!("Started “{title}”. Its result will be a new conversation in Cortex."),
                 false,
             )
         }
@@ -1404,7 +1404,7 @@ async fn ollama_tags(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
         .chain(
             super::agents::load(&ctx.config_dir)
                 .into_iter()
-                .map(|a| entry(format!("{AGENT_PREFIX}{}", a.id), "lumo-agent")),
+                .map(|a| entry(format!("{AGENT_PREFIX}{}", a.id), "cortex-agent")),
         )
         .collect();
     Json(json!({ "models": models })).into_response()
@@ -1589,16 +1589,16 @@ mod tests {
     #[test]
     fn tokens_are_checked_exactly() {
         let mut headers = HeaderMap::new();
-        assert!(!authorized(&headers, "lumo-abc"));
-        headers.insert("authorization", "Bearer lumo-abc".parse().unwrap());
-        assert!(authorized(&headers, "lumo-abc"));
-        assert!(!authorized(&headers, "lumo-abd"));
-        assert!(!authorized(&headers, "lumo-ab"));
+        assert!(!authorized(&headers, "cortex-abc"));
+        headers.insert("authorization", "Bearer cortex-abc".parse().unwrap());
+        assert!(authorized(&headers, "cortex-abc"));
+        assert!(!authorized(&headers, "cortex-abd"));
+        assert!(!authorized(&headers, "cortex-ab"));
         assert!(same("", "") && !same("a", "b"));
         let mut anthropic = HeaderMap::new();
-        anthropic.insert("x-api-key", "lumo-abc".parse().unwrap());
+        anthropic.insert("x-api-key", "cortex-abc".parse().unwrap());
         assert!(
-            authorized(&anthropic, "lumo-abc"),
+            authorized(&anthropic, "cortex-abc"),
             "Anthropic clients send x-api-key"
         );
     }

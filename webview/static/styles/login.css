@@ -1,4 +1,4 @@
-@import url("lumo-tokens.css");
+@import url("cortex-tokens.css");
 
 * { box-sizing: border-box; }
 
@@ -8,9 +8,9 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--lumo-bg-page);
-    color: var(--lumo-text);
-    font-family: var(--lumo-font-sans);
+    background: var(--cortex-bg-page);
+    color: var(--cortex-text);
+    font-family: var(--cortex-font-sans);
     -webkit-user-select: none;
     user-select: none;
 }
@@ -19,11 +19,11 @@ body {
     width: 100%;
     max-width: 380px;
     padding: 40px 32px;
-    margin: 0 var(--lumo-gutter);
-    background: var(--lumo-bg-elevated);
-    border: 1px solid var(--lumo-border);
-    border-radius: var(--lumo-radius-lg);
-    box-shadow: var(--lumo-shadow-md);
+    margin: 0 var(--cortex-gutter);
+    background: var(--cortex-bg-elevated);
+    border: 1px solid var(--cortex-border);
+    border-radius: var(--cortex-radius-lg);
+    box-shadow: var(--cortex-shadow-md);
     text-align: center;
 }
 
@@ -42,16 +42,16 @@ body {
 .login-subtitle {
     margin: 4px 0 28px;
     font-size: 13px;
-    color: var(--lumo-text-secondary);
+    color: var(--cortex-text-secondary);
 }
 
 .login-card button {
-    background: var(--lumo-purple);
+    background: var(--cortex-purple);
     color: #fff;
     border: none;
     width: 100%;
     padding: 12px 18px;
-    border-radius: var(--lumo-radius-sm);
+    border-radius: var(--cortex-radius-sm);
     cursor: pointer;
     font-size: 14px;
     font-weight: 500;
@@ -60,8 +60,8 @@ body {
 }
 
 .login-card button:hover:not(:disabled) {
-    background: var(--lumo-purple-hover);
-    box-shadow: 0 2px 8px var(--lumo-purple-ring);
+    background: var(--cortex-purple-hover);
+    box-shadow: 0 2px 8px var(--cortex-purple-ring);
 }
 
 .login-card button:disabled {
@@ -74,8 +74,8 @@ body {
     margin: 20px 0 0;
     font-size: 12px;
     line-height: 1.5;
-    color: var(--lumo-text-muted);
+    color: var(--cortex-text-muted);
 }
 
-.login-hint.waiting { color: var(--lumo-purple-dark); }
-.login-hint.failed { color: var(--lumo-danger); }
+.login-hint.waiting { color: var(--cortex-purple-dark); }
+.login-hint.failed { color: var(--cortex-danger); }

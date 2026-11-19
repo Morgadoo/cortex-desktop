@@ -15,7 +15,7 @@ export const EMOJI_STYLES: { id: EmojiStyle; label: string }[] = [
   { id: 'flat', label: 'Microsoft flat' },
   { id: 'system', label: 'System' },
 ];
-const KEY = 'lumo.emojiStyle';
+const KEY = 'cortex.emojiStyle';
 const EXT: Record<string, string> = { '3d': 'webp', flat: 'svg' };
 /** Where emoji are left alone: code, form controls, editors, graphics. */
 const SKIP = 'code,pre,kbd,samp,script,style,textarea,option,select,svg,[contenteditable=""],[contenteditable="true"],.fluent-emoji,.no-emoji';
@@ -120,7 +120,7 @@ export async function startFluentEmoji(): Promise<void> {
   const names = await tauriInvoke<string[]>('chat_emoji_index', { style }).catch(() => [] as string[]);
   if (!names.length || emojiStyle() !== style) return;
   const windows = navigator.userAgent.includes('Windows');
-  active = { style, ext: EXT[style]!, index: buildIndex(names), base: windows ? 'http://lumoapp.localhost' : 'lumoapp://localhost' };
+  active = { style, ext: EXT[style]!, index: buildIndex(names), base: windows ? 'http://cortexapp.localhost' : 'cortexapp://localhost' };
   document.documentElement.dataset.emoji = style;
   scan(document.body);
   observer = new MutationObserver((records) => {

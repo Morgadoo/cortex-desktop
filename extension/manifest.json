@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "Lumo",
+  "name": "Cortex",
   "version": "1.0.0",
-  "description": "Ask Lumo on your computer about the page you are reading or the text you selected.",
+  "description": "Ask Cortex on your computer about the page you are reading or the text you selected.",
   "icons": { "32": "icon32.png", "128": "icon128.png" },
-  "action": { "default_title": "Ask Lumo", "default_popup": "popup.html", "default_icon": { "32": "icon32.png" } },
+  "action": { "default_title": "Ask Cortex", "default_popup": "popup.html", "default_icon": { "32": "icon32.png" } },
   "permissions": ["activeTab", "scripting", "storage", "contextMenus"],
   "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
   "background": { "service_worker": "background.js" }

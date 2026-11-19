@@ -922,7 +922,7 @@ async function printConversation(id: string, title: string) {
   // Long messages are shown whole on paper.
   const folded = [...transcript.querySelectorAll<HTMLElement>('.folded')];
   folded.forEach((el) => el.classList.remove('folded'));
-  const head = h('div', {}, h('h1', { class: 'print-title' }, title || 'Conversation'), h('p', { class: 'print-meta' }, `Lumo · ${new Date().toLocaleString(undefined, { hour12: clockHour12() })}`));
+  const head = h('div', {}, h('h1', { class: 'print-title' }, title || 'Conversation'), h('p', { class: 'print-meta' }, `Cortex · ${new Date().toLocaleString(undefined, { hour12: clockHour12() })}`));
   transcript.before(head);
   try {
     window.print();
@@ -1038,7 +1038,7 @@ const DEFAULT_ANSWER_ACTIONS: AnswerAction[] = [
 /** The actions under each answer: the built-in ones until the user changes the list. */
 function answerActions(): AnswerAction[] {
   try {
-    const saved = JSON.parse(localStorage.getItem('lumo.answerActions') ?? 'null') as AnswerAction[] | null;
+    const saved = JSON.parse(localStorage.getItem('cortex.answerActions') ?? 'null') as AnswerAction[] | null;
     if (Array.isArray(saved)) return saved.filter((a) => a && typeof a.name === 'string' && typeof a.prompt === 'string');
   } catch {
     /* the defaults */
@@ -1048,7 +1048,7 @@ function answerActions(): AnswerAction[] {
 
 function saveAnswerActions(actions: AnswerAction[]) {
   try {
-    localStorage.setItem('lumo.answerActions', JSON.stringify(actions));
+    localStorage.setItem('cortex.answerActions', JSON.stringify(actions));
   } catch {
     toast('The actions could not be saved.', 'error');
   }
@@ -1458,7 +1458,7 @@ export function autoPlay(text: string) {
     })
     .catch((e) => {
       autoPlayFailed = true;
-      toast(`${String(e).replace(/^Error:\s*/, '')} Reading answers aloud is paused until Lumo restarts.`, 'error');
+      toast(`${String(e).replace(/^Error:\s*/, '')} Reading answers aloud is paused until Cortex restarts.`, 'error');
     });
 }
 
@@ -1557,7 +1557,7 @@ function copyErrorButton(error: string, conversationId: string): HTMLElement {
       `Error: ${error}`,
       `Model: ${state.model ?? 'none'}`,
       `Mode: ${state.approval}, speed: ${state.speed}`,
-      `App: Lumo ${version}`,
+      `App: Cortex ${version}`,
       `Platform: ${navigator.platform} (${navigator.userAgent.match(/AppleWebKit\/[\d.]+/)?.[0] ?? 'webview'})`,
       `Conversation: ${conversationId}`,
       `Time: ${new Date().toISOString()}`,
@@ -3556,7 +3556,7 @@ export function avatarHue(avatar: string): number {
 /** Whether the next Code session starts in a new git worktree. */
 function worktreeNext(): boolean {
   try {
-    return localStorage.getItem('lumo.worktree') === 'on';
+    return localStorage.getItem('cortex.worktree') === 'on';
   } catch {
     return false;
   }
@@ -3564,7 +3564,7 @@ function worktreeNext(): boolean {
 
 function setWorktreeNext(on: boolean) {
   try {
-    localStorage.setItem('lumo.worktree', on ? 'on' : 'off');
+    localStorage.setItem('cortex.worktree', on ? 'on' : 'off');
   } catch {
     /* per-device convenience only */
   }
@@ -4024,7 +4024,7 @@ table { border-collapse: collapse; } th, td { border: 1px solid var(--border); p
 .sources { font-size: .85rem; color: var(--muted); border-top: 1px solid var(--border); margin-top: 12px; padding-top: 8px; } .sources ol { margin: 4px 0 0; padding-left: 20px; }
 details > summary { display: none; } .footer { color: var(--muted); font-size: .8rem; margin-top: 40px; }
 </style></head><body><main>
-<h1 class="title">${esc(title)}</h1><div class="meta">Shared from Lumo · ${new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}</div>
+<h1 class="title">${esc(title)}</h1><div class="meta">Shared from Cortex · ${new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}</div>
 ${body.innerHTML}
 <div class="footer">AI answers can contain mistakes. Check important information.</div>
 </main></body></html>`;
@@ -4267,7 +4267,7 @@ export function conversationMenu(anchor: HTMLElement, id: string, title: string,
         setTimeout(() => selectMessages(id), state.view.kind === 'chat' && state.view.id === id ? 0 : 400);
       }),
       item('download', 'Export as Markdown', () => void api.exportConversation(id).then((saved) => saved && toast('Conversation exported.'))),
-      item('link', 'Copy link', () => void navigator.clipboard.writeText(`lumo://chat/${id}`).then(() => toast('Link copied. It opens this chat in Lumo on this computer.'))),
+      item('link', 'Copy link', () => void navigator.clipboard.writeText(`cortex://chat/${id}`).then(() => toast('Link copied. It opens this chat in Cortex on this computer.'))),
       ...(state.view.kind === 'chat' && state.view.id !== id ? [item('columns', 'Open beside this chat', () => openChatBeside(id))] : []),
       item('expand', 'Open in new window', () => void tauriInvoke('chat_open_chat_window', { id }).catch((e) => toast(String(e), 'error'))),
       item('download', 'Print or save as PDF', () => void printConversation(id, title)),
@@ -4309,7 +4309,7 @@ export function conversationMenu(anchor: HTMLElement, id: string, title: string,
 const queued = new Map<string, string[]>();
 /** Conversations whose queue waits instead of sending when a turn ends. */
 const pausedQueues = new Set<string>();
-const QUEUE_KEY = 'lumo.queue';
+const QUEUE_KEY = 'cortex.queue';
 
 function loadQueues() {
   try {
@@ -4466,8 +4466,8 @@ async function showContext(id: string) {
 // ---------------------------------------------------------------------------------------------
 // What the composer learns from use, kept on this device: earlier prompts and skill counts.
 
-const HISTORY_KEY = 'lumo.promptHistory';
-const SKILL_USE_KEY = 'lumo.skillUses';
+const HISTORY_KEY = 'cortex.promptHistory';
+const SKILL_USE_KEY = 'cortex.skillUses';
 
 function readStored<T>(key: string, fallback: T): T {
   try {
@@ -4782,7 +4782,7 @@ const draftAttachments = new Map<string, Attachment[]>();
 /** Unsent text by conversation (`home` for a new chat), kept on this device. */
 function drafts(): Record<string, string> {
   try {
-    return JSON.parse(localStorage.getItem('lumo.drafts') ?? '{}') as Record<string, string>;
+    return JSON.parse(localStorage.getItem('cortex.drafts') ?? '{}') as Record<string, string>;
   } catch {
     return {};
   }
@@ -4797,7 +4797,7 @@ function saveDraft(conversationId: string | null, text: string) {
     // A few dozen drafts at most; the oldest go first.
     const keys = Object.keys(all);
     for (const k of keys.slice(0, Math.max(0, keys.length - 50))) delete all[k];
-    localStorage.setItem('lumo.drafts', JSON.stringify(all));
+    localStorage.setItem('cortex.drafts', JSON.stringify(all));
   } catch {
     // Drafts are a convenience.
   }
@@ -4819,7 +4819,7 @@ const SLASH_COMMANDS: { name: string; desc: string; icon: string; inChat?: boole
 
 function blindCompare(): boolean {
   try {
-    return localStorage.getItem('lumo.blindCompare') === 'on';
+    return localStorage.getItem('cortex.blindCompare') === 'on';
   } catch {
     return false;
   }
@@ -4827,7 +4827,7 @@ function blindCompare(): boolean {
 
 function setBlindCompare(on: boolean) {
   try {
-    localStorage.setItem('lumo.blindCompare', on ? 'on' : 'off');
+    localStorage.setItem('cortex.blindCompare', on ? 'on' : 'off');
   } catch {
     // A convenience only.
   }

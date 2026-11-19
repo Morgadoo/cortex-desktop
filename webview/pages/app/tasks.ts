@@ -377,7 +377,7 @@ function describe(f: Frequency): string {
 
 function storedView(): 'list' | 'calendar' {
   try {
-    return localStorage.getItem('lumo.tasksView') === 'calendar' ? 'calendar' : 'list';
+    return localStorage.getItem('cortex.tasksView') === 'calendar' ? 'calendar' : 'list';
   } catch {
     return 'list';
   }
@@ -385,7 +385,7 @@ function storedView(): 'list' | 'calendar' {
 
 function saveView(view: 'list' | 'calendar') {
   try {
-    localStorage.setItem('lumo.tasksView', view);
+    localStorage.setItem('cortex.tasksView', view);
   } catch {
     // A convenience only.
   }

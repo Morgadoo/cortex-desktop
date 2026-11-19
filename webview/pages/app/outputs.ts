@@ -32,7 +32,7 @@ const KINDS: [Output['kind'] | 'all', string, string][] = [
 
 function fileUrl(conversationId: string, path: string): string {
   const windows = navigator.userAgent.includes('Windows');
-  return `${windows ? 'http://lumoapp.localhost' : 'lumoapp://localhost'}/sandbox/${conversationId}/${path.split('/').map(encodeURIComponent).join('/')}`;
+  return `${windows ? 'http://cortexapp.localhost' : 'cortexapp://localhost'}/sandbox/${conversationId}/${path.split('/').map(encodeURIComponent).join('/')}`;
 }
 
 function size(bytes: number): string {

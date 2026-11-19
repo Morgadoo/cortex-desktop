@@ -19,7 +19,7 @@ pub(super) fn owner(app: &AppHandle) -> Option<isize> {
 pub(super) struct Icon(Option<HICON>);
 
 impl Icon {
-    pub(super) fn lumo() -> Self {
+    pub(super) fn cortex() -> Self {
         let icon = unsafe {
             CreateIconFromResourceEx(
                 include_bytes!("../../icons/128x128@2x.png"),
@@ -33,7 +33,7 @@ impl Icon {
         match icon {
             Ok(icon) => Self(Some(icon)),
             Err(error) => {
-                log::warn!("Could not load Lumo dialog icon: {error}");
+                log::warn!("Could not load Cortex dialog icon: {error}");
                 Self(None)
             }
         }

@@ -62,7 +62,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-          shared-key: lumo
+          shared-key: cortex
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -94,15 +94,15 @@ jobs:
         ports:
           - 9998:9998
     env:
-      LUMO_TEST_QDRANT: http://localhost:6333
-      LUMO_TEST_TIKA: http://localhost:9998
+      CORTEX_TEST_QDRANT: http://localhost:6333
+      CORTEX_TEST_TIKA: http://localhost:9998
     steps:
       # Outside the checkout, in the home folder: the model cache keeps them between runs.
       - name: Where the models and the recording go
         run: |
-          echo "LUMO_TEST_MODELS=$HOME/lumo-test-models" >> "$GITHUB_ENV"
-          echo "LUMO_FETCH_MODELS=$HOME/lumo-test-models" >> "$GITHUB_ENV"
-          echo "LUMO_TEST_WAV=$HOME/jfk.wav" >> "$GITHUB_ENV"
+          echo "CORTEX_TEST_MODELS=$HOME/cortex-test-models" >> "$GITHUB_ENV"
+          echo "CORTEX_FETCH_MODELS=$HOME/cortex-test-models" >> "$GITHUB_ENV"
+          echo "CORTEX_TEST_WAV=$HOME/jfk.wav" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - name: System libraries
         run: |
@@ -115,7 +115,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-          shared-key: lumo
+          shared-key: cortex
           save-if: false
       - uses: actions/setup-node@v4
         with:
@@ -125,13 +125,13 @@ jobs:
       - name: Cache the models
         uses: actions/cache@v4
         with:
-          path: ~/lumo-test-models
-          key: lumo-test-models-v1
+          path: ~/cortex-test-models
+          key: cortex-test-models-v1
       - name: Download the models (with the app's own downloader)
         working-directory: src-tauri
         run: cargo test --features test-utils --lib fetch_models_for_live_tests -- --ignored --nocapture
       - name: A speech recording (whisper.cpp's sample, "ask not what your country can do for you")
-        run: curl -sSfL -o "$LUMO_TEST_WAV" https://github.com/ggml-org/whisper.cpp/raw/master/samples/jfk.wav
+        run: curl -sSfL -o "$CORTEX_TEST_WAV" https://github.com/ggml-org/whisper.cpp/raw/master/samples/jfk.wav
       - name: Wait for Qdrant and Tika
         run: |
           for i in $(seq 1 60); do

@@ -21,7 +21,7 @@ export const SHORTCUTS: { action: ShortcutAction; label: string; fallback: strin
   ...([1, 2, 3, 4, 5, 6, 7, 8, 9] as const).map((n) => ({ action: `chat${n}` as ShortcutAction, label: `Open chat ${n} in the sidebar`, fallback: `Mod+${n}` })),
 ];
 
-const KEY = 'lumo.shortcuts';
+const KEY = 'cortex.shortcuts';
 
 function overrides(): Partial<Record<ShortcutAction, string>> {
   try {

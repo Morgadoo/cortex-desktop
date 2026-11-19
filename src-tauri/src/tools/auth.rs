@@ -314,7 +314,7 @@ pub fn keychain_secrets(account: AccountId) -> Secrets {
 
 /// # Errors
 ///
-/// Returns an error when no account is signed in. The settings page runs outside the Lumo webview
+/// Returns an error when no account is signed in. The settings page runs outside the Cortex webview
 /// and cannot resolve an account itself, so this is the only account scope available to it.
 pub fn active_secret_store(active: &ActiveAccount) -> Result<Secrets, String> {
     active

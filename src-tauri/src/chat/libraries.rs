@@ -590,7 +590,7 @@ pub fn import_archive(
     if files.is_empty() {
         return Err("No pages or documents were found in that archive.".into());
     }
-    let scratch = std::env::temp_dir().join(format!("lumo-import-{}", uuid::Uuid::new_v4()));
+    let scratch = std::env::temp_dir().join(format!("cortex-import-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&scratch).map_err(|e| e.to_string())?;
     let mut added = 0;
     let mut skipped = Vec::new();
@@ -767,7 +767,7 @@ pub async fn add_web_page(
     }
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(25))
-        .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Lumo")
+        .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Cortex")
         .build()
         .map_err(|e| e.to_string())?;
     let response = client
@@ -1760,7 +1760,7 @@ mod tests {
         let names: Vec<String> = files.iter().map(|(p, _)| archive_name(p)).collect();
         assert_eq!(names, ["Home.md", "Tasks.csv"]);
 
-        let dir = std::env::temp_dir().join(format!("lumo-archive-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("cortex-archive-{}", std::process::id()));
         let library = create(&dir, "Wiki", "").unwrap();
         let report = import_archive(&dir, &library.id, &export).unwrap();
         assert_eq!(report.added, 2);
@@ -1796,7 +1796,7 @@ mod tests {
         assert!(parse_since("lately", now).is_none());
         assert!(parse_since("", now).is_none());
 
-        let dir = std::env::temp_dir().join(format!("lumo-since-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("cortex-since-{}", std::process::id()));
         let lib = create(&dir, "Notes", "").unwrap();
         add_text(&dir, &lib.id, "old.md", "budget figures for the old plan").unwrap();
         add_text(&dir, &lib.id, "new.md", "budget figures for the new plan").unwrap();

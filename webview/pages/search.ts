@@ -1,5 +1,5 @@
 /**
- * Lumo desktop: the quick-ask window.
+ * Cortex desktop: the quick-ask window.
  *
  * Takes a question and hands it to the main window via `inject_search`, then hides itself.
  * The shell keeps the question and the web app redeems it through `bridges/quick-ask.ts`.

@@ -9,7 +9,7 @@
  */
 import { tauriInvoke } from '../../shared/tauri';
 
-const KEY = 'lumo.uiLanguage';
+const KEY = 'cortex.uiLanguage';
 
 /** Where text belongs to the user or the model: never translated. */
 const USER_TEXT = [

@@ -41,7 +41,7 @@ const MAX_UNPROMPTED_LINKS: usize = 20;
 
 const REFUSED_IN_RUN: &str = "this scheduled run has read email or other untrusted content, so \
      tools that can send data out or change files are disabled for the rest of the run. To let \
-     scheduled tasks use this tool anyway, set it to Always allow in Lumo's connector settings";
+     scheduled tasks use this tool anyway, set it to Always allow in Cortex's connector settings";
 const REFUSED_HIDDEN: &str = "the request contains invisible characters, which a scheduled run \
      cannot send without someone approving them";
 

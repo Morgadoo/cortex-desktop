@@ -1,5 +1,5 @@
 //! Reach an agent from Discord (Onyx's and OpenBot's Discord bot): a bot of your own, connected
-//! through Discord's Gateway, a connection Lumo opens, so nothing has to reach this computer from
+//! through Discord's Gateway, a connection Cortex opens, so nothing has to reach this computer from
 //! outside.
 //!
 //! Setup: create an application at discord.com/developers, add a bot, copy its token, and invite
@@ -30,7 +30,7 @@ pub struct Settings {
     /// Discord user ids allowed to talk to it.
     pub paired: Vec<String>,
     pub pairing_code: Option<String>,
-    /// Discord channel id → Lumo conversation id.
+    /// Discord channel id → Cortex conversation id.
     pub chats: Vec<(String, String)>,
     pub allow_changes: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -50,9 +50,9 @@ pub fn save(config_dir: &Path, s: &Settings) -> Result<(), String> {
     super::store::write_json(&path(config_dir), s)
 }
 
-/// Discord's REST API; `LUMO_DISCORD_API` points elsewhere for testing.
+/// Discord's REST API; `CORTEX_DISCORD_API` points elsewhere for testing.
 fn api_base() -> String {
-    std::env::var("LUMO_DISCORD_API").unwrap_or_else(|_| "https://discord.com/api/v10".into())
+    std::env::var("CORTEX_DISCORD_API").unwrap_or_else(|_| "https://discord.com/api/v10".into())
 }
 
 pub async fn token() -> Option<String> {
@@ -88,7 +88,7 @@ async fn call(
     let mut request = client
         .request(method, format!("{}{path}", api_base()))
         .header("Authorization", format!("Bot {token}"))
-        .header("User-Agent", "DiscordBot (https://proton.me, 1) Lumo");
+        .header("User-Agent", "DiscordBot (https://proton.me, 1) Cortex");
     if let Some(body) = body {
         request = request.json(&body);
     }
@@ -179,11 +179,11 @@ pub fn decide(settings: &Settings, message: &Value, bot_id: &str) -> Action {
     if let Some(code) = text.strip_prefix("pair").map(str::trim) {
         return match &settings.pairing_code {
             Some(expected) if expected == code => Action::Pair(user),
-            _ => Action::Reply("That code is not right, or pairing is closed. Open Lumo → Settings → General → Discord to get a code.".into()),
+            _ => Action::Reply("That code is not right, or pairing is closed. Open Cortex → Settings → General → Discord to get a code.".into()),
         };
     }
     if !settings.paired.contains(&user) {
-        return Action::Reply("I answer only my owner. If that is you, send `pair` followed by the code shown in Lumo (Settings → General → Discord).".into());
+        return Action::Reply("I answer only my owner. If that is you, send `pair` followed by the code shown in Cortex (Settings → General → Discord).".into());
     }
     match text.as_str() {
         "new" | "/new" => Action::Reset,
@@ -277,7 +277,7 @@ async fn session(app: &AppHandle, config_dir: &Path, token: &str) -> Result<(), 
                     .unwrap_or(41_250);
                 beat = tokio::time::interval(Duration::from_millis(every));
                 beat.tick().await;
-                let identify = json!({ "op": 2, "d": { "token": token, "intents": INTENTS, "properties": { "os": std::env::consts::OS, "browser": "Lumo", "device": "Lumo" } } });
+                let identify = json!({ "op": 2, "d": { "token": token, "intents": INTENTS, "properties": { "os": std::env::consts::OS, "browser": "Cortex", "device": "Cortex" } } });
                 tx.send(Ws::Text(identify.to_string().into()))
                     .await
                     .map_err(|e| e.to_string())?;

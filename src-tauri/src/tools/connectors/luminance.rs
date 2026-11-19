@@ -230,7 +230,7 @@ impl LuminanceConnector {
         let body = response.text().await.unwrap_or_default();
         Err(match status {
             StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => match config.auth {
-                LuminanceAuth::AccessToken => "Luminance rejected the access token. Access tokens expire; generate a new one, or connect with a Client ID and Secret so Lumo can renew it.".into(),
+                LuminanceAuth::AccessToken => "Luminance rejected the access token. Access tokens expire; generate a new one, or connect with a Client ID and Secret so Cortex can renew it.".into(),
                 LuminanceAuth::ClientCredentials => "Luminance issued a token but refused it. Check that the service user can use the Public API.".into(),
             },
             _ => describe_error_status(status, &body),

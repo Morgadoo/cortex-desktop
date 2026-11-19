@@ -28,7 +28,7 @@ function looksLikeText(s) {
   if (/^(oklch|rgba?|hsla?|color-mix|calc|var|url)\(/.test(t)) return false
   if (/^[a-z0-9_.:\/#-]+$/.test(t)) return false // identifiers, classes, paths, events
   if (/^[A-Z0-9_]+$/.test(t) && t.length > 3 && !t.includes(' ')) return false // CONSTANTS
-  if (/^(https?|lumo|data|blob|tauri|file):/.test(t)) return false
+  if (/^(https?|cortex|data|blob|tauri|file):/.test(t)) return false
   if (/[{};]\s*$|=>|^\s*[.#\[]|^<\w|\bvar\(--|^\d+(px|em|rem|%)/.test(t)) return false // code, CSS, HTML
   if (/^[a-z]+(-[a-z]+)+( [a-z]+(-[a-z]+)*)*$/.test(t)) return false // "btn btn-primary"
   if (!/[A-Z]/.test(t) && !t.includes(' ')) return false // single lowercase words are usually keys

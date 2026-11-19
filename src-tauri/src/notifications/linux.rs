@@ -16,14 +16,14 @@ use super::NotificationPermission;
 #[cfg(target_os = "linux")]
 fn desktop_entry(config: &tauri::Config) -> &str {
     // Tauri's DEB/RPM bundler names the desktop file after productName, not
-    // the bundle identifier. The Linux override deliberately uses lumo.desktop.
-    config.product_name.as_deref().unwrap_or("Lumo")
+    // the bundle identifier. The Linux override deliberately uses cortex.desktop.
+    config.product_name.as_deref().unwrap_or("Cortex")
 }
 
 #[cfg(target_os = "linux")]
 fn icon_name(config: &tauri::Config) -> &str {
-    // Hicolor icons are named after mainBinaryName (lumo-desktop), independently
-    // of productName (lumo).
+    // Hicolor icons are named after mainBinaryName (cortex-desktop), independently
+    // of productName (cortex).
     config
         .main_binary_name
         .as_deref()
@@ -233,12 +233,15 @@ mod tests {
 
     #[test]
     fn matches_gnome_settings_paths_for_desktop_file_ids() {
-        assert_eq!(gnome_application_id("Lumo"), "lumo");
+        assert_eq!(gnome_application_id("Cortex"), "cortex");
         assert_eq!(
-            gnome_application_id("me.proton.Lumo-app"),
-            "me-proton-lumo-app"
+            gnome_application_id("io.github.morgadoo.cortex-desktop"),
+            "io-github-morgadoo-cortex-desktop"
         );
-        assert_eq!(gnome_application_id("Lumo... Test--App"), "lumo-test-app");
+        assert_eq!(
+            gnome_application_id("Cortex... Test--App"),
+            "cortex-test-app"
+        );
     }
 
     #[test]
@@ -259,7 +262,7 @@ mod tests {
 
     #[tokio::test]
     async fn unknown_desktops_do_not_require_settings_tools() {
-        assert!(permission(Desktop::Other, "Lumo").await);
+        assert!(permission(Desktop::Other, "Cortex").await);
     }
 
     #[cfg(unix)]
@@ -273,7 +276,7 @@ mod tests {
             assert!(permission_or_allow(query_bool("sh", &["-c", script]).await));
         }
         assert!(permission_or_allow(
-            query_bool("/nonexistent/lumo-settings-tool", &[]).await
+            query_bool("/nonexistent/cortex-settings-tool", &[]).await
         ));
     }
 

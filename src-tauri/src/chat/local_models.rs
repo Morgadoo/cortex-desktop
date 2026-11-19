@@ -1,5 +1,5 @@
 //! The built-in model runtime (Osaurus's and LM Studio's local models, OpenBot's on-device
-//! dictation): chat models and Whisper speech-to-text run inside Lumo, on this computer's CPU,
+//! dictation): chat models and Whisper speech-to-text run inside Cortex, on this computer's CPU,
 //! with Hugging Face's `candle` (pure Rust). Nothing to install: a model is downloaded once from
 //! Hugging Face (Settings → Providers → Built-in models) and works offline after that.
 //!
@@ -344,9 +344,10 @@ pub fn cancel(id: &str) {
     }
 }
 
-/// Where a file comes from. `LUMO_MODELS_URL` points at a mirror with the same layout.
+/// Where a file comes from. `CORTEX_MODELS_URL` points at a mirror with the same layout.
 fn file_url(repo: &str, path: &str) -> String {
-    let base = std::env::var("LUMO_MODELS_URL").unwrap_or_else(|_| "https://huggingface.co".into());
+    let base =
+        std::env::var("CORTEX_MODELS_URL").unwrap_or_else(|_| "https://huggingface.co".into());
     format!("{}/{repo}/resolve/main/{path}", base.trim_end_matches('/'))
 }
 
@@ -1001,7 +1002,7 @@ async fn list_models() -> axum::Json<Value> {
         .map(|r| models(&r))
         .unwrap_or_default()
         .into_iter()
-        .map(|m| json!({ "id": m.id, "object": "model", "owned_by": "lumo" }))
+        .map(|m| json!({ "id": m.id, "object": "model", "owned_by": "cortex" }))
         .collect();
     axum::Json(json!({ "object": "list", "data": ids }))
 }
@@ -1198,7 +1199,7 @@ pub fn brief(
 ) -> String {
     let mut out = match agent {
         Some((name, text)) => format!("You are {name}, running on the user's own computer. {}", text.trim()),
-        None => "You are Lumo, a helpful assistant running on the user's own computer. Answer clearly and briefly; use Markdown when it helps.".to_string(),
+        None => "You are Cortex, a helpful assistant running on the user's own computer. Answer clearly and briefly; use Markdown when it helps.".to_string(),
     };
     out.push_str(&format!(
         "\nToday is {}.",
@@ -1377,7 +1378,8 @@ pub fn audio_samples(bytes: &[u8]) -> Result<Vec<f32>, String> {
     if let Ok(s) = wav_samples(bytes) {
         return Ok(s);
     }
-    let input = std::env::temp_dir().join(format!("lumo-audio-{}", uuid::Uuid::new_v4().simple()));
+    let input =
+        std::env::temp_dir().join(format!("cortex-audio-{}", uuid::Uuid::new_v4().simple()));
     std::fs::write(&input, bytes).map_err(|e| e.to_string())?;
     let out = std::process::Command::new("ffmpeg")
         .args(["-loglevel", "error", "-i"])
@@ -1768,16 +1770,16 @@ mod tests {
         assert!(wav_samples(b"not audio").is_err());
     }
 
-    /// With a model downloaded (`LUMO_TEST_MODELS=<local data dir>`): a real answer and its speed.
+    /// With a model downloaded (`CORTEX_TEST_MODELS=<local data dir>`): a real answer and its speed.
     #[test]
     #[ignore]
     fn a_downloaded_model_answers() {
-        let Ok(dir) = std::env::var("LUMO_TEST_MODELS") else {
+        let Ok(dir) = std::env::var("CORTEX_TEST_MODELS") else {
             return;
         };
         let root = Path::new(&dir).join("models");
         let long_system = "You are a helpful assistant. ".repeat(
-            std::env::var("LUMO_TEST_SYSTEM_REPEAT")
+            std::env::var("CORTEX_TEST_SYSTEM_REPEAT")
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(1),
@@ -1828,17 +1830,17 @@ mod tests {
         assert!(text.contains("Lisbon"), "{text}");
     }
 
-    /// Downloads the models the live tests use into `LUMO_FETCH_MODELS` (as `LUMO_TEST_MODELS`
-    /// expects them), through the app's own downloader; `LUMO_FETCH_MODEL_IDS` narrows the list.
+    /// Downloads the models the live tests use into `CORTEX_FETCH_MODELS` (as `CORTEX_TEST_MODELS`
+    /// expects them), through the app's own downloader; `CORTEX_FETCH_MODEL_IDS` narrows the list.
     /// Models already there are kept.
     #[tokio::test]
     #[ignore]
     async fn fetch_models_for_live_tests() {
-        let Ok(dir) = std::env::var("LUMO_FETCH_MODELS") else {
+        let Ok(dir) = std::env::var("CORTEX_FETCH_MODELS") else {
             return;
         };
         let root = Path::new(&dir).join("models");
-        let ids = std::env::var("LUMO_FETCH_MODEL_IDS")
+        let ids = std::env::var("CORTEX_FETCH_MODEL_IDS")
             .unwrap_or_else(|_| "qwen2.5-0.5b,minilm-l6,whisper-tiny".into());
         for id in ids.split(',').map(str::trim).filter(|s| !s.is_empty()) {
             if installed(&root, id) {
@@ -1858,13 +1860,13 @@ mod tests {
         }
     }
 
-    /// With Whisper downloaded (`LUMO_TEST_MODELS`) and a recording (`LUMO_TEST_WAV`).
+    /// With Whisper downloaded (`CORTEX_TEST_MODELS`) and a recording (`CORTEX_TEST_WAV`).
     #[test]
     #[ignore]
     fn a_downloaded_whisper_transcribes() {
         let (Ok(dir), Ok(wav)) = (
-            std::env::var("LUMO_TEST_MODELS"),
-            std::env::var("LUMO_TEST_WAV"),
+            std::env::var("CORTEX_TEST_MODELS"),
+            std::env::var("CORTEX_TEST_WAV"),
         ) else {
             return;
         };
@@ -1891,11 +1893,11 @@ mod tests {
         assert!(Place::take().is_some());
     }
 
-    /// With MiniLM downloaded (`LUMO_TEST_MODELS`): similar sentences land close together.
+    /// With MiniLM downloaded (`CORTEX_TEST_MODELS`): similar sentences land close together.
     #[test]
     #[ignore]
     fn a_downloaded_embedder_groups_meanings() {
-        let Ok(dir) = std::env::var("LUMO_TEST_MODELS") else {
+        let Ok(dir) = std::env::var("CORTEX_TEST_MODELS") else {
             return;
         };
         let root = Path::new(&dir).join("models");
@@ -1921,13 +1923,13 @@ mod tests {
         assert!(dot(&v[0], &v[1]) > dot(&v[0], &v[2]) + 0.1);
     }
 
-    /// With Qwen 0.5B downloaded (`LUMO_TEST_MODELS`): requests waiting together are answered
+    /// With Qwen 0.5B downloaded (`CORTEX_TEST_MODELS`): requests waiting together are answered
     /// together, correctly, with more tokens per second and a first word sooner for the requests
     /// that would otherwise wait their turn.
     #[test]
     #[ignore]
     fn waiting_requests_are_batched() {
-        let Ok(dir) = std::env::var("LUMO_TEST_MODELS") else {
+        let Ok(dir) = std::env::var("CORTEX_TEST_MODELS") else {
             return;
         };
         let root = Path::new(&dir).join("models");
@@ -2020,7 +2022,7 @@ mod tests {
     #[test]
     #[ignore]
     fn padding_is_neutral() {
-        let Ok(dir) = std::env::var("LUMO_TEST_MODELS") else {
+        let Ok(dir) = std::env::var("CORTEX_TEST_MODELS") else {
             return;
         };
         let root = Path::new(&dir).join("models");

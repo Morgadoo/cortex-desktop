@@ -1,4 +1,4 @@
-//! Custom Lumo icons on macOS and Windows; standard dialogs on other platforms.
+//! Custom Cortex icons on macOS and Windows; standard dialogs on other platforms.
 
 use tauri::AppHandle;
 
@@ -29,7 +29,7 @@ pub(crate) fn show(
             };
             callback(accepted);
         }) {
-            log::error!("Could not show Lumo dialog: {error}");
+            log::error!("Could not show Cortex dialog: {error}");
         }
     }
 
@@ -83,7 +83,7 @@ mod macos {
     fn button_target_class() -> &'static Class {
         static CLASS: OnceLock<&'static Class> = OnceLock::new();
         CLASS.get_or_init(|| {
-            let mut class = ClassDecl::new("LumoBrandedDialogTarget", class!(NSObject))
+            let mut class = ClassDecl::new("CortexBrandedDialogTarget", class!(NSObject))
                 .expect("dialog target class must be registered once");
             unsafe {
                 class.add_method(sel!(clicked:), clicked as extern "C" fn(&Object, Sel, id));

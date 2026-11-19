@@ -1,17 +1,17 @@
 [package]
-name = "lumo"
+name = "cortex"
 version = "0.5.9"
 edition = "2021"
-description = "Lumo desktop app for macOS, Windows and Linux"
+description = "Cortex desktop app for macOS, Windows and Linux"
 authors = ["Eamonn Maguire"]
 license = "GPL-3.0-only"
-default-run = "lumo-desktop"
+default-run = "cortex-desktop"
 
 [lib]
-name = "lumo_lib"
+name = "cortex_lib"
 
 [[bin]]
-name = "lumo-desktop"
+name = "cortex-desktop"
 path = "src/main.rs"
 
 [[bin]]

@@ -1,7 +1,7 @@
 //! Share links (Vibe's public share link), without a cloud: a conversation or an app shared as a
-//! self-contained page, served by Lumo on this computer's network at
+//! self-contained page, served by Cortex on this computer's network at
 //! `http://<this computer>:8485/s/<random token>`. Anyone on the same network who has the link can
-//! open it while Lumo runs; stopping a share takes the page down.
+//! open it while Cortex runs; stopping a share takes the page down.
 //!
 //! The server only serves shared pages (nothing else of the app is reachable), each under a
 //! 128-bit random token, with a Content-Security-Policy that lets the page load nothing and run no

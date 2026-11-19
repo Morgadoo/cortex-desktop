@@ -204,7 +204,7 @@ mod tests {
 
     #[test]
     fn only_the_main_webview_may_use_the_bridge() {
-        assert!(require_main("lumo-window").is_ok());
+        assert!(require_main("cortex-window").is_ok());
         for label in ["settings-overlay", "search", "login", ""] {
             assert!(require_main(label).is_err());
         }

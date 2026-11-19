@@ -17,9 +17,9 @@ const TIMEOUT_SECS: u64 = 45;
 /// Characters of a page's text returned to the model.
 const MAX_TEXT: usize = 20_000;
 
-/// The browser to drive: `LUMO_BROWSER`, else the first Chromium-family browser found.
+/// The browser to drive: `CORTEX_BROWSER`, else the first Chromium-family browser found.
 pub fn find_browser() -> Option<PathBuf> {
-    if let Some(p) = std::env::var_os("LUMO_BROWSER")
+    if let Some(p) = std::env::var_os("CORTEX_BROWSER")
         .map(PathBuf::from)
         .filter(|p| p.is_file())
     {

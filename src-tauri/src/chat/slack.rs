@@ -1,11 +1,11 @@
 //! Reach an agent from Slack (OpenBot's Slack channel): a Slack app of your own, connected with
-//! Socket Mode, so Slack's events come over a connection Lumo opens. Nothing has to reach this
+//! Socket Mode, so Slack's events come over a connection Cortex opens. Nothing has to reach this
 //! computer from outside, and no public address is needed.
 //!
 //! Setup: create an app at api.slack.com/apps, turn on Socket Mode (an app-level token, `xapp-…`,
 //! with `connections:write`), add the bot scopes `chat:write`, `im:history` and
 //! `app_mentions:read`, subscribe to the bot events `message.im` and `app_mention`, install it,
-//! and give Lumo both tokens. Direct messages to the app, and mentions of it in a channel, are
+//! and give Cortex both tokens. Direct messages to the app, and mentions of it in a channel, are
 //! answered in a thread. Only Slack members paired with a one-time code are answered.
 
 use std::path::{Path, PathBuf};
@@ -27,7 +27,7 @@ pub struct Settings {
     /// Slack member ids allowed to talk to it.
     pub paired: Vec<String>,
     pub pairing_code: Option<String>,
-    /// Slack channel (or DM) id → Lumo conversation id.
+    /// Slack channel (or DM) id → Cortex conversation id.
     pub chats: Vec<(String, String)>,
     pub allow_changes: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -47,9 +47,9 @@ pub fn save(config_dir: &Path, s: &Settings) -> Result<(), String> {
     super::store::write_json(&path(config_dir), s)
 }
 
-/// Slack's Web API; `LUMO_SLACK_API` points elsewhere for testing.
+/// Slack's Web API; `CORTEX_SLACK_API` points elsewhere for testing.
 fn api_base() -> String {
-    std::env::var("LUMO_SLACK_API").unwrap_or_else(|_| "https://slack.com/api".into())
+    std::env::var("CORTEX_SLACK_API").unwrap_or_else(|_| "https://slack.com/api".into())
 }
 
 pub async fn tokens() -> Option<(String, String)> {
@@ -174,11 +174,11 @@ pub fn decide(settings: &Settings, event: &Value) -> Action {
     if let Some(code) = text.strip_prefix("pair").map(str::trim) {
         return match &settings.pairing_code {
             Some(expected) if expected == code => Action::Pair(user),
-            _ => Action::Reply("That code is not right, or pairing is closed. Open Lumo → Settings → General → Slack to get a code.".into()),
+            _ => Action::Reply("That code is not right, or pairing is closed. Open Cortex → Settings → General → Slack to get a code.".into()),
         };
     }
     if !settings.paired.contains(&user) {
-        return Action::Reply("I answer only my owner. If that is you, send `pair` followed by the code shown in Lumo (Settings → General → Slack).".into());
+        return Action::Reply("I answer only my owner. If that is you, send `pair` followed by the code shown in Cortex (Settings → General → Slack).".into());
     }
     match text.as_str() {
         "new" | "/new" => Action::Reset,

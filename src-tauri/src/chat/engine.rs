@@ -979,7 +979,7 @@ async fn route_to_agent(app: &AppHandle, mut request: TurnRequest) -> TurnReques
     if let Some(agent) = agents::parse_route(&team, &reply) {
         info!("routed a new chat to {}", agent.name);
         request.agent_id = Some(agent.id.clone());
-        let note = format!("Lumo handed this chat to {}.", agent.name);
+        let note = format!("Cortex handed this chat to {}.", agent.name);
         request.route_note = Some(match request.route_note.take() {
             Some(before) => format!("{before} {note}"),
             None => note,

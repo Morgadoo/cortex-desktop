@@ -88,7 +88,7 @@ export function openChanges(conversationId: string, folder: string) {
     const title = h('span', { class: 'muted' }, folder);
     const refresh = iconButton({ icon: 'retry', title: 'Refresh' });
     // Unified or Split, as in Vibe's diff viewer; remembered for next time.
-    let layout: 'unified' | 'split' = (() => { try { return localStorage.getItem('lumo.diffLayout') === 'split' ? 'split' : 'unified'; } catch { return 'unified'; } })();
+    let layout: 'unified' | 'split' = (() => { try { return localStorage.getItem('cortex.diffLayout') === 'split' ? 'split' : 'unified'; } catch { return 'unified'; } })();
     let rerender = () => {};
     const unified = h('button', { class: `seg${layout === 'unified' ? ' active' : ''}` }, 'Unified');
     const split = h('button', { class: `seg${layout === 'split' ? ' active' : ''}` }, 'Split');
@@ -96,7 +96,7 @@ export function openChanges(conversationId: string, folder: string) {
       layout = next;
       unified.classList.toggle('active', next === 'unified');
       split.classList.toggle('active', next === 'split');
-      try { localStorage.setItem('lumo.diffLayout', next); } catch { /* a convenience */ }
+      try { localStorage.setItem('cortex.diffLayout', next); } catch { /* a convenience */ }
       rerender();
     };
     unified.addEventListener('click', () => setLayout('unified'));

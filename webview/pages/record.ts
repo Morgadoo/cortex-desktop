@@ -1,5 +1,5 @@
 /**
- * Lumo desktop: the Recording pill, shown while the user does a task for Lumo to learn
+ * Cortex desktop: the Recording pill, shown while the user does a task for Cortex to learn
  * (see src-tauri/src/chat/recorder.rs). It shows the time and the steps seen so far, and stops
  * or throws the recording away. It never takes focus, so the task goes on undisturbed.
  */

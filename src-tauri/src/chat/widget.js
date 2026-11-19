@@ -1,20 +1,20 @@
-// Lumo's website widget (as Onyx's): a chat bubble for a web page, answered by a model or agent
-// set up in Lumo, through Lumo's local API. Served by the API at /widget.js; add it with
-//   <script src="http://127.0.0.1:8484/widget.js" data-key="lumo-widget-…" defer></script>
+// Cortex's website widget (as Onyx's): a chat bubble for a web page, answered by a model or agent
+// set up in Cortex, through Cortex's local API. Served by the API at /widget.js; add it with
+//   <script src="http://127.0.0.1:8484/widget.js" data-key="cortex-widget-…" defer></script>
 // Optional: data-title, data-greeting, data-color (a CSS colour), data-open ("true").
 (() => {
   const script = document.currentScript;
-  if (!script || window.__lumoWidget) return;
-  window.__lumoWidget = true;
+  if (!script || window.__cortexWidget) return;
+  window.__cortexWidget = true;
   const key = script.dataset.key || '';
   const endpoint = new URL('/widget/chat', script.src).href;
-  const title = script.dataset.title || 'Ask Lumo';
+  const title = script.dataset.title || 'Ask Cortex';
   const greeting = script.dataset.greeting || 'Hi! What would you like to know?';
   const color = script.dataset.color || '#6d4aff';
   const history = [];
 
   const host = document.createElement('div');
-  host.setAttribute('data-lumo-widget', '');
+  host.setAttribute('data-cortex-widget', '');
   const root = host.attachShadow({ mode: 'open' });
   root.innerHTML = `
     <style>
@@ -53,7 +53,7 @@
       <header><span></span><button class="close" aria-label="Close">×</button></header>
       <div class="log" aria-live="polite"></div>
       <form><textarea rows="1" placeholder="Type a question"></textarea><button type="submit">Send</button></form>
-      <div class="foot">Answered by Lumo on this computer</div>
+      <div class="foot">Answered by Cortex on this computer</div>
     </div>`;
   const panel = root.querySelector('.panel');
   const log = root.querySelector('.log');
@@ -104,7 +104,7 @@
       });
       if (!response.ok || !response.body) {
         const body = await response.json().catch(() => ({}));
-        throw new Error(body?.error?.message || `Lumo answered ${response.status}.`);
+        throw new Error(body?.error?.message || `Cortex answered ${response.status}.`);
       }
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -134,7 +134,7 @@
       history.push({ role: 'assistant', content: got });
     } catch (err) {
       answer.className = 'msg error';
-      answer.textContent = err instanceof TypeError ? 'Lumo is not reachable. Is it running, with the local API and the widget on?' : String(err.message || err);
+      answer.textContent = err instanceof TypeError ? 'Cortex is not reachable. Is it running, with the local API and the widget on?' : String(err.message || err);
       history.pop();
     } finally {
       send.disabled = false;

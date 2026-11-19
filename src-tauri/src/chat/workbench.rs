@@ -11,7 +11,7 @@
 //! the user (`--userns=keep-id`). The NVIDIA GPU is passed in through CDI where the host has a
 //! working spec, so Blender can render on it.
 //!
-//! Inside a toolbox or distrobox (Lumo's own development setup), Podman runs on the host through
+//! Inside a toolbox or distrobox (Cortex's own development setup), Podman runs on the host through
 //! `flatpak-spawn --host` or `distrobox-host-exec`; paths under the home folder are the same there.
 //!
 //! The image is built only when the user asks (Settings → Permissions → Agent workbench): it is
@@ -35,7 +35,7 @@ pub const CONTAINERFILE: &str = include_str!("../../assets/workbench/Containerfi
 pub fn image_tag() -> String {
     let hash = Sha256::digest(CONTAINERFILE.as_bytes());
     let hex: String = hash.iter().take(6).map(|b| format!("{b:02x}")).collect();
-    format!("localhost/lumo-workbench:{hex}")
+    format!("localhost/cortex-workbench:{hex}")
 }
 
 /// What the workbench can do now.
@@ -393,17 +393,17 @@ mod tests {
     #[test]
     fn a_run_sees_only_its_folders() {
         let run = Run {
-            workspace: Path::new("/home/u/.config/lumo/chat/sandbox/c1"),
-            agent_home: Some(Path::new("/home/u/.config/lumo/chat/agent-envs/a1")),
+            workspace: Path::new("/home/u/.config/cortex/chat/sandbox/c1"),
+            agent_home: Some(Path::new("/home/u/.config/cortex/chat/agent-envs/a1")),
             network: false,
             gpu: true,
             interpreter: "python3",
-            script: Path::new("/home/u/.config/lumo/chat/sandbox/c1/.cell.py"),
+            script: Path::new("/home/u/.config/cortex/chat/sandbox/c1/.cell.py"),
             timeout_seconds: 300,
-            env_file: Path::new("/home/u/.config/lumo/chat/sandbox/c1/.cell.env"),
-            name: "lumo-run-x",
+            env_file: Path::new("/home/u/.config/cortex/chat/sandbox/c1/.cell.env"),
+            name: "cortex-run-x",
         };
-        let args: Vec<String> = run_args(&run, "localhost/lumo-workbench:abc")
+        let args: Vec<String> = run_args(&run, "localhost/cortex-workbench:abc")
             .into_iter()
             .map(|a| a.to_string_lossy().into_owned())
             .collect();
@@ -413,16 +413,16 @@ mod tests {
         assert!(joined.contains("--init"));
         assert!(joined.contains("--cap-drop=all"));
         assert!(joined.contains(
-            "--volume /home/u/.config/lumo/chat/sandbox/c1:/home/u/.config/lumo/chat/sandbox/c1"
+            "--volume /home/u/.config/cortex/chat/sandbox/c1:/home/u/.config/cortex/chat/sandbox/c1"
         ));
-        assert!(joined.contains("--volume /home/u/.config/lumo/chat/agent-envs/a1:/home/u/.config/lumo/chat/agent-envs/a1"));
+        assert!(joined.contains("--volume /home/u/.config/cortex/chat/agent-envs/a1:/home/u/.config/cortex/chat/agent-envs/a1"));
         assert_eq!(
             args.iter().filter(|a| *a == "--volume").count(),
             2,
             "no other folder is mounted"
         );
         assert!(joined.contains("--device nvidia.com/gpu=0"));
-        assert!(joined.ends_with("localhost/lumo-workbench:abc timeout --kill-after=5 300 python3 /home/u/.config/lumo/chat/sandbox/c1/.cell.py"));
+        assert!(joined.ends_with("localhost/cortex-workbench:abc timeout --kill-after=5 300 python3 /home/u/.config/cortex/chat/sandbox/c1/.cell.py"));
         // With the network allowed, Podman's own default network is used.
         let open = Run {
             network: true,
@@ -466,8 +466,8 @@ mod tests {
     fn the_tag_follows_the_recipe() {
         let tag = image_tag();
         assert!(
-            tag.starts_with("localhost/lumo-workbench:")
-                && tag.len() == "localhost/lumo-workbench:".len() + 12
+            tag.starts_with("localhost/cortex-workbench:")
+                && tag.len() == "localhost/cortex-workbench:".len() + 12
         );
         assert!(CONTAINERFILE.contains("blender"));
     }

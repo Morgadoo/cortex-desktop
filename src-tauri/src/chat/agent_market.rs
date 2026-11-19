@@ -3,7 +3,7 @@
 //!
 //! The catalog is LobeHub's open agent index (`chat-agents.lobehub.com`, MIT, about 500 agents),
 //! or any catalog with the same layout (Settings can point at another). An agent from it is a
-//! prompt, an avatar and starter questions: no code runs, and the agent gets Lumo's tools under
+//! prompt, an avatar and starter questions: no code runs, and the agent gets Cortex's tools under
 //! your settings like any agent you write.
 
 use std::path::{Path, PathBuf};

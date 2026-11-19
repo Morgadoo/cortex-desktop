@@ -4,9 +4,9 @@
 Run after `node scripts/ui-strings.mjs` has updated src-tauri/i18n/catalog.json. Only strings
 not yet translated are sent. Uses any OpenAI-compatible chat endpoint, from the environment:
 
-    LUMO_TRANSLATE_BASE_URL   e.g. https://api.openai.com/v1
-    LUMO_TRANSLATE_API_KEY    the key (never written anywhere)
-    LUMO_TRANSLATE_MODEL      e.g. gpt-4.1-mini
+    CORTEX_TRANSLATE_BASE_URL   e.g. https://api.openai.com/v1
+    CORTEX_TRANSLATE_API_KEY    the key (never written anywhere)
+    CORTEX_TRANSLATE_MODEL      e.g. gpt-4.1-mini
 
     python3 scripts/translate_ui.py pt es fr de
 """
@@ -28,17 +28,17 @@ def placeholders(s):
 
 
 def ask(prompt):
-    body = json.dumps({"model": os.environ["LUMO_TRANSLATE_MODEL"], "messages": [{"role": "user", "content": prompt}], "temperature": 0.2}).encode()
-    req = urllib.request.Request(os.environ["LUMO_TRANSLATE_BASE_URL"].rstrip("/") + "/chat/completions", data=body, headers={"Content-Type": "application/json", "Authorization": "Bearer " + os.environ["LUMO_TRANSLATE_API_KEY"]})
+    body = json.dumps({"model": os.environ["CORTEX_TRANSLATE_MODEL"], "messages": [{"role": "user", "content": prompt}], "temperature": 0.2}).encode()
+    req = urllib.request.Request(os.environ["CORTEX_TRANSLATE_BASE_URL"].rstrip("/") + "/chat/completions", data=body, headers={"Content-Type": "application/json", "Authorization": "Bearer " + os.environ["CORTEX_TRANSLATE_API_KEY"]})
     with urllib.request.urlopen(req, timeout=300) as r:
         return json.load(r)["choices"][0]["message"]["content"]
 
 
 def translate_batch(code, batch):
     prompt = (
-        f"Translate these user-interface strings of a desktop AI assistant app called Lumo from English into {NAMES[code]}. "
+        f"Translate these user-interface strings of a desktop AI assistant app called Cortex from English into {NAMES[code]}. "
         "Use the usual words of desktop software in that language and the same tone (short, plain, friendly); keep each "
-        "string's capitalisation style and punctuation. Keep {0}-style placeholders, product names (Lumo, Markdown, MCP, "
+        "string's capitalisation style and punctuation. Keep {0}-style placeholders, product names (Cortex, Markdown, MCP, "
         "OpenAPI, GitHub, Python, Ctrl, Tab, Esc…), keyboard keys and code exactly as they are. Strings that are only "
         "search keywords may be translated as keywords. Reply with one JSON object mapping each original string to its "
         "translation, and nothing else.\n\n" + json.dumps(batch, ensure_ascii=False, indent=1)
@@ -61,7 +61,7 @@ def run(code):
     known = {k: v for k, v in known.items() if k in catalog}
     missing = [s for s in catalog if s not in known]
     batches = [missing[i:i + BATCH] for i in range(0, len(missing), BATCH)]
-    with concurrent.futures.ThreadPoolExecutor(max_workers=int(os.environ.get("LUMO_TRANSLATE_WORKERS", "2"))) as pool:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=int(os.environ.get("CORTEX_TRANSLATE_WORKERS", "2"))) as pool:
         for got in pool.map(lambda b: translate_batch(code, b), batches):
             known.update(got)
     path.write_text(json.dumps(dict(sorted(known.items())), ensure_ascii=False, indent=1) + "\n")

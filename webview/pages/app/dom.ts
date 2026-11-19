@@ -488,7 +488,7 @@ export async function saveFile(name: string, blob: Blob): Promise<void> {
 /** The clock the user chose (Settings → General): undefined follows the system's language. */
 export function clockHour12(): boolean | undefined {
   try {
-    const v = localStorage.getItem('lumo.clock');
+    const v = localStorage.getItem('cortex.clock');
     return v === '12' ? true : v === '24' ? false : undefined;
   } catch {
     return undefined;
@@ -497,8 +497,8 @@ export function clockHour12(): boolean | undefined {
 
 export function setClock(v: 'auto' | '12' | '24') {
   try {
-    if (v === 'auto') localStorage.removeItem('lumo.clock');
-    else localStorage.setItem('lumo.clock', v);
+    if (v === 'auto') localStorage.removeItem('cortex.clock');
+    else localStorage.setItem('cortex.clock', v);
   } catch {
     /* this session only */
   }

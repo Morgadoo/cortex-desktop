@@ -151,12 +151,12 @@ mod tests {
         out
     }
 
-    /// With an Apache Tika server at `LUMO_TEST_TIKA` (e.g. http://localhost:9998): a PDF and a
+    /// With an Apache Tika server at `CORTEX_TEST_TIKA` (e.g. http://localhost:9998): a PDF and a
     /// web page come back as their text, and a server that is not there is reported plainly.
     #[tokio::test]
     #[ignore]
     async fn a_tika_server_reads_documents() {
-        let Ok(url) = std::env::var("LUMO_TEST_TIKA") else {
+        let Ok(url) = std::env::var("CORTEX_TEST_TIKA") else {
             return;
         };
         let tika = Extraction {

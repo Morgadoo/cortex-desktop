@@ -307,7 +307,7 @@ pub fn create_worktree(dir: &str, name: &str) -> Result<(String, String), String
         .ok_or("The repository has no parent folder for a worktree.")?;
     let (mut folder, mut branch) = (
         parent.join(format!("{repo}-{slug}")),
-        format!("lumo/{slug}"),
+        format!("cortex/{slug}"),
     );
     let mut n = 2;
     while folder.exists()
@@ -323,7 +323,7 @@ pub fn create_worktree(dir: &str, name: &str) -> Result<(String, String), String
         .is_some_and(|o| !o.trim().is_empty())
     {
         folder = parent.join(format!("{repo}-{slug}-{n}"));
-        branch = format!("lumo/{slug}-{n}");
+        branch = format!("cortex/{slug}-{n}");
         n += 1;
     }
     let out = Command::new("git")
@@ -1109,7 +1109,7 @@ mod tests {
         if Command::new("git").arg("--version").output().is_err() {
             return;
         }
-        let base = std::env::temp_dir().join(format!("lumo-wt-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("cortex-wt-{}", std::process::id()));
         let repo = base.join("app");
         std::fs::create_dir_all(&repo).unwrap();
         let run = |dir: &Path, args: &[&str]| {
@@ -1131,13 +1131,13 @@ mod tests {
         run(&repo, &["commit", "-qm", "first"]);
         let (folder, branch) =
             create_worktree(repo.to_str().unwrap(), "Add a login page!").unwrap();
-        assert_eq!(branch, "lumo/add-a-login-page");
+        assert_eq!(branch, "cortex/add-a-login-page");
         assert!(folder.ends_with("app-add-a-login-page"));
         assert!(Path::new(&folder).join("a.txt").exists());
         // The same name again gets a second folder and branch.
         let (second, branch2) =
             create_worktree(repo.to_str().unwrap(), "Add a login page").unwrap();
-        assert_eq!(branch2, "lumo/add-a-login-page-2");
+        assert_eq!(branch2, "cortex/add-a-login-page-2");
         assert!(second.ends_with("app-add-a-login-page-2"));
         assert!(create_worktree(base.to_str().unwrap(), "x").is_err());
         let _ = std::fs::remove_dir_all(&base);

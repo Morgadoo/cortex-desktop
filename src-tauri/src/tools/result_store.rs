@@ -83,7 +83,7 @@ impl ResultStore {
         check_scope(&state, scope)?;
         if allow_file
             && connector == "filesystem"
-            && value.get("type").and_then(Value::as_str) == Some("lumo_file")
+            && value.get("type").and_then(Value::as_str) == Some("cortex_file")
             && value
                 .get("path")
                 .and_then(Value::as_str)
@@ -162,7 +162,7 @@ impl ResultStore {
                     self.capacity,
                     connector,
                     json!({
-                        "type":"lumo_file", "file_id":uuid::Uuid::new_v4().to_string(),
+                        "type":"cortex_file", "file_id":uuid::Uuid::new_v4().to_string(),
                         "path":label, "name":format!("tool-image-{}", index + 1),
                         "mime_type":mime, "size":size, "binary":true, "data":data,
                     }),
@@ -175,7 +175,7 @@ impl ResultStore {
             drop(state);
             let text = self.preview(scope, connector, value)?;
             return Ok(json!({"value":{
-                "type":"lumo_tool_result","text":text,"files":files,"isError":is_error
+                "type":"cortex_tool_result","text":text,"files":files,"isError":is_error
             }, "file_transport":true}));
         }
         drop(state);
@@ -211,7 +211,7 @@ impl ResultStore {
             }
             let reference = uuid::Uuid::new_v4().to_string();
             footer = format!(
-                "\n[Lumo saved tool result: result_id={reference}; reader=tool_results__read]"
+                "\n[Cortex saved tool result: result_id={reference}; reader=tool_results__read]"
             );
             state.bytes += original.len();
             state.entries.push_back(Entry {
@@ -252,7 +252,7 @@ impl ResultStore {
             .get("value")
             .ok_or_else(|| ToolError::InvalidInput("value is required".into()))?;
         if value.to_string().len() > 8 * 1024 * 1024
-            || value.get("type").and_then(Value::as_str) == Some("lumo_file")
+            || value.get("type").and_then(Value::as_str) == Some("cortex_file")
         {
             return Err(ToolError::InvalidInput(
                 "Invalid converted file result.".into(),
@@ -280,7 +280,7 @@ impl ResultStore {
             entry.connector
         };
         // Processed image bytes travel separately from bounded tool prose.
-        if value.get("type").and_then(Value::as_str) == Some("lumo_file_image")
+        if value.get("type").and_then(Value::as_str) == Some("cortex_file_image")
             && value.get("image_id").and_then(Value::as_str).is_some()
             && value
                 .get("path")

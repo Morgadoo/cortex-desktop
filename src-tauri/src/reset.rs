@@ -28,7 +28,7 @@ pub async fn reset_local_configuration(
     let handle = app_handle.clone();
     let accepted = tauri::async_runtime::spawn_blocking(move || {
         handle.dialog()
-            .message("This resets tool permissions and removes connector configurations and saved credentials for your current account on this device. You’ll need to reconnect your connectors.\n\nLumo will restart.")
+            .message("This resets tool permissions and removes connector configurations and saved credentials for your current account on this device. You’ll need to reconnect your connectors.\n\nCortex will restart.")
             .title("Reset account configuration?")
             .kind(MessageDialogKind::Warning)
             .buttons(MessageDialogButtons::OkCancelCustom(

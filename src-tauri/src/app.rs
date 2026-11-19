@@ -12,6 +12,8 @@ use crate::{
 };
 
 pub fn run() {
+    // Lumo Desktop's folders move to the new identifier before anything opens them.
+    crate::rename_migration::migrate_folders();
     // Encrypted data is unlocked with the keychain's key before anything reads it.
     crate::chat::at_rest::unlock_at_start();
     // `-p "question"`: answer on standard output and exit, without a window (Vibe's headless run).
@@ -35,7 +37,7 @@ pub fn run() {
         .invoke_handler(|invoke| {
             let app = invoke.message.webview().app_handle().clone();
             if updater::is_required(&app) {
-                invoke.resolver.reject("Update Lumo to continue");
+                invoke.resolver.reject("Update Cortex to continue");
                 return true;
             }
             let commands: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
@@ -396,7 +398,7 @@ pub fn run() {
                 .build(),
         )
         // Mini apps the assistant builds run from here, in a sandboxed frame with their own CSP.
-        .register_uri_scheme_protocol("lumoapp", |ctx, request| {
+        .register_uri_scheme_protocol("cortexapp", |ctx, request| {
             // Fluent emoji images, from the pack kept in the local data folder.
             if let Some(rest) = request.uri().path().strip_prefix("/emoji/") {
                 use tauri::Manager as _;
@@ -428,7 +430,7 @@ pub fn run() {
             // First line of every launch: the log appends across sessions, and a bug report is
             // only useful with the version and platform it came from.
             info!(
-                "Lumo {} starting on {} {} ({})",
+                "Cortex {} starting on {} {} ({})",
                 app.package_info().version,
                 std::env::consts::OS,
                 std::env::consts::ARCH,
@@ -439,7 +441,7 @@ pub fn run() {
                 error!("local configuration reset failed: {message}");
                 let handle = app.handle().clone();
                 app.dialog()
-                    .message(format!("Could not reset local configuration: {message}\n\nRetry later closes Lumo and retries the reset on the next launch. Cancel reset reopens Lumo without retrying. Changes already made will remain."))
+                    .message(format!("Could not reset local configuration: {message}\n\nRetry later closes Cortex and retries the reset on the next launch. Cancel reset reopens Cortex without retrying. Changes already made will remain."))
                     .title("Reset failed")
                     .kind(tauri_plugin_dialog::MessageDialogKind::Error)
                     .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(
@@ -493,7 +495,7 @@ pub fn run() {
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
                 app.manage(chat::links::PendingLink::default());
-                // Links into the app (lumo://new?prompt=…): kept until the page takes them, and
+                // Links into the app (cortex://new?prompt=…): kept until the page takes them, and
                 // announced in case it is already open.
                 let open_link = |handle: &tauri::AppHandle, link: chat::links::Link| {
                     handle.state::<chat::links::PendingLink>().put(link);

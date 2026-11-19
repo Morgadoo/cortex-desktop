@@ -37,4 +37,4 @@ echo "=== running specs"
 # WebKitGTK needs a display; the app needs a session bus for tray/appindicator. The
 # outer timeout is a backstop: a wedged webview or driver would otherwise hold the
 # run open indefinitely, which reads like a slow suite rather than a failure.
-exec timeout --foreground "${LUMO_E2E_TIMEOUT:-600}" xvfb-run -a dbus-run-session -- npm test
+exec timeout --foreground "${CORTEX_E2E_TIMEOUT:-600}" xvfb-run -a dbus-run-session -- npm test

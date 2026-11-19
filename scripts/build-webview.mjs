@@ -29,7 +29,7 @@ const scriptsDir = join(outDir, 'scripts')
 // "<source relative to webview/>": "<output name in dist/scripts/>", one bundle each.
 // A listed source that is missing is a build failure.
 const entries = {
-    // Injected into the remote Lumo page; see src-tauri/src/main_window.rs.
+    // Injected into the remote Cortex page; see src-tauri/src/main_window.rs.
     'bridges/settings-hotkey.ts': 'settings-hotkey.js',
     'bridges/connectors.ts': 'connectors.js',
     'bridges/account-identity.ts': 'account-identity.js',
@@ -62,7 +62,7 @@ const isFile = (path) => existsSync(path) && statSync(path).isFile()
 if (!isDirectory(srcDir)) fail(`source directory not found at ${srcDir}`)
 if (!isDirectory(staticDir)) fail(`static directory not found at ${staticDir}`)
 
-// The embedded Lumo page cannot resolve settings-relative asset URLs.
+// The embedded Cortex page cannot resolve settings-relative asset URLs.
 // Keys match the catalog's iconSrc values.
 const connectorIconsDir = join(staticDir, 'images', 'connectors')
 const connectorIcons = Object.fromEntries(
@@ -97,7 +97,7 @@ try {
                 entryPoints: [join(srcDir, sourceRel)],
                 outfile: join(scriptsDir, outName),
                 bundle: true,
-                define: { __LUMO_CONNECTOR_ICONS__: JSON.stringify(connectorIcons) },
+                define: { __CORTEX_CONNECTOR_ICONS__: JSON.stringify(connectorIcons) },
                 format: 'iife',
                 target: 'es2020',
                 logLevel: 'warning',

@@ -198,7 +198,7 @@ export interface Readability {
   reduceMotion: boolean;
 }
 
-const READABILITY_KEY = 'lumo.readability';
+const READABILITY_KEY = 'cortex.readability';
 const DEFAULT_READABILITY: Readability = { textSize: 'default', zoom: 1, highContrast: false, reduceMotion: false };
 
 export function readability(): Readability {
@@ -337,9 +337,9 @@ function setShaderBackdrop(main: HTMLElement, on: boolean) {
   if (shaderCanvas.parentElement !== main) main.prepend(shaderCanvas);
 }
 
-const BACKDROP_KEY = 'lumo.backdrop';
-const BACKDROP_IMAGE_KEY = 'lumo.backdropImage';
-const BACKDROP_VEIL_KEY = 'lumo.backdropVeil';
+const BACKDROP_KEY = 'cortex.backdrop';
+const BACKDROP_IMAGE_KEY = 'cortex.backdropImage';
+const BACKDROP_VEIL_KEY = 'cortex.backdropVeil';
 
 export function storedBackdrop(): string {
   const v = read(BACKDROP_KEY);
@@ -366,7 +366,7 @@ export function applyBackdrop() {
   main.style.setProperty('--backdrop-veil', String(id === 'custom' ? backdropVeil() : 0));
 }
 
-const MATERIAL_KEY = 'lumo.material';
+const MATERIAL_KEY = 'cortex.material';
 export type Material = 'solid' | 'glass';
 
 /** A light Liquid Glass touch (glass.css), the default, or solid surfaces. */

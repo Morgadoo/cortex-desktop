@@ -9,7 +9,7 @@ use tauri::{AppHandle, Manager, Theme};
 use crate::dialog::branded;
 use crate::{main_window, settings, updater};
 
-const TRAY_ICON_ID: &str = "lumo-tray";
+const TRAY_ICON_ID: &str = "cortex-tray";
 const TRAY_ICON_LIGHT: Image<'static> = tauri::include_image!("icons/tray-icon-light.png");
 const TRAY_ICON_DARK: Image<'static> = tauri::include_image!("icons/tray-icon-dark.png");
 // The macOS menu bar follows the wallpaper, not the app theme, so let AppKit tint the icon.
@@ -50,16 +50,16 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         true,
         None::<&str>,
     )?;
-    let about_item = MenuItem::with_id(app, "about", "About Lumo", true, None::<&str>)?;
+    let about_item = MenuItem::with_id(app, "about", "About Cortex", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit", true, Some("CmdOrCtrl+Q"))?;
 
     #[cfg(target_os = "macos")]
     let app_menu = Menu::default(app)?;
     #[cfg(not(target_os = "macos"))]
     let app_menu = Menu::new(app)?;
-    let lumo_menu = Submenu::with_items(
+    let cortex_menu = Submenu::with_items(
         app,
-        "Lumo",
+        "Cortex",
         true,
         &[
             &about_item,
@@ -83,7 +83,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     )?;
     #[cfg(target_os = "macos")]
     app_menu.remove_at(0)?;
-    app_menu.insert(&lumo_menu, 0)?;
+    app_menu.insert(&cortex_menu, 0)?;
     #[cfg(target_os = "macos")]
     app.set_menu(app_menu)?;
     #[cfg(not(target_os = "macos"))]
@@ -92,7 +92,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             .get_webview_window(main_window::LABEL)
             .ok_or(tauri::Error::WindowNotFound)?;
         window.set_menu(app_menu)?;
-        // On Linux the menu would be a bar of its own under the title bar, with only "Lumo" in
+        // On Linux the menu would be a bar of its own under the title bar, with only "Cortex" in
         // it: the title said twice. It stays attached, hidden, so its shortcuts (Ctrl+, for
         // Settings, Ctrl+Q to quit) keep working; the same items are in the tray menu.
         #[cfg(target_os = "linux")]
@@ -165,7 +165,7 @@ fn show_about(app: &AppHandle) {
     let info = app.package_info();
     branded::show(
         app,
-        "About Lumo",
+        "About Cortex",
         format!("Version {}", info.version),
         None,
         branded::Layout::Native,

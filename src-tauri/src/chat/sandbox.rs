@@ -350,7 +350,7 @@ pub async fn run_in(
     }
     let before = snapshot(&dir);
 
-    let run_name = format!("lumo-run-{}", uuid::Uuid::new_v4().simple());
+    let run_name = format!("cortex-run-{}", uuid::Uuid::new_v4().simple());
     let env_file = dir.join(".cell.env");
     let (isolated, mut command) = if let Some(gpu) = bench {
         let interpreter = match lang.name {
@@ -583,7 +583,7 @@ fn content_type(name: &str) -> &'static str {
     }
 }
 
-/// Serves `lumoapp://localhost/sandbox/<conversation>/<file>` so the chat can show a run's
+/// Serves `cortexapp://localhost/sandbox/<conversation>/<file>` so the chat can show a run's
 /// charts. Only files inside that conversation's workspace are served.
 /// The bytes a `Range: bytes=a-b` header asks for, within a file of `len` bytes.
 pub fn byte_range(header: &str, len: usize) -> Option<(usize, usize)> {

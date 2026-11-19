@@ -1,4 +1,4 @@
-//! Lumo's own browser window (Vibe's integrated browser): links from answers open beside the
+//! Cortex's own browser window (Vibe's integrated browser): links from answers open beside the
 //! chat instead of in another app, with Back, Forward, Reload, Copy link and "Open in external
 //! browser" in the window's menu. Off unless chosen (Settings → General); otherwise links ask
 //! before opening in the system browser.
@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
-pub const LABEL: &str = "lumo-browser";
+pub const LABEL: &str = "cortex-browser";
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", default)]
@@ -152,7 +152,7 @@ pub fn open(app: &AppHandle, url: &url::Url) -> Result<(), String> {
         }
     });
     info!(
-        "opened Lumo's browser on {}",
+        "opened Cortex's browser on {}",
         url.host_str().unwrap_or_default()
     );
     Ok(())

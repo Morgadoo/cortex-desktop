@@ -8,7 +8,10 @@ use std::fs;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
-pub const KEYCHAIN_SERVICE: &str = "me.proton.lumo-app";
+pub const KEYCHAIN_SERVICE: &str = crate::rename_migration::ID;
+/// Lumo Desktop's keychain service; secrets still there move over when first read.
+#[cfg(not(windows))]
+pub const LEGACY_KEYCHAIN_SERVICE: &str = crate::rename_migration::LEGACY_ID;
 
 /// The IPC shape the settings page reads and writes. Persisted as [`DeviceSettings`] plus
 /// [`AccountSettings`] in separate files.

@@ -1,7 +1,7 @@
 /**
- * Lumo desktop: reports which Proton account the web app is signed in as.
+ * Cortex desktop: reports which Proton account the web app is signed in as.
  *
- * Injected into the main Lumo webview. The native side namespaces connector config and secrets by
+ * Injected into the main Cortex webview. The native side namespaces connector config and secrets by
  * Proton UserID, which it never sees directly: the session lives in the web app's localStorage, so
  * it is resolved here and reported over IPC.
  *
@@ -87,11 +87,11 @@ import { tauriInvoke } from '../shared/tauri';
   function report(userId: string | null): Promise<void> {
     if (userId) {
       return tauriInvoke<void>('set_active_account', { userId }).catch((err) =>
-        logError('[Lumo account] set_active_account failed', err)
+        logError('[Cortex account] set_active_account failed', err)
       );
     }
     return tauriInvoke<void>('clear_active_account').catch((err) =>
-      logError('[Lumo account] clear_active_account failed', err)
+      logError('[Cortex account] clear_active_account failed', err)
     );
   }
 
@@ -129,7 +129,7 @@ import { tauriInvoke } from '../shared/tauri';
       if (found.userId && found.userId !== reported) {
         clearInterval(timer);
         logInfo(
-          `[Lumo account] resolved ${found.userId} from ${found.signal} (slot ${found.slot}) ` +
+          `[Cortex account] resolved ${found.userId} from ${found.signal} (slot ${found.slot}) ` +
             `${attempt * WATCH_INTERVAL_MS}ms after load`
         );
         report(found.userId);
@@ -137,17 +137,17 @@ import { tauriInvoke } from '../shared/tauri';
       }
       if (attempt >= attempts) {
         clearInterval(timer);
-        logInfo(`[Lumo account] account unchanged within ${WATCH_WINDOW_MS}ms, stopped watching`);
+        logInfo(`[Cortex account] account unchanged within ${WATCH_WINDOW_MS}ms, stopped watching`);
       }
     }, WATCH_INTERVAL_MS);
   }
 
   const { userId, signal, slot } = resolve();
   if (userId) {
-    logInfo(`[Lumo account] resolved ${userId} from ${signal} (slot ${slot})`);
+    logInfo(`[Cortex account] resolved ${userId} from ${signal} (slot ${slot})`);
     report(userId);
   } else {
-    logInfo(`[Lumo account] no account, from signal: ${signal}`);
+    logInfo(`[Cortex account] no account, from signal: ${signal}`);
     report(null);
   }
   if (couldHoldSession()) watchForAccountChange(userId);

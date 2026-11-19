@@ -267,10 +267,10 @@
           "markdownDescription": "Hide the global search overlay."
         },
         {
-          "description": "Inject text into the main Lumo search editor.",
+          "description": "Inject text into the main Cortex search editor.",
           "type": "string",
           "const": "allow-inject-search",
-          "markdownDescription": "Inject text into the main Lumo search editor."
+          "markdownDescription": "Inject text into the main Cortex search editor."
         },
         {
           "description": "Executes a native connector tool.",

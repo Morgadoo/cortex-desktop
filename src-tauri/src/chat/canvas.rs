@@ -47,9 +47,9 @@ fn document_kind() -> String {
 /// What may run inside an app: inline code, and libraries from the common CDNs only. The app has
 /// no access to the chat's IPC; the iframe sandbox gives it a unique origin.
 pub const APP_CSP: &str = "default-src 'none'; \
-    script-src lumoapp: http://lumoapp.localhost 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com; \
-    style-src lumoapp: http://lumoapp.localhost 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com https://fonts.googleapis.com; \
-    font-src lumoapp: http://lumoapp.localhost https://fonts.gstatic.com data:; img-src lumoapp: http://lumoapp.localhost data: blob: https:; media-src lumoapp: http://lumoapp.localhost data: blob: https:; \
+    script-src cortexapp: http://cortexapp.localhost 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com; \
+    style-src cortexapp: http://cortexapp.localhost 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com https://fonts.googleapis.com; \
+    font-src cortexapp: http://cortexapp.localhost https://fonts.gstatic.com data:; img-src cortexapp: http://cortexapp.localhost data: blob: https:; media-src cortexapp: http://cortexapp.localhost data: blob: https:; \
     connect-src https:; form-action 'none'; base-uri 'none'";
 
 /// The address, under the app protocol, of the page that draws Mermaid diagrams.
@@ -223,13 +223,13 @@ pub fn app_html(content: &str) -> String {
     }
 }
 
-/// The page of an app's own window: the app in the same sandboxed frame as inside Lumo, so it
+/// The page of an app's own window: the app in the same sandboxed frame as inside Cortex, so it
 /// gets no more access in a window than it has in a chat.
 pub fn window_html(id: &str, title: &str, windows: bool) -> String {
     let base = if windows {
-        "http://lumoapp.localhost"
+        "http://cortexapp.localhost"
     } else {
-        "lumoapp://localhost"
+        "cortexapp://localhost"
     };
     let title = title
         .replace('&', "&amp;")
@@ -243,10 +243,10 @@ pub fn window_html(id: &str, title: &str, windows: bool) -> String {
 
 /// The policy of an app window's page: only the app's frame.
 const WINDOW_CSP: &str =
-    "default-src 'none'; style-src 'unsafe-inline'; frame-src lumoapp: http://lumoapp.localhost";
+    "default-src 'none'; style-src 'unsafe-inline'; frame-src cortexapp: http://cortexapp.localhost";
 
-/// Serves `lumoapp://localhost/<canvas id>` to the sandboxed preview frame, and
-/// `lumoapp://localhost/window/<canvas id>` to an app's own window.
+/// Serves `cortexapp://localhost/<canvas id>` to the sandboxed preview frame, and
+/// `cortexapp://localhost/window/<canvas id>` to an app's own window.
 pub fn serve(config_dir: &Path, path: &str) -> tauri::http::Response<Vec<u8>> {
     let builder = tauri::http::Response::builder();
     if let Some(id) = path.trim_start_matches('/').strip_prefix("window/") {
@@ -564,10 +564,10 @@ mod tests {
     fn an_app_window_frames_the_app_in_the_sandbox() {
         let page = window_html("abc", "Tip <calc>", false);
         assert!(page.contains(r#"sandbox="allow-scripts allow-forms allow-modals allow-popups""#));
-        assert!(page.contains(r#"src="lumoapp://localhost/abc/""#));
+        assert!(page.contains(r#"src="cortexapp://localhost/abc/""#));
         assert!(page.contains("<title>Tip &lt;calc&gt;</title>"));
         assert!(!page.contains("allow-same-origin"));
-        assert!(window_html("abc", "x", true).contains("http://lumoapp.localhost/abc/"));
+        assert!(window_html("abc", "x", true).contains("http://cortexapp.localhost/abc/"));
     }
 
     #[test]

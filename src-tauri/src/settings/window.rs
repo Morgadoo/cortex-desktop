@@ -72,7 +72,7 @@ pub fn show(app_handle: &AppHandle) -> Result<(), String> {
         use tauri::Emitter;
         return app_handle
             .get_webview(main_window::LABEL)
-            .ok_or_else(|| "Lumo window is not open".to_string())?
+            .ok_or_else(|| "Cortex window is not open".to_string())?
             .emit("chat://open-settings", ())
             .map_err(|e| e.to_string());
     }

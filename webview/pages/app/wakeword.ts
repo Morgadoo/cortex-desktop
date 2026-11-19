@@ -1,7 +1,7 @@
 /**
- * The wake word (Osaurus's "Hey Lumo"): while it is on, the microphone stays open and each short
+ * The wake word (Osaurus's "Hey Cortex"): while it is on, the microphone stays open and each short
  * phrase, cut at a pause, goes to the speech-to-text set in Settings → Audio. A phrase that starts
- * with the wake word brings Lumo forward: with a question after it ("Hey Lumo, what's on today?")
+ * with the wake word brings Cortex forward: with a question after it ("Hey Cortex, what's on today?")
  * the question is asked in a new chat; alone, a voice conversation starts.
  *
  * Off unless chosen. With a local speech engine (a Whisper server) nothing leaves the computer;
@@ -13,7 +13,7 @@ import { openMicrophone, toBase64, type Microphone } from './dictation';
 import { voiceActive } from './voice';
 import { matchWake } from './wakematch';
 
-const KEY = 'lumo.wakeWord';
+const KEY = 'cortex.wakeWord';
 /** A pause this long ends a phrase. */
 const PAUSE_MS = 900;
 /** WAV bytes per second at 16 kHz mono 16-bit. */
@@ -30,9 +30,9 @@ export interface WakePrefs {
 export function wakePrefs(): WakePrefs {
   try {
     const p = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<WakePrefs>;
-    return { enabled: !!p.enabled, phrase: (p.phrase ?? '').trim() || 'Hey Lumo' };
+    return { enabled: !!p.enabled, phrase: (p.phrase ?? '').trim() || 'Hey Cortex' };
   } catch {
-    return { enabled: false, phrase: 'Hey Lumo' };
+    return { enabled: false, phrase: 'Hey Cortex' };
   }
 }
 

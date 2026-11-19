@@ -13,10 +13,10 @@ function strictVersion(value, label) {
 }
 
 try {
-    const min = strictVersion(minimum, 'LUMO_MINIMUM_SUPPORTED_VERSION');
+    const min = strictVersion(minimum, 'CORTEX_MINIMUM_SUPPORTED_VERSION');
     const version = strictVersion(release, 'version');
     if (semver.compareBuild(min, version) > 0) {
-        throw new Error(`LUMO_MINIMUM_SUPPORTED_VERSION '${minimum}' > version '${release}'`);
+        throw new Error(`CORTEX_MINIMUM_SUPPORTED_VERSION '${minimum}' > version '${release}'`);
     }
 } catch (error) {
     console.error(`make-update-manifest: ${error.message}`);

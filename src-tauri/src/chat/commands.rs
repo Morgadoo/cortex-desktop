@@ -742,7 +742,7 @@ pub async fn chat_read_document(
         let text = if ext == "pdf" {
             // The PDF reader takes a path.
             let tmp = std::env::temp_dir().join(format!(
-                "lumo-attachment-{}.pdf",
+                "cortex-attachment-{}.pdf",
                 uuid::Uuid::new_v4().simple()
             ));
             crate::chat::at_rest::write(&tmp, &bytes).map_err(|e| e.to_string())?;
@@ -992,7 +992,7 @@ pub async fn chat_export_audit(
     app.dialog()
         .file()
         .set_file_name(format!(
-            "lumo-activity-{}.{ext}",
+            "cortex-activity-{}.{ext}",
             chrono::Local::now().format("%Y-%m-%d")
         ))
         .save_file(move |p| {
@@ -1643,7 +1643,7 @@ pub fn chat_record_status(
     recorder.status()
 }
 
-/// Stops the recording (from the pill), brings Lumo back and asks it to review the steps.
+/// Stops the recording (from the pill), brings Cortex back and asks it to review the steps.
 #[tauri::command]
 pub async fn chat_record_stop(
     app: AppHandle,
@@ -1692,7 +1692,7 @@ pub fn chat_record_discard(recorder: tauri::State<'_, super::recorder::Recorder>
     recorder.discard();
 }
 
-/// Brings the main window forward (the wake word heard while Lumo was in the background).
+/// Brings the main window forward (the wake word heard while Cortex was in the background).
 #[tauri::command]
 pub fn chat_show_window(app: AppHandle) -> Result<(), String> {
     crate::main_window::show(&app)
@@ -2614,7 +2614,7 @@ pub async fn chat_export_diagnostics(app: AppHandle) -> Result<bool, String> {
         .map(|(k, _)| k)
         .collect();
     let report = serde_json::json!({
-        "app": { "name": "Lumo", "version": env!("CARGO_PKG_VERSION") },
+        "app": { "name": "Cortex", "version": env!("CARGO_PKG_VERSION") },
         "platform": { "os": std::env::consts::OS, "arch": std::env::consts::ARCH, "family": std::env::consts::FAMILY },
         "providersEnabled": enabled,
         "defaultModel": providers.default_model,
@@ -2637,7 +2637,7 @@ pub async fn chat_export_diagnostics(app: AppHandle) -> Result<bool, String> {
     let (tx, rx) = tokio::sync::oneshot::channel();
     app.dialog()
         .file()
-        .set_file_name("lumo-diagnostics.json")
+        .set_file_name("cortex-diagnostics.json")
         .add_filter("JSON", &["json"])
         .save_file(move |path| {
             let _ = tx.send(path);
@@ -2715,9 +2715,9 @@ pub fn chat_open_app_window(app: AppHandle, id: String) -> Result<(), String> {
         return window.set_focus().map_err(|e| e.to_string());
     }
     let base = if cfg!(windows) {
-        "http://lumoapp.localhost"
+        "http://cortexapp.localhost"
     } else {
-        "lumoapp://localhost"
+        "cortexapp://localhost"
     };
     let url: tauri::Url = format!("{base}/window/{}", canvas.id)
         .parse()
@@ -2745,7 +2745,7 @@ pub fn chat_open_chat_window(app: AppHandle, id: String) -> Result<(), String> {
     }
     let conversation = store::load_conversation(&config_dir(&app)?, &id)?;
     let label = format!(
-        "lumo-chat-{}",
+        "cortex-chat-{}",
         id.chars()
             .filter(char::is_ascii_alphanumeric)
             .take(32)
@@ -2763,14 +2763,14 @@ pub fn chat_open_chat_window(app: AppHandle, id: String) -> Result<(), String> {
         tauri::WebviewUrl::App(crate::webview::APP_PAGE.into()),
     )
     .title(if conversation.title.is_empty() {
-        "Lumo".to_string()
+        "Cortex".to_string()
     } else {
         conversation.title.clone()
     })
     .inner_size(900.0, 780.0)
     .min_inner_size(480.0, 420.0)
     .initialization_script(format!(
-        "window.__LUMO_SOLO_CHAT = {};",
+        "window.__CORTEX_SOLO_CHAT = {};",
         serde_json::to_string(&id).map_err(|e| e.to_string())?
     ))
     .disable_drag_drop_handler()
@@ -3014,7 +3014,7 @@ pub fn chat_open_workspace_file(
     let target = if bytes == on_disk {
         real
     } else {
-        let dir = std::env::temp_dir().join("lumo-open");
+        let dir = std::env::temp_dir().join("cortex-open");
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         let t = dir.join(real.file_name().ok_or("No such file.")?);
         std::fs::write(&t, bytes).map_err(|e| e.to_string())?;
@@ -3048,7 +3048,7 @@ pub async fn chat_playable_video(
             std::fs::create_dir_all(cache2.parent().ok_or("bad path")?)
                 .map_err(|e| e.to_string())?;
             let tmp =
-                std::env::temp_dir().join(format!("lumo-play-{}", uuid::Uuid::new_v4().simple()));
+                std::env::temp_dir().join(format!("cortex-play-{}", uuid::Uuid::new_v4().simple()));
             std::fs::write(&tmp, &bytes).map_err(|e| e.to_string())?;
             let out = std::process::Command::new("ffmpeg")
                 .args(["-v", "error", "-y", "-i"])
@@ -3097,7 +3097,7 @@ pub async fn chat_video_poster(
     let bytes = crate::chat::at_rest::read(&real).map_err(|e| e.to_string())?;
     tokio::task::spawn_blocking(move || {
         let tmp =
-            std::env::temp_dir().join(format!("lumo-poster-{}", uuid::Uuid::new_v4().simple()));
+            std::env::temp_dir().join(format!("cortex-poster-{}", uuid::Uuid::new_v4().simple()));
         std::fs::write(&tmp, &bytes).map_err(|e| e.to_string())?;
         let out = std::process::Command::new("ffmpeg")
             .args(["-v", "error", "-ss", "1", "-i"])
@@ -3204,7 +3204,7 @@ pub fn chat_versions(
     super::versions::list(&config_dir(&app)?, &kind, &id)
 }
 
-/// The app link (lumo://…) waiting for the page, if any.
+/// The app link (cortex://…) waiting for the page, if any.
 #[tauri::command]
 pub fn chat_take_link(pending: State<'_, super::links::PendingLink>) -> Option<super::links::Link> {
     pending.take()
@@ -3267,7 +3267,7 @@ pub async fn chat_export_agent(app: AppHandle, id: String) -> Result<bool, Strin
     app.dialog()
         .file()
         .set_file_name(format!(
-            "{}.lumo-agent.json",
+            "{}.cortex-agent.json",
             sanitize_file_name(&bundle.agent.name)
         ))
         .add_filter("Agent", &["json"])
@@ -4214,7 +4214,7 @@ pub async fn chat_export_all(app: AppHandle) -> Result<Option<String>, String> {
     let target = target.into_path().map_err(|e| e.to_string())?;
     let dir = config_dir(&app)?;
     let out = target.join(format!(
-        "lumo-export-{}",
+        "cortex-export-{}",
         chrono::Local::now().format("%Y-%m-%d-%H%M")
     ));
     let markdown = out.join("conversations");
@@ -4413,7 +4413,7 @@ pub fn chat_usage_month(app: AppHandle) -> Result<super::agents::Spend, String> 
     Ok(total)
 }
 
-/// Opens a local dev server's page in Lumo's browser window (the Terminal panel's preview).
+/// Opens a local dev server's page in Cortex's browser window (the Terminal panel's preview).
 #[tauri::command]
 pub fn chat_open_preview(app: AppHandle, url: String) -> Result<(), String> {
     let parsed: url::Url = url
@@ -4576,7 +4576,7 @@ pub async fn chat_read_video(
         .to_string();
     // A private temporary file, removed once read.
     let path = std::env::temp_dir().join(format!(
-        "lumo-video-{}.{ext}",
+        "cortex-video-{}.{ext}",
         uuid::Uuid::new_v4().simple()
     ));
     crate::chat::at_rest::write(&path, bytes).map_err(|e| e.to_string())?;

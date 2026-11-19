@@ -13,7 +13,7 @@ use std::time::Duration;
 const MAX_RESPONSE_BYTES: usize = 5 * 1024 * 1024;
 /// Cap extracted page text returned to the model (avoids blowing context on huge pages).
 const MAX_TEXT_CHARS: usize = 100_000;
-const USER_AGENT_VALUE: &str = "Lumo-Desktop/1.0";
+const USER_AGENT_VALUE: &str = "Cortex-Desktop/1.0";
 
 pub struct BrowserConnector {
     http: Client,

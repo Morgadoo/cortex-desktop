@@ -21,7 +21,7 @@ const CONTENT_CONTEXT_CHARS: usize = 500;
 
 struct FilesystemCore {
     allowed_roots: RwLock<Vec<PathBuf>>,
-    /// Lumo's own settings, credentials metadata and web storage, out of reach even inside an
+    /// Cortex's own settings, credentials metadata and web storage, out of reach even inside an
     /// allowed folder, so injected instructions cannot repoint a connector or lift a session.
     protected: Vec<PathBuf>,
     write_enabled: RwLock<bool>,
@@ -124,7 +124,7 @@ impl FilesystemCore {
             if canonical.starts_with(&canonical_root) {
                 if Self::is_protected(&self.protected_paths(), &canonical) {
                     return Err(ToolError::AccessDenied(
-                        "Lumo's own settings and data are not available to tools".into(),
+                        "Cortex's own settings and data are not available to tools".into(),
                     ));
                 }
                 return Ok(canonical);
@@ -201,7 +201,7 @@ impl FilesystemConnector {
     }
 }
 
-/// Every directory Lumo keeps state in, including the webview's cookies and storage.
+/// Every directory Cortex keeps state in, including the webview's cookies and storage.
 fn app_directories(app_handle: &AppHandle) -> Vec<PathBuf> {
     let path = app_handle.path();
     #[cfg_attr(not(target_os = "macos"), allow(unused_mut))]
@@ -731,7 +731,7 @@ impl FilesystemCore {
                 "application/octet-stream"
             });
             return Ok(json!({
-                "type": "lumo_file",
+                "type": "cortex_file",
                 "file_id": uuid::Uuid::new_v4().to_string(),
                 "path": path.display().to_string(),
                 "name": path.file_name().unwrap_or_default().to_string_lossy(),
@@ -779,7 +779,7 @@ impl FilesystemCore {
             ToolError::AccessDenied("Filesystem write permissions are unavailable.".into())
         })? {
             return Err(ToolError::AccessDenied(
-                "file editing is disabled in Lumo settings".into(),
+                "file editing is disabled in Cortex settings".into(),
             ));
         }
 
@@ -843,7 +843,7 @@ impl FilesystemCore {
             ToolError::AccessDenied("Filesystem write permissions are unavailable.".into())
         })? {
             return Err(ToolError::AccessDenied(
-                "file editing is disabled in Lumo settings".into(),
+                "file editing is disabled in Cortex settings".into(),
             ));
         }
 
@@ -960,12 +960,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn lumo_own_directories_stay_out_of_reach_inside_an_allowed_folder() {
+    async fn cortex_own_directories_stay_out_of_reach_inside_an_allowed_folder() {
         let root = tempdir().unwrap();
         let app_dir = root
             .path()
             .join("Application Support")
-            .join("me.proton.lumo");
+            .join("io.github.morgadoo.cortex-desktop");
         std::fs::create_dir_all(&app_dir).unwrap();
         std::fs::write(app_dir.join("mcp_servers.json"), "{\"servers\":[]}").unwrap();
         std::fs::write(root.path().join("notes.txt"), "servers").unwrap();
@@ -1045,7 +1045,7 @@ mod tests {
                 .fs_read(json!({"path":path,"format":"file"}))
                 .await
                 .unwrap();
-            assert_eq!(result["type"], "lumo_file");
+            assert_eq!(result["type"], "cortex_file");
             assert_eq!(result["name"], name);
             assert_eq!(result["size"], bytes.len());
             assert_eq!(

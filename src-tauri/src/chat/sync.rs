@@ -2,7 +2,7 @@
 //! projects, canvases and skills kept the same on each computer through a folder that a sync
 //! service mirrors (Syncthing, Nextcloud, Dropbox, iCloud Drive, OneDrive…).
 //!
-//! Nothing is written there in the clear. Each file becomes one item, `items/<id>.lumo`, sealed
+//! Nothing is written there in the clear. Each file becomes one item, `items/<id>.cortex`, sealed
 //! with XChaCha20-Poly1305 under a key derived from the user's passphrase (Argon2id, with a salt
 //! kept in the folder's `keycheck.json`, which also tells a wrong passphrase from a right one).
 //! The item's name is a keyed hash of its path, so file names and folder layout stay hidden too.
@@ -27,10 +27,10 @@ use super::LOCAL_ACCOUNT;
 use crate::account::AccountId;
 use crate::tools::auth::keychain_secrets;
 
-/// The folder Lumo makes inside the chosen one.
-pub const DIR_NAME: &str = "Lumo Sync";
+/// The folder Cortex makes inside the chosen one.
+pub const DIR_NAME: &str = "Cortex Sync";
 const MAGIC: &[u8] = b"LUMOSYNC1";
-const CHECK_TEXT: &[u8] = b"lumo-sync-check";
+const CHECK_TEXT: &[u8] = b"cortex-sync-check";
 const PASSPHRASE: &str = "sync:passphrase";
 /// Larger files are left out (attachments live inside conversations already).
 const MAX_FILE: u64 = 25 * 1024 * 1024;
@@ -39,7 +39,7 @@ const MAX_FILE: u64 = 25 * 1024 * 1024;
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
-    /// The folder the sync service mirrors; Lumo works in `<folder>/Lumo Sync`.
+    /// The folder the sync service mirrors; Cortex works in `<folder>/Cortex Sync`.
     pub folder: Option<String>,
     /// Minutes between automatic syncs; 0 syncs only when asked.
     pub every_minutes: u32,
@@ -196,7 +196,7 @@ fn seal(key: &[u8; 32], plain: &[u8]) -> Result<Vec<u8>, String> {
 }
 
 fn open(key: &[u8; 32], data: &[u8]) -> Result<Vec<u8>, String> {
-    let rest = data.strip_prefix(MAGIC).ok_or("not a Lumo sync file")?;
+    let rest = data.strip_prefix(MAGIC).ok_or("not a Cortex sync file")?;
     if rest.len() < 24 {
         return Err("a sync file is cut short".into());
     }
@@ -352,7 +352,7 @@ fn hostname() -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
-/// Syncs the config folder with `<folder>/Lumo Sync` under `key`.
+/// Syncs the config folder with `<folder>/Cortex Sync` under `key`.
 pub fn sync_once(config_dir: &Path, remote: &Path, key: &[u8; 32]) -> Report {
     let mut report = Report::default();
     let b64 = base64::engine::general_purpose::STANDARD;
@@ -381,7 +381,7 @@ pub fn sync_once(config_dir: &Path, remote: &Path, key: &[u8; 32]) -> Report {
                 .and_then(|d| open(key, &d))
                 .and_then(|p| serde_json::from_slice::<Item>(&p).map_err(|e| e.to_string()));
             match item {
-                // A name that does not match its path was not written by Lumo with this key.
+                // A name that does not match its path was not written by Cortex with this key.
                 Ok(item)
                     if item_name(key, &item.path) == e.file_name().to_string_lossy()
                         && allowed(&item.path) =>
@@ -568,8 +568,8 @@ pub async fn set_passphrase(value: Option<&str>) -> Result<(), String> {
     }
 }
 
-/// Where Lumo works for a chosen folder: the folder's own `Lumo Sync`, or, when the choice is
-/// a `Lumo Sync` folder or inside one (its `items`), that folder, so picking a folder one level
+/// Where Cortex works for a chosen folder: the folder's own `Cortex Sync`, or, when the choice is
+/// a `Cortex Sync` folder or inside one (its `items`), that folder, so picking a folder one level
 /// too deep never starts a second, separate store.
 pub fn remote_dir(folder: &str) -> PathBuf {
     let folder = PathBuf::from(folder);
@@ -791,15 +791,15 @@ mod tests {
     fn a_folder_inside_the_store_means_the_store() {
         assert_eq!(
             remote_dir("/x/Dropbox"),
-            PathBuf::from("/x/Dropbox/Lumo Sync")
+            PathBuf::from("/x/Dropbox/Cortex Sync")
         );
         assert_eq!(
-            remote_dir("/x/Dropbox/Lumo Sync"),
-            PathBuf::from("/x/Dropbox/Lumo Sync")
+            remote_dir("/x/Dropbox/Cortex Sync"),
+            PathBuf::from("/x/Dropbox/Cortex Sync")
         );
         assert_eq!(
-            remote_dir("/x/Dropbox/Lumo Sync/items"),
-            PathBuf::from("/x/Dropbox/Lumo Sync")
+            remote_dir("/x/Dropbox/Cortex Sync/items"),
+            PathBuf::from("/x/Dropbox/Cortex Sync")
         );
     }
 

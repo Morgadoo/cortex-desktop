@@ -98,7 +98,7 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 const DEFAULT_CALL_TIMEOUT: Duration = Duration::from_secs(60);
 const MCP_OAUTH_REDIRECT_PORTS: [u16; 3] = [9876, 9877, 9878];
 
-/// Variables a stdio server inherits from Lumo. Everything else is withheld, so a token exported
+/// Variables a stdio server inherits from Cortex. Everything else is withheld, so a token exported
 /// in the user's shell profile doesn't reach every local server; a server that needs one gets it
 /// through its config's `env` or `secret_env`.
 const INHERITED_ENV: &[&str] = &[
@@ -792,7 +792,7 @@ impl McpConnector {
             }
             None => {
                 manager
-                    .register_client("Lumo Desktop", &redirect_uri, &scope_refs)
+                    .register_client("Cortex Desktop", &redirect_uri, &scope_refs)
                     .await
                     .map_err(|e| AuthError::Failed(format!("client registration failed: {e}")))?;
             }
