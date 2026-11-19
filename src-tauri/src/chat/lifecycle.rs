@@ -892,7 +892,7 @@ mod tests {
             tool.approved_at = Some(approved);
             st::save(d, &tool).unwrap();
         }
-        // Outside the app: a rollback date far ahead, and the regression checks emptied.
+        // Outside the app: a rollback date far ahead.
         let mut forged = st::load(d, "rates_z").unwrap();
         forged.monitor_reverted_at = Some(now + Duration::days(30_000));
         std::fs::write(
@@ -921,10 +921,9 @@ mod tests {
         }
         assert_eq!(after.monitor_reverted_at, None);
         let report = maintain(d, Utc::now() + Duration::hours(2)).await;
-        // The regression is acted on. The checks came back from the last version the app signed,
-        // and the first version fails them, so it is taken out of use rather than rolled back.
+        // The regression is rolled back, as for a file never changed.
         assert_eq!(
-            report.demoted,
+            report.reverted,
             vec!["script_tool:rates_z".to_string()],
             "{report:?}"
         );
@@ -958,6 +957,183 @@ mod tests {
             st::load(d, "checked_v").unwrap().checks.len(),
             1,
             "checks laundered away"
+        );
+    }
+
+    /// A restored version whose file is touched outside the app (a harmless field) and promoted
+    /// again keeps its set-aside list and restore mark, as the last state the app signed had: the
+    /// monitor does not roll forward to the version the user set aside.
+    #[tokio::test]
+    async fn a_touched_restored_file_promoted_again_keeps_what_the_user_set_aside() {
+        use super::super::script_tools as st;
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        st::set_signing_key(d, [7; 32]);
+        let now = Utc::now();
+        for (script, approved) in [
+            ("function main() { return 1; }", now - Duration::days(30)),
+            ("function main() { return 2; }", now - Duration::days(20)),
+        ] {
+            st::create(
+                d,
+                "chat-1",
+                &json!({ "name": "rates_p", "description": "Rates.", "script": script }),
+            )
+            .await
+            .unwrap();
+            st::promote(d, "rates_p", None).await.unwrap();
+            let mut tool = st::load(d, "rates_p").unwrap();
+            tool.checks.clear();
+            tool.approved_at = Some(approved);
+            st::save(d, &tool).unwrap();
+        }
+        let v2 = st::approval_hash(&st::load(d, "rates_p").unwrap());
+        traces::start_run(d, "r", "c", None, "m");
+        for _ in 0..10 {
+            traces::tool_call_at(d, "r", "script__rates_p", now - Duration::days(4), 5, true);
+        }
+        let first = super::super::versions::list(d, "tools", "script-rates_p")
+            .unwrap()
+            .into_iter()
+            .find(|v| {
+                v.value["script"] == "function main() { return 1; }"
+                    && v.value["status"] == "active"
+            })
+            .unwrap();
+        super::super::versions::restore(d, "tools", "script-rates_p", &first.id).unwrap();
+        let restored = st::load(d, "rates_p").unwrap();
+        assert!(restored.set_aside.contains(&v2));
+        assert!(restored.restored_at.is_some());
+        // Outside the app: one harmless field touched; script, description, access unchanged.
+        let mut touched = restored.clone();
+        touched.created_at -= Duration::seconds(1);
+        std::fs::write(
+            d.join("chat").join("script-tools").join("rates_p.json"),
+            serde_json::to_string(&touched).unwrap(),
+        )
+        .unwrap();
+        st::promote(d, "rates_p", None).await.unwrap();
+        let after = st::load(d, "rates_p").unwrap();
+        let set_aside_kept = after.set_aside.contains(&v2);
+        let restored_kept = after.restored_at.is_some();
+        for ok in [false, false, true, true, true, true] {
+            traces::tool_call_at(
+                d,
+                "r",
+                "script__rates_p",
+                Utc::now() + Duration::minutes(30),
+                5,
+                ok,
+            );
+        }
+        let report = maintain(d, Utc::now() + Duration::hours(2)).await;
+        let script = st::load(d, "rates_p").unwrap().script;
+        assert!(
+            set_aside_kept && restored_kept && script.contains("return 1"),
+            "set_aside_kept={set_aside_kept} restored_kept={restored_kept} report={report:?} script={script}"
+        );
+    }
+
+    /// With the History gone, a file whose checks were emptied outside the app gets them back from
+    /// the last state the app signed when promoted.
+    #[tokio::test]
+    async fn checks_emptied_outside_the_app_come_back_without_history() {
+        use super::super::script_tools as st;
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        st::set_signing_key(d, [8; 32]);
+        st::create(d, "chat-1", &json!({ "name": "checked_w", "description": "Checked.", "script": "function main() { return 1; }" }))
+            .await
+            .unwrap();
+        st::promote(d, "checked_w", None).await.unwrap();
+        let mut forged = st::load(d, "checked_w").unwrap();
+        forged.checks.clear();
+        std::fs::write(
+            d.join("chat").join("script-tools").join("checked_w.json"),
+            serde_json::to_string(&forged).unwrap(),
+        )
+        .unwrap();
+        std::fs::remove_dir_all(d.join("chat").join("versions")).unwrap();
+        st::promote(d, "checked_w", None).await.unwrap();
+        assert_eq!(
+            st::load(d, "checked_w").unwrap().checks.len(),
+            1,
+            "checks laundered away"
+        );
+    }
+    /// A far-off rollback date written outside the app, then the tool retired (the model's
+    /// retire_tool, or the lifecycle) or its access revoked, then promoted again.
+    async fn forged_date_then(via: &str) -> (Option<DateTime<Utc>>, Report) {
+        use super::super::script_tools as st;
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        st::set_signing_key(d, [8; 32]);
+        let now = Utc::now();
+        for (script, approved) in [
+            ("function main() { return 1; }", now - Duration::days(30)),
+            ("function main() { return 2; }", now - Duration::days(20)),
+        ] {
+            st::create(
+                d,
+                "chat-1",
+                &json!({ "name": "rates_q", "description": "Rates.", "script": script }),
+            )
+            .await
+            .unwrap();
+            st::promote(d, "rates_q", None).await.unwrap();
+            let mut tool = st::load(d, "rates_q").unwrap();
+            tool.checks.clear();
+            tool.approved_at = Some(approved);
+            st::save(d, &tool).unwrap();
+        }
+        let mut forged = st::load(d, "rates_q").unwrap();
+        forged.monitor_reverted_at = Some(now + Duration::days(30_000));
+        std::fs::write(
+            d.join("chat").join("script-tools").join("rates_q.json"),
+            serde_json::to_string(&forged).unwrap(),
+        )
+        .unwrap();
+        match via {
+            "retire" => st::retire(d, "rates_q").unwrap(),
+            "revoke" => st::revoke(d, "rates_q").unwrap(),
+            _ => {}
+        }
+        st::promote(d, "rates_q", None).await.unwrap();
+        let after = st::load(d, "rates_q").unwrap();
+        assert!(st::definitions(d).iter().any(|t| t.tool_name == "rates_q"));
+        traces::start_run(d, "r", "c", None, "m");
+        for _ in 0..10 {
+            traces::tool_call_at(d, "r", "script__rates_q", now - Duration::days(4), 5, true);
+        }
+        for ok in [false, false, true, true, true, true] {
+            traces::tool_call_at(
+                d,
+                "r",
+                "script__rates_q",
+                Utc::now() + Duration::minutes(30),
+                5,
+                ok,
+            );
+        }
+        let report = maintain(d, Utc::now() + Duration::hours(2)).await;
+        (after.monitor_reverted_at, report)
+    }
+
+    #[tokio::test]
+    async fn retiring_a_changed_file_does_not_sign_its_rollback_date() {
+        let (at, report) = forged_date_then("retire").await;
+        assert!(
+            at.is_none() && !report.is_empty(),
+            "monitor_reverted_at={at:?} report={report:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn revoking_a_changed_file_does_not_sign_its_rollback_date() {
+        let (at, report) = forged_date_then("revoke").await;
+        assert!(
+            at.is_none() && !report.is_empty(),
+            "monitor_reverted_at={at:?} report={report:?}"
         );
     }
 }

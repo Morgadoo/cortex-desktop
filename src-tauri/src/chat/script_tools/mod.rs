@@ -73,8 +73,9 @@ pub struct ScriptTool {
     /// When the granted capabilities lapse; never when absent.
     #[serde(default)]
     pub granted_until: Option<DateTime<Utc>>,
-    /// The app's signature over what the user approved (name, script, hash, grants), keyed by a
-    /// secret in the OS keychain: a file changed outside the app no longer verifies.
+    /// The app's signature over what the user approved, what the tool may reach and what the
+    /// monitor and History go by (see `signed_part`), keyed by a secret in the OS keychain: a file
+    /// changed outside the app no longer verifies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub signature: Option<String>,
     /// When each granted capability lapses (`http:host`, `read:folder`, `write:folder`,
@@ -381,11 +382,17 @@ fn save_resigned(config_dir: &Path, tool: &ScriptTool) -> Result<(), String> {
             tool,
         )?;
     }
-    crate::chat::at_rest::write(
-        path,
-        serde_json::to_string_pretty(tool).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())
+    let text = serde_json::to_string_pretty(tool).map_err(|e| e.to_string())?;
+    crate::chat::at_rest::write(path, &text).map_err(|e| e.to_string())?;
+    // The last state the app signed, kept apart from the file the tool runs from.
+    if tool.signature.is_some() {
+        let copy = signed_copy(config_dir, &tool.name)?;
+        if let Some(parent) = copy.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        crate::chat::at_rest::write(copy, &text).map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 /// The tools on offer: the active ones, as the model sees them.
@@ -623,7 +630,16 @@ pub async fn create(config_dir: &Path, conversation: &str, args: &Value) -> Resu
         }
     }
     let previous = existing.into_iter().find(|t| t.name == name);
-    let checks = previous
+    // A rewrite keeps the checks and set-aside list the app signed: for a file changed outside
+    // the app, those of the last state the app signed.
+    let signed_previous = previous.as_ref().and_then(|t| {
+        if verifies(config_dir, t) {
+            Some(t.clone())
+        } else {
+            last_signed(config_dir, &name)
+        }
+    });
+    let checks = signed_previous
         .as_ref()
         .map(|t| t.checks.clone())
         .unwrap_or_default();
@@ -652,10 +668,9 @@ pub async fn create(config_dir: &Path, conversation: &str, args: &Value) -> Resu
         monitor_reverted_at: None,
         approved_at: None,
         // A rewrite keeps what the user set aside; only approving a set-aside version clears it.
-        // (From a file that verifies: one changed outside the app plants nothing.)
-        set_aside: previous
+        // (From what the app signed: a file changed outside the app plants nothing.)
+        set_aside: signed_previous
             .as_ref()
-            .filter(|t| verifies(config_dir, t))
             .map(|t| t.set_aside.clone())
             .unwrap_or_default(),
         restored_at: None,
@@ -747,29 +762,95 @@ pub async fn promote(config_dir: &Path, name: &str, days: Option<i64>) -> Result
     promote_with(config_dir, name, days, None).await
 }
 
-/// For a file changed outside the app, what the signature vouched for and the approval card does
-/// not show (its regression checks, the versions set aside, the monitor's dates) is taken from the
-/// last version the app signed, so a promotion never signs what was written around it.
-fn take_vouched(config_dir: &Path, tool: &mut ScriptTool) {
-    if verifies(config_dir, tool) {
-        return;
-    }
-    let last = super::versions::list(config_dir, "tools", &format!("script-{}", tool.name))
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|v| serde_json::from_value::<ScriptTool>(v.value).ok())
-        .find(|v| v.name == tool.name && verifies(config_dir, v));
-    let mut checks = last.as_ref().map(|l| l.checks.clone()).unwrap_or_default();
-    if let Some(check) = last.as_ref().and_then(|l| l.pending_check.clone()) {
+/// Where the last state the app signed for each tool is kept: History keeps only the states a
+/// save replaced, so once a tool's own file is changed outside the app, this copy is the one
+/// that still says what the app last signed.
+fn signed_copy(config_dir: &Path, name: &str) -> Result<PathBuf, String> {
+    let file = path(config_dir, name)?;
+    Ok(chat_dir(config_dir)
+        .join("script-tools-signed")
+        .join(file.file_name().ok_or("bad tool name")?))
+}
+
+/// The last state of a tool the app signed: its signed copy, else the newest History entry that
+/// verifies.
+fn last_signed(config_dir: &Path, name: &str) -> Option<ScriptTool> {
+    let copy = signed_copy(config_dir, name)
+        .ok()
+        .and_then(|p| crate::chat::at_rest::read_to_string(p).ok())
+        .and_then(|text| serde_json::from_str::<ScriptTool>(&text).ok())
+        .filter(|t| t.name == name && verifies(config_dir, t));
+    copy.or_else(|| {
+        super::versions::list(config_dir, "tools", &format!("script-{name}"))
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|v| serde_json::from_value::<ScriptTool>(v.value).ok())
+            .find(|v| v.name == name && verifies(config_dir, v))
+    })
+}
+
+/// A last signed state's regression checks, its pending one included.
+fn signed_checks(last: &ScriptTool) -> Vec<Check> {
+    let mut checks = last.checks.clone();
+    if let Some(check) = last.pending_check.clone() {
         if !checks.iter().any(|c| c.args == check.args) {
             checks.push(check);
         }
     }
-    tool.checks = checks;
+    checks
+}
+
+/// For a file changed outside the app, what the signature vouched for and the approval card does
+/// not show (its regression checks, the versions set aside, the monitor's and History's dates) is
+/// taken from the last state the app signed, so a promotion never signs what was written around
+/// it. With no signed state left, the promotion is refused: the tool is written again instead,
+/// and tested afresh.
+fn take_vouched(config_dir: &Path, tool: &mut ScriptTool) -> Result<(), String> {
+    if verifies(config_dir, tool) {
+        return Ok(());
+    }
+    let last = last_signed(config_dir, &tool.name).ok_or_else(|| {
+        format!(
+            "`{}`'s file was changed outside the app and no state the app signed remains to take its regression checks from, so it was not promoted; write it again with create_tool so it is tested afresh.",
+            tool.name
+        )
+    })?;
+    tool.checks = signed_checks(&last);
     tool.pending_check = None;
-    tool.set_aside = last.map(|l| l.set_aside).unwrap_or_default();
-    tool.monitor_reverted_at = None;
-    tool.restored_at = None;
+    tool.set_aside = last.set_aside;
+    tool.monitor_reverted_at = last.monitor_reverted_at;
+    tool.restored_at = last.restored_at;
+    tool.approved_at = last.approved_at;
+    tool.created_at = last.created_at;
+    Ok(())
+}
+
+/// Saves a change that only takes something away (demoting, revoking, retiring). A file changed
+/// outside the app is saved as it is, unsigned: signing it would vouch for what was written
+/// around it, and it stays unoffered until promoted, which takes those fields from the last state
+/// the app signed.
+fn save_taking_away(config_dir: &Path, tool: &ScriptTool) -> Result<(), String> {
+    let on_disk = load(config_dir, &tool.name);
+    if on_disk.as_ref().is_none_or(|t| verifies(config_dir, t)) {
+        return save_resigned(config_dir, tool);
+    }
+    let path = path(config_dir, &tool.name)?;
+    let mut tool = tool.clone();
+    tool.signature = None;
+    if let Some(previous) = on_disk {
+        super::versions::keep(
+            config_dir,
+            "tools",
+            &format!("script-{}", tool.name),
+            &previous,
+            &tool,
+        )?;
+    }
+    crate::chat::at_rest::write(
+        path,
+        serde_json::to_string_pretty(&tool).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())
 }
 
 async fn promote_with(
@@ -782,7 +863,7 @@ async fn promote_with(
     #[cfg(not(test))]
     ensure_signing_key(config_dir).await;
     let mut first = load(config_dir, name).ok_or("There is no tool by that name.")?;
-    take_vouched(config_dir, &mut first);
+    take_vouched(config_dir, &mut first)?;
     let failing = failing_checks(&first.script, &first.checks).await;
     if !failing.is_empty() {
         return Err(format!(
@@ -793,7 +874,7 @@ async fn promote_with(
     // Loaded again after the waits above, and promoted only if it is still what was checked and,
     // for a card, what the user was shown: nothing written in between is approved unseen.
     let mut tool = load(config_dir, name).ok_or("There is no tool by that name.")?;
-    take_vouched(config_dir, &mut tool);
+    take_vouched(config_dir, &mut tool)?;
     let expected = shown.unwrap_or(&first);
     if approval_hash(&tool) != approval_hash(expected)
         || tool.requested != expected.requested
@@ -826,6 +907,8 @@ async fn promote_with(
     }
     tool.approved_at = Some(Utc::now());
     tool.approved_hash = Some(approval_hash(&tool));
+    // An approval is judged on its own calls from now: a rollback before it holds nothing back.
+    tool.monitor_reverted_at = None;
     // Approved again by the user: no longer set aside.
     let approved = approval_hash(&tool);
     tool.set_aside.retain(|h| h != &approved);
@@ -852,7 +935,7 @@ pub fn demote(config_dir: &Path, name: &str) -> Result<(), String> {
     tool.granted = Capabilities::default();
     tool.expires.clear();
     forget_approval_if_tampered(config_dir, &mut tool);
-    save_resigned(config_dir, &tool)?;
+    save_taking_away(config_dir, &tool)?;
     super::traces::set_status(config_dir, "script_tool", name, Status::Candidate.as_str());
     Ok(())
 }
@@ -865,7 +948,7 @@ pub fn revoke(config_dir: &Path, name: &str) -> Result<(), String> {
     tool.granted_until = None;
     tool.expires.clear();
     forget_approval_if_tampered(config_dir, &mut tool);
-    save_resigned(config_dir, &tool)
+    save_taking_away(config_dir, &tool)
 }
 
 /// Before a path that re-signs a file (taking access away, retiring), a file changed outside the
@@ -974,11 +1057,22 @@ pub fn restore_version(config_dir: &Path, mut old: ScriptTool) -> Result<(), Str
     // aside by the user's choice: the monitor never rolls forward to any of them.
     // An approved version is placed by when it was approved; a draft, or a version that does not
     // verify, by when it was written: the approvals after that are set aside, never those before.
+    // A History entry changed outside the app proves nothing about when it was written: every
+    // approval is set aside, and its checks are the last signed ones, never its own.
+    let verified = verifies(config_dir, &old);
     let restored_from = if approved {
         old.approved_at.or(Some(old.created_at))
-    } else {
+    } else if verified {
         Some(old.created_at)
+    } else {
+        Some(DateTime::<Utc>::MIN_UTC)
     };
+    if !verified {
+        old.checks = last_signed(config_dir, &old.name)
+            .map(|last| signed_checks(&last))
+            .unwrap_or_default();
+        old.pending_check = None;
+    }
     let restored = approval_hash(&old);
     let mut set_aside = current
         .as_ref()
@@ -1165,15 +1259,15 @@ fn within_rate(name: &str) -> bool {
 pub fn retire(config_dir: &Path, name: &str) -> Result<(), String> {
     let mut tool = load(config_dir, name).ok_or("There is no tool by that name.")?;
     tool.status = Status::Deprecated;
-    // A file changed outside the app is retired with no access and no approval, so signing it
-    // signs nothing new.
+    // A file changed outside the app is retired with no access and no approval, and left
+    // unsigned.
     if !verifies(config_dir, &tool) {
         tool.granted = Capabilities::default();
         tool.expires.clear();
         tool.approved_hash = None;
         tool.approved_at = None;
     }
-    save_resigned(config_dir, &tool)?;
+    save_taking_away(config_dir, &tool)?;
     super::traces::set_status(config_dir, "script_tool", name, Status::Deprecated.as_str());
     Ok(())
 }
@@ -2022,6 +2116,35 @@ mod tests {
         }
     }
 
+    /// A file changed outside the app with no state the app signed left to take its checks from
+    /// is not promoted: it is written again instead, and tested afresh.
+    #[tokio::test]
+    async fn a_changed_file_with_nothing_signed_left_is_written_again_not_promoted() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        set_signing_key(d, [4; 32]);
+        let draft = json!({ "name": "orphan", "description": "Orphan.", "script": "function main() { return 1; }" });
+        create(d, "", &draft).await.unwrap();
+        promote(d, "orphan", None).await.unwrap();
+        let mut forged = load(d, "orphan").unwrap();
+        forged.checks.clear();
+        std::fs::write(
+            path(d, "orphan").unwrap(),
+            serde_json::to_string(&forged).unwrap(),
+        )
+        .unwrap();
+        std::fs::remove_dir_all(chat_dir(d).join("versions")).unwrap();
+        std::fs::remove_dir_all(chat_dir(d).join("script-tools-signed")).unwrap();
+        let err = promote(d, "orphan", None).await.unwrap_err();
+        assert!(err.contains("write it again"), "{err}");
+        assert!(definitions(d).is_empty());
+        // Written again, it is tested afresh and can be promoted.
+        create(d, "", &draft).await.unwrap();
+        promote(d, "orphan", None).await.unwrap();
+        assert_eq!(load(d, "orphan").unwrap().checks.len(), 1);
+        assert_eq!(definitions(d).len(), 1);
+    }
+
     /// A file changed outside the app is not re-signed by a later change, and History brings back
     /// an old version's script without its old access.
     #[tokio::test]
@@ -2061,10 +2184,10 @@ mod tests {
         assert!(!verifies(d, &load(d, "fetcher").unwrap()));
         // A tool whose file does not verify is not offered: its description never reaches the model.
         assert!(definitions(d).is_empty());
-        // Retiring it signs it with no access, not with the forged grant.
+        // Retiring it leaves it with no access, unsigned: the forged grant is not signed.
         retire(d, "fetcher").unwrap();
         let retired = load(d, "fetcher").unwrap();
-        assert!(retired.granted.is_empty() && verifies(d, &retired));
+        assert!(retired.granted.is_empty() && !verifies(d, &retired));
         assert!(retired.approved_hash.is_none());
         // Revoking access from a tampered file does not make it an approved, signed tool either.
         restore_version(d, first.clone()).unwrap();
