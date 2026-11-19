@@ -646,8 +646,10 @@ pub async fn create(config_dir: &Path, conversation: &str, args: &Value) -> Resu
         monitor_reverted_at: None,
         approved_at: None,
         // A rewrite keeps what the user set aside; only approving a set-aside version clears it.
+        // (From a file that verifies: one changed outside the app plants nothing.)
         set_aside: previous
             .as_ref()
+            .filter(|t| verifies(config_dir, t))
             .map(|t| t.set_aside.clone())
             .unwrap_or_default(),
         restored_at: None,
@@ -928,7 +930,9 @@ pub fn restore_version(config_dir: &Path, mut old: ScriptTool) -> Result<(), Str
     }
     // Every version approved after the one brought back, the current one included, is set
     // aside by the user's choice: the monitor never rolls forward to any of them.
-    let restored_from = old.approved_at;
+    // Only an approved version has a place in the line of approvals; a draft brought back sets
+    // aside only the version in use, never the approved ones before it.
+    let restored_from = old.approved_at.filter(|_| approved);
     let restored = approval_hash(&old);
     let mut set_aside = current
         .as_ref()
@@ -940,7 +944,10 @@ pub fn restore_version(config_dir: &Path, mut old: ScriptTool) -> Result<(), Str
             .unwrap_or_default()
             .into_iter()
             .filter_map(|v| serde_json::from_value::<ScriptTool>(v.value).ok())
-            .filter(|v| v.status == Status::Active && v.approved_at > restored_from)
+            .filter(|v| {
+                v.status == Status::Active
+                    && restored_from.is_some_and(|from| v.approved_at.is_some_and(|at| at > from))
+            })
             .map(|v| approval_hash(&v))
             .collect();
     if let Some(current) = current
@@ -1847,6 +1854,41 @@ mod tests {
         let tool = load(d, "notes_tool").unwrap();
         assert_eq!(tool.status, Status::Candidate);
         assert!(tool.granted.is_empty());
+    }
+
+    /// Bringing back a draft from History and approving it leaves the approved version before it
+    /// to roll back to: only the version in use at the time is set aside.
+    #[tokio::test]
+    async fn restoring_a_draft_keeps_the_earlier_approved_version_to_roll_back_to() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let draft = |s: &str| json!({ "name": "draft_t", "description": "Draft.", "script": s });
+        create(d, "", &draft("function main() { return 1; }"))
+            .await
+            .unwrap();
+        promote(d, "draft_t", None).await.unwrap();
+        let mut t = load(d, "draft_t").unwrap();
+        t.checks.clear();
+        save(d, &t).unwrap();
+        let v1 = approval_hash(&load(d, "draft_t").unwrap());
+        create(d, "", &draft("function main() { return 2; }"))
+            .await
+            .unwrap();
+        create(d, "", &draft("function main() { return 3; }"))
+            .await
+            .unwrap();
+        let v2 = super::super::versions::list(d, "tools", "script-draft_t")
+            .unwrap()
+            .into_iter()
+            .find(|v| v.value["script"] == "function main() { return 2; }")
+            .unwrap();
+        super::super::versions::restore(d, "tools", "script-draft_t", &v2.id).unwrap();
+        promote(d, "draft_t", None).await.unwrap();
+        let now = load(d, "draft_t").unwrap();
+        assert!(now.script.contains("return 2"));
+        assert!(!now.set_aside.contains(&v1), "{:?}", now.set_aside);
+        assert_eq!(revert(d, "draft_t", &[]).await, Ok(true));
+        assert!(load(d, "draft_t").unwrap().script.contains("return 1"));
     }
 
     /// A file changed outside the app is not re-signed by a later change, and History brings back
