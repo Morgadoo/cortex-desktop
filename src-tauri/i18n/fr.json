@@ -1819,7 +1819,7 @@
  "The final text of this answer; tool steps stay as they were.": "Le texte final de cette réponse ; les étapes des outils restent inchangées.",
  "The first one downloaded": "Le premier téléchargé",
  "The first swatch follows the background palette. Used for primary buttons, links, selections, focus rings and highlights.": "La première couleur suit la palette d’arrière-plan. Utilisée pour les boutons principaux, les liens, les sélections, les anneaux de focus et les surlignages.",
- "The glowing glass orb of a voice conversation: the warm ember, or your accent colour.": "La sphère de verre lumineuse d'une conversation vocale : la braise chaleureuse, ou votre couleur d'accent.",
+ "The glowing glass orb of a voice conversation: your accent colour, or the warm ember.": "La sphère de verre lumineuse d'une conversation vocale : votre couleur d'accent, ou la braise chaleureuse.",
  "The image could not be made.": "L’image n’a pas pu être créée.",
  "The input schema is not valid JSON.": "Le schéma d’entrée n’est pas un JSON valide.",
  "The link asks for {0}, which is not set up here; using {1}.": "Le lien demande {0}, qui n’est pas configuré ici ; utilisation de {1}.",

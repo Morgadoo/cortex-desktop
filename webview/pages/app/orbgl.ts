@@ -140,12 +140,12 @@ const EMBER: [number, number, number] = [0.5, 0.1, 0.0];
 
 export type OrbColor = 'ember' | 'accent';
 
-/** The colour chosen in Settings → Audio: the tutorial's ember (the default) or the theme's accent. */
+/** The colour chosen in Settings → Audio: the theme's accent (the default), or the tutorial's ember. */
 export function storedOrbColor(): OrbColor {
   try {
-    return localStorage.getItem('voiceOrbColor') === 'accent' ? 'accent' : 'ember';
+    return localStorage.getItem('voiceOrbColor') === 'ember' ? 'ember' : 'accent';
   } catch {
-    return 'ember';
+    return 'accent';
   }
 }
 
@@ -181,8 +181,11 @@ export function parseColor(css: string): [number, number, number] | null {
 function orbColor(): [number, number, number] {
   if (storedOrbColor() === 'ember') return EMBER;
   const accent = parseColor(getComputedStyle(document.documentElement).getPropertyValue('--accent'));
-  // A light accent would glow white; it is taken a little deeper, as the ember is.
-  return accent ? (accent.map((c) => c * 0.75) as [number, number, number]) : EMBER;
+  if (!accent) return EMBER;
+  // The core multiplies the colour many times over, so a bright accent would burn to white: it is
+  // brought to the ember's strength (its brightest channel at 0.5), keeping its hue.
+  const peak = Math.max(...accent);
+  return peak > 0 ? (accent.map((c) => (c * 0.5) / peak) as [number, number, number]) : EMBER;
 }
 
 function compile(gl: WebGLRenderingContext, type: number, source: string): WebGLShader | null {

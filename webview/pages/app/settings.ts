@@ -2704,8 +2704,8 @@ function wakeWordCard(): HTMLElement {
       toast(v ? `Listening for “${prefs.phrase}”.` : 'Wake word off.');
     })),
     row('Wake phrase', 'A greeting and a name work best; “Hi” or “OK” in place of “Hey” is understood too.', phrase),
-    row('Voice orb colour', 'The glowing glass orb of a voice conversation: the warm ember, or your accent colour.', (() => {
-      const sel = h('select', { class: 'input', 'aria-label': 'Voice orb colour' }, h('option', { value: 'ember', selected: storedOrbColor() === 'ember' }, 'Ember'), h('option', { value: 'accent', selected: storedOrbColor() === 'accent' }, 'Accent colour'));
+    row('Voice orb colour', 'The glowing glass orb of a voice conversation: your accent colour, or the warm ember.', (() => {
+      const sel = h('select', { class: 'input', 'aria-label': 'Voice orb colour' }, h('option', { value: 'accent', selected: storedOrbColor() === 'accent' }, 'Accent colour'), h('option', { value: 'ember', selected: storedOrbColor() === 'ember' }, 'Ember'));
       sel.addEventListener('change', () => setOrbColor(sel.value as OrbColor));
       return sel;
     })())

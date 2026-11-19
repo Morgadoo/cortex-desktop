@@ -1819,7 +1819,7 @@
  "The final text of this answer; tool steps stay as they were.": "النص النهائي لهذه الإجابة؛ تبقى خطوات الأدوات كما هي.",
  "The first one downloaded": "أول نموذج تم تنزيله",
  "The first swatch follows the background palette. Used for primary buttons, links, selections, focus rings and highlights.": "تتبع العيّنة الأولى لوحة الخلفية. تُستخدم للأزرار الأساسية والروابط والتحديدات وحلقات التركيز والتمييز.",
- "The glowing glass orb of a voice conversation: the warm ember, or your accent colour.": "كرة الزجاج المتوهجة للمحادثة الصوتية: الجمرة الدافئة، أو لون التمييز لديك.",
+ "The glowing glass orb of a voice conversation: your accent colour, or the warm ember.": "كرة الزجاج المتوهجة للمحادثة الصوتية: لون التمييز لديك، أو الجمرة الدافئة.",
  "The image could not be made.": "تعذّر إنشاء الصورة.",
  "The input schema is not valid JSON.": "مخطط الإدخال ليس بصيغة JSON صالحة.",
  "The link asks for {0}, which is not set up here; using {1}.": "يطلب الرابط {0}، وهو غير مُعدّ هنا؛ سيتم استخدام {1}.",

@@ -2160,7 +2160,7 @@
  "The final text of this answer; tool steps stay as they were.",
  "The first one downloaded",
  "The first swatch follows the background palette. Used for primary buttons, links, selections, focus rings and highlights.",
- "The glowing glass orb of a voice conversation: the warm ember, or your accent colour.",
+ "The glowing glass orb of a voice conversation: your accent colour, or the warm ember.",
  "The image could not be made.",
  "The input schema is not valid JSON.",
  "The link asks for {0}, which is not set up here; using {1}.",
