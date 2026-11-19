@@ -98,6 +98,15 @@ pub struct ScriptTool {
     /// would be the versions the user set aside.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub restored_at: Option<DateTime<Utc>>,
+    /// How many times the app has signed this tool: each signed save is numbered above every one
+    /// before it, so a later save whose record never reached the keychain (a crash, a failed
+    /// write) is still told from an earlier one put back.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub seq: u64,
+}
+
+fn is_zero(n: &u64) -> bool {
+    *n == 0
 }
 
 /// Each capability item with its key: `http:host`, `read:folder`, and so on.
@@ -160,14 +169,16 @@ pub fn share_signing_key(from: &Path, to: &Path) {
         set_signing_key(to, key);
     }
     let mut ledger = ledger().lock().unwrap_or_else(|p| p.into_inner());
-    let shared: Vec<(String, String)> = ledger
+    ledger.trials.retain(|dir| dir != to);
+    ledger.trials.push(to.to_path_buf());
+    let shared: Vec<(String, Latest)> = ledger
         .latest
         .iter()
         .filter(|((dir, _), _)| dir == from)
-        .map(|((_, name), sig)| (name.clone(), sig.clone()))
+        .map(|((_, name), latest)| (name.clone(), latest.clone()))
         .collect();
-    for (name, sig) in shared {
-        ledger.latest.insert((to.to_path_buf(), name), sig);
+    for (name, latest) in shared {
+        ledger.latest.insert((to.to_path_buf(), name), latest);
     }
 }
 
@@ -180,6 +191,7 @@ pub fn forget_signing_key(config_dir: &Path) {
     let mut ledger = ledger().lock().unwrap_or_else(|p| p.into_inner());
     ledger.latest.retain(|(dir, _), _| dir != config_dir);
     ledger.stores.retain(|(dir, _)| dir != config_dir);
+    ledger.trials.retain(|dir| dir != config_dir);
 }
 
 /// Each tool's latest signature, per folder. A signature only shows the app wrote a state; this
@@ -188,8 +200,17 @@ pub fn forget_signing_key(config_dir: &Path) {
 /// came from there.
 #[derive(Default)]
 struct Ledger {
-    latest: std::collections::HashMap<(PathBuf, String), String>,
+    latest: std::collections::HashMap<(PathBuf, String), Latest>,
     stores: Vec<(PathBuf, crate::tools::auth::Secrets)>,
+    /// Trial copies: their record is never kept in the keychain, whatever key they hold.
+    trials: Vec<PathBuf>,
+}
+
+/// A tool's latest signature and the number of the save that made it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+struct Latest {
+    sig: String,
+    seq: u64,
 }
 
 fn ledger() -> &'static std::sync::Mutex<Ledger> {
@@ -214,13 +235,26 @@ fn ever_signed(config_dir: &Path, name: &str) -> bool {
         .contains_key(&(config_dir.to_path_buf(), name.to_string()))
 }
 
+/// The number of the latest save recorded for a tool, 0 when none is.
+fn recorded_seq(config_dir: &Path, name: &str) -> u64 {
+    ledger()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .latest
+        .get(&(config_dir.to_path_buf(), name.to_string()))
+        .map_or(0, |l| l.seq)
+}
+
 /// Records a tool's latest signature and keeps the folder's record in the keychain.
-fn record_latest(config_dir: &Path, name: &str, signature: &str) {
+fn record_latest(config_dir: &Path, name: &str, signature: &str, seq: u64) {
     let store = {
         let mut ledger = ledger().lock().unwrap_or_else(|p| p.into_inner());
         ledger.latest.insert(
             (config_dir.to_path_buf(), name.to_string()),
-            signature.to_string(),
+            Latest {
+                sig: signature.to_string(),
+                seq,
+            },
         );
         ledger
             .stores
@@ -239,13 +273,13 @@ fn record_latest(config_dir: &Path, name: &str, signature: &str) {
 async fn keep_latest(config_dir: &Path, store: &crate::tools::auth::Secrets) {
     static WRITING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
     let _one_at_a_time = WRITING.lock().await;
-    let record: std::collections::BTreeMap<String, String> = ledger()
+    let record: std::collections::BTreeMap<String, Latest> = ledger()
         .lock()
         .unwrap_or_else(|p| p.into_inner())
         .latest
         .iter()
         .filter(|((dir, _), _)| dir == config_dir)
-        .map(|((_, name), sig)| (name.clone(), sig.clone()))
+        .map(|((_, name), latest)| (name.clone(), latest.clone()))
         .collect();
     let text = serde_json::to_string(&record).unwrap_or_default();
     if let Err(e) = store.store(&latest_entry(config_dir), &text).await {
@@ -253,20 +287,26 @@ async fn keep_latest(config_dir: &Path, store: &crate::tools::auth::Secrets) {
     }
 }
 
-/// Loads a folder's record of latest signatures from the keychain. A tool signed before there was
-/// a record (an earlier build) is recorded as it is now.
+/// Loads a folder's record of latest signatures from the keychain. A tool whose file holds a later
+/// signed save than the record (one whose record never reached the keychain), or one signed before
+/// there was a record, is recorded as it stands. A record that cannot be read is not written over.
 async fn load_latest(config_dir: &Path, store: &crate::tools::auth::Secrets) {
-    let record: std::collections::BTreeMap<String, String> = store
-        .load(&latest_entry(config_dir))
-        .await
-        .ok()
-        .flatten()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default();
+    let record: Option<std::collections::BTreeMap<String, Latest>> =
+        match store.load(&latest_entry(config_dir)).await {
+            Ok(None) => Some(Default::default()),
+            Ok(Some(text)) => serde_json::from_str(&text).ok(),
+            Err(_) => None,
+        };
+    let Some(record) = record else {
+        log::warn!("the record of tools' latest signatures could not be read; it is left as it is");
+        return;
+    };
     {
         let mut ledger = ledger().lock().unwrap_or_else(|p| p.into_inner());
-        for (name, sig) in record {
-            ledger.latest.insert((config_dir.to_path_buf(), name), sig);
+        for (name, latest) in record {
+            ledger
+                .latest
+                .insert((config_dir.to_path_buf(), name), latest);
         }
         ledger.stores.retain(|(dir, _)| dir != config_dir);
         ledger
@@ -274,12 +314,18 @@ async fn load_latest(config_dir: &Path, store: &crate::tools::auth::Secrets) {
             .push((config_dir.to_path_buf(), store.clone()));
     }
     for tool in list(config_dir) {
-        if !ever_signed(config_dir, &tool.name) && signed_by_app(config_dir, &tool) {
+        let behind =
+            !ever_signed(config_dir, &tool.name) || tool.seq > recorded_seq(config_dir, &tool.name);
+        if behind && signed_by_app(config_dir, &tool) {
             if let Some(sig) = &tool.signature {
                 let mut ledger = ledger().lock().unwrap_or_else(|p| p.into_inner());
-                ledger
-                    .latest
-                    .insert((config_dir.to_path_buf(), tool.name.clone()), sig.clone());
+                ledger.latest.insert(
+                    (config_dir.to_path_buf(), tool.name.clone()),
+                    Latest {
+                        sig: sig.clone(),
+                        seq: tool.seq,
+                    },
+                );
             }
         }
     }
@@ -333,7 +379,15 @@ pub async fn ensure_signing_key_in(config_dir: &Path, store: &crate::tools::auth
     match parsed {
         Some(key) => {
             set_signing_key(config_dir, key);
-            load_latest(config_dir, store).await;
+            let trial = ledger()
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .trials
+                .iter()
+                .any(|dir| dir == config_dir);
+            if !trial {
+                load_latest(config_dir, store).await;
+            }
         }
         None => log::warn!("tools the assistant wrote are not signed: no keychain key"),
     }
@@ -369,7 +423,7 @@ fn hmac(key: &[u8; 32], message: &[u8]) -> String {
 /// the monitor and History go by, so a file changed outside the app can neither widen a tool nor
 /// quiet the monitor.
 fn signed_part(tool: &ScriptTool) -> Vec<u8> {
-    serde_json::to_vec(&json!({
+    let mut part = json!({
         "name": tool.name,
         "script": tool.script,
         "description": tool.description,
@@ -387,8 +441,12 @@ fn signed_part(tool: &ScriptTool) -> Vec<u8> {
         "createdAt": tool.created_at,
         "pendingCheck": tool.pending_check,
         "requested": tool.requested,
-    }))
-    .unwrap_or_default()
+    });
+    // Numbered saves only: a tool signed before saves were numbered keeps verifying.
+    if tool.seq > 0 {
+        part["seq"] = json!(tool.seq);
+    }
+    serde_json::to_vec(&part).unwrap_or_default()
 }
 
 fn sign(config_dir: &Path, tool: &ScriptTool) -> Option<String> {
@@ -416,7 +474,10 @@ fn verifies(config_dir: &Path, tool: &ScriptTool) -> bool {
             .get(&(config_dir.to_path_buf(), tool.name.clone()))
         {
             None => true,
-            Some(latest) => tool.signature.as_deref() == Some(latest.as_str()),
+            // The recorded latest save, or a later one whose record never reached the keychain.
+            Some(latest) => {
+                tool.signature.as_deref() == Some(latest.sig.as_str()) || tool.seq > latest.seq
+            }
         }
 }
 
@@ -505,12 +566,18 @@ pub(crate) fn save(config_dir: &Path, tool: &ScriptTool) -> Result<(), String> {
 
 fn save_resigned(config_dir: &Path, tool: &ScriptTool) -> Result<(), String> {
     let path = path(config_dir, &tool.name)?;
-    // Signed as saved by the app: what the user approved, and what it may reach.
+    // Signed as saved by the app: what the user approved, and what it may reach, numbered above
+    // every save before it.
+    let previous = load(config_dir, &tool.name);
     let mut tool = tool.clone();
+    tool.seq = recorded_seq(config_dir, &tool.name)
+        .max(previous.as_ref().map_or(0, |p| p.seq))
+        .max(tool.seq)
+        + 1;
     tool.signature = sign(config_dir, &tool);
     let tool = &tool;
     std::fs::create_dir_all(dir(config_dir)).map_err(|e| e.to_string())?;
-    if let Some(previous) = load(config_dir, &tool.name) {
+    if let Some(previous) = previous {
         super::versions::keep(
             config_dir,
             "tools",
@@ -524,7 +591,7 @@ fn save_resigned(config_dir: &Path, tool: &ScriptTool) -> Result<(), String> {
     // The last state the app signed, kept apart from the file the tool runs from, and its
     // signature recorded as the latest.
     if let Some(signature) = &tool.signature {
-        record_latest(config_dir, &tool.name, signature);
+        record_latest(config_dir, &tool.name, signature, tool.seq);
         let copy = signed_copy(config_dir, &tool.name)?;
         if let Some(parent) = copy.parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -817,6 +884,7 @@ pub async fn create(config_dir: &Path, conversation: &str, args: &Value) -> Resu
             .map(|t| t.set_aside.clone())
             .unwrap_or_default(),
         restored_at: None,
+        seq: 0,
     };
     let mut tool = tool;
     save_resigned(config_dir, &tool)?;
@@ -1082,10 +1150,11 @@ async fn promote_with(
 /// failing.
 pub fn demote(config_dir: &Path, name: &str) -> Result<(), String> {
     let mut tool = load(config_dir, name).ok_or("There is no tool by that name.")?;
+    // Judged on the file as it is, before this change.
+    forget_approval_if_tampered(config_dir, &mut tool);
     tool.status = Status::Candidate;
     tool.granted = Capabilities::default();
     tool.expires.clear();
-    forget_approval_if_tampered(config_dir, &mut tool);
     save_taking_away(config_dir, &tool)?;
     super::traces::set_status(config_dir, "script_tool", name, Status::Candidate.as_str());
     Ok(())
@@ -1094,11 +1163,12 @@ pub fn demote(config_dir: &Path, name: &str) -> Result<(), String> {
 /// Takes back a tool's capabilities; it stays on offer, able only to compute.
 pub fn revoke(config_dir: &Path, name: &str) -> Result<(), String> {
     let mut tool = load(config_dir, name).ok_or("There is no tool by that name.")?;
+    // Judged on the file as it is, before this change: a tool the app saved stays on offer.
+    forget_approval_if_tampered(config_dir, &mut tool);
     tool.granted = Capabilities::default();
     tool.requested = Capabilities::default();
     tool.granted_until = None;
     tool.expires.clear();
-    forget_approval_if_tampered(config_dir, &mut tool);
     save_taking_away(config_dir, &tool)
 }
 
@@ -2968,5 +3038,87 @@ mod tests {
         .await;
         assert!(verifies(o, &current));
         assert!(!verifies(o, &first));
+    }
+
+    /// A save whose record never reached the keychain (a quit, a crash, a failed write) still
+    /// verifies at the next start: its save number is above the record's, and the record catches
+    /// up. An earlier state put back, numbered below, still does not.
+    #[tokio::test]
+    async fn a_save_whose_record_never_reached_the_keychain_still_verifies() {
+        let store = crate::tools::auth::InMemorySecrets::with(&[]);
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        ensure_signing_key_in(d, &store).await;
+        create(d, "", &json!({ "name": "lagged", "description": "Lagged.", "script": "function main() { return 1; }", "http_hosts": ["a.example.com"] }))
+            .await
+            .unwrap();
+        promote(d, "lagged", None).await.unwrap();
+        keep_latest(d, &store).await;
+        let earlier = load(d, "lagged").unwrap();
+        let key = store.load(SIGNING_KEY_NAME).await.unwrap().unwrap();
+        let record = store.load(&latest_entry(d)).await.unwrap().unwrap();
+        // A new version is approved and saved; the process ends before its record is kept.
+        create(d, "", &json!({ "name": "lagged", "description": "Lagged, v2.", "script": "function main() { return 2 - 1; }", "http_hosts": ["a.example.com"] }))
+            .await
+            .unwrap();
+        promote(d, "lagged", None).await.unwrap();
+        let keychain_after_quit = crate::tools::auth::InMemorySecrets::with(&[
+            (SIGNING_KEY_NAME, &key),
+            (&latest_entry(d), &record),
+        ]);
+        forget_signing_key(d);
+        ensure_signing_key_in(d, &keychain_after_quit).await;
+        assert!(definitions(d).iter().any(|t| t.tool_name == "lagged"));
+        let kept = keychain_after_quit
+            .load(&latest_entry(d))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_ne!(kept, record, "the record caught up");
+        // The earlier signed state put back is still refused.
+        std::fs::write(
+            path(d, "lagged").unwrap(),
+            serde_json::to_string(&earlier).unwrap(),
+        )
+        .unwrap();
+        assert!(definitions(d).is_empty());
+    }
+
+    /// A trial's copy never keeps its record in the keychain, even when the live folder had no
+    /// key to share and the copy loads one itself.
+    #[tokio::test]
+    async fn a_trial_s_record_is_never_kept_in_the_keychain() {
+        let store = crate::tools::auth::InMemorySecrets::with(&[]);
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        std::fs::create_dir_all(d.join("chat")).unwrap();
+        let folder = crate::chat::evals::trial_folder(d).unwrap();
+        let trial = folder.dir.clone();
+        ensure_signing_key_in(&trial, &store).await;
+        assert!(signing_key(&trial).is_some());
+        create(&trial, "", &json!({ "name": "in_trial", "description": "In a trial.", "script": "function main() { return 1; }" }))
+            .await
+            .unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        drop(folder);
+        assert_eq!(store.load(&latest_entry(&trial)).await.unwrap(), None);
+    }
+
+    /// Revoking a signed tool's access leaves it on offer, able only to compute.
+    #[tokio::test]
+    async fn revoking_a_signed_tool_leaves_it_on_offer() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        set_signing_key(d, [14; 32]);
+        create(d, "", &json!({ "name": "revoked_r", "description": "Revoked.", "script": "function main() { return 1; }", "http_hosts": ["a.example.com"] }))
+            .await
+            .unwrap();
+        promote(d, "revoked_r", None).await.unwrap();
+        revoke(d, "revoked_r").unwrap();
+        let tool = load(d, "revoked_r").unwrap();
+        assert_eq!(tool.status, Status::Active);
+        assert!(tool.granted.is_empty() && tool.approved_hash.is_some());
+        assert!(definitions(d).iter().any(|t| t.tool_name == "revoked_r"));
+        assert!(call(d, "revoked_r", &json!({}), None).await.is_ok());
     }
 }
