@@ -321,7 +321,13 @@ pub fn trial_folder(config_dir: &Path) -> Result<TrialFolder, String> {
             if NOT_COPIED.iter().any(|skip| relative == Path::new(skip)) {
                 continue;
             }
-            let kind = entry.file_type()?;
+            // A top-level folder that is a link (a synced `chat`, say) is followed; inside it,
+            // links are left out.
+            let kind = if from == root {
+                std::fs::metadata(&path)?.file_type()
+            } else {
+                entry.file_type()?
+            };
             // At the top, only the folders that shape an answer: anything else there (on macOS
             // the local models and caches share this folder) stays out of the copy.
             if kind.is_dir()

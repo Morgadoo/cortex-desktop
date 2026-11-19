@@ -1522,9 +1522,20 @@ async fn a_written_tool_s_runs_are_in_its_turn_s_trace() {
         .await
         .unwrap();
     script_tools::promote(d, "outer_one", None).await.unwrap();
-    script_tools::call(d, "outer_one", &json!({}), None)
-        .await
-        .unwrap();
+    super::super::traces::start_run(d, "run-nested", "chat-1", None, MODEL);
+    script_tools::in_run(
+        "run-nested".into(),
+        script_tools::call(d, "outer_one", &json!({}), None),
+    )
+    .await
+    .unwrap();
+    // The callee's run is in the same turn's trace as its caller's.
+    let nested = super::super::traces::run_detail(d, "run-nested").unwrap();
+    let names: Vec<&str> = nested.tool_calls.iter().map(|c| c.0.as_str()).collect();
+    assert!(
+        names.contains(&"script__inner_one") && names.contains(&"script__outer_one"),
+        "{names:?}"
+    );
     assert!(crate::chat::audit::entries(d, None)
         .iter()
         .any(|e| e.tool.starts_with("script__inner_one") && e.tool.contains("called by a tool")));

@@ -96,6 +96,15 @@ pub async fn maintain(config_dir: &Path, now: DateTime<Utc>) -> Report {
         else {
             continue;
         };
+        // Week over week compares a version with itself: until it has a week of its own calls
+        // before this one, "last week" would be the version the user replaced, and rolling back
+        // to that would undo the user's choice. The failure-rate demotion still applies.
+        if tool
+            .approved_at
+            .is_some_and(|at| at > now - Duration::days(14))
+        {
+            continue;
+        }
         // The week that made it roll back still holds the failures that did; judging it on them
         // again would flip it back and forth. It is judged again once a new week has passed.
         if tool
@@ -323,6 +332,32 @@ mod tests {
             "{report:?}"
         );
         assert_eq!(st::load(d, "rates_h").unwrap().status, st::Status::Active);
+        // Nor rolled forward again: the replaced version's clean week is no baseline for the one
+        // the user chose, which a couple of failures today would otherwise "regress" from.
+        traces::start_run(d, "r2", "c", None, "m");
+        for _ in 0..10 {
+            traces::tool_call_at(
+                d,
+                "r2",
+                "script__rates_h",
+                Utc::now() - Duration::days(4),
+                5,
+                true,
+            );
+        }
+        for ok in [false, false, true, true, true, true] {
+            traces::tool_call_at(
+                d,
+                "r2",
+                "script__rates_h",
+                Utc::now() + Duration::minutes(30),
+                5,
+                ok,
+            );
+        }
+        let report = maintain(d, Utc::now() + Duration::hours(2)).await;
+        assert!(report.reverted.is_empty(), "{report:?}");
+        assert!(st::load(d, "rates_h").unwrap().script.contains("return 1"));
     }
 
     /// A tool the assistant wrote and keeps calling is used, so it is not retired.

@@ -1011,6 +1011,7 @@ pub async fn revert(config_dir: &Path, name: &str, checks: &[Check]) -> Result<b
 /// Calls per tool per minute; past it, calls are refused until the minute passes.
 const CALLS_PER_MINUTE: usize = 30;
 
+/// Per data folder and tool: a trial's copy does not use up the live tool's minute.
 fn within_rate(name: &str) -> bool {
     use std::collections::{HashMap, VecDeque};
     use std::sync::{Mutex, OnceLock};
@@ -1113,7 +1114,7 @@ fn call_at(
                 "This tool's file was changed outside the app, so its approval no longer holds; promote it again.".into(),
             );
         }
-        if !within_rate(&name) {
+        if !within_rate(&format!("{}:{name}", config_dir.display())) {
             return Err(format!(
                 "`{name}` was called {CALLS_PER_MINUTE} times in the last minute; wait before calling it again."
             ));
