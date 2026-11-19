@@ -965,6 +965,63 @@ impl Connector for McpConnector {
     fn as_session(&self) -> Option<&dyn Session> {
         Some(self)
     }
+
+    async fn resources(&self) -> Result<Vec<Value>, ToolError> {
+        self.ensure_connected().await?;
+        let guard = self.client.lock().await;
+        let service = guard
+            .as_ref()
+            .ok_or_else(|| ToolError::Unreachable(format!("{}: no session", self.id)))?;
+        // A server without resources answers "method not found": it simply has none.
+        if service
+            .peer_info()
+            .is_some_and(|info| info.capabilities.resources.is_none())
+        {
+            return Ok(Vec::new());
+        }
+        let list = tokio::time::timeout(self.call_timeout, service.list_all_resources())
+            .await
+            .map_err(|_| {
+                ToolError::ExecutionFailed(format!("{}: listing documents timed out", self.id))
+            })?
+            .map_err(|e| self.describe_call_failure(e))?;
+        list.into_iter()
+            .map(|r| serde_json::to_value(r).map_err(|e| ToolError::ExecutionFailed(e.to_string())))
+            .collect()
+    }
+
+    async fn read_resource(&self, uri: &str) -> Result<String, ToolError> {
+        self.ensure_connected().await?;
+        let guard = self.client.lock().await;
+        let service = guard
+            .as_ref()
+            .ok_or_else(|| ToolError::Unreachable(format!("{}: no session", self.id)))?;
+        let result = tokio::time::timeout(
+            self.call_timeout,
+            service.read_resource(rmcp::model::ReadResourceRequestParams::new(uri)),
+        )
+        .await
+        .map_err(|_| ToolError::ExecutionFailed(format!("{}: reading {uri} timed out", self.id)))?
+        .map_err(|e| self.describe_call_failure(e))?;
+        let value =
+            serde_json::to_value(result).map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+        Ok(resource_text(&value))
+    }
+}
+
+/// The text parts of a `resources/read` answer, joined; binary parts are skipped.
+pub fn resource_text(result: &Value) -> String {
+    result
+        .get("contents")
+        .and_then(Value::as_array)
+        .map(|parts| {
+            parts
+                .iter()
+                .filter_map(|p| p.get("text").and_then(Value::as_str))
+                .collect::<Vec<_>>()
+                .join("\n\n")
+        })
+        .unwrap_or_default()
 }
 
 #[async_trait]

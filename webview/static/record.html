@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recording</title>
+  <link rel="stylesheet" href="styles/dictate.css">
+  <script src="scripts/theme.js"></script>
+</head>
+<body>
+<div class="dictate-pill" role="status" aria-live="polite">
+  <span class="dictate-dot" aria-hidden="true"></span>
+  <div class="dictate-text">
+    <strong>Recording a task</strong>
+    <span id="time">0:00 · nothing yet</span>
+  </div>
+  <button type="button" class="dictate-btn" id="stop" title="Stop and turn it into a skill">Stop</button>
+  <button type="button" class="dictate-btn quiet" id="cancel" title="Throw this recording away" aria-label="Cancel">&#x2715;</button>
+</div>
+<script src="scripts/record.js"></script>
+</body>
+</html>

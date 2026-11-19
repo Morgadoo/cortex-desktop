@@ -255,7 +255,7 @@ impl BrowserConnector {
     }
 }
 
-fn extract_title(html: &str) -> String {
+pub(crate) fn extract_title(html: &str) -> String {
     let document = Html::parse_document(html);
     static TITLE: LazyLock<Selector> = LazyLock::new(|| Selector::parse("title").expect("title"));
     document
@@ -323,7 +323,7 @@ fn truncate_chars(s: String, max_chars: usize) -> String {
     format!("{kept}\n\n[truncated: {n} characters in page, showing first {max_chars}]")
 }
 
-fn html_to_text(html: &str) -> String {
+pub(crate) fn html_to_text(html: &str) -> String {
     let document = Html::parse_document(html);
     static BODY: LazyLock<Selector> = LazyLock::new(|| Selector::parse("body").expect("body"));
     let root = document

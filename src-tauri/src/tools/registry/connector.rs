@@ -190,6 +190,20 @@ pub trait Connector: Send + Sync {
     fn as_session(&self) -> Option<&dyn Session> {
         None
     }
+
+    /// The documents the connector offers (MCP resources), each `{uri, name, mimeType,
+    /// description}`, for indexing into a library. None by default.
+    async fn resources(&self) -> Result<Vec<Value>, ToolError> {
+        Ok(Vec::new())
+    }
+
+    /// The text of one of `resources`.
+    async fn read_resource(&self, uri: &str) -> Result<String, ToolError> {
+        Err(ToolError::ExecutionFailed(format!(
+            "{} offers no documents ({uri})",
+            self.id()
+        )))
+    }
 }
 
 /// A connector holding durable authorisation that only a person can establish.

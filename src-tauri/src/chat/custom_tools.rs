@@ -1,0 +1,278 @@
+//! Tools you write yourself, as Open WebUI's Tools: a script with a JSON schema for its input.
+//!
+//! Unlike Open WebUI, the code never runs inside the app: each call runs the script in the same
+//! sandbox as `run_code` (isolated with bubblewrap where available), with the call's arguments in
+//! the variable `args`, and returns what it prints. Every call passes the approval gate like a
+//! connector tool. Tools live in `chat/tools/<name>/tool.json`.
+
+use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+
+use super::store::{chat_dir, write_json};
+use super::tools::ChatTool;
+
+pub const CONNECTOR: &str = "custom";
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomTool {
+    /// Lowercase letters, digits and underscores.
+    pub name: String,
+    pub description: String,
+    /// JSON schema of the arguments (an object schema).
+    pub parameters: Value,
+    /// `python`, `javascript` or `bash`.
+    pub language: String,
+    pub code: String,
+    #[serde(default = "yes")]
+    pub enabled: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+fn dir(config_dir: &Path) -> PathBuf {
+    chat_dir(config_dir).join("tools")
+}
+
+fn valid_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 40
+        && name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+        && !name.starts_with('_')
+}
+
+pub fn list(config_dir: &Path) -> Vec<CustomTool> {
+    let mut out: Vec<CustomTool> = std::fs::read_dir(dir(config_dir))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| {
+            serde_json::from_str(
+                &crate::chat::at_rest::read_to_string(e.path().join("tool.json")).ok()?,
+            )
+            .ok()
+        })
+        .collect();
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out
+}
+
+pub fn save(config_dir: &Path, tool: &CustomTool) -> Result<Vec<CustomTool>, String> {
+    if !valid_name(&tool.name) {
+        return Err(
+            "A tool name uses lowercase letters, digits and underscores, like `convert_units`."
+                .into(),
+        );
+    }
+    if tool.description.trim().is_empty() {
+        return Err(
+            "Describe what the tool does; the model reads it to decide when to call it.".into(),
+        );
+    }
+    if !["python", "javascript", "bash"].contains(&tool.language.as_str()) {
+        return Err("Choose Python, JavaScript or Bash.".into());
+    }
+    if tool.parameters.get("type").and_then(Value::as_str) != Some("object") {
+        return Err("The input schema must be a JSON object schema, like {\"type\": \"object\", \"properties\": {…}}.".into());
+    }
+    if let Some(previous) = list(config_dir).into_iter().find(|t| t.name == tool.name) {
+        super::versions::keep(config_dir, "tools", &tool.name, &previous, tool)?;
+    }
+    write_json(&dir(config_dir).join(&tool.name).join("tool.json"), tool)?;
+    Ok(list(config_dir))
+}
+
+pub fn delete(config_dir: &Path, name: &str) -> Result<Vec<CustomTool>, String> {
+    if !valid_name(name) {
+        return Err("invalid tool name".into());
+    }
+    let _ = std::fs::remove_dir_all(dir(config_dir).join(name));
+    Ok(list(config_dir))
+}
+
+/// The enabled tools, as the model sees them.
+pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
+    list(config_dir)
+        .into_iter()
+        .filter(|t| t.enabled)
+        .map(|t| ChatTool {
+            name: format!("tool__{}", t.name),
+            description: t.description,
+            parameters: t.parameters,
+            connector_id: Some(CONNECTOR.into()),
+            tool_name: t.name,
+            read_only: false,
+        })
+        .collect()
+}
+
+/// The script with the call's arguments bound to `args` (`ARGS`, as JSON text, in Bash).
+pub fn program(tool: &CustomTool, args: &Value) -> String {
+    program_for(&tool.language, &tool.code, args)
+}
+
+/// `code` with `args` bound, in its language (also used by functions).
+pub fn program_for(language: &str, code: &str, args: &Value) -> String {
+    let json = serde_json::to_string(args).unwrap_or_else(|_| "{}".into());
+    match language {
+        // A JSON string literal is a valid Python string literal for `json.loads`.
+        "python" => format!(
+            "import json as __json\nargs = __json.loads({})\n{}",
+            serde_json::to_string(&json).unwrap_or_default(),
+            code
+        ),
+        "javascript" => format!("const args = {json};\n{code}"),
+        _ => format!("ARGS='{}'\n{code}", json.replace('\'', "'\\''")),
+    }
+}
+
+/// Runs a tool in the sandbox; returns what it printed, or why it failed.
+pub async fn run(
+    config_dir: &Path,
+    conversation_id: &str,
+    name: &str,
+    args: &Value,
+) -> Result<String, String> {
+    let tool = list(config_dir)
+        .into_iter()
+        .find(|t| t.name == name)
+        .ok_or("That tool was removed.")?;
+    let outcome = super::sandbox::run(
+        config_dir,
+        conversation_id,
+        &json!({ "language": tool.language, "code": program(&tool, args) }),
+    )
+    .await;
+    let report: Value =
+        serde_json::from_str(&outcome.text).unwrap_or_else(|_| json!({ "stdout": outcome.text }));
+    let stdout = report
+        .get("stdout")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let stderr = report
+        .get("stderr")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let failed = outcome.is_error
+        || report
+            .get("exit_code")
+            .and_then(Value::as_i64)
+            .is_some_and(|c| c != 0);
+    if failed {
+        Err(if stderr.is_empty() {
+            format!("The tool failed. {stdout}")
+        } else {
+            format!("The tool failed: {stderr}")
+        })
+    } else {
+        Ok(if stdout.is_empty() {
+            "(The tool printed nothing.)".into()
+        } else {
+            stdout
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample(language: &str, code: &str) -> CustomTool {
+        CustomTool {
+            name: "convert_units".into(),
+            description: "Convert kilometres to miles.".into(),
+            parameters: json!({ "type": "object", "properties": { "km": { "type": "number" } }, "required": ["km"] }),
+            language: language.into(),
+            code: code.into(),
+            enabled: true,
+        }
+    }
+
+    #[test]
+    fn tools_are_saved_and_offered() {
+        let dir = tempfile::tempdir().unwrap();
+        save(
+            dir.path(),
+            &sample("python", "print(args['km'] * 0.621371)"),
+        )
+        .unwrap();
+        assert!(save(
+            dir.path(),
+            &CustomTool {
+                name: "Bad Name".into(),
+                ..sample("python", "")
+            }
+        )
+        .is_err());
+        assert!(save(
+            dir.path(),
+            &CustomTool {
+                parameters: json!({ "type": "string" }),
+                ..sample("python", "")
+            }
+        )
+        .is_err());
+        let defs = definitions(dir.path());
+        assert_eq!(defs.len(), 1);
+        assert_eq!(
+            (defs[0].name.as_str(), defs[0].connector_id.as_deref()),
+            ("tool__convert_units", Some(CONNECTOR))
+        );
+        delete(dir.path(), "convert_units").unwrap();
+        assert!(list(dir.path()).is_empty());
+    }
+
+    #[test]
+    fn arguments_reach_the_script_safely() {
+        let args = json!({ "km": 10, "note": "it's \"quoted\"\nline" });
+        let py = program(&sample("python", "print(args)"), &args);
+        assert!(py.starts_with("import json as __json\nargs = __json.loads(\""));
+        let sh = program(&sample("bash", "echo \"$ARGS\""), &args);
+        assert!(sh.contains("it'\\''s"), "{sh}");
+        assert!(
+            program(&sample("javascript", "console.log(args.km)"), &args)
+                .starts_with("const args = {")
+        );
+    }
+
+    #[tokio::test]
+    async fn a_python_tool_runs_in_the_sandbox() {
+        if super::super::sandbox::languages()
+            .iter()
+            .all(|l| *l != "python")
+        {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        save(
+            dir.path(),
+            &sample("python", "print(round(args['km'] * 0.621371, 2))"),
+        )
+        .unwrap();
+        assert_eq!(
+            run(dir.path(), "c1", "convert_units", &json!({ "km": 10 }))
+                .await
+                .unwrap(),
+            "6.21"
+        );
+        save(
+            dir.path(),
+            &sample("python", "raise SystemExit('bad input')"),
+        )
+        .unwrap();
+        assert!(run(dir.path(), "c1", "convert_units", &json!({}))
+            .await
+            .unwrap_err()
+            .contains("bad input"));
+    }
+}

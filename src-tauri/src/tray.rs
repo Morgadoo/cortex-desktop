@@ -87,9 +87,17 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     #[cfg(target_os = "macos")]
     app.set_menu(app_menu)?;
     #[cfg(not(target_os = "macos"))]
-    app.get_webview_window(main_window::LABEL)
-        .ok_or(tauri::Error::WindowNotFound)?
-        .set_menu(app_menu)?;
+    {
+        let window = app
+            .get_webview_window(main_window::LABEL)
+            .ok_or(tauri::Error::WindowNotFound)?;
+        window.set_menu(app_menu)?;
+        // On Linux the menu would be a bar of its own under the title bar, with only "Lumo" in
+        // it: the title said twice. It stays attached, hidden, so its shortcuts (Ctrl+, for
+        // Settings, Ctrl+Q to quit) keep working; the same items are in the tray menu.
+        #[cfg(target_os = "linux")]
+        window.hide_menu()?;
+    }
 
     let menu = Menu::with_items(
         app,
@@ -135,6 +143,24 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
 }
 
 // Version comes from tauri.conf.json via package_info.
+/// The app menu's actions from the window's own menu (Vibe's menu at the top left): the same
+/// as the tray's.
+#[tauri::command]
+pub fn app_menu_action(app: AppHandle, action: String) -> Result<(), String> {
+    match action.as_str() {
+        "check-updates" => {
+            let handle = app.clone();
+            tauri::async_runtime::spawn(async move {
+                updater::check_and_prompt(&handle).await;
+            });
+        }
+        "about" => show_about(&app),
+        "quit" => app.exit(0),
+        other => return Err(format!("unknown action {other}")),
+    }
+    Ok(())
+}
+
 fn show_about(app: &AppHandle) {
     let info = app.package_info();
     branded::show(

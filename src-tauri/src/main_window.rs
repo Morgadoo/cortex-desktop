@@ -33,26 +33,38 @@ pub fn web_app_capability(lumo_url: &str) -> Result<String, String> {
 }
 
 pub fn build(app: &App) -> tauri::Result<WebviewWindow> {
-    let window = tauri::WebviewWindowBuilder::new(app, LABEL, webview::main_window_url())
-        .title("Lumo: Your Private AI Assistant")
-        .visible(crate::e2e_testing_enabled())
-        .inner_size(1200.0, 800.0)
+    let e2e = crate::e2e_testing_enabled();
+    let mut builder = tauri::WebviewWindowBuilder::new(app, LABEL, webview::main_window_url())
+        .title("Lumo")
+        // The bundled chat page shows itself; only the hosted web app used to reveal the window.
+        .visible(e2e || !crate::HOSTED_WEB_APP)
+        .inner_size(1280.0, 840.0)
+        .min_inner_size(720.0, 520.0)
         .prevent_overflow()
         .center()
-        // Available synchronously before the hosted web app creates its API config.
         .initialization_script(format!(
             "window.lumoDesktopVersion = {};",
             serde_json::to_string(&app.package_info().version.to_string())?,
-        ))
-        .initialization_script(include_str!("../dist/scripts/connectors.js"))
-        .initialization_script(include_str!("../dist/scripts/settings-hotkey.js"))
-        .initialization_script(include_str!("../dist/scripts/account-identity.js"))
-        .initialization_script(include_str!("../dist/scripts/schedules.js"))
-        .initialization_script(include_str!("../dist/scripts/notifications.js"))
-        .initialization_script(include_str!("../dist/scripts/skills.js"))
-        .initialization_script(include_str!("../dist/scripts/quick-ask.js"))
-        .initialization_script(include_str!("../dist/scripts/download-feedback.js"))
-        .initialization_script(include_str!("../dist/scripts/theme-reporter.js"))
+        ));
+    // The bridges were written for the hosted web app. The native chat page talks to Rust
+    // directly, and the account bridge would sign its local profile out, so only the e2e stub,
+    // which still exercises the bridge contract, gets them.
+    if e2e || crate::HOSTED_WEB_APP {
+        for script in [
+            include_str!("../dist/scripts/connectors.js"),
+            include_str!("../dist/scripts/settings-hotkey.js"),
+            include_str!("../dist/scripts/account-identity.js"),
+            include_str!("../dist/scripts/schedules.js"),
+            include_str!("../dist/scripts/notifications.js"),
+            include_str!("../dist/scripts/skills.js"),
+            include_str!("../dist/scripts/quick-ask.js"),
+            include_str!("../dist/scripts/download-feedback.js"),
+            include_str!("../dist/scripts/theme-reporter.js"),
+        ] {
+            builder = builder.initialization_script(script);
+        }
+    }
+    let window = builder
         .on_download(downloads::on_download)
         .disable_drag_drop_handler()
         .on_navigation({
@@ -91,29 +103,44 @@ pub fn build(app: &App) -> tauri::Result<WebviewWindow> {
 }
 
 /// WebKitGTK denies getUserMedia unless the permission-request signal is answered, and wry never
-/// connects it. Audio only, and only while the page is the web app itself.
+/// connects it. Audio only, and only while the page is the web app or the native chat page.
 #[cfg(target_os = "linux")]
-fn allow_microphone(window: &WebviewWindow) {
+pub(crate) fn allow_microphone(window: &WebviewWindow) {
     use webkit2gtk::glib::prelude::*;
     use webkit2gtk::{PermissionRequestExt, UserMediaPermissionRequestExt, WebViewExt as _};
 
-    if let Err(e) = window.with_webview(|webview| {
-        webview.inner().connect_permission_request(|view, request| {
-            let Some(media) = request.downcast_ref::<webkit2gtk::UserMediaPermissionRequest>()
-            else {
-                return false;
-            };
-            let on_web_app = view
-                .uri()
-                .and_then(|uri| uri.parse::<url::Url>().ok())
-                .is_some_and(|url| crate::microphone::is_allowed(&url));
-            if on_web_app && media.is_for_audio_device() && !media.is_for_video_device() {
-                media.allow();
-            } else {
-                media.deny();
-            }
-            true
-        });
+    // Under `tauri dev` the page comes from the CLI's own server, not from tauri://localhost.
+    let dev_url = window.config().build.dev_url.clone();
+    if let Err(e) = window.with_webview(move |webview| {
+        // getUserMedia only exists with media streams on, which WebKitGTK leaves off.
+        if let Some(settings) = webview.inner().settings() {
+            use webkit2gtk::SettingsExt as _;
+            settings.set_enable_media_stream(true);
+        }
+        webview
+            .inner()
+            .connect_permission_request(move |view, request| {
+                let Some(media) = request.downcast_ref::<webkit2gtk::UserMediaPermissionRequest>()
+                else {
+                    return false;
+                };
+                let on_web_app = view
+                    .uri()
+                    .and_then(|uri| uri.parse::<url::Url>().ok())
+                    .is_some_and(|url| crate::microphone::is_allowed_in(&url, dev_url.as_ref()));
+                if on_web_app && media.is_for_audio_device() && !media.is_for_video_device() {
+                    media.allow();
+                } else {
+                    warn!(
+                        "refused a media capture request from {:?} (audio {}, video {})",
+                        view.uri(),
+                        media.is_for_audio_device(),
+                        media.is_for_video_device()
+                    );
+                    media.deny();
+                }
+                true
+            });
     }) {
         warn!("could not hook microphone permissions: {e}");
     }
@@ -130,6 +157,10 @@ pub fn show(app_handle: &AppHandle) -> Result<(), String> {
             .map_err(|e| e.to_string())?;
 
         window.show().map_err(|e| e.to_string())?;
+        // GTK shows every part of a window as it appears, the hidden menu bar included; it stays
+        // hidden (see tray.rs), its shortcuts still working.
+        #[cfg(target_os = "linux")]
+        window.hide_menu().map_err(|e| e.to_string())?;
         window.unminimize().map_err(|e| e.to_string())?;
         window.set_focus().map_err(|e| e.to_string())?;
     }
@@ -137,7 +168,7 @@ pub fn show(app_handle: &AppHandle) -> Result<(), String> {
 }
 
 /// Closing the window keeps Lumo running in the tray; on macOS the Dock icon goes with it.
-fn hide(app_handle: &AppHandle) {
+pub(crate) fn hide(app_handle: &AppHandle) {
     let Some(window) = app_handle.get_window(LABEL) else {
         return;
     };

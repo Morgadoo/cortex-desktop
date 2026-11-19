@@ -1,0 +1,27 @@
+# The agent workbench (src/chat/workbench.rs): the image `run_code` runs in when Podman is
+# available. Built on this computer the first time it is needed; a change to this file makes a
+# new image (its tag is a hash of this text).
+#
+# Common tools for agents' work: Python with its data and plotting libraries, Node.js, shell
+# utilities, media tools, and Blender for 3D. Agents add their own packages into their home
+# (pip, npm), which is kept across runs.
+FROM registry.fedoraproject.org/fedora:44
+
+RUN dnf -y install --setopt=install_weak_deps=False \
+        bash coreutils findutils which file diffutils procps-ng \
+        git curl wget unzip zip tar xz bzip2 jq \
+        python3 python3-pip python3-numpy python3-pandas python3-scipy python3-matplotlib \
+        python3-pillow python3-requests python3-pyyaml python3-openpyxl \
+        nodejs npm \
+        ffmpeg-free ImageMagick \
+        blender \
+        mesa-dri-drivers mesa-libGL mesa-libEGL libglvnd-egl \
+    && dnf clean all \
+    && rm -rf /var/cache/dnf /var/log/dnf*
+
+ENV LANG=C.UTF-8 \
+    MPLBACKEND=Agg \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+LABEL org.lumo.workbench="1"

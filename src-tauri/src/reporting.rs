@@ -52,8 +52,73 @@ fn capture_failure(logger: &'static str, message: &'static str) {
     }
 }
 
+/// What the app may send about itself (Settings → General → Privacy), kept in
+/// `diagnostics.json` and read before the app starts.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct DiagnosticsPrefs {
+    /// Crash and error reports, in builds that include reporting. Off unless turned on.
+    pub error_reports: bool,
+    /// Look for a newer version when the app starts. Checking from the menu always works.
+    pub update_checks: bool,
+}
+
+impl Default for DiagnosticsPrefs {
+    fn default() -> Self {
+        Self {
+            error_reports: false,
+            update_checks: true,
+        }
+    }
+}
+
+/// The app's config folder, found before Tauri runs (as Tauri finds it for this identifier).
+pub fn early_config_dir() -> Option<std::path::PathBuf> {
+    const ID: &str = "me.proton.lumo-app";
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+    match std::env::consts::OS {
+        "macos" => home.map(|h| h.join("Library/Application Support").join(ID)),
+        "windows" => std::env::var_os("APPDATA").map(|a| std::path::PathBuf::from(a).join(ID)),
+        _ => std::env::var_os("XDG_CONFIG_HOME")
+            .map(std::path::PathBuf::from)
+            .or_else(|| home.map(|h| h.join(".config")))
+            .map(|c| c.join(ID)),
+    }
+}
+
+pub fn load_prefs(config_dir: &std::path::Path) -> DiagnosticsPrefs {
+    std::fs::read_to_string(config_dir.join("diagnostics.json"))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
+}
+
+pub fn save_prefs(config_dir: &std::path::Path, prefs: &DiagnosticsPrefs) -> Result<(), String> {
+    std::fs::create_dir_all(config_dir).map_err(|e| e.to_string())?;
+    std::fs::write(
+        config_dir.join("diagnostics.json"),
+        serde_json::to_string_pretty(prefs).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// Whether this build was made with error reporting in it at all.
+pub fn compiled_in() -> bool {
+    match std::env::consts::OS {
+        "macos" => option_env!("LUMO_SENTRY_DSN_KEY_MACOS"),
+        "windows" => option_env!("LUMO_SENTRY_DSN_KEY_WINDOWS"),
+        "linux" => option_env!("LUMO_SENTRY_DSN_KEY_LINUX"),
+        _ => None,
+    }
+    .is_some_and(|k| !k.trim().is_empty())
+}
+
 pub(super) fn init() -> Option<ClientInitGuard> {
     if crate::e2e_testing_enabled() {
+        return None;
+    }
+    // Reports go out only when the user turned them on.
+    if !early_config_dir().is_some_and(|dir| load_prefs(&dir).error_reports) {
         return None;
     }
     let key = match std::env::consts::OS {

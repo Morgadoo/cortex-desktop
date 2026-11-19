@@ -90,6 +90,20 @@ impl Connector for ConnectorHandle {
     fn as_session(&self) -> Option<&dyn Session> {
         self.inner.as_session()
     }
+
+    async fn resources(&self) -> Result<Vec<Value>, ToolError> {
+        if self.is_retired() {
+            return Err(ToolError::Retired);
+        }
+        self.inner.resources().await
+    }
+
+    async fn read_resource(&self, uri: &str) -> Result<String, ToolError> {
+        if self.is_retired() {
+            return Err(ToolError::Retired);
+        }
+        self.inner.read_resource(uri).await
+    }
 }
 
 #[derive(Default)]

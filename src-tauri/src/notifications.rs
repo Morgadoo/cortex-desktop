@@ -21,6 +21,7 @@ use self::windows as platform;
 #[derive(Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NotificationPermission {
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     NotDetermined,
     Denied,
     Granted,

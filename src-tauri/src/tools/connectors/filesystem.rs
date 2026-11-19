@@ -204,6 +204,7 @@ impl FilesystemConnector {
 /// Every directory Lumo keeps state in, including the webview's cookies and storage.
 fn app_directories(app_handle: &AppHandle) -> Vec<PathBuf> {
     let path = app_handle.path();
+    #[cfg_attr(not(target_os = "macos"), allow(unused_mut))]
     let mut dirs: Vec<PathBuf> = [
         path.app_config_dir(),
         path.app_data_dir(),
@@ -818,13 +819,23 @@ impl FilesystemCore {
         }
 
         let created = !path.exists();
+        // The text it replaces, so the result can say what changed.
+        let previous = if created {
+            None
+        } else {
+            std::fs::read_to_string(&path).ok()
+        };
         std::fs::write(&path, content).map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
 
-        Ok(json!({
+        let mut result = json!({
             "path": path.display().to_string(),
             "bytes_written": content.len(),
             "created": created,
-        }))
+        });
+        if let Some(previous) = previous {
+            result["diff"] = json!(compact_diff(&previous, content));
+        }
+        Ok(result)
     }
 
     async fn fs_edit(&self, input: Value) -> Result<Value, ToolError> {
@@ -911,8 +922,33 @@ impl FilesystemCore {
     }
 }
 
+/// Characters of diff an overwrite reports.
+const DIFF_CHARS: usize = 6_000;
+
+/// A unified diff of an overwrite, cut to a size worth showing, or "unchanged".
+fn compact_diff(before: &str, after: &str) -> String {
+    if before == after {
+        return "unchanged".into();
+    }
+    let diff = similar::TextDiff::from_lines(before, after);
+    let text = diff.unified_diff().context_radius(2).to_string();
+    if text.chars().count() <= DIFF_CHARS {
+        return text;
+    }
+    let mut cut: String = text.chars().take(DIFF_CHARS).collect();
+    cut.push_str("\n… (diff cut)");
+    cut
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn overwrites_report_a_compact_diff() {
+        let diff = super::compact_diff("a\nb\nc\n", "a\nB\nc\n");
+        assert!(diff.contains("-b") && diff.contains("+B"), "{diff}");
+        assert_eq!(super::compact_diff("x", "x"), "unchanged");
+    }
+
     use super::*;
     use serde_json::json;
     use tempfile::{tempdir, TempDir};

@@ -36,6 +36,16 @@ pub fn inject_search(
         .get_webview(main_window::LABEL)
         .ok_or_else(|| "Lumo window is not open".to_string())?;
 
+    // The native chat page takes the question as an event and starts a new conversation with it.
+    if !crate::HOSTED_WEB_APP && !crate::e2e_testing_enabled() {
+        use tauri::Emitter;
+        main_webview
+            .emit("chat://quick-ask", query.to_string())
+            .map_err(|e| e.to_string())?;
+        main_window::show(&app_handle)?;
+        return Ok(());
+    }
+
     let mut target = crate::LUMO_URL
         .parse::<url::Url>()
         .map_err(|e| format!("LUMO_URL is not a URL: {e}"))?;

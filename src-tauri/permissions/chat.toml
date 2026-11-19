@@ -1,0 +1,620 @@
+[[permission]]
+identifier = "allow-chat-list-providers"
+description = "List model providers and whether each is configured."
+commands.allow = ["chat_list_providers"]
+
+[[permission]]
+identifier = "allow-chat-save-provider"
+description = "Save a provider's settings and store its API key in the OS keychain."
+commands.allow = ["chat_save_provider"]
+
+[[permission]]
+identifier = "allow-chat-list-models"
+description = "List the models of every configured provider."
+commands.allow = ["chat_list_models"]
+
+[[permission]]
+identifier = "allow-chat-set-default-model"
+description = "Remember the model new conversations start with."
+commands.allow = ["chat_set_default_model"]
+
+[[permission]]
+identifier = "allow-chat-test-model"
+description = "Send a one-word request to check a provider's key and address."
+commands.allow = ["chat_test_model"]
+
+[[permission]]
+identifier = "allow-chat-list-conversations"
+description = "List saved conversations."
+commands.allow = ["chat_list_conversations"]
+
+[[permission]]
+identifier = "allow-chat-get-conversation"
+description = "Read one conversation."
+commands.allow = ["chat_get_conversation"]
+
+[[permission]]
+identifier = "allow-chat-send"
+description = "Send a message and stream the reply."
+commands.allow = ["chat_send"]
+
+[[permission]]
+identifier = "allow-chat-cancel"
+description = "Stop a reply in progress."
+commands.allow = ["chat_cancel"]
+
+[[permission]]
+identifier = "allow-chat-answer"
+description = "Answer a question the assistant asked."
+commands.allow = ["chat_answer"]
+
+[[permission]]
+identifier = "allow-chat-update-conversation"
+description = "Rename, pin, rate or move a conversation."
+commands.allow = ["chat_update_conversation"]
+
+[[permission]]
+identifier = "allow-chat-delete-conversation"
+description = "Delete a conversation."
+commands.allow = ["chat_delete_conversation"]
+
+[[permission]]
+identifier = "allow-chat-list-projects"
+description = "List projects."
+commands.allow = ["chat_list_projects"]
+
+[[permission]]
+identifier = "allow-chat-save-project"
+description = "Create or update a project."
+commands.allow = ["chat_save_project"]
+
+[[permission]]
+identifier = "allow-chat-delete-project"
+description = "Delete a project, keeping its conversations."
+commands.allow = ["chat_delete_project"]
+
+[[permission]]
+identifier = "allow-chat-get-instructions"
+description = "Read the user's standing instructions."
+commands.allow = ["chat_get_instructions"]
+
+[[permission]]
+identifier = "allow-chat-save-instructions"
+description = "Save the user's standing instructions."
+commands.allow = ["chat_save_instructions"]
+
+[[permission]]
+identifier = "allow-chat-preview-instructions"
+description = "Generate a sample reply under draft instructions."
+commands.allow = ["chat_preview_instructions"]
+
+[[permission]]
+identifier = "allow-chat-export-conversation"
+description = "Save a conversation as Markdown to a file the user picks."
+commands.allow = ["chat_export_conversation"]
+
+[[permission]]
+identifier = "allow-chat-get-memories"
+description = "Read what the assistant remembers about the user."
+commands.allow = ["chat_get_memories"]
+
+[[permission]]
+identifier = "allow-chat-add-memory"
+description = "Add a memory."
+commands.allow = ["chat_add_memory"]
+
+[[permission]]
+identifier = "allow-chat-update-memory"
+description = "Edit a memory."
+commands.allow = ["chat_update_memory"]
+
+[[permission]]
+identifier = "allow-chat-delete-memory"
+description = "Delete one memory, or all of them."
+commands.allow = ["chat_delete_memory"]
+
+[[permission]]
+identifier = "allow-chat-set-memory-enabled"
+description = "Turn memory on or off."
+commands.allow = ["chat_set_memory_enabled"]
+
+[[permission]]
+identifier = "allow-chat-list-skills"
+description = "List skills."
+commands.allow = ["chat_list_skills"]
+
+[[permission]]
+identifier = "allow-chat-save-skill"
+description = "Create or update a skill."
+commands.allow = ["chat_save_skill"]
+
+[[permission]]
+identifier = "allow-chat-delete-skill"
+description = "Delete a user skill."
+commands.allow = ["chat_delete_skill"]
+
+[[permission]]
+identifier = "allow-chat-set-skill-enabled"
+description = "Turn a skill on or off."
+commands.allow = ["chat_set_skill_enabled"]
+
+[[permission]]
+identifier = "allow-chat-import-skill"
+description = "Import a SKILL.md the user picks."
+commands.allow = ["chat_import_skill"]
+
+[[permission]]
+identifier = "allow-chat-get-canvas"
+description = "Read a canvas."
+commands.allow = ["chat_get_canvas"]
+
+[[permission]]
+identifier = "allow-chat-save-canvas"
+description = "Save the user's edit to a canvas as a new version."
+commands.allow = ["chat_save_canvas"]
+
+[[permission]]
+identifier = "allow-chat-export-canvas"
+description = "Save a canvas as Markdown to a file the user picks."
+commands.allow = ["chat_export_canvas"]
+
+[[permission]]
+identifier = "allow-chat-list-agents"
+description = "List agents."
+commands.allow = ["chat_list_agents"]
+
+[[permission]]
+identifier = "allow-chat-agent-templates"
+description = "List ready-made agents."
+commands.allow = ["chat_agent_templates"]
+
+[[permission]]
+identifier = "allow-chat-save-agent"
+description = "Create or update an agent."
+commands.allow = ["chat_save_agent"]
+
+[[permission]]
+identifier = "allow-chat-delete-agent"
+description = "Delete an agent."
+commands.allow = ["chat_delete_agent"]
+
+[[permission]]
+identifier = "allow-chat-list-tasks"
+description = "List scheduled tasks."
+commands.allow = ["chat_list_tasks"]
+
+[[permission]]
+identifier = "allow-chat-save-task"
+description = "Create or update a scheduled task."
+commands.allow = ["chat_save_task"]
+
+[[permission]]
+identifier = "allow-chat-delete-task"
+description = "Delete a scheduled task."
+commands.allow = ["chat_delete_task"]
+
+[[permission]]
+identifier = "allow-chat-run-task"
+description = "Run a scheduled task now."
+commands.allow = ["chat_run_task"]
+
+[[permission]]
+identifier = "allow-chat-list-libraries"
+description = "List document libraries."
+commands.allow = ["chat_list_libraries"]
+
+[[permission]]
+identifier = "allow-chat-create-library"
+description = "Create a document library."
+commands.allow = ["chat_create_library"]
+
+[[permission]]
+identifier = "allow-chat-delete-library"
+description = "Delete a document library and its documents."
+commands.allow = ["chat_delete_library"]
+
+[[permission]]
+identifier = "allow-chat-add-documents"
+description = "Add documents the user picks to a library."
+commands.allow = ["chat_add_documents"]
+
+[[permission]]
+identifier = "allow-chat-remove-document"
+description = "Remove a document from a library."
+commands.allow = ["chat_remove_document"]
+
+[[permission]]
+identifier = "allow-chat-search-libraries"
+description = "Search document libraries."
+commands.allow = ["chat_search_libraries"]
+
+[[permission]]
+identifier = "allow-chat-get-privacy"
+description = "Read the privacy filter setting."
+commands.allow = ["chat_get_privacy"]
+
+[[permission]]
+identifier = "allow-chat-set-privacy"
+description = "Turn the privacy filter on or off."
+commands.allow = ["chat_set_privacy"]
+
+[[permission]]
+identifier = "allow-chat-project-library"
+description = "Get or create a project's file library."
+commands.allow = ["chat_project_library"]
+
+[[permission]]
+identifier = "allow-chat-export-all"
+description = "Export all conversations and data to a folder the user picks."
+commands.allow = ["chat_export_all"]
+
+[[permission]]
+identifier = "allow-chat-list-apps"
+description = "List the mini apps the assistant built."
+commands.allow = ["chat_list_apps"]
+
+[[permission]]
+identifier = "allow-chat-keep-conversation"
+description = "Keep a temporary conversation, such as a chosen comparison answer."
+commands.allow = ["chat_keep_conversation"]
+
+[[permission]]
+identifier = "allow-chat-media-models"
+description = "Read the image and speech models."
+commands.allow = ["chat_media_models"]
+
+[[permission]]
+identifier = "allow-chat-set-media-models"
+description = "Choose the image and speech models."
+commands.allow = ["chat_set_media_models"]
+
+[[permission]]
+identifier = "allow-chat-transcribe"
+description = "Transcribe voice input."
+commands.allow = ["chat_transcribe"]
+
+[[permission]]
+identifier = "allow-chat-code-changes"
+description = "Show the working tree changes of a coding session."
+commands.allow = ["chat_code_changes"]
+
+[[permission]]
+identifier = "allow-chat-workflows"
+description = "List workflows."
+commands.allow = ["chat_workflows"]
+
+[[permission]]
+identifier = "allow-chat-save-workflow"
+description = "Save a workflow."
+commands.allow = ["chat_save_workflow"]
+
+[[permission]]
+identifier = "allow-chat-delete-workflow"
+description = "Delete a workflow."
+commands.allow = ["chat_delete_workflow"]
+
+[[permission]]
+identifier = "allow-chat-code-runs-allowed"
+description = "Read whether code runs without asking."
+commands.allow = ["chat_code_runs_allowed"]
+
+[[permission]]
+identifier = "allow-chat-set-code-runs-allowed"
+description = "Set whether code runs without asking."
+commands.allow = ["chat_set_code_runs_allowed"]
+
+[[permission]]
+identifier = "allow-chat-workbench-status"
+description = "Read the agent workbench's state."
+commands.allow = ["chat_workbench_status"]
+
+[[permission]]
+identifier = "allow-chat-workbench-set-enabled"
+description = "Turn the agent workbench on or off."
+commands.allow = ["chat_workbench_set_enabled"]
+
+[[permission]]
+identifier = "allow-chat-workbench-build"
+description = "Build the agent workbench image."
+commands.allow = ["chat_workbench_build"]
+
+[[permission]]
+identifier = "allow-chat-speak"
+description = "Read an answer aloud."
+commands.allow = ["chat_speak"]
+
+[[permission]]
+identifier = "allow-chat-select-version"
+description = "Switch between answers to the last prompt."
+commands.allow = ["chat_select_version"]
+
+[[permission]]
+identifier = "allow-chat-import-conversations"
+description = "Import a ChatGPT or Claude export."
+commands.allow = ["chat_import_conversations"]
+
+[[permission]]
+identifier = "allow-chat-steer"
+description = "Add guidance to a running turn."
+commands.allow = ["chat_steer"]
+
+[[permission]]
+identifier = "allow-chat-code-commit"
+description = "Commit a coding session's changes."
+commands.allow = ["chat_code_commit"]
+
+[[permission]]
+identifier = "allow-chat-code-pull-request"
+description = "Push a coding session's branch and open a pull request."
+commands.allow = ["chat_code_pull_request"]
+
+[[permission]]
+identifier = "allow-chat-knowledge-pages"
+description = "List knowledge pages."
+commands.allow = ["chat_knowledge_pages"]
+
+[[permission]]
+identifier = "allow-chat-save-knowledge-page"
+description = "Save a knowledge page."
+commands.allow = ["chat_save_knowledge_page"]
+
+[[permission]]
+identifier = "allow-chat-delete-knowledge-page"
+description = "Delete a knowledge page."
+commands.allow = ["chat_delete_knowledge_page"]
+
+[[permission]]
+identifier = "allow-chat-read-spreadsheet"
+description = "Read an uploaded workbook."
+commands.allow = ["chat_read_spreadsheet", "chat_read_document", "chat_notify", "chat_take_link", "chat_bookmark", "chat_versions", "chat_document_text", "chat_api_server_log", "chat_import_skill_url", "chat_add_web_page", "chat_diagnostics_prefs", "chat_set_diagnostics_prefs", "chat_export_diagnostics", "chat_backup_model", "chat_set_backup_model", "chat_move_document", "chat_get_defaults", "chat_set_defaults", "chat_version_texts", "chat_list_canvases", "chat_improve_text", "chat_recent_files", "chat_remember_files", "chat_forget_recent_file", "chat_delete_exchanges", "chat_import_plugin", "chat_import_archive", "chat_open_app_window", "chat_plugin_marketplace", "chat_get_hooks", "chat_save_hooks", "chat_create_worktree", "chat_file_memory", "chat_router_models", "chat_set_router_models", "chat_complete_prompt", "chat_search_everything", "chat_answer_from_results", "chat_calendar_sources", "chat_set_calendar_sources", "chat_pick_calendar_file", "browser_prefs", "set_browser_prefs", "app_menu_action", "chat_set_keep_sensitive_out", "chat_set_memory_update", "dictation_prefs", "set_dictation_prefs", "chat_vault_list", "chat_vault_save", "chat_vault_delete", "chat_sync_settings", "chat_save_sync_settings", "chat_sync_now", "chat_encryption_status", "chat_set_encryption", "chat_share_link", "chat_usage_breakdown", "chat_task_comment", "chat_open_preview",
+  "chat_check_vector_store",
+  "chat_export_skill_catalog",
+  "chat_skill_catalog",
+  "chat_add_skill_catalog",
+  "chat_remove_skill_catalog",
+  "chat_install_catalog_skill",
+  "chat_discord",
+  "chat_set_discord_token",
+  "chat_update_discord",
+  "chat_slack",
+  "chat_set_slack_tokens",
+  "chat_update_slack",
+  "chat_telegram",
+  "chat_set_telegram_token",
+  "chat_update_telegram",
+  "chat_playable_video",
+  "chat_audit_summary",
+  "chat_export_audit",
+  "chat_clear_audit",
+  "chat_live_events",
+  "chat_open_workspace_file",
+  "chat_video_poster",
+  "chat_agent_market",
+  "chat_install_market_agent",
+  "chat_set_share_expiry",
+  "chat_functions",
+  "chat_save_function",
+  "chat_delete_function",
+  "chat_test_function",
+  "chat_local_models",
+  "chat_download_local_model",
+  "chat_cancel_local_model",
+  "chat_remove_local_model",
+  "chat_workspace_text",
+  "chat_library_connectors",
+  "chat_set_library_connector", "chat_acp_agents", "chat_reset_agent_env", "chat_extraction", "chat_code_pr_status", "chat_set_image_server", "chat_image_server_models", "chat_agent_browser", "chat_outputs", "chat_save_output", "chat_save_bytes", "chat_agent_files", "chat_learning", "chat_uploads", "chat_remove_upload", "chat_upload_to_library", "chat_agent_routing", "chat_emoji_status", "chat_emoji_index", "chat_emoji_install", "chat_open_chat_window", "chat_set_production", "chat_draft_workflow", "chat_skill_add_files", "chat_skill_read_file", "chat_skill_write_file", "chat_skill_remove_file", "chat_read_article", "chat_folder_files", "chat_read_video", "chat_find_coding_sessions", "chat_import_coding_sessions", "chat_folder_read", "chat_shared_links", "chat_stop_share", "chat_ui_languages", "chat_show_window", "chat_record_start", "chat_record_status", "chat_record_stop", "chat_record_draft", "chat_record_discard", "chat_ui_translations", "chat_ui_coverage", "chat_translate_ui", "chat_reset_ui_translations"]
+
+[[permission]]
+identifier = "allow-chat-terminal-list"
+description = "List background commands."
+commands.allow = ["chat_terminal_list"]
+
+[[permission]]
+identifier = "allow-chat-terminal-start"
+description = "Start a background command."
+commands.allow = ["chat_terminal_start"]
+
+[[permission]]
+identifier = "allow-chat-terminal-stop"
+description = "Stop a background command."
+commands.allow = ["chat_terminal_stop"]
+
+[[permission]]
+identifier = "allow-chat-terminal-clear"
+description = "Forget finished background commands."
+commands.allow = ["chat_terminal_clear"]
+
+[[permission]]
+identifier = "allow-chat-audio-settings"
+description = "Read the audio settings."
+commands.allow = ["chat_audio_settings"]
+
+[[permission]]
+identifier = "allow-chat-save-audio-settings"
+description = "Save the audio settings and keys."
+commands.allow = ["chat_save_audio_settings"]
+
+[[permission]]
+identifier = "allow-chat-audio-voices"
+description = "List text-to-speech voices."
+commands.allow = ["chat_audio_voices"]
+
+[[permission]]
+identifier = "allow-chat-search"
+description = "Search conversations by title and content."
+commands.allow = ["chat_search"]
+
+[[permission]]
+identifier = "allow-chat-trash"
+description = "List deleted conversations."
+commands.allow = ["chat_trash"]
+
+[[permission]]
+identifier = "allow-chat-restore-conversation"
+description = "Restore a deleted conversation."
+commands.allow = ["chat_restore_conversation"]
+
+[[permission]]
+identifier = "allow-chat-delete-forever"
+description = "Delete conversations from the trash for good."
+commands.allow = ["chat_delete_forever"]
+
+[[permission]]
+identifier = "allow-chat-storage-health"
+description = "Read how the stored data is doing."
+commands.allow = ["chat_storage_health"]
+
+[[permission]]
+identifier = "allow-chat-recover-conversation"
+description = "Replace a damaged conversation with its backup."
+commands.allow = ["chat_recover_conversation"]
+
+[[permission]]
+identifier = "allow-chat-context-breakdown"
+description = "Read what fills a conversation's context window."
+commands.allow = ["chat_context_breakdown"]
+
+[[permission]]
+identifier = "allow-chat-fork-conversation"
+description = "Branch a conversation into a new one."
+commands.allow = ["chat_fork_conversation"]
+
+[[permission]]
+identifier = "allow-chat-agent-notebook"
+description = "Read an agent's notebook."
+commands.allow = ["chat_agent_notebook"]
+
+[[permission]]
+identifier = "allow-chat-save-agent-notebook"
+description = "Save an agent's notebook."
+commands.allow = ["chat_save_agent_notebook"]
+
+[[permission]]
+identifier = "allow-chat-agent-spend"
+description = "Read what agents spent this month."
+commands.allow = ["chat_agent_spend"]
+
+[[permission]]
+identifier = "allow-chat-draft-agent"
+description = "Draft an agent from a description."
+commands.allow = ["chat_draft_agent"]
+
+[[permission]]
+identifier = "allow-chat-usage-month"
+description = "Read this month's usage."
+commands.allow = ["chat_usage_month"]
+
+[[permission]]
+identifier = "allow-chat-subagent-transcript"
+description = "Read what a sub-agent did."
+commands.allow = ["chat_subagent_transcript"]
+
+[[permission]]
+identifier = "allow-chat-code-files"
+description = "List the files of a coding session's folder."
+commands.allow = ["chat_code_files"]
+
+[[permission]]
+identifier = "allow-chat-code-read-file"
+description = "Read a file of a coding session's folder."
+commands.allow = ["chat_code_read_file"]
+
+[[permission]]
+identifier = "allow-chat-favicon"
+description = "Read a site's icon for sources."
+commands.allow = ["chat_favicon"]
+
+[[permission]]
+identifier = "allow-chat-link-preview"
+description = "Read a web page's preview for a citation."
+commands.allow = ["chat_link_preview"]
+
+[[permission]]
+identifier = "allow-chat-debug"
+description = "Read a session's raw history for the Debug panel."
+commands.allow = ["chat_debug"]
+
+[[permission]]
+identifier = "allow-chat-save-shared-page"
+description = "Save a conversation as a web page to share."
+commands.allow = ["chat_save_shared_page"]
+
+[[permission]]
+identifier = "allow-chat-set-params"
+description = "Save a conversation's own model settings."
+commands.allow = ["chat_set_params"]
+
+[[permission]]
+identifier = "allow-chat-follow-ups"
+description = "Suggest follow-up messages after a reply."
+commands.allow = ["chat_follow_ups"]
+
+[[permission]]
+identifier = "allow-chat-embeddings"
+description = "Set up semantic search for libraries and embed their documents."
+commands.allow = ["chat_embedding_settings", "chat_save_embedding_settings", "chat_index_libraries"]
+
+[[permission]]
+identifier = "allow-chat-search-settings"
+description = "Choose the web search engine."
+commands.allow = ["chat_search_settings", "chat_save_search_settings"]
+
+[[permission]]
+identifier = "allow-chat-exchange-and-bundles"
+description = "Delete a message and its reply, export and import agents, export a conversation as JSON."
+commands.allow = ["chat_delete_exchange", "chat_rewrite_message", "chat_export_agent", "chat_import_agent", "chat_export_conversation_json"]
+
+[[permission]]
+identifier = "allow-chat-api-server"
+description = "Turn the local OpenAI-compatible API on or off and show its token."
+commands.allow = ["chat_api_server", "chat_save_api_server"]
+
+[[permission]]
+identifier = "allow-chat-task-calendar"
+description = "List planned task runs for the calendar."
+commands.allow = ["chat_task_calendar"]
+
+[[permission]]
+identifier = "allow-chat-openapi"
+description = "Add, refresh, switch and remove OpenAPI tool servers."
+commands.allow = ["chat_openapi_servers", "chat_add_openapi_server", "chat_refresh_openapi_server", "chat_toggle_openapi_server", "chat_remove_openapi_server"]
+
+[[permission]]
+identifier = "allow-chat-computer"
+description = "Turn computer use on or off."
+commands.allow = ["chat_computer_settings", "chat_save_computer_settings"]
+
+[[permission]]
+identifier = "allow-chat-context-and-feedback"
+description = "Read a conversation as text for context, and keep why a reply was rated down."
+commands.allow = ["chat_conversation_text", "chat_rate_reason", "chat_save_file", "chat_run_snippet", "chat_snippet_languages", "chat_translate"]
+
+[[permission]]
+identifier = "allow-chat-library-folders"
+description = "Mirror folders into libraries and sync them."
+commands.allow = ["chat_add_library_folder", "chat_remove_library_folder", "chat_sync_library"]
+
+[[permission]]
+identifier = "allow-chat-skill-history"
+description = "List and restore earlier versions of a skill."
+commands.allow = ["chat_skill_history", "chat_restore_skill"]
+
+[[permission]]
+identifier = "allow-chat-arena"
+description = "Record comparison results and show the model leaderboard."
+commands.allow = ["chat_arena_record", "chat_arena_board", "chat_arena_reset"]
+
+[[permission]]
+identifier = "allow-chat-custom-tools"
+description = "Write, test and remove your own sandboxed tools."
+commands.allow = ["chat_custom_tools", "chat_save_custom_tool", "chat_delete_custom_tool", "chat_test_custom_tool"]
+
+[[permission]]
+identifier = "allow-dictation-pill"
+description = "The dictation pill: transcribe what was said and type it into the app that had focus."
+commands.allow = ["chat_transcribe", "dictation_prefs", "dictation_insert", "dictation_cancel"]
+
+[[permission]]
+identifier = "allow-recorder-pill"
+description = "The Recording pill shown while a task is recorded: its time, and Stop or Cancel."
+commands.allow = ["chat_record_status", "chat_record_stop"]

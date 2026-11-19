@@ -9,7 +9,9 @@
     "dev": "tauri dev",
     "build:webview": "node scripts/build-webview.mjs",
     "icons:desktop": "node scripts/build-desktop-icons.mjs",
-    "typecheck": "tsc --noEmit -p webview"
+    "typecheck": "tsc --noEmit -p webview",
+    "i18n:catalog": "node scripts/ui-strings.mjs",
+    "check:i18n": "node scripts/check-i18n.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4",
@@ -20,7 +22,10 @@
   },
   "dependencies": {
     "@tauri-apps/plugin-autostart": "^2.5.1",
-    "@tauri-apps/plugin-log": "^2.9.1"
+    "@tauri-apps/plugin-log": "^2.9.1",
+    "dompurify": "^3.4.18",
+    "katex": "^0.16.47",
+    "marked": "^16.4.2"
   },
   "packageManager": "npm@12.0.1+sha512.2f94fd8bf600416416a934bfc59c4991e8bff7372ef7d842784e2a8b8d48c81555ee645069ddea73625fb8e92dc261feab0188fd5dab6c22fefd46316f5f9140"
 }

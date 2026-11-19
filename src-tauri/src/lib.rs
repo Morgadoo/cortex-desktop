@@ -1,9 +1,12 @@
 mod account;
 mod app;
 mod browser_login;
+mod chat;
 mod dialog;
+mod dictation;
 mod downloads;
 mod feature_flags;
+pub mod inapp_browser;
 mod main_window;
 #[cfg(any(target_os = "macos", target_os = "linux", test))]
 mod microphone;
@@ -47,6 +50,10 @@ pub const LUMO_URL: &str = match option_env!("LUMO_URL") {
     Some(url) => url,
     None => "https://lumo.proton.dev",
 };
+
+/// Whether the main window loads the hosted Lumo web app instead of the native chat page. Set
+/// `LUMO_HOSTED=1` at build time to get the old behaviour.
+pub const HOSTED_WEB_APP: bool = option_env!("LUMO_HOSTED").is_some();
 
 pub fn e2e_testing_enabled() -> bool {
     std::env::var_os("LUMO_E2E_TESTING").is_some_and(|v| !v.is_empty())

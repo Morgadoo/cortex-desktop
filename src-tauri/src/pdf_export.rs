@@ -8,6 +8,9 @@
 //! macOS only for now. Elsewhere the bridge does not expose `exportPdf`, so the web app keeps its
 //! image-page PDF fallback.
 
+// Rendering is macOS-only; elsewhere these helpers wait for a backend.
+#![cfg_attr(not(target_os = "macos"), allow(dead_code, unused_imports))]
+
 use serde::Serialize;
 use tauri::{Manager, State, Webview};
 

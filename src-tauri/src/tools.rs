@@ -81,6 +81,7 @@ pub async fn swap_account(app_handle: &AppHandle, account: Option<AccountId>) {
                 registry.register(BashConnector::from_settings(app_handle, &account));
                 registry.register(proton_mail);
                 registry.register(luminance);
+                registry.register(connectors::browser::BrowserConnector::new());
                 if crate::e2e_testing_enabled() {
                     connectors::echo::register(&registry);
                 }

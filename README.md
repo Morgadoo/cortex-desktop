@@ -2,14 +2,136 @@
   <img src="src-tauri/icons/app-icon.png" alt="Lumo" width="128" height="128">
 </p>
 
-<h1 align="center">Lumo Desktop</h1>
+<h1 align="center">Lumo</h1>
 
 <p align="center">
-  The desktop app for <a href="https://lumo.proton.me">Lumo</a>, Proton's privacy-first AI assistant.<br>
-  macOS · Windows · Linux
+  An open-source desktop AI workspace, in the spirit of Mistral Vibe: chat, research, code and agents,<br>
+  with any model provider. Built in Rust on <a href="https://rig.rs">rig</a> and <a href="https://tauri.app">Tauri</a>.<br>
+  macOS · Windows · Linux · GPL-3.0
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/app-panel.png" alt="A mini app built in chat, open in the side panel" width="860">
 </p>
 
 ---
+
+Lumo reimplements Mistral Vibe's Work and Code experience as a native, local-first app. Every model call
+happens in Rust through rig, so it works with OpenAI, Anthropic, Gemini, Mistral, xAI, DeepSeek, OpenRouter,
+Groq, Together, Perplexity, Cohere, Moonshot, Z.ai, local Ollama or llama.cpp, or any OpenAI-compatible
+gateway. Conversations, knowledge and settings stay on your computer; API keys live in the OS keychain.
+
+[docs/feature-parity.md](docs/feature-parity.md) compares it with Mistral Vibe screen by screen, item by item
+from Vibe's changelog and documentation, and with Open WebUI, LibreChat, LobeHub, Onyx, Osaurus and OpenBot.
+
+## What it does
+
+**Work, Code and Agents**
+- **Work**: chat, research and documents, with Fast or Think, a Claude-style mode menu (Auto, Accept edits,
+  Plan, Ask; Shift+Tab), steering while a task runs (Enter) or queueing for after (Alt+Enter), Stop,
+  suggested follow-ups, `/` commands, prompt `{{variables}}`, per-chat model settings, and LaTeX.
+- **Code**: sessions bound to a folder. The model knows the branch, uncommitted files and `AGENTS.md`; Files,
+  Changes (unified or split diff), Terminal (background commands) and Debug panels; commit and open a pull
+  request.
+- **Agents**: a workforce of agents drafted from one sentence, each with instructions, model and backup model,
+  a notebook it keeps itself, tool policies (allowed, ask first, blocked), scheduled tasks, a monthly budget,
+  and hand-offs between agents.
+
+**Grounded answers**
+- Web search with site favicons, hover cards (image, title, description) and a Sources panel.
+- Libraries: keyword (BM25) retrieval, plus semantic search with any OpenAI-compatible embedding model
+  (Ollama, LM Studio, OpenAI, Mistral), fused by rank; folders mirrored and kept in sync; photos and scans
+  read by your model (OCR); cited with numbered footnotes.
+- Web search keyless by default, or through SearXNG, Brave Search or Tavily.
+- The assistant searches and reads your earlier chats; any chat can be attached to another as context.
+- Knowledge: facts and pages the model saves and recalls when relevant; you can edit both.
+- Deep research with parallel sub-agents, whose every step you can open.
+
+**Work products**
+- Canvases with versions, a Changes view and restore; mini apps that run sandboxed in a side panel with
+  tabs; spreadsheets with several sheets (Excel in and out); Mermaid diagrams and Marp slides; a Preview /
+  Code switch on all of them.
+- Code interpreter (`run_code`: Python, JavaScript, Bash in a bubblewrap sandbox; code blocks in answers have
+  Run and Download buttons), image generation, and voice: dictation, read-aloud and a hands-free voice
+  conversation with any OpenAI-compatible, ElevenLabs or xAI speech service, or the system voice.
+
+**Context and control**
+- Skills (`/` or `@`), Workflows, Projects with shared context, Connectors to any MCP server (tools load on
+  demand past 30), OpenAPI tool servers (each operation a tool), Instructions.
+- Scheduled tasks on a timer or when new files arrive in a folder, with a calendar of planned and past runs.
+- Computer use (off by default): the assistant sees the screen and clicks and types, each action under the
+  approval mode.
+- A local OpenAI-compatible API (off by default, this computer only, key required) so scripts and other apps
+  can use the models set up here.
+- Approvals that explain why they ask; hard-to-undo commands always ask; unattended runs cannot change
+  anything unless allowed; an optional personal-data filter before cloud models.
+- Context engineering: old tool results are cleared, long chats are summarized at 60% of the window, and a
+  context view shows what fills it.
+
+**Built to be used for years**
+- Search everything ever said (Ctrl+K, which is also a command palette), pinned chats, archive, tags, branches.
+- Daily backups, a 30-day trash, damage detection with restore, and an index that keeps a long history fast.
+- Import from ChatGPT and Claude; export everything, a chat as Markdown or JSON, or as a single web page.
+- Agents export and import as one file with their notebook and skills.
+- Drafts stay with their chat across restarts; long pastes become attachments; messages can be deleted.
+
+<p align="center">
+  <img src="docs/screenshots/sources-panel.png" alt="Sources panel" width="420">
+  <img src="docs/screenshots/agent-page.png" alt="An agent with its budget and notebook" width="420">
+</p>
+
+## Keyboard shortcuts
+
+| Keys | Action |
+|---|---|
+| Ctrl+K | Command palette and search |
+| Ctrl+N | New chat |
+| Ctrl+1 … 9 | Open the chats in the sidebar |
+| Ctrl+Shift+1 / 2 / 3 | Work / Code / Agents |
+| Ctrl+B | Toggle the sidebar |
+| Ctrl+, | Settings |
+| Shift+Tab | Next mode (Auto, Accept edits, Plan, Ask) |
+| Up / Down, Ctrl+R | Earlier prompts, search earlier prompts |
+| Ctrl+O | Fold or unfold all activity |
+| Enter / Alt+Enter while a task runs | Steer it now / queue the message for after |
+| `/` | Commands (/new, /temporary, /model, /voice, /fork, /context, /settings, /export) and skills |
+
+## Providers and keys
+
+Add providers in **Settings → Providers & models**: keys go to the OS keychain, or come from the provider's usual
+environment variable (`OPENAI_API_KEY`, `XAI_API_KEY`, …). A base URL points a provider at a proxy or compatible
+gateway. Speech-to-text and text-to-speech engines are set separately in **Settings → Audio**.
+
+## How it is built
+
+```
+webview/pages/app/   TypeScript UI (no framework): chat, canvases, side panel, settings
+        ↕  Tauri IPC (allowlisted commands) and chat://event streams
+src-tauri/src/chat/  Rust chat engine on rig: turns, tools, context, storage
+src-tauri/src/tools/ connector registry: files, shell, browser, MCP; approvals; keychain
+```
+
+| Module | Role |
+|---|---|
+| `engine.rs` | One turn: stream the reply, run the tools it calls (in parallel where safe), repeat; failover to a backup model |
+| `providers.rs` | Providers, base URLs and models, from rig's catalog or a local server's own list |
+| `tools.rs`, `deferred.rs` | Connector tools under the approval mode, smart-approve, Auto's check; tools loaded on demand |
+| `context.rs` | Context budget: clearing old results, summaries, token and cost tracking, the context view |
+| `store.rs`, `index.rs`, `backup.rs` | Conversations as rig's message history (versioned files), the search index, backups and trash |
+| `subagents.rs`, `agents.rs`, `tasks.rs` | Parallel workers, the agent workforce, the scheduler |
+| `builtins.rs`, `search.rs`, `libraries.rs`, `knowledge.rs`, `memory.rs` | Web search, retrieval, knowledge |
+| `canvas.rs`, `sheets.rs`, `sandbox.rs`, `media.rs`, `audio.rs` | Canvases and apps (`lumoapp://`), spreadsheets, code runs, images, voice |
+| `code.rs`, `terminal.rs` | Coding sessions: git, Changes, Files, background commands |
+| `favicon.rs`, `preview.rs` | Site icons and link previews, fetched and cached for the page's strict CSP |
+| `skills.rs`, `workflows.rs`, `import.rs`, `privacy.rs` | Skills, workflows, ChatGPT and Claude import, the personal-data filter |
+| `embeddings.rs` | Semantic search: embeddings, cached vectors, reciprocal rank fusion with BM25 |
+| `openapi.rs`, `computer.rs` | OpenAPI tool servers; computer use (screenshots, mouse, keyboard) |
+| `api_server.rs` | The local OpenAI-compatible API (axum, 127.0.0.1, bearer key) |
+
+## Hosted mode (the original Lumo Desktop)
+
+This project began as Proton's Lumo Desktop, a native shell around the hosted Lumo web app. Build with
+`LUMO_HOSTED=1` to get that app back; the rest of this section describes it.
 
 Lumo Desktop wraps the Lumo web app in a native [Tauri](https://tauri.app) shell and gives it access to your
 computer and your tools, with your approval:
@@ -25,7 +147,7 @@ computer and your tools, with your approval:
 - **Browser sign-in**: you sign in with your own browser, so security keys and passkeys work.
 - **Automatic updates**: signed updates on every platform.
 
-## Supported platforms
+### Supported platforms
 
 | Platform | Package |
 |---|---|
@@ -33,7 +155,7 @@ computer and your tools, with your approval:
 | Windows | `.msi` and `-setup.exe` installer |
 | Linux | `.deb` and `.rpm`, for Ubuntu 24.04+ and Fedora 40+ |
 
-## Architecture
+### Architecture
 
 ```
         ┌──────────────────────────────┐
@@ -62,7 +184,7 @@ computer and your tools, with your approval:
 - **The bridge contract spans two repos**: `webview/bridges/connectors.ts` and the web app's `desktop-tools.ts`
   must agree. The E2E suite builds its stub from a live checkout of the web clients on every run to catch drift.
 
-### Project layout
+#### Project layout
 
 ```
 webview/
@@ -93,14 +215,14 @@ src-tauri/
 └── tauri.conf.json
 ```
 
-### Sign-in
+#### Sign-in
 
 WKWebView does not dispatch WebAuthn, so security keys and passkeys cannot work inside the webview. Sign-in
 therefore happens in the user's own browser: the app starts on a bundled `login.html`, sends the user to
 Proton Account, and receives the session back through Proton's session-fork protocol, which the webview
 redeems before loading the web app. See `src-tauri/src/browser_login.rs`.
 
-### Connectors
+#### Connectors
 
 Connectors are registered at startup into a `ToolRegistry` and exposed to the web app as OpenAI-format tools
 named `{connector_id}__{tool_name}`.
@@ -145,14 +267,11 @@ npm install
 npm run dev
 ```
 
-By default the app loads the web app from `https://lumo.proton.dev`, which is a local checkout of Proton's web
-clients. To develop against production instead, set `LUMO_URL`:
+The native app does not sign in or contact Proton. On first start, add a provider in **Settings → Providers &
+models**.
 
-```bash
-LUMO_URL=https://lumo.proton.me npm run dev
-```
-
-Sign-in is required to use the app. Proton developers can use dev accounts on the internal test environments.
+For the hosted mode, build with `LUMO_HOSTED=1`; it loads the web app from `LUMO_URL` (by default
+`https://lumo.proton.dev`, a local checkout of Proton's web clients) and requires a Proton sign-in.
 
 ### Dev loop
 
@@ -207,8 +326,21 @@ accounts/<UserID>/connector_state.json   enable flags, per-tool approval policie
 accounts/<UserID>/mcp_tools/             cached tool lists per MCP server id
 ```
 
-Secrets (OAuth tokens, API keys, MCP server credentials) are stored in the OS keychain under the service
-`me.proton.lumo-app`.
+The native app keeps its data under `chat/` in the same folder:
+
+```
+chat/conversations/        one JSON file per conversation (rig's message history, with a format version)
+chat/index/                the search index: sidebar rows and searchable text, rebuilt if deleted
+chat/backups/<date>/       each conversation as it was before its first change of the day; 30 days
+chat/trash/                deleted conversations, restorable for 30 days
+chat/canvases/, sandbox/   canvases and mini apps; code-run workspaces
+chat/agents/<id>/          each agent's notebook
+chat/favicons/, previews/  cached site icons and link previews
+chat/*.json                projects, knowledge, agents, tasks, providers, audio and other settings
+```
+
+Secrets (provider keys, OAuth tokens, API keys, MCP server credentials) are stored in the OS keychain under the
+service `me.proton.lumo-app`.
 
 ### Resetting MCP setup
 
@@ -239,4 +371,5 @@ repository.
 
 ## License
 
-Lumo Desktop is licensed under the [GNU General Public License v3.0](LICENSE).
+Lumo is licensed under the [GNU General Public License v3.0](LICENSE). It is not affiliated with Mistral AI;
+Mistral Vibe is the design reference.

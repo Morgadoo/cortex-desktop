@@ -785,7 +785,7 @@ button.copy-btn:hover:not(:disabled) {
     position: fixed;
     inset: 0;
     background: rgba(20, 16, 24, 0.45);
-    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
     display: none;
     align-items: center;
     justify-content: center;

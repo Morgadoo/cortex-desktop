@@ -173,6 +173,12 @@ pub fn startup(app: &AppHandle) {
     if crate::e2e_testing_enabled() {
         return;
     }
+    // The user can turn the check at start off (Settings → General → Privacy).
+    if crate::settings::get_config_dir(app)
+        .is_ok_and(|dir| !crate::reporting::load_prefs(&dir).update_checks)
+    {
+        return;
+    }
     // Acquire the update guard before spawning to prevent concurrent manual checks.
     if app.state::<UpdateState>().busy.swap(true, Ordering::SeqCst) {
         return;

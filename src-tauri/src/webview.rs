@@ -4,6 +4,9 @@ use tauri::{Manager, WebviewUrl};
 /// Bundled sign-in page, shown whenever there is no session to load the web app with.
 pub const LOGIN_PAGE: &str = "login.html";
 
+/// The native chat page the main window opens on.
+pub const APP_PAGE: &str = "index.html";
+
 /// Where the main window starts.
 pub fn main_window_url() -> WebviewUrl {
     if crate::e2e_testing_enabled() {
@@ -13,7 +16,14 @@ pub fn main_window_url() -> WebviewUrl {
         );
         WebviewUrl::App("e2e_testing_stub.html".into())
     } else {
-        WebviewUrl::App(LOGIN_PAGE.into())
+        WebviewUrl::App(
+            if crate::HOSTED_WEB_APP {
+                LOGIN_PAGE
+            } else {
+                APP_PAGE
+            }
+            .into(),
+        )
     }
 }
 
@@ -44,7 +54,8 @@ fn remember_login_page(app_handle: &tauri::AppHandle, url: &url::Url) {
 }
 
 fn resume_web_app(app_handle: &tauri::AppHandle) {
-    if crate::e2e_testing_enabled() {
+    // The native chat page is the app now; there is no hosted web app to resume.
+    if crate::e2e_testing_enabled() || !crate::HOSTED_WEB_APP {
         return;
     }
 
@@ -235,6 +246,14 @@ pub fn handle_navigation(app_handle: &tauri::AppHandle, url: &url::Url) -> bool 
         Navigation::Browser => {
             if is_proton(url) {
                 open_in_browser(url);
+            } else if crate::inapp_browser::is_web(url)
+                && crate::inapp_browser::prefs(app_handle).in_app
+            {
+                // Lumo's own browser, when chosen; the system browser is one menu item away.
+                if let Err(e) = crate::inapp_browser::open(app_handle, url) {
+                    error!("could not open Lumo's browser: {e}");
+                    confirm_and_open(app_handle, url.clone());
+                }
             } else {
                 confirm_and_open(app_handle, url.clone());
             }
@@ -309,7 +328,7 @@ fn confirm_and_open(app_handle: &tauri::AppHandle, url: url::Url) {
     crate::dialog::branded::show(
         app_handle,
         "Open link in your browser?",
-        format!("This link goes to {host}, outside Proton.\n\n{shown}"),
+        format!("This link goes to {host}, outside Lumo.\n\n{shown}"),
         Some(("Open", "Cancel")),
         crate::dialog::branded::Layout::IconOnLeft,
         move |accepted| {

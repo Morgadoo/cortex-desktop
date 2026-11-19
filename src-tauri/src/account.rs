@@ -72,6 +72,16 @@ impl ActiveAccount {
 ///
 /// The e2e stub is a bundled page with no Proton session, so nothing reports an account and every
 /// per-account path resolves to empty. Seeding keeps the suite on the per-account code paths.
+/// Acts as the one local profile the native chat app runs under, in place of a Proton account.
+pub fn seed_local_account(active: &ActiveAccount) {
+    match AccountId::parse(crate::chat::LOCAL_ACCOUNT) {
+        Ok(account) => {
+            active.set(Some(account));
+        }
+        Err(e) => error!("local account is not usable: {e}"),
+    }
+}
+
 pub fn seed_e2e_account(active: &ActiveAccount) {
     match AccountId::parse(E2E_ACCOUNT) {
         Ok(account) => {
@@ -122,8 +132,9 @@ pub fn clear_on_session_loss(app_handle: &AppHandle) {
 async fn become_account(app_handle: &AppHandle, next: Option<AccountId>) {
     // Under LUMO_E2E_TESTING the harness owns the account. The stub page carries no Proton
     // session, so an honoured report would clear the seeded account at startup and tear down the
-    // connectors the suite drives.
-    if crate::e2e_testing_enabled() {
+    // connectors the suite drives. The native chat app likewise runs under one local profile for
+    // its whole life.
+    if crate::e2e_testing_enabled() || !crate::HOSTED_WEB_APP {
         return;
     }
 
