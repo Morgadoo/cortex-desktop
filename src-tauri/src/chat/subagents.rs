@@ -7,20 +7,20 @@
 //! anything, can't change anything, and can't delegate further.
 
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 use futures::future::join_all;
-use rig_core::completion::message::{Message, ToolCall, ToolResultContent};
-use rig_core::completion::CompletionRequest;
+use futures::FutureExt;
+use rig_core::completion::Message;
 use rig_core::operation::Completion;
 use rig_core::DynModel;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tauri::{AppHandle, Manager};
 
-use super::engine::{emit, ChatEvent};
-use super::tools::{self, ApprovalMode, ChatTool, Outcome};
-use super::{builtins, context};
-use crate::tools::registry::ToolRegistry;
+use super::engine::{ChatEvent, TurnRequest};
+use super::host::Host;
+use super::tools::{ApprovalMode, ChatTool};
+use super::{builtins, context, store};
 
 /// Tool calls a worker may make before it must report.
 pub const MAX_WORKER_STEPS: usize = 8;
@@ -37,7 +37,6 @@ const WORKER_TOOLS: &[&str] = &[
     "browser__fetch",
     "filesystem__fs_search",
     "filesystem__fs_read",
-    "tool_results__read",
 ];
 
 #[derive(Debug, Clone, Deserialize)]
@@ -47,6 +46,24 @@ pub struct Task {
     /// The agent to hand the task to, by name; a generic worker when absent.
     #[serde(default)]
     pub agent: Option<String>,
+    /// The tools this task needs, by name, from those workers may use; all of them when empty.
+    #[serde(default)]
+    pub tools: Vec<String>,
+}
+
+/// The tools one task's worker gets: those workers may use, that its agent allows, and, when the
+/// task names some, only those (the kernel's `spawn(role, task, tools)`).
+pub fn task_tools(
+    worker_tools: &[ChatTool],
+    agent: Option<&super::agents::Agent>,
+    wanted: &[String],
+) -> Vec<ChatTool> {
+    worker_tools
+        .iter()
+        .filter(|t| agent.is_none_or(|a| super::agents::allows(a, &t.name)))
+        .filter(|t| wanted.is_empty() || wanted.contains(&t.name))
+        .cloned()
+        .collect()
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -122,6 +139,7 @@ pub fn rebuttal(task: &Task, own: usize, first: &[Report]) -> Task {
             others.join("\n\n")
         ),
         agent: task.agent.clone(),
+        tools: task.tools.clone(),
     }
 }
 
@@ -175,14 +193,13 @@ fn short(text: &str, max: usize) -> String {
     text.trim().to_string()
 }
 
-/// One line saying what a worker is doing, for the progress row.
-fn activity(call: &ToolCall) -> String {
-    let args = Value::Object(call.function.arguments.clone());
+/// One line saying what a worker is doing, from a tool call's name and arguments.
+fn activity_of(name: &str, args: &Value) -> String {
     let detail = ["query", "url", "path"]
         .iter()
         .find_map(|k| args.get(*k).and_then(Value::as_str))
         .unwrap_or_default();
-    let what = match call.function.name.as_str() {
+    let what = match name {
         builtins::WEB_SEARCH => "Searching",
         "browser__navigate" | "browser__fetch" => "Reading",
         "filesystem__fs_search" => "Searching files",
@@ -193,11 +210,110 @@ fn activity(call: &ToolCall) -> String {
     format!("{what} {}", short(detail, 80)).trim().to_string()
 }
 
+/// A worker's turn, as the engine runs it: progress goes to the parent chat's sub-agent row, the
+/// tool steps to the transcript, and everything else (data, models, approvals) is the parent's.
+struct WorkerHost {
+    parent: Arc<dyn Host>,
+    state: super::ChatState,
+    conversation_id: String,
+    call_id: String,
+    index: usize,
+    title: String,
+    steps: Mutex<Vec<Step>>,
+}
+
+impl WorkerHost {
+    fn progress(&self, status: &str, activity: String) {
+        self.parent.emit(ChatEvent::Subagent {
+            conversation_id: self.conversation_id.clone(),
+            call_id: self.call_id.clone(),
+            index: self.index,
+            title: self.title.clone(),
+            status: status.into(),
+            activity,
+        });
+    }
+
+    fn steps(&self) -> std::sync::MutexGuard<'_, Vec<Step>> {
+        self.steps.lock().unwrap_or_else(|p| p.into_inner())
+    }
+}
+
+#[async_trait::async_trait]
+impl Host for WorkerHost {
+    fn config_dir(&self) -> Result<std::path::PathBuf, String> {
+        self.parent.config_dir()
+    }
+
+    fn emit(&self, event: ChatEvent) {
+        match event {
+            ChatEvent::ToolStart {
+                name, arguments, ..
+            } => {
+                self.progress("running", activity_of(&name, &arguments));
+                self.steps().push(Step {
+                    kind: "call".into(),
+                    tool: name,
+                    input: arguments.to_string(),
+                    output: String::new(),
+                    is_error: false,
+                });
+            }
+            ChatEvent::ToolEnd {
+                output, is_error, ..
+            } => {
+                if let Some(step) = self
+                    .steps()
+                    .iter_mut()
+                    .rev()
+                    .find(|s| s.kind == "call" && s.output.is_empty())
+                {
+                    step.output = short(&output, STEP_OUTPUT_CHARS);
+                    step.is_error = is_error;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn chat_state(&self) -> &super::ChatState {
+        &self.state
+    }
+
+    fn registry(&self) -> &crate::tools::registry::ToolRegistry {
+        self.parent.registry()
+    }
+
+    async fn connect_model(&self, reference: &str) -> Result<DynModel<Completion>, String> {
+        self.parent.connect_model(reference).await
+    }
+
+    async fn approve(
+        &self,
+        tool: &ChatTool,
+        input: &Value,
+        reason: Option<&str>,
+    ) -> crate::tools::registry::ApprovalDecision {
+        self.parent.approve(tool, input, reason).await
+    }
+
+    fn notify(&self, title: &str, body: &str) {
+        self.parent.notify(title, body);
+    }
+
+    fn app(&self) -> Option<&tauri::AppHandle> {
+        self.parent.app()
+    }
+}
+
+/// One worker: a turn of the app's own agent loop, in a temporary conversation of its own, with
+/// the worker's brief as its whole system prompt and only the reading tools it may use. The same
+/// hooks, vault, activity log, privacy filter and backup model apply as in a chat.
 #[allow(clippy::too_many_arguments)]
 async fn run_one(
-    app: &AppHandle,
+    host: &Arc<dyn Host>,
     config_dir: &Path,
-    model: &DynModel<Completion>,
+    reference: &str,
     tools: &[ChatTool],
     conversation_id: &str,
     call_id: &str,
@@ -205,26 +321,19 @@ async fn run_one(
     task: Task,
     agent: Option<&super::agents::Agent>,
 ) -> Report {
-    let progress = |status: &str, activity: String| {
-        emit(
-            app,
-            ChatEvent::Subagent {
-                conversation_id: conversation_id.into(),
-                call_id: call_id.into(),
-                index,
-                title: task.title.clone(),
-                status: status.into(),
-                activity,
-            },
-        );
-    };
-    progress("running", "Starting".into());
-    let registry = app.state::<ToolRegistry>();
-    let definitions: Vec<_> = tools.iter().filter_map(ChatTool::definition).collect();
-    let system = worker_preamble(&task, agent);
-    let mut messages = vec![Message::user(format!("Begin: {}", task.title))];
-    let mut steps: Vec<Step> = Vec::new();
-    let finish = |steps: &mut Vec<Step>, report: Report| {
+    let worker = Arc::new(WorkerHost {
+        parent: host.clone(),
+        state: super::ChatState::default(),
+        conversation_id: conversation_id.into(),
+        call_id: call_id.into(),
+        index,
+        title: task.title.clone(),
+        steps: Mutex::new(Vec::new()),
+    });
+    worker.progress("running", "Starting".into());
+    let id = format!("{conversation_id}-worker-{}", uuid::Uuid::new_v4().simple());
+    let finish = |report: Report| {
+        let mut steps = worker.steps().clone();
         steps.push(Step {
             kind: "text".into(),
             tool: String::new(),
@@ -232,151 +341,124 @@ async fn run_one(
             output: report.report.clone(),
             is_error: report.status != "done",
         });
-        save_transcript(config_dir, call_id, index, steps);
+        save_transcript(config_dir, call_id, index, &steps);
+        // The worker's conversation and its saved long outputs are not kept.
+        let _ = store::delete_conversation(config_dir, &id);
+        let _ = std::fs::remove_dir_all(store::chat_dir(config_dir).join("tool-outputs").join(&id));
+        worker.progress(
+            report.status,
+            if report.status == "done" {
+                format!("Done after {} tool steps", report.steps)
+            } else {
+                short(&report.report, 120)
+            },
+        );
         report
     };
-
-    for step in 0..=MAX_WORKER_STEPS {
-        let last = step == MAX_WORKER_STEPS;
-        let request_messages = context::request_messages(&messages, None);
-        let Some((prompt, history)) = request_messages.split_last() else {
-            break;
-        };
-        let mut request = CompletionRequest::new(prompt.clone())
-            .messages(history.iter().cloned())
-            .preamble(if last {
-                format!("{system}\n\nNo more tool calls: write the report now.")
-            } else {
-                system.clone()
-            });
-        if !last {
-            request = request.tools(definitions.iter().cloned());
-        }
-        let response = match model.call(request).await {
-            Ok(r) => r,
-            Err(e) => {
-                progress("failed", short(&e.to_string(), 120));
-                return finish(
-                    &mut steps,
-                    Report {
-                        title: task.title.clone(),
-                        status: "failed",
-                        report: e.to_string(),
-                        steps: step,
-                    },
-                );
-            }
-        };
-        let calls: Vec<ToolCall> = response.tool_calls().cloned().collect();
-        if let Some(message) = response.message() {
-            messages.push(message);
-        }
-        if calls.is_empty() {
-            let mut text = response.text();
-            if !is_report(&text) {
-                // Out of tool calls, some models write one out as text instead of reporting.
-                // Ask once more, plainly, for the report.
-                messages.push(Message::user("Stop researching. Write your report now from what you have already found, as plain text. Do not call or mention tools."));
-                let request_messages = context::request_messages(&messages, None);
-                if let Some((prompt, history)) = request_messages.split_last() {
-                    let request = CompletionRequest::new(prompt.clone())
-                        .messages(history.iter().cloned())
-                        .preamble(system.clone());
-                    if let Ok(retry) = model.call(request).await {
-                        text = retry.text();
-                    }
-                }
-            }
-            if !is_report(&text) {
-                progress("failed", "No report".into());
-                return finish(
-                    &mut steps,
-                    Report {
-                        title: task.title.clone(),
-                        status: "failed",
-                        report: "The worker did not write a report.".into(),
-                        steps: step,
-                    },
-                );
-            }
-            let report = short(&text, MAX_REPORT_CHARS);
-            progress("done", format!("Done after {step} tool steps"));
-            return finish(
-                &mut steps,
-                Report {
-                    title: task.title.clone(),
-                    status: "done",
-                    report,
-                    steps: step,
-                },
-            );
-        }
-        progress("running", activity(&calls[0]));
-        let outcomes = join_all(calls.iter().map(|call| {
-            let name = call.function.name.to_string();
-            let args = Value::Object(call.function.arguments.clone());
-            let registry = &registry;
-            async move {
-                if builtins::is_builtin(&name) {
-                    builtins::run(config_dir, &name, &args).await
-                } else if let Some(tool) = tools.iter().find(|t| t.name == name) {
-                    tools::execute(
-                        app,
-                        registry,
-                        tool,
-                        args,
-                        ApprovalMode::Ask,
-                        conversation_id,
-                    )
-                    .await
-                } else {
-                    Outcome {
-                        text: format!("{name} is not available to workers."),
-                        is_error: true,
-                    }
-                }
-            }
-        }))
-        .await;
-        for (call, outcome) in calls.iter().zip(&outcomes) {
-            steps.push(Step {
-                kind: "call".into(),
-                tool: call.function.name.to_string(),
-                input: serde_json::to_string(&call.function.arguments).unwrap_or_default(),
-                output: short(&outcome.text, STEP_OUTPUT_CHARS),
-                is_error: outcome.is_error,
-            });
-        }
-        let results = calls
-            .iter()
-            .zip(outcomes)
-            .map(|(call, outcome)| {
-                let mut result = call.result(vec![ToolResultContent::text(outcome.text)]);
-                result.is_error = outcome.is_error;
-                result
-            })
-            .collect();
-        messages.push(Message::tool_results(results));
-    }
-    progress("failed", "Ran out of steps".into());
-    finish(
-        &mut steps,
-        Report {
+    let mut c = store::Conversation::new(id.clone(), None, Some(reference.to_string()));
+    c.temporary = true;
+    c.title = task.title.clone();
+    c.agent_id = agent.map(|a| a.id.clone());
+    if let Err(e) = store::save_conversation(config_dir, &c) {
+        return finish(Report {
             title: task.title,
             status: "failed",
-            report: "The worker ran out of steps without a report.".into(),
-            steps: MAX_WORKER_STEPS,
-        },
-    )
+            report: e,
+            steps: 0,
+        });
+    }
+    let mut only: Vec<String> = tools.iter().map(|t| t.name.clone()).collect();
+    only.push(super::engine::READ_TOOL_OUTPUT.into());
+    let system = worker_preamble(&task, agent);
+    let request = |text: String, only_tools: Vec<String>, max_steps: usize| TurnRequest {
+        conversation_id: id.clone(),
+        text,
+        model: reference.to_string(),
+        approval: ApprovalMode::Ask,
+        temporary: true,
+        max_steps: Some(max_steps),
+        only_tools: Some(only_tools),
+        system: Some(system.clone()),
+        ..TurnRequest::default()
+    };
+    let dyn_worker: Arc<dyn Host> = worker.clone();
+    let run = |request: TurnRequest| {
+        let dyn_worker = dyn_worker.clone();
+        let worker = worker.clone();
+        let id = id.clone();
+        async move {
+            let cancel = worker.state.begin(&id).ok_or("the worker is busy")?;
+            let outcome = super::engine::turn(&dyn_worker, &request, cancel).await;
+            worker.state.finish(&id);
+            outcome
+        }
+        .boxed()
+    };
+    let last_text = || {
+        store::load_conversation(config_dir, &id)
+            .ok()
+            .and_then(|c| {
+                c.messages
+                    .last()
+                    .filter(|m| matches!(m, Message::Assistant(_)))
+                    .map(context::message_text)
+            })
+            .unwrap_or_default()
+    };
+    if let Err(e) = run(request(
+        format!("Begin: {}", task.title),
+        only,
+        MAX_WORKER_STEPS + 1,
+    ))
+    .await
+    {
+        let steps = worker.steps().len();
+        return finish(Report {
+            title: task.title,
+            status: "failed",
+            report: e,
+            steps,
+        });
+    }
+    let mut text = last_text();
+    if !is_report(&text) {
+        // Out of tool calls, some models write one out as text instead of reporting. Ask once
+        // more, plainly, for the report, with no tools to reach for.
+        if run(request(
+            "Stop researching. Write your report now from what you have already found, as plain text. Do not call or mention tools.".into(),
+            Vec::new(),
+            1,
+        ))
+        .await
+        .is_ok()
+        {
+            text = last_text();
+        }
+    }
+    let steps = worker.steps().len();
+    if !is_report(&text) {
+        return finish(Report {
+            title: task.title,
+            status: "failed",
+            report: "The worker did not write a report.".into(),
+            steps,
+        });
+    }
+    finish(Report {
+        title: task.title,
+        status: "done",
+        report: short(&text, MAX_REPORT_CHARS),
+        steps,
+    })
 }
 
 /// Runs every task at once; reports come back in task order. A task for a named agent runs
 /// with that agent's instructions, its model, and only the reading tools it is allowed.
 #[allow(clippy::too_many_arguments)]
 pub async fn run_all(
-    app: &AppHandle,
+    host: &Arc<dyn Host>,
     config_dir: &Path,
-    model: &DynModel<Completion>,
+    model_reference: &str,
     offered: &[ChatTool],
     conversation_id: &str,
     call_id: &str,
@@ -392,32 +474,23 @@ pub async fn run_all(
             .as_deref()
             .and_then(|n| super::agents::by_name(&team, n))
             .cloned();
-        let own = match agent.as_ref().and_then(|a| a.model.clone()) {
-            Some(reference) => super::engine::connect_model(config_dir, &reference)
-                .await
-                .ok(),
-            None => None,
+        // The agent's own model when it can be reached, otherwise the chat's.
+        let reference = match agent.as_ref().and_then(|a| a.model.clone()) {
+            Some(own) if host.connect_model(&own).await.is_ok() => own,
+            _ => model_reference.to_string(),
         };
-        let allowed: Vec<ChatTool> = tools
-            .iter()
-            .filter(|t| {
-                agent
-                    .as_ref()
-                    .is_none_or(|a| super::agents::allows(a, &t.name))
-            })
-            .cloned()
-            .collect();
+        let allowed = task_tools(&tools, agent.as_ref(), &task.tools);
         if let Some(a) = &agent {
             task.title = format!("{}: {}", a.name, task.title);
         }
-        prepared.push((task, agent, own, allowed));
+        prepared.push((task, agent, reference, allowed));
     }
     let run = |i: usize, task: Task, slot: usize| {
-        let (_, agent, own, allowed) = &prepared[slot];
+        let (_, agent, reference, allowed) = &prepared[slot];
         run_one(
-            app,
+            host,
             config_dir,
-            own.as_ref().unwrap_or(model),
+            reference,
             allowed,
             conversation_id,
             call_id,
@@ -543,6 +616,7 @@ mod tests {
             title: "Pricing".into(),
             instructions: "Propose a price.".into(),
             agent: Some("Analyst".into()),
+            tools: Vec::new(),
         };
         assert_eq!(after(&task, &[]).instructions, "Propose a price.");
         let next = after(
@@ -583,6 +657,39 @@ mod tests {
         )
         .unwrap();
         assert_eq!(ok[0].title, "Prices");
+    }
+
+    #[test]
+    fn a_task_gets_only_the_tools_it_names() {
+        let tool = |name: &str| ChatTool {
+            name: name.into(),
+            description: String::new(),
+            parameters: json!({}),
+            connector_id: None,
+            tool_name: name.into(),
+            read_only: true,
+        };
+        let workers = vec![
+            tool("web_search"),
+            tool("browser__fetch"),
+            tool("use_skill"),
+        ];
+        let names = |tools: Vec<ChatTool>| tools.into_iter().map(|t| t.name).collect::<Vec<_>>();
+        assert_eq!(names(task_tools(&workers, None, &[])).len(), 3);
+        assert_eq!(
+            names(task_tools(
+                &workers,
+                None,
+                &["web_search".into(), "bash__run".into()]
+            )),
+            ["web_search"],
+            "a task cannot ask for more than workers may use"
+        );
+        let tasks = parse_tasks(
+            &json!({ "tasks": [{ "title": "t", "instructions": "i", "tools": ["web_search"] }] }),
+        )
+        .unwrap();
+        assert_eq!(tasks[0].tools, vec!["web_search".to_string()]);
     }
 
     #[test]

@@ -1,3 +1,13 @@
+[workspace]
+# The app, and the parts of its AI core that need neither Tauri nor a window.
+members = [
+    ".",
+    "crates/cortex-kernel",
+    "crates/cortex-retrieval",
+    "crates/cortex-sandbox",
+    "crates/cortex-traces",
+]
+
 [package]
 name = "cortex"
 version = "0.5.9"
@@ -27,7 +37,7 @@ semver = "1"
 regex = "1"
 similar = "2"
 zip = { version = "4", default-features = false, features = ["deflate"] }
-rig-core = { version = "0.46", default-features = false, features = ["derive", "reqwest", "rustls", "pdf", "image", "audio"] }
+rig-core = { version = "=0.46.0", default-features = false, features = ["derive", "reqwest", "rustls", "pdf", "image", "audio"] }
 tauri = { version = "^2.11.4", features = ["tray-icon", "macos-private-api", "unstable", "image-png"] }
 serde = { version = "1.0.218", features = ["derive"] }
 serde_json = "1.0.139"
@@ -86,6 +96,10 @@ tauri-plugin-single-instance = { version = "^2", features = ["deep-link"] }
 tauri-plugin-updater = "^2.10.1"
 rust_xlsxwriter = "0.102.0"
 calamine = "0.38.0"
+cortex-kernel = { path = "crates/cortex-kernel" }
+cortex-retrieval = { path = "crates/cortex-retrieval" }
+cortex-sandbox = { path = "crates/cortex-sandbox" }
+cortex-traces = { path = "crates/cortex-traces" }
 
 [features]
 test-utils = []
@@ -106,6 +120,7 @@ objc = "0.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
+libc = "0.2"
 notify-rust = "4.18.2"
 dbus-secret-service = { version = "4.1", features = ["crypto-rust"] }
 webkit2gtk = { version = "=2.0.2", features = ["v2_38"] }
@@ -117,6 +132,7 @@ windows = { version = "0.62.2", features = ["UI_Notifications", "Win32_Foundatio
 
 [dev-dependencies]
 tempfile = "3.18.0"
+rig-core = { version = "=0.46.0", default-features = false, features = ["test-utils"] }
 tokio = { version = "1.43.0", features = ["test-util"] }
 
 # The built-in model runtime does heavy maths: optimized even in debug builds, at full speed in

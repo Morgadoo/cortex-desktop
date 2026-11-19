@@ -8,96 +8,49 @@
 
 use std::time::Duration;
 
-use rig_core::completion::message::ToolName;
-use rig_core::completion::request::ToolDefinition as RigTool;
-use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
 
+pub use cortex_kernel::approval::{
+    auto_check_prompt, auto_check_verdict, needs_approval, reads_only, risk, ApprovalMode,
+};
+
+/// The ways a command can name the app's data folder: as it is, from `~` and from `$HOME`.
+pub fn protected_places(config_dir: &std::path::Path) -> Vec<String> {
+    let full = config_dir.to_string_lossy().to_string();
+    let mut out = vec![full.clone()];
+    if let Some(home) = std::env::var_os("HOME").map(std::path::PathBuf::from) {
+        if let Ok(rest) = config_dir.strip_prefix(&home) {
+            let rest = rest.to_string_lossy();
+            out.push(format!("~/{rest}"));
+            out.push(format!("$home/{rest}"));
+            out.push(format!("${{home}}/{rest}"));
+        }
+    }
+    out
+}
+
+/// [`risk`], and the kernel's guardrail: a change that names the app's own data (where its
+/// evaluations, permissions and audit log live) is never made without the user.
+pub fn risk_here(
+    config_dir: Option<&std::path::Path>,
+    tool: &ChatTool,
+    input: &Value,
+) -> Option<&'static str> {
+    risk(tool, input).or_else(|| {
+        config_dir
+            .filter(|d| cortex_kernel::approval::names_protected(tool, input, &protected_places(d)))
+            .map(|_| cortex_kernel::approval::PROTECTED)
+    })
+}
+pub use cortex_kernel::tool::{
+    normalize_schema, safe_name, value_text, ChatTool, Outcome, ASK_USER,
+};
+
+use super::host::Host;
 use crate::tools::approvals;
 use crate::tools::connector_state::ToolPolicy;
-use crate::tools::registry::{ApprovalDecision, CallContext, ToolRegistry};
-
-/// The built-in tool the model uses to ask the user a multiple-choice question.
-pub const ASK_USER: &str = "ask_user";
-
-/// The composer's approval setting.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ApprovalMode {
-    /// Ask before any tool that can change something.
-    #[default]
-    Ask,
-    /// File edits run without asking; other changes still ask.
-    AcceptEdits,
-    /// Plan first: the model investigates and proposes; anything that would change something is
-    /// refused, with a note to describe the change instead.
-    Plan,
-    /// Full auto: nothing asks; the user is watching and can stop the turn.
-    Auto,
-    /// A scheduled run with nobody watching: anything that would ask is refused.
-    Unattended,
-    /// A scheduled run the user allowed to make changes: nothing asks.
-    Autonomous,
-}
-
-impl ApprovalMode {
-    /// Nobody is there to answer questions or approvals.
-    pub fn unattended(self) -> bool {
-        matches!(self, Self::Unattended | Self::Autonomous)
-    }
-}
-
-/// A tool as offered to the model, and where calls to it go.
-#[derive(Debug, Clone)]
-pub struct ChatTool {
-    /// The name the model sees.
-    pub name: String,
-    pub description: String,
-    pub parameters: Value,
-    /// `None` for `ask_user`.
-    pub connector_id: Option<String>,
-    pub tool_name: String,
-    pub read_only: bool,
-}
-
-impl ChatTool {
-    pub fn definition(&self) -> Option<RigTool> {
-        Some(RigTool::new(
-            ToolName::new(self.name.clone()).ok()?,
-            self.description.clone(),
-            self.parameters.clone(),
-        ))
-    }
-}
-
-/// Providers accept `^[a-zA-Z0-9_-]{1,64}$`; anything else becomes `_`.
-pub(crate) fn safe_name(name: &str) -> String {
-    let cleaned: String = name
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    cleaned.chars().take(64).collect()
-}
-
-/// Every provider wants an object schema with properties, even for a tool without inputs.
-fn normalize_schema(schema: &Value) -> Value {
-    let mut schema = match schema {
-        Value::Object(map) => Value::Object(map.clone()),
-        _ => json!({}),
-    };
-    let map = schema.as_object_mut().expect("object");
-    map.remove("$schema");
-    map.entry("type").or_insert_with(|| json!("object"));
-    map.entry("properties").or_insert_with(|| json!({}));
-    schema
-}
+use crate::tools::registry::{ApprovalDecision, CallContext, ToolDefinition, ToolRegistry};
 
 fn ask_user_tool() -> ChatTool {
     ChatTool {
@@ -149,137 +102,9 @@ pub fn available(registry: &ToolRegistry, connectors: Option<&[String]>) -> Vec<
             });
         }
     }
-    for tool in registry.builtin_tools() {
-        let (connector, name) = tool
-            .name
-            .split_once("__")
-            .map_or(("tool_results", tool.name.as_str()), |(c, n)| (c, n));
-        tools.push(ChatTool {
-            name: safe_name(&tool.name),
-            description: tool.description.clone(),
-            parameters: normalize_schema(&tool.input_schema),
-            connector_id: Some(connector.to_string()),
-            tool_name: name.to_string(),
-            read_only: true,
-        });
-    }
+    // The registry's `tool_results` reader is not offered: chats take results whole and keep
+    // long ones in a file of their own (`read_tool_output`).
     tools
-}
-
-/// Calls that only read, though their tool is not declared read-only: browsing a page, and a GET
-/// fetch.
-fn reads_only(tool: &ChatTool, input: &Value) -> bool {
-    match (tool.connector_id.as_deref(), tool.tool_name.as_str()) {
-        (Some("browser"), "navigate") => true,
-        (Some("computer"), _) => super::computer::is_screenshot(input),
-        (Some("browser"), "fetch") => input
-            .get("method")
-            .and_then(Value::as_str)
-            .is_none_or(|m| m.eq_ignore_ascii_case("GET")),
-        _ => false,
-    }
-}
-
-/// Commands and calls that are hard to undo, which ask even in Accept edits and Full auto, as
-/// Vibe's smart-approve does. Each pattern comes with what the user is told.
-const RISKY: &[(&str, &str)] = &[
-    ("rm -rf", "it deletes files recursively"),
-    ("rm -fr", "it deletes files recursively"),
-    ("rm -r ", "it deletes folders"),
-    ("sudo ", "it runs as administrator"),
-    ("mkfs", "it formats a disk"),
-    ("dd if=", "it writes raw data to a device"),
-    ("> /dev/sd", "it writes to a disk device"),
-    ("chmod -r 777", "it opens permissions on a whole tree"),
-    ("git push --force", "it rewrites the remote history"),
-    ("git push -f", "it rewrites the remote history"),
-    ("git reset --hard", "it discards uncommitted work"),
-    ("git clean -fd", "it deletes untracked files"),
-    ("| sh", "it runs a downloaded script"),
-    ("| bash", "it runs a downloaded script"),
-    ("drop table", "it deletes a database table"),
-    ("drop database", "it deletes a database"),
-    ("shutdown", "it shuts the computer down"),
-    ("reboot", "it restarts the computer"),
-    (":(){", "it is a fork bomb"),
-];
-
-/// Why a call is risky, if it is: a dangerous command anywhere in its input, or a deletion.
-pub fn risk(tool: &ChatTool, input: &Value) -> Option<&'static str> {
-    if tool.read_only {
-        return None;
-    }
-    let name = tool.tool_name.to_ascii_lowercase();
-    if ["delete", "remove", "unlink", "rmdir"]
-        .iter()
-        .any(|w| name.contains(w))
-    {
-        return Some("it deletes something");
-    }
-    fn texts(value: &Value, out: &mut String) {
-        match value {
-            Value::String(s) => {
-                out.push_str(&s.to_ascii_lowercase());
-                out.push('\n');
-            }
-            Value::Array(items) => items.iter().for_each(|v| texts(v, out)),
-            Value::Object(map) => map.values().for_each(|v| texts(v, out)),
-            _ => {}
-        }
-    }
-    let mut text = String::new();
-    texts(input, &mut text);
-    let squeezed = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    RISKY
-        .iter()
-        .find(|(pattern, _)| squeezed.contains(pattern))
-        .map(|(_, why)| *why)
-}
-
-/// The instruction for Auto mode's check: may this change run without asking?
-pub fn auto_check_prompt(request: &str, tool: &str, input: &Value) -> String {
-    let input = serde_json::to_string(input).unwrap_or_default();
-    let input: String = input.chars().take(2_000).collect();
-    format!(
-        "You decide whether an AI assistant may take an action without asking its user first.\n\n\
-         The user's latest request:\n{request}\n\nThe action: {tool} with input {input}\n\n\
-         Reply with one line. Write ALLOW when the request clearly calls for this action and it is \
-         easy to undo. Write ASK: and a short reason (under 15 words, addressed to the user) when \
-         it goes beyond the request, touches things outside the user's project or folders, sends \
-         or publishes anything to other people or services, spends money, deletes or overwrites \
-         work, or is hard to undo."
-    )
-}
-
-/// Reads the check's answer: `None` to go ahead, or the reason to ask. Anything unclear asks.
-pub fn auto_check_verdict(answer: &str) -> Option<String> {
-    let line = answer.trim().lines().next().unwrap_or_default().trim();
-    if line.to_ascii_uppercase().starts_with("ALLOW") {
-        return None;
-    }
-    let reason = line.split_once(':').map_or("", |(_, r)| r).trim();
-    Some(if reason.is_empty() {
-        "this goes beyond what you asked".into()
-    } else {
-        reason.trim_end_matches('.').to_string()
-    })
-}
-
-/// Whether a call should wait for the user before it runs, under `mode`.
-pub fn needs_approval(tool: &ChatTool, input: &Value, mode: ApprovalMode) -> bool {
-    if tool.read_only || tool.connector_id.is_none() || reads_only(tool, input) {
-        return false;
-    }
-    if risk(tool, input).is_some() {
-        // Smart-approve: what is hard to undo always asks, whatever the mode.
-        return true;
-    }
-    match mode {
-        ApprovalMode::Ask | ApprovalMode::Unattended | ApprovalMode::Plan => true,
-        ApprovalMode::Auto => false,
-        ApprovalMode::AcceptEdits => tool.connector_id.as_deref() != Some("filesystem"),
-        ApprovalMode::Autonomous => false,
-    }
 }
 
 /// How long a call waits for the user to approve it.
@@ -351,28 +176,102 @@ pub(crate) async fn request_approval_because(
     decision
 }
 
-/// What a call returned, as text for the model, and whether it failed.
-pub struct Outcome {
-    pub text: String,
-    pub is_error: bool,
+/// Tools that are not registry connectors but run behind the registry's gate: the user's own
+/// tools, computer use, and OpenAPI tool servers.
+fn is_external(connector_id: &str) -> bool {
+    connector_id == super::custom_tools::CONNECTOR
+        || connector_id == super::script_tools::CONNECTOR
+        || connector_id == super::computer::CONNECTOR
+        || connector_id.starts_with(super::openapi::PREFIX)
 }
 
-fn value_text(value: &Value) -> String {
-    match value {
-        Value::String(text) => text.clone(),
-        other => serde_json::to_string_pretty(other).unwrap_or_else(|_| other.to_string()),
+/// Runs an [external](is_external) tool through the registry's per-tool policy and
+/// untrusted-content gate, then in its own way: a script in the sandbox, the screen, or an HTTP
+/// call.
+async fn execute_external(
+    host: &dyn Host,
+    tool: &ChatTool,
+    input: Value,
+    approved: bool,
+    context: CallContext<'_>,
+) -> Outcome {
+    let connector_id = tool.connector_id.as_deref().unwrap_or_default();
+    let conversation_id = context.conversation.unwrap_or_default();
+    let definition = ToolDefinition {
+        name: tool.tool_name.clone(),
+        description: tool.description.clone(),
+        input_schema: tool.parameters.clone(),
+        read_only: Some(tool.read_only || reads_only(tool, &input)),
+        ..ToolDefinition::default()
+    };
+    let config_dir = host.config_dir().ok();
+    let run = |input: Value| async move {
+        if connector_id == super::computer::CONNECTOR {
+            return super::computer::run(conversation_id, &input).await;
+        }
+        let config_dir = config_dir.ok_or("The app's data folder is not available.")?;
+        if connector_id == super::script_tools::CONNECTOR {
+            let workspace = super::sandbox::workspace(&config_dir, conversation_id).ok();
+            return super::script_tools::call(
+                &config_dir,
+                &tool.tool_name,
+                &input,
+                workspace.as_deref(),
+            )
+            .await;
+        }
+        if connector_id == super::custom_tools::CONNECTOR {
+            super::custom_tools::run(&config_dir, conversation_id, &tool.tool_name, &input).await
+        } else {
+            super::openapi::call(&config_dir, tool, &input).await
+        }
+    };
+    match host
+        .registry()
+        .dispatch_external(connector_id, &definition, input, approved, context, run)
+        .await
+    {
+        Ok(Ok(text)) => Outcome {
+            text,
+            is_error: false,
+        },
+        Ok(Err(text)) => Outcome {
+            text,
+            is_error: true,
+        },
+        Err(e) => Outcome {
+            text: e.to_ipc_string(),
+            is_error: true,
+        },
     }
 }
 
 /// Runs a connector tool call. `ask_user` is the engine's, not this function's.
 pub async fn execute(
-    app: &AppHandle,
-    registry: &ToolRegistry,
+    host: &dyn Host,
     tool: &ChatTool,
     input: Value,
     mode: ApprovalMode,
     conversation_id: &str,
 ) -> Outcome {
+    // A written tool's effect is read now, not when the turn began: access granted mid-turn
+    // makes it change something from that call on.
+    let fresh;
+    let tool = match (tool.connector_id.as_deref(), host.config_dir()) {
+        (Some(super::script_tools::CONNECTOR), Ok(dir)) => {
+            match super::script_tools::load(&dir, &tool.tool_name) {
+                Some(written) => {
+                    fresh = ChatTool {
+                        read_only: !super::script_tools::has_effects(&dir, &written),
+                        ..tool.clone()
+                    };
+                    &fresh
+                }
+                None => tool,
+            }
+        }
+        _ => tool,
+    };
     let Some(connector_id) = tool.connector_id.as_deref() else {
         return Outcome {
             text: "This tool is handled by the app.".into(),
@@ -395,8 +294,12 @@ pub async fn execute(
             is_error: true,
         };
     }
+    let config_dir = host.config_dir().ok();
+    let guarded = config_dir.as_deref().is_some_and(|d| {
+        cortex_kernel::approval::names_protected(tool, &input, &protected_places(d))
+    });
     if mode == ApprovalMode::Autonomous {
-        if let Some(why) = risk(tool, &input) {
+        if let Some(why) = risk_here(config_dir.as_deref(), tool, &input) {
             return Outcome {
                 text: format!(
                     "This call was not made: {why}, and nobody is watching this scheduled run to \
@@ -406,8 +309,15 @@ pub async fn execute(
             };
         }
     }
-    let approved = if needs_approval(tool, &input, mode) {
-        match request_approval(app, tool, &input).await {
+    let approved = if guarded || needs_approval(tool, &input, mode) {
+        match host
+            .approve(
+                tool,
+                &input,
+                guarded.then_some(cortex_kernel::approval::PROTECTED),
+            )
+            .await
+        {
             ApprovalDecision::Deny => {
                 return Outcome {
                     text: "The user declined this tool call. Do not retry it; ask what they \
@@ -421,64 +331,16 @@ pub async fn execute(
     } else {
         matches!(mode, ApprovalMode::Autonomous | ApprovalMode::Auto)
     };
-    // The user's own tools: the same gate, then their script in the sandbox.
-    if connector_id == super::custom_tools::CONNECTOR {
-        let Ok(config_dir) = crate::settings::get_config_dir(app) else {
-            return Outcome {
-                text: "The app's data folder is not available.".into(),
-                is_error: true,
-            };
-        };
-        return match super::custom_tools::run(&config_dir, conversation_id, &tool.tool_name, &input)
-            .await
-        {
-            Ok(text) => Outcome {
-                text,
-                is_error: false,
-            },
-            Err(e) => Outcome {
-                text: e,
-                is_error: true,
-            },
-        };
-    }
-    // Computer use: the same gate, then the screen, mouse and keyboard.
-    if connector_id == super::computer::CONNECTOR {
-        return match super::computer::run(conversation_id, &input).await {
-            Ok(text) => Outcome {
-                text,
-                is_error: false,
-            },
-            Err(e) => Outcome {
-                text: e,
-                is_error: true,
-            },
-        };
-    }
-    // OpenAPI tool servers: the same gate as any connector, then an HTTP call.
-    if connector_id.starts_with(super::openapi::PREFIX) {
-        let Ok(config_dir) = crate::settings::get_config_dir(app) else {
-            return Outcome {
-                text: "The app's data folder is not available.".into(),
-                is_error: true,
-            };
-        };
-        return match super::openapi::call(&config_dir, tool, &input).await {
-            Ok(text) => Outcome {
-                text,
-                is_error: false,
-            },
-            Err(e) => Outcome {
-                text: e,
-                is_error: true,
-            },
-        };
-    }
     let context = CallContext {
         conversation: Some(conversation_id),
+        whole: true,
         ..CallContext::default()
     };
-    match registry
+    if is_external(connector_id) {
+        return execute_external(host, tool, input, approved, context).await;
+    }
+    match host
+        .registry()
         .dispatch_with_transport(
             connector_id,
             &tool.tool_name,
@@ -614,5 +476,18 @@ mod tests {
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0].name, ASK_USER);
         assert!(tools[0].definition().is_some());
+    }
+
+    #[test]
+    fn a_command_naming_the_app_s_data_always_asks() {
+        let shell = tool(Some("bash"), false);
+        let dir = std::path::Path::new("/data/cortex");
+        let write = json!({ "command": "echo '{}' > /data/cortex/evals/trips/cases/a.json" });
+        assert_eq!(
+            risk_here(Some(dir), &shell, &write),
+            Some(cortex_kernel::approval::PROTECTED)
+        );
+        assert!(risk_here(Some(dir), &shell, &json!({ "command": "cargo test" })).is_none());
+        assert!(risk_here(None, &shell, &write).is_none());
     }
 }

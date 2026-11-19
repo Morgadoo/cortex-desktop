@@ -16,6 +16,12 @@ pub fn run() {
     crate::rename_migration::migrate_folders();
     // Encrypted data is unlocked with the keychain's key before anything reads it.
     crate::chat::at_rest::unlock_at_start();
+    // The key that signs the tools the assistant wrote, when there are any.
+    if let Some(config_dir) = crate::reporting::early_config_dir() {
+        crate::chat::script_tools::unlock_signing(&config_dir);
+        // Trial copies of the data that a crash or a quit left behind.
+        crate::chat::evals::sweep_trials(&config_dir);
+    }
     // `-p "question"`: answer on standard output and exit, without a window (Vibe's headless run).
     if let Some(code) = crate::chat::headless::maybe_run() {
         std::process::exit(code);
@@ -23,6 +29,10 @@ pub fn run() {
     // `config schema | check | path` (Vibe's `vibe config schema`).
     // `chat`: a conversation in the terminal (Vibe Code's CLI), saved to the app's history.
     if let Some(code) = crate::chat::terminal_chat::maybe_run() {
+        std::process::exit(code);
+    }
+    // `eval <suite>`: run an evaluation suite and print its score.
+    if let Some(code) = crate::chat::evals::maybe_run() {
         std::process::exit(code);
     }
     if let Some(code) = crate::chat::config_cli::maybe_run() {
@@ -101,6 +111,15 @@ pub fn run() {
                 chat::commands::chat_answer,
                 chat::commands::chat_update_conversation,
                 chat::commands::chat_delete_conversation,
+                chat::commands::chat_artifacts,
+                chat::commands::chat_signal,
+                chat::commands::chat_version_diff,
+                chat::commands::chat_restore_version,
+                chat::commands::chat_eval_suites,
+                chat::commands::chat_save_eval_case,
+                chat::commands::chat_delete_eval_case,
+                chat::commands::chat_revoke_tool,
+                chat::commands::chat_set_artifact_critical,
                 chat::commands::chat_list_projects,
                 chat::commands::chat_save_project,
                 chat::commands::chat_delete_project,
@@ -192,6 +211,8 @@ pub fn run() {
             chat::commands::chat_export_diagnostics,
             chat::commands::chat_backup_model,
             chat::commands::chat_set_backup_model,
+            chat::commands::chat_review_model,
+            chat::commands::chat_set_review_model,
             chat::commands::chat_move_document,
             chat::commands::chat_get_defaults,
             chat::commands::chat_version_texts,

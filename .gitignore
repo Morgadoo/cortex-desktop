@@ -26,3 +26,6 @@ fastlane/test_output
 
 # Local secrets
 .env
+
+# The script-tool interpreter's build folder (scripts/build-js-runtime.sh)
+src-tauri/crates/cortex-sandbox/wasm/js-runtime/target/

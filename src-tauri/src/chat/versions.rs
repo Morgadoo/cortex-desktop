@@ -20,7 +20,18 @@ use super::store::chat_dir;
 /// Versions kept per item.
 const KEEP: usize = 30;
 
-pub const KINDS: &[&str] = &["agents", "workflows", "tools"];
+pub const KINDS: &[&str] = &[
+    "agents",
+    "workflows",
+    "tools",
+    // What the assistant writes about itself and the user, so every change can be undone.
+    "memories",
+    "knowledge",
+    "notebooks",
+    "instructions",
+    // Scheduled tasks: what runs on its own, and when.
+    "tasks",
+];
 
 fn dir(config_dir: &Path, kind: &str, id: &str) -> Result<PathBuf, String> {
     if !KINDS.contains(&kind) {
@@ -105,6 +116,34 @@ pub fn list(config_dir: &Path, kind: &str, id: &str) -> Result<Vec<Version>, Str
     Ok(out)
 }
 
+/// What changed from version `id` of an item to the version after it (or to `current`, the item
+/// as it is now, when `id` is the newest), as a line diff.
+pub fn diff(
+    config_dir: &Path,
+    kind: &str,
+    id: &str,
+    version: &str,
+    current: Option<&Value>,
+) -> Result<String, String> {
+    let all = list(config_dir, kind, id)?;
+    let i = all
+        .iter()
+        .position(|v| v.id == version)
+        .ok_or("There is no such version.")?;
+    let pretty = |v: &Value| serde_json::to_string_pretty(v).unwrap_or_default();
+    let older = pretty(&all[i].value);
+    // `all` is newest first: the version after this one is at i - 1.
+    let newer = match i.checked_sub(1) {
+        Some(n) => pretty(&all[n].value),
+        None => current
+            .cloned()
+            .or_else(|| now(config_dir, kind, id))
+            .map(|v| pretty(&v))
+            .ok_or("This is the newest version.")?,
+    };
+    Ok(cortex_kernel::diff::unified(&older, &newer))
+}
+
 /// The version marked production, and when it was marked.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -153,6 +192,78 @@ pub fn set_production(
             }
             Ok(None)
         }
+    }
+}
+
+/// The item as it is now, for diffing its newest version against.
+pub fn now(config_dir: &Path, kind: &str, id: &str) -> Option<Value> {
+    match (kind, id) {
+        ("memories", "all") => serde_json::to_value(super::memory::load(config_dir)).ok(),
+        ("knowledge", "pages") => serde_json::to_value(super::knowledge::load(config_dir)).ok(),
+        ("instructions", "user") => {
+            serde_json::to_value(super::store::load_instructions(config_dir)).ok()
+        }
+        ("notebooks", agent) => Some(Value::String(super::agents::notebook(config_dir, agent))),
+        ("agents", agent) => serde_json::to_value(super::agents::find(config_dir, agent)?).ok(),
+        ("workflows", workflow) => serde_json::to_value(
+            super::workflows::load(config_dir)
+                .into_iter()
+                .find(|w| w.id == workflow)?,
+        )
+        .ok(),
+        ("tasks", task) => serde_json::to_value(
+            super::tasks::load(config_dir)
+                .into_iter()
+                .find(|t| t.id == task)?,
+        )
+        .ok(),
+        ("tools", name) => match name.strip_prefix("script-") {
+            Some(script) => {
+                serde_json::to_value(super::script_tools::load(config_dir, script)?).ok()
+            }
+            None => serde_json::to_value(
+                super::custom_tools::list(config_dir)
+                    .into_iter()
+                    .find(|t| t.name == name)?,
+            )
+            .ok(),
+        },
+        _ => None,
+    }
+}
+
+/// Brings back version `version` of an item: it is saved again the way the item is always saved,
+/// so the version it replaces is kept in turn and the change can itself be undone. The kernel's
+/// `revert`, for every kind kept here.
+pub fn restore(config_dir: &Path, kind: &str, id: &str, version: &str) -> Result<(), String> {
+    let value = list(config_dir, kind, id)?
+        .into_iter()
+        .find(|v| v.id == version)
+        .ok_or("There is no such version.")?
+        .value;
+    fn parse<T: serde::de::DeserializeOwned>(value: Value) -> Result<T, String> {
+        serde_json::from_value(value)
+            .map_err(|e| format!("That version can no longer be read: {e}"))
+    }
+    match (kind, id) {
+        ("memories", "all") => super::memory::save(config_dir, &parse(value)?),
+        ("knowledge", "pages") => {
+            super::knowledge::save_all(config_dir, &parse::<Vec<super::knowledge::Page>>(value)?)
+        }
+        ("instructions", "user") => super::store::save_instructions(config_dir, &parse(value)?),
+        ("notebooks", agent) => {
+            super::agents::save_notebook(config_dir, agent, &parse::<String>(value)?)
+        }
+        ("agents", _) => super::agents::save(config_dir, parse(value)?).map(drop),
+        ("workflows", _) => super::workflows::save(config_dir, parse(value)?).map(drop),
+        ("tools", name) if name.starts_with("script-") => {
+            // The version keeps the hash the user approved for its own script, so an approved
+            // version comes back approved and an unapproved one stays a candidate.
+            super::script_tools::restore_version(config_dir, parse(value)?)
+        }
+        ("tools", _) => super::custom_tools::save(config_dir, &parse(value)?).map(drop),
+        ("tasks", _) => super::tasks::save(config_dir, parse(value)?).map(drop),
+        _ => Err(format!("{kind} cannot be restored.")),
     }
 }
 
@@ -212,5 +323,91 @@ mod tests {
             keep(dir.path(), "tools", "t", &json!(i), &json!(i + 1)).unwrap();
         }
         assert_eq!(list(dir.path(), "tools", "t").unwrap().len(), KEEP);
+    }
+
+    #[test]
+    fn a_memory_change_can_be_reverted() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let mut memories = crate::chat::memory::load(d);
+        crate::chat::memory::add(&mut memories, "The user prefers metric units.", "chat").unwrap();
+        crate::chat::memory::save(d, &memories).unwrap();
+        let before = crate::chat::memory::load(d);
+        crate::chat::memory::add(&mut memories, "The user lives in Lisbon.", "chat").unwrap();
+        crate::chat::memory::save(d, &memories).unwrap();
+        assert_ne!(crate::chat::memory::load(d), before);
+
+        let newest = list(d, "memories", "all").unwrap().remove(0);
+        restore(d, "memories", "all", &newest.id).unwrap();
+        assert_eq!(crate::chat::memory::load(d), before);
+        // The version the revert replaced is kept, so the revert can be undone too.
+        let undo = list(d, "memories", "all").unwrap().remove(0);
+        restore(d, "memories", "all", &undo.id).unwrap();
+        assert_eq!(crate::chat::memory::load(d), memories);
+        assert!(restore(d, "memories", "all", "nope").is_err());
+    }
+
+    #[test]
+    fn pages_instructions_and_notebooks_can_be_reverted() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let mut first = crate::chat::store::load_instructions(d);
+        first.name = "Ana".into();
+        crate::chat::store::save_instructions(d, &first).unwrap();
+        let mut second = first.clone();
+        second.name = "Rui".into();
+        crate::chat::store::save_instructions(d, &second).unwrap();
+        let v = list(d, "instructions", "user").unwrap().remove(0);
+        restore(d, "instructions", "user", &v.id).unwrap();
+        assert_eq!(crate::chat::store::load_instructions(d).name, "Ana");
+
+        crate::chat::agents::save_notebook(d, "a1", "first notes").unwrap();
+        crate::chat::agents::save_notebook(d, "a1", "second notes").unwrap();
+        let v = list(d, "notebooks", "a1").unwrap().remove(0);
+        restore(d, "notebooks", "a1", &v.id).unwrap();
+        assert_eq!(crate::chat::agents::notebook(d, "a1"), "first notes");
+
+        crate::chat::knowledge::save_all(d, &[]).unwrap();
+        let page: crate::chat::knowledge::Page = serde_json::from_value(json!({
+            "id": "p1", "title": "T", "body": "B", "author": "user",
+            "updatedAt": "2026-11-01T00:00:00Z"
+        }))
+        .unwrap();
+        crate::chat::knowledge::save_all(d, std::slice::from_ref(&page)).unwrap();
+        let v = list(d, "knowledge", "pages").unwrap().remove(0);
+        restore(d, "knowledge", "pages", &v.id).unwrap();
+        assert!(crate::chat::knowledge::load(d).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod diff_tests {
+    use super::*;
+
+    #[test]
+    fn a_version_diffs_against_the_one_after_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let one = serde_json::json!({ "text": "first", "n": 1 });
+        let two = serde_json::json!({ "text": "second", "n": 1 });
+        let three = serde_json::json!({ "text": "third", "n": 1 });
+        keep(d, "memories", "all", &one, &two).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        keep(d, "memories", "all", &two, &three).unwrap();
+        let versions = list(d, "memories", "all").unwrap();
+        let oldest = &versions[1].id;
+        let text = diff(d, "memories", "all", oldest, None).unwrap();
+        assert!(
+            text.contains("-   \"text\": \"first\"") && text.contains("+   \"text\": \"second\""),
+            "{text}"
+        );
+        let newest = &versions[0].id;
+        assert!(diff(d, "memories", "all", newest, Some(&three))
+            .unwrap()
+            .contains("third"));
+        // Without `current`, the newest version is compared with the item as it is now.
+        let to_now = diff(d, "memories", "all", newest, None).unwrap();
+        assert!(to_now.contains("-   \"text\": \"second\""), "{to_now}");
+        assert!(diff(d, "secrets", "all", newest, None).is_err());
     }
 }
