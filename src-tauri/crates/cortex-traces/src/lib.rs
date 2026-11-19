@@ -198,13 +198,30 @@ pub fn model_call(
 }
 
 pub fn tool_call(config_dir: &Path, run: &str, tool: &str, millis: u64, ok: bool) {
+    tool_call_at(config_dir, run, tool, Utc::now(), millis, ok);
+}
+
+/// [`tool_call`], at a given time.
+pub fn tool_call_at(
+    config_dir: &Path,
+    run: &str,
+    tool: &str,
+    at: DateTime<Utc>,
+    millis: u64,
+    ok: bool,
+) {
+    let at = at.timestamp_millis();
     with(config_dir, |c| {
         c.execute(
             "INSERT INTO tool_calls (run, tool, at, millis, ok) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![run, tool, now(), millis as i64, ok],
+            params![run, tool, at, millis as i64, ok],
         )
     });
-    used(config_dir, "tool", tool);
+    used_at(config_dir, "tool", tool, at);
+    // A tool the assistant wrote is also its own artifact, which the lifecycle judges by use.
+    if let Some(name) = tool.strip_prefix("script__") {
+        used_at(config_dir, "script_tool", name, at);
+    }
     attribute(config_dir, run, "tool", tool, true);
 }
 
@@ -251,11 +268,15 @@ pub fn loaded(config_dir: &Path, kind: &str, ids: &[String]) {
 
 /// Records that an artifact was used (a tool called, a skill opened).
 pub fn used(config_dir: &Path, kind: &str, id: &str) {
+    used_at(config_dir, kind, id, now());
+}
+
+fn used_at(config_dir: &Path, kind: &str, id: &str, at: i64) {
     with(config_dir, |c| {
         ensure(c, kind, id)?;
         c.execute(
-            "UPDATE artifacts SET used = used + 1, last_used = ?3 WHERE kind = ?1 AND id = ?2",
-            params![kind, id, now()],
+            "UPDATE artifacts SET used = used + 1, last_used = MAX(COALESCE(last_used, 0), ?3) WHERE kind = ?1 AND id = ?2",
+            params![kind, id, at],
         )
     });
 }
@@ -464,7 +485,14 @@ pub const SIGNALS: &[&str] = &[
     "exported",
     // A link or source in the answer opened: the answer pointed somewhere worth going.
     "opened_source",
+    // A tool that worked but returned nothing: a technical outcome worth counting.
+    "empty_result",
 ];
+
+/// Whether a tool's successful output is empty: nothing, or an empty list, object or string.
+pub fn empty_result(text: &str) -> bool {
+    matches!(text.trim(), "" | "[]" | "{}" | "null" | "\"\"")
+}
 
 /// Records an implicit signal: an answer regenerated, a prompt edited and sent again, a stopped
 /// turn resumed, an answer copied or a chat exported. Kinds outside [`SIGNALS`] are ignored.
@@ -862,6 +890,11 @@ mod tests {
             vec![("exported".into(), 1), ("regenerated".into(), 2)]
         );
         assert!(usage_report(d, 1).contains("regenerated"));
+        // A tool that worked and returned nothing is a technical signal.
+        for empty in ["", " [] ", "{}", "null", "\"\""] {
+            assert!(empty_result(empty), "{empty:?}");
+        }
+        assert!(!empty_result("[1]") && !empty_result("0"));
     }
 
     #[test]

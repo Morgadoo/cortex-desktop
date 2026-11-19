@@ -36,15 +36,17 @@ read**, and a way for the **model to create executable tools**.
 | 6. WASM sandbox | Done: `create_tool` / `promote_tool`, a Boa JavaScript interpreter as a WASI component, capability checks, limits, hash pinning. |
 | 7. Evals and lifecycle | Done: eval suites, compare, ablate, regressions, eval-gated promotion, `propose_change` with a review, a daily lifecycle job, opt-in nightly evals, one timing engine for both schedulers, and a Settings section for the artifact registry. |
 
-All work is on `claude/agent-kernel-phase-0` (commit `2504bef` and the audit fixes after it). 689 app
-tests, 17 integration tests and 52 tests in the four crates pass (758).
+All work is on `claude/agent-kernel-phase-0` (commit `2504bef`, then the fixes from two independent audits). 695 app
+tests, 17 integration tests and 55 tests in the four crates pass (767).
 
 ## Checked against the kernel document
 
 The kernel document was re-read on 2026-11-19 and every requirement checked against the code. Then an
 independent audit, by a reviewer that had not written the code, checked every row again with file and
-line evidence and flagged rows whose test did not prove the claim. Every gap it found was then built;
-each row names where the requirement lives and the test that covers it.
+line evidence and flagged rows whose test did not prove the claim. Every gap it found was built, and a
+second independent audit then re-checked every row the same way; what it found (among it a bug that
+retired written tools that were in use) is fixed and tested too, and what tests cannot reach is listed in
+section 7. Each row names where the requirement lives and the test that covers it.
 
 `scripts/check-kernel-plan.py` keeps these tables, and section 7's table of the example's open points,
 honest: it reads every test named in their last column,
@@ -54,36 +56,36 @@ fails if one does not exist, and runs them all. CI runs it on every push ("The k
 
 | Rule | Where | Test |
 |---|---|---|
-| Growth on disk, pointers in context | Skills, facts and tools past their limits are retrieved, not listed (`skills::prompt_for`, `memory::prompt_for`, `find_tools`); long results are references (`read_tool_output`); the prompt keeps to a budget (`cortex-kernel::prompt`) | `many_skills_are_narrowed…`, `many_facts_become_a_short_index…`, `over_budget_the_least_important…` |
-| Measured against a set the agent does not control | Eval suites in `<config>/evals/`, out of every tool's reach; promotion gated on them | `the_eval_sets_traces_and_audit_log_are_out_of_reach`, `a_promotion_is_gated_on_the_user_s_evals` |
-| Every self-modification versioned, attributed, reversible | `versions.rs` for memories, pages, notebooks, instructions, agents, workflows, tools; `versions::restore` brings any version back (`chat_restore_version`, History on the Knowledge page and in the agent, workflow and tool editors), keeping the one it replaces; skill history; provenance on facts, skills and tools; `chat_version_diff` | `changing_memories_keeps_the_previous_version`, `a_memory_change_can_be_reverted`, `pages_instructions_and_notebooks_can_be_reverted`, `a_version_diffs_against_the_one_after_it` |
+| Growth on disk, pointers in context | What grows is retrieved, not listed: skills, facts and pages past their limits (`skills::prompt_for`, `memory::prompt_for`, `knowledge::recalled`), connector, OpenAPI, custom and written tools past 30 (`find_tools`); long results are references (`read_tool_output`); the prompt's sections keep to a budget (`cortex-kernel::prompt`). The fixed core (about 35 built-ins and the file, shell and browser connectors) is always offered, and tool schemas are not counted in the prompt budget | `many_skills_are_narrowed…`, `many_facts_become_a_short_index…`, `defers_only_past_the_limit…`, `over_budget_the_least_important…` |
+| Measured against a set the agent does not control | Eval suites in `<config>/evals/`, out of every tool's reach. With suites, a promoted tool stays only if no suite does worse with it, and an approved skill, instruction or memory change (`propose_change`, `save_skill`) is applied after each suite runs and undone if one does worse after it. The user approves first; the measurement decides whether it stays | `the_eval_sets_traces_and_audit_log_are_out_of_reach`, `a_promotion_is_gated_on_the_user_s_evals`, `an_approved_change_that_makes_the_evals_worse_is_undone` |
+| Every self-modification versioned, attributed, reversible | `versions.rs` for memories, pages, notebooks, instructions, agents, workflows, tools (the last 30 of each; all facts are one item); `versions::restore` brings any version back (`chat_restore_version`; History on the Knowledge page and in the agent, workflow and tool editors, each with Show changes through `chat_version_diff`), keeping the one it replaces; skill history; provenance on facts, skills and tools, not on version entries | `changing_memories_keeps_the_previous_version`, `a_memory_change_can_be_reverted`, `pages_instructions_and_notebooks_can_be_reverted`, `a_version_diffs_against_the_one_after_it` |
 
 ### The 14 tools (document section 4), operation by operation
 
 | Tool | Operation or requirement | Where | Test |
 |---|---|---|---|
-| 1 Sandbox | `run(code, limits)` | `cortex-sandbox::run`; `run_code` (bubblewrap) for native code | `a_script_computes_and_returns_json` |
+| 1 Sandbox | `run(code, limits)` | `run_script`: a one-off JavaScript program in the WASM sandbox with nothing granted, within the time and memory asked for (capped); `cortex-sandbox::run`; `run_code` for native code | `a_one_off_program_runs_within_its_limits_and_reaches_nothing`, `a_script_computes_and_returns_json` |
 | | `load(binary, grants)`, `call(tool, args)` | `script_tools::promote`, `script_tools::call` | `a_tool_is_written_tested_promoted_and_pinned` |
-| | No ambient files, network or environment | Empty WASI context; capability-checked host functions: `fetch` (listed hosts), `read` and `write` (granted folders of the chat's workspace, no links out, 1 MiB), `tool` (listed tools) | `nothing_is_reachable_without_a_capability`, `wasi_gives_nothing`, `reads_stay_inside_the_granted_folders_of_the_workspace`, `writes_stay_inside_the_granted_folders_of_the_workspace` |
-| | CPU, memory, time limits; fresh instance per call | Fuel, `ResourceLimiter`, yielding epoch plus timeout (which also bounds a host call that never answers); a `Store` per call | `an_endless_loop_is_stopped`, `a_memory_hog_is_stopped`, `a_busy_tool_does_not_starve_the_runtime`, `a_host_call_that_never_returns_is_stopped`, `nothing_carries_over_between_calls` |
-| | Compose tools in one script | `tool(name, args)` host function, capability `tools`, three levels deep; a tool's effect is the union of its callees', so one that calls a networked or writing tool is not offered as read-only and its call passes the gate as one that changes something | `a_script_calls_only_the_tools_it_may`, `a_tool_calls_another_approved_tool`, `a_tool_that_calls_a_networked_tool_is_not_read_only`, `a_tool_that_writes_is_granted_its_folder_and_changes_something` |
+| | No ambient files, network or environment | The WASI context is built empty, inheriting nothing (`WasiCtxBuilder::new().build()`, by construction); scripts get no ambient API, only capability-checked host functions: `fetch` (listed hosts), `read` and `write` (granted folders of the chat's workspace, no links out, 1 MiB), `tool` (listed tools) | `nothing_is_reachable_without_a_capability`, `wasi_gives_nothing`, `reads_stay_inside_the_granted_folders_of_the_workspace`, `a_read_cannot_follow_a_link_out_of_the_workspace`, `writes_stay_inside_the_granted_folders_of_the_workspace` |
+| | CPU, memory, time limits; fresh instance per call | Fuel, `ResourceLimiter`, yielding epoch plus timeout (which also bounds a host call that never answers); a `Store` per call | `fuel_bounds_the_cpu`, `a_memory_hog_is_stopped`, `an_endless_loop_is_stopped`, `a_busy_tool_does_not_starve_the_runtime`, `a_host_call_that_never_returns_is_stopped`, `nothing_carries_over_between_calls` |
+| | Compose tools in one script | `tool(name, args)` host function, capability `tools`, three levels deep; a tool's effect is the union of its callees', so one that calls a networked or writing tool is not offered as read-only and its call passes the gate as one that changes something | `a_script_calls_only_the_tools_it_may`, `a_tool_calls_another_approved_tool`, `tools_call_tools_three_levels_deep_at_most`, `a_tool_that_calls_a_networked_tool_is_not_read_only`, `a_tool_that_writes_is_granted_its_folder_and_changes_something` |
 | | Compiled once, not per load | The compiled interpreter is kept in `<config>/cache/wasm`, keyed by the component's and the engine's hashes; a damaged copy is compiled again | `the_compiled_interpreter_is_kept_and_reused` |
 | | A second tier for native code | `run_code`: the Podman workbench or bubblewrap. Where neither isolates it (macOS, Windows, no user namespaces), every run asks, in Auto too, and never runs unwatched | `code_runs_unsandboxed_only_with_the_user` |
-| 2 Storage | `read`, `write`, `edit`, `list`, `search` | The filesystem connector; the sandbox workspace; libraries | `reading_a_file_returns_its_contents`, `runs_code_in_the_workspace_and_lists_its_files` |
+| 2 Storage | `read`, `write`, `edit`, `list`, `search` | The filesystem connector; the sandbox workspace; libraries | `reading_a_file_returns_its_contents`, `editing_a_file_replaces_matched_text_on_disk`, `content_search_skips_symlinks_that_escape_the_root`, `runs_code_in_the_workspace_and_lists_its_files` |
 | | Separate areas for tools, skills, memory, evals, scratch | Separate folders: `chat/script-tools/`, `skills/`, `chat/memories.json`, `evals/`, `chat/sandbox/<chat>`. The test checks the one separation that is a guardrail: evals outside what tools write | `suites_live_outside_the_folder_tools_write` |
 | | Per-user and shared scopes | Single-user app (section 8): scopes are everywhere, project and agent | `many_facts_become_a_short_index_and_scopes_apply` |
 | 3 Registry | `register` | `create_tool` (candidate), `promote_tool` (active) | `a_tool_written_in_one_chat_is_approved_and_used_in_another` |
-| | `search_tools`, `load_tool` | `find_tools`: BM25 fused with embeddings when an embedding model is set up; loads what it finds | `meaning_and_words_are_fused`, `defers_only_past_the_limit…` |
+| | `search_tools`, `load_tool` | `find_tools`: BM25 over the deferred tools (connector, OpenAPI, custom and written), fused with embeddings when an embedding model is set up (the fusion is tested; the embedding call needs a model); loads what it finds | `meaning_and_words_are_fused`, `defers_only_past_the_limit…` |
 | | `retire(name)` | `retire_tool` (under the approval mode), lifecycle, `script_tools::retire` | `a_tool_s_access_and_retirement_go_through_the_user`, `unused_assistant_tools_retire…` |
-| | Namespaces, version history, status, content hash | `script__<name>`; `versions.rs`; candidate, active, deprecated on the tool, and archived in the artifact registry; SHA-256 pin; an HMAC signature over what was approved, keyed in the OS keychain, so a file changed outside the app is refused | `a_tool_is_written_tested_promoted_and_pinned`, `only_the_assistant_s_unused…`, `a_tool_changed_outside_the_app_is_refused`, `the_signature_is_standard_hmac_sha256` |
+| | Namespaces, version history, status, content hash | `script__<name>`; `versions.rs`; candidate, active, deprecated on the tool, and archived in the artifact registry; the approval pins a SHA-256 of the script, description and parameters; an HMAC signature over what was approved, keyed in the OS keychain, so a file changed outside the app is refused | `a_tool_is_written_tested_promoted_and_pinned`, `only_the_assistant_s_unused…`, `a_tool_changed_outside_the_app_is_refused`, `the_signature_is_standard_hmac_sha256` |
 | | Search before create; update rather than duplicate | `create_tool` refuses a near-duplicate unless told `new_anyway` | `a_near_duplicate_is_refused_unless_asked_for` |
 | 4 Evals | `run_eval`, `compare`, `ablate` | `evals::run_suite`, `compare`, `ablate` (with `tools_off` and `skills_off` on the turn); `cortex-desktop eval` | `an_eval_suite_runs_through_the_loop_and_is_graded`, `comparisons_name_the_cases_that_moved`, `ablating_a_skill_shows_whether_it_helps` |
 | | Human-owned sets; a part hidden from the agent | The whole set is hidden: the filesystem connector and `run_code` cannot reach `evals/`, and a shell command that names the app's data folder always asks, in every mode. The user writes, edits and deletes cases in Settings (Eval cases), which also turns a rated-down answer's case into one that runs | `the_eval_sets_traces_and_audit_log_are_out_of_reach`, `a_command_naming_the_app_s_data_always_asks`, `a_rated_down_answer_becomes_a_waiting_regression_case` |
-| | Regression suites per tool | Each script tool's checks: its good test run, re-run on every rewrite, at promotion and daily | `regression_checks_hold_a_tool_to_what_it_did` |
+| | Regression suites per tool | Each script tool's checks: its good test run, re-run on every rewrite, at promotion and daily. Checks run with nothing granted, so they hold what a tool computes; what it fetches is held by the eval suites and the week-over-week monitor | `regression_checks_hold_a_tool_to_what_it_did`, `the_test_run_has_no_capabilities_whatever_was_asked` |
 | | Tool-selection tests | Cases name the tools a good answer calls and must not call; the `tool-selection` starter suite (written by `cortex-desktop eval`) is three of them | `an_eval_suite_runs_through_the_loop_and_is_graded`, `answers_are_graded_on_tools_and_facts` |
 | 5 Traces | `query_traces(filter)`, `get_run(id)` | `query_traces`, `get_run` built-ins (`cortex-traces::runs`, `run_detail`) | `runs_can_be_queried_and_opened_with_what_they_used` |
-| | `failure_summary`, `usage_stats` | Built-ins of those names | `a_turn_is_traced_and_the_model_can_read_the_trace` |
-| | Question, tools, arguments, results, errors, latency, tokens | The trace database holds tools, errors (as ok or not), latency and tokens per run, on purpose without content; the question, arguments and results stay in the encrypted conversation and activity log, linked by conversation id | `a_run_is_traced_and_summed_without_its_content` |
+| | `failure_summary`, `usage_stats` | Built-ins of those names, called in a turn | `a_turn_is_traced_and_the_model_can_read_the_trace`, `a_run_is_traced_and_summed_without_its_content` |
+| | Question, tools, arguments, results, errors, latency, tokens | The trace database holds tools, errors (as ok or not), empty results (a signal), latency and tokens per run, on purpose without content; the question, arguments and results stay in the encrypted conversation and activity log, linked by conversation id | `a_run_is_traced_and_summed_without_its_content`, `implicit_signals_are_counted_and_unknown_kinds_ignored` |
 | | Artifacts loaded versus used; user feedback | `run_artifacts` per run: tools offered and called, facts listed, pages recalled and read, skills listed and opened; ratings with their reason; implicit signals, the source a link pointed to included | `a_run_records_what_it_had_and_what_it_used`, `ratings_are_kept…`, `implicit_signals_are_counted…` |
 | 6 Memory | `memory_read`, `memory_write`, `memory_search`, `memory_forget` | Facts in the prompt and `knowledge_read`; `remember`, `knowledge_write`; `memory_search`, `knowledge_search`; `forget` | `memory_tools_save_and_forget`, `many_facts_become_a_short_index…` |
 | | Facts, episodes, procedures | Facts and pages; past chats (`search_chats`, `read_chat`); skills | `memory_tools_save_and_forget`, `pages_are_written_found_and_recalled_by_relevance`, `skills_load_by_name` |
@@ -91,21 +93,21 @@ fails if one does not exist, and runs them all. CI runs it on every push ("The k
 | | Scopes; provenance | `Memory::scope` (`project:`, `agent:`), set from the chat, never by the model; conversation id on each fact | `many_facts_become_a_short_index_and_scopes_apply`, `the_model_cannot_choose_a_fact_s_scope` |
 | 7 Version control | `commit`, `log`, `revert`, `diff` | `versions::keep`, `list`, `restore`, `diff`; restoring keeps the version it replaces, so a revert can be reverted | `changed_items_keep_what_they_replace`, `a_memory_change_can_be_reverted`, `a_version_diffs_against_the_one_after_it` |
 | 8 Lifecycle | `score(artifact)` | `cortex-kernel::lifecycle::score`, shown by `chat_artifacts` | `scores_favour_what_is_used_and_fade_when_idle` |
-| | `promote`, `deprecate`, `archive` | `promote_tool`; the daily lifecycle pass | `only_the_assistant_s_unused…` |
-| | Monitor and roll back | Daily: a script tool that fails its regression checks, or fails more this week than last (`lifecycle::regressed`), goes back to its last approved version that passes; with none, it goes back to candidate | `a_tool_that_got_worse_than_last_week_is_flagged`, `a_tool_that_breaks_goes_back_to_its_last_good_version`, `a_failing_tool_is_demoted` |
-| | `consolidate(scope)` | `cortex-kernel::lifecycle::duplicates` finds facts that say the same thing within a scope; `memory::consolidate` merges them (versioned) in the daily pass; the weekly knowledge review proposes the rest | `facts_that_say_the_same_thing_in_the_same_scope_are_grouped`, `duplicate_facts_are_merged_and_the_old_list_kept` |
+| | `promote`, `deprecate`, `archive` | `promote_tool`; the daily lifecycle pass, which judges a written tool by when it was last called | `only_the_assistant_s_unused…`, `unused_assistant_tools_retire…`, `a_tool_in_use_is_kept` |
+| | Monitor and roll back | Daily: a script tool that fails its regression checks, or fails more this week than last (`lifecycle::regressed`), goes back to its last approved, signed version that passes; with none, to candidate | `a_tool_that_got_worse_than_last_week_is_flagged`, `a_tool_that_got_worse_goes_back_a_version_or_out`, `a_tool_that_breaks_goes_back_to_its_last_good_version`, `a_failing_tool_is_demoted` |
+| | `consolidate(scope)` | `cortex-kernel::lifecycle::duplicates` finds facts that say the same thing within a scope; `memory::consolidate` drops the assistant's duplicates (versioned) in the daily pass, never a fact the user wrote; the weekly knowledge review proposes the rest | `facts_that_say_the_same_thing_in_the_same_scope_are_grouped`, `duplicate_facts_are_merged_and_the_old_list_kept` |
 | 9 Context | `load(ref)`, `unload(ref)` | `find_tools`, `use_skill`, `read_tool_output`; `unload_tools` | `tools_load_and_unload_on_demand_and_the_budget_can_be_read`, `a_long_result_is_kept_and_read_back_in_parts` |
-| | `compact(history)` | Before every step, once per turn on failure | `a_failed_summary_is_tried_once_per_turn` |
+| | `compact(history)` | Before every step past 60% of the window, once per turn on failure. Where to cut and what the summary covers are tested in the kernel; the summary itself is a model call | `compaction_cuts_at_a_prompt_and_keeps_recent_turns`, `a_summary_starts_requests_after_what_it_covers`, `a_failed_summary_is_tried_once_per_turn` |
 | | `budget_status()` | `context_status` built-in | `tools_load_and_unload_on_demand_and_the_budget_can_be_read` |
-| | Fixed budget for the always-loaded part | The prompt assembler, a quarter of the window | `over_budget_the_least_important_and_largest_go_first` |
+| | Fixed budget for the always-loaded part | The prompt assembler, a quarter of the window, for the prompt's sections; essential sections are kept whole even over it, and tool schemas are outside it | `over_budget_the_least_important_and_largest_go_first` |
 | 10 World access | Search, fetch, docs; output is data | Web search, browser, MCP, OpenAPI; the exposure gate | `after_reading_mail_new_urls_and_outbound_tools_need_approval`, `tools_outside_the_registry_pass_the_same_gate_as_connectors` |
 | 11 Sub-agents | `spawn(role, task, tools)`, `collect`; isolated contexts | `delegate`: each task names an agent (role) and may name its tools (`subagents::task_tools`); workers are engine turns in temporary chats; reports come back in order | `a_task_gets_only_the_tools_it_names`, `a_delegate_worker_runs_through_the_same_loop`, `reports_render_as_json_in_order` |
-| | The author is not the only reviewer | Before the user decides on a `promote_tool` or `propose_change`, a reviewer reads it: the Reviewer model from Settings (a different model), or the chat's model in a fresh request with none of the chat. Its verdict is on the card | `a_promotion_shows_the_independent_review`, `a_proposed_change_is_reviewed…` |
+| | The author is not the only reviewer | Before the user decides on a `promote_tool` or `propose_change`, and a `save_skill` asks the user in every mode: the Reviewer model from Settings (a different model) reads tools and changes, else the chat's model in a fresh request with none of the chat; its verdict is on the card | `a_promotion_shows_the_independent_review`, `a_proposed_change_is_reviewed_and_applied_only_when_approved`, `saving_a_skill_asks_even_in_auto` |
 | 12 Human channel | `ask`, `propose(change, evidence)`, `request_approval` | `ask_user` (the turn waits for the answer), `propose_change`, approval cards | `ask_user_waits_for_the_answer_and_returns_it`, `a_change_asks_in_ask_mode…`, `a_proposed_change…` |
-| 13 Scheduler | `schedule(cron, task)`, `on_event` | `schedule_task`; folder and feed triggers; one timing engine | `tasks_and_schedules_share_one_timing_engine` |
+| 13 Scheduler | `schedule(cron, task)`, `on_event` | `schedule_task` with once, daily, weekly, monthly and yearly times (presets, not cron syntax: an adaptation for a desktop app); folder and feed triggers; one timing engine | `tasks_and_schedules_share_one_timing_engine`, `new_files_start_a_run_once_settled`, `rss_and_atom_feeds_are_read` |
 | | Nightly evals, regression checks, re-indexing, consolidation, demotions | `tasks::maintenance`, called by the scheduler loop each tick: the lifecycle pass and regression checks daily, the eval suites nightly and the review (with the week's failures) weekly when on; a dropped eval score is announced. Library re-sync runs from the same loop | `maintenance_runs_each_job_when_it_is_due`, `a_nightly_drop_is_announced`, `nightly_evals_compare…`, `it_runs_once_a_day` |
-| 14 Permissions | `request_capability(scope, duration, reason)`, `revoke` | `request_capability` (always asks; grants for the days asked); `chat_revoke_tool`; lapsed grants drop | `a_tool_s_access_and_retirement_go_through_the_user`, `granted_access_lapses_and_can_be_revoked` |
-| | Scoped credentials, keys never seen, identity from the platform | Keychain and vault; vault values masked in every tool's output; key- and token-shaped text and labelled passwords masked in a written tool's output; scope and project ids filled by the app, not the model | `agents_get_only_their_secrets`, `values_are_masked_in_output`, `secrets_in_tool_output_are_masked`, `secrets_in_a_tool_s_output_are_masked`, `the_model_cannot_choose_a_fact_s_scope` |
+| 14 Permissions | `request_capability(scope, duration, reason)`, `revoke` | `request_capability` (always asks; grants for the days asked); Revoke access on Settings' list of what the assistant made (`chat_revoke_tool`); lapsed grants drop | `a_tool_s_access_and_retirement_go_through_the_user`, `granted_access_lapses_and_can_be_revoked` |
+| | Scoped credentials, keys never seen, identity from the platform | Keychain and vault: an agent's secrets reach the processes its tools start as environment variables, never the model; their values are masked in every tool's output (literal matches, so an encoded copy is not caught), and key- and token-shaped text and labelled passwords are masked in a written tool's output; scope and project ids are filled by the app, not the model | `agents_get_only_their_secrets`, `values_are_masked_in_output`, `secrets_in_tool_output_are_masked`, `secrets_in_a_tool_s_output_are_masked`, `the_model_cannot_choose_a_fact_s_scope` |
 
 ### The other sections
 
@@ -140,7 +142,7 @@ fails if one does not exist, and runs them all. CI runs it on every push ("The k
 | 5 | Trace introspection | `cortex-traces`; the model reads it with `usage_stats` and `failure_summary` |
 | 6 | Memory | Facts, pages, notebooks, skills; every change versioned |
 | 7 | Version control | `versions.rs` for agents, workflows, tools, memories, pages, notebooks, instructions; skill and canvas history as before |
-| 8 | Lifecycle manager | `chat/lifecycle.rs`, daily: deprecate unused, archive, roll back or demote failing tools; critical artifacts and the user's own are never touched |
+| 8 | Lifecycle manager | `chat/lifecycle.rs`, daily: deprecate unused, archive, roll back or demote failing tools, drop the assistant's duplicate facts; critical artifacts and the user's own are never touched |
 | 9 | Context manager | Compaction every step, retrieval-ranked skills and tools, one persistent long-output store |
 | 10 | World access | As before |
 | 11 | Sub-agents | `delegate` workers are engine turns with the same gates; the reviewer is the Reviewer model, or a fresh, context-free call |
@@ -618,6 +620,11 @@ The original list:
 
 Done when: a prompt or skill change shows a before and after score before it is enabled.
 
+As built: the user approves first, then the change is measured. With suites, an approved tool, skill,
+instruction or memory change runs each suite before and after, stays only if none does worse, and the
+result says the scores; otherwise it is undone (`an_approved_change_that_makes_the_evals_worse_is_undone`).
+Measuring before the approval card would run every suite for proposals the user then declines.
+
 ## 6a. Coverage of the rest of the kernel document
 
 Section 3 covers the 14 tools. This maps the document's other sections to where each lands.
@@ -629,11 +636,11 @@ Section 3 covers the 14 tools. This maps the document's other sections to where 
 | 1. Act | The agent loop | Exists; one loop in 2 |
 | 2. Observe | Run traces and ratings, readable by the agent (`query_traces`, `failure_summary`) | 4 |
 | 3. Diagnose | The weekly review (`learning::review_task`) carries the week's `failure_summary` and asks the model to open failed runs and say what would fix them; the model can also call `failure_summary` any time | 4, 7 |
-| 4. Propose | `propose_change` built-in: a change (memory, skill, tool, instructions) with its evidence, shown as an approval card | 7 |
+| 4. Propose | `propose_change` built-in: a change (memory, skill or instructions) with its evidence, shown as an approval card; tools are proposed with `create_tool` and `promote_tool` | 7 |
 | 5. Test | Candidate tools run only in the WASM sandbox; suites run with and without the change (`compare`, `ablate`) | 6, 7 |
-| 6. Review | The Reviewer model (or a fresh, context-free call) reads the tool or change before the card reaches the user; its verdict is on the card, so the author is never the only reviewer | 7 |
+| 6. Review | The Reviewer model (or a fresh, context-free call) reads the tool or change before the card reaches the user; its verdict is on the card, so the author is never the only reviewer. A skill saved with `save_skill` is not reviewed, but asks the user in every mode and is measured against the suites | 7 |
 | 7. Promote | `promote(artifact)`: new version, status `active`, hash pinned | 4, 6 |
-| 8. Monitor | Daily, for script tools: this week's failure rate against last week's, and the regression checks; a tool that got worse goes back to its last approved version that passes, else to candidate. Skills and memory have no failure rate to compare: nightly evals catch their regressions and notify, and History reverts them | 7 |
+| 8. Monitor | Daily, for script tools: this week's failure rate against last week's, and the regression checks; a tool that got worse goes back to its last approved, signed version that passes, else to candidate. Skills and memory have no failure rate to compare: their changes are measured when made, nightly evals catch later regressions and notify, and History reverts them | 7 |
 | 9. Prune | Unused for 30 days → `deprecated` (hidden, restorable); 120 days → `archived` | 7 |
 
 ### Layers of adaptation (document section 6)
@@ -665,13 +672,15 @@ Section 3 covers the 14 tools. This maps the document's other sections to where 
   is on (the default), and their descriptions ask whether a fact will still be true in a month; at read
   time, the retriever's relevance cut-off decides what comes into the prompt (phase 5).
 - **Traps:** criticality is a field separate from usage, so a rarely used but important memory is never
-  pruned; the trace tables and eval folders are not writable by any tool.
+  pruned; the trace tables and eval folders are not writable by any tool. The usage the lifecycle reads is
+  visible to the agent (`usage_stats`) and comes from its own calls, so it could keep a tool alive by
+  calling it; it cannot keep one that fails, which the monitor and regression checks judge.
 
 ### Keeping the context flat (document section 8)
 
 | Mechanism | Cortex | Phase |
 |---|---|---|
-| Deferred tool loading | `find_tools` past 30 tools, connector tools only | All tool kinds, retrieval-ranked, in 5 |
+| Deferred tool loading | `find_tools` past 30 tools, connector tools only | Connector, OpenAPI, custom and written tools, retrieval-ranked, in 5; the fixed core (built-ins, files, shell, browser) stays loaded |
 | Skills as files | One line each, body on demand | Retrieved instead of listed once there are many, in 5 |
 | Memory as files | Facts always in the prompt (up to 200); pages retrieved | Facts retrieved past a budget, in 5 |
 | Code as composition | `run_code` in a workspace | Exists |
@@ -685,9 +694,9 @@ Section 3 covers the 14 tools. This maps the document's other sections to where 
 |---|---|---|
 | The agent cannot modify its evaluator, permissions or audit log | The filesystem connector refuses the eval folders, the trace database, the audit log, `connector_state.json` and approval settings (tested through `fs_write`), and `run_code` cannot see them. Shell tools run on the host, so a command that names the app's data folder asks in every mode, Full auto included. A command that reaches it without naming it is still under the approval mode: this is a guard, not a wall | 4, 7 |
 | Humans own the eval sets | Suites live outside the agent's writable paths; the user writes and edits cases in Settings and adds them from rated answers | 7 |
-| Creating and testing is free; promotion needs approval | Candidate tools run only in test calls; `promote` always asks, in every mode | 6, 7 |
+| Creating and testing is free; promotion needs approval | Candidate tools run only in test calls; `promote_tool`, `propose_change` and `save_skill` always ask, in every mode | 6, 7 |
 | New tools start with no capabilities | `create_tool` stores an empty capability set; grants are asked for separately | 6 |
-| Read and write tools are separate; writes confirm | Every tool says whether it only reads (`read_only`); the approval mode decides from it. A script tool's is the union over the tools it calls | 0 (built-ins), 1 (all) |
+| Read and write tools are separate; writes confirm | Every tool says whether it only reads (`read_only`); the approval mode decides from it, so in Ask mode writes confirm and in Auto and Full auto, by the user's choice, routine ones do not. Memory writes (`remember`, `knowledge_write`) do not ask: they are versioned, filtered for sensitive data and behind a switch. A script tool's effect is the union over the tools it calls | 0 (built-ins), 1 (all) |
 | Tool output is data, not instructions | The exposure gate; tool logs never reach the model | Exists; WASM logs in 6 |
 
 ### Build order and minimum viable kernel (document sections 11 and 12)
@@ -704,16 +713,34 @@ The example is sound and its limits are stated honestly in its section 10.13. Ea
 
 | 10.13 point | In Cortex | Test |
 |---|---|---|
-| DNS rebinding | Resolve, refuse private and link-local addresses, pin the connection | `listed_hosts_still_cannot_reach_private_addresses_or_plain_http`, `private_addresses_are_recognized` |
-| Worker starvation | The guest yields its thread every epoch tick | `a_busy_tool_does_not_starve_the_runtime` |
+| DNS rebinding | Resolve, refuse private and link-local addresses, pin the connection to the checked address | `listed_hosts_still_cannot_reach_private_addresses_or_plain_http`, `private_addresses_are_recognized`, `the_connection_goes_to_the_checked_address` |
+| Worker starvation | The guest yields its thread every epoch tick: on one thread, other work finishes while it runs | `a_busy_tool_does_not_starve_the_runtime` |
 | Host-call timeout | The call's wall clock covers waiting on the host | `a_host_call_that_never_returns_is_stopped` |
 | Compilation cost | Compiled once and kept on disk by hash | `the_compiled_interpreter_is_kept_and_reused` |
 | Write capabilities | `write_prefixes` for workspace writes, `tools` for tool-to-tool calls; both asked for at promotion or through `request_capability`, and either makes the tool not read-only | `writes_stay_inside_the_granted_folders_of_the_workspace`, `a_tool_that_writes_is_granted_its_folder_and_changes_something`, `a_tool_calls_another_approved_tool` |
-| Persistence, signed binaries | Encrypted files and the trace database; each approved tool signed with a keychain key | `a_tool_changed_outside_the_app_is_refused` |
+| Persistence, signed binaries | Files (encrypted when the user turns encryption on) and the trace database; each approved tool signed with a keychain key over its script, description, parameters and grants | `a_tool_changed_outside_the_app_is_refused` |
 | Output handling | A rate limit per tool, size caps, vault masking, a secret scan | `each_tool_has_a_rate_limit`, `secrets_in_a_tool_s_output_are_masked` |
 | Semantics | The sandbox bounds reach; behaviour is held by the independent review, the regression checks and eval-gated promotion | `a_promotion_shows_the_independent_review`, `regression_checks_hold_a_tool_to_what_it_did`, `a_promotion_is_gated_on_the_user_s_evals` |
 | Non-WASM workloads | The Podman workbench or bubblewrap; unsandboxed native code only with the user | `code_runs_unsandboxed_only_with_the_user` |
-| Rig API stability | Cortex's own loop and `ChatTool`; `rig-core` pinned, no `rig-agent` code | `tools_run_between_model_calls_until_an_answer` |
+| Rig API stability | Cortex's own loop and `ChatTool`; `rig-core` pinned exactly (`=0.46.0`), no `rig-agent` code | `tools_run_between_model_calls_until_an_answer` |
+
+What these tests do not reach, and how far each is verified:
+
+- **The unsandboxed `run_code` prompt.** The decision is tested (`code_runs_unsandboxed_only_with_the_user`
+  covers every mode, isolated or not). The path that reaches it in practice, a machine without
+  bubblewrap or the workbench, was not run: the development machine has bubblewrap.
+- **The keychain signing key.** Signing and verifying are tested with a fixed key per data folder.
+  Reading and creating the key in the real OS keychain (`ensure_signing_key`) was not run in a test,
+  since tests do not touch the user's keychain. Without a keychain, tools are not signed and the hash pin
+  alone holds them; the app logs a warning.
+- **The fallback reviewer.** With no Reviewer model set, the chat's own model reviews in a fresh request.
+  The tests use a separate review model, because the scripted test model answers streamed requests only.
+- **The embedding half of `find_tools`.** The fusion of words and meaning is tested with given rankings;
+  ranking by meaning needs an embedding model.
+- **The WASI context.** It is built empty in code; the tests check that scripts reach nothing through it,
+  not the context's own fields, which wasmtime does not expose.
+- **The scheduler loop itself.** What it calls each tick, `tasks::maintenance`, is tested; the loop that
+  calls it and starts the evals and the review needs the running app.
 
 Points from the review of the example, each handled when it moved into Cortex:
 
@@ -721,8 +748,8 @@ Points from the review of the example, each handled when it moved into Cortex:
   with the 1 MiB cap. An allowed host can still exhaust memory. Read in chunks and stop at the cap.
 - **Tool names come from the tool.** `describe()` supplies the name, so a tool could call itself
   `remember`. Namespace by source and reject collisions at registration.
-- **The description is untrusted text shown to the model.** The hash pin covers it, but the approval card
-  must show the description the model will see, not only the code.
+- **The description is untrusted text shown to the model.** The approval card shows it, and the approval
+  hash and signature cover it with the parameters, so a description changed after approval is refused.
 - **Read-only is inferred from network access.** Now from every capability that changes something: a
   tool is read-only only when neither it nor anything it calls can reach the network or write.
 - **`Component::new` compiles on every load.** Compiled once and kept on disk by hash.

@@ -133,7 +133,11 @@ pub fn diff(
     // `all` is newest first: the version after this one is at i - 1.
     let newer = match i.checked_sub(1) {
         Some(n) => pretty(&all[n].value),
-        None => current.map(pretty).ok_or("This is the newest version.")?,
+        None => current
+            .cloned()
+            .or_else(|| now(config_dir, kind, id))
+            .map(|v| pretty(&v))
+            .ok_or("This is the newest version.")?,
     };
     Ok(cortex_kernel::diff::unified(&older, &newer))
 }
@@ -186,6 +190,37 @@ pub fn set_production(
             }
             Ok(None)
         }
+    }
+}
+
+/// The item as it is now, for diffing its newest version against.
+pub fn now(config_dir: &Path, kind: &str, id: &str) -> Option<Value> {
+    match (kind, id) {
+        ("memories", "all") => serde_json::to_value(super::memory::load(config_dir)).ok(),
+        ("knowledge", "pages") => serde_json::to_value(super::knowledge::load(config_dir)).ok(),
+        ("instructions", "user") => {
+            serde_json::to_value(super::store::load_instructions(config_dir)).ok()
+        }
+        ("notebooks", agent) => Some(Value::String(super::agents::notebook(config_dir, agent))),
+        ("agents", agent) => serde_json::to_value(super::agents::find(config_dir, agent)?).ok(),
+        ("workflows", workflow) => serde_json::to_value(
+            super::workflows::load(config_dir)
+                .into_iter()
+                .find(|w| w.id == workflow)?,
+        )
+        .ok(),
+        ("tools", name) => match name.strip_prefix("script-") {
+            Some(script) => {
+                serde_json::to_value(super::script_tools::load(config_dir, script)?).ok()
+            }
+            None => serde_json::to_value(
+                super::custom_tools::list(config_dir)
+                    .into_iter()
+                    .find(|t| t.name == name)?,
+            )
+            .ok(),
+        },
+        _ => None,
     }
 }
 
@@ -361,6 +396,9 @@ mod diff_tests {
         assert!(diff(d, "memories", "all", newest, Some(&three))
             .unwrap()
             .contains("third"));
-        assert!(diff(d, "memories", "all", newest, None).is_err());
+        // Without `current`, the newest version is compared with the item as it is now.
+        let to_now = diff(d, "memories", "all", newest, None).unwrap();
+        assert!(to_now.contains("-   \"text\": \"second\""), "{to_now}");
+        assert!(diff(d, "secrets", "all", newest, None).is_err());
     }
 }

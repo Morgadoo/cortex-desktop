@@ -66,6 +66,10 @@ pub fn apply(config_dir: &Path, conversation: &str, change: &Change) -> Result<S
     match change {
         Change::Memory { fact } => {
             let mut memories = super::memory::load(config_dir);
+            // The same write-time filter as `remember`: sensitive data stays out.
+            if let Some(reason) = super::memory::refuse_sensitive(&memories, fact) {
+                return Err(reason);
+            }
             let saved = super::memory::add_filed(
                 &mut memories,
                 fact,
@@ -165,6 +169,13 @@ mod tests {
             .items
             .iter()
             .any(|m| m.text == "Works in Lisbon time"));
+        // A proposed fact passes the same write-time filter as `remember`.
+        let secret = Change::Memory {
+            fact: "The router password is hunter22-blue".into(),
+        };
+        assert!(apply(d, "chat-1", &secret)
+            .unwrap_err()
+            .contains("a password, key or token"));
 
         let p = parse(&json!({
             "summary": "Prefer metric",

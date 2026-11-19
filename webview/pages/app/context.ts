@@ -297,7 +297,14 @@ function artifactRows(): HTMLElement {
               h('div', {}, h('strong', {}, a.id), h('small', { class: 'muted' }, `${a.kind === 'skill' ? 'Skill' : 'Tool'}, ${a.status}, used ${a.used} times`)),
               h('label', { class: 'row-gap' }, h('small', { class: 'muted' }, 'Critical'), switchInput(a.critical, (v) => {
                 void tauriInvoke('chat_set_artifact_critical', { kind: a.kind, id: a.id, critical: v }).catch((e) => toast(String(e), 'error'));
-              }))
+              })),
+              // A tool the assistant wrote keeps only what it was granted; this takes it all back.
+              a.kind === 'script_tool'
+                ? h('button', { class: 'btn btn-ghost btn-sm', on: { click: async () => {
+                    if (!(await confirmDialog(`Revoke ${a.id}'s access?`, 'It keeps working but can no longer reach the network, read or write files, or call other tools, until you approve more.', 'Revoke'))) return;
+                    try { await tauriInvoke('chat_revoke_tool', { name: a.id }); toast('Access revoked.'); } catch (e) { toast(String(e), 'error'); }
+                  } } }, 'Revoke access')
+                : null
             )
           )
         : [h('p', { class: 'muted small' }, 'Nothing yet.')])

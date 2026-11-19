@@ -2314,6 +2314,9 @@ where
             !outcome.is_error,
         );
     }
+    if !outcome.is_error && super::traces::empty_result(&outcome.text) {
+        super::traces::signal(config_dir, conversation_id, None, "empty_result");
+    }
     let notes = super::hooks::after_tool(
         config_dir,
         conversation_id,

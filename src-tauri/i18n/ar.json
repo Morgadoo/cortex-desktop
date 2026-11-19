@@ -2504,5 +2504,12 @@
  "Tools it must not call": "الأدوات التي يجب ألا تستدعيها",
  "waiting for what a right answer contains": "بانتظار ما تحتويه الإجابة الصحيحة",
  "What a good answer does, case by case. You own these: the assistant cannot read or change them.": "ما تفعله الإجابة الجيدة، حالة بحالة. هي ملكك: لا يستطيع المساعد قراءتها أو تغييرها.",
- "What the answer must contain, one per line": "ما يجب أن تحتويه الإجابة، واحد في كل سطر"
+ "What the answer must contain, one per line": "ما يجب أن تحتويه الإجابة، واحد في كل سطر",
+ "Access revoked.": "تم إلغاء الوصول.",
+ "It keeps working but can no longer reach the network, read or write files, or call other tools, until you approve more.": "تستمر في العمل لكنها لم تعد قادرة على الوصول إلى الشبكة أو قراءة الملفات أو كتابتها أو استدعاء أدوات أخرى، حتى توافق على المزيد.",
+ "Revoke": "إلغاء",
+ "Revoke {0}'s access?": "إلغاء وصول {0}؟",
+ "Revoke access": "إلغاء الوصول",
+ "Show changes": "إظهار التغييرات",
+ "What changed after this version": "ما الذي تغير بعد هذا الإصدار"
 }

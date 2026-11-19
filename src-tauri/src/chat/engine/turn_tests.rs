@@ -302,6 +302,7 @@ async fn a_turn_is_traced_and_the_model_can_read_the_trace() {
     let (host, _) = host_with(vec![
         calls(builtins::UPDATE_PLAN, json!({ "steps": ["One"] })),
         calls(builtins::USAGE_STATS, json!({ "days": 1 })),
+        calls(builtins::FAILURE_SUMMARY, json!({ "days": 1 })),
         says("Done."),
     ]);
     assert_eq!(
@@ -312,7 +313,7 @@ async fn a_turn_is_traced_and_the_model_can_read_the_trace() {
         super::super::traces::usage(host.dir.path(), Utc::now() - chrono::Duration::days(1));
     assert_eq!(usage.runs, 1);
     assert_eq!(usage.models[0].model, MODEL);
-    assert_eq!(usage.models[0].calls, 3);
+    assert_eq!(usage.models[0].calls, 4);
     assert!(usage
         .tools
         .iter()
@@ -320,6 +321,11 @@ async fn a_turn_is_traced_and_the_model_can_read_the_trace() {
     // The usage_stats call itself read the trace, which by then held the plan's call.
     let ends = tool_ends(&host);
     assert!(ends[1].0.contains("update_plan"), "{ends:?}");
+    // failure_summary reads the same trace: a run with no failed tools so far.
+    assert!(
+        !ends[2].1 && ends[2].0.contains("\"failedRuns\": 0"),
+        "{ends:?}"
+    );
 }
 
 /// The human channel: `ask_user` puts a question to the user and the turn waits for the answer,
@@ -388,9 +394,13 @@ async fn a_tool_s_access_and_retirement_go_through_the_user() {
         Ok(false)
     );
     let approvals = host.approvals.lock().unwrap().clone();
-    assert!(
-        approvals.contains(&script_tools::REQUEST_CAPABILITY.to_string()),
-        "{approvals:?}"
+    assert_eq!(
+        approvals,
+        vec![
+            script_tools::REQUEST_CAPABILITY.to_string(),
+            script_tools::RETIRE_TOOL.to_string()
+        ],
+        "both asked"
     );
     let tool = script_tools::load(d, "rates").unwrap();
     assert_eq!(tool.granted.http_hosts, vec!["api.example.com".to_string()]);
@@ -787,18 +797,26 @@ async fn a_proposed_change_is_reviewed_and_applied_only_when_approved() {
         calls(PROPOSE_CHANGE, proposal.clone()),
         says("Noted."),
     ]);
+    with_reviewer(&host, "SUPPORT: a stable fact the user gave twice.");
     *host.answer.lock().unwrap() = ApprovalDecision::Once;
     assert_eq!(
         run(&host, &request("Remember that", ApprovalMode::Auto)).await,
         Ok(false)
     );
-    // It asked even in Full auto, and the scripted model gave no review, which the card says.
+    // It asked even in Auto, with the reviewer's verdict on the card and in the result.
     assert_eq!(
         host.approvals.lock().unwrap().clone(),
         vec![PROPOSE_CHANGE.to_string()]
     );
+    assert_eq!(
+        host.reasons.lock().unwrap().clone(),
+        vec!["SUPPORT: a stable fact the user gave twice.".to_string()]
+    );
     let ends = tool_ends(&host);
-    assert!(!ends[0].1 && ends[0].0.contains("Reviewer"), "{ends:?}");
+    assert!(
+        !ends[0].1 && ends[0].0.contains("Reviewer: SUPPORT: a stable fact"),
+        "{ends:?}"
+    );
     assert!(super::super::memory::load(host.dir.path())
         .items
         .iter()
@@ -812,6 +830,98 @@ async fn a_proposed_change_is_reviewed_and_applied_only_when_approved() {
     assert!(super::super::memory::load(declined.dir.path())
         .items
         .is_empty());
+}
+
+/// A separate model reviews: `reviewer` answers every review.
+fn with_reviewer(host: &TestHost, verdict: &str) -> MockCompletionModel {
+    let reviewer = MockCompletionModel::from_turns(
+        (0..4).map(|_| rig_core::test_utils::MockTurn::text(verdict)),
+    );
+    host.model("mock/review", reviewer.clone().erase());
+    let mut providers = crate::chat::providers::load(host.dir.path());
+    providers.review_model = Some("mock/review".into());
+    crate::chat::providers::save(host.dir.path(), &providers).unwrap();
+    reviewer
+}
+
+/// Measured against the user's evals: an approved change that makes a suite worse is undone.
+#[tokio::test]
+async fn an_approved_change_that_makes_the_evals_worse_is_undone() {
+    use crate::chat::{evals, proposals::PROPOSE_CHANGE};
+    let (host, _) = host_with(vec![
+        calls(
+            PROPOSE_CHANGE,
+            json!({
+                "summary": "Answer in one line",
+                "evidence": "Long answers were skimmed",
+                "change": { "layer": "instructions", "text": "Answer in one line." }
+            }),
+        ),
+        // The suite before the change, then after it.
+        says("Back up first, then move the files."),
+        says("Just move it."),
+        says("It made things worse, so it was undone."),
+    ]);
+    with_reviewer(&host, "SUPPORT: shorter answers.");
+    evals::add_case(
+        host.dir.path(),
+        "plans",
+        &evals::Case {
+            id: "move".into(),
+            prompt: "Plan the website move.".into(),
+            facts: vec!["back up".into()],
+            ..evals::Case::default()
+        },
+    )
+    .unwrap();
+    *host.answer.lock().unwrap() = ApprovalDecision::Once;
+    run(&host, &request("Be brief from now on", ApprovalMode::Ask))
+        .await
+        .unwrap();
+    let ends = tool_ends(&host);
+    assert!(
+        ends[0].1 && ends[0].0.contains("so it was undone"),
+        "{ends:?}"
+    );
+    assert!(!store::load_instructions(host.dir.path())
+        .custom
+        .contains("Answer in one line"));
+}
+
+/// A saved skill changes every later chat, so it asks in every mode, Auto included.
+#[tokio::test]
+async fn saving_a_skill_asks_even_in_auto() {
+    let (host, _) = host_with(vec![
+        calls(
+            builtins::SAVE_SKILL,
+            json!({ "name": "weekly-report", "description": "Use when writing the weekly report.", "instructions": "1. Gather. 2. Write." }),
+        ),
+        says("Saved."),
+    ]);
+    *host.answer.lock().unwrap() = ApprovalDecision::Once;
+    run(&host, &request("Keep this as a skill", ApprovalMode::Auto))
+        .await
+        .unwrap();
+    assert_eq!(
+        host.approvals.lock().unwrap().clone(),
+        vec![builtins::SAVE_SKILL.to_string()]
+    );
+    assert!(crate::chat::skills::find(host.dir.path(), "weekly-report").is_some());
+
+    let (declined, _) = host_with(vec![
+        calls(
+            builtins::SAVE_SKILL,
+            json!({ "name": "weekly-report", "description": "x", "instructions": "y" }),
+        ),
+        says("Fine."),
+    ]);
+    run(
+        &declined,
+        &request("Keep this as a skill", ApprovalMode::Auto),
+    )
+    .await
+    .unwrap();
+    assert!(crate::chat::skills::find(declined.dir.path(), "weekly-report").is_none());
 }
 
 /// The turn records the prompt's parts and their sizes, which the context view shows.

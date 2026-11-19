@@ -359,7 +359,19 @@ pub fn consolidate(config_dir: &std::path::Path, scope: Option<&str>) -> Result<
         })
         .collect();
     let groups = cortex_kernel::lifecycle::duplicates(&facts);
-    let gone: std::collections::HashSet<&String> = groups.iter().flat_map(|(_, d)| d).collect();
+    // Like the rest of the lifecycle, it removes only what the assistant wrote: a fact the user
+    // wrote can be the one kept, never one dropped.
+    let by_user: std::collections::HashSet<&String> = memories
+        .items
+        .iter()
+        .filter(|m| m.source == "user")
+        .map(|m| &m.id)
+        .collect();
+    let gone: std::collections::HashSet<&String> = groups
+        .iter()
+        .flat_map(|(_, d)| d)
+        .filter(|id| !by_user.contains(id))
+        .collect();
     if gone.is_empty() {
         return Ok(0);
     }
@@ -609,9 +621,15 @@ mod consolidate_tests {
         // add_filed already skips exact duplicates; these differ in case and punctuation.
         save(d, &m).unwrap();
         assert_eq!(load(d).items.len(), 3);
+        // The user's own duplicates stay: the lifecycle never removes what the user wrote.
+        let mut with_user = load(d);
+        add(&mut with_user, "Works at Acme", "user").unwrap();
+        add(&mut with_user, "works at Acme.", "user").unwrap();
+        save(d, &with_user).unwrap();
         assert_eq!(consolidate(d, None).unwrap(), 1);
         let kept = load(d);
-        assert_eq!(kept.items.len(), 2);
+        assert_eq!(kept.items.len(), 4);
+        assert_eq!(kept.items.iter().filter(|f| f.source == "user").count(), 2);
         assert!(kept
             .items
             .iter()

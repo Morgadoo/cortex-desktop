@@ -880,6 +880,11 @@ mod tests {
     #[tokio::test]
     async fn runs_code_in_the_workspace_and_lists_its_files() {
         if !languages().contains(&"python") {
+            // In CI the runner has Python, so a skip there would hide a failure.
+            assert!(
+                std::env::var_os("CI").is_none(),
+                "CI needs Python for this test"
+            );
             return;
         }
         let dir = tempfile::tempdir().unwrap();

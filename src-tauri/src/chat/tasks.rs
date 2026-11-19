@@ -1456,6 +1456,11 @@ mod timing_tests {
     #[test]
     fn tasks_and_schedules_share_one_timing_engine() {
         if iana_time_zone::get_timezone().is_err() {
+            // In CI the runner has a time zone, so a skip there would hide a failure.
+            assert!(
+                std::env::var_os("CI").is_none(),
+                "CI needs a time zone for this test"
+            );
             return;
         }
         let after = Utc::now();

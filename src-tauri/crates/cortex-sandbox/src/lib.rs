@@ -346,17 +346,12 @@ impl Host for HostState {
         // Resolve once, refuse private addresses, and connect to the address that was checked,
         // so a name cannot point at the local network between the check and the request.
         let port = parsed.port_or_known_default().unwrap_or(443);
-        let address: SocketAddr = tokio::net::lookup_host((host.as_str(), port))
+        let resolved = tokio::net::lookup_host((host.as_str(), port))
             .await
-            .map_err(|_| format!("could not resolve `{host}`"))?
-            .find(|a| !is_private(a.ip()))
+            .map_err(|_| format!("could not resolve `{host}`"))?;
+        let address = checked_address(resolved)
             .ok_or_else(|| format!("denied: `{host}` points at a private address"))?;
-        let client = reqwest::Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
-            .timeout(Duration::from_secs(15))
-            .resolve(&host, address)
-            .build()
-            .map_err(|e| e.to_string())?;
+        let client = pinned_client(&host, address)?;
         let mut request = client.request(method, parsed);
         if let Some(body) = body {
             request = request.body(body);
@@ -381,6 +376,22 @@ impl Host for HostState {
         }
         Ok(Response { status, body })
     }
+}
+
+/// The first public address a name resolved to; none when every one is private.
+fn checked_address(resolved: impl IntoIterator<Item = SocketAddr>) -> Option<SocketAddr> {
+    resolved.into_iter().find(|a| !is_private(a.ip()))
+}
+
+/// A client that reaches `host` only at `address`, the one that was checked: the name is not
+/// looked up again, so it cannot be pointed elsewhere between the check and the request.
+fn pinned_client(host: &str, address: SocketAddr) -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(Duration::from_secs(15))
+        .resolve(host, address)
+        .build()
+        .map_err(|e| e.to_string())
 }
 
 /// The engine, linker and compiled interpreter, made once per process.
@@ -955,27 +966,121 @@ mod tests {
     /// A spinning tool yields: other work on the same runtime thread still runs meanwhile.
     #[tokio::test(flavor = "current_thread")]
     async fn a_busy_tool_does_not_starve_the_runtime() {
-        let spinning = js(
-            "function main() { while (true) {} }",
+        // Compile first, so the clock below times only the run.
+        let _ = js(
+            "function main() { return 1; }",
+            "{}",
+            Capabilities::default(),
+            Limits::default(),
+        )
+        .await;
+        let started = std::time::Instant::now();
+        let spinning = async {
+            let result = js(
+                "function main() { while (true) {} }",
+                "{}",
+                Capabilities::default(),
+                Limits {
+                    fuel: u64::MAX,
+                    timeout: Duration::from_millis(1500),
+                    ..Limits::default()
+                },
+            )
+            .await;
+            (result, started.elapsed())
+        };
+        let ticker = async {
+            for _ in 0..5 {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            started.elapsed()
+        };
+        let ((result, spun), ticked) = tokio::join!(spinning, ticker);
+        assert_eq!(result.unwrap_err(), SandboxError::Timeout);
+        // The guest kept running for its whole time limit, and on this one thread the ticker
+        // still finished long before it: the guest yielded instead of holding the thread.
+        assert!(spun >= Duration::from_millis(1400), "{spun:?}");
+        assert!(ticked < Duration::from_millis(1000), "{ticked:?}");
+    }
+
+    /// DNS rebinding: the checked address is the one connected to; the name is not looked up again.
+    #[tokio::test]
+    async fn the_connection_goes_to_the_checked_address() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let public: SocketAddr = "93.184.216.34:443".parse().unwrap();
+        let private: SocketAddr = "10.0.0.5:443".parse().unwrap();
+        assert_eq!(checked_address([private, public]), Some(public));
+        assert_eq!(checked_address([private]), None);
+        // A name that resolves nowhere still reaches the pinned address, so DNS is not asked.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = socket.read(&mut buf).await;
+            socket
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 6\r\nConnection: close\r\n\r\npinned",
+                )
+                .await
+                .unwrap();
+        });
+        let client = pinned_client("rebind.invalid", address).unwrap();
+        let body = client
+            .get(format!("http://rebind.invalid:{}/", address.port()))
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+        assert_eq!(body, "pinned");
+        server.await.unwrap();
+    }
+
+    /// The CPU budget: fuel runs out before the clock does.
+    #[tokio::test]
+    async fn fuel_bounds_the_cpu() {
+        let err = js(
+            "function main() { let n = 0; while (true) { n++; } }",
             "{}",
             Capabilities::default(),
             Limits {
-                fuel: u64::MAX,
-                timeout: Duration::from_millis(1500),
+                fuel: 50_000_000,
+                timeout: Duration::from_secs(60),
                 ..Limits::default()
             },
-        );
-        let ticker = async {
-            let mut ticks = 0;
-            for _ in 0..5 {
-                tokio::time::sleep(Duration::from_millis(50)).await;
-                ticks += 1;
-            }
-            ticks
-        };
-        let (result, ticks) = tokio::join!(spinning, ticker);
-        assert_eq!(ticks, 5);
-        assert_eq!(result.unwrap_err(), SandboxError::Timeout);
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err, SandboxError::OutOfFuel);
+    }
+
+    /// Reads cannot leave the workspace through a link.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_read_cannot_follow_a_link_out_of_the_workspace() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(outside.path().join("secret.txt"), "no").unwrap();
+        std::os::unix::fs::symlink(outside.path(), dir.path().join("link")).unwrap();
+        let (out, _) = run(
+            "function main() { return read('link/secret.txt'); }",
+            "{}",
+            &Capabilities {
+                read_prefixes: vec!["".into()],
+                ..Default::default()
+            },
+            Limits::default(),
+            Some(Workspace {
+                root: dir.path().to_path_buf(),
+                read: |p| std::fs::read(p),
+                write: |p, b| std::fs::write(p, b),
+            }),
+        )
+        .await;
+        let err = out.unwrap_err().to_string();
+        assert!(err.contains("leaves the workspace"), "{err}");
     }
 
     #[test]

@@ -2504,5 +2504,12 @@
  "Tools it must not call": "Outils qu’elle ne doit pas appeler",
  "waiting for what a right answer contains": "en attente de ce que contient une bonne réponse",
  "What a good answer does, case by case. You own these: the assistant cannot read or change them.": "Ce que fait une bonne réponse, cas par cas. Ils vous appartiennent : l’assistant ne peut ni les lire ni les modifier.",
- "What the answer must contain, one per line": "Ce que la réponse doit contenir, un par ligne"
+ "What the answer must contain, one per line": "Ce que la réponse doit contenir, un par ligne",
+ "Access revoked.": "Accès révoqué.",
+ "It keeps working but can no longer reach the network, read or write files, or call other tools, until you approve more.": "Il continue de fonctionner, mais ne peut plus accéder au réseau, lire ou écrire des fichiers, ni appeler d’autres outils, jusqu’à ce que vous en approuviez davantage.",
+ "Revoke": "Révoquer",
+ "Revoke {0}'s access?": "Révoquer l’accès de {0} ?",
+ "Revoke access": "Révoquer l’accès",
+ "Show changes": "Afficher les modifications",
+ "What changed after this version": "Ce qui a changé après cette version"
 }

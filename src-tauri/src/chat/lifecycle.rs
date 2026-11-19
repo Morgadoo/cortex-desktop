@@ -62,7 +62,8 @@ pub async fn maintain(config_dir: &Path, now: DateTime<Utc>) -> Report {
         traces::set_status(config_dir, &kind, &id, "archived");
         report.archived.push(format!("{kind}:{id}"));
     }
-    // Monitor: a tool that fails more this week than last goes back to its previous version.
+    // Monitor: a tool that fails more this week than last goes back to its previous version, or,
+    // with no earlier version that passes its checks, back to candidate.
     let fortnight = traces::usage(config_dir, now - Duration::days(14)).tools;
     for name in cortex_kernel::lifecycle::regressed(&week, &fortnight) {
         let checks = super::script_tools::load(config_dir, &name)
@@ -70,10 +71,13 @@ pub async fn maintain(config_dir: &Path, now: DateTime<Utc>) -> Report {
             .unwrap_or_default();
         if super::script_tools::revert(config_dir, &name, &checks).await == Ok(true) {
             report.reverted.push(format!("script_tool:{name}"));
+        } else if super::script_tools::demote(config_dir, &name).is_ok() {
+            report.demoted.push(format!("script_tool:{name}"));
         }
     }
     for name in decisions.demote {
-        if report.reverted.contains(&format!("script_tool:{name}")) {
+        let id = format!("script_tool:{name}");
+        if report.reverted.contains(&id) || report.demoted.contains(&id) {
             continue;
         }
         if super::script_tools::demote(config_dir, &name).is_ok() {
@@ -184,6 +188,77 @@ mod tests {
         let report = maintain(d, Utc::now()).await;
         assert_eq!(report.demoted, vec!["script_tool:flaky".to_string()]);
         assert!(super::super::script_tools::definitions(d).is_empty());
+    }
+
+    /// A tool the assistant wrote and keeps calling is used, so it is not retired.
+    #[tokio::test]
+    async fn a_tool_in_use_is_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        super::super::script_tools::create(
+            d,
+            "chat-1",
+            &json!({ "name": "daily_tool", "description": "Formats dates.", "script": "function main() { return 1; }" }),
+        )
+        .await
+        .unwrap();
+        super::super::script_tools::promote(d, "daily_tool", None)
+            .await
+            .unwrap();
+        let later = Utc::now() + Duration::days(UNUSED_DAYS + 10);
+        traces::start_run(d, "r", "c", None, "m");
+        traces::tool_call_at(
+            d,
+            "r",
+            "script__daily_tool",
+            later - Duration::days(2),
+            5,
+            true,
+        );
+        let report = maintain(d, later).await;
+        assert!(report.deprecated.is_empty(), "{report:?}");
+        assert_eq!(
+            traces::artifact(d, "script_tool", "daily_tool")
+                .unwrap()
+                .used,
+            1
+        );
+        assert_eq!(super::super::script_tools::definitions(d).len(), 1);
+    }
+
+    /// Monitor: failing more this week than last sends a tool back to its previous approved
+    /// version; with none, back to candidate.
+    #[tokio::test]
+    async fn a_tool_that_got_worse_goes_back_a_version_or_out() {
+        use super::super::script_tools as st;
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let write = |name: &'static str, script: &'static str| async move {
+            st::create(d, "chat-1", &json!({ "name": name, "description": format!("{name} helper."), "script": script }))
+                .await
+                .unwrap();
+            st::promote(d, name, None).await.unwrap();
+            let mut tool = st::load(d, name).unwrap();
+            tool.checks.clear();
+            st::save(d, &tool).unwrap();
+        };
+        write("rates_v", "function main() { return 1; }").await;
+        write("rates_v", "function main() { return 2; }").await;
+        write("lonely", "function main() { return 3; }").await;
+        let now = Utc::now();
+        traces::start_run(d, "r", "c", None, "m");
+        for tool in ["script__rates_v", "script__lonely"] {
+            // Last week: ten calls, none failed; this week: ten calls, four failed.
+            for i in 0..10 {
+                traces::tool_call_at(d, "r", tool, now - Duration::days(10), 5, true);
+                traces::tool_call_at(d, "r", tool, now - Duration::days(1), 5, i >= 4);
+            }
+        }
+        let report = maintain(d, now).await;
+        assert_eq!(report.reverted, vec!["script_tool:rates_v".to_string()]);
+        assert_eq!(report.demoted, vec!["script_tool:lonely".to_string()]);
+        assert!(st::load(d, "rates_v").unwrap().script.contains("return 1"));
+        assert_eq!(st::load(d, "lonely").unwrap().status, st::Status::Candidate);
     }
 
     #[tokio::test]

@@ -36,6 +36,7 @@ fn table() -> HashMap<&'static str, Handler> {
         t.insert(name, on_builtin);
     }
     t.insert(crate::chat::script_tools::CREATE_TOOL, on_create_tool);
+    t.insert(crate::chat::script_tools::RUN_SCRIPT, on_run_script);
     t.insert(crate::chat::script_tools::PROMOTE_TOOL, on_promote_tool);
     t.insert(crate::chat::proposals::PROPOSE_CHANGE, on_propose_change);
     t.insert(CONTEXT_STATUS, on_context_status);
@@ -432,7 +433,49 @@ fn on_builtin<'a>(
 ) -> BoxFuture<'a, tools::Outcome> {
     Box::pin(async move {
         let name = call.function.name.as_str();
-        if builtins::effect(name) == builtins::Effect::Standing {
+        // A saved skill changes how every later chat works: like a tool's promotion, it asks the
+        // user in every mode, Auto and Full auto included, unless the agent's policy already did.
+        if name == builtins::SAVE_SKILL && !asked {
+            match r.request.approval {
+                ApprovalMode::Plan => {
+                    return tools::Outcome {
+                        text: "Plan mode changes nothing: describe the skill you would save."
+                            .into(),
+                        is_error: true,
+                    }
+                }
+                mode if mode.unattended() => return tools::Outcome {
+                    text:
+                        "Nobody is watching this run to approve a new skill; describe it instead."
+                            .into(),
+                    is_error: true,
+                },
+                _ => {}
+            }
+            let gate = ChatTool {
+                name: name.into(),
+                description: String::new(),
+                parameters: Value::Null,
+                connector_id: None,
+                tool_name: name.into(),
+                read_only: false,
+            };
+            if r.host
+                .approve(
+                    &gate,
+                    &arguments,
+                    Some("a new skill changes every later chat"),
+                )
+                .await
+                == ApprovalDecision::Deny
+            {
+                return tools::Outcome {
+                    text: "The user declined this skill. Do not save it again unless they ask."
+                        .into(),
+                    is_error: true,
+                };
+            }
+        } else if builtins::effect(name) == builtins::Effect::Standing {
             if let Err(refused) = r
                 .confirm_change(
                     name,
@@ -476,7 +519,35 @@ fn on_builtin<'a>(
                 }
             }
         }
-        let outcome = builtins::run(r.config_dir, name, &arguments).await;
+        let outcome = if name == builtins::SAVE_SKILL {
+            // Kept only if the user's eval suites do not get worse with it.
+            let skill = arguments
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let undo = Undo::skill(r.config_dir, skill);
+            let measured = apply_measured(r, undo, async {
+                let outcome = builtins::run(r.config_dir, name, &arguments).await;
+                if outcome.is_error {
+                    Err(outcome.text)
+                } else {
+                    Ok(outcome.text)
+                }
+            })
+            .await;
+            match measured {
+                Ok(text) => tools::Outcome {
+                    text,
+                    is_error: false,
+                },
+                Err(text) => tools::Outcome {
+                    text,
+                    is_error: true,
+                },
+            }
+        } else {
+            builtins::run(r.config_dir, name, &arguments).await
+        };
         // Attribution: this run used the skill it opened.
         if name == builtins::USE_SKILL && !outcome.is_error {
             if let Some(skill) = arguments.get("name").and_then(Value::as_str) {
@@ -506,6 +577,28 @@ fn on_create_tool<'a>(
 ) -> BoxFuture<'a, tools::Outcome> {
     Box::pin(async move {
         match crate::chat::script_tools::create(r.config_dir, r.id, &arguments).await {
+            Ok(text) => tools::Outcome {
+                text,
+                is_error: false,
+            },
+            Err(text) => tools::Outcome {
+                text,
+                is_error: true,
+            },
+        }
+    })
+}
+
+/// `run_script`: computes only, so it runs in every mode.
+#[allow(unused_variables)]
+fn on_run_script<'a>(
+    r: &'a Runner<'a>,
+    call: &'a ToolCall,
+    arguments: Value,
+    asked: bool,
+) -> BoxFuture<'a, tools::Outcome> {
+    Box::pin(async move {
+        match crate::chat::script_tools::run_once(r.config_dir, &arguments).await {
             Ok(text) => tools::Outcome {
                 text,
                 is_error: false,
@@ -598,16 +691,109 @@ fn on_promote_tool<'a>(
 /// With the user's eval suites, a promoted tool stays only if no suite does worse with it than
 /// without it; otherwise it goes back to being a candidate. Without suites there is nothing to
 /// measure against, and the user's approval stands alone.
-async fn gate_on_evals(r: &Runner<'_>, name: &str) -> Result<String, String> {
-    use crate::chat::{evals, script_tools};
-    let suites: Vec<String> = evals::suites(r.config_dir)
+/// The user's suites that have something to check.
+fn runnable_suites(config_dir: &std::path::Path) -> Vec<String> {
+    use crate::chat::evals;
+    evals::suites(config_dir)
         .into_iter()
         .filter(|s| {
-            evals::cases(r.config_dir, s)
+            evals::cases(config_dir, s)
                 .iter()
                 .any(|c| !c.needs_expectation)
         })
-        .collect();
+        .collect()
+}
+
+/// How a skill, instruction or memory change is undone when the evals say it made things worse.
+enum Undo {
+    Memories(crate::chat::memory::Memories),
+    Instructions(crate::chat::store::Instructions),
+    Skill {
+        name: String,
+        previous: Option<(String, String)>,
+    },
+}
+
+impl Undo {
+    /// What to put back if `change` is undone, taken before it is applied.
+    fn before(config_dir: &std::path::Path, change: &crate::chat::proposals::Change) -> Self {
+        use crate::chat::proposals::Change;
+        match change {
+            Change::Memory { .. } => Undo::Memories(crate::chat::memory::load(config_dir)),
+            Change::Instructions { .. } => Undo::Instructions(store::load_instructions(config_dir)),
+            Change::Skill { name, .. } => Undo::skill(config_dir, name),
+        }
+    }
+
+    fn skill(config_dir: &std::path::Path, name: &str) -> Self {
+        Undo::Skill {
+            name: name.to_string(),
+            previous: crate::chat::skills::find(config_dir, name)
+                .filter(|s| s.origin == "user")
+                .map(|s| (s.description, s.body)),
+        }
+    }
+
+    fn run(self, config_dir: &std::path::Path) -> Result<(), String> {
+        match self {
+            Undo::Memories(m) => crate::chat::memory::save(config_dir, &m),
+            Undo::Instructions(i) => store::save_instructions(config_dir, &i),
+            Undo::Skill {
+                name,
+                previous: Some((description, body)),
+            } => crate::chat::skills::save(config_dir, &name, &description, &body),
+            Undo::Skill {
+                name,
+                previous: None,
+            } => crate::chat::skills::delete(config_dir, &name).map(drop),
+        }
+    }
+}
+
+/// Measured against a set the agent does not control: with the user's eval suites, an approved
+/// change to a skill, the instructions or the memories is applied only after each suite is run
+/// before it, and stays only if no suite does worse after it; otherwise it is undone (the undo
+/// is itself kept as a version). Without suites, the user's approval stands alone.
+async fn apply_measured(
+    r: &Runner<'_>,
+    undo: Undo,
+    apply: impl std::future::Future<Output = Result<String, String>>,
+) -> Result<String, String> {
+    use crate::chat::evals;
+    let suites = runnable_suites(r.config_dir);
+    if suites.is_empty() {
+        return apply.await;
+    }
+    let mut before = Vec::new();
+    for suite in &suites {
+        before.push(
+            evals::run_suite(r.host, suite, &r.request.model, &evals::Without::default()).await?,
+        );
+    }
+    let text = apply.await?;
+    for (suite, base) in suites.iter().zip(&before) {
+        let after =
+            evals::run_suite(r.host, suite, &r.request.model, &evals::Without::default()).await?;
+        let comparison = evals::compare(base, &after);
+        if !comparison.holds() {
+            undo.run(r.config_dir)?;
+            return Err(format!(
+                "The change made the `{suite}` eval suite worse ({:.2} before, {:.2} after; worse cases: {}), so it was undone.",
+                comparison.before,
+                comparison.after,
+                comparison.worse.join(", ")
+            ));
+        }
+    }
+    Ok(format!(
+        "{text} The eval suites ({}) did not get worse with it.",
+        suites.join(", ")
+    ))
+}
+
+async fn gate_on_evals(r: &Runner<'_>, name: &str) -> Result<String, String> {
+    use crate::chat::{evals, script_tools};
+    let suites = runnable_suites(r.config_dir);
     if suites.is_empty() {
         return Ok(String::new());
     }
@@ -687,13 +873,20 @@ fn on_propose_change<'a>(
             ApprovalDecision::Deny => {
                 refuse("The user declined this change. Do not propose it again unless they ask.")
             }
-            _ => match proposals::apply(r.config_dir, r.id, &proposal.change) {
-                Ok(text) => tools::Outcome {
-                    text: format!("{text} (Reviewer: {verdict})"),
-                    is_error: false,
-                },
-                Err(e) => refuse(&e),
-            },
+            _ => {
+                let undo = Undo::before(r.config_dir, &proposal.change);
+                match apply_measured(r, undo, async {
+                    proposals::apply(r.config_dir, r.id, &proposal.change)
+                })
+                .await
+                {
+                    Ok(text) => tools::Outcome {
+                        text: format!("{text} (Reviewer: {verdict})"),
+                        is_error: false,
+                    },
+                    Err(e) => refuse(&e),
+                }
+            }
         }
     })
 }
