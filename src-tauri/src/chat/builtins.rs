@@ -366,7 +366,7 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             }),
         ));
     }
-    out.extend(super::sandbox::definition());
+    out.extend(super::sandbox::definition(config_dir));
     out.extend(super::webpage::definition());
     out.extend(super::webpage::act_definition());
     out.extend(super::media::definition(config_dir));

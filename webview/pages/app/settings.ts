@@ -1093,6 +1093,7 @@ async function renderPermissions(content: HTMLElement) {
       h('h3', {}, 'Terminal'),
       row('Allow shell commands', 'Lets the assistant run commands on this computer. Every command asks first unless you allow it.', switchInput(settings.bash_enabled, (v) => { settings.bash_enabled = v; void persist(settings); }))
     ),
+    await workbenchCard(),
     await computerCard(),
     await customToolsCard(),
     await functionsCard(),
@@ -1574,6 +1575,81 @@ function editFunction(f: LumoFunction, onSaved: (all: LumoFunction[]) => void, i
 }
 
 /** Computer use: the assistant may see the screen and use the mouse and keyboard. */
+/**
+ * The agent workbench (workbench.rs): code from the assistant and agents runs in a container with
+ * Python, Node.js, media tools and Blender, seeing only its workspace and the agent's own home.
+ */
+async function workbenchCard(): Promise<HTMLElement> {
+  type Status =
+    | { state: 'unavailable'; reason: string }
+    | { state: 'missing' }
+    | { state: 'building' }
+    | { state: 'ready'; gpu: boolean }
+    | { state: 'failed'; error: string };
+  type Info = { enabled: boolean; image: string; status: Status };
+  const info = await tauriInvoke<Info>('chat_workbench_status');
+  const status = h('div', { class: 'workbench-status' });
+  const actions = h('div', { class: 'card-actions start' });
+  const render = () => {
+    const s = info.status;
+    const line =
+      s.state === 'unavailable'
+        ? `Not available here: ${s.reason} Code runs in the basic sandbox.`
+        : s.state === 'missing'
+          ? 'Not built yet. Building downloads Fedora and the tools (about 2 GB) and takes several minutes; until then code runs in the basic sandbox.'
+          : s.state === 'building'
+            ? 'Building… this takes several minutes. You can keep working.'
+            : s.state === 'ready'
+              ? s.gpu
+                ? 'Ready. Runs can use the NVIDIA GPU.'
+                : 'Ready. Runs use the CPU: the GPU is not reachable from containers (the host needs a current NVIDIA CDI spec).'
+              : 'The build failed.';
+    clear(
+      status,
+      h('p', { class: s.state === 'failed' ? 'error-text' : 'muted' }, line),
+      s.state === 'failed' ? h('pre', { class: 'mono workbench-log' }, s.error) : null
+    );
+    const canBuild = s.state === 'missing' || s.state === 'failed';
+    clear(
+      actions,
+      canBuild || s.state === 'building'
+        ? button({
+            variant: 'secondary',
+            icon: 'download',
+            label: s.state === 'building' ? 'Building…' : 'Build the workbench',
+            disabled: s.state === 'building',
+            onClick: async () => {
+              info.status = { state: 'building' };
+              render();
+              try {
+                info.status = await tauriInvoke<Status>('chat_workbench_build');
+                toast(info.status.state === 'ready' ? 'The agent workbench is ready.' : 'The workbench could not be built.', info.status.state === 'ready' ? 'info' : 'error');
+              } catch (e) {
+                info.status = { state: 'failed', error: String(e) };
+              }
+              render();
+            },
+          })
+        : null
+    );
+  };
+  render();
+  return card(
+    h('h3', {}, 'Agent workbench'),
+    h('p', { class: 'muted' }, 'Code from the assistant and your agents runs in a container of its own: Python with its data libraries, Node.js, ffmpeg, ImageMagick and Blender for 3D. It sees only the chat’s workspace and the agent’s own home, never your files; the network is on only for agents you allow. Needs Podman.'),
+    row(
+      'Run code in the workbench',
+      'When it is built. Off, code runs in the basic sandbox with this computer’s programs.',
+      switchInput(info.enabled, (v) => {
+        info.enabled = v;
+        void tauriInvoke('chat_workbench_set_enabled', { enabled: v }).then(() => toast(v ? 'Code runs in the workbench.' : 'Code runs in the basic sandbox.')).catch((e) => toast(String(e), 'error'));
+      })
+    ),
+    status,
+    actions
+  );
+}
+
 async function computerCard(): Promise<HTMLElement> {
   type Settings = { enabled: boolean; blockedApps: string[]; onlyApps: string[] };
   let current = await tauriInvoke<Settings>('chat_computer_settings');

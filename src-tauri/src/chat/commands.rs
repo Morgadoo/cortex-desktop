@@ -354,6 +354,28 @@ pub fn chat_set_code_runs_allowed(app: AppHandle, allowed: bool) -> Result<(), S
     super::sandbox::set_always_allowed(&config_dir(&app)?, allowed)
 }
 
+/// The agent workbench (workbench.rs): whether it is on, and its state.
+#[tauri::command]
+pub async fn chat_workbench_status(app: AppHandle) -> Result<serde_json::Value, String> {
+    let dir = config_dir(&app)?;
+    Ok(serde_json::json!({
+        "enabled": super::workbench::enabled(&dir),
+        "image": super::workbench::image_tag(),
+        "status": super::workbench::status().await,
+    }))
+}
+
+#[tauri::command]
+pub fn chat_workbench_set_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
+    super::workbench::set_enabled(&config_dir(&app)?, enabled)
+}
+
+/// Builds the workbench image (a large download, so only when the user asks).
+#[tauri::command]
+pub async fn chat_workbench_build(app: AppHandle) -> Result<super::workbench::Status, String> {
+    Ok(super::workbench::build(&config_dir(&app)?).await)
+}
+
 /// The working tree's changes in a coding session's folder.
 #[tauri::command]
 pub async fn chat_code_changes(

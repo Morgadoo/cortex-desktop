@@ -1918,3 +1918,6 @@ video.output-thumb { object-fit: cover; background: #000; }
 .org-node-text small { color: var(--text-muted); font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .agent-card-head strong { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 2px; row-gap: 2px; }
 .agent-card-head strong .tag { white-space: nowrap; }
+/* The agent workbench card (Settings → Permissions). */
+.workbench-status { margin-top: var(--space-2); }
+.workbench-log { max-height: 180px; overflow: auto; white-space: pre-wrap; font-size: var(--fs-xs); padding: 8px 10px; border-radius: var(--radius-sm); background: var(--bg-code); }

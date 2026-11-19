@@ -21,9 +21,10 @@ use super::tools::{ChatTool, Outcome};
 
 pub const RUN_CODE: &str = "run_code";
 
-/// Seconds a run may take unless the model asks for more, and the most it may ask for.
+/// Seconds a run may take unless the model asks for more, and the most it may ask for: long
+/// enough for real work such as a Blender render or a build, which the model asks for by name.
 const DEFAULT_TIMEOUT: u64 = 30;
-const MAX_TIMEOUT: u64 = 120;
+const MAX_TIMEOUT: u64 = 600;
 /// Characters kept of each output stream (its end, which matters when a run fails). A long
 /// output is saved whole by the engine and shown to the model by its start and end.
 const OUTPUT_CHARS: usize = 300_000;
@@ -84,7 +85,7 @@ const LANGUAGES: &[Language] = &[
     },
 ];
 
-fn find_program(name: &str) -> Option<PathBuf> {
+pub(super) fn find_program(name: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
     std::env::split_paths(&path).find_map(|dir| {
         let candidate = dir.join(name);
@@ -149,16 +150,34 @@ pub fn languages() -> Vec<&'static str> {
         .collect()
 }
 
-/// The `run_code` tool, when an interpreter is installed.
-pub fn definition() -> Option<ChatTool> {
-    let langs = languages();
+/// The `run_code` tool, when an interpreter is installed (or the workbench is ready).
+pub fn definition(config_dir: &Path) -> Option<ChatTool> {
+    // The workbench is checked in the background the first time; until then, and wherever it is
+    // off or not built, runs use what this machine has.
+    let bench = if super::workbench::enabled(config_dir) {
+        match super::workbench::status_now() {
+            Some(super::workbench::Status::Ready { gpu }) => Some(gpu),
+            None => {
+                tauri::async_runtime::spawn(super::workbench::status());
+                None
+            }
+            _ => None,
+        }
+    } else {
+        None
+    };
+    let langs: Vec<&str> = if bench.is_some() {
+        LANGUAGES.iter().map(|l| l.name).collect()
+    } else {
+        languages()
+    };
     if langs.is_empty() {
         return None;
     }
-    let isolation = if bubblewrap().is_some() {
-        "It runs isolated: no network, the user's files are hidden, and only the workspace is writable."
-    } else {
-        "It runs on the user's machine with a cleared environment."
+    let isolation = match bench {
+        Some(gpu) => super::workbench::description(gpu),
+        None if bubblewrap().is_some() => "It runs isolated: no network, the user's files are hidden, and only the workspace is writable.".to_string(),
+        None => "It runs on the user's machine with a cleared environment.".to_string(),
     };
     Some(ChatTool {
         name: RUN_CODE.into(),
@@ -175,7 +194,7 @@ pub fn definition() -> Option<ChatTool> {
             "properties": {
                 "language": { "type": "string", "enum": langs },
                 "code": { "type": "string", "description": "The complete program." },
-                "timeout_seconds": { "type": "integer", "minimum": 1, "maximum": MAX_TIMEOUT, "default": DEFAULT_TIMEOUT }
+                "timeout_seconds": { "type": "integer", "minimum": 1, "maximum": MAX_TIMEOUT, "default": DEFAULT_TIMEOUT, "description": "Raise it for long jobs (a render, a build, a large dataset)." }
             },
             "required": ["language", "code"]
         }),
@@ -307,9 +326,12 @@ pub async fn run_in(
             languages().join(", ")
         ));
     };
-    let Some(program) = interpreters().get(lang.name) else {
+    // In the workbench (when it is on and built) the image has every language.
+    let bench = super::workbench::ready(config_dir).await;
+    let program = interpreters().get(lang.name);
+    if bench.is_none() && program.is_none() {
         return err(format!("{} is not installed on this computer.", lang.name));
-    };
+    }
     let timeout = args
         .get("timeout_seconds")
         .and_then(Value::as_u64)
@@ -328,113 +350,173 @@ pub async fn run_in(
     }
     let before = snapshot(&dir);
 
-    let isolated = bubblewrap().is_some();
-    let mut command = match bubblewrap() {
-        Some(bwrap) => {
-            let mut c = tokio::process::Command::new(bwrap);
-            c.args([
-                "--ro-bind",
-                "/",
-                "/",
-                "--dev",
-                "/dev",
-                "--proc",
-                "/proc",
-                "--tmpfs",
-                "/tmp",
-            ]);
-            // Hide the user's files, then put the workspace back where it was.
-            if let Some(home) = dirs_home() {
-                c.arg("--tmpfs").arg(&home);
-                // An interpreter installed under the home folder (pyenv, nvm) stays reachable.
-                if let Some(prefix) = program
-                    .parent()
-                    .and_then(Path::parent)
-                    .filter(|p| p.starts_with(&home))
-                {
-                    c.arg("--ro-bind").arg(prefix).arg(prefix);
+    let run_name = format!("lumo-run-{}", uuid::Uuid::new_v4().simple());
+    let env_file = dir.join(".cell.env");
+    let (isolated, mut command) = if let Some(gpu) = bench {
+        let interpreter = match lang.name {
+            "python" => "python3",
+            "javascript" => "node",
+            _ => "bash",
+        };
+        let run = super::workbench::Run {
+            workspace: &dir,
+            agent_home: env.map(|e| e.home.as_path()),
+            network: env.is_some_and(|e| e.network),
+            gpu,
+            interpreter,
+            script: &script,
+            timeout_seconds: timeout,
+            env_file: &env_file,
+            name: &run_name,
+        };
+        match super::workbench::command(&run) {
+            Some(c) => (true, c),
+            None => return err("The agent workbench cannot be reached.".into()),
+        }
+    } else {
+        let program = program.expect("checked above");
+        let isolated = bubblewrap().is_some();
+        let command = match bubblewrap() {
+            Some(bwrap) => {
+                let mut c = tokio::process::Command::new(bwrap);
+                c.args([
+                    "--ro-bind",
+                    "/",
+                    "/",
+                    "--dev",
+                    "/dev",
+                    "--proc",
+                    "/proc",
+                    "--tmpfs",
+                    "/tmp",
+                ]);
+                // Hide the user's files, then put the workspace back where it was.
+                if let Some(home) = dirs_home() {
+                    c.arg("--tmpfs").arg(&home);
+                    // An interpreter installed under the home folder (pyenv, nvm) stays reachable.
+                    if let Some(prefix) = program
+                        .parent()
+                        .and_then(Path::parent)
+                        .filter(|p| p.starts_with(&home))
+                    {
+                        c.arg("--ro-bind").arg(prefix).arg(prefix);
+                    }
                 }
+                c.arg("--bind").arg(&dir).arg(&dir).arg("--chdir").arg(&dir);
+                if let Some(env) = env {
+                    c.arg("--bind").arg(&env.home).arg(&env.home);
+                }
+                c.args(["--unshare-all", "--die-with-parent", "--new-session"]);
+                if env.is_some_and(|e| e.network) {
+                    c.arg("--share-net");
+                }
+                c.arg("--");
+                c.arg(program).arg(&script);
+                c
             }
-            c.arg("--bind").arg(&dir).arg(&dir).arg("--chdir").arg(&dir);
-            if let Some(env) = env {
-                c.arg("--bind").arg(&env.home).arg(&env.home);
+            None => {
+                let mut c = tokio::process::Command::new(program);
+                c.arg(&script).current_dir(&dir);
+                c
             }
-            c.args(["--unshare-all", "--die-with-parent", "--new-session"]);
-            if env.is_some_and(|e| e.network) {
-                c.arg("--share-net");
-            }
-            c.arg("--");
-            c.arg(program).arg(&script);
-            c
-        }
-        None => {
-            let mut c = tokio::process::Command::new(program);
-            c.arg(&script).current_dir(&dir);
-            c
-        }
+        };
+        (isolated, command)
     };
     let home = env.map_or_else(|| dir.clone(), |e| e.home.clone());
+    // Inside the workbench, the image's own programs; here, this machine's.
+    let base_path = if bench.is_some() {
+        std::ffi::OsString::from("/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin")
+    } else {
+        std::env::var_os("PATH").unwrap_or_default()
+    };
     let path = match env {
         // The agent's own installed commands come first.
         Some(e) => {
             let mut p = std::ffi::OsString::from(e.home.join(".local").join("bin"));
             p.push(if cfg!(windows) { ";" } else { ":" });
-            p.push(std::env::var_os("PATH").unwrap_or_default());
+            p.push(&base_path);
             p
         }
-        None => std::env::var_os("PATH").unwrap_or_default(),
+        None => base_path,
     };
-    command
-        .env_clear()
-        .env("PATH", path)
-        .env("HOME", &home)
-        .env("PYTHONUSERBASE", home.join(".local"))
-        .env("PIP_USER", if env.is_some() { "1" } else { "0" })
-        .env("NPM_CONFIG_PREFIX", home.join(".local"))
-        .env(
-            "TMPDIR",
+    let text = |p: &Path| p.to_string_lossy().into_owned();
+    let mut vars: Vec<(String, String)> = vec![
+        ("PATH".into(), path.to_string_lossy().into_owned()),
+        ("HOME".into(), text(&home)),
+        ("PYTHONUSERBASE".into(), text(&home.join(".local"))),
+        (
+            "PIP_USER".into(),
+            if env.is_some() { "1" } else { "0" }.into(),
+        ),
+        ("NPM_CONFIG_PREFIX".into(), text(&home.join(".local"))),
+        (
+            "TMPDIR".into(),
             if isolated {
-                PathBuf::from("/tmp")
+                "/tmp".into()
             } else {
-                std::env::temp_dir()
+                text(&std::env::temp_dir())
             },
-        )
-        .env("LANG", "C.UTF-8")
-        .env("MPLBACKEND", "Agg")
-        .env("PYTHONDONTWRITEBYTECODE", "1")
-        .env("PYTHONUNBUFFERED", "1")
-        .env("NO_COLOR", "1")
+        ),
+        ("LANG".into(), "C.UTF-8".into()),
+        ("MPLBACKEND".into(), "Agg".into()),
+        ("PYTHONDONTWRITEBYTECODE".into(), "1".into()),
+        ("PYTHONUNBUFFERED".into(), "1".into()),
+        ("NO_COLOR".into(), "1".into()),
+    ];
+    // Vault secrets granted to the chat's agent (also reaching the user's own tools).
+    vars.extend(super::vault::current());
+    if bench.is_some() {
+        // The container gets them from a file; Podman itself keeps its own environment.
+        if let Err(e) = super::workbench::write_env_file(&env_file, &vars) {
+            return err(format!("Could not prepare the run: {e}"));
+        }
+    } else {
+        command.env_clear().envs(vars);
+        #[cfg(windows)]
+        for key in ["SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT"] {
+            if let Some(v) = std::env::var_os(key) {
+                command.env(key, v);
+            }
+        }
+    }
+    command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    #[cfg(windows)]
-    for key in ["SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT"] {
-        if let Some(v) = std::env::var_os(key) {
-            command.env(key, v);
-        }
-    }
-    // Vault secrets granted to the chat's agent (also reaching the user's own tools).
-    command.envs(super::vault::current());
 
     let started = Instant::now();
     let child = match command.spawn() {
         Ok(c) => c,
         Err(e) => return err(format!("Could not start {}: {e}", lang.name)),
     };
+    // A workbench run stops itself (`timeout` inside the container); the wait here allows for
+    // the container starting and stopping.
+    let limit = if bench.is_some() {
+        timeout + 60
+    } else {
+        timeout
+    };
     let (exit_code, stdout, stderr, timed_out) =
-        match tokio::time::timeout(Duration::from_secs(timeout), child.wait_with_output()).await {
+        match tokio::time::timeout(Duration::from_secs(limit), child.wait_with_output()).await {
             Ok(Ok(out)) => (
                 out.status.code(),
                 tail(&out.stdout),
                 tail(&out.stderr),
-                false,
+                // `timeout` exits with 124 when it stopped the program.
+                bench.is_some() && out.status.code() == Some(124),
             ),
             Ok(Err(e)) => return err(format!("The run failed: {e}")),
-            // Dropping the future kills the process.
-            Err(_) => (None, String::new(), String::new(), true),
+            // Dropping the future kills the process; a container is removed by name.
+            Err(_) => {
+                if bench.is_some() {
+                    super::workbench::remove(&run_name).await;
+                }
+                (None, String::new(), String::new(), true)
+            }
         };
     let _ = std::fs::remove_file(&script);
+    let _ = std::fs::remove_file(&env_file);
 
     let after = snapshot(&dir);
     let mut files: Vec<FileInfo> = after
@@ -459,6 +541,8 @@ pub async fn run_in(
         "stderr": stderr,
         "files": files,
         "isolated": isolated,
+        "workbench": bench.is_some(),
+        "gpu": bench == Some(true),
     });
     let failed = timed_out || exit_code != Some(0);
     let mut text = serde_json::to_string_pretty(&report).unwrap_or_default();

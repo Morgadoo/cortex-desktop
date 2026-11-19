@@ -304,6 +304,21 @@ description = "Set whether code runs without asking."
 commands.allow = ["chat_set_code_runs_allowed"]
 
 [[permission]]
+identifier = "allow-chat-workbench-status"
+description = "Read the agent workbench's state."
+commands.allow = ["chat_workbench_status"]
+
+[[permission]]
+identifier = "allow-chat-workbench-set-enabled"
+description = "Turn the agent workbench on or off."
+commands.allow = ["chat_workbench_set_enabled"]
+
+[[permission]]
+identifier = "allow-chat-workbench-build"
+description = "Build the agent workbench image."
+commands.allow = ["chat_workbench_build"]
+
+[[permission]]
 identifier = "allow-chat-speak"
 description = "Read an answer aloud."
 commands.allow = ["chat_speak"]

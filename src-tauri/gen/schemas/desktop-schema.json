@@ -849,6 +849,24 @@
           "markdownDescription": "Read this month's usage."
         },
         {
+          "description": "Build the agent workbench image.",
+          "type": "string",
+          "const": "allow-chat-workbench-build",
+          "markdownDescription": "Build the agent workbench image."
+        },
+        {
+          "description": "Turn the agent workbench on or off.",
+          "type": "string",
+          "const": "allow-chat-workbench-set-enabled",
+          "markdownDescription": "Turn the agent workbench on or off."
+        },
+        {
+          "description": "Read the agent workbench's state.",
+          "type": "string",
+          "const": "allow-chat-workbench-status",
+          "markdownDescription": "Read the agent workbench's state."
+        },
+        {
           "description": "List workflows.",
           "type": "string",
           "const": "allow-chat-workflows",

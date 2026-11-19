@@ -85,6 +85,7 @@ pub mod versions;
 pub mod video;
 pub mod videogen;
 pub mod webpage;
+pub mod workbench;
 pub mod workflows;
 
 use std::collections::HashMap;
