@@ -80,6 +80,7 @@
     "allow-chat-speak",
     "allow-chat-steer",
     "allow-chat-audio-settings",
+    "allow-chat-hex-status",
     "allow-chat-save-audio-settings",
     "allow-chat-audio-voices",
     "allow-chat-search",

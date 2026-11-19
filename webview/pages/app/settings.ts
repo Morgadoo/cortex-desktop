@@ -2566,9 +2566,42 @@ function builtinSpeechSelect(current: string, onChange: (v: string) => void): HT
   return sel;
 }
 
+interface HexModel {
+  id: string;
+  name: string;
+  installed: boolean;
+  verified: boolean;
+}
+interface HexStatus {
+  running: boolean;
+  version: string | null;
+  models: HexModel[];
+  problem: string | null;
+}
+
+/** Hex's model picker, with whether Hex is running; filled in once Hex answers. */
+function hexSpeechField(current: string, onChange: (v: string) => void): HTMLElement {
+  const sel = h('select', { class: 'input', 'aria-label': 'Hex model' }, h('option', { value: '' }, 'The best one downloaded in Hex'));
+  sel.addEventListener('change', () => onChange(sel.value));
+  const status = h('small', { class: 'field-hint' }, 'Looking for Hex…');
+  void tauriInvoke<HexStatus>('chat_hex_status').then((hex) => {
+    for (const m of hex.models) {
+      const ready = m.installed && m.verified;
+      sel.append(h('option', { value: m.id, selected: m.id === current, disabled: !ready }, ready ? m.name || m.id : `${m.name || m.id} (not downloaded)`));
+    }
+    status.textContent = hex.running
+      ? 'Hex is running. When it is closed, the built-in Whisper takes over.'
+      : hex.problem
+        ? `${hex.problem} Until it is, the built-in Whisper is used.`
+        : 'Hex is not running. Until it is, the built-in Whisper is used.';
+  }).catch(() => (status.textContent = 'Hex could not be asked.'));
+  return h('div', { class: 'field' }, h('label', { class: 'field-label' }, 'Model'), sel, status);
+}
+
 const STT_ENGINES: [string, string][] = [
   ['provider', 'Your chat providers'],
   ['builtin', 'Built-in (on this computer)'],
+  ['hex', 'Hex (on this computer)'],
   ['openai', 'OpenAI-compatible server'],
   ['elevenlabs', 'ElevenLabs'],
   ['off', 'Off'],
@@ -2610,7 +2643,9 @@ async function renderAudio(content: HTMLElement) {
   const renderStt = () =>
     clear(
       sttBody,
-      field('Engine', select(STT_ENGINES, s.stt.engine, (v) => { s.stt.engine = v as typeof s.stt.engine; if (v === 'builtin' && !s.stt.model.startsWith('whisper-')) s.stt.model = ''; renderStt(); })),
+      field('Engine', select(STT_ENGINES, s.stt.engine, (v) => { s.stt.engine = v as typeof s.stt.engine; if ((v === 'builtin' && !s.stt.model.startsWith('whisper-')) || v === 'hex') s.stt.model = ''; renderStt(); })),
+      s.stt.engine === 'hex' ? h('p', { class: 'muted small' }, 'Hex is a fast speech-to-text app (Parakeet and Whisper models) that runs on this computer. Install it from anoma.ly/hex and download a model there.') : null,
+      s.stt.engine === 'hex' ? hexSpeechField(s.stt.model, (v) => (s.stt.model = v)) : null,
       s.stt.engine === 'builtin'
         ? field('Model', builtinSpeechSelect(s.stt.model, (v) => (s.stt.model = v)), 'Whisper runs on this computer; download models under Providers → Built-in models.')
         : null,
@@ -2715,7 +2750,7 @@ function wakeWordCard(): HTMLElement {
     changed({ phrase: phrase.value.trim() || 'Hey Cortex' });
     toast('Saved.');
   });
-  const local = audioSettings?.stt.engine === 'builtin' || (audioSettings?.stt.engine === 'openai' && /localhost|127\.0\.0\.1|\[::1\]/.test(audioSettings.stt.baseUrl ?? ''));
+  const local = audioSettings?.stt.engine === 'builtin' || audioSettings?.stt.engine === 'hex' || (audioSettings?.stt.engine === 'openai' && /localhost|127\.0\.0\.1|\[::1\]/.test(audioSettings.stt.baseUrl ?? ''));
   return card(
     h('h3', {}, 'Wake word'),
     h('p', { class: 'muted' }, 'Say the wake word and a question (“Hey Cortex, what’s on my calendar today?”) and Cortex comes forward and asks it in a new chat; say it alone to start a voice conversation. Works while Cortex is open or in the tray.'),
@@ -2734,8 +2769,8 @@ function wakeWordCard(): HTMLElement {
 
 /** Dictation anywhere: a global shortcut that types what you say into any app. */
 async function dictationCard(): Promise<HTMLElement> {
-  type Prefs = { enabled: boolean; shortcut: string; insert: 'type' | 'paste' | 'copy'; stopOnPause: boolean };
-  let prefs: Prefs = { enabled: false, shortcut: 'Ctrl+Alt+D', insert: 'type', stopOnPause: false };
+  type Prefs = { enabled: boolean; shortcut: string; insert: 'type' | 'paste' | 'copy'; stopOnPause: boolean; holdToTalk: boolean };
+  let prefs: Prefs = { enabled: false, shortcut: 'Ctrl+Alt+D', insert: 'type', stopOnPause: false, holdToTalk: false };
   try {
     prefs = await tauriInvoke<Prefs>('dictation_prefs');
   } catch {
@@ -2767,7 +2802,8 @@ async function dictationCard(): Promise<HTMLElement> {
     h('p', { class: 'muted' }, 'Press a shortcut in any app, speak, and press it again: what you said is transcribed with the speech-to-text above and typed where your cursor is. A small pill shows while Cortex listens; it never takes focus.'),
     row('Dictation anywhere', 'Registers the shortcut below for the whole system while Cortex runs.', switchInput(prefs.enabled, (v) => void save({ enabled: v }))),
     row('Shortcut', 'Like Ctrl+Alt+D or Alt+Shift+Space.', shortcut),
-    row('How the text goes in', 'Typing works on X11 and Wayland (xdotool, wtype or ydotool); macOS and Windows paste it. Terminals paste with Ctrl+Shift+V, so typing suits them better.', how),
+    row('How the text goes in', 'Typing works on X11 and Wayland (xdotool, wtype or ydotool); macOS and Windows paste it. GNOME on Wayland pastes by default, as it lets no app type into another. Terminals paste with Ctrl+Shift+V, so typing suits them better.', how),
+    row('Hold to talk', 'Listen while the shortcut is held and insert when you let go. A quick tap still starts and stops as usual.', switchInput(prefs.holdToTalk, (v) => void save({ holdToTalk: v }))),
     row('Finish when I pause', 'Also stop after about two seconds of silence, not only on the second press.', switchInput(prefs.stopOnPause, (v) => void save({ stopOnPause: v })))
   );
 }

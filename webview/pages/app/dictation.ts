@@ -6,11 +6,18 @@
  * without. MediaRecorder is the fallback where Web Audio is unavailable.
  */
 
+import { createVad } from './vad';
+
 export interface Recording {
   /** Stops recording and returns the audio. */
   stop(): Promise<Blob>;
   /** Stops recording and discards it. */
   cancel(): void;
+  /**
+   * The audio so far, without stopping, for live transcripts, and whether speech has been heard
+   * in it yet (Whisper invents words for silence); absent where the audio can't be read.
+   */
+  peek?(): { wav: Blob; seconds: number; heard: boolean };
 }
 
 const WAV_RATE = 16_000;
@@ -42,38 +49,17 @@ export function setVoicePauseMs(ms: number) {
   }
 }
 
-/** RMS above this counts as sound. */
-const SPEECH_LEVEL = 0.02;
-/** Sound shorter than this in total (a click, a cough) is not speech. */
-const MIN_SPEECH_MS = 400;
-
-/** Feeds sample blocks; reports the level, and calls `onPause` once after speech and a pause. */
+/**
+ * Feeds sample blocks; reports the level, and calls `onPause` once after speech and a pause.
+ * Speech is told from the room by an adaptive detector (`vad.ts`), so steady noise such as a fan
+ * does not hold a turn open.
+ */
 function pauseDetector(listening: Listening, sampleRate: number): (samples: Float32Array) => void {
-  let speechMs = 0;
-  let quietSince = 0;
-  let paused = false;
+  const vad = createVad({ sampleRate, pauseMs: listening.pauseMs ?? voicePauseMs() });
   return (samples) => {
-    let sum = 0;
-    for (const v of samples) sum += v * v;
-    const level = Math.sqrt(sum / samples.length);
-    listening.onLevel?.(Math.min(1, level * 8));
-    const now = performance.now();
-    const pauseMs = listening.pauseMs ?? voicePauseMs();
-    if (level > SPEECH_LEVEL) {
-      speechMs += (samples.length / sampleRate) * 1000;
-      quietSince = 0;
-    } else if (!paused) {
-      quietSince ||= now;
-      if (now - quietSince > pauseMs) {
-        if (speechMs >= MIN_SPEECH_MS) {
-          paused = true;
-          listening.onPause?.();
-        } else {
-          // A lone blip followed by quiet was not speech.
-          speechMs = 0;
-        }
-      }
-    }
+    const state = vad.push(samples);
+    listening.onLevel?.(state.level);
+    if (state.paused) listening.onPause?.();
   };
 }
 
@@ -141,11 +127,15 @@ function wavRecorder(stream: MediaStream, release: () => void, listening: Listen
   const processor = context.createScriptProcessor(4096, 1, 1);
   const parts: Float32Array[] = [];
   const detect = listening.onLevel || listening.onPause ? pauseDetector(listening, context.sampleRate) : null;
+  // Whether anyone has spoken yet, for live transcripts.
+  const speech = createVad({ sampleRate: context.sampleRate, pauseMs: 1000 });
+  let heard = false;
   processor.onaudioprocess = (e) => {
     const samples = new Float32Array(e.inputBuffer.getChannelData(0));
     parts.push(samples);
     e.outputBuffer.getChannelData(0).fill(0);
     detect?.(samples);
+    if (!heard) heard = speech.push(samples).speaking;
   };
   source.connect(processor);
   // The processor only runs while connected to the output, but the microphone must never be
@@ -167,6 +157,10 @@ function wavRecorder(stream: MediaStream, release: () => void, listening: Listen
       return encodeWav(downsample(concat(parts), context.sampleRate, WAV_RATE), WAV_RATE);
     },
     cancel: finish,
+    peek: () => {
+      const samples = downsample(concat(parts), context.sampleRate, WAV_RATE);
+      return { wav: encodeWav(samples, WAV_RATE), seconds: samples.length / WAV_RATE, heard };
+    },
   };
 }
 

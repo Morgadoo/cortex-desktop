@@ -1927,7 +1927,6 @@
  "Type a prompt first.": "اكتب مطالبة أولاً.",
  "Type it into the app": "اكتبها في التطبيق",
  "Type your answer…": "اكتب إجابتك…",
- "Typing works on X11 and Wayland (xdotool, wtype or ydotool); macOS and Windows paste it. Terminals paste with Ctrl+Shift+V, so typing suits them better.": "تعمل الكتابة على X11 وWayland (باستخدام xdotool أو wtype أو ydotool)، ويُلصقها macOS وWindows. تُلصق الأجهزة الطرفية النص بالضغط على Ctrl+Shift+V، لذا فالكتابة أنسب لها.",
  "Unarchive": "إلغاء الأرشفة",
  "Uncommitted changes in this folder": "تغييرات غير ملتزَم بها في هذا المجلد",
  "Undo": "تراجع",
@@ -2515,5 +2514,18 @@
  "Cron expression": "تعبير cron",
  "Custom (cron)": "مخصص (cron)",
  "On the schedule {0}": "وفق الجدول {0}",
- "Minute, hour, day of the month, month, day of the week, in your time zone. 30 9 * * 1-5 is 9:30 on weekdays.": "الدقيقة، الساعة، يوم الشهر، الشهر، يوم الأسبوع، بتوقيتك المحلي. ‎30 9 * * 1-5 تعني 9:30 في أيام العمل."
+ "Minute, hour, day of the month, month, day of the week, in your time zone. 30 9 * * 1-5 is 9:30 on weekdays.": "الدقيقة، الساعة، يوم الشهر، الشهر، يوم الأسبوع، بتوقيتك المحلي. ‎30 9 * * 1-5 تعني 9:30 في أيام العمل.",
+ "{0} Until it is, the built-in Whisper is used.": "{0} وحتى ذلك الحين، يُستخدم Whisper المدمج.",
+ "Hex (on this computer)": "Hex (على هذا الحاسوب)",
+ "Hex could not be asked.": "تعذّر الاتصال بـ Hex.",
+ "Hex is a fast speech-to-text app (Parakeet and Whisper models) that runs on this computer. Install it from anoma.ly/hex and download a model there.": "Hex تطبيق سريع لتحويل الكلام إلى نص (نماذج Parakeet وWhisper) يعمل على هذا الحاسوب. ثبّته من anoma.ly/hex ونزّل نموذجًا فيه.",
+ "Hex is running. When it is closed, the built-in Whisper takes over.": "Hex يعمل. عند إغلاقه، يتولى Whisper المدمج المهمة.",
+ "Hex model": "نموذج Hex",
+ "Hold to talk": "اضغط مطولًا للتحدث",
+ "Listen while the shortcut is held and insert when you let go. A quick tap still starts and stops as usual.": "يستمع ما دام الاختصار مضغوطًا ويُدرج النص عند تحريره. والنقرة السريعة لا تزال تبدأ وتوقف كالمعتاد.",
+ "Looking for Hex…": "جارٍ البحث عن Hex…",
+ "The best one downloaded in Hex": "أفضل نموذج منزّل في Hex",
+ "Typing works on X11 and Wayland (xdotool, wtype or ydotool); macOS and Windows paste it. GNOME on Wayland pastes by default, as it lets no app type into another. Terminals paste with Ctrl+Shift+V, so typing suits them better.": "الكتابة تعمل على X11 وWayland (xdotool أو wtype أو ydotool)؛ أما macOS وWindows فيلصقان النص. GNOME على Wayland يلصق افتراضيًا، إذ لا يسمح لأي تطبيق بالكتابة في آخر. الطرفيات تلصق بـ Ctrl+Shift+V، لذا تناسبها الكتابة أكثر.",
+ "Hex is not running. Until it is, the built-in Whisper is used.": "Hex لا يعمل. وحتى ذلك الحين، يُستخدم Whisper المدمج.",
+ "Listening…": "جارٍ الاستماع…"
 }

@@ -1,14 +1,18 @@
 //! System-wide dictation (Osaurus's dictation hotkey): a global shortcut, pressed in any app,
 //! opens a small "Listening" pill that does not take focus. Pressing the shortcut again (or
-//! pausing, if chosen) ends it; the speech is transcribed with the speech-to-text set in
+//! pausing, if chosen) ends it; with hold-to-talk, letting go of the shortcut ends it, and a
+//! quick tap still toggles. The speech is transcribed with the speech-to-text set in
 //! Settings → Audio and typed into the app that had focus, pasted, or left on the clipboard.
 //!
 //! Off until chosen (Settings → Audio → Dictation anywhere). Typing uses the system's tools:
-//! xdotool on X11, wtype or ydotool on Wayland; on macOS and Windows the text is pasted.
+//! xdotool on X11, wtype or ydotool on Wayland; on macOS and Windows the text is pasted. GNOME
+//! on Wayland offers no virtual keyboard to wtype, and ydotool types by key code, which garbles
+//! accents and other layouts, so there the text is pasted by default.
 
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use log::{info, warn};
 use serde::{Deserialize, Serialize};
@@ -43,6 +47,8 @@ pub struct Prefs {
     pub insert: Insert,
     /// Finish after a pause in speech, as well as on the second press.
     pub stop_on_pause: bool,
+    /// Listen while the shortcut is held down and finish when it is let go.
+    pub hold_to_talk: bool,
 }
 
 impl Default for Prefs {
@@ -50,10 +56,34 @@ impl Default for Prefs {
         Self {
             enabled: false,
             shortcut: "Ctrl+Alt+D".into(),
-            insert: Insert::Type,
+            insert: default_insert(
+                &std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default(),
+                &std::env::var("XDG_SESSION_TYPE").unwrap_or_default(),
+            ),
             stop_on_pause: false,
+            hold_to_talk: false,
         }
     }
+}
+
+/// How dictated text goes in when the user has not chosen: pasted on GNOME under Wayland (see
+/// the module notes), typed elsewhere.
+pub fn default_insert(desktop: &str, session_type: &str) -> Insert {
+    let gnome = desktop.split(':').any(|d| d.eq_ignore_ascii_case("gnome"));
+    if gnome && session_type.eq_ignore_ascii_case("wayland") {
+        Insert::Paste
+    } else {
+        Insert::Type
+    }
+}
+
+/// A press shorter than this, with hold-to-talk on, is a tap: it toggles as without it, so
+/// the same shortcut can still start a long dictation that ends on a pause or a second tap.
+const TAP: Duration = Duration::from_millis(350);
+
+/// Whether letting go of the shortcut, held for `held`, finishes listening.
+pub fn release_finishes(hold_to_talk: bool, held: Duration) -> bool {
+    hold_to_talk && held >= TAP
 }
 
 /// What the app is doing with the shortcut right now.
@@ -66,6 +96,9 @@ pub struct Dictation {
 struct Inner {
     shortcut: Option<Shortcut>,
     listening: bool,
+    hold_to_talk: bool,
+    /// When the shortcut went down, while it is held.
+    pressed_at: Option<Instant>,
     /// The X11 window that had focus when listening began, to type into.
     target: Option<String>,
 }
@@ -105,7 +138,9 @@ pub fn startup(app: &AppHandle) {
         Ok(shortcut) => match app.global_shortcut().register(shortcut) {
             Ok(()) => {
                 if let Some(state) = app.try_state::<Dictation>() {
-                    state.inner.lock().unwrap().shortcut = Some(shortcut);
+                    let mut inner = state.inner.lock().unwrap();
+                    inner.shortcut = Some(shortcut);
+                    inner.hold_to_talk = p.hold_to_talk;
                 }
             }
             Err(e) => warn!("could not register the dictation shortcut: {e}"),
@@ -120,8 +155,33 @@ pub fn is_shortcut(app: &AppHandle, shortcut: &Shortcut) -> bool {
         .is_some_and(|s| s.inner.lock().unwrap().shortcut.as_ref() == Some(shortcut))
 }
 
-/// The shortcut was pressed: start listening, or finish.
-pub fn toggle(app: &AppHandle) {
+/// The shortcut went down: start listening, or finish.
+pub fn pressed(app: &AppHandle) {
+    if let Some(state) = app.try_state::<Dictation>() {
+        state.inner.lock().unwrap().pressed_at = Some(Instant::now());
+    }
+    toggle(app);
+}
+
+/// The shortcut came up: with hold-to-talk, finish unless it was only a tap.
+pub fn released(app: &AppHandle) {
+    let Some(state) = app.try_state::<Dictation>() else {
+        return;
+    };
+    let finish = {
+        let mut inner = state.inner.lock().unwrap();
+        let held = inner.pressed_at.take().map(|t| t.elapsed());
+        inner.listening && held.is_some_and(|h| release_finishes(inner.hold_to_talk, h))
+    };
+    if finish {
+        if let Some(window) = app.get_webview_window(LABEL) {
+            let _ = window.emit("dictation://stop", ());
+        }
+    }
+}
+
+/// Start listening, or finish.
+fn toggle(app: &AppHandle) {
     let Some(state) = app.try_state::<Dictation>() else {
         return;
     };
@@ -214,7 +274,20 @@ fn focused_window() -> Option<String> {
 }
 
 fn wayland() -> bool {
-    std::env::var_os("WAYLAND_DISPLAY").is_some() && std::env::var_os("DISPLAY").is_none()
+    is_wayland(
+        &std::env::var("XDG_SESSION_TYPE").unwrap_or_default(),
+        std::env::var_os("WAYLAND_DISPLAY").is_some(),
+    )
+}
+
+/// Whether the desktop session is Wayland. `DISPLAY` says nothing: Xwayland sets it in every
+/// GNOME and KDE Wayland session, and xdotool there reaches only X11 windows.
+pub fn is_wayland(session_type: &str, wayland_display: bool) -> bool {
+    match session_type.to_ascii_lowercase().as_str() {
+        "wayland" => true,
+        "x11" => false,
+        _ => wayland_display,
+    }
 }
 
 fn run(program: &str, args: &[&str]) -> Result<(), String> {
@@ -341,6 +414,7 @@ pub fn set_dictation_prefs(
         }
         state.inner.lock().unwrap().shortcut = new;
     }
+    state.inner.lock().unwrap().hold_to_talk = prefs.hold_to_talk;
     save(&app, &prefs)
 }
 
@@ -428,11 +502,44 @@ mod tests {
     fn prefs_default_off_and_read_old_files() {
         let p: Prefs = serde_json::from_str(r#"{"enabled":true}"#).unwrap();
         assert!(
-            p.enabled && p.shortcut == "Ctrl+Alt+D" && p.insert == Insert::Type && !p.stop_on_pause
+            p.enabled
+                && p.shortcut == "Ctrl+Alt+D"
+                && p.insert == Prefs::default().insert
+                && !p.stop_on_pause
+                && !p.hold_to_talk
         );
         assert!(!Prefs::default().enabled);
         assert!(Prefs::default().shortcut.parse::<Shortcut>().is_ok());
         let p: Prefs = serde_json::from_str(r#"{"insert":"paste","stopOnPause":true}"#).unwrap();
         assert_eq!((p.insert, p.stop_on_pause), (Insert::Paste, true));
+        let p: Prefs = serde_json::from_str(r#"{"holdToTalk":true}"#).unwrap();
+        assert!(p.hold_to_talk);
+    }
+
+    #[test]
+    fn gnome_on_wayland_pastes_and_everywhere_else_types() {
+        assert_eq!(default_insert("GNOME", "wayland"), Insert::Paste);
+        assert_eq!(default_insert("ubuntu:GNOME", "wayland"), Insert::Paste);
+        assert_eq!(default_insert("GNOME", "x11"), Insert::Type);
+        assert_eq!(default_insert("KDE", "wayland"), Insert::Type);
+        assert_eq!(default_insert("", ""), Insert::Type);
+        // A chosen way is kept wherever the app runs.
+        let p: Prefs = serde_json::from_str(r#"{"insert":"type"}"#).unwrap();
+        assert_eq!(p.insert, Insert::Type);
+    }
+
+    #[test]
+    fn a_wayland_session_is_wayland_even_with_xwayland_s_display() {
+        assert!(is_wayland("wayland", false));
+        assert!(!is_wayland("x11", true));
+        assert!(is_wayland("", true) && !is_wayland("", false));
+        assert!(is_wayland("Wayland", true));
+    }
+
+    #[test]
+    fn hold_to_talk_finishes_on_release_but_a_tap_still_toggles() {
+        assert!(release_finishes(true, Duration::from_millis(900)));
+        assert!(!release_finishes(true, Duration::from_millis(120)));
+        assert!(!release_finishes(false, Duration::from_secs(3)));
     }
 }

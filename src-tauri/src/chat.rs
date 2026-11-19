@@ -42,6 +42,7 @@ pub mod extraction;
 mod favicon;
 pub mod functions;
 pub mod headless;
+pub mod hex;
 pub mod hooks;
 pub mod host;
 pub mod import;

@@ -161,7 +161,7 @@ pub async fn digest(config_dir: &Path, path: &Path) -> Result<Digest, String> {
         .await
         .map_err(|e| e.to_string())??;
         let settings = super::audio::load(config_dir).stt;
-        match super::audio::transcribe(config_dir, wav, "soundtrack.wav", &settings).await {
+        match super::audio::transcribe(config_dir, wav, "soundtrack.wav", &settings, false).await {
             Ok(t) if !t.trim().is_empty() => (Some(t), None),
             Ok(_) => (
                 None,

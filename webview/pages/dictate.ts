@@ -1,17 +1,20 @@
 /**
  * Cortex desktop: the dictation pill, opened by the dictation shortcut from any app.
  *
- * Records until the shortcut is pressed again (or a pause, if chosen), transcribes with the
- * speech-to-text set in Settings → Audio, and hands the text to `dictation_insert`, which types
- * or pastes it into the app that had focus. The window never takes focus itself.
+ * Records until the shortcut is pressed again (or let go, with hold-to-talk, or a pause, if
+ * chosen), transcribes with the speech-to-text set in Settings → Audio, and hands the text to
+ * `dictation_insert`, which types or pastes it into the app that had focus. The window never
+ * takes focus itself. With an engine on this computer, the words appear as they are spoken.
  */
 import { logError } from '../shared/logger';
 import { tauriInvoke } from '../shared/tauri';
 import { startRecording, toBase64, type Recording } from './app/dictation';
+import { liveTranscript, renderLive } from './app/live';
 
 interface Prefs {
   shortcut: string;
   stopOnPause: boolean;
+  holdToTalk: boolean;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -21,15 +24,33 @@ document.addEventListener('DOMContentLoaded', () => {
   const level = document.getElementById('level') as HTMLElement;
   let recording: Recording | null = null;
   let finishing = false;
-  let prefs: Prefs = { shortcut: 'Ctrl+Alt+D', stopOnPause: false };
+  /** Asked to finish while the microphone was still opening (a short hold, a quick second press). */
+  let starting = false;
+  let stopWhenStarted = false;
+  let prefs: Prefs = { shortcut: 'Ctrl+Alt+D', stopOnPause: false, holdToTalk: false };
+  let live = false;
+  let liveText = '';
+  let stopLive = () => {};
+  /** The pill shows one line: about this many characters of the latest words. */
+  const PILL_CHARS = 40;
 
-  const show = (title: string, detail: string, kind: '' | 'busy' | 'error' = '') => {
+  const show = (title: string, detail: string | null, kind: '' | 'busy' | 'error' = '') => {
     stateEl.textContent = title;
-    hint.textContent = detail;
+    if (detail !== null) {
+      hint.textContent = detail;
+      hint.classList.remove('live');
+    }
     pill.className = `dictate-pill ${kind}`.trim();
   };
 
+  const endLive = () => {
+    stopLive();
+    stopLive = () => {};
+    liveText = '';
+  };
+
   const fail = (message: string) => {
+    endLive();
     recording?.cancel();
     recording = null;
     finishing = false;
@@ -39,13 +60,20 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const start = async () => {
-    if (recording || finishing) return;
+    if (recording || finishing || starting) return;
+    starting = true;
+    stopWhenStarted = false;
     try {
       prefs = await tauriInvoke<Prefs>('dictation_prefs');
     } catch {
       /* keep the defaults */
     }
-    show('Listening…', `Press ${prefs.shortcut} again to insert`);
+    try {
+      live = await tauriInvoke<boolean>('chat_stt_live');
+    } catch {
+      live = false;
+    }
+    show('Listening…', prefs.holdToTalk ? `Let go of ${prefs.shortcut} to insert (after a quick tap, press it again)` : `Press ${prefs.shortcut} again to insert`);
     level.style.width = '0';
     try {
       recording = await startRecording({
@@ -55,15 +83,32 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     } catch (e) {
       fail(`The microphone is not available: ${String(e)}`);
+    } finally {
+      starting = false;
     }
+    if (recording && live) {
+      stopLive = liveTranscript(recording, (text) => {
+        renderLive(hint, liveText, text, PILL_CHARS);
+        hint.classList.add('live');
+        liveText = text;
+      });
+    }
+    if (recording && stopWhenStarted) void finish();
   };
 
   const finish = async () => {
+    if (starting) {
+      stopWhenStarted = true;
+      return;
+    }
     if (!recording || finishing) return;
     finishing = true;
     const rec = recording;
     recording = null;
-    show('Transcribing…', 'Turning your speech into text', 'busy');
+    const heard = liveText;
+    endLive();
+    // The words heard so far stay up while the final transcript is made.
+    show('Transcribing…', heard ? null : 'Turning your speech into text', 'busy');
     try {
       const audio = await rec.stop();
       const text = await tauriInvoke<string>('chat_transcribe', { audio: await toBase64(audio), mime: audio.type });
@@ -80,6 +125,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const cancel = () => {
+    endLive();
     recording?.cancel();
     recording = null;
     finishing = false;

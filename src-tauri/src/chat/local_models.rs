@@ -1415,13 +1415,22 @@ fn speech() -> &'static Mutex<Option<Speech>> {
     S.get_or_init(|| Mutex::new(None))
 }
 
+/// Audio past the end of the speech that a live guess still reads: a second (100 frames make a
+/// second); with less, Whisper repeats itself more.
+const LIVE_MARGIN_FRAMES: usize = 100;
+
 /// Transcribes 16 kHz mono samples with a downloaded Whisper model. `language` is a code like
-/// `en`, or empty to let the model tell.
+/// `en`, or empty to let the model tell. `live` is for a guess while the speaker is still
+/// talking: Whisper reads only the audio there is (and half a second more) instead of a
+/// 30-second window padded with silence, which is many times less work for a short recording
+/// and a little less accurate (a repeated phrase is said once, see [`collapse_repeats`]); the
+/// final transcript reads whole windows.
 pub fn transcribe(
     root: &Path,
     id: &str,
     samples: &[f32],
     language: &str,
+    live: bool,
 ) -> Result<String, String> {
     use candle_core::IndexOp as _;
     use candle_transformers::models::whisper as w;
@@ -1494,7 +1503,15 @@ pub fn transcribe(
     // Whisper reads 30-second windows; the mel is padded with silence, so the last one is full too.
     let (_, _, padded) = mel.dims3().map_err(|e| e.to_string())?;
     while seek < frames {
-        let size = (padded - seek).min(w::N_FRAMES);
+        let size = if live {
+            // Even: the encoder halves the frames with a stride of two.
+            let size = (frames - seek + LIVE_MARGIN_FRAMES)
+                .min(padded - seek)
+                .min(w::N_FRAMES);
+            size - size % 2
+        } else {
+            (padded - seek).min(w::N_FRAMES)
+        };
         let segment = mel.narrow(2, seek, size).map_err(|e| e.to_string())?;
         seek += w::N_FRAMES;
         let features = s
@@ -1590,7 +1607,31 @@ pub fn transcribe(
         }
     }
     s.model.reset_kv_cache();
-    Ok(text)
+    Ok(if live { collapse_repeats(&text) } else { text })
+}
+
+/// A live guess with a phrase said again and again ("Remind me Remind me Remind me"), which
+/// Whisper writes when it reads a second of audio, said once. The final transcript keeps
+/// everything as heard.
+pub fn collapse_repeats(text: &str) -> String {
+    let key = |w: &str| {
+        w.trim_matches(|c: char| !c.is_alphanumeric())
+            .to_lowercase()
+    };
+    let mut words: Vec<&str> = text.split_whitespace().collect();
+    let mut i = 0;
+    while i < words.len() {
+        let repeat = (1..=8).find(|&n| {
+            i + 2 * n <= words.len() && (0..n).all(|k| key(words[i + k]) == key(words[i + n + k]))
+        });
+        match repeat {
+            Some(n) => {
+                words.drain(i + n..i + 2 * n);
+            }
+            None => i += 1,
+        }
+    }
+    words.join(" ")
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1706,6 +1747,24 @@ pub fn embed_texts(root: &Path, id: &str, texts: &[String]) -> Result<Vec<Vec<f3
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_live_guess_says_a_repeated_phrase_once() {
+        assert_eq!(
+            collapse_repeats("Remind me Remind me Remind me Remind me"),
+            "Remind me"
+        );
+        assert_eq!(
+            collapse_repeats("Remind me to send, to send the report"),
+            "Remind me to send, the report"
+        );
+        assert_eq!(
+            collapse_repeats("Book a table for four"),
+            "Book a table for four"
+        );
+        assert_eq!(collapse_repeats("Hello. hello"), "Hello.");
+        assert_eq!(collapse_repeats(""), "");
+    }
+
     use super::*;
 
     #[test]
@@ -1873,7 +1932,7 @@ mod tests {
         let root = Path::new(&dir).join("models");
         let samples = audio_samples(&std::fs::read(wav).unwrap()).unwrap();
         let started = std::time::Instant::now();
-        let text = transcribe(&root, "whisper-tiny", &samples, "").unwrap();
+        let text = transcribe(&root, "whisper-tiny", &samples, "", false).unwrap();
         eprintln!(
             "{:.1} s of audio in {:?}: {text}",
             samples.len() as f64 / 16_000.0,

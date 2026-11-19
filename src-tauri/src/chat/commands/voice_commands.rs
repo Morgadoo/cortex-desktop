@@ -28,6 +28,21 @@ pub async fn chat_speak(app: AppHandle, text: String) -> Result<SpeechOut, Strin
     )
 }
 
+/// Whether the Hex dictation app is running here, and its speech models, for Settings → Audio.
+#[tauri::command]
+pub async fn chat_hex_status() -> crate::chat::hex::Status {
+    crate::chat::hex::status().await
+}
+
+/// Whether dictation shows the words as they are spoken: only with an engine on this computer
+/// (the dictation pill may ask this, though not read the audio settings themselves).
+#[tauri::command]
+pub fn chat_stt_live(app: AppHandle) -> Result<bool, String> {
+    Ok(crate::chat::audio::live_capable(
+        &crate::chat::audio::load(&config_dir(&app)?).stt,
+    ))
+}
+
 #[tauri::command]
 pub fn chat_audio_settings(app: AppHandle) -> Result<AudioView, String> {
     let dir = config_dir(&app)?;

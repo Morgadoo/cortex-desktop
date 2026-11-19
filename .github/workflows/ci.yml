@@ -42,6 +42,8 @@ jobs:
         run: npm run build:webview
       - name: Every interface string is translated
         run: npm run check:i18n
+      - name: Voice (turn ends, live transcripts)
+        run: npm run check:voice
 
   rust:
     name: Rust (format, lints, tests)
@@ -49,6 +51,12 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      # The debug build, its test binaries and the saved cache outgrow the hosted runner's free
+      # disk; toolkits this job never uses make room.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          df -h /
       - name: System libraries
         run: |
           sudo apt-get update

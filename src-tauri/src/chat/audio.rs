@@ -8,6 +8,8 @@
 //!   or a local one (Speaches, LocalAI, Kokoro-FastAPI, faster-whisper-server…).
 //! - `xai`: xAI's text-to-speech, through rig's xAI dialect.
 //! - `elevenlabs`: ElevenLabs, called directly (rig has no ElevenLabs model).
+//! - `hex` (speech only): the Hex dictation app's models on this computer, through its local
+//!   API (`hex.rs`); when Hex isn't running, the built-in Whisper takes over.
 //! - `browser` (speech only): the system voice, through the page's Web Speech API.
 //! - `off`.
 //!
@@ -32,7 +34,7 @@ const ELEVENLABS: &str = "https://api.elevenlabs.io";
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", default)]
 pub struct SttSettings {
-    /// `provider`, `openai`, `elevenlabs` or `off`.
+    /// `provider`, `builtin`, `hex`, `openai`, `elevenlabs` or `off`.
     pub engine: String,
     /// For `openai`: the server's base URL, ending in `/v1`.
     pub base_url: String,
@@ -109,9 +111,31 @@ pub fn save(config_dir: &Path, settings: &AudioSettings) -> Result<(), String> {
     write_json(&path(config_dir), settings)
 }
 
+/// Whether live transcripts may use this engine: one on this computer, asked again about once a
+/// second while the speaker talks (never a paid service). `live.ts` in the page decides the same.
+pub fn live_capable(stt: &SttSettings) -> bool {
+    match stt.engine.as_str() {
+        "builtin" | "hex" => true,
+        "openai" => {
+            let url = stt.base_url.trim();
+            let rest = url
+                .strip_prefix("http://")
+                .or_else(|| url.strip_prefix("https://"))
+                .unwrap_or("");
+            ["localhost", "127.0.0.1", "[::1]"].iter().any(|host| {
+                rest.strip_prefix(host)
+                    .is_some_and(|after| after.is_empty() || after.starts_with([':', '/']))
+            })
+        }
+        _ => false,
+    }
+}
+
 /// Settings cleaned before saving: known engines, a speed in range, trimmed fields.
 pub fn normalize(mut s: AudioSettings) -> AudioSettings {
-    if !["provider", "builtin", "openai", "elevenlabs", "off"].contains(&s.stt.engine.as_str()) {
+    if !["provider", "builtin", "hex", "openai", "elevenlabs", "off"]
+        .contains(&s.stt.engine.as_str())
+    {
         s.stt.engine = "provider".into();
     }
     if !["provider", "openai", "xai", "elevenlabs", "browser", "off"]
@@ -294,42 +318,43 @@ pub async fn speak(
     Ok(Some((audio, mime)))
 }
 
-/// Transcribes recorded speech with the chosen engine.
+/// Transcribes recorded speech with the chosen engine. `live` marks a guess made while the
+/// speaker is still talking (`live.ts` in the page), which the built-in Whisper answers faster.
 pub async fn transcribe(
     config_dir: &Path,
     audio: Vec<u8>,
     file_name: &str,
     settings: &SttSettings,
+    live: bool,
 ) -> Result<String, String> {
     match settings.engine.as_str() {
         "off" => Err("Voice input is off in Settings → Audio.".into()),
         "provider" => super::media::transcribe(config_dir, audio, file_name).await,
-        "builtin" => {
-            let root = super::local_models::root()?;
-            // The model chosen, else the first Whisper downloaded.
-            let speech = |id: &str| {
-                super::local_models::entry(id)
-                    .is_some_and(|e| e.kind == super::local_models::Kind::Speech)
-                    && super::local_models::installed(&root, id)
+        "builtin" => builtin(audio, &settings.model, &settings.language, live).await,
+        "hex" => {
+            let samples = {
+                let audio = audio.clone();
+                tokio::task::spawn_blocking(move || super::local_models::audio_samples(&audio))
+                    .await
+                    .map_err(|e| e.to_string())??
             };
-            let id = Some(settings.model.clone())
-                .filter(|m| speech(m))
-                .or_else(|| {
-                    super::local_models::list(&root)
-                        .into_iter()
-                        .find(|m| m.installed && m.kind == super::local_models::Kind::Speech)
-                        .map(|m| m.id)
-                })
-                .ok_or(
-                    "Download a Whisper model first (Settings → Providers → Built-in models).",
-                )?;
-            let language = settings.language.clone();
-            tokio::task::spawn_blocking(move || {
-                let samples = super::local_models::audio_samples(&audio)?;
-                super::local_models::transcribe(&root, &id, &samples, &language)
-            })
-            .await
-            .map_err(|e| e.to_string())?
+            match with_hex(&samples, settings).await {
+                Ok(text) => Ok(text),
+                // Hex isn't running: the built-in Whisper takes over, when one is downloaded.
+                Err(super::hex::Failure::Unavailable(why)) => {
+                    log::info!("speech-to-text: {why} Using the built-in Whisper instead.");
+                    builtin(audio, "", &settings.language, live).await.map_err(|e| {
+                        if e == NO_WHISPER {
+                            format!(
+                                "{why} Start Hex, or download a Whisper model (Settings → Providers → Built-in models) for when it isn't running."
+                            )
+                        } else {
+                            e
+                        }
+                    })
+                }
+                Err(super::hex::Failure::Refused(why)) => Err(why),
+            }
         }
         "openai" => {
             if settings.base_url.is_empty() {
@@ -405,6 +430,50 @@ pub async fn transcribe(
     }
 }
 
+const NO_WHISPER: &str = "Download a Whisper model first (Settings → Providers → Built-in models).";
+
+/// The built-in Whisper: the model `chosen` when it is downloaded, else the first one that is.
+async fn builtin(
+    audio: Vec<u8>,
+    chosen: &str,
+    language: &str,
+    live: bool,
+) -> Result<String, String> {
+    let root = super::local_models::root()?;
+    let speech = |id: &str| {
+        super::local_models::entry(id).is_some_and(|e| e.kind == super::local_models::Kind::Speech)
+            && super::local_models::installed(&root, id)
+    };
+    let id = Some(chosen.to_string())
+        .filter(|m| speech(m))
+        .or_else(|| {
+            super::local_models::list(&root)
+                .into_iter()
+                .find(|m| m.installed && m.kind == super::local_models::Kind::Speech)
+                .map(|m| m.id)
+        })
+        .ok_or(NO_WHISPER)?;
+    let language = language.to_string();
+    tokio::task::spawn_blocking(move || {
+        let samples = super::local_models::audio_samples(&audio)?;
+        super::local_models::transcribe(&root, &id, &samples, &language, live)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Hex, with the model chosen in Settings when it is ready there, else its best ready one.
+async fn with_hex(samples: &[f32], settings: &SttSettings) -> Result<String, super::hex::Failure> {
+    let client = super::hex::Client::connect().await?;
+    let models = client.models().await?;
+    let model = super::hex::pick_model(&models, &settings.model).ok_or_else(|| {
+        super::hex::Failure::Refused(
+            "Hex has no speech model downloaded yet; download one in Hex.".into(),
+        )
+    })?;
+    client.transcribe(samples, &model, &settings.language).await
+}
+
 /// ElevenLabs voices on the user's account, as (id, name).
 pub async fn elevenlabs_voices(base_url: &str) -> Result<Vec<(String, String)>, String> {
     let key = secret(TTS_SECRET)
@@ -443,6 +512,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn live_transcripts_use_only_engines_on_this_computer() {
+        let stt = |engine: &str, base_url: &str| SttSettings {
+            engine: engine.into(),
+            base_url: base_url.into(),
+            ..SttSettings::default()
+        };
+        assert!(live_capable(&stt("builtin", "")) && live_capable(&stt("hex", "")));
+        assert!(live_capable(&stt("openai", "http://localhost:8000/v1")));
+        assert!(live_capable(&stt("openai", "http://127.0.0.1")));
+        assert!(live_capable(&stt("openai", "http://[::1]:9000/v1")));
+        assert!(!live_capable(&stt("openai", "https://api.openai.com/v1")));
+        assert!(!live_capable(&stt(
+            "openai",
+            "http://localhost.evil.example/v1"
+        )));
+        assert!(!live_capable(&stt("provider", "")) && !live_capable(&stt("elevenlabs", "")));
+    }
+
+    #[test]
     fn settings_are_normalized_and_saved() {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(load(dir.path()), AudioSettings::default());
@@ -453,6 +541,13 @@ mod tests {
         s.tts.engine = "elevenlabs".into();
         s.tts.speed = 9.0;
         let s = normalize(s);
+        let mut hex = AudioSettings::default();
+        hex.stt.engine = "hex".into();
+        assert_eq!(
+            normalize(hex).stt.engine,
+            "hex",
+            "Hex is a speech-to-text engine"
+        );
         assert_eq!(s.stt.engine, "provider", "unknown engines fall back");
         assert_eq!(s.stt.base_url, "http://localhost:8000/v1");
         assert_eq!(s.stt.language, "pt");

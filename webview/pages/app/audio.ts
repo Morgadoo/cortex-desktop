@@ -2,7 +2,7 @@
 import { tauriInvoke } from '../../shared/tauri';
 
 export interface SttSettings {
-  engine: 'provider' | 'builtin' | 'openai' | 'elevenlabs' | 'off';
+  engine: 'provider' | 'builtin' | 'hex' | 'openai' | 'elevenlabs' | 'off';
   baseUrl: string;
   model: string;
   language: string;

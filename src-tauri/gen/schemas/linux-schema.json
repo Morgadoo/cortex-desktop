@@ -477,6 +477,12 @@
           "markdownDescription": "Read the privacy filter setting."
         },
         {
+          "description": "See whether the Hex dictation app is running and which speech models it has.",
+          "type": "string",
+          "const": "allow-chat-hex-status",
+          "markdownDescription": "See whether the Hex dictation app is running and which speech models it has."
+        },
+        {
           "description": "Import a ChatGPT or Claude export.",
           "type": "string",
           "const": "allow-chat-import-conversations",

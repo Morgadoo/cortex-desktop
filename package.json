@@ -11,7 +11,8 @@
     "icons:desktop": "node scripts/build-desktop-icons.mjs",
     "typecheck": "tsc --noEmit -p webview",
     "i18n:catalog": "node scripts/ui-strings.mjs",
-    "check:i18n": "node scripts/check-i18n.mjs"
+    "check:i18n": "node scripts/check-i18n.mjs",
+    "check:voice": "node scripts/check-vad.mjs && node scripts/check-live.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4",

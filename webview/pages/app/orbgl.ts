@@ -66,9 +66,23 @@ uniform float uLevel;
 uniform float uSwirl;
 uniform float uDim;
 uniform vec3 uColor;
+// 0 on a dark theme, 1 on a light one (eased between when the theme changes).
+uniform float uLight;
 
 const float PI = 3.14159265359;
 ${GLSL_NOISE}
+// Reflectance of a dielectric (glass) surface at an angle, as Blender's Fresnel node computes it:
+// low where the surface faces you, rising to a full mirror at grazing angles.
+float fresnelDielectric(float cosi, float eta) {
+  float c = abs(cosi);
+  float g = eta * eta - 1.0 + c * c;
+  if (g <= 0.0) return 1.0;
+  g = sqrt(g);
+  float a = (g - c) / (g + c);
+  float b = (c * (g + c) - 1.0) / (c * (g - c) + 1.0);
+  return 0.5 * a * a * (1.0 + b * b);
+}
+
 vec3 rotY(vec3 v, float a) {
   float c = cos(a), s = sin(a);
   return vec3(c * v.x + s * v.z, v.y, -s * v.x + c * v.z);
@@ -138,8 +152,26 @@ void main() {
 
   // The bloom lies over the glass too, so the rim glows instead of cutting the light off.
   vec3 inside = min(aces(col) + aces(bloom) * 0.22, vec3(1.0));
+  // On a light theme the same orb, but its dark glass lets the page through: nearly clear at the
+  // rim, deepening towards the centre as the glass thickens, while the glow, the swirls and the
+  // glints stay. Premultiplied, so the colour (never above the alpha) still tints what shows
+  // behind.
+  float bright = max(inside.r, max(inside.g, inside.b));
+  float depth = 0.18 + 0.72 * pow(NdotV, 1.2);
+  float insideA = mix(1.0, clamp(depth + bright * 1.4, 0.0, 1.0), uLight);
+  // Sheen, as on a dark glass sphere: soft light gathering at grazing angles along the
+  // silhouette, fading inwards, a little brighter with the voice.
+  float sheen = pow(1.0 - NdotV, 3.0) * (0.38 + 0.2 * uLevel) * uLight;
+  vec3 sheenColor = mix(uColor, vec3(1.0), 0.65);
+  vec4 glass = vec4(inside, insideA);
+  glass = vec4(sheenColor * sheen + glass.rgb * (1.0 - sheen), sheen + glass.a * (1.0 - sheen));
+  // The border: the glass's Fresnel reflection (IOR 1.45, Blender's default), a crisp edge that
+  // mirrors the bright room where the surface turns away, clear where it faces you.
+  float border = fresnelDielectric(NdotV, 1.45) * uLight;
+  vec3 mirror = mix(vec3(0.97, 0.96, 1.0), sheenColor, 0.35);
+  glass = vec4(mirror * border + glass.rgb * (1.0 - border), border + glass.a * (1.0 - border));
   float edge = smoothstep(radius + px, radius - px, r);
-  gl_FragColor = vec4(mix(around, inside, edge), max(edge, aroundA));
+  gl_FragColor = vec4(mix(around, glass.rgb, edge), mix(aroundA, glass.a, edge));
 }
 `;
 
@@ -257,6 +289,7 @@ export function createGlowOrb(canvas: HTMLCanvasElement): GlowOrb | null {
   const uSwirl = u('uSwirl');
   const uDim = u('uDim');
   const uColor = u('uColor');
+  const uLight = u('uLight');
   gl.clearColor(0, 0, 0, 0);
 
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -269,6 +302,9 @@ export function createGlowOrb(canvas: HTMLCanvasElement): GlowOrb | null {
   let last = performance.now();
   let frame = 0;
   let color = orbColor();
+  // The app's theme (Settings → Appearance), not only the system's.
+  const isLight = () => document.documentElement.dataset.theme === 'light';
+  let light = isLight() ? 1 : 0;
 
   const draw = (now: number) => {
     frame = requestAnimationFrame(draw);
@@ -279,6 +315,7 @@ export function createGlowOrb(canvas: HTMLCanvasElement): GlowOrb | null {
     const wantDim = phase === 'paused' ? 0.45 : 1;
     swirl += (wantSwirl - swirl) * Math.min(dt * 3, 1);
     dim += (wantDim - dim) * Math.min(dt * 3, 1);
+    light += ((isLight() ? 1 : 0) - light) * Math.min(dt * 4, 1);
     // Thinking has no voice to follow: a slow breath stands in for it.
     const want = phase === 'thinking' || phase === 'transcribing' ? 0.18 + 0.12 * Math.sin(now / 420) : target;
     level += (want - level) * (want > level ? 0.35 : 0.12);
@@ -298,6 +335,7 @@ export function createGlowOrb(canvas: HTMLCanvasElement): GlowOrb | null {
     gl.uniform1f(uSwirl, swirl);
     gl.uniform1f(uDim, dim);
     gl.uniform3f(uColor, color[0], color[1], color[2]);
+    gl.uniform1f(uLight, light);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   };
   frame = requestAnimationFrame(draw);
@@ -305,6 +343,9 @@ export function createGlowOrb(canvas: HTMLCanvasElement): GlowOrb | null {
   const scheme = matchMedia('(prefers-color-scheme: dark)');
   const recolor = () => (color = orbColor());
   scheme.addEventListener('change', recolor);
+  // And the app's own theme switch, whose accent can differ.
+  const themeWatch = new MutationObserver(recolor);
+  themeWatch.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
   return {
     setLevel: (l) => (target = Math.max(0, Math.min(1, l))),
@@ -312,6 +353,7 @@ export function createGlowOrb(canvas: HTMLCanvasElement): GlowOrb | null {
     destroy: () => {
       cancelAnimationFrame(frame);
       scheme.removeEventListener('change', recolor);
+      themeWatch.disconnect();
       gl.getExtension('WEBGL_lose_context')?.loseContext();
     },
   };

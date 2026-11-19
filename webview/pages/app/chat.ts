@@ -21,6 +21,7 @@ import { hostOf, previewFor, siteIcon } from './favicon';
 import './diagrams';
 import { renderCodeRun, renderImage, renderVideo } from './coderun';
 import { startRecording, toBase64, type Recording } from './dictation';
+import { liveCapable, liveTranscript, renderLive } from './live';
 import { audioSettings, shortError, speakText, type Playback } from './audio';
 import { editWorkflow, liveWorkflow, workflowPrompt, workflowsApi } from './workflows';
 import type { Speed, Workflow } from './api';
@@ -1900,7 +1901,7 @@ class Composer {
     this.chips = h('div', { class: 'chips' });
     this.bar = h('div', { class: 'composer-bar' });
     this.hint.addEventListener('mousedown', (e) => { e.preventDefault(); this.acceptSuggestion(); });
-    this.el = h('div', { class: 'composer' }, h('div', { class: 'composer-box' }, this.chips, this.hint, this.textarea, this.bar));
+    this.el = h('div', { class: 'composer' }, h('div', { class: 'composer-box' }, this.chips, this.hint, this.liveEl, this.textarea, this.bar));
     // Files dropped on the composer are attached like picked ones.
     let depth = 0;
     const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
@@ -2935,6 +2936,7 @@ class Composer {
 
     const discard = h('button', { class: 'icon-btn', title: 'Discard the recording' }, icon('close', 16));
     discard.addEventListener('click', () => {
+      this.endLive();
       this.recorder?.cancel();
       this.recorder = null;
       this.renderBar();
@@ -2959,6 +2961,28 @@ class Composer {
   private recorder: Recording | null = null;
   private transcribing = false;
   private startingDictation = false;
+  /** The words so far while dictating with an engine on this computer (see `live.ts`). */
+  private liveEl: HTMLElement = h('div', { class: 'live-caption', 'aria-live': 'polite' });
+  private liveText = '';
+  private stopLive: (() => void) | null = null;
+
+  private startLive(recording: Recording) {
+    this.liveText = '';
+    clear(this.liveEl, h('span', { class: 'live-wait' }, 'Listening…'));
+    this.liveEl.className = 'live-caption on';
+    this.stopLive = liveTranscript(recording, (text) => {
+      renderLive(this.liveEl, this.liveText, text);
+      this.liveText = text;
+    });
+  }
+
+  private endLive() {
+    this.stopLive?.();
+    this.stopLive = null;
+    this.liveText = '';
+    this.liveEl.className = 'live-caption';
+    clear(this.liveEl);
+  }
 
   /** Starts a hands-free voice conversation in this chat. */
   startVoice() {
@@ -2998,6 +3022,7 @@ class Composer {
         }
       }
       this.recorder = await startRecording();
+      if (liveCapable(engine, audioSettings?.stt.baseUrl)) this.startLive(this.recorder);
       this.renderBar();
     } catch (e) {
       toast(`The microphone is not available: ${String(e)}`, 'error');
@@ -3011,6 +3036,9 @@ class Composer {
     if (!recording) return;
     this.recorder = null;
     this.transcribing = true;
+    this.stopLive?.();
+    this.stopLive = null;
+    this.liveEl.classList.add('settling');
     this.renderBar();
     try {
       const audio = await recording.stop();
@@ -3024,6 +3052,7 @@ class Composer {
     } catch (e) {
       toast(String(e), 'error');
     } finally {
+      this.endLive();
       this.transcribing = false;
       this.renderBar();
     }

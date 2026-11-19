@@ -1927,7 +1927,6 @@
  "Type a prompt first.": "Saisissez d'abord une requête.",
  "Type it into the app": "Saisir dans l'application",
  "Type your answer…": "Saisissez votre réponse…",
- "Typing works on X11 and Wayland (xdotool, wtype or ydotool); macOS and Windows paste it. Terminals paste with Ctrl+Shift+V, so typing suits them better.": "La saisie fonctionne sous X11 et Wayland (xdotool, wtype ou ydotool) ; macOS et Windows la collent. Les terminaux collent avec Ctrl+Shift+V, la saisie leur convient donc mieux.",
  "Unarchive": "Désarchiver",
  "Uncommitted changes in this folder": "Modifications non validées dans ce dossier",
  "Undo": "Annuler",
@@ -2515,5 +2514,18 @@
  "Cron expression": "Expression cron",
  "Custom (cron)": "Personnalisé (cron)",
  "On the schedule {0}": "Selon le calendrier {0}",
- "Minute, hour, day of the month, month, day of the week, in your time zone. 30 9 * * 1-5 is 9:30 on weekdays.": "Minute, heure, jour du mois, mois, jour de la semaine, dans votre fuseau horaire. 30 9 * * 1-5 correspond à 9 h 30 en semaine."
+ "Minute, hour, day of the month, month, day of the week, in your time zone. 30 9 * * 1-5 is 9:30 on weekdays.": "Minute, heure, jour du mois, mois, jour de la semaine, dans votre fuseau horaire. 30 9 * * 1-5 correspond à 9 h 30 en semaine.",
+ "{0} Until it is, the built-in Whisper is used.": "{0} D’ici là, le Whisper intégré est utilisé.",
+ "Hex (on this computer)": "Hex (sur cet ordinateur)",
+ "Hex could not be asked.": "Impossible d’interroger Hex.",
+ "Hex is a fast speech-to-text app (Parakeet and Whisper models) that runs on this computer. Install it from anoma.ly/hex and download a model there.": "Hex est une application rapide de reconnaissance vocale (modèles Parakeet et Whisper) qui fonctionne sur cet ordinateur. Installez-la depuis anoma.ly/hex et téléchargez-y un modèle.",
+ "Hex is running. When it is closed, the built-in Whisper takes over.": "Hex est lancé. Quand il est fermé, le Whisper intégré prend le relais.",
+ "Hex model": "Modèle Hex",
+ "Hold to talk": "Maintenir pour parler",
+ "Listen while the shortcut is held and insert when you let go. A quick tap still starts and stops as usual.": "Écoute tant que le raccourci est maintenu et insère quand vous le relâchez. Un appui bref démarre et arrête toujours comme d’habitude.",
+ "Looking for Hex…": "Recherche de Hex…",
+ "The best one downloaded in Hex": "Le meilleur téléchargé dans Hex",
+ "Typing works on X11 and Wayland (xdotool, wtype or ydotool); macOS and Windows paste it. GNOME on Wayland pastes by default, as it lets no app type into another. Terminals paste with Ctrl+Shift+V, so typing suits them better.": "La saisie fonctionne sous X11 et Wayland (xdotool, wtype ou ydotool) ; macOS et Windows collent le texte. GNOME sous Wayland colle par défaut, car il ne laisse aucune application écrire dans une autre. Les terminaux collent avec Ctrl+Maj+V, la saisie leur convient donc mieux.",
+ "Hex is not running. Until it is, the built-in Whisper is used.": "Hex n’est pas lancé. D’ici là, le Whisper intégré est utilisé.",
+ "Listening…": "À l’écoute…"
 }
