@@ -482,6 +482,66 @@ mod tests {
         );
     }
 
+    /// The same holds for a draft brought back from History and then approved: its first calls
+    /// are not compared with the clean week of the version it set aside.
+    #[tokio::test]
+    async fn a_restored_draft_once_approved_is_not_judged_against_the_weeks_it_set_aside() {
+        use super::super::script_tools as st;
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let now = Utc::now();
+        let w = |s: &str| json!({ "name": "rates_d", "description": "Rates.", "script": s });
+        st::create(d, "chat-1", &w("function main() { return 1; }"))
+            .await
+            .unwrap();
+        st::promote(d, "rates_d", None).await.unwrap();
+        let mut t = st::load(d, "rates_d").unwrap();
+        t.checks.clear();
+        t.approved_at = Some(now - Duration::days(30));
+        st::save(d, &t).unwrap();
+        st::create(d, "chat-1", &w("function main() { return 2; }"))
+            .await
+            .unwrap();
+        st::create(d, "chat-1", &w("function main() { return 3; }"))
+            .await
+            .unwrap();
+        st::promote(d, "rates_d", None).await.unwrap();
+        let mut t = st::load(d, "rates_d").unwrap();
+        t.checks.clear();
+        st::save(d, &t).unwrap();
+        // The third version ran clean all week...
+        traces::start_run(d, "r", "c", None, "m");
+        for _ in 0..10 {
+            traces::tool_call_at(d, "r", "script__rates_d", now - Duration::days(4), 5, true);
+        }
+        // ...and the user brings back the draft (version 2) from History and approves it.
+        let draft = super::super::versions::list(d, "tools", "script-rates_d")
+            .unwrap()
+            .into_iter()
+            .find(|v| v.value["script"] == "function main() { return 2; }")
+            .unwrap();
+        super::super::versions::restore(d, "tools", "script-rates_d", &draft.id).unwrap();
+        st::promote(d, "rates_d", None).await.unwrap();
+        for ok in [false, false, true, true, true, true] {
+            traces::tool_call_at(
+                d,
+                "r",
+                "script__rates_d",
+                Utc::now() + Duration::minutes(30),
+                5,
+                ok,
+            );
+        }
+        let report = maintain(d, Utc::now() + Duration::hours(2)).await;
+        let tool = st::load(d, "rates_d").unwrap();
+        assert!(
+            report.reverted.is_empty() && report.demoted.is_empty(),
+            "{report:?}"
+        );
+        assert!(tool.script.contains("return 2"));
+        assert_eq!(tool.status, st::Status::Active);
+    }
+
     /// A freshly promoted version that does worse than the one it replaced goes back to it.
     #[tokio::test]
     async fn a_fresh_promotion_that_does_worse_goes_back() {

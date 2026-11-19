@@ -789,10 +789,13 @@ async fn promote_with(
     tool.status = Status::Active;
     tool.approved_at = Some(Utc::now());
     tool.approved_hash = Some(approval_hash(&tool));
-    // Approved again by the user: no longer set aside, and judged as any approval is.
+    // Approved again by the user: no longer set aside.
     let approved = approval_hash(&tool);
     tool.set_aside.retain(|h| h != &approved);
-    tool.restored_at = None;
+    // A version brought back from History (a draft, say) and approved now has its own week to
+    // build before it is compared week over week, not the weeks of the versions it set aside; any
+    // other approval is compared with the version it replaces.
+    tool.restored_at = tool.restored_at.map(|_| Utc::now());
     // The user saw it on the card and approved it: signed afresh.
     save_resigned(config_dir, &tool)?;
     super::traces::register(
@@ -975,11 +978,12 @@ pub fn restore_version(config_dir: &Path, mut old: ScriptTool) -> Result<(), Str
     set_aside.retain(|h| h != &restored);
     old.set_aside = set_aside;
     // Back in use from now, by the user's choice: judged on its own calls from here, never on
-    // the calls of the versions it set aside.
+    // the calls of the versions it set aside. A draft brought back carries the mark into its
+    // approval.
     if old.status == Status::Active {
         old.approved_at = Some(now);
-        old.restored_at = Some(now);
     }
+    old.restored_at = Some(now);
     old.monitor_reverted_at = None;
     save_resigned(config_dir, &old)?;
     super::traces::register(
@@ -1946,8 +1950,8 @@ mod tests {
         assert!(load(d, "between_t").unwrap().script.contains("return 1"));
     }
 
-    /// A file changed outside the app is not re-signed by a later change, and History brings back
-    /// an old version's script without its old access.
+    /// Changing any field the monitor or History goes by outside the app leaves the tool
+    /// unverified, so it is neither offered nor run.
     #[tokio::test]
     async fn every_field_the_monitor_or_history_goes_by_is_signed() {
         let dir = tempfile::tempdir().unwrap();
@@ -1985,6 +1989,8 @@ mod tests {
         }
     }
 
+    /// A file changed outside the app is not re-signed by a later change, and History brings back
+    /// an old version's script without its old access.
     #[tokio::test]
     async fn tampered_files_are_not_signed_and_restores_do_not_widen_access() {
         let dir = tempfile::tempdir().unwrap();
