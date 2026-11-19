@@ -13,6 +13,11 @@ export interface Recording {
   stop(): Promise<Blob>;
   /** Stops recording and discards it. */
   cancel(): void;
+  /**
+   * The audio so far, without stopping, for live transcripts, and whether speech has been heard
+   * in it yet (Whisper invents words for silence); absent where the audio can't be read.
+   */
+  peek?(): { wav: Blob; seconds: number; heard: boolean };
 }
 
 const WAV_RATE = 16_000;
@@ -122,11 +127,15 @@ function wavRecorder(stream: MediaStream, release: () => void, listening: Listen
   const processor = context.createScriptProcessor(4096, 1, 1);
   const parts: Float32Array[] = [];
   const detect = listening.onLevel || listening.onPause ? pauseDetector(listening, context.sampleRate) : null;
+  // Whether anyone has spoken yet, for live transcripts.
+  const speech = createVad({ sampleRate: context.sampleRate, pauseMs: 1000 });
+  let heard = false;
   processor.onaudioprocess = (e) => {
     const samples = new Float32Array(e.inputBuffer.getChannelData(0));
     parts.push(samples);
     e.outputBuffer.getChannelData(0).fill(0);
     detect?.(samples);
+    if (!heard) heard = speech.push(samples).speaking;
   };
   source.connect(processor);
   // The processor only runs while connected to the output, but the microphone must never be
@@ -148,6 +157,10 @@ function wavRecorder(stream: MediaStream, release: () => void, listening: Listen
       return encodeWav(downsample(concat(parts), context.sampleRate, WAV_RATE), WAV_RATE);
     },
     cancel: finish,
+    peek: () => {
+      const samples = downsample(concat(parts), context.sampleRate, WAV_RATE);
+      return { wav: encodeWav(samples, WAV_RATE), seconds: samples.length / WAV_RATE, heard };
+    },
   };
 }
 

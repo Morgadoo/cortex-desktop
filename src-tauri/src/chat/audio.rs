@@ -111,6 +111,26 @@ pub fn save(config_dir: &Path, settings: &AudioSettings) -> Result<(), String> {
     write_json(&path(config_dir), settings)
 }
 
+/// Whether live transcripts may use this engine: one on this computer, asked again about once a
+/// second while the speaker talks (never a paid service). `live.ts` in the page decides the same.
+pub fn live_capable(stt: &SttSettings) -> bool {
+    match stt.engine.as_str() {
+        "builtin" | "hex" => true,
+        "openai" => {
+            let url = stt.base_url.trim();
+            let rest = url
+                .strip_prefix("http://")
+                .or_else(|| url.strip_prefix("https://"))
+                .unwrap_or("");
+            ["localhost", "127.0.0.1", "[::1]"].iter().any(|host| {
+                rest.strip_prefix(host)
+                    .is_some_and(|after| after.is_empty() || after.starts_with([':', '/']))
+            })
+        }
+        _ => false,
+    }
+}
+
 /// Settings cleaned before saving: known engines, a speed in range, trimmed fields.
 pub fn normalize(mut s: AudioSettings) -> AudioSettings {
     if !["provider", "builtin", "hex", "openai", "elevenlabs", "off"]
@@ -298,17 +318,19 @@ pub async fn speak(
     Ok(Some((audio, mime)))
 }
 
-/// Transcribes recorded speech with the chosen engine.
+/// Transcribes recorded speech with the chosen engine. `live` marks a guess made while the
+/// speaker is still talking (`live.ts` in the page), which the built-in Whisper answers faster.
 pub async fn transcribe(
     config_dir: &Path,
     audio: Vec<u8>,
     file_name: &str,
     settings: &SttSettings,
+    live: bool,
 ) -> Result<String, String> {
     match settings.engine.as_str() {
         "off" => Err("Voice input is off in Settings → Audio.".into()),
         "provider" => super::media::transcribe(config_dir, audio, file_name).await,
-        "builtin" => builtin(audio, &settings.model, &settings.language).await,
+        "builtin" => builtin(audio, &settings.model, &settings.language, live).await,
         "hex" => {
             let samples = {
                 let audio = audio.clone();
@@ -321,7 +343,7 @@ pub async fn transcribe(
                 // Hex isn't running: the built-in Whisper takes over, when one is downloaded.
                 Err(super::hex::Failure::Unavailable(why)) => {
                     log::info!("speech-to-text: {why} Using the built-in Whisper instead.");
-                    builtin(audio, "", &settings.language).await.map_err(|e| {
+                    builtin(audio, "", &settings.language, live).await.map_err(|e| {
                         if e == NO_WHISPER {
                             format!(
                                 "{why} Start Hex, or download a Whisper model (Settings → Providers → Built-in models) for when it isn't running."
@@ -411,7 +433,12 @@ pub async fn transcribe(
 const NO_WHISPER: &str = "Download a Whisper model first (Settings → Providers → Built-in models).";
 
 /// The built-in Whisper: the model `chosen` when it is downloaded, else the first one that is.
-async fn builtin(audio: Vec<u8>, chosen: &str, language: &str) -> Result<String, String> {
+async fn builtin(
+    audio: Vec<u8>,
+    chosen: &str,
+    language: &str,
+    live: bool,
+) -> Result<String, String> {
     let root = super::local_models::root()?;
     let speech = |id: &str| {
         super::local_models::entry(id).is_some_and(|e| e.kind == super::local_models::Kind::Speech)
@@ -429,7 +456,7 @@ async fn builtin(audio: Vec<u8>, chosen: &str, language: &str) -> Result<String,
     let language = language.to_string();
     tokio::task::spawn_blocking(move || {
         let samples = super::local_models::audio_samples(&audio)?;
-        super::local_models::transcribe(&root, &id, &samples, &language)
+        super::local_models::transcribe(&root, &id, &samples, &language, live)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -483,6 +510,25 @@ pub async fn elevenlabs_voices(base_url: &str) -> Result<Vec<(String, String)>, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn live_transcripts_use_only_engines_on_this_computer() {
+        let stt = |engine: &str, base_url: &str| SttSettings {
+            engine: engine.into(),
+            base_url: base_url.into(),
+            ..SttSettings::default()
+        };
+        assert!(live_capable(&stt("builtin", "")) && live_capable(&stt("hex", "")));
+        assert!(live_capable(&stt("openai", "http://localhost:8000/v1")));
+        assert!(live_capable(&stt("openai", "http://127.0.0.1")));
+        assert!(live_capable(&stt("openai", "http://[::1]:9000/v1")));
+        assert!(!live_capable(&stt("openai", "https://api.openai.com/v1")));
+        assert!(!live_capable(&stt(
+            "openai",
+            "http://localhost.evil.example/v1"
+        )));
+        assert!(!live_capable(&stt("provider", "")) && !live_capable(&stt("elevenlabs", "")));
+    }
 
     #[test]
     fn settings_are_normalized_and_saved() {

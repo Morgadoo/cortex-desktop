@@ -2488,5 +2488,6 @@
  "Looking for Hex…": "A procurar o Hex…",
  "The best one downloaded in Hex": "O melhor descarregado no Hex",
  "Typing works on X11 and Wayland (xdotool, wtype or ydotool); macOS and Windows paste it. GNOME on Wayland pastes by default, as it lets no app type into another. Terminals paste with Ctrl+Shift+V, so typing suits them better.": "A escrita funciona em X11 e Wayland (xdotool, wtype ou ydotool); no macOS e no Windows é colado. O GNOME em Wayland cola por predefinição, pois não deixa nenhuma aplicação escrever noutra. Os terminais colam com Ctrl+Shift+V, por isso a escrita adequa-se-lhes melhor.",
- "Hex is not running. Until it is, the built-in Whisper is used.": "O Hex não está em execução. Até lá, é usado o Whisper integrado."
+ "Hex is not running. Until it is, the built-in Whisper is used.": "O Hex não está em execução. Até lá, é usado o Whisper integrado.",
+ "Listening…": "A ouvir…"
 }

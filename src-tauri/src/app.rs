@@ -155,6 +155,7 @@ pub fn run() {
                 chat::commands::chat_steer,
                 chat::commands::chat_audio_settings,
                 chat::commands::chat_hex_status,
+                chat::commands::chat_stt_live,
                 chat::commands::chat_save_audio_settings,
                 chat::commands::chat_audio_voices,
                 chat::commands::chat_search,

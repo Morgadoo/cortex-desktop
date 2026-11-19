@@ -42,8 +42,8 @@ jobs:
         run: npm run build:webview
       - name: Every interface string is translated
         run: npm run check:i18n
-      - name: Voice-activity detector
-        run: npm run check:vad
+      - name: Voice (turn ends, live transcripts)
+        run: npm run check:voice
 
   rust:
     name: Rust (format, lints, tests)

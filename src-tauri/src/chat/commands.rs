@@ -506,6 +506,7 @@ pub async fn chat_transcribe(
     app: AppHandle,
     audio: String,
     mime: String,
+    live: Option<bool>,
 ) -> Result<String, String> {
     use base64::Engine as _;
     let bytes = base64::engine::general_purpose::STANDARD
@@ -523,7 +524,23 @@ pub async fn chat_transcribe(
     };
     let dir = config_dir(&app)?;
     let settings = super::audio::load(&dir).stt;
-    super::audio::transcribe(&dir, bytes, &format!("speech.{ext}"), &settings).await
+    super::audio::transcribe(
+        &dir,
+        bytes,
+        &format!("speech.{ext}"),
+        &settings,
+        live.unwrap_or(false),
+    )
+    .await
+}
+
+/// Whether dictation shows the words as they are spoken: only with an engine on this computer
+/// (the dictation pill may ask this, though not read the audio settings themselves).
+#[tauri::command]
+pub fn chat_stt_live(app: AppHandle) -> Result<bool, String> {
+    Ok(super::audio::live_capable(
+        &super::audio::load(&config_dir(&app)?).stt,
+    ))
 }
 
 /// Whether the Hex dictation app is running here, and its speech models, for Settings → Audio.

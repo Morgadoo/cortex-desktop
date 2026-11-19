@@ -9,6 +9,10 @@ use crate::{main_window, updater};
 
 const LABEL: &str = "search";
 
+/// The window, in logical pixels (the pill plus room for its shadow).
+const WIDTH: f64 = 600.0;
+const HEIGHT: f64 = 102.0;
+
 /// Hand a question from the quick-ask window to the web app.
 ///
 /// The question is held in [`PendingQuickAsk`] and the main window is sent to
@@ -110,7 +114,7 @@ pub fn show<R: Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<WebviewWindo
         // The native shadow traces the window's alpha mask and draws a grey outline and a heavy
         // band under the pill. The pill draws its own soft shadow in CSS instead.
         .shadow(false)
-        .inner_size(600.0, 102.0)
+        .inner_size(WIDTH, HEIGHT)
         .build()?,
     };
 
@@ -168,21 +172,44 @@ fn active_monitor<R: Runtime>(window: &WebviewWindow<R>) -> tauri::Result<Monito
 
 /// Centered horizontally near the bottom of `monitor`, clear of the macOS Dock.
 fn position_on<R: Runtime>(window: &WebviewWindow<R>, monitor: &Monitor) -> tauri::Result<()> {
-    let monitor_size = monitor.size();
-    let monitor_position = monitor.position();
-    let window_size = window.outer_size()?;
-
-    let x = monitor_position.x + ((monitor_size.width as i32 - window_size.width as i32) / 2);
-
     #[cfg(target_os = "macos")]
-    let bottom_margin = 150;
+    let bottom_margin = 150.0;
     #[cfg(not(target_os = "macos"))]
-    let bottom_margin = 20;
-    let y = monitor_position.y + (monitor_size.height as i32 - window_size.height as i32)
-        - bottom_margin;
-
+    let bottom_margin = 20.0;
+    let (x, y) = bottom_center(
+        (monitor.position().x, monitor.position().y),
+        (monitor.size().width, monitor.size().height),
+        monitor.scale_factor(),
+        bottom_margin,
+    );
     window.set_position(PhysicalPosition::new(x, y))?;
     window.set_always_on_top(true)?;
 
     Ok(())
+}
+
+/// Where the window goes on a monitor at `origin` of `size` (physical pixels): centered, its
+/// bottom `margin` logical pixels above the monitor's. From the window's known size, not the one
+/// it reports: a window not yet mapped (the first Ctrl+L after launch) reports none, which put it
+/// almost entirely below the screen.
+fn bottom_center(origin: (i32, i32), size: (u32, u32), scale: f64, margin: f64) -> (i32, i32) {
+    let (width, height) = ((WIDTH * scale) as i32, (HEIGHT * scale) as i32);
+    let x = origin.0 + (size.0 as i32 - width) / 2;
+    let y = origin.1 + size.1 as i32 - height - (margin * scale) as i32;
+    (x, y)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_popup_sits_above_the_bottom_of_its_monitor_even_before_it_is_mapped() {
+        assert_eq!(bottom_center((0, 0), (1600, 1000), 1.0, 20.0), (500, 878));
+        // A second monitor to the right, at twice the scale.
+        assert_eq!(
+            bottom_center((2560, 0), (3840, 2160), 2.0, 20.0),
+            (2560 + 1320, 2160 - 204 - 40)
+        );
+    }
 }
