@@ -599,6 +599,10 @@ pub async fn run_once(config_dir: &Path, args: &Value) -> Result<String, String>
 /// capabilities. A promoted tool that is rewritten goes back to being a candidate.
 pub async fn create(config_dir: &Path, conversation: &str, args: &Value) -> Result<String, String> {
     sandbox::cache_in(config_dir);
+    // Signed from its first save: a tool written before the key was loaded would otherwise look,
+    // once it is, like a file changed outside the app.
+    #[cfg(not(test))]
+    ensure_signing_key(config_dir).await;
     let draft: Draft = serde_json::from_value(args.clone())
         .map_err(|e| format!("The tool is not described right: {e}"))?;
     let name = draft.name.trim().to_string();
@@ -809,12 +813,20 @@ fn take_vouched(config_dir: &Path, tool: &mut ScriptTool) -> Result<(), String> 
     if verifies(config_dir, tool) {
         return Ok(());
     }
-    let last = last_signed(config_dir, &tool.name).ok_or_else(|| {
-        format!(
+    let Some(last) = last_signed(config_dir, &tool.name) else {
+        // Never signed at all (written before the key was loaded, or by a build that did not
+        // sign): nothing was vouched for, so nothing is taken away; it is promoted as written,
+        // with no rollback or restore date of its own.
+        if tool.signature.is_none() {
+            tool.monitor_reverted_at = None;
+            tool.restored_at = None;
+            return Ok(());
+        }
+        return Err(format!(
             "`{}`'s file was changed outside the app and no state the app signed remains to take its regression checks from, so it was not promoted; write it again with create_tool so it is tested afresh.",
             tool.name
-        )
-    })?;
+        ));
+    };
     tool.checks = signed_checks(&last);
     tool.pending_check = None;
     tool.set_aside = last.set_aside;
@@ -1067,16 +1079,26 @@ pub fn restore_version(config_dir: &Path, mut old: ScriptTool) -> Result<(), Str
     } else {
         Some(DateTime::<Utc>::MIN_UTC)
     };
-    if !verified {
-        old.checks = last_signed(config_dir, &old.name)
-            .map(|last| signed_checks(&last))
-            .unwrap_or_default();
-        old.pending_check = None;
-    }
-    let restored = approval_hash(&old);
-    let mut set_aside = current
+    let signed_current = current
         .as_ref()
         .filter(|c| verifies(config_dir, c))
+        .cloned()
+        .or_else(|| last_signed(config_dir, &old.name));
+    if !verified {
+        old.checks = signed_current
+            .as_ref()
+            .map(signed_checks)
+            .unwrap_or_default();
+        old.pending_check = None;
+        // Its dates are not taken on its word: as far as the app knows, it was written now.
+        old.created_at = now;
+        old.approved_at = None;
+    }
+    let restored = approval_hash(&old);
+    // What the user set aside, as the app last signed it: a current file changed outside the app
+    // drops nothing from it.
+    let mut set_aside = signed_current
+        .as_ref()
         .map(|c| c.set_aside.clone())
         .unwrap_or_default();
     let mut later: Vec<String> =
@@ -1090,9 +1112,9 @@ pub fn restore_version(config_dir: &Path, mut old: ScriptTool) -> Result<(), Str
             })
             .map(|v| approval_hash(&v))
             .collect();
-    if let Some(current) = current
+    if let Some(current) = signed_current
         .as_ref()
-        .filter(|c| verifies(config_dir, c) && c.status == Status::Active)
+        .filter(|c| c.status == Status::Active)
     {
         later.push(approval_hash(current));
     }
@@ -2523,5 +2545,155 @@ mod tests {
         let tool = load(dir.path(), "fetcher").unwrap();
         assert_eq!(tool.requested.http_hosts, vec!["example.com".to_string()]);
         assert!(tool.granted.is_empty());
+    }
+
+    /// A tool the app never signed (written before the signing key was loaded) is not taken for a
+    /// file changed outside the app once the key is loaded: it can be promoted.
+    #[tokio::test]
+    async fn a_tool_written_before_the_key_was_loaded_can_be_promoted() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        create(d, "", &json!({ "name": "first_tool", "description": "First.", "script": "function main() { return 1; }" }))
+            .await
+            .unwrap();
+        assert!(load(d, "first_tool").unwrap().signature.is_none());
+        set_signing_key(d, [3; 32]);
+        let r = promote(d, "first_tool", None).await;
+        assert!(r.is_ok(), "never changed outside the app, yet: {r:?}");
+    }
+
+    /// The same in a trial's copy, whose key is loaded for the copy alone.
+    #[tokio::test]
+    async fn a_trial_promotes_a_tool_written_before_the_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        create(d, "", &json!({ "name": "first_trial", "description": "First.", "script": "function main() { return 1; }" }))
+            .await
+            .unwrap();
+        let folder = crate::chat::evals::trial_folder(d).unwrap();
+        set_signing_key(&folder.dir, [3; 32]);
+        let r = promote(&folder.dir, "first_trial", None).await;
+        assert!(r.is_ok(), "trial promotion: {r:?}");
+    }
+
+    /// A History entry changed outside the app does not get its dates signed by a restore: brought
+    /// back again later, it still sets aside the approvals made after the app wrote it.
+    #[tokio::test]
+    async fn a_forged_history_date_is_not_signed() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        set_signing_key(d, [2; 32]);
+        let write = |s: &str| json!({ "name": "forged_t", "description": "Forged.", "script": s });
+        let approve = || async {
+            promote(d, "forged_t", None).await.unwrap();
+            let mut t = load(d, "forged_t").unwrap();
+            t.checks.clear();
+            save(d, &t).unwrap();
+            approval_hash(&t)
+        };
+        create(d, "", &write("function main() { return 1; }"))
+            .await
+            .unwrap();
+        approve().await;
+        let mut forged = load(d, "forged_t").unwrap();
+        forged.script = "function main() { return 9; }".into();
+        forged.created_at = Utc::now() + chrono::Duration::days(36_500);
+        assert!(!verifies(d, &forged));
+        restore_version(d, forged).unwrap();
+        let restored = load(d, "forged_t").unwrap();
+        assert!(verifies(d, &restored));
+        let date_signed = restored.created_at > Utc::now();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        create(d, "", &write("function main() { return 2; }"))
+            .await
+            .unwrap();
+        let v_e = approve().await;
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        create(d, "", &write("function main() { return 3; }"))
+            .await
+            .unwrap();
+        approve().await;
+        let draft = super::super::versions::list(d, "tools", "script-forged_t")
+            .unwrap()
+            .into_iter()
+            .find(|v| v.value["script"] == "function main() { return 9; }")
+            .unwrap();
+        super::super::versions::restore(d, "tools", "script-forged_t", &draft.id).unwrap();
+        promote(d, "forged_t", None).await.unwrap();
+        let now = load(d, "forged_t").unwrap();
+        let e_set_aside = now.set_aside.contains(&v_e);
+        let rolled = revert(d, "forged_t", &[]).await;
+        let script = load(d, "forged_t").unwrap().script;
+        assert!(
+            !date_signed && e_set_aside,
+            "forged created_at signed={date_signed}; E (approved after the app wrote the draft) set aside={e_set_aside}; revert={rolled:?} now runs {script}"
+        );
+    }
+
+    /// A harmless outside edit to the current file does not make a later History restore drop
+    /// the versions the user set aside: they come from the last state the app signed.
+    #[tokio::test]
+    async fn a_touched_file_then_a_restore_keeps_what_was_set_aside() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        set_signing_key(d, [1; 32]);
+        let write = |s: &str| json!({ "name": "touch_t", "description": "Touch.", "script": s });
+        let approve = || async {
+            promote(d, "touch_t", None).await.unwrap();
+            let mut t = load(d, "touch_t").unwrap();
+            t.checks.clear();
+            save(d, &t).unwrap();
+            approval_hash(&t)
+        };
+        create(d, "", &write("function main() { return 1; }"))
+            .await
+            .unwrap();
+        approve().await;
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        create(d, "", &write("function main() { return 2; }"))
+            .await
+            .unwrap();
+        let v_b = approve().await;
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let a = super::super::versions::list(d, "tools", "script-touch_t")
+            .unwrap()
+            .into_iter()
+            .find(|v| {
+                v.value["script"] == "function main() { return 1; }"
+                    && v.value["status"] == "active"
+            })
+            .unwrap();
+        super::super::versions::restore(d, "tools", "script-touch_t", &a.id).unwrap();
+        assert!(load(d, "touch_t").unwrap().set_aside.contains(&v_b));
+        // An app save (access renewed, say) keeps the restored state in History, signed.
+        let mut t = load(d, "touch_t").unwrap();
+        t.provenance = Some("renewed".into());
+        save(d, &t).unwrap();
+        // Outside the app: one harmless field touched.
+        let mut touched = load(d, "touch_t").unwrap();
+        touched.created_at -= chrono::Duration::seconds(1);
+        std::fs::write(
+            path(d, "touch_t").unwrap(),
+            serde_json::to_string(&touched).unwrap(),
+        )
+        .unwrap();
+        // The user brings back the same restored version from History.
+        let again = super::super::versions::list(d, "tools", "script-touch_t")
+            .unwrap()
+            .into_iter()
+            .find(|v| {
+                v.value["script"] == "function main() { return 1; }"
+                    && v.value["restoredAt"].is_string()
+            })
+            .unwrap();
+        super::super::versions::restore(d, "tools", "script-touch_t", &again.id).unwrap();
+        let now = load(d, "touch_t").unwrap();
+        let kept = now.set_aside.contains(&v_b);
+        let rolled = revert(d, "touch_t", &[]).await;
+        let script = load(d, "touch_t").unwrap().script;
+        assert!(
+            kept,
+            "B dropped from set_aside; revert={rolled:?} now runs {script}"
+        );
     }
 }
