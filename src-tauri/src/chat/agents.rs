@@ -16,6 +16,10 @@ use super::store::{chat_dir, valid_id, write_json};
 pub struct Agent {
     pub id: String,
     pub name: String,
+    /// Its job title ("3D Artist", "QA Lead"), shown next to its name: the role that sets its
+    /// responsibilities in the team.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub title: String,
     /// An emoji or one or two letters.
     #[serde(default)]
     pub avatar: String,
@@ -69,7 +73,38 @@ pub struct Agent {
     /// Its code may reach the internet (to install packages into its own environment).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub code_network: bool,
+    /// It runs an organization (a manager or "CEO" agent): it may create, change and remove the
+    /// agents under it with `manage_agents`. Off unless the user turns it on.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub can_manage_agents: bool,
+    /// The agent this one reports to, by id: the manager that created it or took it on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reports_to: Option<String>,
     pub created_at: DateTime<Utc>,
+}
+
+impl Agent {
+    /// Its name with its title, as the team sees it: `João [3D Artist]`.
+    pub fn label(&self) -> String {
+        if self.title.trim().is_empty() {
+            self.name.clone()
+        } else {
+            format!("{} [{}]", self.name, self.title.trim())
+        }
+    }
+
+    /// What its title means for how it works, for its own prompt; empty without a title.
+    pub fn role_prompt(&self) -> String {
+        let title = self.title.trim();
+        if title.is_empty() {
+            return String::new();
+        }
+        format!(
+            "Your title is **{title}**. It is your role in the team and sets your responsibilities: \
+             own what a {title} owns, decide what is yours to decide, hold the standards of the role, \
+             and hand what belongs to another role to the agent who holds it.\n\n"
+        )
+    }
 }
 
 fn path(config_dir: &Path) -> PathBuf {
@@ -231,6 +266,10 @@ pub fn allows(agent: &Agent, name: &str) -> bool {
     if !agent.members.is_empty() && name == super::builtins::DELEGATE {
         return true;
     }
+    // A manager reaches its team: it writes to its reports and hands them work.
+    if agent.can_manage_agents && (name == MESSAGE_AGENT || name == super::builtins::DELEGATE) {
+        return true;
+    }
     // Libraries given to the agent come with the tools that read them.
     if !agent.libraries.is_empty() && matches!(name, "search_library" | "read_document") {
         return true;
@@ -314,7 +353,7 @@ pub fn team_prompt(agents: &[Agent], except: Option<&str>) -> Option<String> {
         .map(|a| {
             format!(
                 "- **{}**: {}",
-                a.name,
+                a.label(),
                 if a.description.trim().is_empty() {
                     "no description"
                 } else {
@@ -427,7 +466,7 @@ pub fn route_prompt(agents: &[Agent], message: &str) -> String {
         .map(|a| {
             format!(
                 "- {}: {}",
-                a.name,
+                a.label(),
                 if a.description.trim().is_empty() {
                     "no description"
                 } else {
@@ -491,7 +530,7 @@ pub fn group_prompt(agents: &[Agent], group: &Agent) -> Option<String> {
         .map(|a| {
             format!(
                 "- **{}**: {}",
-                a.name,
+                a.label(),
                 if a.description.trim().is_empty() {
                     "no description"
                 } else {
@@ -511,12 +550,16 @@ pub fn group_prompt(agents: &[Agent], group: &Agent) -> Option<String> {
     ))
 }
 
-/// Finds an agent by name (any case) or id.
+/// Finds an agent by name (any case) or id; a label with its title (`João [3D Artist]`) works too.
 pub fn by_name<'a>(agents: &'a [Agent], name: &str) -> Option<&'a Agent> {
     let name = name.trim();
-    agents
-        .iter()
-        .find(|a| a.id == name || a.name.eq_ignore_ascii_case(name))
+    let bare = match name.rsplit_once(" [") {
+        Some((n, rest)) if rest.ends_with(']') => n.trim(),
+        _ => name,
+    };
+    agents.iter().find(|a| {
+        a.id == name || a.name.eq_ignore_ascii_case(name) || a.name.eq_ignore_ascii_case(bare)
+    })
 }
 
 /// What an agent's conversations cost this calendar month.
@@ -570,6 +613,7 @@ pub fn draft_prompt(description: &str, tools: &[&str], skills: &[String]) -> Str
         "Design an AI agent from this description:\n\n{description}\n\nReply with only a JSON object, \
          no prose and no code fence, with these fields:\n\
          - name: 1 to 3 words\n\
+         - title: its job title in 1 to 4 words (\"3D Artist\", \"QA Lead\"): the role that sets its responsibilities\n\
          - avatar: one emoji\n\
          - description: one line saying what it is for\n\
          - instructions: 120 to 250 words, in the second person: who it is, how it works step by \
@@ -583,7 +627,7 @@ pub fn draft_prompt(description: &str, tools: &[&str], skills: &[String]) -> Str
 /// The prompt asking a model to change a drafted agent as the user asks, keeping the rest.
 pub fn refine_prompt(current: &Agent, request: &str, tools: &[&str], skills: &[String]) -> String {
     let now = serde_json::json!({
-        "name": current.name, "avatar": current.avatar, "description": current.description,
+        "name": current.name, "title": current.title, "avatar": current.avatar, "description": current.description,
         "instructions": current.instructions, "tools": current.tools, "skills": current.skills, "think": current.think,
     });
     format!(
@@ -626,6 +670,7 @@ pub fn parse_draft(text: &str, tools: &[&str], skills: &[String]) -> Result<Agen
     }
     Ok(Agent {
         id: uuid::Uuid::new_v4().to_string(),
+        title: field("title").chars().take(60).collect(),
         avatar: field("avatar").chars().take(4).collect(),
         description: field("description"),
         instructions: field("instructions"),
@@ -652,6 +697,8 @@ pub fn parse_draft(text: &str, tools: &[&str], skills: &[String]) -> Result<Agen
         members: Vec::new(),
         group_mode: String::new(),
         code_network: false,
+        can_manage_agents: false,
+        reports_to: None,
         created_at: Utc::now(),
         name,
     })
@@ -707,6 +754,9 @@ pub fn templates() -> Vec<Agent> {
         members: Vec::new(),
         group_mode: String::new(),
         code_network: false,
+        title: String::new(),
+        can_manage_agents: false,
+        reports_to: None,
         created_at: Utc::now(),
     };
     vec![
@@ -932,6 +982,9 @@ mod tests {
             members: Vec::new(),
             group_mode: String::new(),
             code_network: false,
+            title: String::new(),
+            can_manage_agents: false,
+            reports_to: None,
             created_at: Utc::now(),
         };
         save(from.path(), agent).unwrap();

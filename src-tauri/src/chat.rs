@@ -52,6 +52,7 @@ pub mod local_models;
 pub mod media;
 pub mod memory;
 pub mod openapi;
+pub mod org;
 pub mod outputs;
 pub mod plugins;
 mod preview;

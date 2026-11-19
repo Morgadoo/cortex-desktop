@@ -192,6 +192,8 @@ export interface Skill {
 export interface Agent {
   id: string;
   name: string;
+  /** Its job title ("3D Artist"), shown next to its name: the role that sets its responsibilities. */
+  title?: string;
   avatar: string;
   description: string;
   instructions: string;
@@ -216,6 +218,10 @@ export interface Agent {
   groupMode?: string;
   /** Its code may reach the internet, to install packages into its own environment. */
   codeNetwork?: boolean;
+  /** It runs an organization: creates, changes and removes the agents under it. */
+  canManageAgents?: boolean;
+  /** The agent it reports to, by id. */
+  reportsTo?: string | null;
   createdAt: string;
 }
 

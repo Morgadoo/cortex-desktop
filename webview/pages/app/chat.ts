@@ -75,6 +75,7 @@ const ACTIONS: Record<string, string> = {
   save_skill: 'Saved a skill',
   canvas: 'Wrote a canvas',
   delegate: 'Ran sub-agents',
+  manage_agents: 'Managed agents',
   schedule_task: 'Scheduled a task',
   search_library: 'Searched your libraries',
 };
@@ -88,6 +89,7 @@ const BUILTIN_ICONS: Record<string, string> = {
   update_plan: 'check',
   canvas: 'file',
   delegate: 'workflow',
+  manage_agents: 'workflow',
   schedule_task: 'clock',
   search_library: 'library',
   run_code: 'terminal',

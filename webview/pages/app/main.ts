@@ -13,7 +13,7 @@ import { startUiLanguage } from './i18n';
 import { startWakeWord, stopWakeWord, wakePrefs } from './wakeword';
 import { ConnectorsPage, PlaceholderPage, openInstructions } from './pages';
 import { KnowledgePage, SkillsPage, reviewRecording } from './context';
-import { AgentPage, AgentsPage, avatar, editAgent, newAgent, pinnedAgents, reloadAgents } from './agents';
+import { AgentPage, AgentsPage, agentName, avatar, editAgent, newAgent, orgOrder, pinnedAgents, reloadAgents } from './agents';
 import { TasksPage } from './tasks';
 import { LibrariesPage } from './libraries';
 import { AppsPage } from './apps';
@@ -214,7 +214,7 @@ function renderSidebar() {
 function renderAgents(): HTMLElement {
   const section = h('div', { class: 'sidebar-section' }, sectionHeading('Agents'));
   if (!state.agents.length) section.append(h('p', { class: 'sidebar-empty' }, 'No agents yet'));
-  for (const agent of state.agents) {
+  for (const agent of orgOrder(state.agents)) {
     const active = (state.view.kind === 'agent' && state.view.id === agent.id) || (state.view.kind === 'home' && state.view.agentId === agent.id);
     const runs = state.conversations.filter((c) => c.agentId === agent.id);
     const unread = runs.some((c) => c.unread);
@@ -223,7 +223,7 @@ function renderAgents(): HTMLElement {
         'div',
         { class: `conv-link project${active ? ' active' : ''}`, on: { click: () => navigate({ kind: 'agent', id: agent.id }) } },
         avatar(agent),
-        h('span', { class: 'conv-title' }, agent.name),
+        h('span', { class: 'conv-title' }, ...agentName(agent)),
         unread ? h('span', { class: 'unread-dot' }) : null
       )
     );
@@ -984,6 +984,8 @@ async function start() {
   state.conversations = conversations;
   state.skills = await api.skills().catch(() => []);
   await reloadAgents().catch(() => undefined);
+  // A manager agent changed its organization (manage_agents): the lists follow.
+  void listen<null>('chat://agents-changed', () => void reloadAgents().catch(() => undefined));
   await reloadModels().catch((e) => toast(String(e), 'error'));
   if (SOLO_CHAT) {
     state.sidebarCollapsed = true;

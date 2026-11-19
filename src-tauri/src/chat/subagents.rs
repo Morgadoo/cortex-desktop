@@ -141,9 +141,10 @@ pub fn parse_tasks(args: &Value) -> Result<Vec<Task>, String> {
 fn worker_preamble(task: &Task, agent: Option<&super::agents::Agent>) -> String {
     let persona = agent.map_or(String::new(), |a| {
         format!(
-            "You are {}, an agent with this role: {}\n\n{}\n\n",
-            a.name,
+            "You are {}, an agent with this role: {}\n\n{}{}\n\n",
+            a.label(),
             a.description.trim(),
+            a.role_prompt(),
             a.instructions.trim()
         )
     });

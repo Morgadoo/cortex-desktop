@@ -54,6 +54,29 @@ export function togglePinnedAgent(id: string) {
   }
 }
 
+/** An agent's name with its title next to it: `João [3D Artist]`. */
+export function agentName(agent: Agent): (string | HTMLElement)[] {
+  const title = agent.title?.trim();
+  // Names and titles are the user's: the interface translation leaves them alone.
+  const name = h('span', { class: 'agent-name' }, agent.name);
+  return title ? [name, h('span', { class: 'agent-role' }, `[${title}]`)] : [name];
+}
+
+/** Every agent under `id`, at every level. */
+function reportsUnder(agents: Agent[], id: string): Set<string> {
+  const out = new Set<string>();
+  const walk = (boss: string) => {
+    for (const a of agents) {
+      if (a.reportsTo === boss && !out.has(a.id) && a.id !== id) {
+        out.add(a.id);
+        walk(a.id);
+      }
+    }
+  };
+  walk(id);
+  return out;
+}
+
 export function avatar(agent: Agent, size: 'small' | 'large' = 'small'): HTMLElement {
   return h('span', { class: `agent-avatar ${size}` }, agent.avatar || agent.name.charAt(0).toUpperCase());
 }
@@ -130,6 +153,17 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
     const base = existing ?? preset;
     const name = h('input', { class: 'input', value: base?.name ?? '', placeholder: 'Researcher' });
     const avatarInput = h('input', { class: 'input avatar-input', value: base?.avatar ?? '🤖', maxlength: 4 });
+    const titleInput = h('input', { class: 'input', value: base?.title ?? '', placeholder: '3D Artist', maxlength: 60 });
+    // Its place in the organization: any agent but itself and those under it.
+    const under = existing ? reportsUnder(state.agents, existing.id) : new Set<string>();
+    const reportsTo = h(
+      'select',
+      { class: 'input' },
+      h('option', { value: '' }, 'Nobody (top level)'),
+      ...state.agents
+        .filter((a) => a.id !== existing?.id && !under.has(a.id))
+        .map((a) => h('option', { value: a.id, selected: (existing?.reportsTo ?? '') === a.id }, a.title ? `${a.name} [${a.title}]` : a.name))
+    );
     const description = h('input', { class: 'input', value: base?.description ?? '', placeholder: 'What this agent is for, in one line' });
     const instructions = h('textarea', { class: 'input textarea', rows: 7, placeholder: 'Who the agent is, how it works and what it must never do.' });
     instructions.value = base?.instructions ?? '';
@@ -169,6 +203,7 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
     renderTools();
     const think = h('input', { type: 'checkbox', class: 'switch', checked: base?.think ?? false });
     const codeNetwork = h('input', { type: 'checkbox', class: 'switch', checked: base?.codeNetwork ?? false });
+    const manages = h('input', { type: 'checkbox', class: 'switch', checked: base?.canManageAgents ?? false });
     const fallback = h(
       'select',
       { class: 'input' },
@@ -277,6 +312,7 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
         state.agents = await api.saveAgent({
           id: existing?.id ?? newId(),
           name: name.value.trim(),
+          title: titleInput.value.trim(),
           avatar: avatarInput.value.trim(),
           description: description.value.trim(),
           instructions: instructions.value.trim(),
@@ -294,6 +330,8 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
           members: pickedMembers.filter((id) => state.agents.some((a) => a.id === id)),
           groupMode: pickedMembers.length ? groupMode.value : '',
           codeNetwork: codeNetwork.checked,
+          canManageAgents: manages.checked,
+          reportsTo: reportsTo.value || null,
           createdAt: existing?.createdAt ?? new Date().toISOString(),
         });
         changed();
@@ -321,9 +359,11 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
       'div',
       { class: 'dialog-small wide agent-editor' },
       modalHeader(existing ? `Edit ${existing.name}` : 'New agent', close, { flush: true }),
-      h('div', { class: 'freq-row' }, h('div', { class: 'grow' }, h('label', { class: 'field-label' }, 'Name'), name), h('div', {}, h('label', { class: 'field-label' }, 'Avatar'), avatarInput)),
+      h('div', { class: 'freq-row' }, h('div', { class: 'grow' }, h('label', { class: 'field-label' }, 'Name'), name), h('div', { class: 'grow' }, h('label', { class: 'field-label', title: 'Its role in the team, shown next to its name. It sets its responsibilities: the agent takes on what the role owns.' }, 'Title'), titleInput), h('div', {}, h('label', { class: 'field-label' }, 'Avatar'), avatarInput)),
       h('label', { class: 'field-label' }, 'Description'),
       description,
+      h('label', { class: 'field-label', title: 'Its manager in your organization of agents' }, 'Reports to'),
+      reportsTo,
       h('label', { class: 'field-label' }, 'Instructions'),
       instructions,
       h('div', { class: 'freq-row' },
@@ -336,6 +376,7 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
       toolGrid,
       h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Think longer'), h('small', { class: 'muted' }, 'Use extended reasoning by default, where the model supports it.')), think),
       h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Internet for its code'), h('small', { class: 'muted' }, 'Its code runs in an environment of its own, kept across its chats. Allow the network there to install packages (pip, npm) or download data.')), codeNetwork),
+      h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Builds its own team'), h('small', { class: 'muted' }, 'A manager agent: it can create agents under it, each with a name, personality, rules, model and tools of its own, then change or remove them. It can only give tools it has, and only change agents under it.')), manages),
       h('label', { class: 'field-label', title: 'Added to your newest message on every request, so long chats do not drift from it' }, 'Reminder on every turn'),
       reminder,
       h('label', { class: 'field-label' }, 'Conversation starters (one a line)'),
@@ -378,6 +419,9 @@ export class AgentsPage {
   readonly key = 'page:agents';
   private grid = h('div', { class: 'agent-grid' });
   private templates = h('div', { class: 'agent-grid' });
+  /** The organization chart: who reports to whom, with titles. Hidden while nobody reports to anyone. */
+  private chart = h('div', { class: 'org-chart' });
+  private chartSection = h('section', { class: 'org-section' }, h('div', { class: 'section-title' }, 'Organization'), this.chart);
   private spend: Record<string, AgentSpend> = {};
 
   constructor() {
@@ -404,6 +448,7 @@ export class AgentsPage {
     this.el.append(
       h('header', { class: 'page-header' }, h('div', {}, h('h1', {}, 'Your agents'), h('p', { class: 'muted' }, 'A workforce of assistants with their own instructions, tools and schedules. Chat with one, or give it tasks that run on their own.')), h('div', { class: 'page-actions' }, browse, importBtn, create)),
       h('div', { class: 'setting-row routing-row' }, h('div', {}, h('strong', {}, 'Route new chats to agents'), h('small', { class: 'muted' }, 'When a new chat clearly fits one of your agents, it goes to that agent, and the chat says so. A quick question to the fast model decides.')), routing),
+      this.chartSection,
       this.grid,
       h('div', { class: 'section-title' }, 'Add a ready-made agent'),
       this.templates
@@ -431,16 +476,33 @@ export class AgentsPage {
       clear(this.grid, h('div', { class: 'empty-state wide' }, h('div', { class: 'empty-icon' }, icon('sparkle', 22)), h('h3', {}, 'No agents yet'), h('p', { class: 'muted' }, 'Create one, or add a ready-made agent below.')));
       return;
     }
+    const byId = new Map(state.agents.map((a) => [a.id, a]));
+    const tree = orgChart(state.agents);
+    this.chartSection.hidden = !tree;
+    clear(this.chart, tree);
     clear(
       this.grid,
-      state.agents.map((agent) => {
+      orgOrder(state.agents).map((agent) => {
         const runs = state.conversations.filter((c) => c.agentId === agent.id);
         const busy = runs.some((c) => state.live.has(c.id) && !state.live.get(c.id)?.error);
         const unread = runs.filter((c) => c.unread).length;
+        const boss = agent.reportsTo ? byId.get(agent.reportsTo) : undefined;
+        const team = state.agents.filter((a) => a.reportsTo === agent.id).length;
         return h(
           'button',
           { class: 'agent-card', on: { click: () => navigate({ kind: 'agent', id: agent.id }) } },
-          h('div', { class: 'agent-card-head' }, avatar(agent, 'large'), h('div', {}, h('strong', {}, agent.name, agent.members?.length ? h('span', { class: 'tag' }, `Group · ${agent.members.length}`) : null), h('small', { class: 'muted' }, agent.description || 'No description'))),
+          h(
+            'div',
+            { class: 'agent-card-head' },
+            avatar(agent, 'large'),
+            h(
+              'div',
+              {},
+              h('strong', {}, ...agentName(agent), agent.members?.length ? h('span', { class: 'tag' }, `Group · ${agent.members.length}`) : null, agent.canManageAgents ? h('span', { class: 'tag' }, `Manages ${team}`) : null),
+              h('small', { class: 'muted' }, agent.description || 'No description'),
+              boss ? h('small', { class: 'muted agent-reports-to' }, icon('forward', 12), `Reports to ${boss.title ? `${boss.name} [${boss.title}]` : boss.name}`) : null
+            )
+          ),
           h(
             'div',
             { class: 'agent-card-foot' },
@@ -453,6 +515,60 @@ export class AgentsPage {
       })
     );
   }
+}
+
+/**
+ * The organization as a chart: each manager above the agents who report to it, joined by lines,
+ * every agent with its title. Only agents in an organization (with a manager or reports) appear;
+ * null when there is none.
+ */
+function orgChart(agents: Agent[]): HTMLElement | null {
+  const ids = new Set(agents.map((a) => a.id));
+  const reports = (id: string) => agents.filter((a) => a.reportsTo === id).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const roots = agents
+    .filter((a) => (!a.reportsTo || !ids.has(a.reportsTo)) && reports(a.id).length > 0)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  if (!roots.length) return null;
+  const seen = new Set<string>();
+  const node = (agent: Agent): HTMLElement => {
+    seen.add(agent.id);
+    const busy = state.conversations.some((c) => c.agentId === agent.id && state.live.has(c.id) && !state.live.get(c.id)?.error);
+    const team = reports(agent.id).filter((a) => !seen.has(a.id));
+    return h(
+      'li',
+      {},
+      h(
+        'button',
+        { type: 'button', class: `org-node${busy ? ' busy' : ''}`, title: agent.description || agent.name, on: { click: () => navigate({ kind: 'agent', id: agent.id }) } },
+        avatar(agent),
+        h('span', { class: 'org-node-text' }, h('strong', {}, agent.name), agent.title?.trim() ? h('small', {}, agent.title.trim()) : null)
+      ),
+      team.length ? h('ul', {}, team.map(node)) : null
+    );
+  };
+  return h('ul', { class: 'org-tree' }, roots.map(node));
+}
+
+/** Agents as an organization chart reads: each manager followed by the agents under it. */
+export function orgOrder(agents: Agent[]): Agent[] {
+  const ids = new Set(agents.map((a) => a.id));
+  const under = (id: string | null) =>
+    agents
+      .filter((a) => (id === null ? !a.reportsTo || !ids.has(a.reportsTo) : a.reportsTo === id))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const out: Agent[] = [];
+  const seen = new Set<string>();
+  const walk = (list: Agent[]) => {
+    for (const a of list) {
+      if (seen.has(a.id)) continue;
+      seen.add(a.id);
+      out.push(a);
+      walk(under(a.id));
+    }
+  };
+  walk(under(null));
+  // Anything left (a loop in a hand-edited file) still shows.
+  return out.concat(agents.filter((a) => !seen.has(a.id)));
 }
 
 /** One agent: start a conversation with it, see its runs, and manage its tasks. */
@@ -487,7 +603,7 @@ export class AgentPage {
     exportBtn.addEventListener('click', () => void tauriInvoke<boolean>('chat_export_agent', { id: agent.id }).then((saved) => saved && toast('Agent exported.')).catch((e) => toast(String(e), 'error')));
     clear(
       this.head,
-      h('div', { class: 'agent-title' }, avatar(agent, 'large'), h('div', {}, h('h1', {}, agent.name), h('p', { class: 'muted' }, agent.description))),
+      h('div', { class: 'agent-title' }, avatar(agent, 'large'), h('div', {}, h('h1', {}, ...agentName(agent)), h('p', { class: 'muted' }, agent.description))),
       h(
         'div',
         { class: 'page-actions' },

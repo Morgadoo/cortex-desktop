@@ -319,11 +319,12 @@ pub fn preamble(context: &Context<'_>, tools: &[ChatTool]) -> String {
     let workdir = context.workdir;
     let mut out = String::new();
     if let Some(agent) = context.agent {
-        out.push_str(&format!("You are {}", agent.name));
+        out.push_str(&format!("You are {}", agent.label()));
         if !agent.description.trim().is_empty() {
             out.push_str(&format!(": {}", agent.description.trim()));
         }
         out.push_str("\n\n");
+        out.push_str(&agent.role_prompt());
         if !agent.instructions.trim().is_empty() {
             out.push_str(agent.instructions.trim());
             out.push_str("\n\n");
@@ -1354,6 +1355,10 @@ async fn turn(
         // An agent keeps a notebook across its conversations and runs.
         offered.push(agents::notebook_tool());
     }
+    if agent.as_ref().is_some_and(|a| a.can_manage_agents) {
+        // A manager, as the user allowed, builds and runs its own organization of agents.
+        offered.push(super::org::definition());
+    }
     if conversation.workdir.is_some() {
         // Coding sessions get a terminal for long-running commands.
         offered.extend(terminal::definitions());
@@ -1434,6 +1439,9 @@ async fn turn(
             &config_dir,
             &agent.id,
         )));
+        if agent.can_manage_agents {
+            system.push_str(&super::org::prompt(&agents::load(&config_dir), agent));
+        }
     }
     if offered.iter().any(|t| t.name == builtins::DELEGATE) {
         let all = agents::load(&config_dir);
@@ -1997,6 +2005,63 @@ impl Runner<'_> {
         outcome
     }
 
+    /// `manage_agents`: a manager agent changes its organization, under the approval mode (it
+    /// asks in Ask, is refused in Plan and in scheduled runs nobody watches), then the page's
+    /// agent list refreshes.
+    async fn manage_agents(&self, arguments: &Value, asked: bool) -> tools::Outcome {
+        let refuse = |text: &str| tools::Outcome {
+            text: text.into(),
+            is_error: true,
+        };
+        let Some(agent) = self.agent else {
+            return refuse("Only agents can manage agents.");
+        };
+        if super::org::changes(arguments) {
+            match self.request.approval {
+                ApprovalMode::Plan => {
+                    return refuse("Plan mode changes nothing: describe the agents you would create or change, and the user can switch modes to go ahead.");
+                }
+                ApprovalMode::Unattended => {
+                    return refuse("Nobody is watching this scheduled run to approve changes to your organization; make them in a chat.");
+                }
+                ApprovalMode::Ask | ApprovalMode::AcceptEdits
+                    if !asked && !session_allowed(self.id, super::org::MANAGE_AGENTS) =>
+                {
+                    let gate = ChatTool {
+                        name: super::org::MANAGE_AGENTS.into(),
+                        description: String::new(),
+                        parameters: Value::Null,
+                        connector_id: Some(agent.name.clone()),
+                        tool_name: super::org::MANAGE_AGENTS.into(),
+                        read_only: false,
+                    };
+                    match tools::request_approval(self.app, &gate, arguments).await {
+                        ApprovalDecision::Deny => {
+                            return refuse("The user declined this change. Do not retry it; ask what they would like instead.");
+                        }
+                        ApprovalDecision::Always => {
+                            allow_for_session(self.id, super::org::MANAGE_AGENTS)
+                        }
+                        ApprovalDecision::Once => {}
+                    }
+                }
+                _ => {}
+            }
+        }
+        match super::org::apply(self.config_dir, &agent.id, arguments) {
+            Ok((text, changed)) => {
+                if changed {
+                    let _ = self.app.emit("chat://agents-changed", ());
+                }
+                tools::Outcome {
+                    text,
+                    is_error: false,
+                }
+            }
+            Err(e) => refuse(&e),
+        }
+    }
+
     async fn run_inner(&self, call: &ToolCall) -> tools::Outcome {
         let name = call.function.name.as_str();
         let arguments = Value::Object(call.function.arguments.clone());
@@ -2070,6 +2135,9 @@ impl Runner<'_> {
                 self.workdir.as_deref(),
             )
             .await;
+        }
+        if name == super::org::MANAGE_AGENTS {
+            return self.manage_agents(&arguments, asked).await;
         }
         if name == deferred::FIND_TOOLS {
             return tools::Outcome {
