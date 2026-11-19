@@ -163,6 +163,7 @@ pub async fn run(
     // JavaScript that needs nothing from Node runs in the WebAssembly sandbox, which works the same
     // on every system; what it prints is its result. Anything else keeps the process sandbox.
     if runs_in_wasm(&tool) {
+        super::script_tools::sandbox::cache_in(config_dir);
         let (result, _) = super::script_tools::sandbox::run(
             &program(&tool, args),
             "{}",

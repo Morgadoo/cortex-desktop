@@ -66,3 +66,42 @@ export function historyButton(kind: Kind, id: string, load: (value: Record<strin
   });
   return button;
 }
+
+/**
+ * A History button that restores in place: for what has no editor to load into (the memory list,
+ * knowledge pages, instructions, a notebook). `target()` is read when it is clicked; `restored` runs
+ * after a version comes back. The version it replaces is kept, so a restore can be undone too.
+ */
+export function restoreButton(target: () => { kind: 'memories' | 'knowledge' | 'instructions' | 'notebooks'; id: string }, restored: () => void): HTMLElement {
+  const button = h('button', { class: 'btn btn-secondary', title: 'Earlier versions, kept each time something changes' }, icon('clock', 14), 'History');
+  button.addEventListener('click', () => {
+    const { kind, id } = target();
+    void modal((close) => {
+      const list = h('div', { class: 'version-list' }, h('p', { class: 'muted' }, 'Loading…'));
+      void tauriInvoke<Version[]>('chat_versions', { kind, id })
+        .then((versions) =>
+          clear(
+            list,
+            versions.length
+              ? versions.map((v) =>
+                  h(
+                    'details',
+                    { class: 'version' },
+                    h('summary', {}, icon('clock', 14), h('span', { class: 'grow' }, `Replaced ${when(v.id)}`)),
+                    h('pre', { class: 'version-body' }, JSON.stringify(v.value, null, 2)),
+                    h(
+                      'div',
+                      { class: 'dialog-actions' },
+                      h('button', { class: 'btn btn-secondary btn-sm', on: { click: async () => { try { await tauriInvoke('chat_restore_version', { kind, id, version: v.id }); restored(); close(); toast('Restored. The version it replaced is kept.'); } catch (e) { toast(String(e), 'error'); } } } }, 'Restore this version')
+                    )
+                  )
+                )
+              : h('p', { class: 'muted' }, 'No earlier versions yet. Each change keeps the version it replaces.')
+          )
+        )
+        .catch((e) => clear(list, h('p', { class: 'error-text' }, String(e))));
+      return h('div', { class: 'dialog-small wide' }, modalHeader('Earlier versions', close, { flush: true }), list);
+    });
+  });
+  return button;
+}

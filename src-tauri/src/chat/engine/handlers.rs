@@ -483,6 +483,15 @@ fn on_builtin<'a>(
                 crate::chat::traces::attribute(r.config_dir, r.run, "skill", skill, true);
             }
         }
+        // And the knowledge page it read.
+        if name == builtins::KNOWLEDGE_READ && !outcome.is_error {
+            let key = arguments.get("page").and_then(Value::as_str).unwrap_or("");
+            let pages = crate::chat::knowledge::load(r.config_dir);
+            if let Some(page) = crate::chat::knowledge::find(&pages, key) {
+                crate::chat::traces::used(r.config_dir, "page", &page.id);
+                crate::chat::traces::attribute(r.config_dir, r.run, "page", &page.id, true);
+            }
+        }
         outcome
     })
 }
@@ -659,23 +668,7 @@ fn on_propose_change<'a>(
             _ => {}
         }
         // The independent review: a fresh request, with none of this chat in it.
-        let review = rig_core::completion::CompletionRequest::new(
-            rig_core::completion::Message::user(proposals::review_prompt(&proposal, &arguments)),
-        )
-        .max_tokens(200u64);
-        let verdict =
-            match tokio::time::timeout(std::time::Duration::from_secs(60), r.model.call(review))
-                .await
-            {
-                Ok(Ok(response)) if !response.text().trim().is_empty() => response
-                    .text()
-                    .trim()
-                    .lines()
-                    .next()
-                    .unwrap_or_default()
-                    .to_string(),
-                _ => "The reviewer could not be reached; judge it yourself.".to_string(),
-            };
+        let verdict = independent_review(r, &proposals::review_prompt(&proposal, &arguments)).await;
         let gate = ChatTool {
             name: proposals::PROPOSE_CHANGE.into(),
             description: String::new(),
@@ -798,12 +791,22 @@ fn on_unload_tools<'a>(
 
 /// One line from a reviewer that did not write what it reviews: a fresh request with none of this
 /// chat in it.
+/// A review by a reviewer that is not the author: the review model when one is set (a different
+/// model), else the chat's model in a fresh request that holds none of this chat. One line back.
 async fn independent_review(r: &Runner<'_>, prompt: &str) -> String {
     let review = rig_core::completion::CompletionRequest::new(rig_core::completion::Message::user(
         prompt.to_string(),
     ))
     .max_tokens(200u64);
-    match tokio::time::timeout(std::time::Duration::from_secs(60), r.model.call(review)).await {
+    let reviewer = match crate::chat::providers::load(r.config_dir)
+        .review_model
+        .filter(|m| m != &r.request.model)
+    {
+        Some(reference) => r.host.connect_model(&reference).await.ok(),
+        None => None,
+    };
+    let model = reviewer.as_ref().unwrap_or(r.model);
+    match tokio::time::timeout(std::time::Duration::from_secs(60), model.call(review)).await {
         Ok(Ok(response)) if !response.text().trim().is_empty() => response
             .text()
             .trim()
@@ -890,6 +893,7 @@ fn on_request_capability<'a>(
         let wanted = script_tools::Capabilities {
             http_hosts: strings("http_hosts"),
             read_prefixes: strings("read_prefixes"),
+            write_prefixes: strings("write_prefixes"),
             tools: strings("tools"),
         };
         let days = arguments.get("days").and_then(Value::as_i64);
@@ -908,6 +912,7 @@ fn on_request_capability<'a>(
             "tool": name,
             "network": wanted.http_hosts,
             "reads": wanted.read_prefixes,
+            "writes": wanted.write_prefixes,
             "calls": wanted.tools,
             "forDays": days,
             "reason": arguments.get("reason"),

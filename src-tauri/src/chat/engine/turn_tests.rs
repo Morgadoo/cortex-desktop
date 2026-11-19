@@ -322,6 +322,248 @@ async fn a_turn_is_traced_and_the_model_can_read_the_trace() {
     assert!(ends[1].0.contains("update_plan"), "{ends:?}");
 }
 
+/// The human channel: `ask_user` puts a question to the user and the turn waits for the answer,
+/// which comes back as the tool's result.
+#[tokio::test]
+async fn ask_user_waits_for_the_answer_and_returns_it() {
+    let (host, model) = host_with(vec![
+        calls(
+            ASK_USER,
+            json!({ "question": "Which city?", "options": ["Porto", "Lisbon"] }),
+        ),
+        says("Porto it is."),
+    ]);
+    let turn = {
+        let host = host.clone();
+        tokio::spawn(async move { run(&host, &request("Plan a trip", ApprovalMode::Ask)).await })
+    };
+    let call_id = loop {
+        let asked = host.events().into_iter().find_map(|e| match e {
+            ChatEvent::Question {
+                call_id,
+                question,
+                options,
+                ..
+            } => Some((call_id, question, options)),
+            _ => None,
+        });
+        if let Some((call_id, question, options)) = asked {
+            assert_eq!(question, "Which city?");
+            assert_eq!(options, vec!["Porto".to_string(), "Lisbon".to_string()]);
+            break call_id;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    };
+    assert!(host.state.answer(&call_id, "Porto".into()));
+    assert_eq!(turn.await.unwrap(), Ok(false));
+    assert_eq!(tool_ends(&host)[0], ("Porto".to_string(), false));
+    let history = format!("{:?}", model.requests()[1].chat_history);
+    assert!(history.contains("Porto"), "{history}");
+}
+
+/// `request_capability` and `retire_tool` ask the user, and apply only what was approved.
+#[tokio::test]
+async fn a_tool_s_access_and_retirement_go_through_the_user() {
+    use crate::chat::script_tools;
+    let (host, _) = host_with(vec![
+        calls(
+            script_tools::REQUEST_CAPABILITY,
+            json!({ "name": "rates", "http_hosts": ["api.example.com"], "days": 3, "reason": "Live rates." }),
+        ),
+        calls(script_tools::RETIRE_TOOL, json!({ "name": "rates" })),
+        says("Done."),
+    ]);
+    let d = host.dir.path();
+    script_tools::create(
+        d,
+        "",
+        &json!({ "name": "rates", "description": "Exchange rates.", "script": "function main() { return 1; }" }),
+    )
+    .await
+    .unwrap();
+    script_tools::promote(d, "rates", None).await.unwrap();
+    *host.answer.lock().unwrap() = ApprovalDecision::Once;
+    assert_eq!(
+        run(&host, &request("Use live rates", ApprovalMode::Ask)).await,
+        Ok(false)
+    );
+    let approvals = host.approvals.lock().unwrap().clone();
+    assert!(
+        approvals.contains(&script_tools::REQUEST_CAPABILITY.to_string()),
+        "{approvals:?}"
+    );
+    let tool = script_tools::load(d, "rates").unwrap();
+    assert_eq!(tool.granted.http_hosts, vec!["api.example.com".to_string()]);
+    assert!(tool.granted_until.is_some(), "granted for the days asked");
+    assert_eq!(tool.status, script_tools::Status::Deprecated);
+
+    // Declined, nothing changes.
+    let (host, _) = host_with(vec![
+        calls(
+            script_tools::REQUEST_CAPABILITY,
+            json!({ "name": "rates", "http_hosts": ["evil.example.com"], "reason": "x" }),
+        ),
+        says("Fine."),
+    ]);
+    let d = host.dir.path();
+    script_tools::create(
+        d,
+        "",
+        &json!({ "name": "rates", "description": "Exchange rates.", "script": "function main() { return 1; }" }),
+    )
+    .await
+    .unwrap();
+    script_tools::promote(d, "rates", None).await.unwrap();
+    run(&host, &request("Use live rates", ApprovalMode::Ask))
+        .await
+        .unwrap();
+    assert!(script_tools::load(d, "rates")
+        .unwrap()
+        .granted
+        .http_hosts
+        .is_empty());
+    assert!(tool_ends(&host)[0].1, "the refusal is an error result");
+}
+
+/// The author is not the only reviewer: a separate call reviews the tool, and its verdict is
+/// on the card the user decides from.
+#[tokio::test]
+async fn a_promotion_shows_the_independent_review() {
+    use crate::chat::script_tools;
+    let (host, _) = host_with(vec![
+        calls(script_tools::PROMOTE_TOOL, json!({ "name": "count_words" })),
+        says("Promoted."),
+    ]);
+    // A different model reviews.
+    let reviewer = MockCompletionModel::from_turns([rig_core::test_utils::MockTurn::text(
+        "SUPPORT: counts words and asks for no access.",
+    )]);
+    host.model("mock/review", reviewer.clone().erase());
+    let d = host.dir.path();
+    let mut providers = crate::chat::providers::load(d);
+    providers.review_model = Some("mock/review".into());
+    crate::chat::providers::save(d, &providers).unwrap();
+    script_tools::create(
+        d,
+        "chat-0",
+        &json!({ "name": "count_words", "description": "Count words.", "script": "function main(a) { return 1; }" }),
+    )
+    .await
+    .unwrap();
+    *host.answer.lock().unwrap() = ApprovalDecision::Once;
+    run(&host, &request("Promote it", ApprovalMode::Ask))
+        .await
+        .unwrap();
+    let reasons = host.reasons.lock().unwrap().clone();
+    assert_eq!(
+        reasons,
+        vec!["SUPPORT: counts words and asks for no access.".to_string()]
+    );
+    // The reviewer saw the tool and none of this chat.
+    let review = format!("{:?}", reviewer.requests()[0]);
+    assert!(review.contains("You did not write it"), "{review}");
+    assert!(!review.contains("Promote it"), "{review}");
+}
+
+/// Identity comes from the platform: the scope a fact is saved under is the chat's, whatever the
+/// model puts in its arguments.
+#[tokio::test]
+async fn the_model_cannot_choose_a_fact_s_scope() {
+    let (host, _) = host_with(vec![
+        calls(
+            builtins::REMEMBER,
+            json!({ "fact": "The user prefers trains.", "scope": "project", "_project": "someone-else", "_agent": "other" }),
+        ),
+        says("Noted."),
+    ]);
+    *host.answer.lock().unwrap() = ApprovalDecision::Once;
+    run(&host, &request("I prefer trains", ApprovalMode::Ask))
+        .await
+        .unwrap();
+    let memories = crate::chat::memory::load(host.dir.path());
+    let fact = memories
+        .items
+        .iter()
+        .find(|m| m.text.contains("trains"))
+        .expect("saved");
+    assert_eq!(fact.scope, None, "{fact:?}");
+}
+
+/// Long results are kept whole as a reference, and read back in parts; nothing outside the
+/// conversation's own outputs can be named.
+#[test]
+fn a_long_result_is_kept_and_read_back_in_parts() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    let text: String = "abcdefghij".repeat(3_000);
+    save_tool_output(d, "chat-1", "call-7", &text).unwrap();
+    let first = read_tool_output(d, "chat-1", "call-7", 0).unwrap();
+    assert!(
+        first.starts_with("[characters 0–20000 of 30000]"),
+        "{}",
+        &first[..60]
+    );
+    assert!(first.ends_with("[… continue with offset=20000]"));
+    let rest = read_tool_output(d, "chat-1", "call-7", 20_000).unwrap();
+    assert!(rest.starts_with("[characters 20000–30000 of 30000]"));
+    assert!(!rest.contains("continue with"));
+    assert!(
+        read_tool_output(d, "chat-2", "call-7", 0).is_err(),
+        "another chat's"
+    );
+    assert!(read_tool_output(d, "chat-1", "../call-7", 0).is_err());
+    assert!(save_tool_output(d, "..", "x", "y").is_err());
+}
+
+/// Attribution: a run records the facts, pages and tools it had, and which it used.
+#[tokio::test]
+async fn a_run_records_what_it_had_and_what_it_used() {
+    let (host, _) = host_with(vec![
+        calls(builtins::KNOWLEDGE_READ, json!({ "page": "Porto trip" })),
+        says("Done."),
+    ]);
+    let d = host.dir.path();
+    let mut memories = crate::chat::memory::load(d);
+    let fact = crate::chat::memory::add(&mut memories, "The user prefers trains.", "user").unwrap();
+    crate::chat::memory::save(d, &memories).unwrap();
+    let page = crate::chat::knowledge::write(
+        d,
+        None,
+        "Porto trip",
+        "Train from Lisbon, two nights by the river.",
+        "user",
+        &[],
+    )
+    .unwrap();
+    assert_eq!(
+        run(&host, &request("Plan the Porto trip", ApprovalMode::Ask)).await,
+        Ok(false)
+    );
+    let run_id = super::super::traces::runs(
+        d,
+        &super::super::traces::RunFilter {
+            limit: 1,
+            ..Default::default()
+        },
+    )
+    .remove(0)
+    .id;
+    let had = super::super::traces::run_detail(d, &run_id)
+        .unwrap()
+        .artifacts;
+    let has = |kind: &str, id: &str, used: bool| {
+        had.iter()
+            .any(|(k, i, u)| k == kind && i == id && *u == used)
+    };
+    assert!(has("memory", &fact.id, false), "{had:?}");
+    assert!(has("page", &page.id, true), "recalled and read: {had:?}");
+    assert!(has("tool", builtins::KNOWLEDGE_READ, true), "{had:?}");
+    assert!(
+        has("tool", builtins::REMEMBER, false),
+        "offered, not called: {had:?}"
+    );
+}
+
 /// The kernel's tool-creation loop: the model writes a tool in one chat, the user approves it,
 /// and another chat is offered it and runs it in the sandbox.
 #[tokio::test]
@@ -439,6 +681,48 @@ async fn an_eval_suite_runs_through_the_loop_and_is_graded() {
         .map(|d| d.count())
         .unwrap_or(0);
     assert_eq!(kept, 0);
+}
+
+/// Ablation: a suite runs with everything, then without one skill. The skill is gone from the
+/// second run's prompt, and the cases that needed it show up as worse.
+#[tokio::test]
+async fn ablating_a_skill_shows_whether_it_helps() {
+    use crate::chat::evals;
+    let (host, model) = host_with(vec![says("Stay by the river."), says("Stay anywhere.")]);
+    let d = host.dir.path();
+    crate::chat::skills::save(
+        d,
+        "porto-guide",
+        "Use when planning a stay in Porto.",
+        "Recommend the riverside.",
+    )
+    .unwrap();
+    evals::add_case(
+        d,
+        "trips",
+        &evals::Case {
+            id: "porto".into(),
+            prompt: "Where should I stay in Porto?".into(),
+            facts: vec!["river".into()],
+            ..evals::Case::default()
+        },
+    )
+    .unwrap();
+    let dyn_host: Arc<dyn Host> = host.clone();
+    let without = evals::Without {
+        skills: vec!["porto-guide".into()],
+        ..evals::Without::default()
+    };
+    let (with, without_run, comparison) = evals::ablate(&dyn_host, "trips", MODEL, &without)
+        .await
+        .unwrap();
+    assert_eq!((with.score, without_run.score), (1.0, 0.0));
+    assert_eq!(comparison.worse, vec!["porto".to_string()]);
+    assert_eq!(without_run.without, vec!["skill:porto-guide".to_string()]);
+    // skills_off took it out of the prompt.
+    let prompt = |i: usize| format!("{:?}", model.requests()[i]);
+    assert!(prompt(0).contains("porto-guide"));
+    assert!(!prompt(1).contains("porto-guide"));
 }
 
 /// With the user's eval suites, a promotion measures the suite without and with the tool, and a

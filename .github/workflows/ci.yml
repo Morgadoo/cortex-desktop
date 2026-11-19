@@ -78,6 +78,9 @@ jobs:
       - name: Unit and integration tests
         working-directory: src-tauri
         run: cargo test --workspace --features cortex/test-utils
+      # Every test docs/agent-kernel-plan.md cites as evidence must exist and pass.
+      - name: The kernel plan's evidence
+        run: python3 scripts/check-kernel-plan.py
 
   live:
     name: Live (Qdrant, Tika, built-in models)

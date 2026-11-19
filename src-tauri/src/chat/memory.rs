@@ -230,6 +230,36 @@ pub fn prompt_for(
     if !memories.enabled {
         return None;
     }
+    let shown = Memories {
+        items: shown(memories, query, project, agent),
+        ..memories.clone()
+    };
+    let mut out = render(&shown)?;
+    let more = memories
+        .items
+        .iter()
+        .filter(|m| applies(m, project, agent))
+        .count()
+        .saturating_sub(shown.items.len());
+    if more > 0 {
+        out.push_str(&format!(
+            "\n({more} more facts are saved but not listed; find them with `memory_search`.)"
+        ));
+    }
+    Some(out)
+}
+
+/// The facts [`prompt_for`] lists: all that apply when they are few, otherwise the important ones
+/// and those that fit `query`. What a run is attributed as having had in front of it.
+pub fn shown(
+    memories: &Memories,
+    query: &str,
+    project: Option<&str>,
+    agent: Option<&str>,
+) -> Vec<Memory> {
+    if !memories.enabled {
+        return Vec::new();
+    }
     let applicable: Vec<&Memory> = memories
         .items
         .iter()
@@ -254,23 +284,7 @@ pub fn prompt_for(
         }
         keep.into_iter().cloned().collect()
     };
-    let shown = Memories {
-        items: listed,
-        ..memories.clone()
-    };
-    let mut out = render(&shown)?;
-    let more = memories
-        .items
-        .iter()
-        .filter(|m| applies(m, project, agent))
-        .count()
-        .saturating_sub(shown.items.len());
-    if more > 0 {
-        out.push_str(&format!(
-            "\n({more} more facts are saved but not listed; find them with `memory_search`.)"
-        ));
-    }
-    Some(out)
+    listed
 }
 
 fn render(memories: &Memories) -> Option<String> {

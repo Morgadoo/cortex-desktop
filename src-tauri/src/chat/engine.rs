@@ -1505,6 +1505,15 @@ async fn traced_turn(
         .and_then(|i| conversation.messages.get(i))
         .map(super::context::message_text)
         .unwrap_or_default();
+    attribute_loaded(
+        &config_dir,
+        run,
+        &offered,
+        &memories,
+        &latest_prompt,
+        project.as_ref().map(|p| p.id.as_str()),
+        agent.as_ref().map(|a| a.id.as_str()),
+    );
     let library_list = libraries::list(&config_dir);
     let mut prompt = preamble_prompt(
         &Context {
@@ -2209,6 +2218,42 @@ fn allow_for_session(conversation: &str, tool: &str) {
     }
 }
 
+/// Attribution: what this run had in front of it, beyond skills: the tools offered, the facts
+/// listed and the knowledge pages recalled in full. A tool called, a page read and a skill opened
+/// are marked used as they happen, so a good or bad run can be traced to what it had and used.
+fn attribute_loaded(
+    config_dir: &std::path::Path,
+    run: &str,
+    offered: &[tools::ChatTool],
+    memories: &memory::Memories,
+    query: &str,
+    project: Option<&str>,
+    agent: Option<&str>,
+) {
+    for tool in offered {
+        super::traces::attribute(config_dir, run, "tool", &tool.name, false);
+    }
+    let facts: Vec<String> = memory::shown(memories, query, project, agent)
+        .into_iter()
+        .map(|m| m.id)
+        .collect();
+    super::traces::loaded(config_dir, "memory", &facts);
+    for id in &facts {
+        super::traces::attribute(config_dir, run, "memory", id, false);
+    }
+    if memories.enabled {
+        let pages = knowledge::load(config_dir);
+        let recalled: Vec<String> = knowledge::recalled(&pages, query)
+            .into_iter()
+            .map(|p| p.id.clone())
+            .collect();
+        super::traces::loaded(config_dir, "page", &recalled);
+        for id in &recalled {
+            super::traces::attribute(config_dir, run, "page", id, false);
+        }
+    }
+}
+
 /// Runs one tool call, `run`, the way every loop that calls tools must: between the user's
 /// `before_tool` and `after_tool` hooks, with `agent`'s vault secrets reaching the processes it
 /// starts and masked in what comes back, and recorded in the activity log.
@@ -2468,7 +2513,7 @@ impl Runner<'_> {
                 let mode = agents::mode_for(self.agent, name, self.request.approval);
                 // Auto: what Ask mode would confirm gets a quick check against the request.
                 if mode == ApprovalMode::Auto
-                    && tools::risk(tool, &arguments).is_none()
+                    && tools::risk_here(Some(self.config_dir), tool, &arguments).is_none()
                     && tools::needs_approval(tool, &arguments, ApprovalMode::Ask)
                 {
                     if let Some(reason) = self.auto_check(name, &arguments).await {
@@ -2551,8 +2596,9 @@ impl Runner<'_> {
                     tool_name: "start".into(),
                     read_only: false,
                 };
-                // Smart-approve: a command that is hard to undo asks even in Full auto.
-                let risky = tools::risk(&gate, arguments);
+                // Smart-approve: a command that is hard to undo, or that names the app's own
+                // data, asks even in Full auto.
+                let risky = tools::risk_here(Some(self.config_dir), &gate, arguments);
                 match agents::mode_for(self.agent, terminal::START, self.request.approval) {
                     ApprovalMode::Plan => return fail("Plan mode: nothing is started yet. Put this command in your plan."),
                     ApprovalMode::Unattended => return fail("This scheduled run may not start commands."),
@@ -2615,26 +2661,23 @@ impl Runner<'_> {
         }
     }
 
-    /// Runs code once the user allows it: every run in "ask" modes, unless they allowed all.
+    /// Runs code once the user allows it: every run in "ask" modes, unless they allowed all, and
+    /// every run in every mode where it would not be isolated.
     async fn run_code(&self, arguments: &Value) -> tools::Outcome {
-        match self.request.approval {
-            ApprovalMode::Unattended => return tools::Outcome {
-                text:
-                    "This scheduled run may not run code; the user can allow changes for this task."
-                        .into(),
-                is_error: true,
-            },
-            ApprovalMode::Plan => {
+        let gate = sandbox::code_gate(
+            self.request.approval,
+            sandbox::isolated(self.config_dir),
+            sandbox::always_allowed(self.config_dir),
+        );
+        match gate {
+            sandbox::CodeGate::Refuse(text) => {
                 return tools::Outcome {
-                    text: "Plan mode: code is not run yet. Put this step in your plan instead."
-                        .into(),
+                    text: text.into(),
                     is_error: true,
                 }
             }
-            ApprovalMode::Autonomous | ApprovalMode::Auto => {}
-            ApprovalMode::Ask | ApprovalMode::AcceptEdits
-                if sandbox::always_allowed(self.config_dir) => {}
-            ApprovalMode::Ask | ApprovalMode::AcceptEdits => {
+            sandbox::CodeGate::Run => {}
+            sandbox::CodeGate::Ask(reason) => {
                 let Some(tool) = self.offered.iter().find(|t| t.name == sandbox::RUN_CODE) else {
                     return tools::Outcome {
                         text: "Running code is not available.".into(),
@@ -2645,19 +2688,20 @@ impl Runner<'_> {
                     connector_id: Some("sandbox".into()),
                     ..tool.clone()
                 };
-                match self.host.approve(&gate, arguments, None).await {
+                match self.host.approve(&gate, arguments, reason).await {
                     ApprovalDecision::Deny => {
                         return tools::Outcome {
                             text: "The user declined to run this code. Do not retry it; ask what they would like instead.".into(),
                             is_error: true,
                         }
                     }
-                    ApprovalDecision::Always => {
+                    // "Always" covers isolated runs; an unsandboxed one asks every time.
+                    ApprovalDecision::Always if reason.is_none() => {
                         if let Err(e) = sandbox::set_always_allowed(self.config_dir, true) {
                             warn!("could not save the code-run permission: {e}");
                         }
                     }
-                    ApprovalDecision::Once => {}
+                    ApprovalDecision::Always | ApprovalDecision::Once => {}
                 }
             }
         }

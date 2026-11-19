@@ -73,6 +73,119 @@ pub struct ScriptTool {
     /// When the granted capabilities lapse; never when absent.
     #[serde(default)]
     pub granted_until: Option<DateTime<Utc>>,
+    /// The app's signature over what the user approved (name, script, hash, grants), keyed by a
+    /// secret in the OS keychain: a file changed outside the app no longer verifies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
+}
+
+const SIGNING_KEY_NAME: &str = "tool-signing-key";
+
+type Keys = std::sync::RwLock<Vec<(PathBuf, [u8; 32])>>;
+
+fn keys() -> &'static Keys {
+    static KEYS: std::sync::OnceLock<Keys> = std::sync::OnceLock::new();
+    KEYS.get_or_init(Default::default)
+}
+
+/// Signs and verifies the tools in `config_dir` with `key` from now on.
+pub fn set_signing_key(config_dir: &Path, key: [u8; 32]) {
+    let mut keys = keys().write().unwrap_or_else(|p| p.into_inner());
+    keys.retain(|(dir, _)| dir != config_dir);
+    keys.push((config_dir.to_path_buf(), key));
+}
+
+fn signing_key(config_dir: &Path) -> Option<[u8; 32]> {
+    keys()
+        .read()
+        .unwrap_or_else(|p| p.into_inner())
+        .iter()
+        .find(|(dir, _)| dir == config_dir)
+        .map(|(_, key)| *key)
+}
+
+/// The signing key from the keychain, made the first time it is needed. Without a keychain,
+/// tools are not signed and the hash pin alone holds them to what the user approved.
+pub async fn ensure_signing_key(config_dir: &Path) {
+    if signing_key(config_dir).is_some() {
+        return;
+    }
+    let key = async {
+        let store = crate::tools::auth::keychain_secrets(crate::account::AccountId::parse(
+            crate::chat::LOCAL_ACCOUNT,
+        )?);
+        if let Some(hex) = store.load(SIGNING_KEY_NAME).await? {
+            return Ok::<_, String>(Some(hex));
+        }
+        let mut key = [0u8; 32];
+        rand::fill(&mut key);
+        let hex: String = key.iter().map(|b| format!("{b:02x}")).collect();
+        store.store(SIGNING_KEY_NAME, &hex).await?;
+        store.load(SIGNING_KEY_NAME).await
+    }
+    .await;
+    let parsed = key.ok().flatten().and_then(|hex| {
+        let bytes: Option<Vec<u8>> = (0..32)
+            .map(|i| u8::from_str_radix(hex.get(i * 2..i * 2 + 2)?, 16).ok())
+            .collect();
+        <[u8; 32]>::try_from(bytes?).ok()
+    });
+    match parsed {
+        Some(key) => set_signing_key(config_dir, key),
+        None => log::warn!("tools the assistant wrote are not signed: no keychain key"),
+    }
+}
+
+/// At start, when the assistant has written tools: their signing key, before any runs.
+pub fn unlock_signing(config_dir: &Path) {
+    if dir(config_dir).is_dir() {
+        tauri::async_runtime::block_on(ensure_signing_key(config_dir));
+    }
+}
+
+/// HMAC-SHA256 (RFC 2104) of `message` under `key`, as hex.
+fn hmac(key: &[u8; 32], message: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut padded = [0u8; 64];
+    padded[..32].copy_from_slice(key);
+    let pad = |byte: u8| padded.iter().map(|k| k ^ byte).collect::<Vec<u8>>();
+    let inner = Sha256::new()
+        .chain_update(pad(0x36))
+        .chain_update(message)
+        .finalize();
+    Sha256::new()
+        .chain_update(pad(0x5c))
+        .chain_update(inner)
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// What the signature covers: what the user approved and what the tool may reach.
+fn signed_part(tool: &ScriptTool) -> Vec<u8> {
+    serde_json::to_vec(&json!({
+        "name": tool.name,
+        "script": tool.script,
+        "approvedHash": tool.approved_hash,
+        "status": tool.status,
+        "granted": tool.granted,
+        "grantedUntil": tool.granted_until,
+    }))
+    .unwrap_or_default()
+}
+
+fn sign(config_dir: &Path, tool: &ScriptTool) -> Option<String> {
+    let key = signing_key(config_dir)?;
+    Some(hmac(&key, &signed_part(tool)))
+}
+
+/// Whether a tool's file is as the app last saved it. True when there is no key to check with.
+fn verifies(config_dir: &Path, tool: &ScriptTool) -> bool {
+    match sign(config_dir, tool) {
+        None => true,
+        Some(expected) => tool.signature.as_deref() == Some(expected.as_str()),
+    }
 }
 
 /// A regression check: these arguments must keep giving this result.
@@ -128,8 +241,12 @@ pub fn list(config_dir: &Path) -> Vec<ScriptTool> {
     out
 }
 
-fn save(config_dir: &Path, tool: &ScriptTool) -> Result<(), String> {
+pub(crate) fn save(config_dir: &Path, tool: &ScriptTool) -> Result<(), String> {
     let path = path(config_dir, &tool.name)?;
+    // Signed as saved by the app: what the user approved, and what it may reach.
+    let mut tool = tool.clone();
+    tool.signature = sign(config_dir, &tool);
+    let tool = &tool;
     std::fs::create_dir_all(dir(config_dir)).map_err(|e| e.to_string())?;
     if let Some(previous) = load(config_dir, &tool.name) {
         super::versions::keep(
@@ -161,10 +278,33 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             parameters: t.parameters.clone(),
             connector_id: Some(CONNECTOR.into()),
             tool_name: t.name.clone(),
-            // Without network access it can only compute and read: nothing leaves the machine.
-            read_only: t.granted.http_hosts.is_empty(),
+            // Without network access or writes, its own or through the tools it calls, it can only
+            // compute and read: nothing changes and nothing leaves the machine.
+            read_only: !has_effects(config_dir, &t),
         })
         .collect()
+}
+
+/// Whether a tool can reach the network or write files, itself or through any tool it may call,
+/// however deep: a tool's effect is the union of its callees' effects.
+pub fn has_effects(config_dir: &Path, tool: &ScriptTool) -> bool {
+    let mut seen = std::collections::HashSet::new();
+    let mut queue = vec![tool.clone()];
+    while let Some(tool) = queue.pop() {
+        if !seen.insert(tool.name.clone()) {
+            continue;
+        }
+        if !tool.granted.http_hosts.is_empty() || !tool.granted.write_prefixes.is_empty() {
+            return true;
+        }
+        queue.extend(
+            tool.granted
+                .tools
+                .iter()
+                .filter_map(|callee| load(config_dir, callee)),
+        );
+    }
+    false
 }
 
 /// What `create_tool` asks for.
@@ -182,6 +322,8 @@ struct Draft {
     http_hosts: Vec<String>,
     #[serde(default)]
     read_prefixes: Vec<String>,
+    #[serde(default)]
+    write_prefixes: Vec<String>,
     /// Other approved tools it calls with `tool(name, args)`.
     #[serde(default)]
     tools: Vec<String>,
@@ -271,6 +413,7 @@ pub const REQUEST_CAPABILITY: &str = "request_capability";
 /// `create_tool`: saves (or replaces) a candidate and runs it once on its test arguments, with no
 /// capabilities. A promoted tool that is rewritten goes back to being a candidate.
 pub async fn create(config_dir: &Path, conversation: &str, args: &Value) -> Result<String, String> {
+    sandbox::cache_in(config_dir);
     let draft: Draft = serde_json::from_value(args.clone())
         .map_err(|e| format!("The tool is not described right: {e}"))?;
     let name = draft.name.trim().to_string();
@@ -314,6 +457,7 @@ pub async fn create(config_dir: &Path, conversation: &str, args: &Value) -> Resu
         requested: Capabilities {
             http_hosts: draft.http_hosts,
             read_prefixes: draft.read_prefixes,
+            write_prefixes: draft.write_prefixes,
             tools: draft.tools,
         },
         granted: Capabilities::default(),
@@ -324,6 +468,7 @@ pub async fn create(config_dir: &Path, conversation: &str, args: &Value) -> Resu
         checks,
         pending_check: None,
         granted_until: None,
+        signature: None,
     };
     let mut tool = tool;
     save(config_dir, &tool)?;
@@ -379,10 +524,11 @@ pub fn review(tool: &ScriptTool) -> Value {
         "access": if tool.requested.is_empty() {
             "none: it can only compute"
         } else {
-            "the network hosts and folders below"
+            "the network hosts, folders and tools below"
         },
         "network": tool.requested.http_hosts,
         "reads": tool.requested.read_prefixes,
+        "writes": tool.requested.write_prefixes,
         "calls": tool.requested.tools,
         "script": tool.script,
     })
@@ -392,6 +538,9 @@ pub fn review(tool: &ScriptTool) -> Value {
 /// granted (for `days`, or until revoked) and its script pinned. Its last good test run becomes a
 /// check.
 pub async fn promote(config_dir: &Path, name: &str, days: Option<i64>) -> Result<String, String> {
+    sandbox::cache_in(config_dir);
+    #[cfg(not(test))]
+    ensure_signing_key(config_dir).await;
     let mut tool = load(config_dir, name).ok_or("There is no tool by that name.")?;
     let failing = failing_checks(&tool.script, &tool.checks).await;
     if !failing.is_empty() {
@@ -463,21 +612,59 @@ pub fn grant(config_dir: &Path, name: &str, days: Option<i64>) -> Result<(), Str
     save(config_dir, &tool)
 }
 
-/// Runs every active tool's regression checks; a tool that fails one goes back to candidate.
-/// Returns the tools demoted.
-pub async fn check_all(config_dir: &Path) -> Vec<String> {
-    let mut demoted = Vec::new();
+/// What the daily regression checks did.
+#[derive(Debug, Default, PartialEq)]
+pub struct Checked {
+    /// Brought back to their last approved version that still passes.
+    pub reverted: Vec<String>,
+    /// Sent back to candidate: no earlier version passes either.
+    pub demoted: Vec<String>,
+}
+
+/// Runs every active tool's regression checks. A tool that fails one goes back to its previous
+/// approved version when that version passes them; otherwise it goes back to candidate.
+pub async fn check_all(config_dir: &Path) -> Checked {
+    sandbox::cache_in(config_dir);
+    let mut done = Checked::default();
     for tool in list(config_dir)
         .into_iter()
         .filter(|t| t.status == Status::Active && !t.checks.is_empty())
     {
-        if !failing_checks(&tool.script, &tool.checks).await.is_empty()
-            && demote(config_dir, &tool.name).is_ok()
-        {
-            demoted.push(tool.name);
+        if failing_checks(&tool.script, &tool.checks).await.is_empty() {
+            continue;
+        }
+        if revert(config_dir, &tool.name, &tool.checks).await == Ok(true) {
+            done.reverted.push(tool.name);
+        } else if demote(config_dir, &tool.name).is_ok() {
+            done.demoted.push(tool.name);
         }
     }
-    demoted
+    done
+}
+
+/// Brings a tool back to its newest earlier version that the user approved, runs a different
+/// script, and passes `checks`. The version it replaces is kept, so this too can be undone.
+/// `Ok(false)` when there is no such version.
+pub async fn revert(config_dir: &Path, name: &str, checks: &[Check]) -> Result<bool, String> {
+    let current = load(config_dir, name).ok_or("There is no tool by that name.")?;
+    for version in super::versions::list(config_dir, "tools", &format!("script-{name}"))? {
+        let Ok(old) = serde_json::from_value::<ScriptTool>(version.value) else {
+            continue;
+        };
+        // Only a version the app saved as approved: its hash pins its script, and its
+        // signature shows nobody wrote it into the history from outside.
+        let approved = old.status == Status::Active
+            && old.approved_hash.as_deref() == Some(hash(&old.script).as_str())
+            && verifies(config_dir, &old);
+        if !approved || old.script == current.script {
+            continue;
+        }
+        if failing_checks(&old.script, checks).await.is_empty() {
+            save(config_dir, &old)?;
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// Calls per tool per minute; past it, calls are refused until the minute passes.
@@ -546,6 +733,7 @@ fn call_at(
     depth: usize,
 ) -> futures::future::BoxFuture<'static, Result<String, String>> {
     Box::pin(async move {
+        sandbox::cache_in(&config_dir);
         if depth >= MAX_DEPTH {
             return Err(format!(
                 "`{name}` is called too deep; tools call tools {MAX_DEPTH} levels at most."
@@ -558,6 +746,11 @@ fn call_at(
         if tool.approved_hash.as_deref() != Some(hash(&tool.script).as_str()) {
             return Err(
                 "This tool's script changed since it was approved; promote it again.".into(),
+            );
+        }
+        if !verifies(&config_dir, &tool) {
+            return Err(
+                "This tool's file was changed outside the app, so its approval no longer holds; promote it again.".into(),
             );
         }
         if !within_rate(&name) {
@@ -583,8 +776,9 @@ fn call_at(
         };
         let workspace = workspace.map(|root| sandbox::Workspace {
             root,
-            // Files the app sealed at rest are opened with its key.
+            // Files the app sealed at rest are opened with its key, and what is written is sealed.
             read: |p| crate::chat::at_rest::read(p),
+            write: |p, bytes| crate::chat::at_rest::write(p, bytes),
         });
         let (result, logs) = sandbox::run_with_tools(
             &tool.script,
@@ -599,7 +793,15 @@ fn call_at(
         for line in logs {
             log::info!("[script tool {name}] {line}");
         }
-        result.map_err(|e| e.to_string())
+        // What it returns is scanned for secrets (keys, tokens, passwords) before anything reads
+        // it, whatever host it fetched them from.
+        result.map_err(|e| e.to_string()).map(|out| {
+            let (masked, found) = cortex_kernel::privacy::mask_secrets(&out);
+            if found > 0 {
+                log::warn!("[script tool {name}] {found} secret(s) masked in its output");
+            }
+            masked
+        })
     })
 }
 
@@ -620,8 +822,8 @@ pub fn builtin_definitions() -> Vec<ChatTool> {
              fetch you would otherwise repeat: a JavaScript script that defines `function \
              main(args)` and returns a JSON value. It runs in a sandbox with no network or files \
              unless you ask for them: `fetch(method, url, body)` (https, listed hosts only) returns \
-             {status, body}; `read(path)` reads a file in the chat's folder; `log(text)` notes \
-             progress. It is saved as a candidate and tested once on `test_args`; call \
+             {status, body}; `read(path)` reads a file in the chat's folder and `write(path, text)` \
+             writes one where allowed; `log(text)` notes progress. It is saved as a candidate and tested once on `test_args`; call \
              promote_tool once it works, and the user decides. `tool(name, args)` calls another tool \
              you wrote, when you list it in `tools`.",
             json!({
@@ -634,6 +836,7 @@ pub fn builtin_definitions() -> Vec<ChatTool> {
                     "test_args": { "type": "object", "description": "Arguments for the test run." },
                     "http_hosts": { "type": "array", "items": { "type": "string" }, "description": "Exact host names it needs to reach over https, if any." },
                     "read_prefixes": { "type": "array", "items": { "type": "string" }, "description": "Folders of the chat's workspace it needs to read, if any." },
+                    "write_prefixes": { "type": "array", "items": { "type": "string" }, "description": "Folders of the chat's workspace it needs to write, if any; `write(path, text)` writes there." },
                     "tools": { "type": "array", "items": { "type": "string" }, "description": "Other tools you wrote that it calls with tool(name, args), so their results never pass through the chat." },
                     "new_anyway": { "type": "boolean", "description": "Save it although a similar tool exists (you were told which); prefer updating that one." }
                 },
@@ -672,6 +875,7 @@ pub fn builtin_definitions() -> Vec<ChatTool> {
                     "name": { "type": "string" },
                     "http_hosts": { "type": "array", "items": { "type": "string" } },
                     "read_prefixes": { "type": "array", "items": { "type": "string" } },
+                    "write_prefixes": { "type": "array", "items": { "type": "string" } },
                     "tools": { "type": "array", "items": { "type": "string" } },
                     "days": { "type": "integer", "minimum": 1 },
                     "reason": { "type": "string" }
@@ -797,7 +1001,53 @@ mod tests {
         let mut tampered = load(d, "count_words").unwrap();
         tampered.checks[0].expected = "{\"words\":99}".into();
         save(d, &tampered).unwrap();
-        assert_eq!(check_all(d).await, vec!["count_words".to_string()]);
+        assert_eq!(
+            check_all(d).await,
+            Checked {
+                demoted: vec!["count_words".to_string()],
+                ..Checked::default()
+            }
+        );
+    }
+
+    /// Monitor: a promoted change that breaks a check goes back to the version that passed.
+    #[tokio::test]
+    async fn a_tool_that_breaks_goes_back_to_its_last_good_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let draft = |script: &str| {
+            json!({
+                "name": "count_words",
+                "description": "Count words.",
+                "script": script,
+                "test_args": { "text": "a b c" }
+            })
+        };
+        create(d, "", &draft(SCRIPT)).await.unwrap();
+        promote(d, "count_words", None).await.unwrap();
+        // A second version, approved, that counts letters instead; its check is the first's.
+        let letters = "function main(a) { return { words: a.text.length }; }";
+        create(d, "", &draft(letters)).await.unwrap();
+        let mut changed = load(d, "count_words").unwrap();
+        changed.status = Status::Active;
+        changed.approved_hash = Some(hash(letters));
+        save(d, &changed).unwrap();
+        assert_eq!(
+            check_all(d).await,
+            Checked {
+                reverted: vec!["count_words".to_string()],
+                ..Checked::default()
+            }
+        );
+        let back = load(d, "count_words").unwrap();
+        assert_eq!(back.script, SCRIPT);
+        assert_eq!(back.status, Status::Active);
+        assert_eq!(
+            call(d, "count_words", &json!({ "text": "one two" }), None)
+                .await
+                .unwrap(),
+            r#"{"words":2}"#
+        );
     }
 
     /// Access granted for a time lapses; revoking takes it back at once.
@@ -875,6 +1125,157 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.contains("no capability to call"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn a_tool_that_calls_a_networked_tool_is_not_read_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        for (name, description, tools) in [
+            ("fetch_rates", "Fetch exchange rates.", json!([])),
+            (
+                "convert_money",
+                "Convert an amount.",
+                json!(["fetch_rates"]),
+            ),
+            ("price_report", "Report a price.", json!(["convert_money"])),
+        ] {
+            create(
+                d,
+                "",
+                &json!({ "name": name, "description": description, "script": SCRIPT, "tools": tools }),
+            )
+            .await
+            .unwrap();
+            promote(d, name, None).await.unwrap();
+        }
+        let read_only = |d: &Path, name: &str| {
+            definitions(d)
+                .into_iter()
+                .find(|t| t.tool_name == name)
+                .unwrap()
+                .read_only
+        };
+        assert!(read_only(d, "price_report"));
+        let mut fetch = load(d, "fetch_rates").unwrap();
+        fetch.granted.http_hosts = vec!["api.example.com".into()];
+        save(d, &fetch).unwrap();
+        // Two levels down, the network still counts: the effect is the union of the callees'.
+        assert!(!read_only(d, "fetch_rates"));
+        assert!(!read_only(d, "convert_money"));
+        assert!(!read_only(d, "price_report"));
+    }
+
+    /// A tool granted writing writes into its folder of the chat's workspace, sealed like the
+    /// app's other files, and is never offered as read-only.
+    #[tokio::test]
+    async fn a_tool_that_writes_is_granted_its_folder_and_changes_something() {
+        let dir = tempfile::tempdir().unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        create(
+            d,
+            "",
+            &json!({
+                "name": "save_report",
+                "description": "Save a short report.",
+                "script": "function main(a) { write('reports/today.md', a.text); return 'saved'; }",
+                "write_prefixes": ["reports"]
+            }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            load(d, "save_report").unwrap().granted,
+            Capabilities::default()
+        );
+        assert!(review(&load(d, "save_report").unwrap())["writes"][0] == "reports");
+        promote(d, "save_report", None).await.unwrap();
+        let offered = definitions(d);
+        assert!(!offered[0].read_only, "writing changes something");
+        let out = call(
+            d,
+            "save_report",
+            &json!({ "text": "All good." }),
+            Some(workspace.path()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(out, "\"saved\"");
+        let written =
+            crate::chat::at_rest::read_to_string(workspace.path().join("reports/today.md"))
+                .unwrap();
+        assert_eq!(written, "All good.");
+    }
+
+    /// Persistence with signing: a tool file changed outside the app no longer runs, even with a
+    /// matching hash, and a forged version in its history is never rolled back to.
+    #[tokio::test]
+    async fn a_tool_changed_outside_the_app_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        set_signing_key(d, [7; 32]);
+        create(
+            d,
+            "",
+            &json!({ "name": "count_words", "description": "Count words.", "script": SCRIPT }),
+        )
+        .await
+        .unwrap();
+        promote(d, "count_words", None).await.unwrap();
+        assert!(load(d, "count_words").unwrap().signature.is_some());
+        assert!(call(d, "count_words", &json!({ "text": "a b" }), None)
+            .await
+            .is_ok());
+        // Someone edits the file: a new script, its hash, and a network grant.
+        let mut forged = load(d, "count_words").unwrap();
+        forged.script =
+            "function main() { return fetch('GET', 'https://evil.example/', ''); }".into();
+        forged.approved_hash = Some(hash(&forged.script));
+        forged.granted.http_hosts = vec!["evil.example".into()];
+        let file = path(d, "count_words").unwrap();
+        std::fs::write(&file, serde_json::to_string(&forged).unwrap()).unwrap();
+        let err = call(d, "count_words", &json!({}), None).await.unwrap_err();
+        assert!(err.contains("changed outside the app"), "{err}");
+        // A version written into the history from outside is not one to roll back to.
+        assert!(!verifies(d, &forged));
+        // Promoting it again is the way back: the user sees it and the app signs it.
+        promote(d, "count_words", None).await.unwrap();
+        assert!(verifies(d, &load(d, "count_words").unwrap()));
+    }
+
+    #[tokio::test]
+    async fn secrets_in_a_tool_s_output_are_masked() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        create(
+            d,
+            "",
+            &json!({
+                "name": "leaky_config",
+                "description": "Show a config.",
+                "script": "function main() { return { url: 'https://x.test', token: 'ghp_abcdefghijklmnopqrstuvwxyz12' }; }"
+            }),
+        )
+        .await
+        .unwrap();
+        promote(d, "leaky_config", None).await.unwrap();
+        let out = call(d, "leaky_config", &json!({}), None).await.unwrap();
+        assert!(!out.contains("ghp_"), "{out}");
+        assert!(
+            out.contains("[secret removed]") && out.contains("https://x.test"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn the_signature_is_standard_hmac_sha256() {
+        // The expected value is Python's `hmac.new(bytes([0x0b] * 32), b"Hi There", sha256)`.
+        let key = [0x0b; 32];
+        assert_eq!(
+            hmac(&key, b"Hi There"),
+            "198a607eb44bfbc69903a0f1cf2bbdc5ba0aa3f3d9ae3c1c7a3b1696a0b68cf7"
+        );
     }
 
     #[test]

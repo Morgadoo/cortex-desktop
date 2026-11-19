@@ -457,6 +457,7 @@ async function renderProviders(content: HTMLElement) {
   const sorted = [...providers].sort((a, b) => Number(b.ready) - Number(a.ready));
   for (const provider of sorted) list.append(providerCard(provider));
   content.append(await backupModelCard());
+  content.append(await reviewModelCard());
   content.append(await autoModelCard());
   content.append(await localModelsCard());
   content.append(await mediaCard());
@@ -924,6 +925,25 @@ async function backupModelCard(): Promise<HTMLElement> {
   return card(
     h('h3', {}, 'Backup model'),
     h('p', { class: 'muted' }, 'When a reply\'s model fails before answering (a provider down, an account out of credit, a key refused), the reply continues once with this model and says so. An agent\'s own backup model comes first.'),
+    select
+  );
+}
+
+/** The model that reviews what the assistant writes for itself, before the user decides. */
+async function reviewModelCard(): Promise<HTMLElement> {
+  const current = await tauriInvoke<string | null>('chat_review_model').catch(() => null);
+  const select = h(
+    'select',
+    { class: 'input' },
+    h('option', { value: '' }, 'The chat\'s own model'),
+    state.models.map((m) => h('option', { value: m.reference, selected: m.reference === current }, `${m.providerLabel} · ${m.name}`))
+  );
+  select.addEventListener('change', () =>
+    void tauriInvoke('chat_set_review_model', { reference: select.value || null }).then(() => toast('Saved.')).catch((e) => toast(String(e), 'error'))
+  );
+  return card(
+    h('h3', {}, 'Reviewer model'),
+    h('p', { class: 'muted' }, 'Before you approve a tool the assistant wrote or a change it proposes, another model reviews it and its verdict is on the card. A different model from the chat\'s is a more independent reviewer.'),
     select
   );
 }

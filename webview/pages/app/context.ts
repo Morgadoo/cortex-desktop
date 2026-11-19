@@ -3,6 +3,7 @@ import { tauriInvoke } from '../../shared/tauri';
 import { api, type Memories, type Skill } from './api';
 import { clear, confirmDialog, h, icon, markdown, modal, popover, promptText, toast, clockHour12 } from './dom';
 import { improveButton } from './improve';
+import { restoreButton } from './versions';
 import { navigate, state } from './state';
 import { button, emptyState, iconButton, modalHeader, pageHeader, switchInput, tabs } from './ui';
 
@@ -205,10 +206,75 @@ function learningRows(): HTMLElement {
         h('div', {}, h('strong', {}, 'Run my eval suites daily'), h('small', { class: 'muted' }, `Once a day, the suites in the evals folder run on your default model, and you are told when a score drops. Each case costs a model call.${l.lastEvals ? ` Last run: ${new Date(l.lastEvals).toLocaleDateString()}.` : ''}`)),
         switchInput(l.nightlyEvals, (v) => void change({ nightlyEvals: v }))
       ),
+      h(
+        'div',
+        { class: 'setting-row' },
+        h('div', {}, h('strong', {}, 'Eval cases'), h('small', { class: 'muted' }, 'What a good answer does, case by case. You own these: the assistant cannot read or change them.')),
+        button({ variant: 'secondary', size: 'sm', label: 'Edit cases…', onClick: () => editEvalCases() })
+      ),
       artifactRows()
     );
   }).catch(() => undefined);
   return box;
+}
+
+type EvalCase = { id: string; prompt: string; tools: string[]; notTools: string[]; facts: string[]; needsExpectation: boolean; note: string };
+type EvalSuite = { suite: string; cases: EvalCase[]; lastScore?: number | null };
+
+/** The user's eval suites (evals.rs): each case's prompt and what a good answer does. */
+function editEvalCases(): void {
+  void modal((close) => {
+    const body = h('div', { class: 'version-list' }, h('p', { class: 'muted' }, 'Loading…'));
+    const lines = (text: string) => text.split(/\n|,/).map((t) => t.trim()).filter(Boolean);
+    const caseForm = (suite: string, c: EvalCase | null): HTMLElement => {
+      const id = h('input', { class: 'input', value: c?.id ?? '', placeholder: 'case-id', disabled: Boolean(c) }) as HTMLInputElement;
+      const prompt = h('textarea', { class: 'input', rows: 2, placeholder: 'The message to send' }, c?.prompt ?? '') as HTMLTextAreaElement;
+      const tools = h('input', { class: 'input', value: (c?.tools ?? []).join(', '), placeholder: 'Tools it must call, comma-separated' }) as HTMLInputElement;
+      const notTools = h('input', { class: 'input', value: (c?.notTools ?? []).join(', '), placeholder: 'Tools it must not call' }) as HTMLInputElement;
+      const facts = h('textarea', { class: 'input', rows: 2, placeholder: 'What the answer must contain, one per line' }, (c?.facts ?? []).join('\n')) as HTMLTextAreaElement;
+      const save = async () => {
+        try {
+          render(await tauriInvoke<EvalSuite[]>('chat_save_eval_case', { suite, case: { id: id.value.trim(), prompt: prompt.value, tools: lines(tools.value), notTools: lines(notTools.value), facts: facts.value.split('\n').map((f) => f.trim()).filter(Boolean), needsExpectation: c?.needsExpectation ?? false, note: c?.note ?? '' } }));
+          toast('Saved.');
+        } catch (e) {
+          toast(String(e), 'error');
+        }
+      };
+      const remove = c
+        ? h('button', { class: 'btn btn-danger btn-sm', on: { click: async () => { if (await confirmDialog(`Delete “${c.id}”?`, 'The case is removed from its suite.', 'Delete')) render(await tauriInvoke<EvalSuite[]>('chat_delete_eval_case', { suite, id: c.id })); } } }, 'Delete')
+        : null;
+      return h(
+        'details',
+        { class: 'version', open: !c },
+        h('summary', {}, icon('check', 14), h('span', { class: 'grow' }, c ? c.id : 'New case'), c?.needsExpectation ? h('small', { class: 'muted' }, 'waiting for what a right answer contains') : null),
+        c?.note ? h('p', { class: 'muted small' }, c.note) : null,
+        c ? null : id,
+        prompt,
+        tools,
+        notTools,
+        facts,
+        h('div', { class: 'dialog-actions' }, remove, h('button', { class: 'btn btn-secondary btn-sm', on: { click: () => void save() } }, 'Save'))
+      );
+    };
+    const render = (suites: EvalSuite[]) => {
+      const newSuite = h('input', { class: 'input', placeholder: 'new-suite-name' }) as HTMLInputElement;
+      clear(
+        body,
+        ...suites.map((s) =>
+          h(
+            'div',
+            {},
+            h('h4', {}, s.suite, s.lastScore != null ? h('small', { class: 'muted' }, ` · last score ${s.lastScore.toFixed(2)}`) : null),
+            ...s.cases.map((c) => caseForm(s.suite, c)),
+            caseForm(s.suite, null)
+          )
+        ),
+        h('div', {}, h('h4', {}, 'A new suite'), newSuite, h('div', { class: 'dialog-actions' }, h('button', { class: 'btn btn-secondary btn-sm', on: { click: () => { const name = newSuite.value.trim(); if (name) render([...suites, { suite: name, cases: [] }]); } } }, 'Add suite')))
+      );
+    };
+    void tauriInvoke<EvalSuite[]>('chat_eval_suites').then(render).catch((e) => clear(body, h('p', { class: 'error-text' }, String(e))));
+    return h('div', { class: 'dialog-small wide' }, modalHeader('Eval cases', close, { flush: true }), body);
+  });
 }
 
 /**
@@ -561,7 +627,15 @@ export class KnowledgePage {
       }
     });
     const newPage = button({ variant: 'primary', icon: 'plus', label: 'New page', onClick: () => editKnowledgePage(null, (p) => this.setPages(p)) });
-    this.el.append(pageHeader('Knowledge', 'Pages the assistant recalls when they are relevant, and short facts it always keeps in mind. It writes them as you chat; you can edit both.', newPage, clearAll), this.body);
+    // Every change to the pages or the facts keeps what it replaced; this brings one back.
+    const history = restoreButton(
+      () => (this.tab === 'pages' ? { kind: 'knowledge', id: 'pages' } : { kind: 'memories', id: 'all' }),
+      () => {
+        void api.memories().then((m) => this.set(m));
+        void knowledgeApi.pages().then((p) => this.setPages(p));
+      }
+    );
+    this.el.append(pageHeader('Knowledge', 'Pages the assistant recalls when they are relevant, and short facts it always keeps in mind. It writes them as you chat; you can edit both.', newPage, history, clearAll), this.body);
     void api.memories().then((m) => this.set(m));
     void knowledgeApi.pages().then((p) => this.setPages(p));
   }

@@ -807,6 +807,8 @@ pub fn chat_rate_reason(
     let mut conversation = store::load_conversation(&dir, &id)?;
     let reason: String = reason.trim().chars().take(500).collect();
     conversation.rating_reasons.retain(|(i, _)| *i != index);
+    // The reason also joins the rating in the trace, where the learning loop reads signals.
+    crate::chat::traces::feedback_reason(&dir, &id, index, &reason);
     if !reason.is_empty() {
         conversation.rating_reasons.push((index, reason));
     }

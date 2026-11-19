@@ -14,6 +14,35 @@ use tauri::{AppHandle, Emitter};
 pub use cortex_kernel::approval::{
     auto_check_prompt, auto_check_verdict, needs_approval, reads_only, risk, ApprovalMode,
 };
+
+/// The ways a command can name the app's data folder: as it is, from `~` and from `$HOME`.
+pub fn protected_places(config_dir: &std::path::Path) -> Vec<String> {
+    let full = config_dir.to_string_lossy().to_string();
+    let mut out = vec![full.clone()];
+    if let Some(home) = std::env::var_os("HOME").map(std::path::PathBuf::from) {
+        if let Ok(rest) = config_dir.strip_prefix(&home) {
+            let rest = rest.to_string_lossy();
+            out.push(format!("~/{rest}"));
+            out.push(format!("$home/{rest}"));
+            out.push(format!("${{home}}/{rest}"));
+        }
+    }
+    out
+}
+
+/// [`risk`], and the kernel's guardrail: a change that names the app's own data (where its
+/// evaluations, permissions and audit log live) is never made without the user.
+pub fn risk_here(
+    config_dir: Option<&std::path::Path>,
+    tool: &ChatTool,
+    input: &Value,
+) -> Option<&'static str> {
+    risk(tool, input).or_else(|| {
+        config_dir
+            .filter(|d| cortex_kernel::approval::names_protected(tool, input, &protected_places(d)))
+            .map(|_| cortex_kernel::approval::PROTECTED)
+    })
+}
 pub use cortex_kernel::tool::{
     normalize_schema, safe_name, value_text, ChatTool, Outcome, ASK_USER,
 };
@@ -247,8 +276,12 @@ pub async fn execute(
             is_error: true,
         };
     }
+    let config_dir = host.config_dir().ok();
+    let guarded = config_dir.as_deref().is_some_and(|d| {
+        cortex_kernel::approval::names_protected(tool, &input, &protected_places(d))
+    });
     if mode == ApprovalMode::Autonomous {
-        if let Some(why) = risk(tool, &input) {
+        if let Some(why) = risk_here(config_dir.as_deref(), tool, &input) {
             return Outcome {
                 text: format!(
                     "This call was not made: {why}, and nobody is watching this scheduled run to \
@@ -258,8 +291,15 @@ pub async fn execute(
             };
         }
     }
-    let approved = if needs_approval(tool, &input, mode) {
-        match host.approve(tool, &input, None).await {
+    let approved = if guarded || needs_approval(tool, &input, mode) {
+        match host
+            .approve(
+                tool,
+                &input,
+                guarded.then_some(cortex_kernel::approval::PROTECTED),
+            )
+            .await
+        {
             ApprovalDecision::Deny => {
                 return Outcome {
                     text: "The user declined this tool call. Do not retry it; ask what they \
@@ -418,5 +458,18 @@ mod tests {
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0].name, ASK_USER);
         assert!(tools[0].definition().is_some());
+    }
+
+    #[test]
+    fn a_command_naming_the_app_s_data_always_asks() {
+        let shell = tool(Some("bash"), false);
+        let dir = std::path::Path::new("/data/cortex");
+        let write = json!({ "command": "echo '{}' > /data/cortex/evals/trips/cases/a.json" });
+        assert_eq!(
+            risk_here(Some(dir), &shell, &write),
+            Some(cortex_kernel::approval::PROTECTED)
+        );
+        assert!(risk_here(Some(dir), &shell, &json!({ "command": "cargo test" })).is_none());
+        assert!(risk_here(None, &shell, &write).is_none());
     }
 }

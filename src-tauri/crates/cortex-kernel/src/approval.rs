@@ -83,6 +83,15 @@ pub fn risk(tool: &ChatTool, input: &Value) -> Option<&'static str> {
     {
         return Some("it deletes something");
     }
+    let squeezed = input_text(input);
+    RISKY
+        .iter()
+        .find(|(pattern, _)| squeezed.contains(pattern))
+        .map(|(_, why)| *why)
+}
+
+/// Every string in a call's input, lowercased, whitespace squeezed.
+fn input_text(input: &Value) -> String {
     fn texts(value: &Value, out: &mut String) {
         match value {
             Value::String(s) => {
@@ -96,11 +105,24 @@ pub fn risk(tool: &ChatTool, input: &Value) -> Option<&'static str> {
     }
     let mut text = String::new();
     texts(input, &mut text);
-    let squeezed = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    RISKY
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Why a call that changes something must ask in every mode: it names one of the `protected`
+/// places (the app's own data, where its evaluations, permissions and audit log live), which the
+/// agent may never change on its own. Reading them is not gated here.
+pub const PROTECTED: &str =
+    "it touches the app's own data (its evaluations, permissions and audit log)";
+
+pub fn names_protected(tool: &ChatTool, input: &Value, protected: &[String]) -> bool {
+    if tool.read_only {
+        return false;
+    }
+    let text = input_text(input);
+    protected
         .iter()
-        .find(|(pattern, _)| squeezed.contains(pattern))
-        .map(|(_, why)| *why)
+        .map(|p| p.to_ascii_lowercase())
+        .any(|p| !p.is_empty() && text.contains(&p))
 }
 
 /// The instruction for Auto mode's check: may this change run without asking?
@@ -168,5 +190,47 @@ pub fn change_gate(mode: ApprovalMode, allowed: bool) -> ChangeGate {
         ApprovalMode::Unattended => ChangeGate::RefuseUnattended,
         ApprovalMode::Ask | ApprovalMode::AcceptEdits if !allowed => ChangeGate::Ask,
         _ => ChangeGate::Run,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_change_naming_a_protected_place_is_flagged() {
+        let shell = ChatTool {
+            name: "bash__run".into(),
+            description: String::new(),
+            parameters: Value::Null,
+            connector_id: Some("bash".into()),
+            tool_name: "run".into(),
+            read_only: false,
+        };
+        let protected = vec![
+            "/home/a/.config/cortex".to_string(),
+            "~/.config/cortex".to_string(),
+        ];
+        let cmd = |c: &str| serde_json::json!({ "command": c });
+        assert!(names_protected(
+            &shell,
+            &cmd("echo {} > /home/a/.config/cortex/evals/x.json"),
+            &protected
+        ));
+        assert!(names_protected(
+            &shell,
+            &cmd("rm ~/.config/Cortex/audit.log"),
+            &protected
+        ));
+        assert!(!names_protected(&shell, &cmd("cargo test"), &protected));
+        let reader = ChatTool {
+            read_only: true,
+            ..shell
+        };
+        assert!(!names_protected(
+            &reader,
+            &cmd("cat ~/.config/cortex/x"),
+            &protected
+        ));
     }
 }

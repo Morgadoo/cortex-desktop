@@ -66,16 +66,23 @@ pub fn take_review(config_dir: &Path, now: DateTime<Utc>) -> bool {
     due
 }
 
-/// The task the review runs as: not stored, so it never shows on the Scheduled page.
-pub fn review_task() -> super::tasks::Task {
+/// The task the review runs as: not stored, so it never shows on the Scheduled page. It also
+/// diagnoses: the week's failures from the traces are in its prompt, so it reads what went wrong
+/// and proposes fixes alongside the knowledge clean-up (the kernel's Diagnose step).
+pub fn review_task(config_dir: &Path) -> super::tasks::Task {
+    let failures = super::traces::failure_report(config_dir, 7);
     super::tasks::Task {
         id: "knowledge-review".into(),
         title: "Weekly knowledge review".into(),
-        prompt: "Use the sanitize-my-knowledge skill to review everything remembered about me: the saved facts and every \
-                 knowledge page (list them with knowledge_search and open them with knowledge_read). Do not change anything \
-                 now: end with the table of proposed actions and ask me which to apply. If everything is in order, say so \
-                 in one line."
-            .into(),
+        prompt: format!(
+            "Use the sanitize-my-knowledge skill to review everything remembered about me: the saved facts and every \
+             knowledge page (list them with knowledge_search and open them with knowledge_read).\n\n\
+             Then diagnose the past week from its traces, summarized below. For each tool or model that failed more \
+             than once, open a failed run with query_traces and get_run, say what went wrong, and what would fix it \
+             (a skill, a tool's description or script, a setting).\n\n<failure_summary>\n{failures}\n</failure_summary>\n\n\
+             Do not change anything now: end with one table of proposed actions, knowledge and fixes, and ask me which \
+             to apply. If everything is in order, say so in one line."
+        ),
         frequency: super::tasks::Frequency::Once { date: String::new(), time: String::new() },
         agent_id: None,
         model: None,
@@ -186,7 +193,13 @@ mod tests {
         assert!(take_review(dir.path(), now));
         assert!(!take_review(dir.path(), now + Duration::days(3)));
         assert!(take_review(dir.path(), now + Duration::days(7)));
-        assert_eq!(review_task().title, "Weekly knowledge review");
+        let dir = tempfile::tempdir().unwrap();
+        crate::chat::traces::start_run(dir.path(), "r1", "c1", None, "m");
+        crate::chat::traces::tool_call(dir.path(), "r1", "script__flaky", 5, false);
+        let task = review_task(dir.path());
+        assert_eq!(task.title, "Weekly knowledge review");
+        // Diagnose: the week's failures are in front of the review.
+        assert!(task.prompt.contains("script__flaky"), "{}", task.prompt);
     }
 
     #[test]

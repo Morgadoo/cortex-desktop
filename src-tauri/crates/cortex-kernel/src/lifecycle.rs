@@ -96,6 +96,28 @@ pub fn duplicates(facts: &[Fact]) -> Vec<(String, Vec<String>)> {
     groups
 }
 
+/// How much worse a script tool's failure rate may get from one week to the next before it is
+/// reverted to its previous version.
+pub const REGRESSION: f64 = 0.25;
+
+/// Monitor, week over week: the script tools whose failure rate this week (`week`) is at least
+/// [`REGRESSION`] above the week before. `fortnight` covers both weeks, so the week before is
+/// the difference. Each week needs [`MIN_CALLS`] calls for the rates to mean anything.
+pub fn regressed(week: &[ToolStat], fortnight: &[ToolStat]) -> Vec<String> {
+    let rate = |calls: i64, failures: i64| failures as f64 / calls.max(1) as f64;
+    week.iter()
+        .filter_map(|now| {
+            let name = now.tool.strip_prefix("script__")?;
+            let both = fortnight.iter().find(|s| s.tool == now.tool)?;
+            let (calls, failures) = (both.calls - now.calls, both.failures - now.failures);
+            (now.calls >= MIN_CALLS
+                && calls >= MIN_CALLS
+                && rate(now.calls, now.failures) >= rate(calls, failures) + REGRESSION)
+                .then(|| name.to_string())
+        })
+        .collect()
+}
+
 pub fn decide(artifacts: &[Artifact], week: &[ToolStat], now: DateTime<Utc>) -> Decisions {
     let mut d = Decisions::default();
     for a in artifacts {
@@ -228,5 +250,31 @@ mod tests {
             decide(&[], &[failing, fine, rare], Utc::now()).demote,
             vec!["flaky".to_string()]
         );
+    }
+
+    #[test]
+    fn a_tool_that_got_worse_than_last_week_is_flagged() {
+        let stat = |tool: &str, calls: i64, failures: i64| ToolStat {
+            tool: tool.into(),
+            calls,
+            failures,
+            avg_ms: 1,
+        };
+        let week = [
+            stat("script__worse", 10, 4),
+            stat("script__steady", 10, 4),
+            stat("script__new", 10, 9),
+            stat("web_search", 10, 9),
+        ];
+        let fortnight = [
+            // Last week: 0 of 10 failed, then 4 of 10: worse by 0.4.
+            stat("script__worse", 20, 4),
+            // Last week: 4 of 10, the same as this week.
+            stat("script__steady", 20, 8),
+            // No calls last week: nothing to compare with.
+            stat("script__new", 10, 9),
+            stat("web_search", 20, 9),
+        ];
+        assert_eq!(regressed(&week, &fortnight), vec!["worse".to_string()]);
     }
 }

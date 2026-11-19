@@ -399,6 +399,12 @@
           "markdownDescription": "Set up semantic search for libraries and embed their documents."
         },
         {
+          "description": "List, write and delete the cases of the user's eval suites.",
+          "type": "string",
+          "const": "allow-chat-eval-cases",
+          "markdownDescription": "List, write and delete the cases of the user's eval suites."
+        },
+        {
           "description": "Delete a message and its reply, export and import agents, export a conversation as JSON.",
           "type": "string",
           "const": "allow-chat-exchange-and-bundles",
@@ -607,6 +613,12 @@
           "type": "string",
           "const": "allow-chat-restore-conversation",
           "markdownDescription": "Restore a deleted conversation."
+        },
+        {
+          "description": "Bring back an earlier version of a memory list, knowledge pages, instructions, a notebook, an agent, a workflow or a tool.",
+          "type": "string",
+          "const": "allow-chat-restore-version",
+          "markdownDescription": "Bring back an earlier version of a memory list, knowledge pages, instructions, a notebook, an agent, a workflow or a tool."
         },
         {
           "description": "Take back the network and file access of a tool the assistant wrote.",

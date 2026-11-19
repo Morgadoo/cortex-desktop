@@ -123,6 +123,9 @@ fn connection(config_dir: &Path) -> Option<&'static Mutex<Connection>> {
     conn.execute_batch(&format!("PRAGMA journal_mode=WAL; {SCHEMA}"))
         .map_err(|e| log::warn!("could not prepare the trace database: {e}"))
         .ok()?;
+    // Added after the first release: why the user rated an answer as they did. Fails harmlessly
+    // when the column is already there.
+    let _ = conn.execute("ALTER TABLE feedback ADD COLUMN reason TEXT", []);
     let conn: &'static Mutex<Connection> = Box::leak(Box::new(Mutex::new(conn)));
     open.push((path, conn));
     Some(conn)
@@ -202,6 +205,7 @@ pub fn tool_call(config_dir: &Path, run: &str, tool: &str, millis: u64, ok: bool
         )
     });
     used(config_dir, "tool", tool);
+    attribute(config_dir, run, "tool", tool, true);
 }
 
 /// The artifact registry's row for something the assistant can use or change.
@@ -279,6 +283,37 @@ pub fn feedback(
             )
         }
     });
+}
+
+/// Why the user rated an answer as they did: the strongest signal, an expert's judgement with its
+/// reason. Kept beside the rating; an answer without a rating gets none.
+pub fn feedback_reason(config_dir: &Path, conversation: &str, message: usize, reason: &str) {
+    with(config_dir, |c| {
+        c.execute(
+            "UPDATE feedback SET reason = ?3 WHERE conversation = ?1 AND message = ?2",
+            params![
+                conversation,
+                message as i64,
+                Some(reason.trim()).filter(|r| !r.is_empty())
+            ],
+        )
+    });
+}
+
+/// The reasons given with ratings since `since`: (conversation, message, rating, reason).
+pub fn rating_reasons(config_dir: &Path, since: DateTime<Utc>) -> Vec<(String, i64, i64, String)> {
+    with(config_dir, |c| {
+        let mut stmt = c.prepare(
+            "SELECT conversation, message, rating, reason FROM feedback WHERE at >= ?1 AND reason IS NOT NULL ORDER BY at",
+        )?;
+        let rows = stmt
+            .query_map(params![since.timestamp_millis()], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>();
+        rows
+    })
+    .unwrap_or_default()
 }
 
 /// Attribution: records that an artifact was put in front of the model in `run` (`used` false)
@@ -421,7 +456,15 @@ pub fn run_detail(config_dir: &Path, run: &str) -> Option<RunDetail> {
 }
 
 /// What people do with an answer, which says something about it even unrated.
-pub const SIGNALS: &[&str] = &["regenerated", "edited", "resumed", "copied", "exported"];
+pub const SIGNALS: &[&str] = &[
+    "regenerated",
+    "edited",
+    "resumed",
+    "copied",
+    "exported",
+    // A link or source in the answer opened: the answer pointed somewhere worth going.
+    "opened_source",
+];
 
 /// Records an implicit signal: an answer regenerated, a prompt edited and sent again, a stopped
 /// turn resumed, an answer copied or a chat exported. Kinds outside [`SIGNALS`] are ignored.
@@ -743,6 +786,18 @@ mod tests {
         feedback(d, "c", 5, 0, Some("m/b"), None);
         let since = Utc::now() - chrono::Duration::days(1);
         assert_eq!(ratings(d, since), vec![("m/a".to_string(), 1, 1)]);
+        // Expert validation: the reason goes with the rating.
+        feedback_reason(d, "c", 1, " It cited the wrong year. ");
+        feedback_reason(d, "c", 9, "no rating, so not kept");
+        assert_eq!(
+            rating_reasons(d, since),
+            vec![(
+                "c".to_string(),
+                1,
+                -1,
+                "It cited the wrong year.".to_string()
+            )]
+        );
     }
 
     #[test]
@@ -786,7 +841,9 @@ mod tests {
             detail.artifacts,
             vec![
                 ("skill".to_string(), "summarize".to_string(), true),
-                ("skill".to_string(), "translate".to_string(), false)
+                ("skill".to_string(), "translate".to_string(), false),
+                // A tool called in the run is attributed to it as used.
+                ("tool".to_string(), "web_search".to_string(), true)
             ]
         );
     }

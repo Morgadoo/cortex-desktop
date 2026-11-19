@@ -99,6 +99,64 @@ pub fn add_case(config_dir: &Path, suite: &str, case: &Case) -> Result<(), Strin
     .map_err(|e| e.to_string())
 }
 
+/// A suite as the user edits it: its cases and how its latest full run scored.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SuiteView {
+    pub suite: String,
+    pub cases: Vec<Case>,
+    pub last_score: Option<f64>,
+}
+
+pub fn suite_views(config_dir: &Path) -> Vec<SuiteView> {
+    suites(config_dir)
+        .into_iter()
+        .map(|suite| SuiteView {
+            cases: cases(config_dir, &suite),
+            last_score: last_run(config_dir, &suite)
+                .filter(|r| r.without.is_empty())
+                .map(|r| r.score),
+            suite,
+        })
+        .collect()
+}
+
+/// The user writes or edits a case. Once it says what a good answer does, a case saved from a
+/// rating stops waiting and runs.
+pub fn save_case(config_dir: &Path, suite: &str, mut case: Case) -> Result<(), String> {
+    let clean = |items: &mut Vec<String>| {
+        for item in items.iter_mut() {
+            *item = item.trim().to_string();
+        }
+        items.retain(|i| !i.is_empty());
+    };
+    clean(&mut case.tools);
+    clean(&mut case.not_tools);
+    clean(&mut case.facts);
+    case.prompt = case.prompt.trim().to_string();
+    if case.prompt.is_empty() {
+        return Err("A case needs the prompt to send.".into());
+    }
+    if case.checks() > 0 {
+        case.needs_expectation = false;
+    }
+    add_case(config_dir, suite, &case)
+}
+
+pub fn delete_case(config_dir: &Path, suite: &str, id: &str) -> Result<(), String> {
+    if !valid(id) {
+        return Err(format!("`{id}` is not a case id."));
+    }
+    let path = suite_dir(config_dir, suite)?
+        .join("cases")
+        .join(format!("{id}.json"));
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 /// Writes the starter suite, three tool-selection cases, unless it exists.
 pub fn ensure_starter(config_dir: &Path) -> Result<(), String> {
     if !cases(config_dir, STARTER).is_empty() {
@@ -333,6 +391,23 @@ pub async fn nightly(host: &Arc<dyn Host>, model: &str) -> Vec<Nightly> {
     out
 }
 
+/// The notice for a nightly result whose score dropped since the last full run, if it did.
+pub fn drop_notice(result: &Nightly) -> Option<(&'static str, String)> {
+    let before = result.before?;
+    (result.score + 1e-9 < before).then(|| {
+        (
+            "An eval score dropped",
+            format!(
+                "{}: {:.2} (was {:.2}). Worse: {}",
+                result.suite,
+                result.score,
+                before,
+                result.worse.join(", ")
+            ),
+        )
+    })
+}
+
 /// Runs a suite with everything, then without `left_out`. If the score holds without it, the
 /// artifact does not help on this suite.
 pub async fn ablate(
@@ -496,5 +571,15 @@ mod tests {
         assert_eq!(saved.len(), 1);
         assert_eq!(saved[0].prompt, "What is the capital of Australia?");
         assert!(saved[0].needs_expectation && saved[0].note.contains("Sydney"));
+        // The user says what the right answer contains: the case stops waiting.
+        let mut answered = saved[0].clone();
+        answered.facts = vec![" Canberra ".into(), "".into()];
+        save_case(dir.path(), REGRESSIONS, answered).unwrap();
+        let view = &suite_views(dir.path())[0];
+        assert_eq!(view.cases[0].facts, vec!["Canberra".to_string()]);
+        assert!(!view.cases[0].needs_expectation);
+        delete_case(dir.path(), REGRESSIONS, &view.cases[0].id).unwrap();
+        assert!(cases(dir.path(), REGRESSIONS).is_empty());
+        assert!(delete_case(dir.path(), REGRESSIONS, "../x").is_err());
     }
 }

@@ -37,6 +37,7 @@ const RUNTIME: &[u8] = include_bytes!("../wasm/js-runtime.wasm");
 /// How often the epoch advances; time limits are counted in ticks.
 const TICK: Duration = Duration::from_millis(10);
 const MAX_READ_BYTES: u64 = 1 << 20;
+const MAX_WRITE_BYTES: usize = 1 << 20;
 const MAX_HTTP_BODY_BYTES: usize = 1 << 20;
 const MAX_LOG_LINES: usize = 200;
 
@@ -48,13 +49,19 @@ pub struct Capabilities {
     pub http_hosts: Vec<String>,
     /// Folders of the chat's workspace the tool may read ("" for all of it).
     pub read_prefixes: Vec<String>,
+    /// Folders of the chat's workspace the tool may write ("" for all of it). A tool that may
+    /// write changes something, so it is never offered as read-only.
+    pub write_prefixes: Vec<String>,
     /// Other approved tools it may call, by name.
     pub tools: Vec<String>,
 }
 
 impl Capabilities {
     pub fn is_empty(&self) -> bool {
-        self.http_hosts.is_empty() && self.read_prefixes.is_empty() && self.tools.is_empty()
+        self.http_hosts.is_empty()
+            && self.read_prefixes.is_empty()
+            && self.write_prefixes.is_empty()
+            && self.tools.is_empty()
     }
 }
 
@@ -105,11 +112,13 @@ pub enum SandboxError {
     Crashed(String),
 }
 
-/// The folder `read` can reach, and how its files are read (the app decrypts what it sealed).
+/// The folder `read` and `write` can reach, and how its files are read and written (the app
+/// seals what it writes and opens what it sealed).
 #[derive(Clone)]
 pub struct Workspace {
     pub root: PathBuf,
     pub read: fn(&Path) -> std::io::Result<Vec<u8>>,
+    pub write: fn(&Path, &[u8]) -> std::io::Result<()>,
 }
 
 /// Per-call state, dropped with the instance when the call ends.
@@ -192,6 +201,7 @@ impl Host for HostState {
         let Some(Workspace {
             root: workspace,
             read,
+            ..
         }) = self.workspace.clone()
         else {
             return Err("denied: this call has no workspace".into());
@@ -231,6 +241,65 @@ impl Host for HostState {
             ));
         }
         read(&target).map_err(|_| format!("could not read `{path}`"))
+    }
+
+    async fn workspace_write(&mut self, path: String, data: Vec<u8>) -> Result<(), String> {
+        let Some(Workspace {
+            root: workspace,
+            write,
+            ..
+        }) = self.workspace.clone()
+        else {
+            return Err("denied: this call has no workspace".into());
+        };
+        let relative = Path::new(&path);
+        if path.is_empty()
+            || !relative
+                .components()
+                .all(|part| matches!(part, PathPart::Normal(_)))
+        {
+            return Err(format!("denied: `{path}` is not a plain relative path"));
+        }
+        if !self
+            .capabilities
+            .write_prefixes
+            .iter()
+            .any(|prefix| prefix.is_empty() || relative.starts_with(prefix))
+        {
+            return Err(format!("denied: no write capability for `{path}`"));
+        }
+        if data.len() > MAX_WRITE_BYTES {
+            return Err(format!(
+                "denied: writes are at most {MAX_WRITE_BYTES} bytes"
+            ));
+        }
+        tokio::fs::create_dir_all(&workspace)
+            .await
+            .map_err(|e| e.to_string())?;
+        let root = tokio::fs::canonicalize(&workspace)
+            .await
+            .map_err(|e| e.to_string())?;
+        let target = root.join(relative);
+        let parent = target.parent().unwrap_or(&root).to_path_buf();
+        // Folders are made one by one inside the workspace; a link anywhere on the way that
+        // leads out is refused, and so is a link in the file's own place.
+        tokio::fs::create_dir_all(&parent)
+            .await
+            .map_err(|_| format!("could not make the folder for `{path}`"))?;
+        let parent = tokio::fs::canonicalize(&parent)
+            .await
+            .map_err(|_| format!("could not make the folder for `{path}`"))?;
+        if !parent.starts_with(&root) {
+            return Err(format!("denied: `{path}` leaves the workspace"));
+        }
+        let target = parent.join(target.file_name().unwrap_or_default());
+        if tokio::fs::symlink_metadata(&target)
+            .await
+            .is_ok_and(|m| m.file_type().is_symlink() || m.is_dir())
+        {
+            return Err(format!("denied: `{path}` is a link or a folder"));
+        }
+        write(&target, &data).map_err(|_| format!("could not write `{path}`"))
     }
 
     async fn call_tool(&mut self, name: String, args: String) -> Result<String, String> {
@@ -321,14 +390,72 @@ struct Runtime {
     component: Component,
 }
 
+static CACHE_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// Where the compiled interpreter is kept between runs of the app. Set once, before the first tool
+/// runs; without it the interpreter is compiled once per process.
+pub fn set_cache_dir(dir: PathBuf) {
+    let _ = CACHE_DIR.set(dir);
+}
+
+fn engine() -> Result<Engine, String> {
+    let mut config = Config::new();
+    config.consume_fuel(true);
+    config.epoch_interruption(true);
+    Engine::new(&config).map_err(|e| e.to_string())
+}
+
+/// The interpreter, compiled: from `cache` when a copy compiled from these exact bytes by a
+/// compatible engine is there, otherwise compiled and kept there. Compiling takes seconds; loading
+/// a kept copy takes milliseconds. A copy that does not load is compiled again and replaced.
+fn load_or_compile(
+    engine: &Engine,
+    wasm: &[u8],
+    cache: Option<&Path>,
+) -> Result<Component, String> {
+    use sha2::{Digest, Sha256};
+    use std::hash::{Hash, Hasher};
+    let Some(cache) = cache else {
+        return Component::new(engine, wasm).map_err(|e| e.to_string());
+    };
+    let mut compat = std::collections::hash_map::DefaultHasher::new();
+    engine.precompile_compatibility_hash().hash(&mut compat);
+    let digest: String = Sha256::digest(wasm)
+        .iter()
+        .take(12)
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let file = cache.join(format!(
+        "js-runtime-{digest}-{:016x}.cwasm",
+        compat.finish()
+    ));
+    if file.exists() {
+        // SAFETY: the file is in the app's own data folder, named by the hash of the component
+        // it was compiled from and of the engine that compiled it, and wasmtime checks its header
+        // and compatibility before using it. Whoever can replace it can already run code as the
+        // user, so it adds no reach.
+        if let Ok(component) = unsafe { Component::deserialize_file(engine, &file) } {
+            return Ok(component);
+        }
+    }
+    let compiled = engine
+        .precompile_component(wasm)
+        .map_err(|e| e.to_string())?;
+    if std::fs::create_dir_all(cache).is_ok() {
+        let partial = file.with_extension("partial");
+        if std::fs::write(&partial, &compiled).is_ok() {
+            let _ = std::fs::rename(&partial, &file);
+        }
+    }
+    // SAFETY: these bytes were compiled by this engine just now.
+    unsafe { Component::deserialize(engine, &compiled) }.map_err(|e| e.to_string())
+}
+
 fn runtime() -> Result<&'static Runtime, String> {
     static RUNTIME_CELL: OnceLock<Result<Runtime, String>> = OnceLock::new();
     RUNTIME_CELL
         .get_or_init(|| {
-            let mut config = Config::new();
-            config.consume_fuel(true);
-            config.epoch_interruption(true);
-            let engine = Engine::new(&config).map_err(|e| e.to_string())?;
+            let engine = engine()?;
             // Advance the epoch on a timer so running guests can be interrupted.
             let weak = engine.weak();
             std::thread::spawn(move || {
@@ -343,7 +470,8 @@ fn runtime() -> Result<&'static Runtime, String> {
             wasmtime_wasi::p2::add_to_linker_async(&mut linker).map_err(|e| e.to_string())?;
             cortex::script::host::add_to_linker::<_, HasSelf<_>>(&mut linker, |state| state)
                 .map_err(|e| e.to_string())?;
-            let component = Component::new(&engine, RUNTIME).map_err(|e| e.to_string())?;
+            let component =
+                load_or_compile(&engine, RUNTIME, CACHE_DIR.get().map(PathBuf::as_path))?;
             Ok(Runtime {
                 engine,
                 linker,
@@ -514,12 +642,72 @@ mod tests {
         )
         .await
         .unwrap_err();
-        assert!(
-            matches!(
-                err,
-                SandboxError::OutOfMemory | SandboxError::Crashed(_) | SandboxError::Script(_)
-            ),
-            "{err:?}"
+        // The limiter fired: not a script error or a crash that only happens to follow.
+        assert_eq!(err, SandboxError::OutOfMemory);
+    }
+
+    /// The host-call timeout: a tool waiting on a host function that never answers is stopped.
+    #[tokio::test]
+    async fn a_host_call_that_never_returns_is_stopped() {
+        let hangs: ToolCaller = std::sync::Arc::new(|_name: String, _args: String| {
+            Box::pin(async move {
+                std::future::pending::<()>().await;
+                Ok(String::new())
+            })
+        });
+        // Compile the runtime first, so the clock below times only the call.
+        let _ = js(
+            "function main() { return 1; }",
+            "{}",
+            Capabilities::default(),
+            Limits::default(),
+        )
+        .await;
+        let started = std::time::Instant::now();
+        let (out, _) = run_with_tools(
+            "function main() { return tool('slow', {}); }",
+            "{}",
+            &Capabilities {
+                tools: vec!["slow".into()],
+                ..Default::default()
+            },
+            Limits {
+                timeout: Duration::from_millis(500),
+                ..Limits::default()
+            },
+            None,
+            Some(hangs),
+        )
+        .await;
+        assert_eq!(out.unwrap_err(), SandboxError::Timeout);
+        assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    /// Each call gets a fresh instance: nothing a call leaves behind is there for the next.
+    #[tokio::test]
+    async fn nothing_carries_over_between_calls() {
+        let script = "function main() { globalThis.count = (globalThis.count || 0) + 1; return globalThis.count; }";
+        for _ in 0..2 {
+            let out = js(script, "{}", Capabilities::default(), Limits::default()).await;
+            assert_eq!(out.unwrap(), "1");
+        }
+    }
+
+    /// WASI gives the guest nothing: no environment, arguments, clock-free files or processes.
+    #[tokio::test]
+    async fn wasi_gives_nothing() {
+        let out = js(
+            "function main() { return [typeof process, typeof require, typeof Deno, typeof std, \
+             typeof os, typeof fs, typeof XMLHttpRequest, typeof WebSocket].join(','); }",
+            "{}",
+            Capabilities::default(),
+            Limits::default(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            out,
+            "\"undefined,undefined,undefined,undefined,undefined,undefined,undefined,undefined\""
         );
     }
 
@@ -593,6 +781,7 @@ mod tests {
             let workspace = Workspace {
                 root: dir.path().to_path_buf(),
                 read: |p| std::fs::read(p),
+                write: |p, b| std::fs::write(p, b),
             };
             async move {
                 run(&script, "{}", &caps, Limits::default(), Some(workspace))
@@ -604,6 +793,100 @@ mod tests {
         assert!(read("secret.txt").await.is_err());
         assert!(read("../secret.txt").await.is_err());
         assert!(read("data/../secret.txt").await.is_err());
+    }
+
+    /// Write capabilities: only into the granted folders, never out of the workspace or through a
+    /// link, and only up to the size cap.
+    #[tokio::test]
+    async fn writes_stay_inside_the_granted_folders_of_the_workspace() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("out")).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(outside.path(), dir.path().join("out/escape")).unwrap();
+        let caps = Capabilities {
+            write_prefixes: vec!["out".into()],
+            ..Default::default()
+        };
+        let write = |path: &str, text: &str| {
+            let (caps, script) = (
+                caps.clone(),
+                format!("function main() {{ write('{path}', '{text}'); return 'ok'; }}"),
+            );
+            let workspace = Workspace {
+                root: dir.path().to_path_buf(),
+                read: |p| std::fs::read(p),
+                write: |p, b| std::fs::write(p, b),
+            };
+            async move {
+                run(&script, "{}", &caps, Limits::default(), Some(workspace))
+                    .await
+                    .0
+            }
+        };
+        assert_eq!(write("out/report/a.txt", "hi").await.unwrap(), "\"ok\"");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("out/report/a.txt")).unwrap(),
+            "hi"
+        );
+        for (path, why) in [
+            ("notes.txt", "no write capability"),
+            ("../x.txt", "not a plain relative path"),
+            ("/etc/x", "not a plain relative path"),
+        ] {
+            let err = write(path, "x").await.unwrap_err().to_string();
+            assert!(err.contains(why), "{path}: {err}");
+        }
+        #[cfg(unix)]
+        {
+            let err = write("out/escape/x.txt", "x")
+                .await
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains("leaves the workspace"), "{err}");
+            assert!(!outside.path().join("x.txt").exists());
+        }
+        // Without the capability nothing is written, even with a workspace.
+        let none = run(
+            "function main() { write('out/b.txt', 'x'); }",
+            "{}",
+            &Capabilities::default(),
+            Limits::default(),
+            Some(Workspace {
+                root: dir.path().to_path_buf(),
+                read: |p| std::fs::read(p),
+                write: |p, b| std::fs::write(p, b),
+            }),
+        )
+        .await
+        .0;
+        assert!(none.is_err() && !dir.path().join("out/b.txt").exists());
+    }
+
+    /// The compilation cost: the interpreter is compiled once and kept; later loads read it back,
+    /// and a damaged copy is compiled again.
+    #[test]
+    fn the_compiled_interpreter_is_kept_and_reused() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = engine().unwrap();
+        let kept = || {
+            std::fs::read_dir(dir.path())
+                .unwrap()
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| p.extension().is_some_and(|x| x == "cwasm"))
+                .collect::<Vec<_>>()
+        };
+        load_or_compile(&engine, RUNTIME, Some(dir.path())).unwrap();
+        let files = kept();
+        assert_eq!(files.len(), 1);
+        let started = std::time::Instant::now();
+        load_or_compile(&engine, RUNTIME, Some(dir.path())).unwrap();
+        let loading = started.elapsed();
+        assert!(loading < Duration::from_secs(2), "{loading:?}");
+        std::fs::write(&files[0], b"not a component").unwrap();
+        load_or_compile(&engine, RUNTIME, Some(dir.path())).unwrap();
+        assert!(std::fs::read(&files[0]).unwrap().len() > 1000, "replaced");
     }
 
     #[tokio::test]

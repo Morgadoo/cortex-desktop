@@ -118,6 +118,8 @@ pub(crate) mod testing {
         pub models: Mutex<HashMap<String, DynModel<Completion>>>,
         pub events: Mutex<Vec<ChatEvent>>,
         pub approvals: Mutex<Vec<String>>,
+        /// The reason shown with each approval, as the card carries it.
+        pub reasons: Mutex<Vec<String>>,
         pub answer: Mutex<ApprovalDecision>,
     }
 
@@ -130,6 +132,7 @@ pub(crate) mod testing {
                 models: Mutex::new(HashMap::new()),
                 events: Mutex::new(Vec::new()),
                 approvals: Mutex::new(Vec::new()),
+                reasons: Mutex::new(Vec::new()),
                 answer: Mutex::new(ApprovalDecision::Deny),
             }
         }
@@ -189,9 +192,13 @@ pub(crate) mod testing {
             &self,
             tool: &ChatTool,
             _input: &Value,
-            _reason: Option<&str>,
+            reason: Option<&str>,
         ) -> ApprovalDecision {
             self.approvals.lock().unwrap().push(tool.name.clone());
+            self.reasons
+                .lock()
+                .unwrap()
+                .push(reason.unwrap_or_default().to_string());
             *self.answer.lock().unwrap()
         }
 

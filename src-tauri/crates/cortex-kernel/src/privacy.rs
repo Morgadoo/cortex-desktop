@@ -67,6 +67,41 @@ pub fn sensitive_kinds(text: &str) -> Vec<&'static str> {
     out
 }
 
+pub const SECRET_REMOVED: &str = "[secret removed]";
+
+/// Scans a tool's output for secrets and masks them: API keys and tokens by their shape
+/// (`sk-…`, `ghp_…`, `AKIA…`, `xoxb-…`, JWTs, private key blocks) and the value after a
+/// `password:`, `token=` or similar label. Returns the masked text and how many were masked.
+pub fn mask_secrets(text: &str) -> (String, usize) {
+    static SHAPED: OnceLock<Regex> = OnceLock::new();
+    static LABELLED: OnceLock<Regex> = OnceLock::new();
+    let shaped = SHAPED.get_or_init(|| {
+        Regex::new(
+            r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----|\b(?:sk|pk|rk)-[A-Za-z0-9_-]{16,}|\bgh[pousr]_[A-Za-z0-9]{20,}|\bAKIA[0-9A-Z]{16}\b|\bxox[abp]-[A-Za-z0-9-]{10,}|\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}",
+        )
+        .expect("shaped secrets")
+    });
+    let labelled = LABELLED.get_or_init(|| {
+        Regex::new(r#"(?i)\b(password|passwd|passcode|api[ _-]?key|secret|token|access[ _-]?key)("?\s*[:=]\s*"?)([^\s",}]{3,})"#)
+            .expect("labelled secrets")
+    });
+    let mut count = 0;
+    let out = shaped.replace_all(text, |_: &regex::Captures| {
+        count += 1;
+        SECRET_REMOVED
+    });
+    let out = labelled
+        .replace_all(&out, |c: &regex::Captures| {
+            if &c[3] == SECRET_REMOVED || c[3].starts_with("[secret") {
+                return c[0].to_string();
+            }
+            count += 1;
+            format!("{}{}{SECRET_REMOVED}", &c[1], &c[2])
+        })
+        .into_owned();
+    (out, count)
+}
+
 /// The placeholders of one request, so the reply can be restored.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Redactions {
@@ -242,5 +277,23 @@ mod tests {
             sensitive_kinds("Rita's email is rita@acme.example, phone +351 912 345 678").is_empty()
         );
         assert!(sensitive_kinds("Prefers metric units; born in 1988").is_empty());
+    }
+    #[test]
+    fn secrets_in_tool_output_are_masked() {
+        let (out, n) = mask_secrets(
+            r#"{"key":"sk-abcdefghijklmnop1234","note":"password: hunter22","gh":"ghp_abcdefghijklmnopqrstuvwxyz12","ok":"plain text 2026"}"#,
+        );
+        assert_eq!(n, 3, "{out}");
+        assert!(
+            !out.contains("sk-abcdefghijklmnop1234")
+                && !out.contains("hunter22")
+                && !out.contains("ghp_")
+        );
+        assert!(out.contains("password: [secret removed]") && out.contains("plain text 2026"));
+        assert!(
+            serde_json::from_str::<serde_json::Value>(&out).is_ok(),
+            "still JSON: {out}"
+        );
+        assert_eq!(mask_secrets("nothing to see").1, 0);
     }
 }

@@ -23,6 +23,8 @@ pub struct Report {
     pub deprecated: Vec<String>,
     pub archived: Vec<String>,
     pub demoted: Vec<String>,
+    /// Script tools that failed more this week than last, back on their previous version.
+    pub reverted: Vec<String>,
     /// Duplicate facts merged.
     pub consolidated: usize,
 }
@@ -32,12 +34,13 @@ impl Report {
         self.deprecated.is_empty()
             && self.archived.is_empty()
             && self.demoted.is_empty()
+            && self.reverted.is_empty()
             && self.consolidated == 0
     }
 }
 
 /// One pass of the lifecycle, as of `now`: the kernel decides, this applies.
-pub fn maintain(config_dir: &Path, now: DateTime<Utc>) -> Report {
+pub async fn maintain(config_dir: &Path, now: DateTime<Utc>) -> Report {
     let artifacts = traces::artifacts(config_dir, None);
     let week = traces::usage(config_dir, now - Duration::days(7)).tools;
     let decisions = decide(&artifacts, &week, now);
@@ -59,7 +62,20 @@ pub fn maintain(config_dir: &Path, now: DateTime<Utc>) -> Report {
         traces::set_status(config_dir, &kind, &id, "archived");
         report.archived.push(format!("{kind}:{id}"));
     }
+    // Monitor: a tool that fails more this week than last goes back to its previous version.
+    let fortnight = traces::usage(config_dir, now - Duration::days(14)).tools;
+    for name in cortex_kernel::lifecycle::regressed(&week, &fortnight) {
+        let checks = super::script_tools::load(config_dir, &name)
+            .map(|t| t.checks)
+            .unwrap_or_default();
+        if super::script_tools::revert(config_dir, &name, &checks).await == Ok(true) {
+            report.reverted.push(format!("script_tool:{name}"));
+        }
+    }
     for name in decisions.demote {
+        if report.reverted.contains(&format!("script_tool:{name}")) {
+            continue;
+        }
         if super::script_tools::demote(config_dir, &name).is_ok() {
             report.demoted.push(format!("script_tool:{name}"));
         }
@@ -79,7 +95,7 @@ fn state_path(config_dir: &Path) -> std::path::PathBuf {
 }
 
 /// Runs [`maintain`] at most once a day; returns its report when it ran.
-pub fn daily(config_dir: &Path, now: DateTime<Utc>) -> Option<Report> {
+pub async fn daily(config_dir: &Path, now: DateTime<Utc>) -> Option<Report> {
     let path = state_path(config_dir);
     let state: State = crate::chat::at_rest::read_to_string(&path)
         .ok()
@@ -88,7 +104,7 @@ pub fn daily(config_dir: &Path, now: DateTime<Utc>) -> Option<Report> {
     if state.last_run.is_some_and(|t| now - t < Duration::days(1)) {
         return None;
     }
-    let report = maintain(config_dir, now);
+    let report = maintain(config_dir, now).await;
     let _ = super::store::write_json(
         &path,
         &State {
@@ -127,10 +143,10 @@ mod tests {
         // Something the user made, used once: never touched.
         traces::used(d, "skill", "my-own-skill");
 
-        let soon = maintain(d, Utc::now() + Duration::days(1));
+        let soon = maintain(d, Utc::now() + Duration::days(1)).await;
         assert!(soon.is_empty(), "{soon:?}");
 
-        let later = maintain(d, Utc::now() + Duration::days(UNUSED_DAYS + 1));
+        let later = maintain(d, Utc::now() + Duration::days(UNUSED_DAYS + 1)).await;
         assert_eq!(later.deprecated, vec!["script_tool:old_tool".to_string()]);
         assert!(super::super::script_tools::definitions(d)
             .iter()
@@ -140,7 +156,7 @@ mod tests {
             "active"
         );
 
-        let much_later = maintain(d, Utc::now() + Duration::days(ARCHIVE_DAYS + 1));
+        let much_later = maintain(d, Utc::now() + Duration::days(ARCHIVE_DAYS + 1)).await;
         assert_eq!(
             much_later.archived,
             vec!["script_tool:old_tool".to_string()]
@@ -165,17 +181,17 @@ mod tests {
         for ok in [false, false, false, false, true] {
             traces::tool_call(d, "r", "script__flaky", 5, ok);
         }
-        let report = maintain(d, Utc::now());
+        let report = maintain(d, Utc::now()).await;
         assert_eq!(report.demoted, vec!["script_tool:flaky".to_string()]);
         assert!(super::super::script_tools::definitions(d).is_empty());
     }
 
-    #[test]
-    fn it_runs_once_a_day() {
+    #[tokio::test]
+    async fn it_runs_once_a_day() {
         let dir = tempfile::tempdir().unwrap();
         let now = Utc::now();
-        assert!(daily(dir.path(), now).is_some());
-        assert!(daily(dir.path(), now + Duration::hours(2)).is_none());
-        assert!(daily(dir.path(), now + Duration::hours(25)).is_some());
+        assert!(daily(dir.path(), now).await.is_some());
+        assert!(daily(dir.path(), now + Duration::hours(2)).await.is_none());
+        assert!(daily(dir.path(), now + Duration::hours(25)).await.is_some());
     }
 }

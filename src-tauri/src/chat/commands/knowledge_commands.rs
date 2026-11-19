@@ -33,6 +33,46 @@ pub fn chat_version_diff(
     crate::chat::versions::diff(&config_dir(&app)?, &kind, &id, &version, current.as_ref())
 }
 
+/// Brings back an earlier version of a memory list, knowledge pages, instructions, a notebook,
+/// an agent, a workflow or a tool; the version it replaces is kept.
+#[tauri::command]
+pub fn chat_restore_version(
+    app: AppHandle,
+    kind: String,
+    id: String,
+    version: String,
+) -> Result<(), String> {
+    crate::chat::versions::restore(&config_dir(&app)?, &kind, &id, &version)
+}
+
+/// The user's eval suites and their cases: the user owns them; no tool writes them.
+#[tauri::command]
+pub fn chat_eval_suites(app: AppHandle) -> Result<Vec<crate::chat::evals::SuiteView>, String> {
+    Ok(crate::chat::evals::suite_views(&config_dir(&app)?))
+}
+
+#[tauri::command]
+pub fn chat_save_eval_case(
+    app: AppHandle,
+    suite: String,
+    case: crate::chat::evals::Case,
+) -> Result<Vec<crate::chat::evals::SuiteView>, String> {
+    let dir = config_dir(&app)?;
+    crate::chat::evals::save_case(&dir, &suite, case)?;
+    Ok(crate::chat::evals::suite_views(&dir))
+}
+
+#[tauri::command]
+pub fn chat_delete_eval_case(
+    app: AppHandle,
+    suite: String,
+    id: String,
+) -> Result<Vec<crate::chat::evals::SuiteView>, String> {
+    let dir = config_dir(&app)?;
+    crate::chat::evals::delete_case(&dir, &suite, &id)?;
+    Ok(crate::chat::evals::suite_views(&dir))
+}
+
 /// Marks an artifact critical, so the lifecycle never retires it, however rarely it is used.
 #[tauri::command]
 pub fn chat_set_artifact_critical(

@@ -48,7 +48,7 @@ pub fn load(config_dir: &Path) -> Vec<Page> {
         .unwrap_or_default()
 }
 
-fn save_all(config_dir: &Path, pages: &[Page]) -> Result<(), String> {
+pub(crate) fn save_all(config_dir: &Path, pages: &[Page]) -> Result<(), String> {
     // The pages as they were stay restorable.
     super::versions::keep(
         config_dir,
@@ -153,6 +153,19 @@ pub fn rank<'a>(pages: &'a [Page], query: &str) -> Vec<(&'a Page, f64)> {
         .collect()
 }
 
+/// The pages that come into the prompt in full for `query`: clear matches only, within reach of
+/// the best score and above a floor.
+pub fn recalled<'a>(pages: &'a [Page], query: &str) -> Vec<&'a Page> {
+    let ranked = rank(pages, query);
+    let best = ranked.first().map_or(0.0, |r| r.1);
+    ranked
+        .iter()
+        .filter(|(_, s)| *s >= 1.0 && *s >= best * 0.5)
+        .take(RECALL_PAGES)
+        .map(|(p, _)| *p)
+        .collect()
+}
+
 /// The system-prompt section: the pages that matter for `query` in full, the rest by title.
 pub fn prompt(pages: &[Page], query: &str) -> Option<String> {
     if pages.is_empty() {
@@ -162,15 +175,7 @@ pub fn prompt(pages: &[Page], query: &str) -> Option<String> {
                 .into(),
         );
     }
-    let ranked = rank(pages, query);
-    let best = ranked.first().map_or(0.0, |r| r.1);
-    // Recall only clear matches: within reach of the best score, and above a floor.
-    let recalled: Vec<&Page> = ranked
-        .iter()
-        .filter(|(_, s)| *s >= 1.0 && *s >= best * 0.5)
-        .take(RECALL_PAGES)
-        .map(|(p, _)| *p)
-        .collect();
+    let recalled = recalled(pages, query);
     let mut out = String::from(
         "\n\nKnowledge pages: the user's knowledge base. Pages relevant to this message are below; \
          read others with `knowledge_read`, search with `knowledge_search`, and create or update one \

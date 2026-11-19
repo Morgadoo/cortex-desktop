@@ -111,6 +111,20 @@ pub fn chat_set_backup_model(app: AppHandle, reference: Option<String>) -> Resul
     crate::chat::providers::save(&dir, &file)
 }
 
+/// The model that reviews what the assistant writes for itself.
+#[tauri::command]
+pub fn chat_review_model(app: AppHandle) -> Result<Option<String>, String> {
+    Ok(crate::chat::providers::load(&config_dir(&app)?).review_model)
+}
+
+#[tauri::command]
+pub fn chat_set_review_model(app: AppHandle, reference: Option<String>) -> Result<(), String> {
+    let dir = config_dir(&app)?;
+    let mut file = crate::chat::providers::load(&dir);
+    file.review_model = reference.filter(|m| !m.trim().is_empty());
+    crate::chat::providers::save(&dir, &file)
+}
+
 /// The built-in models: which can be downloaded, and which are.
 #[tauri::command]
 pub fn chat_local_models() -> Result<Vec<crate::chat::local_models::View>, String> {

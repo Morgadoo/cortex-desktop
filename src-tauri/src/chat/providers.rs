@@ -157,6 +157,11 @@ pub struct ProvidersFile {
     /// down, an account out of credit); an agent's own backup comes first.
     #[serde(default)]
     pub backup_model: Option<String>,
+    /// `vendor/model` that reviews what the assistant writes for itself (a tool, a change to its
+    /// skills or settings) before the user decides: a different model from the author's is a
+    /// more independent reviewer. The chat's own model, in a fresh request, when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_model: Option<String>,
     /// The Auto model's fast choice, for quick messages.
     #[serde(default)]
     pub router_fast: Option<String>,

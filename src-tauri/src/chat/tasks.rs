@@ -867,51 +867,37 @@ pub fn start(app: AppHandle) {
                         async move { super::engine::run_task(app, task).await },
                     );
                 }
-                // Once a day: retire what the assistant made and no longer uses (lifecycle.rs).
-                if let Some(report) = super::lifecycle::daily(&config_dir, Utc::now()) {
-                    if !report.is_empty() {
-                        info!("lifecycle: {report:?}");
-                    }
-                    // The same day: every active tool's regression checks; a failing one is demoted.
-                    let dir = config_dir.clone();
+                // The kernel's maintenance jobs: lifecycle and regression checks daily, evals
+                // nightly when on, the review weekly when on (`maintenance`, tested on its own).
+                let due = maintenance(&config_dir, Utc::now()).await;
+                if due.lifecycle.as_ref().is_some_and(|r| !r.is_empty()) {
+                    info!("lifecycle: {:?}", due.lifecycle);
+                }
+                if due
+                    .checked
+                    .as_ref()
+                    .is_some_and(|c| c != &Default::default())
+                {
+                    info!("regression checks: {:?}", due.checked);
+                }
+                if let Some(model) = due.evals_on {
+                    let host: std::sync::Arc<dyn super::host::Host> =
+                        std::sync::Arc::new(super::host::TauriHost::new(app.clone()));
                     tauri::async_runtime::spawn(async move {
-                        let demoted = super::script_tools::check_all(&dir).await;
-                        if !demoted.is_empty() {
-                            info!("regression checks demoted: {}", demoted.join(", "));
+                        for result in super::evals::nightly(&host, &model).await {
+                            info!("nightly evals: {result:?}");
+                            if let Some((title, body)) = super::evals::drop_notice(&result) {
+                                host.notify(title, &body);
+                            }
                         }
                     });
                 }
-                // Once a day, when turned on: the user's eval suites, and a notice if one drops.
-                if super::learning::take_evals(&config_dir, Utc::now()) {
-                    if let Some(model) = super::providers::load(&config_dir).default_model {
-                        let host: std::sync::Arc<dyn super::host::Host> =
-                            std::sync::Arc::new(super::host::TauriHost::new(app.clone()));
-                        tauri::async_runtime::spawn(async move {
-                            for result in super::evals::nightly(&host, &model).await {
-                                info!("nightly evals: {result:?}");
-                                if result.before.is_some_and(|b| result.score + 1e-9 < b) {
-                                    host.notify(
-                                        "An eval score dropped",
-                                        &format!(
-                                            "{}: {:.2} (was {:.2}). Worse: {}",
-                                            result.suite,
-                                            result.score,
-                                            result.before.unwrap_or_default(),
-                                            result.worse.join(", ")
-                                        ),
-                                    );
-                                }
-                            }
-                        });
-                    }
-                }
-                // The weekly knowledge review, when turned on (learning.rs).
-                if super::learning::take_review(&config_dir, Utc::now()) {
+                if let Some(task) = due.review {
                     info!("running the weekly knowledge review");
                     let app = app.clone();
-                    tauri::async_runtime::spawn(async move {
-                        super::engine::run_task(app, super::learning::review_task()).await
-                    });
+                    tauri::async_runtime::spawn(
+                        async move { super::engine::run_task(app, task).await },
+                    );
                 }
                 for task in take_new_files(&config_dir, std::time::SystemTime::now()) {
                     info!("new files started task {}", task.title);
@@ -954,8 +940,106 @@ pub fn run_now(app: &AppHandle, id: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// What one tick of the scheduler's maintenance found due, and did where it needs no running app.
+#[derive(Debug, Default)]
+pub struct Maintenance {
+    /// The daily lifecycle pass, when it ran.
+    pub lifecycle: Option<super::lifecycle::Report>,
+    /// The daily regression checks, run with the lifecycle pass.
+    pub checked: Option<super::script_tools::Checked>,
+    /// The model to run the user's eval suites on, when the nightly run is due.
+    pub evals_on: Option<String>,
+    /// The weekly review to run, when due.
+    pub review: Option<Task>,
+}
+
+/// The kernel's scheduled maintenance, as of `now`: the lifecycle pass and every written tool's
+/// regression checks once a day; the eval suites nightly and the knowledge review (with the
+/// week's failures) weekly, when turned on. The loop runs what this returns that needs the app.
+pub async fn maintenance(config_dir: &Path, now: DateTime<Utc>) -> Maintenance {
+    let mut due = Maintenance::default();
+    if let Some(report) = super::lifecycle::daily(config_dir, now).await {
+        due.lifecycle = Some(report);
+        due.checked = Some(super::script_tools::check_all(config_dir).await);
+    }
+    if super::learning::take_evals(config_dir, now) {
+        due.evals_on = super::providers::load(config_dir).default_model;
+    }
+    if super::learning::take_review(config_dir, now) {
+        due.review = Some(super::learning::review_task(config_dir));
+    }
+    due
+}
+
 #[cfg(test)]
 mod tests {
+
+    /// The scheduler's maintenance: each job runs when due and not again before its time, and
+    /// what needs the app (the evals, the review turn) comes back for the loop to start.
+    #[tokio::test]
+    async fn maintenance_runs_each_job_when_it_is_due() {
+        use super::super::{learning, providers, script_tools};
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let now = Utc::now();
+        // A tool whose check now fails: the daily pass sends it back to candidate.
+        script_tools::create(
+            d,
+            "",
+            &serde_json::json!({ "name": "count_words", "description": "Count words.", "script": "function main(a) { return 2; }", "test_args": {} }),
+        )
+        .await
+        .unwrap();
+        script_tools::promote(d, "count_words", None).await.unwrap();
+        let mut tool = script_tools::load(d, "count_words").unwrap();
+        tool.checks[0].expected = "3".into();
+        script_tools::save(d, &tool).unwrap();
+        learning::save(
+            d,
+            &learning::Learning {
+                review_knowledge: true,
+                nightly_evals: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let mut models = providers::load(d);
+        models.default_model = Some("anthropic/claude-haiku-5-5".into());
+        providers::save(d, &models).unwrap();
+
+        let due = maintenance(d, now).await;
+        assert!(due.lifecycle.is_some());
+        assert_eq!(
+            due.checked.unwrap().demoted,
+            vec!["count_words".to_string()]
+        );
+        assert_eq!(due.evals_on.as_deref(), Some("anthropic/claude-haiku-5-5"));
+        assert_eq!(due.review.unwrap().title, "Weekly knowledge review");
+
+        // An hour later nothing is due; a day later the daily jobs and evals, not the review.
+        let later = maintenance(d, now + chrono::Duration::hours(1)).await;
+        assert!(later.lifecycle.is_none() && later.checked.is_none());
+        assert!(later.evals_on.is_none() && later.review.is_none());
+        let tomorrow = maintenance(d, now + chrono::Duration::hours(25)).await;
+        assert!(tomorrow.lifecycle.is_some() && tomorrow.evals_on.is_some());
+        assert!(tomorrow.review.is_none());
+    }
+
+    #[test]
+    fn a_nightly_drop_is_announced() {
+        use super::super::evals::{drop_notice, Nightly};
+        let result = |score: f64, before: Option<f64>| Nightly {
+            suite: "trips".into(),
+            score,
+            before,
+            worse: vec!["porto".into()],
+        };
+        let (title, body) = drop_notice(&result(0.5, Some(0.75))).unwrap();
+        assert_eq!(title, "An eval score dropped");
+        assert_eq!(body, "trips: 0.50 (was 0.75). Worse: porto");
+        assert!(drop_notice(&result(0.75, Some(0.75))).is_none());
+        assert!(drop_notice(&result(0.1, None)).is_none());
+    }
 
     #[test]
     fn the_calendar_lists_planned_runs_in_range() {

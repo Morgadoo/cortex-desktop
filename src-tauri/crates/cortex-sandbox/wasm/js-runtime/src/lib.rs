@@ -66,6 +66,13 @@ fn read(_this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValu
     Ok(JsValue::from(js_string!(String::from_utf8_lossy(&bytes).as_ref())))
 }
 
+fn write(_this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
+    let path = text_arg(args, 0, ctx)?;
+    let text = text_arg(args, 1, ctx)?;
+    host::workspace_write(&path, text.as_bytes()).map_err(error)?;
+    Ok(JsValue::undefined())
+}
+
 fn print(_this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
     let mut parts = Vec::new();
     for value in args {
@@ -106,6 +113,7 @@ impl Guest for Runtime {
         register(&mut ctx, js_string!("log"), log)?;
         register(&mut ctx, js_string!("fetch"), fetch)?;
         register(&mut ctx, js_string!("read"), read)?;
+        register(&mut ctx, js_string!("write"), write)?;
         register(&mut ctx, js_string!("tool"), tool)?;
         register(&mut ctx, js_string!("print"), print)?;
         let console = ObjectInitializer::new(&mut ctx)

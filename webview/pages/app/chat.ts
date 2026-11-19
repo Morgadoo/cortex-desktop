@@ -1231,6 +1231,10 @@ function renderAssistantTurn(conversation: Conversation, turn: Turn, isLast: boo
   const durations = isLast ? stepDurations.get(conversation.id) : undefined;
   const el = h('div', { class: 'turn turn-assistant', 'data-index': String(turn.index) }, ...renderParts(turn.parts, false, `${conversation.id}:${turn.index}`, durations));
   numberLibraryCitations(el, turn.parts);
+  // Opening a link the answer gave says it pointed somewhere useful: a signal in the run trace.
+  el.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement | null)?.closest('a[href]')) void tauriInvoke('chat_signal', { id: conversation.id, index: turn.index, kind: 'opened_source' }).catch(() => undefined);
+  }, { capture: true });
   // A reply that stopped after its tools ran, before answering, can pick up where it left off.
   const unfinished = isLast && !running && turn.parts[turn.parts.length - 1]?.kind === 'tool' && !state.live.has(conversation.id);
   if (unfinished) {

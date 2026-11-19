@@ -17,7 +17,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 
 use super::store::{chat_dir, valid_id};
-use super::tools::{ChatTool, Outcome};
+use super::tools::{ApprovalMode, ChatTool, Outcome};
 
 pub const RUN_CODE: &str = "run_code";
 
@@ -148,6 +148,50 @@ pub fn languages() -> Vec<&'static str> {
         .map(|l| l.name)
         .filter(|n| interpreters().contains_key(n))
         .collect()
+}
+
+/// Whether `run_code` runs isolated here: in the workbench container, or under bubblewrap. Where
+/// it does not (macOS, Windows, a Linux without user namespaces), code runs on the user's machine,
+/// and every run asks first.
+pub fn isolated(config_dir: &Path) -> bool {
+    bubblewrap().is_some()
+        || (super::workbench::enabled(config_dir)
+            && matches!(
+                super::workbench::status_now(),
+                Some(super::workbench::Status::Ready { .. })
+            ))
+}
+
+/// What a `run_code` call needs before it runs.
+#[derive(Debug, PartialEq)]
+pub enum CodeGate {
+    Refuse(&'static str),
+    /// Ask the user, with the reason when there is one beyond the mode.
+    Ask(Option<&'static str>),
+    Run,
+}
+
+pub const UNSANDBOXED: &str = "it runs on this computer without a sandbox";
+
+/// The kernel's second tier for native code: isolated runs follow the approval mode; a run that
+/// would not be isolated always asks, whatever the mode, and never runs unattended.
+pub fn code_gate(mode: ApprovalMode, isolated: bool, always_allowed: bool) -> CodeGate {
+    match mode {
+        ApprovalMode::Unattended => CodeGate::Refuse(
+            "This scheduled run may not run code; the user can allow changes for this task.",
+        ),
+        ApprovalMode::Plan => {
+            CodeGate::Refuse("Plan mode: code is not run yet. Put this step in your plan instead.")
+        }
+        ApprovalMode::Autonomous if !isolated => CodeGate::Refuse(
+            "This code would run on this computer without a sandbox, and nobody is watching this \
+             run to approve it. Describe what you would have run instead.",
+        ),
+        _ if !isolated => CodeGate::Ask(Some(UNSANDBOXED)),
+        ApprovalMode::Autonomous | ApprovalMode::Auto => CodeGate::Run,
+        _ if always_allowed => CodeGate::Run,
+        _ => CodeGate::Ask(None),
+    }
 }
 
 /// The `run_code` tool, when an interpreter is installed (or the workbench is ready).
@@ -879,6 +923,38 @@ mod tests {
     fn decodes_file_names() {
         assert_eq!(percent_decode("my%20chart.png"), "my chart.png");
         assert_eq!(percent_decode("100%"), "100%");
+    }
+}
+
+#[cfg(test)]
+mod gate_tests {
+    use super::*;
+
+    /// Native code without a sandbox (macOS, Windows, no user namespaces) always asks, in Auto
+    /// too, and never runs unwatched; isolated runs follow the mode.
+    #[test]
+    fn code_runs_unsandboxed_only_with_the_user() {
+        use ApprovalMode::*;
+        assert!(matches!(
+            code_gate(Autonomous, false, true),
+            CodeGate::Refuse(_)
+        ));
+        assert_eq!(
+            code_gate(Auto, false, true),
+            CodeGate::Ask(Some(UNSANDBOXED))
+        );
+        assert_eq!(
+            code_gate(Ask, false, true),
+            CodeGate::Ask(Some(UNSANDBOXED))
+        );
+        assert_eq!(code_gate(Autonomous, true, false), CodeGate::Run);
+        assert_eq!(code_gate(Ask, true, true), CodeGate::Run);
+        assert_eq!(code_gate(Ask, true, false), CodeGate::Ask(None));
+        assert!(matches!(
+            code_gate(Unattended, true, true),
+            CodeGate::Refuse(_)
+        ));
+        assert!(matches!(code_gate(Plan, false, true), CodeGate::Refuse(_)));
     }
 }
 
