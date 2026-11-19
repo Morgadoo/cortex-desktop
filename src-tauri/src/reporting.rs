@@ -27,19 +27,19 @@ const APPROVAL_FAILURES: &[&str] = &[
 ];
 
 pub(super) fn config_failure(message: &'static str) {
-    capture_failure("lumo.config", message);
+    capture_failure("cortex.config", message);
 }
 
 pub(super) fn credential_failure(message: &'static str) {
-    capture_failure("lumo.credentials", message);
+    capture_failure("cortex.credentials", message);
 }
 
 pub(super) fn approval_failure(message: &'static str) {
-    capture_failure("lumo.approvals", message);
+    capture_failure("cortex.approvals", message);
 }
 
 pub(super) fn mcp_result_serialization_failure() {
-    capture_failure("lumo.connectors", "MCP result serialization failed");
+    capture_failure("cortex.connectors", "MCP result serialization failed");
 }
 
 fn capture_failure(logger: &'static str, message: &'static str) {
@@ -74,7 +74,7 @@ impl Default for DiagnosticsPrefs {
 
 /// The app's config folder, found before Tauri runs (as Tauri finds it for this identifier).
 pub fn early_config_dir() -> Option<std::path::PathBuf> {
-    const ID: &str = "me.proton.lumo-app";
+    use crate::rename_migration::ID;
     let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
     match std::env::consts::OS {
         "macos" => home.map(|h| h.join("Library/Application Support").join(ID)),
@@ -105,9 +105,9 @@ pub fn save_prefs(config_dir: &std::path::Path, prefs: &DiagnosticsPrefs) -> Res
 /// Whether this build was made with error reporting in it at all.
 pub fn compiled_in() -> bool {
     match std::env::consts::OS {
-        "macos" => option_env!("LUMO_SENTRY_DSN_KEY_MACOS"),
-        "windows" => option_env!("LUMO_SENTRY_DSN_KEY_WINDOWS"),
-        "linux" => option_env!("LUMO_SENTRY_DSN_KEY_LINUX"),
+        "macos" => option_env!("CORTEX_SENTRY_DSN_KEY_MACOS"),
+        "windows" => option_env!("CORTEX_SENTRY_DSN_KEY_WINDOWS"),
+        "linux" => option_env!("CORTEX_SENTRY_DSN_KEY_LINUX"),
         _ => None,
     }
     .is_some_and(|k| !k.trim().is_empty())
@@ -122,22 +122,22 @@ pub(super) fn init() -> Option<ClientInitGuard> {
         return None;
     }
     let key = match std::env::consts::OS {
-        "macos" => option_env!("LUMO_SENTRY_DSN_KEY_MACOS"),
-        "windows" => option_env!("LUMO_SENTRY_DSN_KEY_WINDOWS"),
-        "linux" => option_env!("LUMO_SENTRY_DSN_KEY_LINUX"),
+        "macos" => option_env!("CORTEX_SENTRY_DSN_KEY_MACOS"),
+        "windows" => option_env!("CORTEX_SENTRY_DSN_KEY_WINDOWS"),
+        "linux" => option_env!("CORTEX_SENTRY_DSN_KEY_LINUX"),
         _ => None,
     }?
     .trim();
     let Some(dsn) = platform_dsn(key, std::env::consts::OS) else {
         if !key.is_empty() {
-            eprintln!("[Lumo reporting] invalid Sentry DSN key; reporting disabled");
+            eprintln!("[Cortex reporting] invalid Sentry DSN key; reporting disabled");
         }
         return None;
     };
     let options = match client_options(dsn) {
         Ok(options) => options,
         Err(_) => {
-            eprintln!("[Lumo reporting] could not initialize transport; reporting disabled");
+            eprintln!("[Cortex reporting] could not initialize transport; reporting disabled");
             return None;
         }
     };
@@ -187,7 +187,7 @@ fn client_options(dsn: sentry::types::Dsn) -> Result<ClientOptions, reqwest::Err
         .timeout(timeout)
         .build()?;
     let mut options = ClientOptions::new()
-        .release(concat!("lumo-desktop@", env!("CARGO_PKG_VERSION")))
+        .release(concat!("cortex-desktop@", env!("CARGO_PKG_VERSION")))
         .environment(if cfg!(debug_assertions) {
             "development"
         } else {
@@ -208,16 +208,16 @@ fn basename(path: &str) -> String {
 
 fn panic_event(event: Event<'static>) -> Option<Event<'static>> {
     let component = match (event.logger.as_deref(), event.message.as_deref()) {
-        (Some("lumo.connectors"), Some("MCP result serialization failed")) => {
+        (Some("cortex.connectors"), Some("MCP result serialization failed")) => {
             Some("native_connectors")
         }
-        (Some("lumo.config"), Some(message)) if CONFIG_FAILURES.contains(&message) => {
+        (Some("cortex.config"), Some(message)) if CONFIG_FAILURES.contains(&message) => {
             Some("native_config")
         }
-        (Some("lumo.credentials"), Some(message)) if CREDENTIAL_FAILURES.contains(&message) => {
+        (Some("cortex.credentials"), Some(message)) if CREDENTIAL_FAILURES.contains(&message) => {
             Some("native_credentials")
         }
-        (Some("lumo.approvals"), Some(message)) if APPROVAL_FAILURES.contains(&message) => {
+        (Some("cortex.approvals"), Some(message)) if APPROVAL_FAILURES.contains(&message) => {
             Some("native_approvals")
         }
         _ => None,
@@ -389,7 +389,7 @@ mod tests {
     #[test]
     fn configuration_reports_accept_only_fixed_messages_and_exclude_scope_data() {
         let event = Event {
-            logger: Some("lumo.config".into()),
+            logger: Some("cortex.config".into()),
             message: Some("MCP configuration load failed".into()),
             user: Some(User {
                 email: Some("private@example.com".into()),
@@ -413,7 +413,7 @@ mod tests {
     fn credential_reports_exclude_secrets_paths_and_account_data() {
         for message in CREDENTIAL_FAILURES {
             let event = Event {
-                logger: Some("lumo.credentials".into()),
+                logger: Some("cortex.credentials".into()),
                 message: Some((*message).into()),
                 user: Some(User {
                     id: Some("private-account".into()),
@@ -431,7 +431,7 @@ mod tests {
             assert!(!json.contains("secret"));
         }
         assert!(panic_event(Event {
-            logger: Some("lumo.credentials".into()),
+            logger: Some("cortex.credentials".into()),
             message: Some("unexpected error containing private credential".into()),
             ..Default::default()
         })
@@ -442,7 +442,7 @@ mod tests {
     fn approval_reports_exclude_tool_inputs_and_request_identifiers() {
         for message in APPROVAL_FAILURES {
             let filtered = panic_event(Event {
-                logger: Some("lumo.approvals".into()),
+                logger: Some("cortex.approvals".into()),
                 message: Some((*message).into()),
                 extra: [("input".into(), "private tool data".into())].into(),
                 tags: [("request_id".into(), "private-request".into())].into(),
@@ -456,7 +456,7 @@ mod tests {
             assert!(!json.contains("request_id"));
         }
         assert!(panic_event(Event {
-            logger: Some("lumo.approvals".into()),
+            logger: Some("cortex.approvals".into()),
             message: Some("User denied approval".into()),
             ..Default::default()
         })

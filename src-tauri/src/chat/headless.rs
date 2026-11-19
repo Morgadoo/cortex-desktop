@@ -1,4 +1,4 @@
-//! Headless runs (Vibe's `vibe -p`): `lumo-desktop -p "question"` answers on standard output and
+//! Headless runs (Vibe's `vibe -p`): `cortex-desktop -p "question"` answers on standard output and
 //! exits, with no window, for scripts and other programs.
 //!
 //! The run uses the model chosen in the app (or `--model vendor/model`), the user's
@@ -6,9 +6,9 @@
 //! knowledge pages, earlier chats, calendars and contacts. Nothing is saved; nothing asks.
 //!
 //! ```text
-//! lumo-desktop -p "What is on my calendar tomorrow?"
-//! echo "Summarize: ..." | lumo-desktop -p - --model xai/deepseek-flash
-//! lumo-desktop -p --prompt-file task.md --max-turns 4 --time-limit 120 --output-dir out/
+//! cortex-desktop -p "What is on my calendar tomorrow?"
+//! echo "Summarize: ..." | cortex-desktop -p - --model xai/deepseek-flash
+//! cortex-desktop -p --prompt-file task.md --max-turns 4 --time-limit 120 --output-dir out/
 //! ```
 //!
 //! Limits, as Vibe's: `--max-turns` (tool steps), `--max-tokens` (input and output together),
@@ -162,25 +162,25 @@ pub fn maybe_run() -> Option<i32> {
     let parsed = match parse(&args, read_stdin)? {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("lumo: {e}");
+            eprintln!("cortex: {e}");
             return Some(1);
         }
     };
     if parsed.prompt.is_empty() {
-        eprintln!("lumo: give a prompt after -p, with --prompt-file, or pipe one in with -p -");
+        eprintln!("cortex: give a prompt after -p, with --prompt-file, or pipe one in with -p -");
         return Some(1);
     }
     let export = tauri::async_runtime::block_on(run(&parsed));
     if let Some(dir) = &parsed.output_dir {
         if let Err(e) = write_export(dir, &export) {
-            eprintln!("lumo: could not write the export: {e}");
+            eprintln!("cortex: could not write the export: {e}");
         }
     }
     if !export.answer.trim().is_empty() {
         println!("{}", export.answer.trim_end());
     }
     if export.ending != Ending::Done {
-        eprintln!("lumo: {}", export.message);
+        eprintln!("cortex: {}", export.message);
     }
     Some(export.exit_code)
 }
@@ -302,7 +302,7 @@ pub async fn run(args: &Args) -> Export {
                         && deadline.is_none_or(|d| Instant::now() < d) =>
                 {
                     eprintln!(
-                        "lumo: retrying ({})",
+                        "cortex: retrying ({})",
                         super::context::brief_error(&e.to_string())
                     );
                     tokio::time::sleep(Duration::from_secs(2u64.pow(attempt))).await;
@@ -375,7 +375,7 @@ pub async fn run(args: &Args) -> Export {
                     is_error: true,
                 }
             };
-            eprintln!("lumo: used {name}");
+            eprintln!("cortex: used {name}");
             export.steps.push(Step {
                 tool: name,
                 input,
@@ -397,7 +397,7 @@ pub async fn run(args: &Args) -> Export {
 
 pub fn preamble(config_dir: &Path) -> String {
     let mut out = String::from(
-        "You are Lumo, answering one request from the command line. Nobody can answer questions \
+        "You are Cortex, answering one request from the command line. Nobody can answer questions \
          back, so make reasonable assumptions and state them. Answer in the user's language, \
          plainly, in Markdown only where it helps. When you are unsure, say so.",
     );
@@ -428,11 +428,14 @@ mod tests {
 
     #[test]
     fn the_command_line_is_read() {
-        assert_eq!(parse(&args(&["lumo"]), String::new), None);
-        assert_eq!(parse(&args(&["lumo", "lumo://chat/x"]), String::new), None);
+        assert_eq!(parse(&args(&["cortex"]), String::new), None);
+        assert_eq!(
+            parse(&args(&["cortex", "cortex://chat/x"]), String::new),
+            None
+        );
         let a = parse(
             &args(&[
-                "lumo",
+                "cortex",
                 "-p",
                 "What time is it?",
                 "--model",
@@ -446,14 +449,14 @@ mod tests {
             (a.prompt.as_str(), a.model.as_deref(), a.tools),
             ("What time is it?", Some("xai/deepseek-flash"), true)
         );
-        let a = parse(&args(&["lumo", "--print", "-", "--no-tools"]), || {
+        let a = parse(&args(&["cortex", "--print", "-", "--no-tools"]), || {
             "from stdin\n".into()
         })
         .unwrap()
         .unwrap();
         assert_eq!((a.prompt.as_str(), a.tools), ("from stdin", false));
         assert_eq!(
-            parse(&args(&["lumo", "-p"]), || "piped".into())
+            parse(&args(&["cortex", "-p"]), || "piped".into())
                 .unwrap()
                 .unwrap()
                 .prompt,
@@ -475,7 +478,7 @@ mod tests {
         crate::chat::at_rest::write(&file, "  Summarize the report.\n").unwrap();
         let a = parse(
             &args(&[
-                "lumo",
+                "cortex",
                 "-p",
                 "--prompt-file",
                 file.to_str().unwrap(),
@@ -501,13 +504,13 @@ mod tests {
         );
         assert_eq!(a.output_dir, Some(PathBuf::from("out")));
         assert!(parse(
-            &args(&["lumo", "-p", "x", "--max-turns", "lots"]),
+            &args(&["cortex", "-p", "x", "--max-turns", "lots"]),
             String::new
         )
         .unwrap()
         .is_err());
         assert!(parse(
-            &args(&["lumo", "-p", "--prompt-file", "/no/such/file"]),
+            &args(&["cortex", "-p", "--prompt-file", "/no/such/file"]),
             String::new
         )
         .unwrap()

@@ -5,15 +5,15 @@
 #
 # Env:
 #   CLIENTS_DIR       clients checkout to build the stub against (default: ../clients)
-#   IMAGE             image tag to build/use (default: lumo-e2e:latest)
+#   IMAGE             image tag to build/use (default: cortex-e2e:latest)
 #   NO_CACHE          set to rebuild the image from scratch
-#   LUMO_E2E_TIMEOUT  seconds before the spec stage is killed (default: 600)
+#   CORTEX_E2E_TIMEOUT  seconds before the spec stage is killed (default: 600)
 
 set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 clients_dir=${CLIENTS_DIR:-$repo_root/../clients}
-image=${IMAGE:-lumo-e2e:latest}
+image=${IMAGE:-cortex-e2e:latest}
 
 if [ ! -d "$clients_dir" ]; then
     echo "run: clients checkout not found at $clients_dir (set CLIENTS_DIR)" >&2
@@ -31,18 +31,18 @@ echo "=== running suite"
 exec docker run --rm \
     -v "$repo_root":/work \
     -v "$clients_dir":/clients:ro \
-    -v lumo-e2e-cargo:/cargo \
-    -v lumo-e2e-target:/target \
-    -v lumo-e2e-node-root:/work/node_modules \
-    -v lumo-e2e-node-e2e:/work/e2e/node_modules \
+    -v cortex-e2e-cargo:/cargo \
+    -v cortex-e2e-target:/target \
+    -v cortex-e2e-node-root:/work/node_modules \
+    -v cortex-e2e-node-e2e:/work/e2e/node_modules \
     -e CARGO_HOME=/cargo \
     -e CARGO_TARGET_DIR=/target \
     -e CLIENTS_DIR=/clients \
-    -e LUMO_APP_BINARY=/target/debug/lumo-desktop \
-    -e LUMO_APPROVAL_TIMEOUT_MS="${LUMO_APPROVAL_TIMEOUT_MS:-5000}" \
-    -e LUMO_E2E_TIMEOUT="${LUMO_E2E_TIMEOUT:-600}" \
-    -e XDG_CONFIG_HOME=/tmp/lumo-e2e-config \
-    -e LUMO_E2E_SCRATCH=/tmp/lumo-e2e-scratch \
+    -e CORTEX_APP_BINARY=/target/debug/cortex-desktop \
+    -e CORTEX_APPROVAL_TIMEOUT_MS="${CORTEX_APPROVAL_TIMEOUT_MS:-5000}" \
+    -e CORTEX_E2E_TIMEOUT="${CORTEX_E2E_TIMEOUT:-600}" \
+    -e XDG_CONFIG_HOME=/tmp/cortex-e2e-config \
+    -e CORTEX_E2E_SCRATCH=/tmp/cortex-e2e-scratch \
     -e GIT_CONFIG_COUNT=1 \
     -e GIT_CONFIG_KEY_0=safe.directory \
     -e GIT_CONFIG_VALUE_0='*' \

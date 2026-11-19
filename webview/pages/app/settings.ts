@@ -52,7 +52,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Text to speech', 'audio', 'read aloud voice tts elevenlabs'],
   ['Voice conversation', 'audio', 'pause silence turn hands-free call talk'],
   ['Vault', 'permissions', 'secrets tokens api keys passwords agents environment variables keychain'],
-  ['Wake word', 'audio', 'hey lumo wake word hands-free always listening voice activation'],
+  ['Wake word', 'audio', 'hey cortex wake word hands-free always listening voice activation'],
   ['Dictation anywhere', 'audio', 'dictation hotkey shortcut system-wide global type speech any app whisper'],
   ['Files', 'permissions', 'edit files folders allow'],
   ['Terminal', 'permissions', 'shell commands run bash'],
@@ -68,7 +68,7 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Launch at startup', 'general', 'autostart login'],
   ['Notify when a reply is ready', 'general', 'notification background alert'],
   ['Suggest follow-ups', 'general', 'follow up questions suggestions'],
-  ['Open links in Lumo\u2019s browser', 'general', 'browser links integrated external open in app web page'],
+  ['Open links in Cortex\u2019s browser', 'general', 'browser links integrated external open in app web page'],
   ['Autocomplete as you type', 'general', 'autocomplete suggest complete typing tab continuation'],
   ['New chats are temporary', 'general', 'temporary incognito history'],
   ['Keyboard shortcuts', 'general', 'hotkeys keys rebind'],
@@ -753,7 +753,7 @@ interface LocalModel {
 
 /**
  * Built-in models (Osaurus's and LM Studio's local models): chat and speech models that run in
- * Lumo itself, downloaded once from Hugging Face, then offline.
+ * Cortex itself, downloaded once from Hugging Face, then offline.
  */
 async function localModelsCard(): Promise<HTMLElement> {
   const body = h('div', { class: 'local-models' });
@@ -817,7 +817,7 @@ async function localModelsCard(): Promise<HTMLElement> {
   await draw();
   return card(
     h('h3', {}, 'Built-in models'),
-    h('p', { class: 'muted' }, 'Models that run inside Lumo, on this computer: nothing to install, no account, and they work offline once downloaded (from Hugging Face). Chat models appear in the model menu under Built-in; Whisper models transcribe the microphone and dictation when Settings → Audio uses Built-in.'),
+    h('p', { class: 'muted' }, 'Models that run inside Cortex, on this computer: nothing to install, no account, and they work offline once downloaded (from Hugging Face). Chat models appear in the model menu under Built-in; Whisper models transcribe the microphone and dictation when Settings → Audio uses Built-in.'),
     body
   );
 }
@@ -1469,7 +1469,7 @@ function editTool(existing: CustomTool | null, onSaved: (tools: CustomTool[]) =>
   });
 }
 
-interface LumoFunction {
+interface CortexFunction {
   id: string;
   name: string;
   kind: 'filter' | 'pipe';
@@ -1495,7 +1495,7 @@ print(f"You said {len(last.split())} words. The longest was: {max(last.split(), 
 /** Functions (Open WebUI's): filters that shape messages and answers, pipes that act as models. */
 async function functionsCard(): Promise<HTMLElement> {
   const list = h('div', {});
-  const render = (all: LumoFunction[]) =>
+  const render = (all: CortexFunction[]) =>
     clear(
       list,
       all.length
@@ -1504,12 +1504,12 @@ async function functionsCard(): Promise<HTMLElement> {
               'div',
               { class: 'setting-row' },
               h('div', {}, h('strong', {}, f.name), h('small', { class: 'muted' }, `${f.kind === 'pipe' ? 'Pipe (a model)' : 'Filter'} · ${f.language}${f.description ? ` · ${f.description}` : ''}`)),
-              h('div', { class: 'row-actions' }, h('button', { class: 'link-btn', on: { click: () => void editFunction(f, render) } }, 'Edit'), switchInput(f.enabled, (v) => void tauriInvoke<LumoFunction[]>('chat_save_function', { function: { ...f, enabled: v } }).then((x) => { render(x); void reloadModels(); })))
+              h('div', { class: 'row-actions' }, h('button', { class: 'link-btn', on: { click: () => void editFunction(f, render) } }, 'Edit'), switchInput(f.enabled, (v) => void tauriInvoke<CortexFunction[]>('chat_save_function', { function: { ...f, enabled: v } }).then((x) => { render(x); void reloadModels(); })))
             )
           )
         : h('p', { class: 'muted' }, 'No functions yet.')
     );
-  render(await tauriInvoke<LumoFunction[]>('chat_functions').catch(() => []));
+  render(await tauriInvoke<CortexFunction[]>('chat_functions').catch(() => []));
   const addFilter = button({ variant: 'secondary', icon: 'plus', label: 'New filter', onClick: () => void editFunction({ id: '', name: '', kind: 'filter', description: '', language: 'python', code: FILTER_SAMPLE, enabled: true }, render, true) });
   const addPipe = button({ variant: 'secondary', icon: 'plus', label: 'New pipe', onClick: () => void editFunction({ id: '', name: '', kind: 'pipe', description: '', language: 'python', code: PIPE_SAMPLE, enabled: true }, render, true) });
   return card(
@@ -1520,7 +1520,7 @@ async function functionsCard(): Promise<HTMLElement> {
   );
 }
 
-function editFunction(f: LumoFunction, onSaved: (all: LumoFunction[]) => void, isNew = false): Promise<void> {
+function editFunction(f: CortexFunction, onSaved: (all: CortexFunction[]) => void, isNew = false): Promise<void> {
   return modal((close) => {
     const id = h('input', { class: 'input', value: f.id, placeholder: f.kind === 'pipe' ? 'word-counter' : 'redact-emails', disabled: !isNew });
     const name = h('input', { class: 'input', value: f.name, placeholder: f.kind === 'pipe' ? 'Word counter' : 'Redact emails' });
@@ -1531,10 +1531,10 @@ function editFunction(f: LumoFunction, onSaved: (all: LumoFunction[]) => void, i
     const sample = h('input', { class: 'input', value: f.kind === 'pipe' ? 'How long is this sentence really?' : 'Write to ana.silva@example.com about the invoice' });
     const output = h('pre', { class: 'run-output' });
     const error = h('p', { class: 'error-text' });
-    const current = (): LumoFunction => ({ id: id.value.trim(), name: name.value.trim(), kind: f.kind, description: description.value.trim(), language: language.value as LumoFunction['language'], code: code.value, enabled: f.enabled });
+    const current = (): CortexFunction => ({ id: id.value.trim(), name: name.value.trim(), kind: f.kind, description: description.value.trim(), language: language.value as CortexFunction['language'], code: code.value, enabled: f.enabled });
     const save = async () => {
       try {
-        onSaved(await tauriInvoke<LumoFunction[]>('chat_save_function', { function: current() }));
+        onSaved(await tauriInvoke<CortexFunction[]>('chat_save_function', { function: current() }));
         void reloadModels();
         close();
       } catch (e) {
@@ -1553,7 +1553,7 @@ function editFunction(f: LumoFunction, onSaved: (all: LumoFunction[]) => void, i
       }
     };
     const remove = !isNew
-      ? h('button', { class: 'btn btn-danger', on: { click: async () => { if (await confirmDialog('Delete function?', `“${f.name}” will stop running.`, 'Delete')) { onSaved(await tauriInvoke<LumoFunction[]>('chat_delete_function', { id: f.id })); void reloadModels(); close(); } } } }, 'Delete')
+      ? h('button', { class: 'btn btn-danger', on: { click: async () => { if (await confirmDialog('Delete function?', `“${f.name}” will stop running.`, 'Delete')) { onSaved(await tauriInvoke<CortexFunction[]>('chat_delete_function', { id: f.id })); void reloadModels(); close(); } } } }, 'Delete')
       : null;
     return h(
       'div',
@@ -1817,18 +1817,18 @@ async function renderGeneral(content: HTMLElement) {
       row('Launch at startup', 'Open the app when you sign in to your computer.', switchInput(settings.launch_at_startup, (v) => { settings.launch_at_startup = v; persist(); }))
     ),
     card(
-      row('Notify when a reply is ready', 'A desktop notification when an answer finishes (or fails) while Lumo is in the background. Scheduled tasks always notify.', switchInput(finishNotificationsOn(), (v) => setFinishNotifications(v))),
+      row('Notify when a reply is ready', 'A desktop notification when an answer finishes (or fails) while Cortex is in the background. Scheduled tasks always notify.', switchInput(finishNotificationsOn(), (v) => setFinishNotifications(v))),
       row('Play a sound with it', 'A short chime with the notification.', switchInput(finishSoundOn(), (v) => setFinishSound(v))),
       row('Follow answers as they stream', 'Keep the newest text in view while an answer is written; off leaves the page where you put it.', switchInput(followStreamOn(), (v) => setFollowStream(v))),
       row('Suggest follow-ups', 'After each answer, offer three next questions. Each takes one short extra request to the model.', switchInput(followUpsOn(), (v) => setFollowUps(v))),
       (() => {
-        // Lumo's own browser for links (Vibe's integrated browser); the choice lives in the app.
+        // Cortex's own browser for links (Vibe's integrated browser); the choice lives in the app.
         const sw = switchInput(false, (v) => void tauriInvoke('set_browser_prefs', { prefs: { inApp: v } }).catch((e) => toast(String(e), 'error')));
         void tauriInvoke<{ inApp: boolean }>('browser_prefs').then((p) => {
           const box = sw.querySelector('input') ?? (sw as HTMLInputElement);
           (box as HTMLInputElement).checked = p.inApp;
         }).catch(() => undefined);
-        return row('Open links in Lumo\u2019s browser', 'Links from answers open in a Lumo window beside the chat; its Page menu goes back, reloads, copies the link or opens it in your usual browser. Off: links ask, then open in your usual browser.', sw);
+        return row('Open links in Cortex\u2019s browser', 'Links from answers open in a Cortex window beside the chat; its Page menu goes back, reloads, copies the link or opens it in your usual browser. Off: links ask, then open in your usual browser.', sw);
       })(),
       (() => {
         const stored = clockHour12();
@@ -1896,7 +1896,7 @@ async function diagnosticsCard(): Promise<HTMLElement> {
   exportBtn.addEventListener('click', () => void tauriInvoke<boolean>('chat_export_diagnostics').then((saved) => saved && toast('Diagnostics saved.')).catch((e) => toast(String(e), 'error')));
   return card(
     h('h3', {}, 'Error reports and updates'),
-    h('p', { class: 'muted' }, 'Lumo sends nothing about you or your use. Conversations, files and keys stay on this computer; requests go only to the providers and services you set up.'),
+    h('p', { class: 'muted' }, 'Cortex sends nothing about you or your use. Conversations, files and keys stay on this computer; requests go only to the providers and services you set up.'),
     row(
       'Error reports',
       view.reportingBuilt ? 'Send crash and error reports (no conversation content) to help fix problems. Off unless you turn it on.' : 'This build has no error reporting in it, so nothing is ever sent.',
@@ -2009,7 +2009,7 @@ async function telegramCard(): Promise<HTMLElement> {
       h('small', { class: 'muted' }, s.botName ? `Bot: @${s.botName}` : 'In Telegram, message @BotFather, send /newbot, and paste the token it gives you.'),
       s.hasToken
         ? [
-            h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Answer messages'), h('small', { class: 'muted' }, 'While Lumo runs, messages to your bot are answered here and the answer sent back.')), switchInput(s.enabled, (v) => void update({ enabled: v }))),
+            h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Answer messages'), h('small', { class: 'muted' }, 'While Cortex runs, messages to your bot are answered here and the answer sent back.')), switchInput(s.enabled, (v) => void update({ enabled: v }))),
             h('label', { class: 'field-label' }, 'Who answers'),
             agent,
             h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Allow changes'), h('small', { class: 'muted' }, 'Off: it reads and searches, but anything that would change something (send, write, delete) is refused, since you cannot approve it from Telegram.')), switchInput(s.allowChanges, (v) => void update({ allowChanges: v }))),
@@ -2025,7 +2025,7 @@ async function telegramCard(): Promise<HTMLElement> {
     );
   };
   draw();
-  return card(h('h3', {}, 'Telegram'), h('p', { class: 'muted' }, 'Ask your assistant or one of your agents from your phone. Lumo fetches the messages from Telegram itself, so nothing reaches this computer from outside; each Telegram chat becomes a chat here.'), body);
+  return card(h('h3', {}, 'Telegram'), h('p', { class: 'muted' }, 'Ask your assistant or one of your agents from your phone. Cortex fetches the messages from Telegram itself, so nothing reaches this computer from outside; each Telegram chat becomes a chat here.'), body);
 }
 
 interface SlackSettings {
@@ -2073,7 +2073,7 @@ async function slackCard(): Promise<HTMLElement> {
       h('small', { class: 'muted' }, s.team ? `Workspace: ${s.team}` : 'At api.slack.com/apps: create an app, turn on Socket Mode, add the bot scopes chat:write, im:history and app_mentions:read, subscribe to message.im and app_mention, install it, then paste both tokens.'),
       s.hasTokens
         ? [
-            h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Answer messages'), h('small', { class: 'muted' }, 'Direct messages to the app, and mentions of it in channels (answered in a thread), while Lumo runs.')), switchInput(s.enabled, (v) => void update({ enabled: v }))),
+            h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Answer messages'), h('small', { class: 'muted' }, 'Direct messages to the app, and mentions of it in channels (answered in a thread), while Cortex runs.')), switchInput(s.enabled, (v) => void update({ enabled: v }))),
             h('label', { class: 'field-label' }, 'Who answers'),
             agent,
             h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Allow changes'), h('small', { class: 'muted' }, 'Off: it reads and searches; anything that would change something is refused.')), switchInput(s.allowChanges, (v) => void update({ allowChanges: v }))),
@@ -2130,7 +2130,7 @@ async function discordCard(): Promise<HTMLElement> {
       h('small', { class: 'muted' }, s.botName ? `Bot: ${s.botName}` : 'At discord.com/developers: create an application, add a bot and copy its token; invite it to your server with the bot scope and the Send Messages permission.'),
       s.hasToken
         ? [
-            h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Answer messages'), h('small', { class: 'muted' }, 'Direct messages to the bot, and messages that mention it in a server, while Lumo runs.')), switchInput(s.enabled, (v) => void update({ enabled: v }))),
+            h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Answer messages'), h('small', { class: 'muted' }, 'Direct messages to the bot, and messages that mention it in a server, while Cortex runs.')), switchInput(s.enabled, (v) => void update({ enabled: v }))),
             h('label', { class: 'field-label' }, 'Who answers'),
             agent,
             h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Allow changes'), h('small', { class: 'muted' }, 'Off: it reads and searches; anything that would change something is refused.')), switchInput(s.allowChanges, (v) => void update({ allowChanges: v }))),
@@ -2171,7 +2171,7 @@ async function apiServerCard(): Promise<HTMLElement> {
           s.running && s.address ? copyable('Base URL', s.address) : h('p', { class: 'error-text' }, s.error ?? 'Not running.'),
           view.token ? copyable('API key', view.token) : null,
           s.running && s.address && view.token
-            ? h('pre', { class: 'api-example' }, `curl ${s.address}/chat/completions \\\n  -H "Authorization: Bearer ${view.token.slice(0, 9)}…" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model": "${state.model ?? 'vendor/model'}", "messages": [{"role": "user", "content": "Hello"}]}'\n\n# As an MCP server, e.g. for Claude Code:\nclaude mcp add --transport http lumo ${s.address.replace(/\/v1$/, '')}/mcp \\\n  --header "Authorization: Bearer ${view.token.slice(0, 9)}…"`)
+            ? h('pre', { class: 'api-example' }, `curl ${s.address}/chat/completions \\\n  -H "Authorization: Bearer ${view.token.slice(0, 9)}…" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model": "${state.model ?? 'vendor/model'}", "messages": [{"role": "user", "content": "Hello"}]}'\n\n# As an MCP server, e.g. for Claude Code:\nclaude mcp add --transport http cortex ${s.address.replace(/\/v1$/, '')}/mcp \\\n  --header "Authorization: Bearer ${view.token.slice(0, 9)}…"`)
             : null,
           h('div', { class: 'card-actions' }, logButton(), h('button', { class: 'btn btn-secondary', on: { click: () => void save(true, true) } }, 'New API key')),
           widgetSection(view, (widget, regenerate) => void save(true, false, widget, regenerate)),
@@ -2253,7 +2253,7 @@ function logButton(): HTMLElement {
                     )
                   )
                 )
-              : h('p', { class: 'muted' }, 'No requests since Lumo started.')
+              : h('p', { class: 'muted' }, 'No requests since Cortex started.')
           )
         );
       load();
@@ -2682,23 +2682,23 @@ async function renderAudio(content: HTMLElement) {
   );
 }
 
-/** The wake word (Osaurus): "Hey Lumo" from anywhere, while Lumo runs. */
+/** The wake word (Osaurus): "Hey Cortex" from anywhere, while Cortex runs. */
 function wakeWordCard(): HTMLElement {
   let prefs = wakePrefs();
   const changed = (next: Partial<typeof prefs>) => {
     prefs = { ...prefs, ...next };
     setWakePrefs(prefs);
-    window.dispatchEvent(new Event('lumo:wake-word-changed'));
+    window.dispatchEvent(new Event('cortex:wake-word-changed'));
   };
-  const phrase = h('input', { class: 'input', value: prefs.phrase, placeholder: 'Hey Lumo', 'aria-label': 'Wake phrase' });
+  const phrase = h('input', { class: 'input', value: prefs.phrase, placeholder: 'Hey Cortex', 'aria-label': 'Wake phrase' });
   phrase.addEventListener('change', () => {
-    changed({ phrase: phrase.value.trim() || 'Hey Lumo' });
+    changed({ phrase: phrase.value.trim() || 'Hey Cortex' });
     toast('Saved.');
   });
   const local = audioSettings?.stt.engine === 'builtin' || (audioSettings?.stt.engine === 'openai' && /localhost|127\.0\.0\.1|\[::1\]/.test(audioSettings.stt.baseUrl ?? ''));
   return card(
     h('h3', {}, 'Wake word'),
-    h('p', { class: 'muted' }, 'Say the wake word and a question (“Hey Lumo, what’s on my calendar today?”) and Lumo comes forward and asks it in a new chat; say it alone to start a voice conversation. Works while Lumo is open or in the tray.'),
+    h('p', { class: 'muted' }, 'Say the wake word and a question (“Hey Cortex, what’s on my calendar today?”) and Cortex comes forward and asks it in a new chat; say it alone to start a voice conversation. Works while Cortex is open or in the tray.'),
     row('Listen for the wake word', local ? 'Short phrases go to your local speech-to-text, so nothing leaves this computer.' : 'Every short phrase said near the microphone goes to the speech-to-text above to be checked. Use the Built-in engine (or a Whisper server of your own) to keep it on this computer.', switchInput(prefs.enabled, (v) => {
       changed({ enabled: v });
       toast(v ? `Listening for “${prefs.phrase}”.` : 'Wake word off.');
@@ -2744,8 +2744,8 @@ async function dictationCard(): Promise<HTMLElement> {
   how.value = prefs.insert;
   return card(
     h('h3', {}, 'Dictation anywhere'),
-    h('p', { class: 'muted' }, 'Press a shortcut in any app, speak, and press it again: what you said is transcribed with the speech-to-text above and typed where your cursor is. A small pill shows while Lumo listens; it never takes focus.'),
-    row('Dictation anywhere', 'Registers the shortcut below for the whole system while Lumo runs.', switchInput(prefs.enabled, (v) => void save({ enabled: v }))),
+    h('p', { class: 'muted' }, 'Press a shortcut in any app, speak, and press it again: what you said is transcribed with the speech-to-text above and typed where your cursor is. A small pill shows while Cortex listens; it never takes focus.'),
+    row('Dictation anywhere', 'Registers the shortcut below for the whole system while Cortex runs.', switchInput(prefs.enabled, (v) => void save({ enabled: v }))),
     row('Shortcut', 'Like Ctrl+Alt+D or Alt+Shift+Space.', shortcut),
     row('How the text goes in', 'Typing works on X11 and Wayland (xdotool, wtype or ydotool); macOS and Windows paste it. Terminals paste with Ctrl+Shift+V, so typing suits them better.', how),
     row('Finish when I pause', 'Also stop after about two seconds of silence, not only on the second press.', switchInput(prefs.stopOnPause, (v) => void save({ stopOnPause: v })))
@@ -2822,7 +2822,7 @@ function importCodingSessions() {
   });
 }
 
-/** Encryption at rest: conversations and everything Lumo keeps, sealed with a keychain key. */
+/** Encryption at rest: conversations and everything Cortex keeps, sealed with a keychain key. */
 function encryptionCard(): HTMLElement {
   type Status = { enabled: boolean; locked: boolean; sealed: number; plain: number };
   const box = card();
@@ -2842,8 +2842,8 @@ function encryptionCard(): HTMLElement {
     clear(
       box,
       h('h3', {}, 'Encrypt data on this computer'),
-      h('p', { class: 'muted' }, 'Seal conversations, knowledge, memories, agents, tasks, canvases, libraries, the search index and backups with XChaCha20-Poly1305, under a key kept in the OS keychain. Anyone who copies Lumo’s folder or reads a backup of the disk sees only ciphertext; exports you make are written in the clear. Code sandboxes and skills stay readable for the programs that run them.'),
-      row('Encrypt data', s?.locked ? 'On, but the key could not be read from the keychain: unlock it and restart Lumo.' : s?.enabled ? `${s.sealed} files encrypted${s.plain ? `, ${s.plain} not yet` : ''}.` : 'Off: files are plain JSON on this computer.', sw),
+      h('p', { class: 'muted' }, 'Seal conversations, knowledge, memories, agents, tasks, canvases, libraries, the search index and backups with XChaCha20-Poly1305, under a key kept in the OS keychain. Anyone who copies Cortex’s folder or reads a backup of the disk sees only ciphertext; exports you make are written in the clear. Code sandboxes and skills stay readable for the programs that run them.'),
+      row('Encrypt data', s?.locked ? 'On, but the key could not be read from the keychain: unlock it and restart Cortex.' : s?.enabled ? `${s.sealed} files encrypted${s.plain ? `, ${s.plain} not yet` : ''}.` : 'Off: files are plain JSON on this computer.', sw),
       busy
     );
   };

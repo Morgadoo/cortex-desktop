@@ -1,7 +1,7 @@
 /**
- * Lumo desktop: in-app hotkey to open the Settings page.
+ * Cortex desktop: in-app hotkey to open the Settings page.
  *
- * Injected into the main Lumo webview. Listens for the platform's
+ * Injected into the main Cortex webview. Listens for the platform's
  * preferred settings shortcut and asks the Rust side to open settings.
  *   macOS:        Cmd + ,
  *   Windows/Linux: Ctrl + ,

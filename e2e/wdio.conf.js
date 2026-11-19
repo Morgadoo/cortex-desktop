@@ -3,7 +3,7 @@ const { spawn } = require('node:child_process');
 const path = require('node:path');
 
 // Built by run.sh into a container-local target dir; overridable for local runs.
-const appBinary = process.env.LUMO_APP_BINARY || path.resolve(__dirname, '../src-tauri/target/debug/lumo-desktop');
+const appBinary = process.env.CORTEX_APP_BINARY || path.resolve(__dirname, '../src-tauri/target/debug/cortex-desktop');
 const driverPort = Number(process.env.TAURI_DRIVER_PORT || 4444);
 
 // The app inherits its environment through wdio -> tauri-driver -> WebKitWebDriver;
@@ -11,8 +11,8 @@ const driverPort = Number(process.env.TAURI_DRIVER_PORT || 4444);
 // spec quick, and applies to the whole run — the approve/deny specs resolve well inside it.
 const appEnv = {
     ...process.env,
-    LUMO_E2E_TESTING: '1',
-    LUMO_APPROVAL_TIMEOUT_MS: process.env.LUMO_APPROVAL_TIMEOUT_MS || '5000',
+    CORTEX_E2E_TESTING: '1',
+    CORTEX_APPROVAL_TIMEOUT_MS: process.env.CORTEX_APPROVAL_TIMEOUT_MS || '5000',
 };
 
 let tauriDriver;
@@ -24,7 +24,7 @@ let tauriDriver;
  */
 function assertLinuxBinary(binary) {
     if (!fs.existsSync(binary)) {
-        throw new Error(`app binary not found at ${binary} (build it first, or set LUMO_APP_BINARY)`);
+        throw new Error(`app binary not found at ${binary} (build it first, or set CORTEX_APP_BINARY)`);
     }
     const header = Buffer.alloc(4);
     const fd = fs.openSync(binary, 'r');
@@ -71,7 +71,7 @@ exports.config = {
 
     // tauri-driver proxies WebDriver to WebKitWebDriver and launches the app itself,
     // so it must be running before the session is created. It inherits this process's
-    // environment, which is how LUMO_E2E_TESTING reaches the app.
+    // environment, which is how CORTEX_E2E_TESTING reaches the app.
     onPrepare: () =>
         new Promise((resolve, reject) => {
             assertLinuxBinary(appBinary);

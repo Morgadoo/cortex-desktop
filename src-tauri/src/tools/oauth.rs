@@ -98,7 +98,7 @@ pub fn handle_deep_link(url: &url::Url) -> bool {
 
 const CALLBACK_TIMEOUT: Duration = Duration::from_secs(300);
 const CALLBACK_PAGE: &str = include_str!("../../assets/oauth-callback.html");
-const LUMO_MARK: &str = include_str!("../../../webview/static/images/lumo-mark.svg");
+const CORTEX_MARK: &str = include_str!("../../../webview/static/images/cortex-mark.svg");
 
 const SUCCESS_ICON: &str = r#"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>"#;
 const ERROR_ICON: &str = r#"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>"#;
@@ -118,7 +118,7 @@ fn html_escape(text: &str) -> String {
 fn render_callback_page(outcome: CallbackOutcome<'_>) -> String {
     let (page_title, heading, message, status, icon, detail) = match outcome {
         CallbackOutcome::Success => (
-            "Connected — Lumo",
+            "Connected — Cortex",
             "You're all set",
             "Authentication was successful.",
             "success",
@@ -126,7 +126,7 @@ fn render_callback_page(outcome: CallbackOutcome<'_>) -> String {
             String::new(),
         ),
         CallbackOutcome::Error { detail } => (
-            "Authentication failed — Lumo",
+            "Authentication failed — Cortex",
             "Something went wrong",
             "We couldn't complete the sign-in.",
             "error",
@@ -142,7 +142,7 @@ fn render_callback_page(outcome: CallbackOutcome<'_>) -> String {
         .replace("{{PAGE_TITLE}}", page_title)
         .replace(
             "{{LOGO}}",
-            &format!(r#"<div class="logo">{LUMO_MARK}</div>"#),
+            &format!(r#"<div class="logo">{CORTEX_MARK}</div>"#),
         )
         .replace("{{STATUS}}", status)
         .replace("{{ICON}}", icon)
@@ -347,7 +347,7 @@ mod tests {
     #[test]
     fn success_page_includes_branding_and_message() {
         let html = render_callback_page(CallbackOutcome::Success);
-        assert!(html.contains("Connected — Lumo"));
+        assert!(html.contains("Connected — Cortex"));
         assert!(html.contains("You're all set"));
         assert!(html.contains("status success"));
         assert!(html.contains("<svg"));

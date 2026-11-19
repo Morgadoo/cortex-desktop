@@ -16,8 +16,8 @@ const GREETINGS = new Set(['hey', 'hi', 'hay', 'a', 'ok', 'okay', 'hello', 'ei',
 
 /**
  * When `heard` opens with the wake phrase, the rest of what was said (as heard, punctuation
- * trimmed), else null. "Hey Lumo" also matches "Hi Lumo", "OK, Lumo" and a bare "Lumo" at the
- * start; anything before the phrase other than a greeting means it was not addressed to Lumo.
+ * trimmed), else null. "Hey Cortex" also matches "Hi Cortex", "OK, Cortex" and a bare "Cortex" at the
+ * start; anything before the phrase other than a greeting means it was not addressed to Cortex.
  */
 export function matchWake(heard: string, phrase: string): string | null {
   const said = heard.trim().split(/\s+/).filter(Boolean);

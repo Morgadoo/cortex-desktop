@@ -1,0 +1,113 @@
+/* Shared Cortex desktop UI tokens (settings, search overlay, etc.) */
+:root {
+    --cortex-purple: #6D4AFF;
+    --cortex-purple-hover: #5A3AE6;
+    --cortex-purple-dark: #4A2DC5;
+    --cortex-purple-deep: #372580;
+    --cortex-purple-muted: #E8E1F9;
+    --cortex-purple-subtle: rgba(109, 74, 255, 0.1);
+    --cortex-purple-ring: rgba(109, 74, 255, 0.22);
+    --cortex-accent-text: var(--cortex-purple);
+
+    --cortex-bg: #FFFFFF;
+    --cortex-bg-page: #FAFAFC;
+    --cortex-bg-elevated: #FFFFFF;
+
+    --cortex-sidebar-bg: #FFFFFF;
+    --cortex-sidebar-border: var(--cortex-border);
+    --cortex-sidebar-text: var(--cortex-text-secondary);
+    --cortex-sidebar-text-hover: var(--cortex-text);
+    --cortex-sidebar-active-bg: var(--cortex-purple-muted);
+    --cortex-sidebar-active-text: var(--cortex-purple-dark);
+
+    --cortex-text: #1A1523;
+    --cortex-text-secondary: #5C5469;
+    --cortex-text-muted: #8A8299;
+
+    --cortex-border: #E8E4F0;
+    --cortex-border-strong: #D4CFE6;
+
+    --cortex-radius-sm: 8px;
+    --cortex-radius-md: 12px;
+    --cortex-radius-lg: 16px;
+    --cortex-radius-pill: 50px;
+
+    --cortex-shadow-sm: 0 1px 3px rgba(55, 37, 128, 0.06);
+    --cortex-shadow-md: 0 8px 24px rgba(55, 37, 128, 0.1);
+    --cortex-shadow-lg: 0 20px 50px rgba(20, 16, 24, 0.25);
+
+    --cortex-success: #22c55e;
+    --cortex-warning: #f59e0b;
+    --cortex-danger: #ef4444;
+
+    --cortex-danger-text: #b42318;
+    --cortex-danger-title: #912018;
+    --cortex-danger-body: #7a271a;
+    --cortex-danger-bg: #fef3f2;
+    --cortex-danger-border: #fecdca;
+
+    --cortex-card-bg: rgba(255, 255, 255, 0.94);
+    --cortex-card-border: rgba(255, 255, 255, 0.65);
+    --cortex-card-footer-bg: rgba(250, 248, 255, 0.92);
+    --cortex-card-connected-footer-bg: rgba(240, 253, 244, 0.95);
+    --cortex-chip-bg: rgba(255, 255, 255, 0.85);
+    --cortex-icon-tile-from: #FFFFFF;
+    --cortex-icon-tile-to: var(--cortex-purple-muted);
+    --cortex-pre-bg: rgba(255, 255, 255, 0.7);
+
+    --cortex-content-max: 920px;
+    --cortex-gutter: 24px;
+
+    --cortex-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+    color-scheme: light;
+}
+
+/* `data-theme` is set by scripts/theme.js: the web app's theme, else the OS preference. */
+:root[data-theme="dark"] {
+    color-scheme: dark;
+
+    /* Button fill stays deep enough for white labels (>= 4.5:1); purple text uses the lighter accent. */
+    --cortex-purple: #6D4AFF;
+    --cortex-purple-hover: #7556FF;
+    --cortex-purple-dark: #B9A6FF;
+    --cortex-purple-deep: #D6CBFF;
+    --cortex-purple-muted: rgba(139, 111, 255, 0.24);
+    --cortex-purple-subtle: rgba(139, 111, 255, 0.12);
+    --cortex-purple-ring: rgba(139, 111, 255, 0.4);
+    --cortex-accent-text: #A994FF;
+
+    --cortex-bg: #1E1A26;
+    --cortex-bg-page: #15131B;
+    --cortex-bg-elevated: #252030;
+
+    --cortex-sidebar-bg: #1A1721;
+
+    --cortex-text: #F2EFF8;
+    --cortex-text-secondary: #B8B0C8;
+    --cortex-text-muted: #A39CB2;
+
+    --cortex-border: #3A3448;
+    /* Input and button outlines: >= 3:1 against their fill. */
+    --cortex-border-strong: #6E6682;
+
+    --cortex-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+    --cortex-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
+    --cortex-shadow-lg: 0 20px 50px rgba(0, 0, 0, 0.6);
+
+    --cortex-danger-text: #FDA29B;
+    --cortex-danger-title: #FECDCA;
+    --cortex-danger-body: #FDA29B;
+    --cortex-danger-bg: rgba(239, 68, 68, 0.12);
+    --cortex-danger-border: rgba(239, 68, 68, 0.35);
+
+    --cortex-card-bg: var(--cortex-bg-elevated);
+    --cortex-card-border: var(--cortex-border);
+    --cortex-card-footer-bg: rgba(255, 255, 255, 0.03);
+    --cortex-card-connected-footer-bg: rgba(34, 197, 94, 0.08);
+    --cortex-chip-bg: rgba(255, 255, 255, 0.05);
+    /* Light even in dark mode: many connector logos are dark marks. */
+    --cortex-icon-tile-from: #F7F4FF;
+    --cortex-icon-tile-to: #E4DBFF;
+    --cortex-pre-bg: rgba(0, 0, 0, 0.3);
+}

@@ -36,11 +36,11 @@ export function openAppWindow(id: string) {
   void tauriInvoke('chat_open_app_window', { id }).catch((e) => toast(String(e), 'error'));
 }
 
-/** Where a mini app is served: the `lumoapp` protocol, spelled per platform. */
+/** Where a mini app is served: the `cortexapp` protocol, spelled per platform. */
 export function appUrl(id: string, version = 0): string {
   const windows = navigator.userAgent.includes('Windows');
   // The trailing slash lets a multi-file app's relative links (style.css, js/app.js) resolve.
-  return `${windows ? 'http://lumoapp.localhost' : 'lumoapp://localhost'}/${id}/?v=${version}`;
+  return `${windows ? 'http://cortexapp.localhost' : 'cortexapp://localhost'}/${id}/?v=${version}`;
 }
 
 /** A sandboxed frame running a mini app: scripts run, but it has its own origin and no IPC. */

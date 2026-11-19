@@ -53,7 +53,7 @@ impl std::fmt::Display for ResolveError {
                 searched: _,
             } => write!(
                 f,
-                "command `{command}` not found on PATH; install it, then restart Lumo \
+                "command `{command}` not found on PATH; install it, then restart Cortex \
                  so the app picks it up"
             ),
         }
@@ -79,8 +79,8 @@ mod unix {
     use tokio::sync::Mutex;
 
     /// Wrap the value so a startup file that prints a banner cannot be mistaken for the `PATH`.
-    const BEGIN: &str = "__lumo_path_begin__";
-    const END: &str = "__lumo_path_end__";
+    const BEGIN: &str = "__cortex_path_begin__";
+    const END: &str = "__cortex_path_end__";
     const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
     pub async fn resolve(command: &str) -> Result<Resolved, ResolveError> {
@@ -235,7 +235,7 @@ mod unix {
 
         fn dir_holding_executable(label: &str, name: &str) -> PathBuf {
             use std::os::unix::fs::PermissionsExt;
-            let dir = std::env::temp_dir().join(format!("lumo-command-path-{label}"));
+            let dir = std::env::temp_dir().join(format!("cortex-command-path-{label}"));
             std::fs::create_dir_all(&dir).expect("fixture directory should be creatable");
             let executable = dir.join(name);
             std::fs::write(&executable, "#!/bin/sh\n").expect("fixture should be writable");
@@ -398,7 +398,7 @@ mod windows {
         use super::*;
 
         fn dir_holding_file(label: &str, name: &str) -> PathBuf {
-            let dir = std::env::temp_dir().join(format!("lumo-command-path-{label}"));
+            let dir = std::env::temp_dir().join(format!("cortex-command-path-{label}"));
             std::fs::create_dir_all(&dir).expect("fixture directory should be creatable");
             std::fs::write(dir.join(name), "@echo off\n").expect("fixture should be writable");
             dir

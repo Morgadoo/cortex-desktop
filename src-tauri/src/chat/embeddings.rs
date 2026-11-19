@@ -15,7 +15,7 @@
 //! Hugging Face TEI. Its key is `rerank` in the keychain.
 //!
 //! The model can also be built in (`base_url` = `builtin`, model = a built-in embedding model's
-//! id): a sentence-transformer that runs inside Lumo, so semantic search works offline with
+//! id): a sentence-transformer that runs inside Cortex, so semantic search works offline with
 //! nothing to install.
 //!
 //! Where the vectors are searched (Open WebUI's choice of vector database): on this computer,
@@ -36,7 +36,7 @@ use super::store::write_json;
 pub const SECRET: &str = "embeddings";
 pub const RERANK_SECRET: &str = "rerank";
 pub const QDRANT_SECRET: &str = "qdrant";
-/// `base_url` for the embedding models built into Lumo.
+/// `base_url` for the embedding models built into Cortex.
 pub const BUILTIN: &str = "builtin";
 /// Passages sent per request.
 const BATCH: usize = 64;
@@ -504,7 +504,7 @@ pub mod qdrant {
             })
             .take(60)
             .collect();
-        format!("lumo_{tag}")
+        format!("cortex_{tag}")
     }
 
     /// A stable point id for a passage (FNV-1a, below 2^63 so every JSON reader keeps it exact).
@@ -601,7 +601,7 @@ pub mod qdrant {
         Ok(())
     }
 
-    /// What is in Qdrant, as Lumo last left it: per collection, `library/document/passages`.
+    /// What is in Qdrant, as Cortex last left it: per collection, `library/document/passages`.
     fn marker_path(config_dir: &Path) -> std::path::PathBuf {
         crate::chat::store::chat_dir(config_dir).join("qdrant-sync.json")
     }
@@ -946,7 +946,7 @@ mod tests {
 
     #[test]
     fn qdrant_ids_and_hits() {
-        assert_eq!(qdrant::collection("minilm-l6"), "lumo_minilm_l6");
+        assert_eq!(qdrant::collection("minilm-l6"), "cortex_minilm_l6");
         let a = qdrant::point_id("lib", "doc", 0);
         assert_eq!(a, qdrant::point_id("lib", "doc", 0), "stable");
         assert_ne!(a, qdrant::point_id("lib", "doc", 1));
@@ -968,15 +968,15 @@ mod tests {
         );
     }
 
-    /// With a Qdrant server at `LUMO_TEST_QDRANT` (e.g. http://localhost:6333) and the built-in
-    /// MiniLM downloaded under `LUMO_TEST_MODELS`: libraries are embedded on this computer,
+    /// With a Qdrant server at `CORTEX_TEST_QDRANT` (e.g. http://localhost:6333) and the built-in
+    /// MiniLM downloaded under `CORTEX_TEST_MODELS`: libraries are embedded on this computer,
     /// stored in Qdrant, found by meaning, and removed documents leave Qdrant too.
     #[tokio::test]
     #[ignore]
     async fn a_qdrant_server_stores_and_finds_passages() {
         let (Ok(url), Ok(models)) = (
-            std::env::var("LUMO_TEST_QDRANT"),
-            std::env::var("LUMO_TEST_MODELS"),
+            std::env::var("CORTEX_TEST_QDRANT"),
+            std::env::var("CORTEX_TEST_MODELS"),
         ) else {
             return;
         };

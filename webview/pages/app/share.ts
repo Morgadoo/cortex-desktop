@@ -1,7 +1,7 @@
 /**
- * Share links (Vibe's public share link): a conversation or an app served by Lumo at a link on
+ * Share links (Vibe's public share link): a conversation or an app served by Cortex at a link on
  * this computer's network (see src-tauri/src/chat/share.rs). Anyone on the same network with the
- * link can open it while Lumo runs; Stop sharing takes it down.
+ * link can open it while Cortex runs; Stop sharing takes it down.
  */
 import { tauriInvoke } from '../../shared/tauri';
 import { clear, h, icon, modal, toast } from './dom';
@@ -92,7 +92,7 @@ function showLink(link: SharedLink) {
       'div',
       { class: 'dialog-small' },
       modalHeader('Shared on your network', close, { flush: true }),
-      h('p', { class: 'muted' }, `Anyone on the same network (home or office Wi-Fi) with this link can open “${link.title}” while Lumo is running. It is one page: it ${link.app ? 'runs the app but cannot reach the internet' : 'loads nothing and runs no code'}. Settings → Profile lists your shared links.`),
+      h('p', { class: 'muted' }, `Anyone on the same network (home or office Wi-Fi) with this link can open “${link.title}” while Cortex is running. It is one page: it ${link.app ? 'runs the app but cannot reach the internet' : 'loads nothing and runs no code'}. Settings → Profile lists your shared links.`),
       h('div', { class: 'share-body' }, qrImage(link), h('div', { class: 'grow share-fields' }, field, h('label', { class: 'field-label' }, 'Link expires'), expiry, when, h('small', { class: 'muted' }, 'Scan the code with a phone on the same Wi-Fi to open it there.'))),
       h('div', { class: 'dialog-actions' }, stop, open, copy)
     );

@@ -3,8 +3,8 @@ const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { assertNoStubError, runTool, textOf, waitForPendingCount, waitForResult, waitForStubReady } = require('./waits');
 
-const scratch = process.env.LUMO_E2E_SCRATCH;
-const configDir = path.join(process.env.XDG_CONFIG_HOME, 'me.proton.lumo-app');
+const scratch = process.env.CORTEX_E2E_SCRATCH;
+const configDir = path.join(process.env.XDG_CONFIG_HOME, 'io.github.morgadoo.cortex-desktop');
 const mcpId = 'mcp-security';
 
 async function setPolicy(connector, tool, policy) {

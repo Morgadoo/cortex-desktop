@@ -40,7 +40,7 @@ commands.allow = ["get_web_theme"]
 
 [[permission]]
 identifier = "allow-inject-search"
-description = "Inject text into the main Lumo search editor."
+description = "Inject text into the main Cortex search editor."
 commands.allow = ["inject_search"]
 
 [[permission]]

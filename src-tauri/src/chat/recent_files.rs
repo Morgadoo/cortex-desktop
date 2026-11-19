@@ -151,7 +151,7 @@ mod tests {
 
     #[test]
     fn forget_one_or_all() {
-        let dir = std::env::temp_dir().join(format!("lumo-recent-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("cortex-recent-{}", std::process::id()));
         add(&dir, vec![file("a", "1"), file("b", "2")]).unwrap();
         assert_eq!(forget(&dir, Some(0)).unwrap().len(), 1);
         assert!(forget(&dir, Some(5)).is_err());

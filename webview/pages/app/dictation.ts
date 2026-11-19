@@ -27,7 +27,7 @@ export interface Listening {
 /** How long a pause ends a turn in a voice conversation (Settings → Audio), in milliseconds. */
 export function voicePauseMs(): number {
   try {
-    const v = Number(localStorage.getItem('lumo.voicePauseMs'));
+    const v = Number(localStorage.getItem('cortex.voicePauseMs'));
     return v >= 500 && v <= 5000 ? v : 1300;
   } catch {
     return 1300;
@@ -36,7 +36,7 @@ export function voicePauseMs(): number {
 
 export function setVoicePauseMs(ms: number) {
   try {
-    localStorage.setItem('lumo.voicePauseMs', String(ms));
+    localStorage.setItem('cortex.voicePauseMs', String(ms));
   } catch {
     // This session only.
   }

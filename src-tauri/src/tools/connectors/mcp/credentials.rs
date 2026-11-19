@@ -16,7 +16,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
 
-const OAUTH_USER_AGENT: &str = concat!("Lumo-Desktop/", env!("CARGO_PKG_VERSION"));
+const OAUTH_USER_AGENT: &str = concat!("Cortex-Desktop/", env!("CARGO_PKG_VERSION"));
 
 /// rmcp's default OAuth client, sending a `User-Agent`. Some authorization servers (Brandfetch
 /// behind Vercel) answer 403 to requests without one, which discovery reports as no metadata.

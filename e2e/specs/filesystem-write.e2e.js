@@ -4,14 +4,14 @@ const { runTool, waitForPendingCount, waitForResult, waitForStubReady } = requir
 
 // The specs run in Node beside the app, so a real side effect is asserted on disk rather
 // than through the DOM. seed-fixtures.sh includes scratch in the allowed roots.
-const scratch = process.env.LUMO_E2E_SCRATCH;
+const scratch = process.env.CORTEX_E2E_SCRATCH;
 
 describe('writing a file through the filesystem connector', () => {
     it('creates the file on disk once the write is approved', async () => {
         await waitForStubReady();
 
         const target = path.join(scratch, 'approved.txt');
-        const content = `lumo-e2e ${process.pid}`;
+        const content = `cortex-e2e ${process.pid}`;
 
         await runTool('filesystem__fs_write', { path: target, content });
         await waitForPendingCount(1);
@@ -25,7 +25,7 @@ describe('writing a file through the filesystem connector', () => {
     it('refuses a path outside the allowed root', async () => {
         await waitForStubReady();
 
-        const target = '/tmp/lumo-e2e-escape.txt';
+        const target = '/tmp/cortex-e2e-escape.txt';
 
         await runTool('filesystem__fs_write', { path: target, content: 'should not exist' });
         await waitForPendingCount(1);

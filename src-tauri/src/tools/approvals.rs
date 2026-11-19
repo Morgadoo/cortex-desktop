@@ -12,7 +12,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::oneshot;
 
 const DEFAULT_APPROVAL_TIMEOUT: Duration = Duration::from_secs(120);
-const APPROVAL_TIMEOUT_ENV: &str = "LUMO_APPROVAL_TIMEOUT_MS";
+const APPROVAL_TIMEOUT_ENV: &str = "CORTEX_APPROVAL_TIMEOUT_MS";
 
 static PENDING: OnceLock<Mutex<HashMap<String, oneshot::Sender<ApprovalDecision>>>> =
     OnceLock::new();

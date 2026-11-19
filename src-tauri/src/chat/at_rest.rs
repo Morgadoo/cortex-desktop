@@ -1,5 +1,5 @@
 //! Encryption at rest: when turned on (Settings → Profile → Encrypt data on this computer), every
-//! file Lumo writes in its settings folder (conversations, the search index, knowledge, memories,
+//! file Cortex writes in its settings folder (conversations, the search index, knowledge, memories,
 //! agents, tasks, canvases, libraries, backups) is sealed with XChaCha20-Poly1305 under a random
 //! key kept in the OS keychain. Someone who copies the folder, or reads a backup of the disk,
 //! sees only ciphertext.
@@ -125,7 +125,7 @@ pub fn write<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, contents: C) -> io::Result
         .as_ref()
         .is_some_and(|root| path.starts_with(root))
     {
-        return Err(io::Error::new(io::ErrorKind::PermissionDenied, "Lumo's data is encrypted and locked (the keychain did not give the key); nothing is saved until it is unlocked"));
+        return Err(io::Error::new(io::ErrorKind::PermissionDenied, "Cortex's data is encrypted and locked (the keychain did not give the key); nothing is saved until it is unlocked"));
     }
     let sealed = match STATE.read().unwrap().as_ref() {
         Some((root, key)) if sealed_path(root, path) => Some(seal(key, contents.as_ref())?),
@@ -280,7 +280,7 @@ pub fn unlock_at_start() {
     crate::tools::auth::set_pending_deletes_dir(config_dir.clone());
     let key = tauri::async_runtime::block_on(async { secrets()?.load(KEY_NAME).await });
     if let Err(e) = &key {
-        eprintln!("lumo: the encryption key could not be read from the keychain: {e}");
+        eprintln!("cortex: the encryption key could not be read from the keychain: {e}");
     }
     let parsed = key
         .ok()
@@ -297,12 +297,12 @@ pub fn unlock_at_start() {
             // Anything left in the clear (written before encryption finished) is sealed now.
             if status(&config_dir).plain > 0 {
                 if let Err(e) = rewrite_all(&config_dir) {
-                    eprintln!("lumo: could not finish encrypting: {e}");
+                    eprintln!("cortex: could not finish encrypting: {e}");
                 }
             }
         }
         None => {
-            eprintln!("lumo: data on this computer is encrypted, but its key could not be read from the keychain; nothing will be saved until it can be");
+            eprintln!("cortex: data on this computer is encrypted, but its key could not be read from the keychain; nothing will be saved until it can be");
             *LOCKED.write().unwrap() = Some(config_dir);
         }
     }

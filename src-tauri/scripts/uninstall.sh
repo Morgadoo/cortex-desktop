@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Uninstall Lumo Desktop from macOS.
+# Uninstall Cortex Desktop from macOS.
 # Removes the app bundle, user data, and optionally Keychain credentials.
 
 set -euo pipefail
 
-BUNDLE_ID="me.proton.lumo-app"
-APP_NAME="Lumo"
+BUNDLE_ID="io.github.morgadoo.cortex-desktop"
+APP_NAME="Cortex"
 APP_PATH="/Applications/${APP_NAME}.app"
 LAUNCH_AGENT_LABEL="${APP_NAME}"
 LAUNCH_AGENT_PLIST="${HOME}/Library/LaunchAgents/${LAUNCH_AGENT_LABEL}.plist"
@@ -17,7 +17,7 @@ usage() {
 	cat <<EOF
 Usage: $(basename "$0") [options]
 
-Remove Lumo Desktop and its app-owned data from this Mac.
+Remove Cortex Desktop and its app-owned data from this Mac.
 
 Options:
   --app-path <path>   App bundle to remove (default: ${APP_PATH})
@@ -166,13 +166,13 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
 	exit 1
 fi
 
-log "Lumo Desktop uninstall"
+log "Cortex Desktop uninstall"
 log "  App:        ${APP_PATH}"
 log "  Bundle ID:  ${BUNDLE_ID}"
 log "  Data:       ${HOME}/Library/Application Support/${BUNDLE_ID}"
 log ""
 
-if ! confirm "Remove Lumo and all app-owned data listed above?"; then
+if ! confirm "Remove Cortex and all app-owned data listed above?"; then
 	log "Cancelled."
 	exit 0
 fi
@@ -190,4 +190,4 @@ remove_path "${HOME}/Library/Preferences/${BUNDLE_ID}.plist"
 remove_keychain_entries
 
 log ""
-log "Lumo has been uninstalled."
+log "Cortex has been uninstalled."

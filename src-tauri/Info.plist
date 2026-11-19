@@ -5,6 +5,6 @@
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Lumo needs microphone access so you can dictate messages instead of typing them.</string>
+	<string>Cortex needs microphone access so you can dictate messages instead of typing them.</string>
 </dict>
 </plist>

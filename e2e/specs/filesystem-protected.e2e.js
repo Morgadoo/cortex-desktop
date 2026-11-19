@@ -28,7 +28,7 @@ describe('filesystem access to application data inside an allowed parent', () =>
             await runTool(`filesystem__${tool}`, args);
             const [result] = await waitForResult();
             expect(result.is_error).toBe(true);
-            expect(result.content).toContain("Lumo's own settings and data");
+            expect(result.content).toContain("Cortex's own settings and data");
             expect(fs.readFileSync(existing, 'utf8')).toBe(before);
             expect(fs.existsSync(created)).toBe(false);
         }

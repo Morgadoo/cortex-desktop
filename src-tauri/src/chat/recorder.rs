@@ -1,7 +1,7 @@
-//! Teach a task by recording (OpenBot's): the user does a task once while Lumo watches, and a
+//! Teach a task by recording (OpenBot's): the user does a task once while Cortex watches, and a
 //! vision model turns what it saw into a skill, which the user reviews before saving.
 //!
-//! While recording, Lumo takes a screenshot about every second and keeps it when the screen has
+//! While recording, Cortex takes a screenshot about every second and keeps it when the screen has
 //! changed (or another window came forward), with the active window's title. It never logs keys
 //! or what was typed; the screenshots stay in memory and are dropped once the draft is made or
 //! the recording is thrown away. A small "Recording" pill stays on top with the time and a Stop
@@ -288,7 +288,7 @@ pub async fn draft(
     let chosen = pick(frames, SENT_FRAMES);
     let mut content = vec![UserContent::text(format!(
         "The user recorded themselves doing a task on their computer so that you can learn it. Below are {} \
-         screenshots in order, each with the time and the window in front. Ignore Lumo's small \"Recording\" pill.\n\
+         screenshots in order, each with the time and the window in front. Ignore Cortex's small \"Recording\" pill.\n\
          {}\n\
          Write a reusable skill for an AI assistant that can see the screen and use the mouse and keyboard \
          (the `computer` tool), web search and files. Describe the goal, what is needed first, then numbered steps \

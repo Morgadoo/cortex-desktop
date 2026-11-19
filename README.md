@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="src-tauri/icons/app-icon.png" alt="Lumo" width="128" height="128">
+  <img src="src-tauri/icons/app-icon.png" alt="Cortex" width="128" height="128">
 </p>
 
-<h1 align="center">Lumo</h1>
+<h1 align="center">Cortex Desktop</h1>
 
 <p align="center">
   An open-source desktop AI workspace, in the spirit of Mistral Vibe: chat, research, code and agents,<br>
@@ -16,7 +16,7 @@
 
 ---
 
-Lumo reimplements Mistral Vibe's Work and Code experience as a native, local-first app. Every model call
+Cortex Desktop (formerly Lumo Desktop) reimplements Mistral Vibe's Work and Code experience as a native, local-first app. Every model call
 happens in Rust through rig, so it works with OpenAI, Anthropic, Gemini, Mistral, xAI, DeepSeek, OpenRouter,
 Groq, Together, Perplexity, Cohere, Moonshot, Z.ai, local Ollama or llama.cpp, or any OpenAI-compatible
 gateway. Conversations, knowledge and settings stay on your computer; API keys live in the OS keychain.
@@ -120,7 +120,7 @@ src-tauri/src/tools/ connector registry: files, shell, browser, MCP; approvals; 
 | `store.rs`, `index.rs`, `backup.rs` | Conversations as rig's message history (versioned files), the search index, backups and trash |
 | `subagents.rs`, `agents.rs`, `tasks.rs` | Parallel workers, the agent workforce, the scheduler |
 | `builtins.rs`, `search.rs`, `libraries.rs`, `knowledge.rs`, `memory.rs` | Web search, retrieval, knowledge |
-| `canvas.rs`, `sheets.rs`, `sandbox.rs`, `media.rs`, `audio.rs` | Canvases and apps (`lumoapp://`), spreadsheets, code runs, images, voice |
+| `canvas.rs`, `sheets.rs`, `sandbox.rs`, `media.rs`, `audio.rs` | Canvases and apps (`cortexapp://`), spreadsheets, code runs, images, voice |
 | `code.rs`, `terminal.rs` | Coding sessions: git, Changes, Files, background commands |
 | `favicon.rs`, `preview.rs` | Site icons and link previews, fetched and cached for the page's strict CSP |
 | `skills.rs`, `workflows.rs`, `import.rs`, `privacy.rs` | Skills, workflows, ChatGPT and Claude import, the personal-data filter |
@@ -237,7 +237,7 @@ named `{connector_id}__{tool_name}`.
 | `mcp-{id}` | Any MCP server. The catalog in `webview/shared/connector-catalog.ts` pre-configures many remote servers; some are experimental and hidden behind a feature flag |
 | `mcp-zendesk` | Community [`@fruggr/zendesk-mcp-server`](https://github.com/fruggr/zendesk-mcp-server) (stdio via `npx`; OAuth on first tool use) |
 | `mcp-figma` | [Figma desktop MCP](https://developers.figma.com/docs/figma-mcp-server/local-server-installation/) at `http://127.0.0.1:3845/mcp` (enable it in Figma desktop Dev Mode; remote OAuth is limited to [Figma's MCP catalog](https://www.figma.com/mcp-catalog/)) |
-| `echo` | E2E fixture, registered only under `LUMO_E2E_TESTING` |
+| `echo` | E2E fixture, registered only under `CORTEX_E2E_TESTING` |
 
 Each tool also carries an approval policy (auto-approve, ask, or disable). An `ask` tool suspends execution,
 emits a request to the webview, and resolves on the user's answer or a timeout.
@@ -307,16 +307,22 @@ APPLE_SIGNING_IDENTITY="-" npm run build
 
 On Linux and Windows, `npm run build` is enough.
 
-Bundles land in `src-tauri/target/<target>/release/bundle/`. The executable is named `lumo-desktop`
-(`lumo-desktop.exe` on Windows); the app's displayed name is `Lumo`.
+Bundles land in `src-tauri/target/<target>/release/bundle/`. The executable is named `cortex-desktop`
+(`cortex-desktop.exe` on Windows); the app's displayed name is `Cortex`.
 
 ## Config and data storage
 
 | Platform | Config directory |
 |---|---|
-| macOS | `~/Library/Application Support/me.proton.lumo-app/` |
-| Windows | `%APPDATA%\me.proton.lumo-app\` |
-| Linux | `~/.config/me.proton.lumo-app/` |
+| macOS | `~/Library/Application Support/io.github.morgadoo.cortex-desktop/` |
+| Windows | `%APPDATA%\io.github.morgadoo.cortex-desktop\` |
+| Linux | `~/.config/io.github.morgadoo.cortex-desktop/` |
+
+Coming from Lumo Desktop: on first launch, folders named after its identifier `me.proton.lumo-app` (config,
+data, cache, logs and webview storage) move to the new name, `lumo.*` interface preferences become `cortex.*`,
+and keychain secrets move from the `me.proton.lumo-app` service the first time each is read
+(`src-tauri/src/rename_migration.rs`). Data formats keep their original markers (`LUMOREST1`, `LUMOSYNC1`,
+`.lumo` sync files), so encrypted and synced data keep loading.
 
 ```
 settings.json                            shortcut, launch at startup, settings hotkey
@@ -340,19 +346,19 @@ chat/*.json                projects, knowledge, agents, tasks, providers, audio 
 ```
 
 Secrets (provider keys, OAuth tokens, API keys, MCP server credentials) are stored in the OS keychain under the
-service `me.proton.lumo-app`.
+service `io.github.morgadoo.cortex-desktop`.
 
 ### Resetting MCP setup
 
-To wipe **all** MCP setup for one Lumo account, quit Lumo first, then:
+To wipe **all** MCP setup for one Cortex account, quit Cortex first, then:
 
 1. In **Settings → Connectors**, use **Reset** on each catalog MCP server (or **Remove** on custom ones).
 2. Delete or empty `accounts/<UserID>/mcp_servers.json`.
 3. Optionally, delete `accounts/<UserID>/mcp_tools/` and trim `connector_state.json` for a clean slate.
-4. In your keychain (Keychain Access on macOS), search for `me.proton.lumo-app` and delete entries whose
+4. In your keychain (Keychain Access on macOS), search for `io.github.morgadoo.cortex-desktop` and delete entries whose
    account starts with `connector:<UserID>:mcp-`.
 
-The community Zendesk MCP server also stores its **own** OAuth token on disk, outside Lumo's keychain. After
+The community Zendesk MCP server also stores its **own** OAuth token on disk, outside Cortex's keychain. After
 removing the connector, clear those files if you need a full re-login; see
 [fruggr/zendesk-mcp-server `OAUTH_TOKEN_FILE`](https://github.com/fruggr/zendesk-mcp-server/blob/main/docs/configuration.md#oauth_token_file).
 
@@ -371,5 +377,5 @@ repository.
 
 ## License
 
-Lumo is licensed under the [GNU General Public License v3.0](LICENSE). It is not affiliated with Mistral AI;
-Mistral Vibe is the design reference.
+Cortex is licensed under the [GNU General Public License v3.0](LICENSE). It is not affiliated with Mistral AI or
+Proton AG; Mistral Vibe is the design reference, and the project began as a fork of Proton's Lumo Desktop.

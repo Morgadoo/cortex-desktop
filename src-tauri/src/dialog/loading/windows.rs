@@ -64,7 +64,7 @@ pub(super) fn show(
         pszButtonText: PCWSTR(wait.as_ptr()),
     };
     unsafe {
-        let icon = Icon::lumo();
+        let icon = Icon::cortex();
         let config = TASKDIALOGCONFIG {
             cbSize: std::mem::size_of::<TASKDIALOGCONFIG>() as u32,
             hwndParent: HWND(owner.unwrap_or_default() as *mut _),

@@ -1,4 +1,4 @@
-//! Native Windows task dialogs with an embedded Lumo main icon.
+//! Native Windows task dialogs with an embedded Cortex main icon.
 
 use ::windows::core::PCWSTR;
 use ::windows::Win32::Foundation::HWND;
@@ -27,7 +27,7 @@ pub(super) fn show(
             Ok(accepted) => callback(accepted),
             Err(error) => {
                 // Keep the update decision available even if Windows cannot create a task dialog.
-                log::error!("Could not show branded Lumo dialog: {error}");
+                log::error!("Could not show branded Cortex dialog: {error}");
                 let mut dialog = app.dialog().message(message).title(title);
                 if let Some((ok, cancel)) = buttons {
                     dialog = dialog.buttons(MessageDialogButtons::OkCancelCustom(ok, cancel));
@@ -59,7 +59,7 @@ fn show_native(
         });
     }
     unsafe {
-        let icon = Icon::lumo();
+        let icon = Icon::cortex();
         let config = TASKDIALOGCONFIG {
             cbSize: std::mem::size_of::<TASKDIALOGCONFIG>() as u32,
             hwndParent: HWND(owner.unwrap_or_default() as *mut _),

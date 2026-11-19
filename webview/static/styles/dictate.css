@@ -1,4 +1,4 @@
-@import url("lumo-tokens.css");
+@import url("cortex-tokens.css");
 
 :root {
     --dictate-border: #DDDEFB;
@@ -23,8 +23,8 @@ html, body {
 body {
     /* Room for the shadow inside the transparent window. */
     padding: 12px;
-    font-family: var(--lumo-font-sans);
-    color: var(--lumo-text, #1b1340);
+    font-family: var(--cortex-font-sans);
+    color: var(--cortex-text, #1b1340);
     -webkit-font-smoothing: antialiased;
     -webkit-user-select: none;
     user-select: none;
@@ -36,9 +36,9 @@ body {
     gap: 10px;
     height: 60px;
     padding: 0 10px 0 16px;
-    background: var(--lumo-bg);
+    background: var(--cortex-bg);
     border: 1px solid var(--dictate-border);
-    border-radius: var(--lumo-radius-pill, 999px);
+    border-radius: var(--cortex-radius-pill, 999px);
     box-shadow: var(--dictate-shadow);
 }
 
@@ -52,7 +52,7 @@ body {
 }
 
 .dictate-pill.busy .dictate-dot {
-    background: var(--lumo-primary, #6d4aff);
+    background: var(--cortex-primary, #6d4aff);
     animation-duration: 0.6s;
 }
 

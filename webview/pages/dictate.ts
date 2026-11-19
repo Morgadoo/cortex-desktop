@@ -1,5 +1,5 @@
 /**
- * Lumo desktop: the dictation pill, opened by the dictation shortcut from any app.
+ * Cortex desktop: the dictation pill, opened by the dictation shortcut from any app.
  *
  * Records until the shortcut is pressed again (or a pause, if chosen), transcribes with the
  * speech-to-text set in Settings → Audio, and hands the text to `dictation_insert`, which types

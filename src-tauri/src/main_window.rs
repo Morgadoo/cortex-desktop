@@ -3,13 +3,13 @@ use tauri::{App, AppHandle, Manager, WebviewWindow};
 
 use crate::{downloads, settings, tray, updater, webview};
 
-pub const LABEL: &str = "lumo-window";
+pub const LABEL: &str = "cortex-window";
 
 const BUNDLED_PAGES_CAPABILITY: &str = include_str!("../capabilities/default.json");
 
 /// The bundled pages' permissions, granted to the hosted web app only at `lumo_url`'s exact
 /// origin and only in the main window. A release build therefore trusts production alone, not
-/// every Lumo environment.
+/// every Cortex environment.
 pub fn web_app_capability(lumo_url: &str) -> Result<String, String> {
     use tauri::utils::acl::capability::{Capability, CapabilityRemote};
 
@@ -35,7 +35,7 @@ pub fn web_app_capability(lumo_url: &str) -> Result<String, String> {
 pub fn build(app: &App) -> tauri::Result<WebviewWindow> {
     let e2e = crate::e2e_testing_enabled();
     let mut builder = tauri::WebviewWindowBuilder::new(app, LABEL, webview::main_window_url())
-        .title("Lumo")
+        .title("Cortex")
         // The bundled chat page shows itself; only the hosted web app used to reveal the window.
         .visible(e2e || !crate::HOSTED_WEB_APP)
         .inner_size(1280.0, 840.0)
@@ -167,7 +167,7 @@ pub fn show(app_handle: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Closing the window keeps Lumo running in the tray; on macOS the Dock icon goes with it.
+/// Closing the window keeps Cortex running in the tray; on macOS the Dock icon goes with it.
 pub(crate) fn hide(app_handle: &AppHandle) {
     let Some(window) = app_handle.get_window(LABEL) else {
         return;

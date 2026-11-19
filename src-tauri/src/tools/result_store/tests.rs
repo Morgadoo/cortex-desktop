@@ -91,13 +91,13 @@ fn small_results_keep_the_existing_ipc_shape() {
 #[test]
 fn filesystem_images_survive_preview_limits_without_relaxing_other_output_limits() {
     let store = store();
-    let image = json!({"type":"lumo_file_image","image_id":"image","path":"/photos/cat.png","mime_type":"image/png","data":"a".repeat(60_000)});
+    let image = json!({"type":"cortex_file_image","image_id":"image","path":"/photos/cat.png","mime_type":"image/png","data":"a".repeat(60_000)});
     let transfer = store
         .preview_with_transport(
             store.scope(),
             "filesystem",
             json!({
-                "type":"lumo_file", "file_id":"image", "path":"/photos/cat.png", "data":"bytes"
+                "type":"cortex_file", "file_id":"image", "path":"/photos/cat.png", "data":"bytes"
             }),
             true,
         )
@@ -137,7 +137,7 @@ fn filesystem_images_survive_preview_limits_without_relaxing_other_output_limits
 fn converted_files_reuse_bounded_previews_and_account_scoped_paging() {
     let store = store();
     let file =
-        json!({"type":"lumo_file","file_id":"file","path":"/data.csv","data":"a".repeat(60_000)});
+        json!({"type":"cortex_file","file_id":"file","path":"/data.csv","data":"a".repeat(60_000)});
     let transfer = store
         .preview_with_transport(store.scope(), "filesystem", file.clone(), true)
         .unwrap()["value"]
@@ -230,7 +230,7 @@ fn mcp_screenshots_keep_image_bytes_separate_from_bounded_prose_and_preserve_sou
         .preview_with_transport(store.scope(), "mcp-chrome-devtools", result, false)
         .unwrap()["value"]
         .clone();
-    assert_eq!(transfer["type"], "lumo_tool_result");
+    assert_eq!(transfer["type"], "cortex_tool_result");
     assert_eq!(transfer["isError"], true);
     assert_eq!(transfer["files"][0]["data"], data);
     assert!(transfer["text"].as_str().unwrap().len() <= MAX_PREVIEW_BYTES);
@@ -249,7 +249,7 @@ fn mcp_screenshots_keep_image_bytes_separate_from_bounded_prose_and_preserve_sou
             .unwrap(),
         "mcp-chrome-devtools"
     );
-    let processed = json!({"type":"lumo_file_image","image_id":"screenshot","path":"Chrome screenshot","mime_type":"image/png","data":data});
+    let processed = json!({"type":"cortex_file_image","image_id":"screenshot","path":"Chrome screenshot","mime_type":"image/png","data":data});
     assert_eq!(
         store
             .complete_file(

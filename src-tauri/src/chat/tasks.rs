@@ -476,7 +476,7 @@ pub async fn take_new_feed_items(config_dir: &Path) -> Vec<Task> {
     }
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(20))
-        .user_agent("Lumo feed reader")
+        .user_agent("Cortex feed reader")
         .build();
     let Ok(client) = client else {
         return Vec::new();

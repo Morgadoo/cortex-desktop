@@ -34,7 +34,7 @@ pub fn inject_search(
 
     let main_webview = app_handle
         .get_webview(main_window::LABEL)
-        .ok_or_else(|| "Lumo window is not open".to_string())?;
+        .ok_or_else(|| "Cortex window is not open".to_string())?;
 
     // The native chat page takes the question as an event and starts a new conversation with it.
     if !crate::HOSTED_WEB_APP && !crate::e2e_testing_enabled() {
@@ -53,7 +53,7 @@ pub fn inject_search(
 
     if current.origin() != target.origin() {
         main_window::show(&app_handle)?;
-        return Err("Sign in to Lumo first".to_string());
+        return Err("Sign in to Cortex first".to_string());
     }
 
     let nonce = pending.store(query.to_string());
@@ -79,7 +79,7 @@ pub fn hide_search(window: Window) -> Result<(), String> {
 
 pub fn show<R: Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<WebviewWindow<R>> {
     if updater::is_required(app_handle) {
-        return Err(tauri::Error::Anyhow(anyhow!("Update Lumo to continue")));
+        return Err(tauri::Error::Anyhow(anyhow!("Update Cortex to continue")));
     }
     let main_window_was_back = app_handle
         .get_window(main_window::LABEL)
@@ -126,7 +126,7 @@ pub fn show<R: Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<WebviewWindo
     Ok(search_window)
 }
 
-/// The monitor under the cursor, else the window's own, else one showing another Lumo window,
+/// The monitor under the cursor, else the window's own, else one showing another Cortex window,
 /// else the primary.
 fn active_monitor<R: Runtime>(window: &WebviewWindow<R>) -> tauri::Result<Monitor> {
     if let Ok(cursor_position) = window.cursor_position() {

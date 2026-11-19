@@ -11,7 +11,7 @@ pub const APP_PAGE: &str = "index.html";
 pub fn main_window_url() -> WebviewUrl {
     if crate::e2e_testing_enabled() {
         info!(
-            "LUMO_E2E_TESTING set: loading e2e_testing_stub.html instead of {}",
+            "CORTEX_E2E_TESTING set: loading e2e_testing_stub.html instead of {}",
             crate::LUMO_URL
         );
         WebviewUrl::App("e2e_testing_stub.html".into())
@@ -249,9 +249,9 @@ pub fn handle_navigation(app_handle: &tauri::AppHandle, url: &url::Url) -> bool 
             } else if crate::inapp_browser::is_web(url)
                 && crate::inapp_browser::prefs(app_handle).in_app
             {
-                // Lumo's own browser, when chosen; the system browser is one menu item away.
+                // Cortex's own browser, when chosen; the system browser is one menu item away.
                 if let Err(e) = crate::inapp_browser::open(app_handle, url) {
-                    error!("could not open Lumo's browser: {e}");
+                    error!("could not open Cortex's browser: {e}");
                     confirm_and_open(app_handle, url.clone());
                 }
             } else {
@@ -328,7 +328,7 @@ fn confirm_and_open(app_handle: &tauri::AppHandle, url: url::Url) {
     crate::dialog::branded::show(
         app_handle,
         "Open link in your browser?",
-        format!("This link goes to {host}, outside Lumo.\n\n{shown}"),
+        format!("This link goes to {host}, outside Cortex.\n\n{shown}"),
         Some(("Open", "Cancel")),
         crate::dialog::branded::Layout::IconOnLeft,
         move |accepted| {

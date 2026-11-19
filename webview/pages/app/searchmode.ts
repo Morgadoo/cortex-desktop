@@ -26,7 +26,7 @@ const KIND: Record<Card['kind'], [string, string]> = {
 
 function webOn(): boolean {
   try {
-    return localStorage.getItem('lumo.searchWeb') !== 'off';
+    return localStorage.getItem('cortex.searchWeb') !== 'off';
   } catch {
     return true;
   }
@@ -39,7 +39,7 @@ export function openSearchMode(initial = '') {
     const webSwitch = switchInput(web, (v) => {
       web = v;
       try {
-        localStorage.setItem('lumo.searchWeb', v ? 'on' : 'off');
+        localStorage.setItem('cortex.searchWeb', v ? 'on' : 'off');
       } catch {
         /* per-device convenience only */
       }

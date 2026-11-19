@@ -8,7 +8,7 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 
 use crate::dialog::loading::Loading;
 
-const BUILD_TIME_MANIFEST_URL: Option<&str> = option_env!("LUMO_UPDATE_MANIFEST_URL");
+const BUILD_TIME_MANIFEST_URL: Option<&str> = option_env!("CORTEX_UPDATE_MANIFEST_URL");
 
 #[derive(Default)]
 pub struct UpdateState {
@@ -25,7 +25,7 @@ pub fn is_required<R: Runtime>(app: &AppHandle<R>) -> bool {
 
 // Endpoint precedence: runtime override, build-time override, then tauri.conf.json.
 fn manifest_url() -> Option<String> {
-    if let Some(url) = std::env::var("LUMO_UPDATE_MANIFEST_URL")
+    if let Some(url) = std::env::var("CORTEX_UPDATE_MANIFEST_URL")
         .ok()
         .filter(|value| !value.is_empty())
     {
@@ -90,7 +90,7 @@ async fn check(app: &AppHandle) -> Result<Option<(Update, bool)>, String> {
 async fn install(app: &AppHandle, mut update: Update) -> Result<(), String> {
     let loading = Loading::show(
         app,
-        "Updating Lumo",
+        "Updating Cortex",
         "Downloading and installing the update…",
     );
     update.timeout = Some(Duration::from_secs(600));
@@ -116,9 +116,9 @@ fn require_update(app: &AppHandle) {
 fn prompt(app: &AppHandle, update: Update, required: bool, error: Option<String>) {
     let handle = app.clone();
     let message = match &error {
-        Some(error) => format!("{error}\n\nLumo {} is required to continue. Retry the update or quit.", update.version),
-        None if required => format!("This version of Lumo is no longer supported. Update to Lumo {} to continue. Lumo will restart to finish installing.", update.version),
-        None => format!("Lumo {} is available. Lumo will restart to finish installing.", update.version),
+        Some(error) => format!("{error}\n\nCortex {} is required to continue. Retry the update or quit.", update.version),
+        None if required => format!("This version of Cortex is no longer supported. Update to Cortex {} to continue. Cortex will restart to finish installing.", update.version),
+        None => format!("Cortex {} is available. Cortex will restart to finish installing.", update.version),
     };
     crate::dialog::branded::show(
         app,
@@ -197,7 +197,7 @@ async fn run_check(app: &AppHandle, startup: bool) {
         Some(Loading::show(
             app,
             "Checking for updates",
-            "Looking for a newer version of Lumo…",
+            "Looking for a newer version of Cortex…",
         ))
     };
     let result = if startup {
@@ -230,7 +230,7 @@ async fn run_check(app: &AppHandle, startup: bool) {
                 crate::dialog::branded::show(
                     app,
                     "No updates available",
-                    format!("Lumo {version} is up to date."),
+                    format!("Cortex {version} is up to date."),
                     None,
                     crate::dialog::branded::Layout::IconOnLeft,
                     |_| {},

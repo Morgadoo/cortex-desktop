@@ -1,5 +1,5 @@
 /**
- * Lumo connector bridge — works in Tauri desktop (native IPC) and in the browser.
+ * Cortex connector bridge — works in Tauri desktop (native IPC) and in the browser.
  *
  * Desktop: calls Rust ToolRegistry via Tauri invoke.
  * Browser: uses the Lumo gateway connector API when available, with a built-in
@@ -45,8 +45,8 @@ import { logWarn } from '../shared/logger';
 import { tauriInvoke as rawInvoke } from '../shared/tauri';
 
 /** SVG data embedded by build-webview; absent in standalone bridge harnesses. */
-declare const __LUMO_CONNECTOR_ICONS__: Record<string, string>;
-const connectorIcons = typeof __LUMO_CONNECTOR_ICONS__ === 'undefined' ? {} : __LUMO_CONNECTOR_ICONS__;
+declare const __CORTEX_CONNECTOR_ICONS__: Record<string, string>;
+const connectorIcons = typeof __CORTEX_CONNECTOR_ICONS__ === 'undefined' ? {} : __CORTEX_CONNECTOR_ICONS__;
 
 (function () {
   'use strict';
@@ -540,7 +540,7 @@ const connectorIcons = typeof __LUMO_CONNECTOR_ICONS__ === 'undefined' ? {} : __
       });
     }
 
-    if (scheduleContext) throw new Error('Scheduled tool execution requires Lumo Desktop.');
+    if (scheduleContext) throw new Error('Scheduled tool execution requires Cortex Desktop.');
 
     const gatewayResult = await gatewayFetch('/invoke', {
       method: 'POST',
@@ -555,7 +555,7 @@ const connectorIcons = typeof __LUMO_CONNECTOR_ICONS__ === 'undefined' ? {} : __
     }
 
     throw new Error(
-      `Connector "${connectorId}" is not available in the browser. Use Lumo Desktop or connect via the Lumo web settings.`
+      `Connector "${connectorId}" is not available in the browser. Use Cortex Desktop or connect via the Lumo web settings.`
     );
   }
 
@@ -622,7 +622,7 @@ const connectorIcons = typeof __LUMO_CONNECTOR_ICONS__ === 'undefined' ? {} : __
       body: JSON.stringify({ connector_id: connectorId, credentials }),
     });
     if (result === null) {
-      throw new Error('Connector authentication requires the Lumo gateway or Lumo Desktop.');
+      throw new Error('Connector authentication requires the Lumo gateway or Cortex Desktop.');
     }
     await loadRegistry();
     return result;
@@ -632,7 +632,7 @@ const connectorIcons = typeof __LUMO_CONNECTOR_ICONS__ === 'undefined' ? {} : __
     if (isTauri()) {
       return tauriInvoke('set_connector_enabled', { connectorId, enabled });
     }
-    throw new Error('Enabling or disabling connectors requires Lumo Desktop.');
+    throw new Error('Enabling or disabling connectors requires Cortex Desktop.');
   }
 
   async function setToolPolicy(
@@ -643,7 +643,7 @@ const connectorIcons = typeof __LUMO_CONNECTOR_ICONS__ === 'undefined' ? {} : __
     if (isTauri()) {
       return tauriInvoke('set_tool_policy', { connectorId, toolName, policy });
     }
-    throw new Error('Setting tool approval policy requires Lumo Desktop.');
+    throw new Error('Setting tool approval policy requires Cortex Desktop.');
   }
 
   async function respondToolApproval(
@@ -654,7 +654,7 @@ const connectorIcons = typeof __LUMO_CONNECTOR_ICONS__ === 'undefined' ? {} : __
     if (isTauri()) {
       return tauriInvoke('respond_tool_approval', { requestId, approved, always });
     }
-    throw new Error('Responding to tool approvals requires Lumo Desktop.');
+    throw new Error('Responding to tool approvals requires Cortex Desktop.');
   }
 
   const CONNECTOR_ID = /^[a-z0-9_-]{1,64}$/;
@@ -674,7 +674,7 @@ const connectorIcons = typeof __LUMO_CONNECTOR_ICONS__ === 'undefined' ? {} : __
    */
   async function openSettings(tab?: SettingsTab, connectorId?: string): Promise<void> {
     if (!isTauri()) {
-      throw new Error('Opening the settings page requires Lumo Desktop.');
+      throw new Error('Opening the settings page requires Cortex Desktop.');
     }
     if (connectorId !== undefined && !CONNECTOR_ID.test(connectorId)) {
       throw new Error('Invalid connector id.');
@@ -726,14 +726,14 @@ const connectorIcons = typeof __LUMO_CONNECTOR_ICONS__ === 'undefined' ? {} : __
       body: JSON.stringify({ connector_id: connectorId }),
     });
     if (result === null) {
-      throw new Error('Connector disconnect requires the Lumo gateway or Lumo Desktop.');
+      throw new Error('Connector disconnect requires the Lumo gateway or Cortex Desktop.');
     }
     await loadRegistry();
     return result;
   }
 
   async function registerScheduleExecutionContext(input: ScheduleExecutionInput): Promise<ScheduleToolContext> {
-    if (!isTauri()) throw new Error('Scheduled tool execution requires Lumo Desktop.');
+    if (!isTauri()) throw new Error('Scheduled tool execution requires Cortex Desktop.');
     return tauriInvoke<ScheduleToolContext>('register_schedule_execution_context', input);
   }
 
@@ -780,7 +780,7 @@ const connectorIcons = typeof __LUMO_CONNECTOR_ICONS__ === 'undefined' ? {} : __
 
   window.LumoConnectors = connectorApi;
 
-  // LumoAPIClient discovers native tools here when running inside Lumo Desktop.
+  // LumoAPIClient discovers native tools here when running inside Cortex Desktop.
   if (isTauri()) {
     window.__TAURI__ = window.__TAURI__ || {};
     window.__TAURI__.external_tools = {

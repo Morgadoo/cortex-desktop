@@ -5,7 +5,7 @@
 //! (`1f44d-1f3fd.webp`), so an emoji finds its picture without a lookup table. A pack is
 //! downloaded once from the npm registry, checked against its published SHA-512, and kept in the
 //! app's local data folder (not the config folder, so it is not synced or backed up). The page
-//! loads the images through the `lumoapp` protocol, at `/emoji/<style>/<name>.<ext>`.
+//! loads the images through the `cortexapp` protocol, at `/emoji/<style>/<name>.<ext>`.
 
 use std::collections::HashMap;
 use std::io::Read as _;

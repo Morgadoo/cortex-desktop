@@ -77,8 +77,8 @@ function previewDocument(libraryId: string, documentId: string, name: string) {
 }
 
 /** Favourite libraries and documents, and how documents are listed (kept on this device). */
-const FAV_KEY = 'lumo.libraryFavourites';
-const SORT_KEY = 'lumo.librarySort';
+const FAV_KEY = 'cortex.libraryFavourites';
+const SORT_KEY = 'cortex.librarySort';
 type DocSort = 'favourites' | 'name' | 'newest' | 'largest';
 
 function favourites(): Set<string> {

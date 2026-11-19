@@ -2,7 +2,7 @@
 //! a chat can use, as LobeHub, Osaurus and OpenBot offer. A turn runs the program once,
 //! non-interactively, with the conversation so far as its prompt, in the chat's folder (or a
 //! folder of its own), and its output streams into the chat as the answer. The program works
-//! with its own tools, login and permission settings; Lumo's tools are not offered to it.
+//! with its own tools, login and permission settings; Cortex's tools are not offered to it.
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;

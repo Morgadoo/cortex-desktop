@@ -25,7 +25,7 @@ async function textOf(selector) {
     return (await $(selector).getText()).trim();
 }
 
-const approvalTimeoutMs = Number(process.env.LUMO_APPROVAL_TIMEOUT_MS || 5000);
+const approvalTimeoutMs = Number(process.env.CORTEX_APPROVAL_TIMEOUT_MS || 5000);
 
 async function waitForPendingCount(expected) {
     await browser.waitUntil(

@@ -3,6 +3,7 @@
  * screen, a conversation or a context page. Model calls happen in Rust (`src-tauri/src/chat`);
  * this page renders what it streams back.
  */
+import './storage-migration';
 import { openSearchMode } from './searchmode';
 import { actionFor } from './shortcuts';
 import { api, listen, type ApprovalRequest, type ChatEvent } from './api';
@@ -39,7 +40,7 @@ interface View {
  * the sidebar folded, and leaves app-wide duties (links, wake word, tray, notifications) to the
  * main window so nothing happens twice.
  */
-const SOLO_CHAT: string | null = (window as unknown as { __LUMO_SOLO_CHAT?: string }).__LUMO_SOLO_CHAT ?? null;
+const SOLO_CHAT: string | null = (window as unknown as { __CORTEX_SOLO_CHAT?: string }).__CORTEX_SOLO_CHAT ?? null;
 
 const sidebar = h('aside', { class: 'sidebar' });
 const main = h('main', { class: 'main' });
@@ -139,7 +140,7 @@ function openAppMenu(anchor: HTMLElement) {
       item('settings', 'Settings', 'Ctrl+,', () => void openSettings()),
       item('sparkle', "What's new", null, openWhatsNew),
       item('download', 'Check for updates', null, action('check-updates')),
-      item('user', 'About Lumo', null, action('about')),
+      item('user', 'About Cortex', null, action('about')),
       h('div', { class: 'menu-sep' }),
       item('close', 'Quit', null, action('quit'))
     ),
@@ -424,7 +425,7 @@ type ChatSort = 'recent' | 'created' | 'title' | 'unread';
 const CHAT_SORTS: Record<ChatSort, string> = { recent: 'Recent activity', created: 'Newest first', title: 'A–Z', unread: 'Unread first' };
 let chatSort: ChatSort = (() => {
   try {
-    const v = localStorage.getItem('lumo.chatSort');
+    const v = localStorage.getItem('cortex.chatSort');
     return v && v in CHAT_SORTS ? (v as ChatSort) : 'recent';
   } catch {
     return 'recent';
@@ -440,7 +441,7 @@ function checkMark(on: boolean): SVGElement {
 function setChatSort(sort: ChatSort) {
   chatSort = sort;
   try {
-    localStorage.setItem('lumo.chatSort', sort);
+    localStorage.setItem('cortex.chatSort', sort);
   } catch {
     // A convenience only.
   }
@@ -461,7 +462,7 @@ type ChatFilter = { unread: boolean; tag: string | null; within: 0 | 1 | 7 | 30;
 const NO_FILTER: ChatFilter = { unread: false, tag: null, within: 0, hideRuns: false };
 let chatFilter: ChatFilter = (() => {
   try {
-    return { ...NO_FILTER, ...(JSON.parse(localStorage.getItem('lumo.chatFilter') ?? '{}') as Partial<ChatFilter>) };
+    return { ...NO_FILTER, ...(JSON.parse(localStorage.getItem('cortex.chatFilter') ?? '{}') as Partial<ChatFilter>) };
   } catch {
     return { ...NO_FILTER };
   }
@@ -470,7 +471,7 @@ let chatFilter: ChatFilter = (() => {
 function setChatFilter(change: Partial<ChatFilter>) {
   chatFilter = { ...chatFilter, ...change };
   try {
-    localStorage.setItem('lumo.chatFilter', JSON.stringify(chatFilter));
+    localStorage.setItem('cortex.chatFilter', JSON.stringify(chatFilter));
   } catch {
     // A convenience only.
   }
@@ -654,7 +655,7 @@ function openWhatsNew() {
     h(
       'div',
       { class: 'dialog-small wide whats-new' },
-      modalHeader(`What's new in Lumo ${window.lumoDesktopVersion ?? ''}`, close, { flush: true }),
+      modalHeader(`What's new in Cortex ${window.lumoDesktopVersion ?? ''}`, close, { flush: true }),
       WHATS_NEW.map((section) => h('section', {}, h('h4', {}, section.title), h('ul', {}, section.items.map((item) => h('li', {}, item)))))
     )
   );
@@ -697,7 +698,7 @@ function renderFooter(): HTMLElement {
         h('div', { class: 'menu-sep' }),
         usage,
         h('div', { class: 'theme-row' }, themeBtn('light', 'sun'), themeBtn('dark', 'moon'), themeBtn('system', 'monitor')),
-        h('div', { class: 'menu-foot muted' }, `Lumo ${window.lumoDesktopVersion ?? ''} · open source, GPL-3.0`)
+        h('div', { class: 'menu-foot muted' }, `Cortex ${window.lumoDesktopVersion ?? ''} · open source, GPL-3.0`)
       ),
       'above'
     );
@@ -870,7 +871,7 @@ async function start() {
     const text = (live?.parts ?? []).filter((p): p is Extract<typeof p, { kind: 'text' }> => p.kind === 'text').map((p) => p.text).join(' ');
     const plain = text.replace(/```[\s\S]*?```/g, ' [code] ').replace(/[#*_`>|]/g, '').replace(/\s+/g, ' ').trim();
     const body = failed ? `The reply could not finish${live?.error ? `: ${live.error}` : '.'}` : plain || 'Your answer is ready.';
-    void tauriInvoke('chat_notify', { title: summary?.title || 'Lumo', body }).catch(() => undefined);
+    void tauriInvoke('chat_notify', { title: summary?.title || 'Cortex', body }).catch(() => undefined);
     if (finishSoundOn()) playChime();
   };
   void listen<ChatEvent>('chat://event', (event) => {
@@ -916,11 +917,11 @@ async function start() {
     void listen('chat://open-settings', () => {
       if (!document.querySelector('.modal .settings')) void openSettings();
     });
-    // Links into the app (lumo://new?prompt=…, lumo://chat/<id>): the prompt is typed, never sent.
+    // Links into the app (cortex://new?prompt=…, cortex://chat/<id>): the prompt is typed, never sent.
     void listen('chat://link', () => void takeLink());
-    // The wake word: "Hey Lumo, …" asks in a new chat; "Hey Lumo" alone starts a voice conversation.
+    // The wake word: "Hey Cortex, …" asks in a new chat; "Hey Cortex" alone starts a voice conversation.
     if (wakePrefs().enabled) void startWake();
-    window.addEventListener('lumo:wake-word-changed', () => {
+    window.addEventListener('cortex:wake-word-changed', () => {
       stopWakeWord();
       if (wakePrefs().enabled) void startWake();
     });

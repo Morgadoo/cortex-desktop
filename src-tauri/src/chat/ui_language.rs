@@ -162,10 +162,10 @@ pub async fn translate(config_dir: &Path, model: &str, code: &str) -> Result<Cov
     for batch in wanted.chunks(BATCH) {
         let list = serde_json::to_string_pretty(batch).map_err(|e| e.to_string())?;
         let prompt = format!(
-            "Translate these user-interface strings of a desktop AI assistant app called Lumo from English into {name} ({code}). \
+            "Translate these user-interface strings of a desktop AI assistant app called Cortex from English into {name} ({code}). \
              Use the usual words of desktop software in that language, the same tone (short, plain, friendly), and keep \
              each string's capitalisation style, punctuation and length close to the original. Keep `{{0}}`-style \
-             placeholders, product names (Lumo, Markdown, MCP, OpenAPI, GitHub, Python…), keyboard keys and code \
+             placeholders, product names (Cortex, Markdown, MCP, OpenAPI, GitHub, Python…), keyboard keys and code \
              exactly as they are. Reply with one JSON object mapping each original string to its translation, and \
              nothing else.\n\n{list}"
         );

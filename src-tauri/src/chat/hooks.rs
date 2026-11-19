@@ -6,8 +6,8 @@
 //! - `after_tool` runs after a tool call; what it prints is added to the result the model reads.
 //! - `turn_end` runs when a reply finishes (to notify, format code, run tests…).
 //!
-//! A hook gets the event as JSON on its standard input, and `LUMO_EVENT`, `LUMO_TOOL` and
-//! `LUMO_CONVERSATION` in its environment. The input also carries Claude Code's names for the same
+//! A hook gets the event as JSON on its standard input, and `CORTEX_EVENT`, `CORTEX_TOOL` and
+//! `CORTEX_CONVERSATION` in its environment. The input also carries Claude Code's names for the same
 //! things (`hook_event_name`, `tool_name`, `tool_input`, `tool_response`, `session_id`, `cwd`), so
 //! hooks that come with a Claude plugin run as they are. It runs in the chat's folder when it has one, for at
 //! most 60 seconds, with the user's shell.
@@ -109,10 +109,10 @@ pub async fn run_command(command: &str, event: &Value, workdir: Option<&Path>) -
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    cmd.env("LUMO_EVENT", event["event"].as_str().unwrap_or_default());
-    cmd.env("LUMO_TOOL", event["tool"].as_str().unwrap_or_default());
+    cmd.env("CORTEX_EVENT", event["event"].as_str().unwrap_or_default());
+    cmd.env("CORTEX_TOOL", event["tool"].as_str().unwrap_or_default());
     cmd.env(
-        "LUMO_CONVERSATION",
+        "CORTEX_CONVERSATION",
         event["conversationId"].as_str().unwrap_or_default(),
     );
     if let Some(dir) = workdir.filter(|d| d.is_dir()) {
@@ -241,7 +241,7 @@ pub async fn turn_end(
     }
 }
 
-/// A Claude Code tool matcher (`Write|Edit`, `Bash`, `*`) as Lumo tool names.
+/// A Claude Code tool matcher (`Write|Edit`, `Bash`, `*`) as Cortex tool names.
 pub fn claude_matcher(matcher: &str) -> String {
     let mut out: Vec<&str> = Vec::new();
     for part in matcher.split('|').map(str::trim) {
@@ -270,7 +270,7 @@ pub fn claude_matcher(matcher: &str) -> String {
 }
 
 /// Hooks from a Claude plugin's `hooks/hooks.json`, turned off until the user looks at them;
-/// also the events Lumo has no counterpart for. `${CLAUDE_PLUGIN_ROOT}` becomes `root`.
+/// also the events Cortex has no counterpart for. `${CLAUDE_PLUGIN_ROOT}` becomes `root`.
 pub fn from_claude(config: &Value, root: &Path, source: &str) -> (Vec<Hook>, Vec<String>) {
     let root = root.to_string_lossy();
     let mut hooks = Vec::new();
@@ -399,7 +399,7 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn hooks_block_annotate_and_see_the_event() {
-        let dir = std::env::temp_dir().join(format!("lumo-hooks-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("cortex-hooks-{}", std::process::id()));
         let log = dir.join("events.log");
         std::fs::create_dir_all(&dir).unwrap();
         save(
@@ -409,7 +409,7 @@ mod tests {
                 Hook { event: "before_tool".into(), matcher: "run_code".into(), command: r#"grep -q 'rm -rf' && { echo "No recursive deletes here."; exit 2; } || exit 0"#.into(), enabled: true, source: None },
                 // A broken hook does not block.
                 Hook { event: "before_tool".into(), matcher: String::new(), command: "exit 1".into(), enabled: true, source: None },
-                Hook { event: "after_tool".into(), matcher: String::new(), command: "echo \"checked $LUMO_TOOL\"".into(), enabled: true, source: None },
+                Hook { event: "after_tool".into(), matcher: String::new(), command: "echo \"checked $CORTEX_TOOL\"".into(), enabled: true, source: None },
                 Hook { event: "after_tool".into(), matcher: String::new(), command: "echo off".into(), enabled: false, source: None },
                 Hook { event: "turn_end".into(), matcher: String::new(), command: format!("cat >> '{}'", log.display()), enabled: true, source: None },
             ],

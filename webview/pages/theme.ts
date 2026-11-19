@@ -1,5 +1,5 @@
 /**
- * Lumo desktop: light/dark mode for the bundled pages (settings, search, login).
+ * Cortex desktop: light/dark mode for the bundled pages (settings, search, login).
  *
  * Follows the hosted web app's theme as reported through `theme-reporter.ts`, and the OS
  * preference until the web app has reported. Loaded from <head> so `data-theme` is set before

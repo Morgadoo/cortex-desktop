@@ -26,7 +26,7 @@ out_dir=$(cd "$out_dir" && pwd)
 
 version=$(plutil -extract CFBundleShortVersionString raw "$app_path/Contents/Info.plist")
 build=$(plutil -extract CFBundleVersion raw "$app_path/Contents/Info.plist")
-archive="$out_dir/Lumo-$version-$build.app.tar.gz"
+archive="$out_dir/Cortex-$version-$build.app.tar.gz"
 
 # The plugin's macOS installer hardcodes tar.gz and strips the first path
 # component of every entry, so the archive needs exactly one top-level component
@@ -49,7 +49,7 @@ trap 'rm -rf "$verify_dir"' EXIT
 tar -xzf "$archive" -C "$verify_dir"
 extracted="$verify_dir/$app_name"
 
-[ -x "$extracted/Contents/MacOS/lumo-desktop" ] || fail "executable bit lost in the archive"
+[ -x "$extracted/Contents/MacOS/cortex-desktop" ] || fail "executable bit lost in the archive"
 
 if [ "${SKIP_GATEKEEPER_CHECKS:-}" = "1" ]; then
     echo "    skipped (SKIP_GATEKEEPER_CHECKS=1)"

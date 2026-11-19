@@ -1,5 +1,5 @@
 {
-  "name": "lumo-desktop-e2e",
+  "name": "cortex-desktop-e2e",
   "version": "0.0.0",
   "private": true,
   "description": "WebdriverIO suite driving the real app through the desktop bridge.",

@@ -488,7 +488,7 @@ import {
         if (/secure storage is unavailable/i.test(text)) {
             return {
                 title: 'Cannot access saved credentials',
-                body: 'Allow Lumo to access your OS keychain, then try again.',
+                body: 'Allow Cortex to access your OS keychain, then try again.',
             };
         }
         if (connectorId === 'mcp-figma') {
@@ -501,7 +501,7 @@ import {
         }
         if (/client registration failed.*403|Registration failed: HTTP 403/i.test(text)) {
             return {
-                title: 'This MCP server does not accept Lumo yet',
+                title: 'This MCP server does not accept Cortex yet',
                 body: 'The provider rejected OAuth client registration. Use a local/desktop MCP option when available, or ask the provider to allow this client.',
             };
         }
@@ -1363,7 +1363,7 @@ import {
     function renderBashAuth(container) {
         container.replaceChildren();
         container.appendChild(infoParagraph(
-            'Shell commands start in a folder configured under Filesystem. They are not sandboxed and can access files outside those folders with Lumo’s permissions.'
+            'Shell commands start in a folder configured under Filesystem. They are not sandboxed and can access files outside those folders with Cortex’s permissions.'
         ));
         container.appendChild(checkboxGroup({
             id: 'modal-bash-enabled',
@@ -1506,7 +1506,7 @@ import {
         clientFields.append(
             formFieldWithControl('Client ID', clientIdInput),
             formFieldWithControl('Client Secret', clientSecretInput),
-            infoParagraph('Lumo exchanges these for short-lived access tokens and renews them as needed.')
+            infoParagraph('Cortex exchanges these for short-lived access tokens and renews them as needed.')
         );
 
         const tokenInput = document.createElement('input');
@@ -1840,7 +1840,7 @@ import {
         );
 
         const descriptionField = formFieldWithControl('Description (optional)', descriptionInput);
-        descriptionField.append(fieldHint('Shared with Lumo so it can suggest this server before you connect. Don\'t include credentials.'));
+        descriptionField.append(fieldHint('Shared with Cortex so it can suggest this server before you connect. Don\'t include credentials.'));
         const authField = formFieldWithControl('Auth', authTypeSelect);
         authField.style.display = 'none';
 
@@ -1988,7 +1988,7 @@ import {
 
     const ALWAYS_ALLOW_WARNING =
         'Always allow this tool?\n\nEmails, web pages and other outside content can contain hidden instructions. ' +
-        'With this on, Lumo will use this tool without asking even after reading such content, including in ' +
+        'With this on, Cortex will use this tool without asking even after reading such content, including in ' +
         'scheduled tasks, so those instructions could make it send your data elsewhere or change your files.';
 
     function buildPolicyControl(id, tool, manifest) {
@@ -2577,7 +2577,7 @@ import {
             }
         });
 
-        // Emitted when a tool call in the Lumo window moves a connector's health.
+        // Emitted when a tool call in the Cortex window moves a connector's health.
         window.__TAURI__?.event?.listen('connector:changed', async () => {
             await refreshData();
             refreshActiveModal();

@@ -116,10 +116,10 @@ mod tests {
 
     #[test]
     fn windows_permission_uses_installed_notification_identity() {
-        let identifier = "me.proton.lumo-app";
+        let identifier = "io.github.morgadoo.cortex-desktop";
         for directory in [
-            r"C:\Program Files\Lumo",
-            r"C:\Users\user\AppData\Local\Lumo",
+            r"C:\Program Files\Cortex",
+            r"C:\Users\user\AppData\Local\Cortex",
             r"C:\apps\debug",
             r"C:\repo\target\release\bundle",
         ] {
@@ -131,7 +131,7 @@ mod tests {
     fn windows_permission_matches_uninstalled_delivery_fallback() {
         for directory in [r"C:\repo\target\debug", r"C:\repo\target\release"] {
             assert_eq!(
-                notification_app_id(directory, "me.proton.lumo-app"),
+                notification_app_id(directory, "io.github.morgadoo.cortex-desktop"),
                 r"{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe"
             );
         }

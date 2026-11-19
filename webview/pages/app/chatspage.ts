@@ -48,8 +48,8 @@ export function inStatus(c: Pick<ConversationSummary, 'archived' | 'unread' | 'p
 export class ChatsPage {
   readonly el = h('div', { class: 'page chats-page' });
   readonly key = 'page:chats';
-  private status: Status = stored('lumo.chatsTab', 'all', STATUSES.map(([s]) => s));
-  private layout: Layout = stored('lumo.chatsLayout', 'list', ['list', 'cards'] as const);
+  private status: Status = stored('cortex.chatsTab', 'all', STATUSES.map(([s]) => s));
+  private layout: Layout = stored('cortex.chatsLayout', 'list', ['list', 'cards'] as const);
   private query = '';
   private tabs = h('div', { class: 'tabs' });
   private views = h('div', { class: 'view-switch' });
@@ -76,13 +76,13 @@ export class ChatsPage {
       this.tabs,
       STATUSES.map(([s, label]) => {
         const n = all.filter((c) => inStatus(c, s)).length;
-        return h('button', { class: `tab${this.status === s ? ' active' : ''}`, on: { click: () => { this.status = s; keep('lumo.chatsTab', s); this.update(); } } }, label, h('span', { class: 'tab-count' }, String(n)));
+        return h('button', { class: `tab${this.status === s ? ' active' : ''}`, on: { click: () => { this.status = s; keep('cortex.chatsTab', s); this.update(); } } }, label, h('span', { class: 'tab-count' }, String(n)));
       })
     );
     clear(
       this.views,
       ([['list', 'list', 'List'], ['cards', 'grid', 'Cards']] as [Layout, string, string][]).map(([l, ic, title]) =>
-        h('button', { class: `icon-btn${this.layout === l ? ' active' : ''}`, title, 'aria-pressed': String(this.layout === l), on: { click: () => { this.layout = l; keep('lumo.chatsLayout', l); this.update(); } } }, icon(ic, 16))
+        h('button', { class: `icon-btn${this.layout === l ? ' active' : ''}`, title, 'aria-pressed': String(this.layout === l), on: { click: () => { this.layout = l; keep('cortex.chatsLayout', l); this.update(); } } }, icon(ic, 16))
       )
     );
     const shown = all

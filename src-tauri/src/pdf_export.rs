@@ -360,7 +360,7 @@ mod macos {
     fn delegate_class() -> &'static Class {
         static CLASS: OnceLock<&'static Class> = OnceLock::new();
         CLASS.get_or_init(|| {
-            let mut class = ClassDecl::new("LumoPdfExportDelegate", class!(NSObject))
+            let mut class = ClassDecl::new("CortexPdfExportDelegate", class!(NSObject))
                 .expect("PDF export delegate class must be registered once");
             class.add_ivar::<usize>("job");
             unsafe {
@@ -457,7 +457,7 @@ mod macos {
         unsafe {
             let store: id = msg_send![class!(WKContentRuleListStore), defaultStore];
             let _: () = msg_send![store,
-                compileContentRuleListForIdentifier: ns_string("LumoPdfExportBlockNetwork")
+                compileContentRuleListForIdentifier: ns_string("CortexPdfExportBlockNetwork")
                 encodedContentRuleList: ns_string(BLOCK_NETWORK_RULES)
                 completionHandler: &*compiled];
         }

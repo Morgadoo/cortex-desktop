@@ -91,7 +91,7 @@ pub fn valid_name(name: &str) -> Result<(), String> {
     if !ok {
         return Err("Use capitals, digits and underscores for the name, like GITHUB_TOKEN.".into());
     }
-    if RESERVED.contains(&name) || name.starts_with("LUMO_") {
+    if RESERVED.contains(&name) || name.starts_with("CORTEX_") {
         return Err(format!(
             "{name} is used by the system; choose another name."
         ));
@@ -236,7 +236,7 @@ mod tests {
             "MY-KEY",
             "PATH",
             "LD_PRELOAD",
-            "LUMO_X",
+            "CORTEX_X",
             "A B",
         ] {
             assert!(valid_name(bad).is_err(), "{bad}");

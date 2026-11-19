@@ -7,13 +7,13 @@
 #
 # Env:
 #   XDG_CONFIG_HOME   where the app reads its config from (required)
-#   LUMO_E2E_SCRATCH  disposable directory for tool writes and MCP execution journal
+#   CORTEX_E2E_SCRATCH  disposable directory for tool writes and MCP execution journal
 
 set -euo pipefail
 
-scratch=${LUMO_E2E_SCRATCH:?LUMO_E2E_SCRATCH must be set}
+scratch=${CORTEX_E2E_SCRATCH:?CORTEX_E2E_SCRATCH must be set}
 config_home=${XDG_CONFIG_HOME:?XDG_CONFIG_HOME must be set}
-config_dir=$config_home/me.proton.lumo-app
+config_dir=$config_home/io.github.morgadoo.cortex-desktop
 account_dir=$config_dir/accounts/e2e-test-account
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 node_binary=$(command -v node)
@@ -48,7 +48,7 @@ cat >"$account_dir/mcp_servers.json" <<JSON
       "id": "security", "display_name": "Security fixture",
       "transport": "stdio", "command": "$node_binary",
       "args": ["$repo_root/e2e/fixtures/mcp-server.cjs"],
-      "env": { "LUMO_E2E_MCP_JOURNAL": "$scratch/mcp-journal.jsonl" }
+      "env": { "CORTEX_E2E_MCP_JOURNAL": "$scratch/mcp-journal.jsonl" }
     },
     {
       "id": "legacy-cache", "display_name": "Offline legacy cache fixture",

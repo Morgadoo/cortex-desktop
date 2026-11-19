@@ -1,4 +1,4 @@
-// Ask Lumo (on this computer, through its local API) about the page in the active tab.
+// Ask Cortex (on this computer, through its local API) about the page in the active tab.
 const $ = (id) => document.getElementById(id);
 const MAX_PAGE = 60000;
 let settings = { port: 8484, key: '' };
@@ -11,7 +11,7 @@ const api = (path, body) =>
     body: body ? JSON.stringify(body) : undefined,
   }).then(async (r) => {
     const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(data?.error?.message || `Lumo answered ${r.status}`);
+    if (!r.ok) throw new Error(data?.error?.message || `Cortex answered ${r.status}`);
     return data;
   });
 
@@ -73,7 +73,7 @@ function context() {
 async function ask() {
   const question = $('question').value.trim() || 'Summarize this in a few short points.';
   $('go').disabled = true;
-  $('answer').textContent = 'Asking Lumo…';
+  $('answer').textContent = 'Asking Cortex…';
   await chrome.storage.local.set({ model: $('model').value });
   try {
     const r = await api('/v1/chat/completions', {
@@ -91,10 +91,10 @@ async function ask() {
   }
 }
 
-function continueInLumo() {
+function continueInCortex() {
   const question = $('question').value.trim();
   const prompt = `${question || 'Help me with this page.'}\n\n<attachment name="${page.title.replace(/"/g, '')}">\n${context().slice(0, 12000)}\n</attachment>`;
-  chrome.tabs.create({ url: `lumo://new?prompt=${encodeURIComponent(prompt)}` });
+  chrome.tabs.create({ url: `cortex://new?prompt=${encodeURIComponent(prompt)}` });
 }
 
 async function start() {
@@ -104,7 +104,7 @@ async function start() {
   try {
     await showAsk();
   } catch (e) {
-    showSetup(`Could not reach Lumo: ${e.message || e}. Is the local API on?`);
+    showSetup(`Could not reach Cortex: ${e.message || e}. Is the local API on?`);
   }
 }
 
@@ -114,11 +114,11 @@ $('save').addEventListener('click', async () => {
   try {
     await showAsk();
   } catch (e) {
-    showSetup(`Could not reach Lumo: ${e.message || e}`);
+    showSetup(`Could not reach Cortex: ${e.message || e}`);
   }
 });
 $('go').addEventListener('click', ask);
-$('continue').addEventListener('click', continueInLumo);
+$('continue').addEventListener('click', continueInCortex);
 $('settings').addEventListener('click', () => showSetup());
 $('question').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) ask();

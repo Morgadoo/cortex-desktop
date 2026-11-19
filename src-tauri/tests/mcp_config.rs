@@ -1,4 +1,4 @@
-use lumo_lib::{CustomHeader, HttpAuth, McpServerConfig, McpTransport};
+use cortex_lib::{CustomHeader, HttpAuth, McpServerConfig, McpTransport};
 use std::collections::HashMap;
 
 fn http_config() -> McpServerConfig {

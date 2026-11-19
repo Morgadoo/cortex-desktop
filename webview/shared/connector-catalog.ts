@@ -108,7 +108,7 @@ export const FEATURED_MCP_SERVERS: ConnectorCatalogEntry[] = [
     iconSrc: 'images/connectors/chrome-devtools.svg',
     name: 'Chrome DevTools',
     description:
-      'Let Lumo control and inspect a live Chrome browser. Requires Chrome stable, Node.js, and npm installed on your system.',
+      'Let Cortex control and inspect a live Chrome browser. Requires Chrome stable, Node.js, and npm installed on your system.',
   },
   {
     id: 'mcp-slack',

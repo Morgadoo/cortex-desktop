@@ -249,7 +249,7 @@ export function applyEvent(event: ChatEvent): boolean {
 
 function storedMode(): ApprovalMode {
   try {
-    const saved = localStorage.getItem('lumo.mode');
+    const saved = localStorage.getItem('cortex.mode');
     if (saved === 'ask' || saved === 'accept_edits' || saved === 'plan' || saved === 'auto') return saved;
   } catch {
     // Storage unavailable: the default.
@@ -260,7 +260,7 @@ function storedMode(): ApprovalMode {
 /** Whether new chats start temporary (not saved to history), as Open WebUI allows. */
 export function temporaryByDefault(): boolean {
   try {
-    return localStorage.getItem('lumo.temporaryDefault') === 'on';
+    return localStorage.getItem('cortex.temporaryDefault') === 'on';
   } catch {
     return false;
   }
@@ -268,7 +268,7 @@ export function temporaryByDefault(): boolean {
 
 export function setTemporaryByDefault(on: boolean) {
   try {
-    localStorage.setItem('lumo.temporaryDefault', on ? 'on' : 'off');
+    localStorage.setItem('cortex.temporaryDefault', on ? 'on' : 'off');
   } catch {
     // Remembering is a convenience.
   }
@@ -277,7 +277,7 @@ export function setTemporaryByDefault(on: boolean) {
 /** Whether three follow-up questions are suggested after each answer (on unless turned off). */
 export function followUpsOn(): boolean {
   try {
-    return localStorage.getItem('lumo.followUps') !== 'off';
+    return localStorage.getItem('cortex.followUps') !== 'off';
   } catch {
     return true;
   }
@@ -286,7 +286,7 @@ export function followUpsOn(): boolean {
 /** Suggest how the message being typed continues (off unless turned on: each pause is a request). */
 export function autocompleteOn(): boolean {
   try {
-    return localStorage.getItem('lumo.autocomplete') === 'on';
+    return localStorage.getItem('cortex.autocomplete') === 'on';
   } catch {
     return false;
   }
@@ -294,7 +294,7 @@ export function autocompleteOn(): boolean {
 
 export function setAutocomplete(on: boolean) {
   try {
-    localStorage.setItem('lumo.autocomplete', on ? 'on' : 'off');
+    localStorage.setItem('cortex.autocomplete', on ? 'on' : 'off');
   } catch {
     /* per-device convenience only */
   }
@@ -303,7 +303,7 @@ export function setAutocomplete(on: boolean) {
 /** Follow an answer down the page as it streams (on unless turned off). */
 export function followStreamOn(): boolean {
   try {
-    return localStorage.getItem('lumo.followStream') !== 'off';
+    return localStorage.getItem('cortex.followStream') !== 'off';
   } catch {
     return true;
   }
@@ -311,7 +311,7 @@ export function followStreamOn(): boolean {
 
 export function setFollowStream(on: boolean) {
   try {
-    localStorage.setItem('lumo.followStream', on ? 'on' : 'off');
+    localStorage.setItem('cortex.followStream', on ? 'on' : 'off');
   } catch {
     // Remembering is a convenience.
   }
@@ -320,7 +320,7 @@ export function setFollowStream(on: boolean) {
 /** A short chime with the "reply ready" notification (off unless turned on). */
 export function finishSoundOn(): boolean {
   try {
-    return localStorage.getItem('lumo.finishSound') === 'on';
+    return localStorage.getItem('cortex.finishSound') === 'on';
   } catch {
     return false;
   }
@@ -328,7 +328,7 @@ export function finishSoundOn(): boolean {
 
 export function setFinishSound(on: boolean) {
   try {
-    localStorage.setItem('lumo.finishSound', on ? 'on' : 'off');
+    localStorage.setItem('cortex.finishSound', on ? 'on' : 'off');
   } catch {
     // Remembering is a convenience.
   }
@@ -359,7 +359,7 @@ export function playChime() {
 /** Notify when a reply finishes while the window is in the background (on unless turned off). */
 export function finishNotificationsOn(): boolean {
   try {
-    return localStorage.getItem('lumo.notifyFinished') !== 'off';
+    return localStorage.getItem('cortex.notifyFinished') !== 'off';
   } catch {
     return true;
   }
@@ -367,7 +367,7 @@ export function finishNotificationsOn(): boolean {
 
 export function setFinishNotifications(on: boolean) {
   try {
-    localStorage.setItem('lumo.notifyFinished', on ? 'on' : 'off');
+    localStorage.setItem('cortex.notifyFinished', on ? 'on' : 'off');
   } catch {
     // Remembering is a convenience.
   }
@@ -375,7 +375,7 @@ export function setFinishNotifications(on: boolean) {
 
 export function setFollowUps(on: boolean) {
   try {
-    localStorage.setItem('lumo.followUps', on ? 'on' : 'off');
+    localStorage.setItem('cortex.followUps', on ? 'on' : 'off');
   } catch {
     // Remembering is a convenience.
   }
@@ -384,7 +384,7 @@ export function setFollowUps(on: boolean) {
 export function setMode(mode: ApprovalMode) {
   state.approval = mode;
   try {
-    localStorage.setItem('lumo.mode', mode);
+    localStorage.setItem('cortex.mode', mode);
   } catch {
     // Remembering is a convenience.
   }

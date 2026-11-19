@@ -177,7 +177,7 @@ pub async fn get(config_dir: &Path, url: &str) -> Result<Preview, String> {
     }
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(8))
-        .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Lumo")
+        .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Cortex")
         .build()
         .map_err(|e| e.to_string())?;
     let response = client

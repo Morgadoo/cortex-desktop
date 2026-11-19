@@ -1,11 +1,11 @@
-//! `lumo-desktop config …` (Vibe's `vibe config schema`): the settings files described as JSON
+//! `cortex-desktop config …` (Vibe's `vibe config schema`): the settings files described as JSON
 //! Schema, and a check that the ones on this computer can be read.
 //!
 //! ```text
-//! lumo-desktop config schema              every settings file, one schema
-//! lumo-desktop config schema providers    one file's schema
-//! lumo-desktop config check               reads each file and says which cannot be used
-//! lumo-desktop config path                the settings folder
+//! cortex-desktop config schema              every settings file, one schema
+//! cortex-desktop config schema providers    one file's schema
+//! cortex-desktop config check               reads each file and says which cannot be used
+//! cortex-desktop config path                the settings folder
 //! ```
 //!
 //! The schemas come from the same types the app reads, so they cannot drift. Editors that take
@@ -120,7 +120,7 @@ const FILES: &[File] = &[
     File {
         name: "browser",
         path: "chat/browser.json",
-        about: "Whether links open in Lumo's own browser.",
+        about: "Whether links open in Cortex's own browser.",
         schema: || schema_for!(crate::inapp_browser::Prefs),
         check: read::<crate::inapp_browser::Prefs>,
     },
@@ -139,8 +139,8 @@ pub fn all_schemas() -> Value {
     }
     json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "title": "Lumo settings",
-        "description": "The JSON files in Lumo's settings folder (`lumo-desktop config path`), each under its path.",
+        "title": "Cortex settings",
+        "description": "The JSON files in Cortex's settings folder (`cortex-desktop config path`), each under its path.",
         "type": "object",
         "properties": properties,
     })
@@ -258,7 +258,7 @@ pub fn warnings(config_dir: &Path) -> Vec<String> {
     out
 }
 
-/// At start: unknown settings are logged; with `LUMO_STRICT_CONFIG=1` (Vibe's `strict_config`)
+/// At start: unknown settings are logged; with `CORTEX_STRICT_CONFIG=1` (Vibe's `strict_config`)
 /// the app refuses to start on them, or on a file it cannot read.
 pub fn startup_check() -> Option<i32> {
     let dir = crate::reporting::early_config_dir()?;
@@ -270,10 +270,10 @@ pub fn startup_check() -> Option<i32> {
     for p in &problems {
         log::warn!("settings: {p}");
     }
-    let strict = std::env::var("LUMO_STRICT_CONFIG")
+    let strict = std::env::var("CORTEX_STRICT_CONFIG")
         .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
     if strict && !problems.is_empty() {
-        eprintln!("lumo: LUMO_STRICT_CONFIG is set and the settings have problems:");
+        eprintln!("cortex: CORTEX_STRICT_CONFIG is set and the settings have problems:");
         for p in &problems {
             eprintln!("  {p}");
         }
@@ -314,7 +314,7 @@ pub fn run(args: &[String], out: &mut impl std::io::Write) -> i32 {
                 }
                 None => {
                     eprintln!(
-                        "lumo: no settings file called {name}; one of: {}",
+                        "cortex: no settings file called {name}; one of: {}",
                         FILES.iter().map(|f| f.name).collect::<Vec<_>>().join(", ")
                     );
                     2
@@ -323,7 +323,7 @@ pub fn run(args: &[String], out: &mut impl std::io::Write) -> i32 {
         },
         Some("check") => {
             let Some(dir) = config_dir else {
-                eprintln!("lumo: the settings folder could not be found");
+                eprintln!("cortex: the settings folder could not be found");
                 return 1;
             };
             let mut bad = 0;
@@ -353,7 +353,7 @@ pub fn run(args: &[String], out: &mut impl std::io::Write) -> i32 {
         },
         _ => {
             eprintln!(
-                "usage: lumo-desktop config schema [file] | config check | config path\nfiles: {}",
+                "usage: cortex-desktop config schema [file] | config check | config path\nfiles: {}",
                 FILES.iter().map(|f| f.name).collect::<Vec<_>>().join(", ")
             );
             2

@@ -122,7 +122,7 @@ pub fn load(config_dir: &Path) -> Vec<Agent> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Bundle {
-    /// Always `lumo-agent`.
+    /// `cortex-agent` (`lumo-agent` in files exported by Lumo Desktop).
     pub format: String,
     pub version: u32,
     pub agent: Agent,
@@ -188,7 +188,7 @@ pub fn bundle(config_dir: &Path, id: &str) -> Result<Bundle, String> {
         })
         .collect();
     Ok(Bundle {
-        format: "lumo-agent".into(),
+        format: "cortex-agent".into(),
         version: 1,
         notebook: notebook(config_dir, id),
         skills,
@@ -199,7 +199,8 @@ pub fn bundle(config_dir: &Path, id: &str) -> Result<Bundle, String> {
 
 /// Adds a bundled agent as a new one; skills of the same name already here are kept as they are.
 pub fn install(config_dir: &Path, bundle: Bundle) -> Result<Agent, String> {
-    if bundle.format != "lumo-agent" {
+    // `lumo-agent` files were exported before the rename to Cortex.
+    if !matches!(bundle.format.as_str(), "cortex-agent" | "lumo-agent") {
         return Err("This file is not an exported agent.".into());
     }
     let existing = load(config_dir);

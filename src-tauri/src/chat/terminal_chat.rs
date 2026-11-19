@@ -1,10 +1,10 @@
-//! A chat in the terminal (Vibe Code's CLI): `lumo-desktop chat` talks with the app's models in
+//! A chat in the terminal (Vibe Code's CLI): `cortex-desktop chat` talks with the app's models in
 //! the terminal, streaming each reply as it is written, with the read-only tools (web search,
 //! libraries, knowledge, earlier chats, calendars, contacts). Every conversation is saved to the
 //! app's history, so it can be opened in the window later (`/open` prints its link).
 //!
 //! ```text
-//! lumo-desktop chat [--model vendor/model] [--resume <conversation id>]
+//! cortex-desktop chat [--model vendor/model] [--resume <conversation id>]
 //! ```
 //!
 //! Slash commands: `/help`, `/model [ref]`, `/models`, `/think fast|low|think|deep`,
@@ -115,7 +115,7 @@ pub fn markdown(c: &Conversation) -> String {
         let who = if matches!(m, Message::User { .. }) {
             "You"
         } else {
-            "Lumo"
+            "Cortex"
         };
         out.push_str(&format!("**{who}:** {}\n\n", text.trim()));
     }
@@ -168,14 +168,14 @@ pub fn maybe_run() -> Option<i32> {
 
 async fn run(model_arg: Option<String>, resume: Option<String>) -> i32 {
     let Some(config_dir) = crate::reporting::early_config_dir() else {
-        eprintln!("lumo: the app's config folder could not be found");
+        eprintln!("cortex: the app's config folder could not be found");
         return 1;
     };
     let mut conversation = match resume {
         Some(id) => match store::load_conversation(&config_dir, &id) {
             Ok(c) => c,
             Err(e) => {
-                eprintln!("lumo: {e}");
+                eprintln!("cortex: {e}");
                 return 1;
             }
         },
@@ -187,20 +187,22 @@ async fn run(model_arg: Option<String>, resume: Option<String>) -> i32 {
     {
         Some(r) => r,
         None => {
-            eprintln!("lumo: no model: pass --model vendor/model, or choose one in the app first");
+            eprintln!(
+                "cortex: no model: pass --model vendor/model, or choose one in the app first"
+            );
             return 1;
         }
     };
     let mut model = match super::engine::connect_model(&config_dir, &reference).await {
         Ok(m) => m,
         Err(e) => {
-            eprintln!("lumo: {e}");
+            eprintln!("cortex: {e}");
             return 1;
         }
     };
     let mut speed = Speed::Fast;
     let mut use_tools = true;
-    println!("Lumo · {reference} · /help for commands, /exit to leave");
+    println!("Cortex · {reference} · /help for commands, /exit to leave");
     if !conversation.messages.is_empty() {
         println!(
             "Resuming “{}” ({} messages).",
@@ -264,7 +266,7 @@ async fn run(model_arg: Option<String>, resume: Option<String>) -> i32 {
                     conversation = Conversation::new(uuid::Uuid::new_v4().to_string(), None, None);
                     println!("New conversation.");
                 }
-                Command::Open => println!("lumo://chat/{}", conversation.id),
+                Command::Open => println!("cortex://chat/{}", conversation.id),
                 Command::Save(path) => {
                     match crate::chat::at_rest::write(&path, markdown(&conversation)) {
                         Ok(()) => println!("Saved to {path}."),
@@ -294,7 +296,7 @@ async fn run(model_arg: Option<String>, resume: Option<String>) -> i32 {
         }
         conversation.updated_at = chrono::Utc::now();
         if let Err(e) = store::save_conversation(&config_dir, &conversation) {
-            eprintln!("lumo: could not save the conversation: {e}");
+            eprintln!("cortex: could not save the conversation: {e}");
         }
     }
 }
@@ -450,7 +452,7 @@ mod tests {
         c.messages.push(Message::assistant("Porto."));
         assert_eq!(
             markdown(&c),
-            "# Trip\n\n**You:** Where to?\n\n**Lumo:** Porto.\n\n"
+            "# Trip\n\n**You:** Where to?\n\n**Cortex:** Porto.\n\n"
         );
     }
 }

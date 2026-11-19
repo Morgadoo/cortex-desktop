@@ -72,7 +72,7 @@ fn truncate_for_log(text: &str, max_len: usize) -> String {
 fn log_tool_result(connector_id: &str, tool_name: &str, result: &Value) {
     if matches!(
         result.get("type").and_then(Value::as_str),
-        Some("lumo_file" | "lumo_tool_result" | "lumo_file_image")
+        Some("cortex_file" | "cortex_tool_result" | "cortex_file_image")
     ) || result
         .get("content")
         .and_then(Value::as_array)

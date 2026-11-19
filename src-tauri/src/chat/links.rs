@@ -1,10 +1,10 @@
-//! Links into the app (`proton-lumo://` or `lumo://`), as Open WebUI's `?q=` and LobeHub's share
+//! Links into the app (`proton-lumo://` or `cortex://`), as Open WebUI's `?q=` and LobeHub's share
 //! links allow: launchers, scripts, browser bookmarks and other apps can start a chat.
 //!
-//! - `lumo://new?prompt=…&model=vendor/model&mode=work|code`: a new chat with the prompt typed in
+//! - `cortex://new?prompt=…&model=vendor/model&mode=work|code`: a new chat with the prompt typed in
 //!   the composer. It is **never sent by the link**: another program could otherwise make the
 //!   assistant act (search, run tools) without the user seeing the request first.
-//! - `lumo://chat/<conversation id>`: opens that conversation.
+//! - `cortex://chat/<conversation id>`: opens that conversation.
 //!
 //! A link arriving before the window is ready waits in [`PendingLink`] until the page asks.
 
@@ -30,7 +30,7 @@ pub enum Link {
 
 /// The app link a URL names, if it is one.
 pub fn parse(url: &url::Url) -> Option<Link> {
-    if !matches!(url.scheme(), "proton-lumo" | "lumo") {
+    if !matches!(url.scheme(), "proton-lumo" | "cortex") {
         return None;
     }
     let query = |name: &str| {
@@ -93,7 +93,7 @@ mod tests {
     #[test]
     fn links_start_or_open_chats() {
         assert_eq!(
-            link("lumo://new?prompt=Plan%20a%20trip%20to%20Porto&model=xai/grok-4&mode=code"),
+            link("cortex://new?prompt=Plan%20a%20trip%20to%20Porto&model=xai/grok-4&mode=code"),
             Some(Link::New {
                 prompt: "Plan a trip to Porto".into(),
                 model: Some("xai/grok-4".into()),
@@ -109,25 +109,25 @@ mod tests {
             })
         );
         assert_eq!(
-            link("lumo://new"),
+            link("cortex://new"),
             Some(Link::New {
                 prompt: String::new(),
                 model: None,
                 mode: None
             })
         );
-        let long = format!("lumo://new?prompt={}", "a".repeat(20_000));
+        let long = format!("cortex://new?prompt={}", "a".repeat(20_000));
         assert!(
             matches!(link(&long), Some(Link::New { prompt, .. }) if prompt.len() == MAX_PROMPT)
         );
         assert_eq!(
-            link("lumo://chat/abc-123"),
+            link("cortex://chat/abc-123"),
             Some(Link::Open {
                 conversation_id: "abc-123".into()
             })
         );
         assert_eq!(
-            link("lumo://chat/..%2F..%2Fetc"),
+            link("cortex://chat/..%2F..%2Fetc"),
             None,
             "only plain conversation ids"
         );

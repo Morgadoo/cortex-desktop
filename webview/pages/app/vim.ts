@@ -256,7 +256,7 @@ export function step(s: VimState, key: string, ctrl = false): Step {
   }
 }
 
-const KEY = 'lumo.vimKeys';
+const KEY = 'cortex.vimKeys';
 
 export function vimEnabled(): boolean {
   try {

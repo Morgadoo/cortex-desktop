@@ -8,7 +8,7 @@ import { navigate } from './state';
 import { card } from './ui';
 
 export type UploadMode = 'full' | 'auto' | 'search';
-const KEY = 'lumo.uploadMode';
+const KEY = 'cortex.uploadMode';
 /** Characters above which `auto` searches a file instead of sending it. */
 export const LARGE = 20_000;
 

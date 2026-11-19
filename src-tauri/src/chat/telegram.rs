@@ -1,10 +1,10 @@
 //! Reach an agent from your phone through Telegram (OpenBot's mobile and chat channels, Osaurus's
-//! agent channels): you create a bot with @BotFather, give Lumo its token, and pair your Telegram
+//! agent channels): you create a bot with @BotFather, give Cortex its token, and pair your Telegram
 //! account with a one-time code. Messages you send the bot become a chat with the chosen agent
-//! (or the assistant) in Lumo, and the answer comes back to Telegram.
+//! (or the assistant) in Cortex, and the answer comes back to Telegram.
 //!
-//! Lumo asks Telegram for new messages (long polling), so nothing has to reach this computer
-//! from outside, and it works only while Lumo runs. Only paired accounts are answered; anyone
+//! Cortex asks Telegram for new messages (long polling), so nothing has to reach this computer
+//! from outside, and it works only while Cortex runs. Only paired accounts are answered; anyone
 //! else gets "not paired". Runs are unattended: the assistant reads and searches, but anything
 //! that would change something is refused, as in a scheduled task (unless allowed in settings).
 
@@ -31,7 +31,7 @@ pub struct Settings {
     pub paired_names: Vec<String>,
     /// The code a new account sends to pair, while pairing is open.
     pub pairing_code: Option<String>,
-    /// Telegram chat id → Lumo conversation id.
+    /// Telegram chat id → Cortex conversation id.
     pub chats: Vec<(i64, String)>,
     /// Let runs make changes (send email, write files) without asking.
     pub allow_changes: bool,
@@ -52,9 +52,9 @@ pub fn save(config_dir: &Path, s: &Settings) -> Result<(), String> {
     super::store::write_json(&path(config_dir), s)
 }
 
-/// Where Telegram's Bot API is; `LUMO_TELEGRAM_API` points elsewhere for testing.
+/// Where Telegram's Bot API is; `CORTEX_TELEGRAM_API` points elsewhere for testing.
 fn api_base() -> String {
-    std::env::var("LUMO_TELEGRAM_API").unwrap_or_else(|_| "https://api.telegram.org".into())
+    std::env::var("CORTEX_TELEGRAM_API").unwrap_or_else(|_| "https://api.telegram.org".into())
 }
 
 pub async fn token() -> Option<String> {
@@ -164,14 +164,14 @@ pub fn decide(settings: &Settings, user_id: i64, user_name: &str, text: &str) ->
     if let Some(code) = text.strip_prefix("/pair").map(str::trim) {
         return match &settings.pairing_code {
             Some(expected) if expected == code => Action::Pair(user_id, user_name.to_string()),
-            _ => Action::Reply("That code is not right, or pairing is closed. Open Lumo → Settings → General → Telegram to get a code.".into()),
+            _ => Action::Reply("That code is not right, or pairing is closed. Open Cortex → Settings → General → Telegram to get a code.".into()),
         };
     }
     if !settings.paired.contains(&user_id) {
-        return Action::Reply("This bot answers only its owner. If that is you, send /pair followed by the code shown in Lumo (Settings → General → Telegram).".into());
+        return Action::Reply("This bot answers only its owner. If that is you, send /pair followed by the code shown in Cortex (Settings → General → Telegram).".into());
     }
     match text {
-        "/start" | "/help" => Action::Reply("Ask me anything; I answer from Lumo on your computer. /new starts a fresh conversation.".into()),
+        "/start" | "/help" => Action::Reply("Ask me anything; I answer from Cortex on your computer. /new starts a fresh conversation.".into()),
         "/new" => Action::Reset,
         _ => Action::Ask(text.to_string()),
     }
@@ -214,7 +214,7 @@ async fn ask(
     answer
 }
 
-/// Runs a message from a channel (Telegram, Slack) as a turn in a Lumo chat: the chat
+/// Runs a message from a channel (Telegram, Slack) as a turn in a Cortex chat: the chat
 /// `existing` when it still exists, else a new one titled `title`. Returns the chat's id and the
 /// answer. Unattended unless `allow_changes`: nobody can approve from the channel.
 pub async fn run_message(
@@ -235,7 +235,7 @@ pub async fn run_message(
         .and_then(|a| a.model.clone())
         .or(super::providers::load(config_dir).default_model)
     else {
-        return (None, Err("Choose a default model in Lumo first.".into()));
+        return (None, Err("Choose a default model in Cortex first.".into()));
     };
     let id = match existing.filter(|id| super::store::load_conversation(config_dir, id).is_ok()) {
         Some(id) => id,
@@ -287,7 +287,7 @@ pub async fn run_message(
             Some(m @ rig_core::completion::Message::Assistant(_)) => {
                 Ok(super::context::message_text(m))
             }
-            _ => Err("I could not answer that; see the chat in Lumo for what went wrong.".into()),
+            _ => Err("I could not answer that; see the chat in Cortex for what went wrong.".into()),
         },
         Err(e) => Err(e),
     };

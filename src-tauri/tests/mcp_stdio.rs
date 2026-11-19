@@ -1,6 +1,6 @@
 #![cfg(feature = "test-utils")]
 
-use lumo_lib::{
+use cortex_lib::{
     keychain_secrets, AccountId, Connector, CredentialState, McpConnector, McpServerConfig,
     McpTransport, NoToolCache, Readiness, Secrets, ToolError,
 };

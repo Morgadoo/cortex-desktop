@@ -6,7 +6,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::time::{Duration, Instant};
 
-pub(super) const USER_AGENT_VALUE: &str = concat!("Lumo-Desktop/", env!("CARGO_PKG_VERSION"));
+pub(super) const USER_AGENT_VALUE: &str = concat!("Cortex-Desktop/", env!("CARGO_PKG_VERSION"));
 const TOKEN_PATH: &str = "/auth/oauth2/token";
 /// Refresh a client-credentials token this long before the server says it expires.
 const TOKEN_EXPIRY_MARGIN: Duration = Duration::from_secs(60);

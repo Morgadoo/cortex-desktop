@@ -38,7 +38,7 @@ extern "C" fn tick(this: &Object, _selector: Sel, _timer: id) {
 fn timer_target() -> &'static Class {
     static CLASS: OnceLock<&'static Class> = OnceLock::new();
     CLASS.get_or_init(|| {
-        let mut class = ClassDecl::new("LumoLoadingTimer", class!(NSObject))
+        let mut class = ClassDecl::new("CortexLoadingTimer", class!(NSObject))
             .expect("loading timer class must be registered once");
         class.add_ivar::<usize>("done");
         class.add_ivar::<usize>("window");

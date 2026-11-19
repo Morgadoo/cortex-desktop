@@ -22,7 +22,7 @@ const IMAGE = /\.(png|jpe?g|gif|webp|svg)$/i;
 export function workspaceUrl(conversationId: string, name: string): string {
   const windows = navigator.userAgent.includes('Windows');
   const path = name.split('/').map(encodeURIComponent).join('/');
-  return `${windows ? 'http://lumoapp.localhost' : 'lumoapp://localhost'}/sandbox/${conversationId}/${path}?t=${Date.now()}`;
+  return `${windows ? 'http://cortexapp.localhost' : 'cortexapp://localhost'}/sandbox/${conversationId}/${path}?t=${Date.now()}`;
 }
 
 function parse(output: string | null): RunReport | null {

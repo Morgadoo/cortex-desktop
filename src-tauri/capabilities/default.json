@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Bundled pages in every Lumo window. main_window::web_app_capability grants the same permissions to the hosted web app at LUMO_URL's origin.",
+  "description": "Bundled pages in every Cortex window. main_window::web_app_capability grants the same permissions to the hosted web app at LUMO_URL's origin.",
   "windows": ["*"],
   "permissions": [
     "core:default",

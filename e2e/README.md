@@ -21,15 +21,15 @@ cache Cargo artifacts and dependencies without replacing host `node_modules`.
 | Override | Default | Purpose |
 | --- | --- | --- |
 | `CLIENTS_DIR` | `../clients` | Clients checkout used to build the harness |
-| `IMAGE` | `lumo-e2e:latest` | Toolchain image tag |
+| `IMAGE` | `cortex-e2e:latest` | Toolchain image tag |
 | `NO_CACHE` | Unset | Set to `1` to rebuild the image without cached layers |
-| `LUMO_E2E_TIMEOUT` | `600` | Backstop for the spec stage, in seconds |
-| `LUMO_APPROVAL_TIMEOUT_MS` | `5000` | Native approval timeout, shortened for timeout tests |
+| `CORTEX_E2E_TIMEOUT` | `600` | Backstop for the spec stage, in seconds |
+| `CORTEX_APPROVAL_TIMEOUT_MS` | `5000` | Native approval timeout, shortened for timeout tests |
 
 For example:
 
 ```sh
-CLIENTS_DIR=/path/to/clients LUMO_E2E_TIMEOUT=900 ./e2e/run.sh
+CLIENTS_DIR=/path/to/clients CORTEX_E2E_TIMEOUT=900 ./e2e/run.sh
 ```
 
 This branch uses Linux's WebKitGTK, WebKitWebDriver, and `tauri-driver`. It has no
@@ -55,14 +55,14 @@ The harness imports the real clients module on every build. Keep that source in 
 clients repo; do not vendor a copy here. Generated harness and desktop scripts under
 `src-tauri/dist/` are gitignored.
 
-The app runs with `LUMO_E2E_TESTING=1`, which loads the harness page and registers the
+The app runs with `CORTEX_E2E_TESTING=1`, which loads the harness page and registers the
 native `EchoConnector` (`echo__auto` and `echo__ask`). App environment is inherited
 through WebdriverIO → `tauri-driver` → WebKitWebDriver.
 
-Fixtures use a fixed test account, disposable scratch space (`LUMO_E2E_SCRATCH`), and
+Fixtures use a fixed test account, disposable scratch space (`CORTEX_E2E_SCRATCH`), and
 configuration under `XDG_CONFIG_HOME`. Scratch, connector state, and the schedule ledger
 are reset before each suite run. The allowed filesystem roots include scratch and the
-configuration parent, allowing tests to verify that Lumo's own directory stays protected.
+configuration parent, allowing tests to verify that Cortex's own directory stays protected.
 The MCP peer records executions in a scratch journal; its offline companion uses a
 seeded legacy cache that startup discovery cannot overwrite. Both start disabled, so
 their untrusted tool descriptions do not affect unrelated filesystem scenarios. Security

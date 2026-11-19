@@ -375,7 +375,7 @@ export class SkillsPage {
         )
       );
     });
-    const record = button({ variant: 'secondary', icon: 'play', label: 'Record a task', title: 'Do a task once while Lumo watches; it becomes a skill you review', onClick: () => void recordTask() });
+    const record = button({ variant: 'secondary', icon: 'play', label: 'Record a task', title: 'Do a task once while Cortex watches; it becomes a skill you review', onClick: () => void recordTask() });
     const create = h('button', { class: 'btn btn-primary' }, icon('plus', 16), 'New skill');
     create.addEventListener('click', () => void editSkill(null, (skills) => this.set(skills)));
     const search = h('input', { class: 'input', placeholder: 'Search skills' });
@@ -711,14 +711,14 @@ export class KnowledgePage {
 }
 
 /**
- * Teach a task by recording (OpenBot): Lumo steps aside while the user does the task once; a
+ * Teach a task by recording (OpenBot): Cortex steps aside while the user does the task once; a
  * Recording pill keeps time and stops it. Screenshots are taken when the screen changes, never
  * keystrokes; see src-tauri/src/chat/recorder.rs.
  */
 export async function recordTask() {
   const ok = await confirmDialog(
     'Record a task?',
-    'Lumo will step aside and take a screenshot whenever your screen changes, with the name of the window in front (never what you type). Do the task once, then press Stop on the Recording pill. Close anything private first: the screenshots go to your chosen model to write the skill, and are dropped afterwards.',
+    'Cortex will step aside and take a screenshot whenever your screen changes, with the name of the window in front (never what you type). Do the task once, then press Stop on the Recording pill. Close anything private first: the screenshots go to your chosen model to write the skill, and are dropped afterwards.',
     'Start recording',
     false
   );
@@ -898,7 +898,7 @@ async function publishSkills() {
       'div',
       { class: 'dialog-small' },
       modalHeader('Publish skills', close, { flush: true }),
-      h('p', { class: 'muted' }, 'Lumo writes the chosen skills as a catalogue (a .claude-plugin/marketplace.json and a folder per skill). Put it in a GitHub repository, and others add it in Lumo, Claude Code or any app that reads that format.'),
+      h('p', { class: 'muted' }, 'Cortex writes the chosen skills as a catalogue (a .claude-plugin/marketplace.json and a folder per skill). Put it in a GitHub repository, and others add it in Cortex, Claude Code or any app that reads that format.'),
       h('label', { class: 'field-label' }, 'Catalogue name'),
       title,
       h('label', { class: 'field-label' }, 'Author'),

@@ -5,7 +5,7 @@
  * every forward is swallowed: a log line must never break its caller. The console call always
  * happens, which keeps devtools working in the browser build.
  *
- * Rust records these under the `webview` target, so the `[Lumo account]`-style prefixes the
+ * Rust records these under the `webview` target, so the `[Cortex account]`-style prefixes the
  * callers already carry are what distinguishes one script from another in the log file.
  */
 import { debug, error, info, warn } from '@tauri-apps/plugin-log';

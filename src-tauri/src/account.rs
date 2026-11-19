@@ -7,7 +7,7 @@ use tokio::sync::watch;
 
 const MAX_LEN: usize = 128;
 
-/// Account the app acts as under `LUMO_E2E_TESTING`. Must match `e2e/seed-fixtures.sh`.
+/// Account the app acts as under `CORTEX_E2E_TESTING`. Must match `e2e/seed-fixtures.sh`.
 const E2E_ACCOUNT: &str = "e2e-test-account";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,7 +68,7 @@ impl ActiveAccount {
     }
 }
 
-/// Acts as a fixed account under `LUMO_E2E_TESTING`.
+/// Acts as a fixed account under `CORTEX_E2E_TESTING`.
 ///
 /// The e2e stub is a bundled page with no Proton session, so nothing reports an account and every
 /// per-account path resolves to empty. Seeding keeps the suite on the per-account code paths.
@@ -130,7 +130,7 @@ pub fn clear_on_session_loss(app_handle: &AppHandle) {
 /// The webview restates the current account on every request it makes, so most calls stop at the
 /// comparison below rather than rebuilding the registry.
 async fn become_account(app_handle: &AppHandle, next: Option<AccountId>) {
-    // Under LUMO_E2E_TESTING the harness owns the account. The stub page carries no Proton
+    // Under CORTEX_E2E_TESTING the harness owns the account. The stub page carries no Proton
     // session, so an honoured report would clear the seeded account at startup and tear down the
     // connectors the suite drives. The native chat app likewise runs under one local profile for
     // its whole life.

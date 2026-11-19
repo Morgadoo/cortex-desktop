@@ -10,8 +10,8 @@
 # written to the current directory. Needs jq and the repo's node_modules.
 #
 # Environment:
-#   LUMO_UPDATE_BASE_URL            public dir the payloads will be served from (required)
-#   LUMO_MINIMUM_SUPPORTED_VERSION optional minimum app version; older apps must update
+#   CORTEX_UPDATE_BASE_URL            public dir the payloads will be served from (required)
+#   CORTEX_MINIMUM_SUPPORTED_VERSION optional minimum app version; older apps must update
 #   TAURI_SIGNING_PRIVATE_KEY       minisign private key, read by the tauri CLI
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD
 set -euo pipefail
@@ -23,12 +23,12 @@ fail() {
 
 [ $# -gt 0 ] || fail "usage: make-update-manifest.sh <payload>..."
 : "${TAURI_SIGNING_PRIVATE_KEY:?set TAURI_SIGNING_PRIVATE_KEY to the minisign private key}"
-: "${LUMO_UPDATE_BASE_URL:?set LUMO_UPDATE_BASE_URL to the public host serving the artifacts}"
+: "${CORTEX_UPDATE_BASE_URL:?set CORTEX_UPDATE_BASE_URL to the public host serving the artifacts}"
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 version=$(jq -er .version "$root/src-tauri/tauri.conf.json")
-base=${LUMO_UPDATE_BASE_URL%/}
-min=${LUMO_MINIMUM_SUPPORTED_VERSION:-}
+base=${CORTEX_UPDATE_BASE_URL%/}
+min=${CORTEX_MINIMUM_SUPPORTED_VERSION:-}
 node "$root/scripts/validate-update-minimum.mjs" "$min" "$version"
 
 # Lookup is {os}-{arch}-{installer} then {os}-{arch}, picked by the bundle type
@@ -75,7 +75,7 @@ manifest=$(jq -n \
     --arg version "$version" \
     --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --arg minimum "$min" \
-    '{version: $version, notes: "Lumo \($version)", pub_date: $pub_date, platforms: {}}
+    '{version: $version, notes: "Cortex \($version)", pub_date: $pub_date, platforms: {}}
      + (if $minimum == "" then {} else {minimum_supported_version: $minimum} end)')
 
 for i in "${!keys[@]}"; do
