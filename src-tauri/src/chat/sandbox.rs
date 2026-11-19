@@ -122,13 +122,23 @@ fn bubblewrap() -> Option<&'static PathBuf> {
                 return None;
             }
             let bwrap = find_program("bwrap")?;
+            // The probe mounts what a real run mounts: some hosts (containers, CI runners) let
+            // bubblewrap start but refuse a fresh /dev or /proc, and there a run would fail
+            // every time. Such a host counts as having no sandbox, so code asks before it runs.
             let works = std::process::Command::new(&bwrap)
                 .args([
                     "--ro-bind",
                     "/",
                     "/",
+                    "--dev",
+                    "/dev",
+                    "--proc",
+                    "/proc",
+                    "--tmpfs",
+                    "/tmp",
                     "--unshare-all",
                     "--die-with-parent",
+                    "--new-session",
                     "--",
                     "true",
                 ])
