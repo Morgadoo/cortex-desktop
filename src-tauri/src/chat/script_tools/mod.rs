@@ -217,6 +217,7 @@ pub fn forget_signing_key(config_dir: &Path) {
     ledger.latest.retain(|(dir, _), _| dir != config_dir);
     ledger.stores.retain(|(dir, _)| dir != config_dir);
     ledger.trials.retain(|dir| dir != config_dir);
+    ledger.unread.retain(|dir| dir != config_dir);
 }
 
 /// Each tool's latest signature, per folder. A signature only shows the app wrote a state; this
@@ -229,6 +230,9 @@ struct Ledger {
     stores: Vec<(PathBuf, crate::tools::auth::Secrets)>,
     /// Trial copies: their record is never kept in the keychain, whatever key they hold.
     trials: Vec<PathBuf>,
+    /// Folders whose record could not be read from the keychain this session: no tool there is
+    /// taken for one the app never signed.
+    unread: Vec<PathBuf>,
 }
 
 /// A tool's latest signature and the number of the save that made it.
@@ -251,13 +255,14 @@ fn latest_entry(config_dir: &Path) -> String {
     format!("tool-signing-latest-{short}")
 }
 
-/// Whether the app ever signed a tool by this name in this folder.
+/// Whether the app ever signed a tool by this name in this folder. When the folder's record could
+/// not be read, it may have: so it is taken that it did.
 fn ever_signed(config_dir: &Path, name: &str) -> bool {
-    ledger()
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .latest
-        .contains_key(&(config_dir.to_path_buf(), name.to_string()))
+    let ledger = ledger().lock().unwrap_or_else(|p| p.into_inner());
+    ledger.unread.iter().any(|dir| dir == config_dir)
+        || ledger
+            .latest
+            .contains_key(&(config_dir.to_path_buf(), name.to_string()))
 }
 
 /// The number of the latest save recorded for a tool, 0 when none is.
@@ -324,6 +329,9 @@ async fn load_latest(config_dir: &Path, store: &crate::tools::auth::Secrets) {
         };
     let Some(record) = record else {
         log::warn!("the record of tools' latest signatures could not be read; it is left as it is");
+        let mut ledger = ledger().lock().unwrap_or_else(|p| p.into_inner());
+        ledger.unread.retain(|dir| dir != config_dir);
+        ledger.unread.push(config_dir.to_path_buf());
         return;
     };
     {
@@ -3272,5 +3280,64 @@ mod tests {
         )
         .unwrap();
         assert!(definitions(d).is_empty());
+    }
+
+    /// A keychain whose record of latest signatures cannot be read.
+    struct UnreadableRecord(crate::tools::auth::Secrets);
+
+    #[async_trait::async_trait]
+    impl crate::tools::auth::SecretStore for UnreadableRecord {
+        async fn store(&self, name: &str, secret: &str) -> Result<(), String> {
+            self.0.store(name, secret).await
+        }
+        async fn load(&self, name: &str) -> Result<Option<String>, String> {
+            if name.starts_with("tool-signing-latest") {
+                return Err("locked".into());
+            }
+            self.0.load(name).await
+        }
+        async fn delete(&self, name: &str) -> Result<(), String> {
+            self.0.delete(name).await
+        }
+    }
+
+    /// When the record of latest signatures cannot be read at start, no tool there is taken for
+    /// one the app never signed: one stripped of its signature, with its signed copy and History
+    /// removed, is written again, not promoted. The record is not written over, and tools the app
+    /// signed stay on offer.
+    #[tokio::test]
+    async fn an_unreadable_record_takes_no_tool_for_never_signed() {
+        let store = crate::tools::auth::InMemorySecrets::with(&[]);
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        ensure_signing_key_in(d, &store).await;
+        create(d, "", &json!({ "name": "kept_u", "description": "Kept.", "script": "function main() { return 1; }" }))
+            .await
+            .unwrap();
+        promote(d, "kept_u", None).await.unwrap();
+        create(d, "", &json!({ "name": "stripped_u", "description": "Stripped.", "script": "function main() { return 1; }" }))
+            .await
+            .unwrap();
+        promote(d, "stripped_u", None).await.unwrap();
+        keep_latest(d, &store).await;
+        let record = store.load(&latest_entry(d)).await.unwrap();
+        let mut forged = load(d, "stripped_u").unwrap();
+        forged.signature = None;
+        forged.checks.clear();
+        std::fs::write(
+            path(d, "stripped_u").unwrap(),
+            serde_json::to_string(&forged).unwrap(),
+        )
+        .unwrap();
+        std::fs::remove_dir_all(chat_dir(d).join("versions")).unwrap();
+        std::fs::remove_dir_all(chat_dir(d).join("script-tools-signed")).unwrap();
+        forget_signing_key(d);
+        let locked: crate::tools::auth::Secrets =
+            std::sync::Arc::new(UnreadableRecord(store.clone()));
+        ensure_signing_key_in(d, &locked).await;
+        assert!(definitions(d).iter().any(|t| t.tool_name == "kept_u"));
+        let err = promote(d, "stripped_u", None).await.unwrap_err();
+        assert!(err.contains("write it again"), "{err}");
+        assert_eq!(store.load(&latest_entry(d)).await.unwrap(), record);
     }
 }
