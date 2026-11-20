@@ -7,6 +7,7 @@
 //! the recording is thrown away. A small "Recording" pill stays on top with the time and a Stop
 //! button, and the main window steps aside until it is pressed.
 
+use crate::chat::error::ChatError;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -159,10 +160,10 @@ impl Recorder {
         }
     }
 
-    pub fn start(&self) -> Result<(), String> {
+    pub fn start(&self) -> Result<(), ChatError> {
         let mut inner = self.inner.lock().unwrap();
         if inner.is_some() {
-            return Err("A recording is already running.".into());
+            return Err(ChatError::Invalid("A recording is already running.".into()));
         }
         let stop = Arc::new(AtomicBool::new(false));
         let finished = Arc::new(AtomicBool::new(false));
@@ -248,14 +249,16 @@ pub struct Draft {
     pub body: String,
 }
 
-pub(in crate::chat::multimedia) fn parse_draft(reply: &str) -> Result<Draft, String> {
-    let start = reply.find('{').ok_or("The model did not return a skill.")?;
+pub(in crate::chat::multimedia) fn parse_draft(reply: &str) -> Result<Draft, ChatError> {
+    let start = reply
+        .find('{')
+        .ok_or_else(|| ChatError::Invalid("The model did not return a skill.".into()))?;
     let end = reply
         .rfind('}')
-        .ok_or("The model did not return a skill.")?;
-    let mut d: Draft = serde_json::from_str(&reply[start..=end]).map_err(|_| {
-        "The model's draft could not be read; try again or another model.".to_string()
-    })?;
+        .ok_or_else(|| ChatError::Invalid("The model did not return a skill.".into()))?;
+    let mut d: Draft = serde_json::from_str(&reply[start..=end])
+        .map_err(|_| "The model's draft could not be read; try again or another model.".to_string())
+        .map_err(ChatError::Invalid)?;
     d.name = d
         .name
         .trim()
@@ -268,7 +271,7 @@ pub(in crate::chat::multimedia) fn parse_draft(reply: &str) -> Result<Draft, Str
         .collect::<Vec<_>>()
         .join("-");
     if d.name.is_empty() || d.body.trim().is_empty() {
-        return Err("The draft was empty; try again.".into());
+        return Err(ChatError::Invalid("The draft was empty; try again.".into()));
     }
     Ok(d)
 }
@@ -279,11 +282,11 @@ pub async fn draft(
     model: &str,
     frames: &[Frame],
     note: &str,
-) -> Result<Draft, String> {
+) -> Result<Draft, ChatError> {
     if frames.is_empty() {
-        return Err(
+        return Err(ChatError::Invalid(
             "Nothing was recorded. Record the task again and change something on screen.".into(),
-        );
+        ));
     }
     let chosen = pick(frames, SENT_FRAMES);
     let mut content = vec![UserContent::text(format!(
@@ -324,7 +327,9 @@ pub async fn draft(
         }
     }
     let request = CompletionRequest::new(Message::User { content }).max_tokens(6_000u64);
-    let reply = crate::chat::connect::ask_text(config_dir, model, request, 240).await?;
+    let reply = crate::chat::connect::ask_text(config_dir, model, request, 240)
+        .await
+        .map_err(ChatError::Invalid)?;
     parse_draft(&reply)
 }
 

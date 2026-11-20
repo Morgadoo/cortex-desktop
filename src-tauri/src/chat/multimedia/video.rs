@@ -2,6 +2,7 @@
 //! models that see images) and the soundtrack's transcript (with the speech-to-text set in
 //! Settings → Audio). Uses ffmpeg and ffprobe when they are installed.
 
+use crate::chat::error::ChatError;
 use std::path::Path;
 
 use base64::Engine as _;
@@ -43,26 +44,30 @@ pub(in crate::chat::multimedia) fn frame_times(seconds: f64, n: usize) -> Vec<f6
         .collect()
 }
 
-fn run(program: &str, args: &[&str]) -> Result<Vec<u8>, String> {
+fn run(program: &str, args: &[&str]) -> Result<Vec<u8>, ChatError> {
     let out = std::process::Command::new(program)
         .args(args)
         .output()
-        .map_err(|_| format!("{program} is not installed; install ffmpeg to attach videos."))?;
+        .map_err(|_| {
+            ChatError::Invalid(format!(
+                "{program} is not installed; install ffmpeg to attach videos."
+            ))
+        })?;
     if out.status.success() {
         Ok(out.stdout)
     } else {
-        Err(format!(
+        Err(ChatError::Invalid(format!(
             "{program} could not read the video: {}",
             String::from_utf8_lossy(&out.stderr)
                 .lines()
                 .last()
                 .unwrap_or_default()
-        ))
+        )))
     }
 }
 
 /// The video's length and whether it has sound.
-fn probe(path: &Path) -> Result<(f64, bool), String> {
+fn probe(path: &Path) -> Result<(f64, bool), ChatError> {
     let p = path.to_string_lossy();
     let duration = String::from_utf8_lossy(&run(
         "ffprobe",
@@ -99,10 +104,10 @@ fn probe(path: &Path) -> Result<(f64, bool), String> {
 }
 
 /// Frames and transcript of the video at `path`.
-pub async fn digest(config_dir: &Path, path: &Path) -> Result<Digest, String> {
+pub async fn digest(config_dir: &Path, path: &Path) -> Result<Digest, ChatError> {
     let file = path.to_path_buf();
     let (seconds, has_audio, frames) =
-        tokio::task::spawn_blocking(move || -> Result<(f64, bool, Vec<Frame>), String> {
+        tokio::task::spawn_blocking(move || -> Result<(f64, bool, Vec<Frame>), ChatError> {
             let (seconds, has_audio) = probe(&file)?;
             let p = file.to_string_lossy().into_owned();
             let scale = format!("scale='min({FRAME_WIDTH},iw)':-2");
@@ -141,9 +146,11 @@ pub async fn digest(config_dir: &Path, path: &Path) -> Result<Digest, String> {
             Ok((seconds, has_audio, frames))
         })
         .await
-        .map_err(|e| e.to_string())??;
+        .map_err(ChatError::internal)??;
     if frames.is_empty() {
-        return Err("No picture could be read from the video.".into());
+        return Err(ChatError::Invalid(
+            "No picture could be read from the video.".into(),
+        ));
     }
     let (transcript, note) = if !has_audio {
         (None, Some("The video has no sound.".to_string()))
@@ -159,7 +166,7 @@ pub async fn digest(config_dir: &Path, path: &Path) -> Result<Digest, String> {
             )
         })
         .await
-        .map_err(|e| e.to_string())??;
+        .map_err(ChatError::internal)??;
         let settings = crate::chat::audio::load(config_dir).stt;
         match crate::chat::audio::transcribe(config_dir, wav, "soundtrack.wav", &settings, false)
             .await

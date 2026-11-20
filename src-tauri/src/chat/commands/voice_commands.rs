@@ -104,7 +104,9 @@ pub async fn chat_audio_voices(
     base_url: String,
 ) -> Result<Vec<(String, String)>, String> {
     if engine == "elevenlabs" {
-        return crate::chat::audio::elevenlabs_voices(base_url.trim().trim_end_matches('/')).await;
+        return crate::chat::audio::elevenlabs_voices(base_url.trim().trim_end_matches('/'))
+            .await
+            .map_err(String::from);
     }
     Ok(crate::chat::audio::known_voices(&engine))
 }
@@ -142,4 +144,5 @@ pub async fn chat_transcribe(
         live.unwrap_or(false),
     )
     .await
+    .map_err(String::from)
 }

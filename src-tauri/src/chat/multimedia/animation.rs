@@ -13,6 +13,7 @@
 //! The source is kept in the chat's workspace (`animations/<name>/`), so a later call can change
 //! it; the video goes to `videos/`, where the chat plays it.
 
+use crate::chat::error::ChatError;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -117,16 +118,22 @@ pub(in crate::chat::multimedia) fn slug(name: &str) -> String {
 
 /// Checks an HTML composition for what HyperFrames needs, so a mistake is told back to the model
 /// before minutes of rendering.
-pub(in crate::chat::multimedia) fn check_html(source: &str) -> Result<(), String> {
+pub(in crate::chat::multimedia) fn check_html(source: &str) -> Result<(), ChatError> {
     let lower = source.to_lowercase();
     if !lower.contains("data-composition-id") {
-        return Err("The root element needs data-composition-id=\"main\".".into());
+        return Err(ChatError::Invalid(
+            "The root element needs data-composition-id=\"main\".".into(),
+        ));
     }
     if !lower.contains("data-duration") {
-        return Err("The root element needs data-duration (seconds).".into());
+        return Err(ChatError::Invalid(
+            "The root element needs data-duration (seconds).".into(),
+        ));
     }
     if !source.contains("__timelines") {
-        return Err("Register the timeline: window.__timelines[\"main\"] = tl;".into());
+        return Err(ChatError::Invalid(
+            "Register the timeline: window.__timelines[\"main\"] = tl;".into(),
+        ));
     }
     Ok(())
 }
@@ -137,16 +144,16 @@ fn command(
     dir: &Path,
     out: &Path,
     format: &str,
-) -> Result<tokio::process::Command, String> {
+) -> Result<tokio::process::Command, ChatError> {
     match engine {
         "html" => {
-            let npx = locate("npx").ok_or("HyperFrames needs Node.js 22 or later (it brings npx): install it from nodejs.org, then ask again.")?;
+            let npx = locate("npx").ok_or_else(|| ChatError::Invalid("HyperFrames needs Node.js 22 or later (it brings npx): install it from nodejs.org, then ask again.".into()))?;
             let mut c = tokio::process::Command::new(npx);
             c.args(["--yes", HYPERFRAMES, "render", "."]).arg("-o").arg(out).args(["--format", format, "--quality", "looks", "--quiet"]);
             Ok(c)
         }
         "manim" => {
-            let bin = locate("manimgx").ok_or("ManimGX is not installed: run `uv tool install manimgx` (Python 3.13+), then ask again.")?;
+            let bin = locate("manimgx").ok_or_else(|| ChatError::Invalid("ManimGX is not installed: run `uv tool install manimgx` (Python 3.13+), then ask again.".into()))?;
             let mut c = tokio::process::Command::new(bin);
             c.args(["render", "scene.py", "Main"]);
             let _ = (out, format);
@@ -157,7 +164,7 @@ fn command(
     .map(|mut c| {
         c.current_dir(dir).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).kill_on_drop(true);
         c
-    })
+    }).map_err(ChatError::Invalid)
 }
 
 pub async fn make(config_dir: &Path, conversation_id: &str, args: &Value) -> Outcome {
@@ -170,7 +177,7 @@ pub async fn make(config_dir: &Path, conversation_id: &str, args: &Value) -> Out
     }
 }
 
-async fn run(config_dir: &Path, conversation_id: &str, args: &Value) -> Result<String, String> {
+async fn run(config_dir: &Path, conversation_id: &str, args: &Value) -> Result<String, ChatError> {
     let s = |k: &str| {
         args.get(k)
             .and_then(Value::as_str)
@@ -185,7 +192,9 @@ async fn run(config_dir: &Path, conversation_id: &str, args: &Value) -> Result<S
         .unwrap_or_default()
         .to_string();
     if source.trim().is_empty() {
-        return Err("Give the whole composition or scene as `source`.".into());
+        return Err(ChatError::Invalid(
+            "Give the whole composition or scene as `source`.".into(),
+        ));
     }
     let format = if s("format") == "gif" && engine == "html" {
         "gif"
@@ -193,13 +202,14 @@ async fn run(config_dir: &Path, conversation_id: &str, args: &Value) -> Result<S
         "mp4"
     };
     let name = slug(&s("name"));
-    let workspace = crate::chat::sandbox::workspace(config_dir, conversation_id)?;
+    let workspace =
+        crate::chat::sandbox::workspace(config_dir, conversation_id).map_err(ChatError::Invalid)?;
     let dir = workspace.join("animations").join(&name);
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(ChatError::internal)?;
     match engine.as_str() {
         "html" => {
             check_html(&source)?;
-            std::fs::write(dir.join("index.html"), &source).map_err(|e| e.to_string())?;
+            std::fs::write(dir.join("index.html"), &source).map_err(ChatError::internal)?;
             // A project file, so the folder also opens in HyperFrames' own tools.
             if !dir.join("hyperframes.json").exists() {
                 let _ = std::fs::write(
@@ -210,14 +220,20 @@ async fn run(config_dir: &Path, conversation_id: &str, args: &Value) -> Result<S
         }
         "manim" => {
             if !source.contains("class Main") {
-                return Err("Name the scene class Main (class Main(m.Scene)).".into());
+                return Err(ChatError::Invalid(
+                    "Name the scene class Main (class Main(m.Scene)).".into(),
+                ));
             }
-            std::fs::write(dir.join("scene.py"), &source).map_err(|e| e.to_string())?;
+            std::fs::write(dir.join("scene.py"), &source).map_err(ChatError::internal)?;
         }
-        other => return Err(format!("Unknown engine `{other}`: use html or manim.")),
+        other => {
+            return Err(ChatError::Invalid(format!(
+                "Unknown engine `{other}`: use html or manim."
+            )))
+        }
     }
     let videos = workspace.join("videos");
-    std::fs::create_dir_all(&videos).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&videos).map_err(ChatError::internal)?;
     let file = format!("{name}-{}.{format}", chrono::Local::now().format("%H%M%S"));
     let target = videos.join(&file);
     let started = std::time::Instant::now();
@@ -229,8 +245,9 @@ async fn run(config_dir: &Path, conversation_id: &str, args: &Value) -> Result<S
     .map_err(|_| {
         "The render took longer than 20 minutes and was stopped; make it shorter or simpler."
             .to_string()
-    })?
-    .map_err(|e| format!("The renderer could not start: {e}"))?;
+    })
+    .map_err(ChatError::Invalid)?
+    .map_err(|e| ChatError::Invalid(format!("The renderer could not start: {e}")))?;
     let log = format!(
         "{}\n{}",
         String::from_utf8_lossy(&output.stdout),
@@ -242,7 +259,7 @@ async fn run(config_dir: &Path, conversation_id: &str, args: &Value) -> Result<S
         if made.exists() {
             std::fs::rename(&made, &target)
                 .or_else(|_| std::fs::copy(&made, &target).map(|_| ()))
-                .map_err(|e| e.to_string())?;
+                .map_err(ChatError::internal)?;
         }
     }
     if !output.status.success() || !target.exists() {
@@ -251,9 +268,9 @@ async fn run(config_dir: &Path, conversation_id: &str, args: &Value) -> Result<S
             .filter(|l| !l.starts_with("@hf-") && !l.trim().is_empty())
             .collect();
         let tail = tail[tail.len().saturating_sub(15)..].join("\n");
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "The render failed. Fix the source and try again.\n{tail}"
-        ));
+        )));
     }
     Ok(json!({
         "file": format!("videos/{file}"),
@@ -276,10 +293,12 @@ mod tests {
         assert!(check_html("<div data-composition-id=\"main\" data-duration=\"5\"></div><script>window.__timelines['main']=tl</script>").is_ok());
         assert!(check_html("<div data-duration=\"5\"></div>")
             .unwrap_err()
+            .to_string()
             .contains("data-composition-id"));
         assert!(
             check_html("<div data-composition-id=\"main\" data-duration=\"5\"></div>")
                 .unwrap_err()
+                .to_string()
                 .contains("__timelines")
         );
     }

@@ -10,6 +10,7 @@
 //! and any API version but 2; then the built-in Whisper takes over (`audio::transcribe`).
 //! Nothing here logs or shows the token.
 
+use crate::chat::error::ChatError;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -79,18 +80,22 @@ pub(in crate::chat::multimedia) fn discovery_path() -> Option<PathBuf> {
 }
 
 /// Reads a discovery file; the reason it can't be used is never the token itself.
-pub(in crate::chat::multimedia) fn parse_discovery(bytes: &[u8]) -> Result<Endpoint, String> {
+pub(in crate::chat::multimedia) fn parse_discovery(bytes: &[u8]) -> Result<Endpoint, ChatError> {
     let Ok(d) = serde_json::from_slice::<Discovery>(bytes) else {
-        return Err("Hex's discovery file could not be read.".into());
+        return Err(ChatError::Invalid(
+            "Hex's discovery file could not be read.".into(),
+        ));
     };
     if d.api_version != "2" {
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "Hex's local API is version {}; Cortex speaks version 2. Update Hex or Cortex.",
             d.api_version
-        ));
+        )));
     }
     if d.port == 0 || d.token.is_empty() || d.token.contains(['\r', '\n']) {
-        return Err("Hex's discovery file has no usable port or token.".into());
+        return Err(ChatError::Invalid(
+            "Hex's discovery file has no usable port or token.".into(),
+        ));
     }
     Ok(Endpoint {
         port: d.port,
@@ -209,7 +214,7 @@ impl Client {
     /// Hex at the discovery file `path`, after checking it answers and speaks API 2.
     pub async fn connect_at(path: &Path) -> Result<Self, Failure> {
         let bytes = std::fs::read(path).map_err(|_| Failure::Unavailable(NOT_RUNNING.into()))?;
-        let endpoint = parse_discovery(&bytes).map_err(Failure::Unavailable)?;
+        let endpoint = parse_discovery(&bytes).map_err(|e| Failure::Unavailable(e.to_string()))?;
         let client = Self {
             endpoint,
             http: reqwest::Client::builder()
@@ -458,12 +463,13 @@ mod tests {
         assert!(
             parse_discovery(br#"{"port":1,"token":"t","apiVersion":"3"}"#)
                 .unwrap_err()
+                .to_string()
                 .contains("version 3")
         );
         assert!(parse_discovery(br#"{"port":0,"token":"t","apiVersion":"2"}"#).is_err());
         assert!(parse_discovery(br#"{"port":1,"token":"a\nb","apiVersion":"2"}"#).is_err());
         let err = parse_discovery(br#"{"port":"x","token":"secret-token"}"#).unwrap_err();
-        assert!(!err.contains("secret-token"));
+        assert!(!err.to_string().contains("secret-token"));
     }
 
     #[test]

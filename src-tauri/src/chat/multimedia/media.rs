@@ -4,6 +4,7 @@
 //! Each uses a provider the user already set up, with its key and base URL. The model is the
 //! one chosen in settings, or a sensible default for the first provider that offers one.
 
+use crate::chat::error::ChatError;
 use std::path::Path;
 
 use rig_core::audio_generation::AudioGenerationRequestBuilder;
@@ -141,7 +142,7 @@ pub(in crate::chat::multimedia) async fn sdwebui_image(
     height: u32,
     seed: Option<u64>,
     init_image: Option<&str>,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, ChatError> {
     use base64::Engine as _;
     let base = server.trim().trim_end_matches('/');
     let endpoint = if init_image.is_some() {
@@ -150,7 +151,8 @@ pub(in crate::chat::multimedia) async fn sdwebui_image(
         "txt2img"
     };
     let checkpoint = model.strip_prefix(SDWEBUI_PREFIX);
-    let client = crate::support::http::client(std::time::Duration::from_secs(600))?;
+    let client = crate::support::http::client(std::time::Duration::from_secs(600))
+        .map_err(ChatError::Invalid)?;
     let response = client
         .post(format!("{base}/sdapi/v1/{endpoint}"))
         .json(&sdwebui_body(
@@ -158,21 +160,26 @@ pub(in crate::chat::multimedia) async fn sdwebui_image(
         ))
         .send()
         .await
-        .map_err(|e| format!("The local image server did not answer at {base}: {e}"))?;
+        .map_err(|e| {
+            ChatError::Invalid(format!(
+                "The local image server did not answer at {base}: {e}"
+            ))
+        })?;
     if !response.status().is_success() {
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "The local image server answered {}.",
             response.status()
-        ));
+        )));
     }
-    let body: Value = response
-        .json()
-        .await
-        .map_err(|e| format!("The local image server sent something unexpected: {e}"))?;
+    let body: Value = response.json().await.map_err(|e| {
+        ChatError::Invalid(format!(
+            "The local image server sent something unexpected: {e}"
+        ))
+    })?;
     let b64 = body["images"]
         .get(0)
         .and_then(Value::as_str)
-        .ok_or("The local image server sent back no image.")?;
+        .ok_or_else(|| ChatError::Invalid("The local image server sent back no image.".into()))?;
     // Some servers prefix a data URL.
     let b64 = b64
         .split_once(",")
@@ -180,7 +187,7 @@ pub(in crate::chat::multimedia) async fn sdwebui_image(
         .map_or(b64, |(_, rest)| rest);
     base64::engine::general_purpose::STANDARD
         .decode(b64)
-        .map_err(|e| e.to_string())
+        .map_err(ChatError::internal)
 }
 
 fn image_server(config_dir: &Path) -> Option<String> {
@@ -232,13 +239,15 @@ fn client(
     vendor: &str,
     settings: &ProviderSettings,
     key: Option<String>,
-) -> Result<OpenAI, String> {
-    let dialect =
-        dialect(vendor).ok_or_else(|| format!("{vendor} has no image or speech endpoint here."))?;
+) -> Result<OpenAI, ChatError> {
+    let dialect = dialect(vendor)
+        .ok_or_else(|| format!("{vendor} has no image or speech endpoint here."))
+        .map_err(ChatError::Invalid)?;
     let key = key
         .filter(|k| !k.is_empty())
         .or_else(|| providers::env_key(vendor).and_then(|name| std::env::var(name).ok()))
-        .ok_or_else(|| format!("Add an API key for {vendor} in Settings → Providers."))?;
+        .ok_or_else(|| format!("Add an API key for {vendor} in Settings → Providers."))
+        .map_err(ChatError::Invalid)?;
     let mut config = OpenAIConfig::with_key(dialect, key);
     if let Some(base_url) = settings.base_url.as_ref().filter(|u| !u.trim().is_empty()) {
         config = config.with_base_url(providers::normalize_base_url(vendor, base_url));
@@ -249,16 +258,19 @@ fn client(
 pub(crate) async fn connect(
     config_dir: &Path,
     reference: &str,
-) -> Result<(OpenAI, String), String> {
+) -> Result<(OpenAI, String), ChatError> {
     let (vendor, model) = providers::split_reference(reference)
-        .ok_or_else(|| format!("`{reference}` is not vendor/model"))?;
+        .ok_or_else(|| format!("`{reference}` is not vendor/model"))
+        .map_err(ChatError::Invalid)?;
     let settings = providers::load(config_dir)
         .providers
         .get(vendor)
         .cloned()
         .unwrap_or_default();
     let key = if settings.has_key {
-        crate::chat::providers::api_key(vendor).await?
+        crate::chat::providers::api_key(vendor)
+            .await
+            .map_err(ChatError::Invalid)?
     } else {
         None
     };
@@ -342,7 +354,7 @@ pub(crate) fn reference_image(
     config_dir: &Path,
     conversation_id: &str,
     reference: &str,
-) -> Result<rig_core::completion::message::Image, String> {
+) -> Result<rig_core::completion::message::Image, ChatError> {
     use base64::Engine as _;
     use rig_core::completion::message::{
         DocumentSourceKind, Image, ImageMediaType, Message, UserContent,
@@ -365,18 +377,23 @@ pub(crate) fn reference_image(
                 }),
                 _ => None,
             })
-            .ok_or("No image was attached in this conversation.")?
+            .ok_or_else(|| {
+                ChatError::Invalid("No image was attached in this conversation.".into())
+            })?
     } else {
         // Only files inside this conversation's workspace.
-        let root = crate::chat::sandbox::workspace(config_dir, conversation_id)?;
+        let root = crate::chat::sandbox::workspace(config_dir, conversation_id)
+            .map_err(ChatError::Invalid)?;
         let canonical = root
             .join(reference)
             .canonicalize()
-            .map_err(|_| format!("There is no image at {reference}."))?;
-        if !canonical.starts_with(root.canonicalize().map_err(|e| e.to_string())?) {
-            return Err("The reference must be an image in this conversation's workspace.".into());
+            .map_err(|_| ChatError::Invalid(format!("There is no image at {reference}.")))?;
+        if !canonical.starts_with(root.canonicalize().map_err(ChatError::internal)?) {
+            return Err(ChatError::Invalid(
+                "The reference must be an image in this conversation's workspace.".into(),
+            ));
         }
-        let bytes = crate::chat::at_rest::read(&canonical).map_err(|e| e.to_string())?;
+        let bytes = crate::chat::at_rest::read(&canonical).map_err(ChatError::internal)?;
         let media = ImageMediaType::sniff(&bytes);
         (
             base64::engine::general_purpose::STANDARD.encode(bytes),
@@ -435,15 +452,18 @@ pub fn speakable(markdown: &str) -> String {
 pub(in crate::chat::multimedia) async fn speak(
     config_dir: &Path,
     text: &str,
-) -> Result<(Vec<u8>, String), String> {
-    let reference = voice_model(&providers::load(config_dir)).ok_or(
-        "Read aloud needs a provider with text-to-speech (OpenAI or xAI) in Settings → Providers.",
-    )?;
+) -> Result<(Vec<u8>, String), ChatError> {
+    let reference = voice_model(&providers::load(config_dir)).ok_or_else(|| {
+        ChatError::Invalid(
+            "Read aloud needs a provider with text-to-speech (OpenAI or xAI) in Settings → Providers."
+                .into(),
+        )
+    })?;
     let (vendor, _) = providers::split_reference(&reference).unwrap_or_default();
     let (client, model) = connect(config_dir, &reference).await?;
     let text = speakable(text);
     if text.is_empty() {
-        return Err("There is nothing to read.".into());
+        return Err(ChatError::Invalid("There is nothing to read.".into()));
     }
     let voice = if vendor == "xai" { "eve" } else { "alloy" };
     let request = AudioGenerationRequestBuilder::new(text, voice).build();
@@ -452,8 +472,9 @@ pub(in crate::chat::multimedia) async fn speak(
         client.audio_generation(model).call(request),
     )
     .await
-    .map_err(|_| "Reading aloud took too long.".to_string())?
-    .map_err(|e| e.to_string())?;
+    .map_err(|_| "Reading aloud took too long.".to_string())
+    .map_err(ChatError::Invalid)?
+    .map_err(ChatError::internal)?;
     let mime = match response.audio.as_slice() {
         [b'R', b'I', b'F', b'F', ..] => "audio/wav",
         [b'O', b'g', b'g', b'S', ..] => "audio/ogg",
@@ -467,9 +488,9 @@ pub(in crate::chat::multimedia) async fn transcribe(
     config_dir: &Path,
     audio: Vec<u8>,
     file_name: &str,
-) -> Result<String, String> {
+) -> Result<String, ChatError> {
     let reference = speech_model(&providers::load(config_dir))
-        .ok_or("Voice input needs a provider with speech-to-text (OpenAI or Groq) in Settings → Providers.")?;
+        .ok_or_else(|| ChatError::Invalid("Voice input needs a provider with speech-to-text (OpenAI or Groq) in Settings → Providers.".into()))?;
     let (client, model) = connect(config_dir, &reference).await?;
     let request = TranscriptionRequestBuilder::new(audio)
         .filename(Some(file_name.to_string()))
@@ -478,7 +499,7 @@ pub(in crate::chat::multimedia) async fn transcribe(
         .transcription(model)
         .call(request)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(ChatError::internal)?;
     Ok(response.text.trim().to_string())
 }
 
@@ -689,15 +710,15 @@ pub(in crate::chat::multimedia) async fn make_images(
     config_dir: &Path,
     workspace: &str,
     request: StudioRequest,
-) -> Result<(Vec<String>, Vec<String>), String> {
+) -> Result<(Vec<String>, Vec<String>), ChatError> {
     let prompt = request.prompt.trim().to_string();
     if prompt.is_empty() {
-        return Err("Describe the image to create.".into());
+        return Err(ChatError::Invalid("Describe the image to create.".into()));
     }
     let reference = match request.model.filter(|m| !m.trim().is_empty()) {
         Some(m) => m,
         None => image_model(&providers::load(config_dir))
-            .ok_or("No provider that makes images is set up.")?,
+            .ok_or_else(|| ChatError::Invalid("No provider that makes images is set up.".into()))?,
     };
     let (width, height) = studio_size(&request.shape);
     let image = match request
@@ -709,11 +730,16 @@ pub(in crate::chat::multimedia) async fn make_images(
         None => None,
     };
     let count = request.count.clamp(1, 4);
-    let dir = crate::chat::sandbox::workspace(config_dir, workspace)?.join("images");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let dir = crate::chat::sandbox::workspace(config_dir, workspace)
+        .map_err(ChatError::Invalid)?
+        .join("images");
+    std::fs::create_dir_all(&dir).map_err(ChatError::internal)?;
     if reference.starts_with(SDWEBUI_PREFIX) {
-        let server = image_server(config_dir)
-            .ok_or("Set the local image server's address in Settings → Providers.")?;
+        let server = image_server(config_dir).ok_or_else(|| {
+            ChatError::Invalid(
+                "Set the local image server's address in Settings → Providers.".into(),
+            )
+        })?;
         let init = image.as_ref().and_then(image_b64);
         let (w, h) = (width * 2 / 3, height * 2 / 3);
         let mut files = Vec::new();
@@ -739,17 +765,19 @@ pub(in crate::chat::multimedia) async fn make_images(
                         extension(&bytes)
                     );
                     crate::chat::at_rest::write(dir.join(&name), &bytes)
-                        .map_err(|e| e.to_string())?;
+                        .map_err(ChatError::internal)?;
                     files.push(format!("images/{name}"));
                 }
-                Err(e) => errors.push(e),
+                Err(e) => errors.push(e.to_string()),
             }
         }
         if files.is_empty() {
-            return Err(errors
-                .first()
-                .cloned()
-                .unwrap_or_else(|| "No image was made.".into()));
+            return Err(ChatError::Invalid(
+                errors
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| "No image was made.".into()),
+            ));
         }
         return Ok((files, errors));
     }
@@ -792,7 +820,7 @@ pub(in crate::chat::multimedia) async fn make_images(
         match result {
             Ok(Ok(r)) if !r.image.is_empty() => {
                 let name = format!("{}-{}.{}", chrono::Local::now().format("%Y%m%d-%H%M%S-%3f"), i + 1, extension(&r.image));
-                crate::chat::at_rest::write(dir.join(&name), &r.image).map_err(|e| e.to_string())?;
+                crate::chat::at_rest::write(dir.join(&name), &r.image).map_err(ChatError::internal)?;
                 files.push(format!("images/{name}"));
             }
             Ok(Ok(_)) => errors.push("The provider sent back no image.".into()),
@@ -802,10 +830,12 @@ pub(in crate::chat::multimedia) async fn make_images(
         }
     }
     if files.is_empty() {
-        return Err(errors
-            .first()
-            .cloned()
-            .unwrap_or_else(|| "No image was made.".into()));
+        return Err(ChatError::Invalid(
+            errors
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "No image was made.".into()),
+        ));
     }
     Ok((files, errors))
 }

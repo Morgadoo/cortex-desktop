@@ -407,7 +407,7 @@ pub async fn chat_read_video(
     crate::chat::at_rest::write(&path, bytes).map_err(|e| e.to_string())?;
     let digest = crate::chat::video::digest(&config_dir(&app)?, &path).await;
     let _ = std::fs::remove_file(&path);
-    digest
+    digest.map_err(String::from)
 }
 
 /// A web page's title, description and preview image, for the hover card on a citation.

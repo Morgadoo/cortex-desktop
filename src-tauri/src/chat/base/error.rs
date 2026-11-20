@@ -18,9 +18,18 @@ pub enum ChatError {
     /// Something the request asks for that cannot be done, said for the user.
     #[error("{0}")]
     Invalid(String),
+    /// A failure with no kind of its own (a library's error, a task that panicked), kept as its
+    /// message.
+    #[error("{0}")]
+    Internal(String),
 }
 
 impl ChatError {
+    /// An unclassified failure, as its message: `.map_err(ChatError::internal)`.
+    pub fn internal(error: impl std::fmt::Display) -> Self {
+        Self::Internal(error.to_string())
+    }
+
     /// A failed request for `what` (a file, a page, a pack).
     pub fn network(what: impl Into<String>, reason: impl std::fmt::Display) -> Self {
         Self::Network {

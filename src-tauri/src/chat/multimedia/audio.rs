@@ -15,6 +15,7 @@
 //!
 //! Keys live in the OS keychain (`audio-stt`, `audio-tts`); the rest in `chat/audio.json`.
 
+use crate::chat::error::ChatError;
 use crate::support::settings_file::SettingsFile;
 use std::path::Path;
 
@@ -101,8 +102,11 @@ pub fn load(config_dir: &Path) -> AudioSettings {
     AUDIO_FILE.load(config_dir)
 }
 
-pub fn save(config_dir: &Path, settings: &AudioSettings) -> Result<(), String> {
-    AUDIO_FILE.save(config_dir, settings).map_err(String::from)
+pub fn save(config_dir: &Path, settings: &AudioSettings) -> Result<(), ChatError> {
+    AUDIO_FILE
+        .save(config_dir, settings)
+        .map_err(String::from)
+        .map_err(ChatError::Invalid)
 }
 
 /// Whether live transcripts may use this engine: one on this computer, asked again about once a
@@ -173,8 +177,11 @@ pub fn known_voices(engine: &str) -> Vec<(String, String)> {
         .collect()
 }
 
-async fn secret(name: &str) -> Result<Option<String>, String> {
-    crate::chat::secrets::local()?.load(name).await
+async fn secret(name: &str) -> Result<Option<String>, ChatError> {
+    crate::chat::secrets::local()?
+        .load(name)
+        .await
+        .map_err(ChatError::Invalid)
 }
 
 fn mime_of(audio: &[u8]) -> &'static str {
@@ -196,10 +203,14 @@ pub async fn speak(
     config_dir: &Path,
     text: &str,
     settings: &TtsSettings,
-) -> Result<Option<(Vec<u8>, String)>, String> {
+) -> Result<Option<(Vec<u8>, String)>, ChatError> {
     let speed = (settings.speed - 1.0).abs() > f32::EPSILON;
     let audio = match settings.engine.as_str() {
-        "off" => return Err("Read aloud is off in Settings → Audio.".into()),
+        "off" => {
+            return Err(ChatError::Invalid(
+                "Read aloud is off in Settings → Audio.".into(),
+            ))
+        }
         "browser" => return Ok(None),
         "provider" => return crate::chat::media::speak(config_dir, text).await.map(Some),
         "openai" | "xai" => {
@@ -220,7 +231,9 @@ pub async fn speak(
                     settings.base_url.clone()
                 });
             } else if !xai {
-                return Err("Set the text-to-speech server's base URL in Settings → Audio.".into());
+                return Err(ChatError::Invalid(
+                    "Set the text-to-speech server's base URL in Settings → Audio.".into(),
+                ));
             }
             let model = if settings.model.is_empty() {
                 if xai {
@@ -249,15 +262,17 @@ pub async fn speak(
                 .audio_generation(model)
                 .call(request.build())
                 .await
-                .map_err(|e| e.to_string())?
+                .map_err(ChatError::internal)?
                 .audio
         }
         "elevenlabs" => {
-            let key = secret(TTS_SECRET)
-                .await?
-                .ok_or("Add your ElevenLabs API key in Settings → Audio.")?;
+            let key = secret(TTS_SECRET).await?.ok_or_else(|| {
+                ChatError::Invalid("Add your ElevenLabs API key in Settings → Audio.".into())
+            })?;
             if settings.voice.is_empty() {
-                return Err("Choose an ElevenLabs voice in Settings → Audio.".into());
+                return Err(ChatError::Invalid(
+                    "Choose an ElevenLabs voice in Settings → Audio.".into(),
+                ));
             }
             let base = if settings.base_url.is_empty() {
                 ELEVENLABS
@@ -282,9 +297,9 @@ pub async fn speak(
                 .json(&body)
                 .send()
                 .await
-                .map_err(|e| e.to_string())?;
+                .map_err(ChatError::internal)?;
             if !response.status().is_success() {
-                return Err(format!(
+                return Err(ChatError::Invalid(format!(
                     "ElevenLabs: {}",
                     response
                         .text()
@@ -293,14 +308,24 @@ pub async fn speak(
                         .chars()
                         .take(300)
                         .collect::<String>()
-                ));
+                )));
             }
-            response.bytes().await.map_err(|e| e.to_string())?.to_vec()
+            response
+                .bytes()
+                .await
+                .map_err(ChatError::internal)?
+                .to_vec()
         }
-        other => return Err(format!("Unknown text-to-speech engine `{other}`.")),
+        other => {
+            return Err(ChatError::Invalid(format!(
+                "Unknown text-to-speech engine `{other}`."
+            )))
+        }
     };
     if audio.is_empty() {
-        return Err("The voice service sent back no audio.".into());
+        return Err(ChatError::Invalid(
+            "The voice service sent back no audio.".into(),
+        ));
     }
     let mime = mime_of(&audio).to_string();
     Ok(Some((audio, mime)))
@@ -314,9 +339,11 @@ pub async fn transcribe(
     file_name: &str,
     settings: &SttSettings,
     live: bool,
-) -> Result<String, String> {
+) -> Result<String, ChatError> {
     match settings.engine.as_str() {
-        "off" => Err("Voice input is off in Settings → Audio.".into()),
+        "off" => Err(ChatError::Invalid(
+            "Voice input is off in Settings → Audio.".into(),
+        )),
         "provider" => crate::chat::media::transcribe(config_dir, audio, file_name).await,
         "builtin" => builtin(audio, &settings.model, &settings.language, live).await,
         "hex" => {
@@ -326,7 +353,8 @@ pub async fn transcribe(
                     crate::chat::local_models::audio_samples(&audio)
                 })
                 .await
-                .map_err(|e| e.to_string())??
+                .map_err(ChatError::internal)?
+                .map_err(ChatError::Invalid)?
             };
             match with_hex(&samples, settings).await {
                 Ok(text) => Ok(text),
@@ -334,21 +362,23 @@ pub async fn transcribe(
                 Err(crate::chat::hex::Failure::Unavailable(why)) => {
                     log::info!("speech-to-text: {why} Using the built-in Whisper instead.");
                     builtin(audio, "", &settings.language, live).await.map_err(|e| {
-                        if e == NO_WHISPER {
-                            format!(
+                        if e.to_string() == NO_WHISPER {
+                            ChatError::Invalid(format!(
                                 "{why} Start Hex, or download a Whisper model (Settings → Providers → Built-in models) for when it isn't running."
-                            )
+                            ))
                         } else {
                             e
                         }
                     })
                 }
-                Err(crate::chat::hex::Failure::Refused(why)) => Err(why),
+                Err(crate::chat::hex::Failure::Refused(why)) => Err(ChatError::Invalid(why)),
             }
         }
         "openai" => {
             if settings.base_url.is_empty() {
-                return Err("Set the speech-to-text server's base URL in Settings → Audio.".into());
+                return Err(ChatError::Invalid(
+                    "Set the speech-to-text server's base URL in Settings → Audio.".into(),
+                ));
             }
             let key = secret(STT_SECRET).await?.unwrap_or_default();
             let config = OpenAIConfig::with_key(&dialects::OPENAI, key)
@@ -368,13 +398,13 @@ pub async fn transcribe(
                 .transcription(model)
                 .call(request.build())
                 .await
-                .map_err(|e| e.to_string())?;
+                .map_err(ChatError::internal)?;
             Ok(response.text.trim().to_string())
         }
         "elevenlabs" => {
-            let key = secret(STT_SECRET)
-                .await?
-                .ok_or("Add your ElevenLabs API key in Settings → Audio.")?;
+            let key = secret(STT_SECRET).await?.ok_or_else(|| {
+                ChatError::Invalid("Add your ElevenLabs API key in Settings → Audio.".into())
+            })?;
             let base = if settings.base_url.is_empty() {
                 ELEVENLABS
             } else {
@@ -400,14 +430,14 @@ pub async fn transcribe(
                 .multipart(form)
                 .send()
                 .await
-                .map_err(|e| e.to_string())?;
+                .map_err(ChatError::internal)?;
             let status = response.status();
-            let body: Value = response.json().await.map_err(|e| e.to_string())?;
+            let body: Value = response.json().await.map_err(ChatError::internal)?;
             if !status.is_success() {
-                return Err(format!(
+                return Err(ChatError::Invalid(format!(
                     "ElevenLabs: {}",
                     crate::support::text::clip(body.to_string(), 300)
-                ));
+                )));
             }
             Ok(body
                 .get("text")
@@ -416,7 +446,9 @@ pub async fn transcribe(
                 .trim()
                 .to_string())
         }
-        other => Err(format!("Unknown speech-to-text engine `{other}`.")),
+        other => Err(ChatError::Invalid(format!(
+            "Unknown speech-to-text engine `{other}`."
+        ))),
     }
 }
 
@@ -428,8 +460,8 @@ async fn builtin(
     chosen: &str,
     language: &str,
     live: bool,
-) -> Result<String, String> {
-    let root = crate::chat::local_models::root()?;
+) -> Result<String, ChatError> {
+    let root = crate::chat::local_models::root().map_err(ChatError::Invalid)?;
     let speech = |id: &str| {
         crate::chat::local_models::entry(id)
             .is_some_and(|e| e.kind == crate::chat::local_models::Kind::Speech)
@@ -443,14 +475,15 @@ async fn builtin(
                 .find(|m| m.installed && m.kind == crate::chat::local_models::Kind::Speech)
                 .map(|m| m.id)
         })
-        .ok_or(NO_WHISPER)?;
+        .ok_or_else(|| ChatError::Invalid(NO_WHISPER.into()))?;
     let language = language.to_string();
     tokio::task::spawn_blocking(move || {
         let samples = crate::chat::local_models::audio_samples(&audio)?;
         crate::chat::local_models::transcribe(&root, &id, &samples, &language, live)
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(ChatError::internal)?
+    .map_err(ChatError::Invalid)
 }
 
 /// Hex, with the model chosen in Settings when it is ready there, else its best ready one.
@@ -469,10 +502,10 @@ async fn with_hex(
 }
 
 /// ElevenLabs voices on the user's account, as (id, name).
-pub async fn elevenlabs_voices(base_url: &str) -> Result<Vec<(String, String)>, String> {
+pub async fn elevenlabs_voices(base_url: &str) -> Result<Vec<(String, String)>, ChatError> {
     let key = secret(TTS_SECRET)
         .await?
-        .ok_or("Add your ElevenLabs API key first.")?;
+        .ok_or_else(|| ChatError::Invalid("Add your ElevenLabs API key first.".into()))?;
     let base = if base_url.is_empty() {
         ELEVENLABS
     } else {
@@ -483,10 +516,10 @@ pub async fn elevenlabs_voices(base_url: &str) -> Result<Vec<(String, String)>, 
         .header("xi-api-key", key)
         .send()
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(ChatError::internal)?
         .json()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(ChatError::internal)?;
     Ok(body
         .get("voices")
         .and_then(Value::as_array)

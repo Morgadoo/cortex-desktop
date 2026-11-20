@@ -7,6 +7,7 @@
 //! an optional `image: {url}` returns `{request_id}`; `GET {base}/videos/{request_id}` returns
 //! `{status, video: {url}}`, the status ending as `done`, `failed` or `expired`.
 
+use crate::chat::error::ChatError;
 use std::path::Path;
 use std::time::Duration;
 
@@ -98,7 +99,7 @@ pub(in crate::chat::multimedia) fn start_body(
 
 /// What a poll says: the clip's address when done, an error when it ended without one, or
 /// `None` while it is still being made.
-pub(in crate::chat::multimedia) fn poll_state(body: &Value) -> Option<Result<String, String>> {
+pub(in crate::chat::multimedia) fn poll_state(body: &Value) -> Option<Result<String, ChatError>> {
     let status = body.get("status").and_then(Value::as_str).unwrap_or("");
     let url = body
         .pointer("/video/url")
@@ -106,15 +107,20 @@ pub(in crate::chat::multimedia) fn poll_state(body: &Value) -> Option<Result<Str
         .filter(|u| !u.is_empty());
     match (status, url) {
         (_, Some(url)) if status == "done" || status.is_empty() => Some(Ok(url.to_string())),
-        ("done", None) => Some(Err("The provider finished but sent no video.".into())),
-        ("failed", _) => Some(Err(body
-            .pointer("/error/message")
-            .or_else(|| body.get("error"))
-            .and_then(Value::as_str)
-            .map_or("The video could not be made.".into(), |e| {
-                format!("The video could not be made: {e}")
-            }))),
-        ("expired", _) => Some(Err("The video request expired before it was made.".into())),
+        ("done", None) => Some(Err(ChatError::Invalid(
+            "The provider finished but sent no video.".into(),
+        ))),
+        ("failed", _) => Some(Err(ChatError::Invalid(
+            body.pointer("/error/message")
+                .or_else(|| body.get("error"))
+                .and_then(Value::as_str)
+                .map_or("The video could not be made.".into(), |e| {
+                    format!("The video could not be made: {e}")
+                }),
+        ))),
+        ("expired", _) => Some(Err(ChatError::Invalid(
+            "The video request expired before it was made.".into(),
+        ))),
         _ => None,
     }
 }
@@ -135,9 +141,11 @@ fn base_url(file: &ProvidersFile, vendor: &str) -> String {
     }
 }
 
-async fn key(file: &ProvidersFile, vendor: &str) -> Result<String, String> {
+async fn key(file: &ProvidersFile, vendor: &str) -> Result<String, ChatError> {
     let saved = if file.providers.get(vendor).is_some_and(|s| s.has_key) {
-        crate::chat::providers::api_key(vendor).await?
+        crate::chat::providers::api_key(vendor)
+            .await
+            .map_err(ChatError::Invalid)?
     } else {
         None
     };
@@ -145,6 +153,7 @@ async fn key(file: &ProvidersFile, vendor: &str) -> Result<String, String> {
         .filter(|k| !k.is_empty())
         .or_else(|| providers::env_key(vendor).and_then(|name| std::env::var(name).ok()))
         .ok_or_else(|| format!("Add an API key for {vendor} in Settings → Providers."))
+        .map_err(ChatError::Invalid)
 }
 
 /// Starts a clip at `base`, waits for it and downloads it.
@@ -153,15 +162,16 @@ pub(in crate::chat::multimedia) async fn make_at(
     key: &str,
     body: &Value,
     poll_every: Duration,
-) -> Result<Vec<u8>, String> {
-    let client = crate::support::http::client(Duration::from_secs(120))?;
+) -> Result<Vec<u8>, ChatError> {
+    let client =
+        crate::support::http::client(Duration::from_secs(120)).map_err(ChatError::Invalid)?;
     let started = client
         .post(format!("{base}/videos/generations"))
         .bearer_auth(key)
         .json(body)
         .send()
         .await
-        .map_err(|e| format!("The video service did not answer: {e}"))?;
+        .map_err(|e| ChatError::Invalid(format!("The video service did not answer: {e}")))?;
     let status = started.status();
     let answer: Value = started.json().await.unwrap_or(Value::Null);
     if !status.is_success() {
@@ -170,9 +180,11 @@ pub(in crate::chat::multimedia) async fn make_at(
                 .map(str::to_string)
                 .or_else(|| e.get("message").and_then(Value::as_str).map(str::to_string))
         });
-        return Err(cortex_kernel::context::short_error(&format!(
-            "The video service answered {status}{}",
-            why.map(|w| format!(": {w}")).unwrap_or_default()
+        return Err(ChatError::Invalid(cortex_kernel::context::short_error(
+            &format!(
+                "The video service answered {status}{}",
+                why.map(|w| format!(": {w}")).unwrap_or_default()
+            ),
         )));
     }
     // Some services answer at once with the clip.
@@ -183,13 +195,15 @@ pub(in crate::chat::multimedia) async fn make_at(
                 .get("request_id")
                 .or_else(|| answer.get("id"))
                 .and_then(Value::as_str)
-                .ok_or("The video service sent no request id.")?
+                .ok_or_else(|| ChatError::Invalid("The video service sent no request id.".into()))?
                 .to_string();
             let deadline = tokio::time::Instant::now() + WAIT;
             loop {
                 tokio::time::sleep(poll_every).await;
                 if tokio::time::Instant::now() > deadline {
-                    return Err("The video took too long; try a shorter clip.".into());
+                    return Err(ChatError::Invalid(
+                        "The video took too long; try a shorter clip.".into(),
+                    ));
                 }
                 let r = client
                     .get(format!("{base}/videos/{id}"))
@@ -212,20 +226,20 @@ pub(in crate::chat::multimedia) async fn make_at(
         use base64::Engine as _;
         base64::engine::general_purpose::STANDARD
             .decode(b64)
-            .map_err(|e| e.to_string())?
+            .map_err(ChatError::internal)?
     } else {
         client
             .get(&url)
             .send()
             .await
-            .map_err(|e| format!("The video could not be downloaded: {e}"))?
+            .map_err(|e| ChatError::Invalid(format!("The video could not be downloaded: {e}")))?
             .bytes()
             .await
-            .map_err(|e| e.to_string())?
+            .map_err(ChatError::internal)?
             .to_vec()
     };
     if bytes.len() < 64 {
-        return Err("The video file was empty.".into());
+        return Err(ChatError::Invalid("The video file was empty.".into()));
     }
     Ok(bytes)
 }
@@ -249,7 +263,7 @@ pub async fn generate(config_dir: &Path, conversation_id: &str, args: &Value) ->
     }
 }
 
-async fn run(config_dir: &Path, conversation_id: &str, args: &Value) -> Result<String, String> {
+async fn run(config_dir: &Path, conversation_id: &str, args: &Value) -> Result<String, ChatError> {
     let s = |k: &str| {
         args.get(k)
             .and_then(Value::as_str)
@@ -257,19 +271,22 @@ async fn run(config_dir: &Path, conversation_id: &str, args: &Value) -> Result<S
             .filter(|v| !v.is_empty())
             .map(str::to_string)
     };
-    let prompt = s("prompt").ok_or("Describe the video to create.")?;
+    let prompt =
+        s("prompt").ok_or_else(|| ChatError::Invalid("Describe the video to create.".into()))?;
     let seconds = args.get("seconds").and_then(Value::as_u64).unwrap_or(6);
     let shape = s("shape").unwrap_or_else(|| "landscape".into());
     let file = providers::load(config_dir);
-    let reference =
-        video_model(&file).ok_or("No provider that makes videos is set up (xAI makes them).")?;
-    let (vendor, model) =
-        providers::split_reference(&reference).ok_or("The video model is not vendor/model.")?;
+    let reference = video_model(&file).ok_or_else(|| {
+        ChatError::Invalid("No provider that makes videos is set up (xAI makes them).".into())
+    })?;
+    let (vendor, model) = providers::split_reference(&reference)
+        .ok_or_else(|| ChatError::Invalid("The video model is not vendor/model.".into()))?;
     let image_url = match s("reference") {
         Some(r) => {
             let image = crate::chat::media::reference_image(config_dir, conversation_id, &r)?;
-            let data = crate::chat::media::image_b64(&image)
-                .ok_or("The reference image could not be read.")?;
+            let data = crate::chat::media::image_b64(&image).ok_or_else(|| {
+                ChatError::Invalid("The reference image could not be read.".into())
+            })?;
             let mime = image
                 .media_type
                 .as_ref()
@@ -286,14 +303,16 @@ async fn run(config_dir: &Path, conversation_id: &str, args: &Value) -> Result<S
         Duration::from_secs(5),
     )
     .await?;
-    let dir = crate::chat::sandbox::workspace(config_dir, conversation_id)?.join("videos");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let dir = crate::chat::sandbox::workspace(config_dir, conversation_id)
+        .map_err(ChatError::Invalid)?
+        .join("videos");
+    std::fs::create_dir_all(&dir).map_err(ChatError::internal)?;
     let name = format!(
         "{}.{}",
         chrono::Local::now().format("%Y%m%d-%H%M%S"),
         extension(&bytes)
     );
-    crate::chat::at_rest::write(dir.join(&name), &bytes).map_err(|e| e.to_string())?;
+    crate::chat::at_rest::write(dir.join(&name), &bytes).map_err(ChatError::internal)?;
     Ok(json!({ "file": format!("videos/{name}"), "model": reference, "seconds": seconds.clamp(1, 15), "shape": shape }).to_string())
 }
 
@@ -314,15 +333,18 @@ mod tests {
         assert_eq!(b["aspect_ratio"], "9:16");
         assert_eq!(b["image"]["url"], "data:image/png;base64,AA");
         assert!(start_body("m", "p", 6, "x", None).get("image").is_none());
-        assert_eq!(poll_state(&json!({"status": "pending"})), None);
+        assert!(poll_state(&json!({"status": "pending"})).is_none());
         assert_eq!(
-            poll_state(&json!({"status": "done", "video": {"url": "https://v/1.mp4"}})),
-            Some(Ok("https://v/1.mp4".into()))
+            poll_state(&json!({"status": "done", "video": {"url": "https://v/1.mp4"}}))
+                .unwrap()
+                .unwrap(),
+            "https://v/1.mp4"
         );
         assert!(poll_state(&json!({"status": "expired"})).unwrap().is_err());
         assert!(poll_state(&json!({"status": "failed", "error": "nsfw"}))
             .unwrap()
             .unwrap_err()
+            .to_string()
             .contains("nsfw"));
     }
 
