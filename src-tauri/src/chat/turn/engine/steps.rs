@@ -306,24 +306,12 @@ impl Steps for TurnSteps<'_> {
             });
         }
 
-        // Calls that wait on the user run one at a time; everything else runs at once.
-        let waits_on_user = |call: &ToolCall| {
-            let name = call.function.name.as_str();
-            name == ASK_USER
-                || (agent.as_ref().is_some_and(|a| agents::asks_first(a, name))
-                    && !host.chat_state().session_allowed(id, name))
-                || offered.iter().find(|t| t.name == name).is_some_and(|tool| {
-                    tool.connector_id.is_some()
-                        && tools::needs_approval(
-                            tool,
-                            &Value::Object(call.function.arguments.clone()),
-                            agents::mode_for(agent.as_ref(), name, request.approval),
-                        )
-                })
-        };
         // Decided once: an approval given during the step ("Always allow") must not move a call
         // out of the sequential queue after it was kept out of the concurrent batch.
-        let sequential: Vec<bool> = calls.iter().map(waits_on_user).collect();
+        let sequential: Vec<bool> = calls
+            .iter()
+            .map(|call| waits_on_user(call, host, id, agent.as_ref(), offered, request))
+            .collect();
         let mut outcomes: Vec<Option<tools::Outcome>> = (0..calls.len()).map(|_| None).collect();
         let runner = Runner {
             host,
@@ -383,56 +371,8 @@ impl Steps for TurnSteps<'_> {
                 output: outcome.text.clone(),
                 is_error: outcome.is_error,
             });
-            if call.function.name.as_str() == deferred::FIND_TOOLS && !outcome.is_error {
-                // What it found is loaded for the next step and the rest of the conversation.
-                if let Ok(found) = serde_json::from_str::<Value>(&outcome.text) {
-                    for name in found["matches"]
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .filter_map(|m| m["name"].as_str())
-                    {
-                        if !conversation.loaded_tools.iter().any(|t| t == name) {
-                            conversation.loaded_tools.push(name.to_string());
-                        }
-                    }
-                }
-            }
-            if call.function.name.as_str() == handlers::UNLOAD_TOOLS && !outcome.is_error {
-                // Unloaded tools leave the next request; find_tools brings them back.
-                if let Ok(gone) = serde_json::from_str::<Value>(&outcome.text) {
-                    let gone: Vec<&str> = gone["unloaded"]
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .filter_map(Value::as_str)
-                        .collect();
-                    conversation
-                        .loaded_tools
-                        .retain(|t| !gone.contains(&t.as_str()));
-                }
-            }
-            // A long output is kept whole in a file; the conversation keeps its start and end,
-            // which is what the model reads, with how to read the rest.
-            let mut text = outcome.text;
-            if text.chars().count() > context::MAX_RESULT_CHARS {
-                match save_tool_output(config_dir, id, &call.id.to_string(), &text) {
-                    Ok(()) => text = context::head_and_tail(&text, &call.id.to_string()),
-                    Err(e) => warn!("could not keep a long tool output: {e}"),
-                }
-            }
-            let mut content = vec![ToolResultContent::text(text)];
-            // Computer use: the screenshot goes with the result; older ones leave the history.
-            if call.function.name.as_str() == crate::chat::computer::TOOL {
-                if let Some(data) = crate::chat::computer::take_image(id) {
-                    drop_old_screenshots(&mut conversation.messages);
-                    content.push(ToolResultContent::image_base64(
-                        data,
-                        Some(rig_core::completion::message::ImageMediaType::JPEG),
-                        None,
-                    ));
-                }
-            }
+            track_loaded_tools(conversation, call, &outcome);
+            let content = result_content(config_dir, id, conversation, call, outcome.text);
             let mut result = call.result(content);
             result.is_error = outcome.is_error;
             results.push(result);
@@ -447,6 +387,100 @@ impl Steps for TurnSteps<'_> {
     fn has_new_guidance(&self) -> bool {
         self.host.chat_state().has_steering(self.id)
     }
+}
+
+/// Calls that wait on the user run one at a time, after the rest have run at once: questions,
+/// tools the agent asks about first, and connector calls that need approval.
+fn waits_on_user(
+    call: &ToolCall,
+    host: &Arc<dyn Host>,
+    id: &str,
+    agent: Option<&agents::Agent>,
+    offered: &[ChatTool],
+    request: &TurnRequest,
+) -> bool {
+    let name = call.function.name.as_str();
+    name == ASK_USER
+        || (agent.is_some_and(|a| agents::asks_first(a, name))
+            && !host.chat_state().session_allowed(id, name))
+        || offered.iter().find(|t| t.name == name).is_some_and(|tool| {
+            tool.connector_id.is_some()
+                && tools::needs_approval(
+                    tool,
+                    &Value::Object(call.function.arguments.clone()),
+                    agents::mode_for(agent, name, request.approval),
+                )
+        })
+}
+
+/// What `find_tools` found joins the conversation's loaded tools; what `unload_tools` names
+/// leaves them.
+fn track_loaded_tools(
+    conversation: &mut store::Conversation,
+    call: &ToolCall,
+    outcome: &tools::Outcome,
+) {
+    if call.function.name.as_str() == deferred::FIND_TOOLS && !outcome.is_error {
+        // What it found is loaded for the next step and the rest of the conversation.
+        if let Ok(found) = serde_json::from_str::<Value>(&outcome.text) {
+            for name in found["matches"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|m| m["name"].as_str())
+            {
+                if !conversation.loaded_tools.iter().any(|t| t == name) {
+                    conversation.loaded_tools.push(name.to_string());
+                }
+            }
+        }
+    }
+    if call.function.name.as_str() == handlers::UNLOAD_TOOLS && !outcome.is_error {
+        // Unloaded tools leave the next request; find_tools brings them back.
+        if let Ok(gone) = serde_json::from_str::<Value>(&outcome.text) {
+            let gone: Vec<&str> = gone["unloaded"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .collect();
+            conversation
+                .loaded_tools
+                .retain(|t| !gone.contains(&t.as_str()));
+        }
+    }
+}
+
+/// A tool result's content: its text, cut to its start and end when long (the whole kept in a
+/// file), and for computer use, the screenshot taken with it.
+fn result_content(
+    config_dir: &std::path::Path,
+    id: &str,
+    conversation: &mut store::Conversation,
+    call: &ToolCall,
+    mut text: String,
+) -> Vec<ToolResultContent> {
+    // A long output is kept whole in a file; the conversation keeps its start and end,
+    // which is what the model reads, with how to read the rest.
+    if text.chars().count() > context::MAX_RESULT_CHARS {
+        match save_tool_output(config_dir, id, &call.id.to_string(), &text) {
+            Ok(()) => text = context::head_and_tail(&text, &call.id.to_string()),
+            Err(e) => warn!("could not keep a long tool output: {e}"),
+        }
+    }
+    let mut content = vec![ToolResultContent::text(text)];
+    // Computer use: the screenshot goes with the result; older ones leave the history.
+    if call.function.name.as_str() == crate::chat::computer::TOOL {
+        if let Some(data) = crate::chat::computer::take_image(id) {
+            drop_old_screenshots(&mut conversation.messages);
+            content.push(ToolResultContent::image_base64(
+                data,
+                Some(rig_core::completion::message::ImageMediaType::JPEG),
+                None,
+            ));
+        }
+    }
+    content
 }
 
 /// Restores placeholders in streamed text. A placeholder can arrive split across chunks, so an
