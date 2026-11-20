@@ -3,6 +3,7 @@ import { tauriInvoke } from '../../shared/tauri';
 import { clear, confirmDialog, h, icon, modal, popover, promptText, toast, clockHour12 } from './dom';
 import { characterCount } from './format';
 import { modalHeader } from './ui';
+import { choice, json } from './prefs';
 
 interface Doc {
   id: string;
@@ -79,32 +80,23 @@ const FAV_KEY = 'cortex.libraryFavourites';
 const SORT_KEY = 'cortex.librarySort';
 type DocSort = 'favourites' | 'name' | 'newest' | 'largest';
 
+const favouritesPref = json<string[]>(FAV_KEY, () => []);
+const docSortPref = choice<DocSort>(SORT_KEY, ['favourites', 'name', 'newest', 'largest'], 'favourites');
+
 function favourites(): Set<string> {
-  try {
-    return new Set(JSON.parse(localStorage.getItem(FAV_KEY) ?? '[]') as string[]);
-  } catch {
-    return new Set();
-  }
+  const saved = favouritesPref.get();
+  return new Set(Array.isArray(saved) ? saved : []);
 }
 
 function toggleFavourite(id: string) {
   const all = favourites();
   if (all.has(id)) all.delete(id);
   else all.add(id);
-  try {
-    localStorage.setItem(FAV_KEY, JSON.stringify([...all]));
-  } catch {
-    /* this session only */
-  }
+  favouritesPref.set([...all]);
 }
 
 function docSort(): DocSort {
-  try {
-    const v = localStorage.getItem(SORT_KEY);
-    return v === 'name' || v === 'newest' || v === 'largest' ? v : 'favourites';
-  } catch {
-    return 'favourites';
-  }
+  return docSortPref.get();
 }
 
 export function sortDocs<T extends { id: string; name: string; chars: number; addedAt: string }>(docs: T[], how: DocSort, favs: Set<string>, filter: string): T[] {
@@ -334,11 +326,7 @@ export class LibrariesPage {
               ...([['favourites', 'Favourites first'], ['newest', 'Newest'], ['name', 'Name'], ['largest', 'Largest']] as const).map(([v, label]) => h('option', { value: v, selected: docSort() === v }, label))
             );
             sort.addEventListener('change', () => {
-              try {
-                localStorage.setItem(SORT_KEY, sort.value);
-              } catch {
-                /* this session only */
-              }
+              docSortPref.set(sort.value as DocSort);
               this.render();
             });
             const libFav = h('button', { class: 'btn btn-secondary btn-sm', title: 'Favourite libraries come first', on: { click: () => { toggleFavourite(lib.id); this.render(); } } }, favourites().has(lib.id) ? '★ Favourite' : '☆ Favourite');

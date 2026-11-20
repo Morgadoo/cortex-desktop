@@ -13,6 +13,7 @@ import { openMicrophone, type Microphone } from './dictation';
 import { blobToBase64 } from './format';
 import { voiceActive } from './voice';
 import { matchWake } from './wakematch';
+import { json } from './prefs';
 
 const KEY = 'cortex.wakeWord';
 /** A pause this long ends a phrase. */
@@ -28,9 +29,11 @@ export interface WakePrefs {
   phrase: string;
 }
 
+const stored = json<Partial<WakePrefs>>(KEY, () => ({}));
+
 export function wakePrefs(): WakePrefs {
   try {
-    const p = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<WakePrefs>;
+    const p = stored.get();
     return { enabled: !!p.enabled, phrase: (p.phrase ?? '').trim() || 'Hey Cortex' };
   } catch {
     return { enabled: false, phrase: 'Hey Cortex' };
@@ -38,11 +41,7 @@ export function wakePrefs(): WakePrefs {
 }
 
 export function setWakePrefs(p: WakePrefs) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(p));
-  } catch {
-    /* this session only */
-  }
+  stored.set(p);
 }
 
 let mic: Microphone | null = null;

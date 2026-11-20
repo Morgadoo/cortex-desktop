@@ -6,6 +6,7 @@
 
 import { tauriInvoke } from '../../shared/tauri';
 import { createShaderBackdrop, renderShaderPreview, type ShaderBackdrop } from './backdropgl';
+import { json, textPref } from './prefs';
 
 export interface AccentPreset {
   id: string;
@@ -101,19 +102,12 @@ const ACCENT_KEY = 'accent';
 const BACKGROUND_KEY = 'background';
 
 function read(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
+  return textPref(key).get();
 }
 
+/** Applied for this session only when storage is unavailable. */
 function write(key: string, value: string) {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    /* applied for this session only */
-  }
+  textPref(key).set(value);
 }
 
 /** The saved accent: `theme` (the palette's own), a preset id, or a custom `#rrggbb`. */
@@ -201,22 +195,17 @@ export interface Readability {
 const READABILITY_KEY = 'cortex.readability';
 const DEFAULT_READABILITY: Readability = { textSize: 'default', zoom: 1, highContrast: false, reduceMotion: false };
 
+const readabilityPref = json<Readability>(READABILITY_KEY, () => ({ ...DEFAULT_READABILITY }));
+
 export function readability(): Readability {
-  try {
-    return { ...DEFAULT_READABILITY, ...(JSON.parse(localStorage.getItem(READABILITY_KEY) ?? '{}') as Partial<Readability>) };
-  } catch {
-    return { ...DEFAULT_READABILITY };
-  }
+  return readabilityPref.get();
 }
 
 export function setReadability(change: Partial<Readability>) {
   const next = { ...readability(), ...change };
   next.zoom = Math.min(1.5, Math.max(0.8, Math.round(next.zoom * 100) / 100));
-  try {
-    localStorage.setItem(READABILITY_KEY, JSON.stringify(next));
-  } catch {
-    // Applied for this session only.
-  }
+  // Applied for this session only when storage is unavailable.
+  readabilityPref.set(next);
   applyAppearance();
 }
 
@@ -411,11 +400,7 @@ export async function setBackdropImage(file: File): Promise<void> {
     canvas.height = Math.round(img.naturalHeight * scale);
     canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
     const data = canvas.toDataURL('image/jpeg', 0.82);
-    try {
-      localStorage.setItem(BACKDROP_IMAGE_KEY, data);
-    } catch {
-      throw new Error('That picture is too large to keep; try a smaller one.');
-    }
+    if (!textPref(BACKDROP_IMAGE_KEY).set(data)) throw new Error('That picture is too large to keep; try a smaller one.');
     setBackdrop('custom');
   }
 }

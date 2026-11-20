@@ -8,6 +8,7 @@ import { TasksPage } from './tasks';
 import { agentPanel } from './agentpanel';
 import { button, card, modalHeader, switchInput } from './ui';
 import { storedLanguage } from './i18n';
+import { json, textPref } from './prefs';
 
 /** Tools an agent can be given, by the name the engine matches. */
 const TOOL_CHOICES: { id: string; label: string }[] = [
@@ -36,22 +37,16 @@ export async function reloadAgents() {
 }
 
 /** Agents pinned to the sidebar's Pinned section (LibreChat's pinned agents), on this device. */
+const pinned = json<string[]>('cortex.pinnedAgents', () => []);
+
 export function pinnedAgents(): string[] {
-  try {
-    return JSON.parse(localStorage.getItem('cortex.pinnedAgents') ?? '[]') as string[];
-  } catch {
-    return [];
-  }
+  return pinned.get();
 }
 
 export function togglePinnedAgent(id: string) {
   const all = pinnedAgents();
   const next = all.includes(id) ? all.filter((a) => a !== id) : [...all, id];
-  try {
-    localStorage.setItem('cortex.pinnedAgents', JSON.stringify(next));
-  } catch {
-    /* this session only */
-  }
+  pinned.set(next);
 }
 
 /** An agent's name with its title next to it: `João [3D Artist]`. */
@@ -669,11 +664,7 @@ interface MarketListing {
 
 /** The community catalog's address: LobeHub's open index unless another is chosen. */
 function marketSource(): string | null {
-  try {
-    return localStorage.getItem('agentMarketSource');
-  } catch {
-    return null;
-  }
+  return textPref('agentMarketSource').get();
 }
 
 /**

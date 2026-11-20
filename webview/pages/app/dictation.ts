@@ -7,6 +7,7 @@
  */
 
 import { createVad } from './vad';
+import { number } from './prefs';
 
 export interface Recording {
   /** Stops recording and returns the audio. */
@@ -32,21 +33,15 @@ export interface Listening {
 }
 
 /** How long a pause ends a turn in a voice conversation (Settings → Audio), in milliseconds. */
+const pauseMs = number('cortex.voicePauseMs', 1300);
+
 export function voicePauseMs(): number {
-  try {
-    const v = Number(localStorage.getItem('cortex.voicePauseMs'));
-    return v >= 500 && v <= 5000 ? v : 1300;
-  } catch {
-    return 1300;
-  }
+  const v = pauseMs.get();
+  return v >= 500 && v <= 5000 ? v : 1300;
 }
 
 export function setVoicePauseMs(ms: number) {
-  try {
-    localStorage.setItem('cortex.voicePauseMs', String(ms));
-  } catch {
-    // This session only.
-  }
+  pauseMs.set(ms);
 }
 
 /**

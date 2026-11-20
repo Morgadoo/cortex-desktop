@@ -18,6 +18,7 @@ import { setVimEnabled, vimEnabled } from './vim';
 import { sharedLinksCard } from './share';
 import { effectiveLanguage, setStoredLanguage, storedLanguage } from './i18n';
 import { setOrbColor, storedOrbColor, type OrbColor } from './orbgl';
+import { choice } from './prefs';
 
 export type Section = 'profile' | 'providers' | 'audio' | 'permissions' | 'general' | 'appearance';
 
@@ -100,22 +101,16 @@ export function applyTheme(theme: Theme) {
   applyAppearance();
 }
 
+/** Unset or unreadable storage follows the system. */
+const themePref = choice<Theme>('theme', ['light', 'dark', 'system'], 'system');
+
 export function storedTheme(): Theme {
-  try {
-    const value = localStorage.getItem('theme');
-    if (value === 'light' || value === 'dark' || value === 'system') return value;
-  } catch {
-    /* storage unavailable: follow the system */
-  }
-  return 'system';
+  return themePref.get();
 }
 
 export function setTheme(theme: Theme) {
-  try {
-    localStorage.setItem('theme', theme);
-  } catch {
-    /* not persisted, still applied */
-  }
+  // Not persisted when storage is unavailable, still applied.
+  themePref.set(theme);
   applyTheme(theme);
 }
 

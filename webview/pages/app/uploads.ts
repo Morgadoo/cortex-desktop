@@ -7,28 +7,21 @@ import { clear, h, icon, toast, timeLabel } from './dom';
 import { characterCount } from './format';
 import { navigate } from './state';
 import { card } from './ui';
+import { choice } from './prefs';
 
 export type UploadMode = 'full' | 'auto' | 'search';
 const KEY = 'cortex.uploadMode';
 /** Characters above which `auto` searches a file instead of sending it. */
 export const LARGE = 20_000;
 
+const modePref = choice<UploadMode>(KEY, ['full', 'auto', 'search'], 'auto');
+
 export function uploadMode(): UploadMode {
-  try {
-    const v = localStorage.getItem(KEY);
-    if (v === 'full' || v === 'auto' || v === 'search') return v;
-  } catch {
-    /* default */
-  }
-  return 'auto';
+  return modePref.get();
 }
 
 function setUploadMode(mode: UploadMode) {
-  try {
-    localStorage.setItem(KEY, mode);
-  } catch {
-    /* this session only */
-  }
+  modePref.set(mode);
 }
 
 /** Whether a file of `chars` characters goes to the Uploads library rather than the message. */

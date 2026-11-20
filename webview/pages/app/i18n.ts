@@ -8,6 +8,7 @@
  * users wrote is never changed, and it stays out of answers, messages, titles and code.
  */
 import { tauriInvoke } from '../../shared/tauri';
+import { textPref } from './prefs';
 
 const KEY = 'cortex.uiLanguage';
 
@@ -65,20 +66,14 @@ let active = false;
 const shown = new WeakMap<Node, string>();
 
 /** The chosen language code; '' is English, 'auto' follows the system. */
+const language = textPref(KEY);
+
 export function storedLanguage(): string {
-  try {
-    return localStorage.getItem(KEY) ?? 'auto';
-  } catch {
-    return 'auto';
-  }
+  return language.get() ?? 'auto';
 }
 
 export function setStoredLanguage(code: string) {
-  try {
-    localStorage.setItem(KEY, code);
-  } catch {
-    /* this session only */
-  }
+  language.set(code);
 }
 
 /** The language to show: the stored choice, or the system's when it is offered. */

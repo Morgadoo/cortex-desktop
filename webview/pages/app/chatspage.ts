@@ -6,6 +6,7 @@ import { api, type ConversationSummary } from './api';
 import { clear, h, icon, timeLabel } from './dom';
 import { navigate, state, changed } from './state';
 import { pageHeader } from './ui';
+import { choice, textPref } from './prefs';
 
 type Status = 'all' | 'unread' | 'pinned' | 'runs' | 'archived';
 type Layout = 'list' | 'cards';
@@ -18,21 +19,11 @@ const STATUSES: [Status, string][] = [
 ];
 
 function stored<T extends string>(key: string, fallback: T, allowed: readonly T[]): T {
-  try {
-    const v = localStorage.getItem(key) as T | null;
-    if (v && allowed.includes(v)) return v;
-  } catch {
-    /* default */
-  }
-  return fallback;
+  return choice(key, allowed, fallback).get();
 }
 
 function keep(key: string, value: string) {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    /* this session only */
-  }
+  textPref(key).set(value);
 }
 
 /** The chats a status tab shows. Pure, for the check script. */

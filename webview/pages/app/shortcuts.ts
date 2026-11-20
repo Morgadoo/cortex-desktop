@@ -5,6 +5,7 @@
  */
 
 export type ShortcutAction = 'settings' | 'search' | 'searchAll' | 'newChat' | 'sidebar' | 'work' | 'code' | 'agents' | 'promptHistory' | 'toggleSteps' | 'cycleMode' | 'chat1' | 'chat2' | 'chat3' | 'chat4' | 'chat5' | 'chat6' | 'chat7' | 'chat8' | 'chat9';
+import { json } from './prefs';
 
 export const SHORTCUTS: { action: ShortcutAction; label: string; fallback: string }[] = [
   { action: 'search', label: 'Command palette and search', fallback: 'Mod+K' },
@@ -23,12 +24,10 @@ export const SHORTCUTS: { action: ShortcutAction; label: string; fallback: strin
 
 const KEY = 'cortex.shortcuts';
 
+const stored = json<Partial<Record<ShortcutAction, string>>>(KEY, () => ({}));
+
 function overrides(): Partial<Record<ShortcutAction, string>> {
-  try {
-    return JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<Record<ShortcutAction, string>>;
-  } catch {
-    return {};
-  }
+  return stored.get();
 }
 
 export function bindingFor(action: ShortcutAction): string {
@@ -44,11 +43,8 @@ export function setBinding(action: ShortcutAction, combo: string | null) {
   } else {
     delete all[action];
   }
-  try {
-    localStorage.setItem(KEY, JSON.stringify(all));
-  } catch {
-    // Kept for this session only.
-  }
+  // Kept for this session only when storage is unavailable.
+  stored.set(all);
 }
 
 /** The key of an event, from the physical key where it has a plain name. */

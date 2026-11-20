@@ -27,7 +27,7 @@ import { applyEvent, back, changed, finishNotificationsOn, finishSoundOn, forwar
 import { button, emptyState, iconButton, modalHeader } from './ui';
 import { startFluentEmoji } from './fluent';
 import { refreshAudioSettings } from './audio';
-import { workdir } from './prefs';
+import { choice, json, workdir } from './prefs';
 
 interface View {
   readonly el: HTMLElement;
@@ -424,14 +424,8 @@ function editProject(id: string) {
 
 type ChatSort = 'recent' | 'created' | 'title' | 'unread';
 const CHAT_SORTS: Record<ChatSort, string> = { recent: 'Recent activity', created: 'Newest first', title: 'A–Z', unread: 'Unread first' };
-let chatSort: ChatSort = (() => {
-  try {
-    const v = localStorage.getItem('cortex.chatSort');
-    return v && v in CHAT_SORTS ? (v as ChatSort) : 'recent';
-  } catch {
-    return 'recent';
-  }
-})();
+const chatSortPref = choice<ChatSort>('cortex.chatSort', Object.keys(CHAT_SORTS) as ChatSort[], 'recent');
+let chatSort: ChatSort = chatSortPref.get();
 
 function checkMark(on: boolean): SVGElement {
   const mark = icon('check', 15);
@@ -441,11 +435,7 @@ function checkMark(on: boolean): SVGElement {
 
 function setChatSort(sort: ChatSort) {
   chatSort = sort;
-  try {
-    localStorage.setItem('cortex.chatSort', sort);
-  } catch {
-    // A convenience only.
-  }
+  chatSortPref.set(sort);
   changed();
 }
 
@@ -461,21 +451,12 @@ function sortChats<T extends { title: string; createdAt: string; updatedAt: stri
 /** What the sidebar's chat list shows (LibreChat's and Open WebUI's filters). */
 type ChatFilter = { unread: boolean; tag: string | null; within: 0 | 1 | 7 | 30; hideRuns: boolean };
 const NO_FILTER: ChatFilter = { unread: false, tag: null, within: 0, hideRuns: false };
-let chatFilter: ChatFilter = (() => {
-  try {
-    return { ...NO_FILTER, ...(JSON.parse(localStorage.getItem('cortex.chatFilter') ?? '{}') as Partial<ChatFilter>) };
-  } catch {
-    return { ...NO_FILTER };
-  }
-})();
+const chatFilterPref = json<ChatFilter>('cortex.chatFilter', () => ({ ...NO_FILTER }));
+let chatFilter: ChatFilter = chatFilterPref.get();
 
 function setChatFilter(change: Partial<ChatFilter>) {
   chatFilter = { ...chatFilter, ...change };
-  try {
-    localStorage.setItem('cortex.chatFilter', JSON.stringify(chatFilter));
-  } catch {
-    // A convenience only.
-  }
+  chatFilterPref.set(chatFilter);
   changed();
 }
 

@@ -8,6 +8,7 @@
 import { tauriInvoke } from '../../shared/tauri';
 import { listen } from './api';
 import { buildIndex, MAYBE, onlyEmoji, split } from './emojiscan';
+import { choice } from './prefs';
 
 export type EmojiStyle = '3d' | 'flat' | 'system';
 export const EMOJI_STYLES: { id: EmojiStyle; label: string }[] = [
@@ -25,14 +26,10 @@ export interface EmojiStatus {
   error?: string;
 }
 
+const stylePref = choice<EmojiStyle>(KEY, ['3d', 'flat', 'system'], '3d');
+
 export function emojiStyle(): EmojiStyle {
-  try {
-    const v = localStorage.getItem(KEY);
-    if (v === '3d' || v === 'flat' || v === 'system') return v;
-  } catch {
-    /* default */
-  }
-  return '3d';
+  return stylePref.get();
 }
 
 let active: { style: string; ext: string; index: Map<string, string>; base: string } | null = null;
@@ -133,11 +130,7 @@ export async function startFluentEmoji(): Promise<void> {
 }
 
 export async function setEmojiStyle(style: EmojiStyle): Promise<void> {
-  try {
-    localStorage.setItem(KEY, style);
-  } catch {
-    /* this session only */
-  }
+  stylePref.set(style);
   await startFluentEmoji();
 }
 

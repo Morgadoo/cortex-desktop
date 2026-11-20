@@ -29,7 +29,7 @@ import type { Speed, Workflow } from './api';
 import { diffLines, loadChanges, openChanges, openFiles, openDebug } from './changes';
 import { openTerminal } from './terminal';
 import { button, chip, iconButton, modalHeader, trigger } from './ui';
-import { flag, textPref, workdir } from './prefs';
+import { flag, json, textPref, workdir } from './prefs';
 
 // ---------------------------------------------------------------------------------------------
 // Tool labels
@@ -1037,22 +1037,16 @@ const DEFAULT_ANSWER_ACTIONS: AnswerAction[] = [
 ];
 
 /** The actions under each answer: the built-in ones until the user changes the list. */
+const answerActionsPref = json<AnswerAction[] | null>('cortex.answerActions', () => null);
+
 function answerActions(): AnswerAction[] {
-  try {
-    const saved = JSON.parse(localStorage.getItem('cortex.answerActions') ?? 'null') as AnswerAction[] | null;
-    if (Array.isArray(saved)) return saved.filter((a) => a && typeof a.name === 'string' && typeof a.prompt === 'string');
-  } catch {
-    /* the defaults */
-  }
+  const saved = answerActionsPref.get();
+  if (Array.isArray(saved)) return saved.filter((a) => a && typeof a.name === 'string' && typeof a.prompt === 'string');
   return DEFAULT_ANSWER_ACTIONS;
 }
 
 function saveAnswerActions(actions: AnswerAction[]) {
-  try {
-    localStorage.setItem('cortex.answerActions', JSON.stringify(actions));
-  } catch {
-    toast('The actions could not be saved.', 'error');
-  }
+  if (!answerActionsPref.set(actions)) toast('The actions could not be saved.', 'error');
 }
 
 /** Edits the list of answer actions: a name and the prompt each one sends. */
@@ -4319,23 +4313,22 @@ const queued = new Map<string, string[]>();
 const pausedQueues = new Set<string>();
 const QUEUE_KEY = 'cortex.queue';
 
+const queuesPref = json<{ queues?: Record<string, string[]>; paused?: string[] }>(QUEUE_KEY, () => ({}));
+
 function loadQueues() {
   try {
-    const saved = JSON.parse(localStorage.getItem(QUEUE_KEY) ?? '{}') as { queues?: Record<string, string[]>; paused?: string[] };
+    const saved = queuesPref.get();
     for (const [id, list] of Object.entries(saved.queues ?? {})) if (Array.isArray(list) && list.length) queued.set(id, list.map(String));
     for (const id of saved.paused ?? []) pausedQueues.add(id);
   } catch {
-    // Nothing saved, or unreadable: start empty.
+    // Unreadable: start empty.
   }
 }
 loadQueues();
 
 function saveQueues() {
-  try {
-    localStorage.setItem(QUEUE_KEY, JSON.stringify({ queues: Object.fromEntries(queued), paused: [...pausedQueues].filter((id) => queued.has(id)) }));
-  } catch {
-    // Kept for this session only.
-  }
+  // Kept for this session only when storage is unavailable.
+  queuesPref.set({ queues: Object.fromEntries(queued), paused: [...pausedQueues].filter((id) => queued.has(id)) });
 }
 
 function setQueue(id: string, list: string[]) {
@@ -4478,20 +4471,12 @@ const HISTORY_KEY = 'cortex.promptHistory';
 const SKILL_USE_KEY = 'cortex.skillUses';
 
 function readStored<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
+  return json<T>(key, () => fallback).get();
 }
 
 function writeStored(key: string, value: unknown) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // Storage can be unavailable; history is a convenience.
-  }
+  // Storage can be unavailable; history is a convenience.
+  json<unknown>(key, () => null).set(value);
 }
 
 /** Earlier prompts, newest first. */
@@ -4788,12 +4773,10 @@ function numberLibraryCitations(el: HTMLElement, parts: Part[]) {
 const draftAttachments = new Map<string, Attachment[]>();
 
 /** Unsent text by conversation (`home` for a new chat), kept on this device. */
+const draftsPref = json<Record<string, string>>('cortex.drafts', () => ({}));
+
 function drafts(): Record<string, string> {
-  try {
-    return JSON.parse(localStorage.getItem('cortex.drafts') ?? '{}') as Record<string, string>;
-  } catch {
-    return {};
-  }
+  return draftsPref.get();
 }
 
 function saveDraft(conversationId: string | null, text: string) {
@@ -4805,7 +4788,7 @@ function saveDraft(conversationId: string | null, text: string) {
     // A few dozen drafts at most; the oldest go first.
     const keys = Object.keys(all);
     for (const k of keys.slice(0, Math.max(0, keys.length - 50))) delete all[k];
-    localStorage.setItem('cortex.drafts', JSON.stringify(all));
+    draftsPref.set(all);
   } catch {
     // Drafts are a convenience.
   }

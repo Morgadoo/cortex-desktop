@@ -89,8 +89,13 @@ test('without storage, reads give the fallback and writes are dropped', () => {
   };
   withStorage(broken, () => {
     assert.equal(flag('a', true).get(), true);
-    flag('a', true).set(false);
+    assert.equal(flag('a', true).set(false), false, 'a refused write says so');
     assert.deepEqual(json('x', () => [1]).get(), [1]);
+  });
+  withStorage(memory, () => {
+    assert.equal(textPref('t').set('kept'), true);
+    assert.equal(textPref('t').set(null), true);
+    assert.equal(store.has('t'), false, 'null removes the key');
   });
   withStorage(undefined, () => {
     assert.equal(choice('c', ['x', 'y'] as const, 'y').get(), 'y');

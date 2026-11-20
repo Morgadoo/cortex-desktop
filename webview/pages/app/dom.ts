@@ -4,6 +4,7 @@ import katex from 'katex';
 import { tauriInvoke } from '../../shared/tauri';
 import { blobToBase64 } from './format';
 import { marked } from 'marked';
+import { textPref } from './prefs';
 
 type Child = Node | string | null | undefined | false;
 type Attrs = Record<string, unknown> & {
@@ -484,20 +485,13 @@ export async function saveFile(name: string, blob: Blob): Promise<void> {
 }
 
 /** The clock the user chose (Settings → General): undefined follows the system's language. */
+const clock = textPref('cortex.clock');
+
 export function clockHour12(): boolean | undefined {
-  try {
-    const v = localStorage.getItem('cortex.clock');
-    return v === '12' ? true : v === '24' ? false : undefined;
-  } catch {
-    return undefined;
-  }
+  const v = clock.get();
+  return v === '12' ? true : v === '24' ? false : undefined;
 }
 
 export function setClock(v: 'auto' | '12' | '24') {
-  try {
-    if (v === 'auto') localStorage.removeItem('cortex.clock');
-    else localStorage.setItem('cortex.clock', v);
-  } catch {
-    /* this session only */
-  }
+  clock.set(v === 'auto' ? null : v);
 }

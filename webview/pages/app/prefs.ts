@@ -11,7 +11,8 @@
 
 export interface Pref<T> {
   get(): T;
-  set(value: T): void;
+  /** Saves the value; false when storage refused it (it is then kept nowhere). */
+  set(value: T): boolean;
 }
 
 function read(key: string): string | null {
@@ -22,12 +23,14 @@ function read(key: string): string | null {
   }
 }
 
-function write(key: string, value: string | null) {
+function write(key: string, value: string | null): boolean {
   try {
     if (value === null) localStorage.removeItem(key);
     else localStorage.setItem(key, value);
+    return true;
   } catch {
-    // A convenience only: nothing to do when storage is unavailable.
+    // A convenience only: callers that must tell the user check the result.
+    return false;
   }
 }
 
