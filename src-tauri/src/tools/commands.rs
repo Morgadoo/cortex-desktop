@@ -224,13 +224,18 @@ pub async fn set_connector_enabled(
 }
 
 #[tauri::command]
-pub fn respond_tool_approval(request_id: String, approved: bool, always: Option<bool>) {
+pub fn respond_tool_approval(
+    request_id: String,
+    approved: bool,
+    always: Option<bool>,
+    approvals: State<'_, super::approvals::PendingApprovals>,
+) {
     let decision = match (approved, always.unwrap_or(false)) {
         (false, _) => ApprovalDecision::Deny,
         (true, false) => ApprovalDecision::Once,
         (true, true) => ApprovalDecision::Always,
     };
-    super::approvals::respond(&request_id, decision);
+    approvals.respond(&request_id, decision);
 }
 
 #[tauri::command]

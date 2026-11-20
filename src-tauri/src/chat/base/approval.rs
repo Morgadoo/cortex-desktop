@@ -34,7 +34,8 @@ pub(crate) async fn request_approval_because(
     let reason = cortex_kernel::approval::risk(tool, input)
         .map(|why| json!({ "kind": "risky", "sources": [], "detail": why }))
         .or_else(|| auto_reason.map(|why| json!({ "kind": "auto", "sources": [], "detail": why })));
-    let (request_id, rx) = approvals::register();
+    let approvals = tauri::Manager::state::<approvals::PendingApprovals>(app);
+    let (request_id, rx) = approvals.register();
     let _ = app.emit(
         "tool:approval_request",
         json!({
@@ -48,7 +49,7 @@ pub(crate) async fn request_approval_because(
     let decision = match tokio::time::timeout(APPROVAL_WAIT, rx).await {
         Ok(Ok(decision)) => decision,
         _ => {
-            approvals::cancel(&request_id);
+            approvals.cancel(&request_id);
             let _ = app.emit(
                 "tool:approval_resolved",
                 json!({ "request_id": request_id, "approved": false }),

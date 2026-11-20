@@ -1,6 +1,7 @@
 //! Turns in flight and questions waiting for the user: the state the chat commands share.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 
 use tokio::sync::{oneshot, watch};
@@ -17,9 +18,34 @@ pub struct ChatState {
     /// Conversation id → what its running turn has streamed so far, so a window that opens (or
     /// reloads) during the turn shows it all, not only what comes next.
     replay: Mutex<HashMap<String, Vec<serde_json::Value>>>,
+    /// (conversation, tool) pairs the user chose "Always allow" for under an agent's ask-first
+    /// policy: they hold until the app quits.
+    allowed: Mutex<HashSet<(String, String)>>,
+    /// Agent-to-agent messages in flight, so a loop of agents messaging each other stops.
+    message_depth: AtomicUsize,
 }
 
 impl ChatState {
+    /// Whether the user always allowed `tool` in `conversation`.
+    pub fn session_allowed(&self, conversation: &str, tool: &str) -> bool {
+        Self::lock(&self.allowed).contains(&(conversation.to_string(), tool.to_string()))
+    }
+
+    /// Lets `tool` run without asking in `conversation`, until the app quits.
+    pub fn allow_for_session(&self, conversation: &str, tool: &str) {
+        Self::lock(&self.allowed).insert((conversation.to_string(), tool.to_string()));
+    }
+
+    /// Starts one agent-to-agent message; `None` when `limit` are already in flight. The depth is
+    /// given back when the returned guard drops.
+    pub fn enter_message(&self, limit: usize) -> Option<MessageDepth<'_>> {
+        if self.message_depth.fetch_add(1, Ordering::SeqCst) >= limit {
+            self.message_depth.fetch_sub(1, Ordering::SeqCst);
+            return None;
+        }
+        Some(MessageDepth(&self.message_depth))
+    }
+
     fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
         mutex
             .lock()
@@ -151,6 +177,15 @@ impl ChatState {
 
     pub fn forget_question(&self, call_id: &str) {
         Self::lock(&self.questions).remove(call_id);
+    }
+}
+
+/// One agent-to-agent message in flight; see [`ChatState::enter_message`].
+pub struct MessageDepth<'a>(&'a AtomicUsize);
+
+impl Drop for MessageDepth<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
     }
 }
 

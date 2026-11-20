@@ -564,8 +564,6 @@ fn queue_turn(
     wait
 }
 
-static MESSAGE_DEPTH: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-
 /// `message_agent`: the receiving agent answers in a new chat of its own (unread, so the user
 /// sees it), and its reply comes back as the tool's result.
 async fn message_agent(
@@ -577,7 +575,6 @@ async fn message_agent(
     workdir: Option<&str>,
     approval: ApprovalMode,
 ) -> tools::Outcome {
-    use std::sync::atomic::Ordering;
     let fail = |text: String| tools::Outcome {
         text,
         is_error: true,
@@ -618,12 +615,11 @@ async fn message_agent(
         Ok(f) => f,
         Err(e) => return fail(e),
     };
-    if MESSAGE_DEPTH.fetch_add(1, Ordering::SeqCst) >= agents::MAX_MESSAGE_DEPTH {
-        MESSAGE_DEPTH.fetch_sub(1, Ordering::SeqCst);
+    let Some(depth) = host.chat_state().enter_message(agents::MAX_MESSAGE_DEPTH) else {
         return fail(
             "Messages are already going back and forth; answer with what you have.".into(),
         );
-    }
+    };
     let sender = from.map_or_else(|| "the assistant".to_string(), |a| a.name.clone());
     let model = target
         .model
@@ -697,7 +693,7 @@ async fn message_agent(
         ))
     }
     .await;
-    MESSAGE_DEPTH.fetch_sub(1, Ordering::SeqCst);
+    drop(depth);
     match result {
         Ok(text) => tools::Outcome {
             text,
@@ -1897,7 +1893,7 @@ impl Steps for TurnSteps<'_> {
             let name = call.function.name.as_str();
             name == ASK_USER
                 || (agent.as_ref().is_some_and(|a| agents::asks_first(a, name))
-                    && !session_allowed(id, name))
+                    && !host.chat_state().session_allowed(id, name))
                 || offered.iter().find(|t| t.name == name).is_some_and(|tool| {
                     tool.connector_id.is_some()
                         && tools::needs_approval(
@@ -2051,26 +2047,7 @@ fn cancelled_outcome() -> tools::Outcome {
     tools::Outcome::err("Cancelled by the user.")
 }
 
-/// Tools the user chose "Always allow" for under an agent's ask-first policy, by conversation.
-fn session_allowances() -> &'static std::sync::Mutex<std::collections::HashSet<(String, String)>> {
-    static SET: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<(String, String)>>> =
-        std::sync::OnceLock::new();
-    SET.get_or_init(Default::default)
-}
-
 use cortex_kernel::approval::{change_gate, ChangeGate};
-
-fn session_allowed(conversation: &str, tool: &str) -> bool {
-    session_allowances()
-        .lock()
-        .is_ok_and(|s| s.contains(&(conversation.to_string(), tool.to_string())))
-}
-
-fn allow_for_session(conversation: &str, tool: &str) {
-    if let Ok(mut s) = session_allowances().lock() {
-        s.insert((conversation.to_string(), tool.to_string()));
-    }
-}
 
 /// Attribution: what this run had in front of it, beyond skills: the tools offered, the facts
 /// listed and the knowledge pages recalled in full. A tool called, a page read and a skill opened
@@ -2248,7 +2225,7 @@ impl Runner<'_> {
         let refuse = |text: &str| Err(tools::Outcome::err(text));
         match change_gate(
             self.request.approval,
-            asked || session_allowed(self.id, name),
+            asked || self.host.chat_state().session_allowed(self.id, name),
         ) {
             ChangeGate::Run => Ok(()),
             ChangeGate::RefuseInPlan => refuse(in_plan),
@@ -2268,7 +2245,7 @@ impl Runner<'_> {
                     ),
                     // "Always allow" lasts for this conversation, as in Vibe.
                     ApprovalDecision::Always => {
-                        allow_for_session(self.id, name);
+                        self.host.chat_state().allow_for_session(self.id, name);
                         Ok(())
                     }
                     ApprovalDecision::Once => Ok(()),
@@ -2341,7 +2318,7 @@ impl Runner<'_> {
         );
         if !asks_with_its_own_card
             && self.agent.is_some_and(|a| agents::asks_first(a, name))
-            && !session_allowed(self.id, name)
+            && !self.host.chat_state().session_allowed(self.id, name)
         {
             if self.request.approval.unattended() {
                 return tools::Outcome { text: format!("{name} asks first under this agent's policy, and nobody is watching this scheduled run to approve it."), is_error: true };
@@ -2362,7 +2339,7 @@ impl Runner<'_> {
                     return tools::Outcome::err("The user declined this tool call. Do not retry it; ask what they would like instead.");
                 }
                 // "Always allow" lasts for this conversation, as in Vibe.
-                ApprovalDecision::Always => allow_for_session(self.id, name),
+                ApprovalDecision::Always => self.host.chat_state().allow_for_session(self.id, name),
                 ApprovalDecision::Once => {}
             }
             asked = true;

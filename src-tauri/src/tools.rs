@@ -49,7 +49,9 @@ pub async fn swap_account(app_handle: &AppHandle, account: Option<AccountId>) {
     let outgoing = {
         let registry = app_handle.state::<ToolRegistry>();
         let outgoing = registry.take_connectors();
-        approvals::cancel_all();
+        if let Some(approvals) = app_handle.try_state::<approvals::PendingApprovals>() {
+            approvals.cancel_all();
+        }
         registry.reset_exposure();
         // A question typed under one account must never be sent under another.
         if let Some(quick_ask) = app_handle.try_state::<super::quick_ask::PendingQuickAsk>() {

@@ -239,6 +239,7 @@ fn manage_window_state(app: &App) {
     app.manage(quick_ask::PendingQuickAsk::default());
     app.manage(account::ActiveAccount::default());
     app.manage(crate::feature_flags::DesktopFeatureFlags::default());
+    app.manage(tools::approvals::PendingApprovals::default());
     if crate::e2e_testing_enabled() {
         account::seed_e2e_account(&app.state::<account::ActiveAccount>());
     } else if !crate::HOSTED_WEB_APP {
