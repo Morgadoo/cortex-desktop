@@ -188,11 +188,11 @@ export function editTask(existing: Task | null, onSaved: (tasks: Task[]) => void
             model: existing?.model ?? null,
             enabled: existing?.enabled ?? true,
             allowChanges: allowChanges.checked,
-            webhook: webhook.value.trim() || null,
+            webhook: webhook.value.trim() || undefined,
             createdAt: existing?.createdAt ?? new Date().toISOString(),
             lastRun: existing?.lastRun ?? null,
             lastConversation: existing?.lastConversation ?? null,
-            replyIn: existing?.replyIn ?? null,
+            replyIn: existing?.replyIn,
             lastStatus: existing?.lastStatus ?? null,
             nextRun: null,
           })

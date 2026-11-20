@@ -71,6 +71,7 @@ fn next_cron(expression: &str, after: DateTime<Utc>) -> Result<Option<DateTime<U
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 pub struct Task {
     pub id: String,
     pub title: String,
@@ -98,23 +99,28 @@ pub struct Task {
     pub next_run: Option<DateTime<Utc>>,
     /// `NewFiles` tasks: the files already in the folder, so only newer ones start a run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "typescript", ts(optional))]
     pub seen: Option<Vec<String>>,
     /// Runs continue this conversation instead of starting a new one (a follow-up the user asked
     /// for in a chat: "check again tomorrow").
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "typescript", ts(optional))]
     pub reply_in: Option<String>,
     /// An address told when a run finishes (Open WebUI's webhooks): a JSON POST with the task,
     /// its status and the answer, for a script, a chat app or an automation service.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "typescript", ts(optional))]
     pub webhook: Option<String>,
     /// The user's comments on the task (LobeHub's task comments): shown on it, and given to every
     /// run as standing notes, so a comment steers the next run without rewriting the prompt.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "typescript", ts(as = "Option<Vec<Comment>>", optional))]
     pub comments: Vec<Comment>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 pub struct Comment {
     pub at: DateTime<Utc>,
     pub text: String,
@@ -166,6 +172,7 @@ pub fn comment(
 /// How a task's latest run went, as saved in `tasks.json` and shown on the Tasks page.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 pub enum TaskStatus {
     Running,
     Ok,

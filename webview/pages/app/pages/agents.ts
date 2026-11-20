@@ -331,7 +331,7 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
           groupMode: pickedMembers.length ? groupMode.value : '',
           codeNetwork: codeNetwork.checked,
           canManageAgents: manages.checked,
-          reportsTo: reportsTo.value || null,
+          reportsTo: reportsTo.value || undefined,
           createdAt: existing?.createdAt ?? new Date().toISOString(),
         });
         changed();

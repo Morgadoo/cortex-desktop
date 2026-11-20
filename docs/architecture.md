@@ -170,14 +170,13 @@ provider, model, project, instructions, chat settings, memory, speed and schedul
 converted, and so are the conversation (its turns, parts, versions and usage), the sidebar rows,
 search hits, the trash, storage health, the context breakdown, an agent's spend, skills, workflows
 and the events a turn streams; the others in `api.ts` are still written by hand and move over
-one area at a time. Agents and scheduled tasks wait on one thing: fields serde leaves out when
-empty (`skip_serializing_if = "Vec::is_empty"`), which ts-rs can only mark optional on an
-`Option`.
+one area at a time. Agents and scheduled tasks are generated too.
 
 - A 64-bit integer field needs `#[cfg_attr(feature = "typescript", ts(type = "number"))]`: it
   travels as a JSON number, not a `bigint`.
 - A field serde leaves out (`skip_serializing_if = "Option::is_none"`) needs `ts(optional)` to be
-  declared `field?: T`.
+  declared `field?: T`. One left out when empty or false (`"Vec::is_empty"`, `"String::is_empty"`,
+  `"std::ops::Not::not"`) needs `ts(as = "Option<T>", optional)`.
 - A `&'static str` that holds one of a few words is better declared as their union:
   `ts(type = "'user' | 'assistant'")`.
 - `cortex-kernel` has its own `typescript` feature, turned on by the app's; types from other

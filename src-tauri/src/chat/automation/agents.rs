@@ -14,12 +14,14 @@ use crate::chat::store::{chat_dir, valid_id};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
 pub struct Agent {
     pub id: String,
     pub name: String,
     /// Its job title ("3D Artist", "QA Lead"), shown next to its name: the role that sets its
     /// responsibilities in the team.
     #[serde(default, skip_serializing_if = "String::is_empty")]
+    #[cfg_attr(feature = "typescript", ts(as = "Option<String>", optional))]
     pub title: String,
     /// An emoji or one or two letters.
     #[serde(default)]
@@ -67,19 +69,24 @@ pub struct Agent {
     /// The agents this one hosts as a group (LobeHub's agent groups), by id; empty for a single
     /// agent. A group answers by handing each request to its members, then writing the result.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "typescript", ts(as = "Option<Vec<String>>", optional))]
     pub members: Vec<String>,
     /// How the members work: `parallel`, `sequential` or `debate`.
     #[serde(default, skip_serializing_if = "String::is_empty")]
+    #[cfg_attr(feature = "typescript", ts(as = "Option<String>", optional))]
     pub group_mode: String,
     /// Its code may reach the internet (to install packages into its own environment).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(feature = "typescript", ts(as = "Option<bool>", optional))]
     pub code_network: bool,
     /// It runs an organization (a manager or "CEO" agent): it may create, change and remove the
     /// agents under it with `manage_agents`. Off unless the user turns it on.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(feature = "typescript", ts(as = "Option<bool>", optional))]
     pub can_manage_agents: bool,
     /// The agent this one reports to, by id: the manager that created it or took it on.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "typescript", ts(optional))]
     pub reports_to: Option<String>,
     pub created_at: DateTime<Utc>,
 }

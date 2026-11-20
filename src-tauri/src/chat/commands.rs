@@ -216,6 +216,7 @@ pub struct SyncView {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export, rename = "Task"))]
 pub struct TaskView {
     #[serde(flatten)]
     pub task: crate::chat::tasks::Task,

@@ -7,6 +7,7 @@ import { tauriInvoke } from '../../../shared/tauri';
 
 // Generated from the Rust types (scripts/generate-types.sh), so the two cannot drift.
 import type {
+  Agent,
   AgentSpend,
   ChatEvent,
   ChatParams,
@@ -26,6 +27,8 @@ import type {
   Skill,
   Speed,
   StorageHealth,
+  Task,
+  TaskStatus,
   TrashItem,
   Turn,
   UsageTotals,
@@ -33,6 +36,7 @@ import type {
 } from './generated/ipc';
 
 export type {
+  Agent,
   AgentSpend,
   ChatEvent,
   ChatParams,
@@ -50,6 +54,8 @@ export type {
   Skill,
   Speed,
   StorageHealth,
+  Task,
+  TaskStatus,
   TrashItem,
   Turn,
   UsageTotals,
@@ -57,66 +63,6 @@ export type {
 };
 export type Provider = ProviderView;
 export type Model = ModelView;
-
-export interface Agent {
-  id: string;
-  name: string;
-  /** Its job title ("3D Artist"), shown next to its name: the role that sets its responsibilities. */
-  title?: string;
-  avatar: string;
-  description: string;
-  instructions: string;
-  model: string | null;
-  tools: string[];
-  skills: string[];
-  askTools: string[];
-  think: boolean;
-  fallbackModel: string | null;
-  monthlyBudget: number | null;
-  /** Prompts offered on the agent's new-chat page. */
-  starters?: string[];
-  /** Libraries the agent searches, by id. */
-  libraries?: string[];
-  /** Vault secrets it may use, by name. */
-  secrets?: string[];
-  /** Added to the newest message on every request. */
-  reminder?: string;
-  /** A group's members, by agent id (LobeHub's agent groups). */
-  members?: string[];
-  /** How a group's members work: parallel, sequential or debate. */
-  groupMode?: string;
-  /** Its code may reach the internet, to install packages into its own environment. */
-  codeNetwork?: boolean;
-  /** It runs an organization: creates, changes and removes the agents under it. */
-  canManageAgents?: boolean;
-  /** The agent it reports to, by id. */
-  reportsTo?: string | null;
-  createdAt: string;
-}
-
-export interface Task {
-  id: string;
-  title: string;
-  prompt: string;
-  /** The user's comments, given to every run as notes. */
-  comments?: { at: string; text: string }[];
-  frequency: Frequency;
-  agentId: string | null;
-  model: string | null;
-  enabled: boolean;
-  allowChanges: boolean;
-  createdAt: string;
-  lastRun: string | null;
-  lastConversation: string | null;
-  /** Runs continue this conversation (a follow-up asked for in a chat). */
-  replyIn?: string | null;
-  /** Told with a JSON POST when a run finishes. */
-  webhook?: string | null;
-  lastStatus: string | null;
-  nextRun: string | null;
-  /** "Every Monday at 09:00". */
-  schedule: string;
-}
 
 export type ApprovalMode = 'ask' | 'accept_edits' | 'plan' | 'auto';
 

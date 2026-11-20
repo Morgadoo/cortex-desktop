@@ -49,8 +49,7 @@ package is one or more commits there. Measured as section 7 describes:
   `String`.
 - 3.10: the conversation, its turns and events, providers, models, projects, memories, tasks'
   schedules, search hits, the trash, storage health, skills and workflows are generated from the
-  Rust types. Agents and scheduled tasks wait on fields serde leaves out when empty, which ts-rs
-  can only mark optional on an `Option`. Package item 4 (verb names) is not started.
+  Rust types, and so are agents and scheduled tasks. Package item 4 (verb names) is not started.
 - 4.1: `cortex-store` holds settings files, encryption at rest and the storage errors. The
   conversation store and `cortex-tools` follow once they stop reaching into the app: sync uses
   Tauri, the vault uses the keychain, and the loaders take an `AppHandle`.
