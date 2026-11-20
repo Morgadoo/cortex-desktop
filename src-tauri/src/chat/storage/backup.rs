@@ -15,6 +15,7 @@ use chrono::{DateTime, Local, NaiveDate, Utc};
 use serde::Serialize;
 
 use crate::chat::store::{chat_dir, valid_id, Conversation};
+use crate::support::error::StoreError;
 
 /// Days a backup or a deleted conversation is kept.
 pub const KEEP_DAYS: i64 = 30;
@@ -31,9 +32,12 @@ fn today() -> String {
     Local::now().format("%Y-%m-%d").to_string()
 }
 
-fn conversation_file(config_dir: &Path, id: &str) -> Result<PathBuf, String> {
+fn conversation_file(config_dir: &Path, id: &str) -> Result<PathBuf, StoreError> {
     if !valid_id(id) {
-        return Err(format!("invalid conversation id `{id}`"));
+        return Err(StoreError::InvalidId {
+            kind: "conversation",
+            id: id.to_string(),
+        });
     }
     Ok(chat_dir(config_dir)
         .join("conversations")
@@ -113,18 +117,18 @@ pub fn daily(config_dir: &Path) {
 }
 
 /// Moves a conversation to the trash. A temporary one is deleted outright.
-pub(in crate::chat::storage) fn trash(config_dir: &Path, id: &str) -> Result<(), String> {
+pub(in crate::chat::storage) fn trash(config_dir: &Path, id: &str) -> Result<(), StoreError> {
     let path = conversation_file(config_dir, id)?;
     if !path.exists() {
         return Ok(());
     }
     if readable(&path).is_some_and(|c| c.temporary) {
-        return std::fs::remove_file(&path).map_err(|e| e.to_string());
+        return std::fs::remove_file(&path).map_err(|e| StoreError::write(&path, e));
     }
     let dir = trash_dir(config_dir);
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| StoreError::write(&dir, e))?;
     let dest = dir.join(format!("{id}.json"));
-    std::fs::rename(&path, &dest).map_err(|e| e.to_string())?;
+    std::fs::rename(&path, &dest).map_err(|e| StoreError::write(&dest, e))?;
     // The file's time becomes when it was deleted, which is what the 30 days count from.
     if let Ok(file) = std::fs::File::options().write(true).open(&dest) {
         let _ = file.set_modified(SystemTime::now());
@@ -170,28 +174,33 @@ pub fn list_trash(config_dir: &Path) -> Vec<TrashItem> {
 }
 
 /// Puts a deleted conversation back.
-pub fn restore(config_dir: &Path, id: &str) -> Result<(), String> {
+pub fn restore(config_dir: &Path, id: &str) -> Result<(), StoreError> {
     let dest = conversation_file(config_dir, id)?;
     let from = trash_dir(config_dir).join(format!("{id}.json"));
     if dest.exists() {
-        return Err("A conversation with that id already exists.".into());
+        return Err(StoreError::Exists {
+            kind: "conversation",
+            id: id.to_string(),
+        });
     }
-    std::fs::rename(&from, &dest)
-        .map_err(|_| "That conversation is no longer in the trash.".to_string())
+    std::fs::rename(&from, &dest).map_err(|_| StoreError::NotFound {
+        kind: "conversation in the trash",
+        id: id.to_string(),
+    })
 }
 
 /// Deletes one conversation from the trash for good, or all of them.
-pub fn delete_forever(config_dir: &Path, id: Option<&str>) -> Result<(), String> {
+pub fn delete_forever(config_dir: &Path, id: Option<&str>) -> Result<(), StoreError> {
     match id {
         Some(id) => {
             conversation_file(config_dir, id)?;
-            std::fs::remove_file(trash_dir(config_dir).join(format!("{id}.json")))
-                .map_err(|e| e.to_string())
+            let path = trash_dir(config_dir).join(format!("{id}.json"));
+            std::fs::remove_file(&path).map_err(|e| StoreError::write(&path, e))
         }
         None => match std::fs::remove_dir_all(trash_dir(config_dir)) {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(e.to_string()),
+            Err(e) => Err(StoreError::write(&trash_dir(config_dir), e)),
         },
     }
 }
@@ -217,20 +226,19 @@ pub(in crate::chat::storage) fn latest_backup(
 }
 
 /// Replaces a damaged conversation with its newest backup; returns the backup's date.
-pub fn recover(config_dir: &Path, id: &str) -> Result<String, String> {
+pub fn recover(config_dir: &Path, id: &str) -> Result<String, StoreError> {
     let path = conversation_file(config_dir, id)?;
-    let (day, backup) =
-        latest_backup(config_dir, id).ok_or("There is no backup of that conversation.")?;
+    let (day, backup) = latest_backup(config_dir, id).ok_or_else(|| StoreError::NotFound {
+        kind: "backup of conversation",
+        id: id.to_string(),
+    })?;
     if path.exists() {
         let quarantine = chat_dir(config_dir).join("quarantine");
-        std::fs::create_dir_all(&quarantine).map_err(|e| e.to_string())?;
-        std::fs::rename(
-            &path,
-            quarantine.join(format!("{id}-{}.json", Utc::now().format("%Y%m%d%H%M%S"))),
-        )
-        .map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(&quarantine).map_err(|e| StoreError::write(&quarantine, e))?;
+        let moved = quarantine.join(format!("{id}-{}.json", Utc::now().format("%Y%m%d%H%M%S")));
+        std::fs::rename(&path, &moved).map_err(|e| StoreError::write(&moved, e))?;
     }
-    std::fs::copy(&backup, &path).map_err(|e| e.to_string())?;
+    std::fs::copy(&backup, &path).map_err(|e| StoreError::write(&path, e))?;
     Ok(day)
 }
 

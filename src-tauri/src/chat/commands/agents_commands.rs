@@ -337,6 +337,7 @@ pub fn chat_set_production(
     value: Option<serde_json::Value>,
 ) -> Result<Option<crate::chat::versions::Production>, String> {
     crate::chat::versions::set_production(&config_dir(&app)?, &kind, &id, value)
+        .map_err(String::from)
 }
 
 /// Drafts a workflow from a description, or revises `current` as `request` asks.

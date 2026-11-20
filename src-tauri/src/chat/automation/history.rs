@@ -20,6 +20,7 @@ pub fn diff(
     crate::chat::versions::diff(config_dir, kind, id, version, || {
         current.cloned().or_else(|| now(config_dir, kind, id))
     })
+    .map_err(String::from)
 }
 
 /// The item as it is now, for diffing its newest version against.
@@ -85,7 +86,7 @@ pub fn restore(config_dir: &Path, kind: &str, id: &str, version: &str) -> Result
             &parse::<Vec<crate::chat::knowledge::Page>>(value)?,
         ),
         ("instructions", "user") => {
-            crate::chat::store::save_instructions(config_dir, &parse(value)?)
+            crate::chat::store::save_instructions(config_dir, &parse(value)?).map_err(String::from)
         }
         ("notebooks", agent) => {
             crate::chat::agents::save_notebook(config_dir, agent, &parse::<String>(value)?)

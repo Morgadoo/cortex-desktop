@@ -116,7 +116,7 @@ pub fn chat_delete_conversation(
     id: String,
 ) -> Result<(), String> {
     state.cancel(&id);
-    store::delete_conversation(&config_dir(&app)?, &id)
+    store::delete_conversation(&config_dir(&app)?, &id).map_err(String::from)
 }
 
 /// Adds guidance to a running turn; it joins the conversation at the turn's next step.
@@ -246,13 +246,13 @@ pub fn chat_rate_reason(
 
 #[tauri::command]
 pub fn chat_restore_conversation(app: AppHandle, id: String) -> Result<(), String> {
-    crate::chat::backup::restore(&config_dir(&app)?, &id)
+    crate::chat::backup::restore(&config_dir(&app)?, &id).map_err(String::from)
 }
 
 /// Replaces a damaged conversation with its newest backup; returns that backup's date.
 #[tauri::command]
 pub fn chat_recover_conversation(app: AppHandle, id: String) -> Result<String, String> {
-    crate::chat::backup::recover(&config_dir(&app)?, &id)
+    crate::chat::backup::recover(&config_dir(&app)?, &id).map_err(String::from)
 }
 
 /// What fills the model's context window in a conversation.
@@ -390,7 +390,7 @@ pub fn chat_delete_exchanges(
 /// Deletes one conversation from the trash for good, or empties it.
 #[tauri::command]
 pub fn chat_delete_forever(app: AppHandle, id: Option<String>) -> Result<(), String> {
-    crate::chat::backup::delete_forever(&config_dir(&app)?, id.as_deref())
+    crate::chat::backup::delete_forever(&config_dir(&app)?, id.as_deref()).map_err(String::from)
 }
 
 /// A continuation for the message being typed (Open WebUI's autocomplete): a few words, or

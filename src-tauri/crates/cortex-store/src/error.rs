@@ -33,6 +33,12 @@ pub enum StoreError {
         path: PathBuf,
         source: serde_json::Error,
     },
+    /// Something is already saved under this id.
+    #[error("a {kind} `{id}` already exists")]
+    Exists { kind: &'static str, id: String },
+    /// A request the stored data cannot answer, said for the user.
+    #[error("{0}")]
+    Invalid(String),
 }
 
 impl StoreError {

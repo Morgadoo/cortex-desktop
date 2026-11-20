@@ -9,6 +9,7 @@
 //! runs, and saved edits stay a draft until they are marked in turn. It is kept apart, in
 //! `chat/versions/<kind>/<id>.production.json`, so pruning never takes it.
 
+use crate::support::error::StoreError;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
@@ -33,9 +34,9 @@ pub const KINDS: &[&str] = &[
     "tasks",
 ];
 
-fn dir(config_dir: &Path, kind: &str, id: &str) -> Result<PathBuf, String> {
+fn dir(config_dir: &Path, kind: &str, id: &str) -> Result<PathBuf, StoreError> {
     if !KINDS.contains(&kind) {
-        return Err(format!("Unknown kind {kind}."));
+        return Err(StoreError::Invalid(format!("Unknown kind {kind}.")));
     }
     if id.is_empty()
         || id.len() > 80
@@ -43,7 +44,10 @@ fn dir(config_dir: &Path, kind: &str, id: &str) -> Result<PathBuf, String> {
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
-        return Err("invalid id".into());
+        return Err(StoreError::InvalidId {
+            kind: "versioned item",
+            id: id.to_string(),
+        });
     }
     Ok(chat_dir(config_dir).join("versions").join(kind).join(id))
 }
@@ -55,16 +59,19 @@ pub fn keep<T: Serialize>(
     id: &str,
     previous: &T,
     next: &T,
-) -> Result<(), String> {
-    let (previous, next) = (
-        serde_json::to_value(previous).map_err(|e| e.to_string())?,
-        serde_json::to_value(next).map_err(|e| e.to_string())?,
-    );
+) -> Result<(), StoreError> {
+    let dir = dir(config_dir, kind, id)?;
+    let encode = |value: &T| {
+        serde_json::to_value(value).map_err(|source| StoreError::Encode {
+            path: dir.clone(),
+            source,
+        })
+    };
+    let (previous, next) = (encode(previous)?, encode(next)?);
     if previous == next {
         return Ok(());
     }
-    let dir = dir(config_dir, kind, id)?;
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| StoreError::write(&dir, e))?;
     let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%S%3fZ").to_string();
     let mut file = dir.join(format!("{stamp}.json"));
     let mut n = 1;
@@ -72,11 +79,11 @@ pub fn keep<T: Serialize>(
         file = dir.join(format!("{stamp}-{n}.json"));
         n += 1;
     }
-    crate::chat::at_rest::write(
-        &file,
-        serde_json::to_string_pretty(&previous).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())?;
+    let text = serde_json::to_string_pretty(&previous).map_err(|source| StoreError::Encode {
+        path: file.clone(),
+        source,
+    })?;
+    crate::chat::at_rest::write(&file, text).map_err(|e| StoreError::write(&file, e))?;
     let mut files: Vec<_> = std::fs::read_dir(&dir)
         .into_iter()
         .flatten()
@@ -99,7 +106,7 @@ pub struct Version {
 }
 
 /// An item's earlier versions, newest first.
-pub fn list(config_dir: &Path, kind: &str, id: &str) -> Result<Vec<Version>, String> {
+pub fn list(config_dir: &Path, kind: &str, id: &str) -> Result<Vec<Version>, StoreError> {
     let dir = dir(config_dir, kind, id)?;
     let mut out: Vec<Version> = std::fs::read_dir(&dir)
         .into_iter()
@@ -124,12 +131,15 @@ pub fn diff(
     id: &str,
     version: &str,
     current: impl FnOnce() -> Option<Value>,
-) -> Result<String, String> {
+) -> Result<String, StoreError> {
     let all = list(config_dir, kind, id)?;
     let i = all
         .iter()
         .position(|v| v.id == version)
-        .ok_or("There is no such version.")?;
+        .ok_or_else(|| StoreError::NotFound {
+            kind: "version",
+            id: version.to_string(),
+        })?;
     let pretty = |v: &Value| serde_json::to_string_pretty(v).unwrap_or_default();
     let older = pretty(&all[i].value);
     // `all` is newest first: the version after this one is at i - 1.
@@ -137,7 +147,7 @@ pub fn diff(
         Some(n) => pretty(&all[n].value),
         None => current()
             .map(|v| pretty(&v))
-            .ok_or("This is the newest version.")?,
+            .ok_or_else(|| StoreError::Invalid("This is the newest version.".into()))?,
     };
     Ok(cortex_kernel::diff::unified(&older, &newer))
 }
@@ -150,7 +160,7 @@ pub struct Production {
     pub value: Value,
 }
 
-fn production_path(config_dir: &Path, kind: &str, id: &str) -> Result<PathBuf, String> {
+fn production_path(config_dir: &Path, kind: &str, id: &str) -> Result<PathBuf, StoreError> {
     let dir = dir(config_dir, kind, id)?;
     Ok(dir.with_file_name(format!("{id}.production.json")))
 }
@@ -168,7 +178,7 @@ pub fn set_production(
     kind: &str,
     id: &str,
     value: Option<Value>,
-) -> Result<Option<Production>, String> {
+) -> Result<Option<Production>, StoreError> {
     let path = production_path(config_dir, kind, id)?;
     match value {
         Some(value) => {
@@ -177,7 +187,7 @@ pub fn set_production(
                 value,
             };
             if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+                std::fs::create_dir_all(parent).map_err(|e| StoreError::write(parent, e))?;
             }
             crate::chat::store::write_json(&path, &marked)?;
             Ok(Some(marked))
@@ -186,7 +196,7 @@ pub fn set_production(
             match std::fs::remove_file(&path) {
                 Ok(()) => {}
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => return Err(e.to_string()),
+                Err(e) => return Err(StoreError::write(&path, e)),
             }
             Ok(None)
         }

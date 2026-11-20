@@ -241,7 +241,7 @@ pub fn chat_defaults(config_dir: &Path) -> ChatParams {
     read_json(&defaults_path(config_dir)).unwrap_or_default()
 }
 
-pub fn save_chat_defaults(config_dir: &Path, params: ChatParams) -> Result<ChatParams, String> {
+pub fn save_chat_defaults(config_dir: &Path, params: ChatParams) -> Result<ChatParams, StoreError> {
     let params = ChatParams {
         instructions: String::new(),
         ..params.clamped()
@@ -283,7 +283,7 @@ pub fn purge_temporary(config_dir: &Path) {
 }
 
 /// Deleting moves the conversation to the trash, where it stays for 30 days.
-pub fn delete_conversation(config_dir: &Path, id: &str) -> Result<(), String> {
+pub fn delete_conversation(config_dir: &Path, id: &str) -> Result<(), StoreError> {
     crate::chat::backup::trash(config_dir, id)
 }
 
@@ -357,8 +357,8 @@ pub fn load_projects(config_dir: &Path) -> Vec<Project> {
     read_json(&projects_path(config_dir)).unwrap_or_default()
 }
 
-pub fn save_projects(config_dir: &Path, projects: &[Project]) -> Result<(), String> {
-    write_json(&projects_path(config_dir), &projects).map_err(String::from)
+pub fn save_projects(config_dir: &Path, projects: &[Project]) -> Result<(), StoreError> {
+    write_json(&projects_path(config_dir), &projects)
 }
 
 /// The user's standing instructions: a tone preset and free text.
@@ -380,7 +380,7 @@ pub fn load_instructions(config_dir: &Path) -> Instructions {
     read_json(&instructions_path(config_dir)).unwrap_or_default()
 }
 
-pub fn save_instructions(config_dir: &Path, instructions: &Instructions) -> Result<(), String> {
+pub fn save_instructions(config_dir: &Path, instructions: &Instructions) -> Result<(), StoreError> {
     crate::chat::versions::keep(
         config_dir,
         "instructions",
@@ -388,7 +388,7 @@ pub fn save_instructions(config_dir: &Path, instructions: &Instructions) -> Resu
         &load_instructions(config_dir),
         instructions,
     )?;
-    write_json(&instructions_path(config_dir), instructions).map_err(String::from)
+    write_json(&instructions_path(config_dir), instructions)
 }
 
 mod editing;

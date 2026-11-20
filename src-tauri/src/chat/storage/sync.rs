@@ -574,7 +574,7 @@ fn remove_local_file(config_dir: &Path, rel: &str) -> Result<(), String> {
         .strip_prefix("chat/conversations/")
         .and_then(|n| n.strip_suffix(".json"))
     {
-        return crate::chat::store::delete_conversation(config_dir, id);
+        return crate::chat::store::delete_conversation(config_dir, id).map_err(String::from);
     }
     std::fs::remove_file(config_dir.join(rel)).map_err(|e| e.to_string())
 }

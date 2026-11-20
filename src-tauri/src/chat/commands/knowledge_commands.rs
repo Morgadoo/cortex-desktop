@@ -211,7 +211,7 @@ pub fn chat_get_instructions(app: AppHandle) -> Result<Instructions, String> {
 
 #[tauri::command]
 pub fn chat_save_instructions(app: AppHandle, instructions: Instructions) -> Result<(), String> {
-    store::save_instructions(&config_dir(&app)?, &instructions)
+    store::save_instructions(&config_dir(&app)?, &instructions).map_err(String::from)
 }
 
 /// Every version's answer at a branch point, to compare them.
@@ -508,7 +508,7 @@ pub fn chat_versions(
     kind: String,
     id: String,
 ) -> Result<Vec<crate::chat::versions::Version>, String> {
-    crate::chat::versions::list(&config_dir(&app)?, &kind, &id)
+    crate::chat::versions::list(&config_dir(&app)?, &kind, &id).map_err(String::from)
 }
 
 /// The plugins of a Claude plugin marketplace on GitHub, to choose from; `None` when the link is

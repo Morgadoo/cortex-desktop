@@ -165,7 +165,7 @@ pub fn chat_set_defaults(
     app: AppHandle,
     params: store::ChatParams,
 ) -> Result<store::ChatParams, String> {
-    store::save_chat_defaults(&config_dir(&app)?, params)
+    store::save_chat_defaults(&config_dir(&app)?, params).map_err(String::from)
 }
 
 #[tauri::command]
