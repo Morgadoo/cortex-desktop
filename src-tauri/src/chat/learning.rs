@@ -7,12 +7,11 @@
 //!   steps, a short reflection asks whether it followed a procedure worth reusing. If so, the
 //!   procedure is saved as a skill, turned off, and the user is told, to review and turn on.
 
-use std::path::{Path, PathBuf};
+use crate::support::settings_file::SettingsFile;
+use std::path::Path;
 
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
-
-use super::store::{chat_dir, write_json};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
@@ -26,19 +25,14 @@ pub struct Learning {
     pub last_evals: Option<DateTime<Utc>>,
 }
 
-fn path(config_dir: &Path) -> PathBuf {
-    chat_dir(config_dir).join("learning.json")
-}
+const LEARNING_FILE: SettingsFile<Learning> = SettingsFile::sealed("chat/learning.json");
 
 pub fn load(config_dir: &Path) -> Learning {
-    crate::chat::at_rest::read_to_string(path(config_dir))
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default()
+    LEARNING_FILE.load(config_dir)
 }
 
 pub fn save(config_dir: &Path, learning: &Learning) -> Result<(), String> {
-    write_json(&path(config_dir), learning)
+    LEARNING_FILE.save(config_dir, learning)
 }
 
 /// Whether the daily eval run is due (turned on, and a day since the last); marks it started.

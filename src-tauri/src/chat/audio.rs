@@ -15,7 +15,8 @@
 //!
 //! Keys live in the OS keychain (`audio-stt`, `audio-tts`); the rest in `chat/audio.json`.
 
-use std::path::{Path, PathBuf};
+use crate::support::settings_file::SettingsFile;
+use std::path::Path;
 
 use rig_core::audio_generation::AudioGenerationRequestBuilder;
 use rig_core::providers::openai::wire::{self as dialects};
@@ -24,8 +25,6 @@ use rig_core::providers::xai;
 use rig_core::transcription::TranscriptionRequestBuilder;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-
-use super::store::write_json;
 
 pub const STT_SECRET: &str = "audio-stt";
 pub const TTS_SECRET: &str = "audio-tts";
@@ -96,19 +95,14 @@ pub struct AudioSettings {
     pub tts: TtsSettings,
 }
 
-fn path(config_dir: &Path) -> PathBuf {
-    super::store::chat_dir(config_dir).join("audio.json")
-}
+const AUDIO_FILE: SettingsFile<AudioSettings> = SettingsFile::sealed("chat/audio.json");
 
 pub fn load(config_dir: &Path) -> AudioSettings {
-    crate::chat::at_rest::read_to_string(path(config_dir))
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default()
+    AUDIO_FILE.load(config_dir)
 }
 
 pub fn save(config_dir: &Path, settings: &AudioSettings) -> Result<(), String> {
-    write_json(&path(config_dir), settings)
+    AUDIO_FILE.save(config_dir, settings)
 }
 
 /// Whether live transcripts may use this engine: one on this computer, asked again about once a

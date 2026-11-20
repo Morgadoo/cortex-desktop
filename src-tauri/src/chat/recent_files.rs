@@ -2,12 +2,13 @@
 //! files"). What is kept is what the message carried: the text read from a document, or an image,
 //! in `chat/recent-files.json`, newest first.
 
+use crate::support::settings_file::SettingsFile;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use super::store::{chat_dir, write_json};
+use super::store::write_json;
 
 /// Files kept.
 const KEEP: usize = 20;
@@ -45,15 +46,15 @@ impl RecentFile {
     }
 }
 
+const RECENT_FILES_FILE: SettingsFile<Vec<RecentFile>> =
+    SettingsFile::sealed("chat/recent-files.json");
+
 fn path(config_dir: &Path) -> PathBuf {
-    chat_dir(config_dir).join("recent-files.json")
+    RECENT_FILES_FILE.path(config_dir)
 }
 
 pub fn load(config_dir: &Path) -> Vec<RecentFile> {
-    crate::chat::at_rest::read_to_string(path(config_dir))
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default()
+    RECENT_FILES_FILE.load(config_dir)
 }
 
 /// Puts the files first in the list (moving any the list already has), within the limits.

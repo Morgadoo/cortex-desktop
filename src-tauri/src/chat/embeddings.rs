@@ -23,6 +23,7 @@
 //! Qdrant Cloud, for large libraries. With Qdrant, vectors are still cached here, so changing
 //! stores never embeds again; Qdrant holds a copy of each passage and answers the searches.
 
+use crate::support::settings_file::SettingsFile;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -69,15 +70,15 @@ impl EmbeddingSettings {
     }
 }
 
+const EMBEDDINGS_FILE: SettingsFile<EmbeddingSettings> =
+    SettingsFile::sealed("chat/embeddings.json");
+
 fn settings_path(config_dir: &Path) -> PathBuf {
-    super::store::chat_dir(config_dir).join("embeddings.json")
+    EMBEDDINGS_FILE.path(config_dir)
 }
 
 pub fn load(config_dir: &Path) -> EmbeddingSettings {
-    crate::chat::at_rest::read_to_string(settings_path(config_dir))
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default()
+    EMBEDDINGS_FILE.load(config_dir)
 }
 
 pub fn save(config_dir: &Path, settings: &EmbeddingSettings) -> Result<(), String> {

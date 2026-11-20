@@ -6,13 +6,13 @@
 //! listed by title so the model can read or search them. The model writes and updates pages with
 //! tools, the user edits them on the Knowledge page, and answers cite the pages they used.
 
-use std::path::{Path, PathBuf};
+use crate::support::settings_file::SettingsFile;
+use std::path::Path;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use super::retrieval::tokens;
-use super::store::write_json;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -37,15 +37,10 @@ pub const MAX_BODY: usize = 20_000;
 const RECALL_PAGES: usize = 3;
 const RECALL_CHARS: usize = 3_000;
 
-fn path(config_dir: &Path) -> PathBuf {
-    super::store::chat_dir(config_dir).join("knowledge.json")
-}
+const KNOWLEDGE_FILE: SettingsFile<Vec<Page>> = SettingsFile::sealed("chat/knowledge.json");
 
 pub fn load(config_dir: &Path) -> Vec<Page> {
-    crate::chat::at_rest::read_to_string(path(config_dir))
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default()
+    KNOWLEDGE_FILE.load(config_dir)
 }
 
 pub(crate) fn save_all(config_dir: &Path, pages: &[Page]) -> Result<(), String> {
@@ -57,7 +52,7 @@ pub(crate) fn save_all(config_dir: &Path, pages: &[Page]) -> Result<(), String> 
         &load(config_dir),
         &pages.to_vec(),
     )?;
-    write_json(&path(config_dir), &pages)
+    KNOWLEDGE_FILE.save(config_dir, pages)
 }
 
 /// Finds a page by id, id prefix (8+ characters) or exact title (any case).

@@ -29,6 +29,7 @@
 //! much history it takes. Pages opened on this computer reach it (an intranet page, your own
 //! site, documentation); for visitors elsewhere it would need a server, which Cortex does not run.
 
+use crate::support::settings_file::SettingsFile;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -97,15 +98,15 @@ pub fn normalize_origin(origin: &str) -> String {
     }
 }
 
+const API_SERVER_FILE: SettingsFile<ApiServerSettings> =
+    SettingsFile::sealed("chat/api-server.json");
+
 fn settings_path(config_dir: &Path) -> PathBuf {
-    super::store::chat_dir(config_dir).join("api-server.json")
+    API_SERVER_FILE.path(config_dir)
 }
 
 pub fn load(config_dir: &Path) -> ApiServerSettings {
-    crate::chat::at_rest::read_to_string(settings_path(config_dir))
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default()
+    API_SERVER_FILE.load(config_dir)
 }
 
 pub fn save(config_dir: &Path, settings: &ApiServerSettings) -> Result<(), String> {

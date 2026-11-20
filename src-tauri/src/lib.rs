@@ -21,6 +21,7 @@ mod settings;
 mod skills;
 #[cfg(target_os = "macos")]
 mod subframe_navigation;
+mod support;
 mod theme;
 mod tools;
 mod tray;

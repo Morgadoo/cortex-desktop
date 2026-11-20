@@ -11,6 +11,7 @@
 //! with `ydotool` (and `wtype` for typing when ydotool is missing) on Wayland; on macOS
 //! `screencapture` and `cliclick`. When one is missing the tool says what to install.
 
+use crate::support::settings_file::SettingsFile;
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::path::Path;
@@ -21,7 +22,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::process::Command;
 
-use super::store::{chat_dir, write_json};
 use super::tools::ChatTool;
 
 pub const CONNECTOR: &str = "computer";
@@ -58,19 +58,14 @@ pub fn app_allowed(settings: &ComputerSettings, window: &str) -> Result<(), Stri
     Ok(())
 }
 
-fn settings_path(config_dir: &Path) -> std::path::PathBuf {
-    chat_dir(config_dir).join("computer.json")
-}
+const COMPUTER_FILE: SettingsFile<ComputerSettings> = SettingsFile::sealed("chat/computer.json");
 
 pub fn load(config_dir: &Path) -> ComputerSettings {
-    crate::chat::at_rest::read_to_string(settings_path(config_dir))
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default()
+    COMPUTER_FILE.load(config_dir)
 }
 
 pub fn save(config_dir: &Path, settings: &ComputerSettings) -> Result<(), String> {
-    write_json(&settings_path(config_dir), settings)
+    COMPUTER_FILE.save(config_dir, settings)
 }
 
 pub fn definition() -> ChatTool {

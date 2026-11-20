@@ -12,14 +12,13 @@
 //! hooks that come with a Claude plugin run as they are. It runs in the chat's folder when it has one, for at
 //! most 60 seconds, with the user's shell.
 
-use std::path::{Path, PathBuf};
+use crate::support::settings_file::SettingsFile;
+use std::path::Path;
 use std::process::Stdio;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::io::AsyncWriteExt;
-
-use super::store::{chat_dir, write_json};
 
 pub const EVENTS: &[&str] = &["before_tool", "after_tool", "turn_end"];
 const TIMEOUT_SECS: u64 = 60;
@@ -46,15 +45,10 @@ fn enabled() -> bool {
     true
 }
 
-fn path(config_dir: &Path) -> PathBuf {
-    chat_dir(config_dir).join("hooks.json")
-}
+const HOOKS_FILE: SettingsFile<Vec<Hook>> = SettingsFile::sealed("chat/hooks.json");
 
 pub fn load(config_dir: &Path) -> Vec<Hook> {
-    crate::chat::at_rest::read_to_string(path(config_dir))
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default()
+    HOOKS_FILE.load(config_dir)
 }
 
 pub fn save(config_dir: &Path, hooks: &[Hook]) -> Result<(), String> {
@@ -66,7 +60,7 @@ pub fn save(config_dir: &Path, hooks: &[Hook]) -> Result<(), String> {
             return Err("A hook needs a command.".into());
         }
     }
-    write_json(&path(config_dir), &hooks)
+    HOOKS_FILE.save(config_dir, hooks)
 }
 
 /// Whether a hook's matcher covers a tool.

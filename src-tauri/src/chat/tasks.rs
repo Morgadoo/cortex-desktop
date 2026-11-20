@@ -11,7 +11,8 @@
 //! are noted when the task is saved; each scheduler tick, files that appeared since and have not
 //! changed for a few seconds start a run, with their names added to the prompt.
 
-use std::path::{Path, PathBuf};
+use crate::support::settings_file::SettingsFile;
+use std::path::Path;
 use std::time::Duration;
 
 use chrono::{DateTime, Datelike, Local, NaiveDate, NaiveTime, TimeZone, Utc, Weekday};
@@ -19,7 +20,7 @@ use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
-use super::store::{chat_dir, valid_id, write_json};
+use super::store::valid_id;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -709,19 +710,14 @@ pub fn weekday_index(name: &str) -> Option<u8> {
     Some(w.num_days_from_monday() as u8)
 }
 
-fn path(config_dir: &Path) -> PathBuf {
-    chat_dir(config_dir).join("tasks.json")
-}
+const TASKS_FILE: SettingsFile<Vec<Task>> = SettingsFile::sealed("chat/tasks.json");
 
 pub fn load(config_dir: &Path) -> Vec<Task> {
-    crate::chat::at_rest::read_to_string(path(config_dir))
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default()
+    TASKS_FILE.load(config_dir)
 }
 
 fn store(config_dir: &Path, tasks: &[Task]) -> Result<(), String> {
-    write_json(&path(config_dir), &tasks)
+    TASKS_FILE.save(config_dir, tasks)
 }
 
 /// A planned run, for the calendar.

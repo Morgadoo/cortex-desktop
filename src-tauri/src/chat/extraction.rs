@@ -10,7 +10,8 @@
 //! Used for documents added to libraries and files attached in chat; when the server fails, the
 //! built-in reader takes over.
 
-use std::path::{Path, PathBuf};
+use crate::support::settings_file::SettingsFile;
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
@@ -28,15 +29,10 @@ impl Extraction {
     }
 }
 
-fn path(config_dir: &Path) -> PathBuf {
-    super::store::chat_dir(config_dir).join("extraction.json")
-}
+const EXTRACTION_FILE: SettingsFile<Extraction> = SettingsFile::sealed("chat/extraction.json");
 
 pub fn load(config_dir: &Path) -> Extraction {
-    crate::chat::at_rest::read_to_string(path(config_dir))
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default()
+    EXTRACTION_FILE.load(config_dir)
 }
 
 pub fn save(config_dir: &Path, e: &Extraction) -> Result<(), String> {
@@ -49,7 +45,7 @@ pub fn save(config_dir: &Path, e: &Extraction) -> Result<(), String> {
     {
         return Err("Give the server's address, like http://localhost:9998.".into());
     }
-    super::store::write_json(&path(config_dir), e)
+    EXTRACTION_FILE.save(config_dir, e)
 }
 
 /// Text from Docling's answer: Markdown, else plain text.

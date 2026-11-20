@@ -5,6 +5,9 @@
 //! instance (self-hosted, private), Brave Search or Tavily (API keys in the keychain). When the
 //! chosen engine fails, the keyless search answers instead.
 
+use std::path::Path;
+
+use crate::support::settings_file::SettingsFile;
 use std::time::Duration;
 
 use base64::Engine;
@@ -134,15 +137,10 @@ impl Default for SearchSettings {
     }
 }
 
-fn settings_path(config_dir: &std::path::Path) -> std::path::PathBuf {
-    super::store::chat_dir(config_dir).join("search.json")
-}
+const SEARCH_FILE: SettingsFile<SearchSettings> = SettingsFile::sealed("chat/search.json");
 
-pub fn load_settings(config_dir: &std::path::Path) -> SearchSettings {
-    crate::chat::at_rest::read_to_string(settings_path(config_dir))
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default()
+pub fn load_settings(config_dir: &Path) -> SearchSettings {
+    SEARCH_FILE.load(config_dir)
 }
 
 pub fn save_settings(
@@ -154,7 +152,7 @@ pub fn save_settings(
         s.engine = "auto".into();
     }
     s.base_url = s.base_url.trim().trim_end_matches('/').to_string();
-    super::store::write_json(&settings_path(config_dir), &s)
+    SEARCH_FILE.save(config_dir, &s)
 }
 
 async fn key() -> Result<Option<String>, String> {

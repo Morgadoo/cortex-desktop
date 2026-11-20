@@ -4,13 +4,12 @@
 //! model in it. Ratings are Elo (start 1000, K 32), replayed from the stored results in order, so
 //! they can always be recomputed. Results live in `chat/arena.json`.
 
+use crate::support::settings_file::SettingsFile;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-
-use super::store::{chat_dir, write_json};
 
 const START: f64 = 1000.0;
 const K: f64 = 32.0;
@@ -32,15 +31,10 @@ pub struct Standing {
     pub losses: u32,
 }
 
-fn path(config_dir: &Path) -> PathBuf {
-    chat_dir(config_dir).join("arena.json")
-}
+const ARENA_FILE: SettingsFile<Vec<Match>> = SettingsFile::sealed("chat/arena.json");
 
 pub fn load(config_dir: &Path) -> Vec<Match> {
-    crate::chat::at_rest::read_to_string(path(config_dir))
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default()
+    ARENA_FILE.load(config_dir)
 }
 
 /// Records a comparison's result.
@@ -59,7 +53,7 @@ pub fn record(config_dir: &Path, winner: &str, losers: &[String]) -> Result<(), 
         losers,
         at: Utc::now(),
     });
-    write_json(&path(config_dir), &all)
+    ARENA_FILE.save(config_dir, &all)
 }
 
 /// Ratings from the results, best first.
@@ -92,7 +86,7 @@ pub fn standings(matches: &[Match]) -> Vec<Standing> {
 }
 
 pub fn reset(config_dir: &Path) -> Result<(), String> {
-    write_json(&path(config_dir), &Vec::<Match>::new())
+    ARENA_FILE.save(config_dir, &Vec::<Match>::new())
 }
 
 #[cfg(test)]

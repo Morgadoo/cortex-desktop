@@ -19,12 +19,11 @@
 //! notes, scripts), as Claude's and Open WebUI's skills do. The model is told their names when it
 //! loads the skill, and reads one with `use_skill` and its `file` argument.
 
+use crate::support::settings_file::SettingsFile;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-
-use super::store::write_json;
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -150,15 +149,10 @@ pub fn skills_dir(config_dir: &Path) -> PathBuf {
     config_dir.join("skills")
 }
 
-fn state_path(config_dir: &Path) -> PathBuf {
-    super::store::chat_dir(config_dir).join("skills.json")
-}
+const SKILLS_FILE: SettingsFile<SkillState> = SettingsFile::sealed("chat/skills.json");
 
 fn load_state(config_dir: &Path) -> SkillState {
-    crate::chat::at_rest::read_to_string(state_path(config_dir))
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default()
+    SKILLS_FILE.load(config_dir)
 }
 
 /// Names are folder names and tool arguments: lowercase letters, digits and hyphens.
@@ -392,7 +386,7 @@ pub fn delete(config_dir: &Path, name: &str) -> Result<(), String> {
 pub fn set_enabled(config_dir: &Path, name: &str, enabled: bool) -> Result<(), String> {
     let mut state = load_state(config_dir);
     state.enabled.insert(name.to_string(), enabled);
-    write_json(&state_path(config_dir), &state)
+    SKILLS_FILE.save(config_dir, &state)
 }
 
 /// Imports a `SKILL.md`, or a folder holding one with its supporting files.

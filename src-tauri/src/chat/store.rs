@@ -4,6 +4,7 @@
 //! the model saw. The page never reads that format: [`ConversationView`] flattens it into turns of
 //! text, reasoning and tool steps.
 
+use crate::support::settings_file::{self, Storage};
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
@@ -39,26 +40,18 @@ fn conversation_path(config_dir: &Path, id: &str) -> Result<PathBuf, String> {
     Ok(conversations_dir(config_dir).join(format!("{id}.json")))
 }
 
-/// Writes through a temporary file, so a crash never leaves half a conversation.
+/// Writes through a temporary file, so a crash never leaves half a conversation. Sealed when
+/// encryption at rest is on.
 pub fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("could not create {parent:?}: {e}"))?;
-    }
-    let text = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
-    let tmp = path.with_extension("json.tmp");
-    crate::chat::at_rest::write(&tmp, text).map_err(|e| format!("could not write {tmp:?}: {e}"))?;
-    std::fs::rename(&tmp, path).map_err(|e| format!("could not replace {path:?}: {e}"))
+    settings_file::write_json(path, Storage::Sealed, value)
 }
 
+/// Reads a sealed-or-plain JSON file; `None` when it is absent or (logged) unreadable.
 pub fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Option<T> {
-    let text = crate::chat::at_rest::read_to_string(path).ok()?;
-    match serde_json::from_str(&text) {
-        Ok(value) => Some(value),
-        Err(e) => {
-            log::warn!("ignoring unreadable {path:?}: {e}");
-            None
-        }
-    }
+    settings_file::read_json(path, Storage::Sealed).unwrap_or_else(|e| {
+        log::warn!("ignoring {e}");
+        None
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

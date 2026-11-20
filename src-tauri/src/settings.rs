@@ -3,8 +3,8 @@ pub mod window;
 
 use super::reporting::config_failure;
 use crate::account::AccountId;
+use crate::support::settings_file::{self, Storage};
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
@@ -100,25 +100,16 @@ impl AppSettings {
     }
 }
 
+/// The app's own settings stay plain JSON: they are read before encryption at rest is unlocked.
 fn read_json<T: Default + for<'de> Deserialize<'de>>(path: PathBuf) -> Result<T, String> {
-    if !path.exists() {
-        return Ok(T::default());
-    }
-    let contents = fs::read_to_string(path).map_err(|e| format!("Failed to read settings: {e}"))?;
-    serde_json::from_str(&contents)
+    settings_file::read_json(&path, Storage::Plain)
+        .map(Option::unwrap_or_default)
         .inspect_err(|_| config_failure("Settings load failed"))
-        .map_err(|e| format!("Failed to parse settings: {e}"))
 }
 
 fn write_json<T: Serialize>(path: PathBuf, value: &T) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create settings directory: {e}"))?;
-    }
-    let contents = serde_json::to_string_pretty(value)
+    settings_file::write_json(&path, Storage::Plain, value)
         .inspect_err(|_| config_failure("Settings save failed"))
-        .map_err(|e| format!("Failed to serialize settings: {e}"))?;
-    fs::write(path, contents).map_err(|e| format!("Failed to write settings: {e}"))
 }
 
 pub fn get_settings_path(app_handle: &AppHandle) -> Result<PathBuf, String> {

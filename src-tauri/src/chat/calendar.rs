@@ -3,12 +3,11 @@
 //! iCloud, Thunderbird), and `.vcf` contact files. The assistant reads them with
 //! `calendar_events` and `find_contact`; nothing is written back.
 
-use std::path::{Path, PathBuf};
+use crate::support::settings_file::SettingsFile;
+use std::path::Path;
 
 use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveDateTime, TimeZone, Utc, Weekday};
 use serde::{Deserialize, Serialize};
-
-use super::store::{chat_dir, write_json};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -25,19 +24,14 @@ pub struct Settings {
     pub contacts: Vec<Source>,
 }
 
-fn path(config_dir: &Path) -> PathBuf {
-    chat_dir(config_dir).join("calendars.json")
-}
+const CALENDARS_FILE: SettingsFile<Settings> = SettingsFile::sealed("chat/calendars.json");
 
 pub fn load(config_dir: &Path) -> Settings {
-    crate::chat::at_rest::read_to_string(path(config_dir))
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default()
+    CALENDARS_FILE.load(config_dir)
 }
 
 pub fn save(config_dir: &Path, settings: &Settings) -> Result<(), String> {
-    write_json(&path(config_dir), settings)
+    CALENDARS_FILE.save(config_dir, settings)
 }
 
 /// The text of a source: fetched for a link, read for a file.

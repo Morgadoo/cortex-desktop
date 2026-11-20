@@ -4,12 +4,13 @@
 //! under. Its instructions replace the generic persona, its model overrides the composer's, and
 //! its tool list narrows what it may use. Saved in `<config>/chat/agents.json`.
 
+use crate::support::settings_file::SettingsFile;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use super::store::{chat_dir, valid_id, write_json};
+use super::store::{chat_dir, valid_id};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -107,15 +108,10 @@ impl Agent {
     }
 }
 
-fn path(config_dir: &Path) -> PathBuf {
-    chat_dir(config_dir).join("agents.json")
-}
+const AGENTS_FILE: SettingsFile<Vec<Agent>> = SettingsFile::sealed("chat/agents.json");
 
 pub fn load(config_dir: &Path) -> Vec<Agent> {
-    crate::chat::at_rest::read_to_string(path(config_dir))
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default()
+    AGENTS_FILE.load(config_dir)
 }
 
 /// An agent as one file: settings, notebook and the user's own skills it relies on.
@@ -247,14 +243,14 @@ pub fn save(config_dir: &Path, agent: Agent) -> Result<Vec<Agent>, String> {
         }
         None => agents.push(agent),
     }
-    write_json(&path(config_dir), &agents)?;
+    AGENTS_FILE.save(config_dir, &agents)?;
     Ok(agents)
 }
 
 pub fn delete(config_dir: &Path, id: &str) -> Result<Vec<Agent>, String> {
     let mut agents = load(config_dir);
     agents.retain(|a| a.id != id);
-    write_json(&path(config_dir), &agents)?;
+    AGENTS_FILE.save(config_dir, &agents)?;
     Ok(agents)
 }
 

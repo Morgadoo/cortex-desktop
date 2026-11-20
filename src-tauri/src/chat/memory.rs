@@ -4,12 +4,11 @@
 //! is on, so recall needs no tool; the model adds and removes entries with `remember` and `forget`,
 //! and the user edits them on the Knowledge page.
 
-use std::path::{Path, PathBuf};
+use crate::support::settings_file::SettingsFile;
+use std::path::Path;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-
-use super::store::write_json;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -95,21 +94,16 @@ pub const MAX_MEMORIES: usize = 200;
 /// A memory is a fact, not a document.
 pub const MAX_LENGTH: usize = 500;
 
-fn path(config_dir: &Path) -> PathBuf {
-    super::store::chat_dir(config_dir).join("memories.json")
-}
+const MEMORIES_FILE: SettingsFile<Memories> = SettingsFile::sealed("chat/memories.json");
 
 pub fn load(config_dir: &Path) -> Memories {
-    crate::chat::at_rest::read_to_string(path(config_dir))
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default()
+    MEMORIES_FILE.load(config_dir)
 }
 
 pub fn save(config_dir: &Path, memories: &Memories) -> Result<(), String> {
     // The memories as they were stay restorable.
     super::versions::keep(config_dir, "memories", "all", &load(config_dir), memories)?;
-    write_json(&path(config_dir), memories)
+    MEMORIES_FILE.save(config_dir, memories)
 }
 
 /// Adds a memory, or returns the existing one when the same fact is already known.
