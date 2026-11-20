@@ -1250,6 +1250,123 @@ fn apply_request(
     Ok(())
 }
 
+/// The request for one step: the conversation so far, the step's system prompt, the tools on
+/// offer (none on the last step; deferred ones once loaded), and the chat's model settings.
+#[allow(clippy::too_many_arguments)]
+fn completion_request(
+    prompt: Message,
+    history: &[Message],
+    step_system: String,
+    last_step: bool,
+    offered: &[ChatTool],
+    defer: bool,
+    conversation: &Conversation,
+    config_dir: &std::path::Path,
+    request: &TurnRequest,
+    reasoning: bool,
+) -> CompletionRequest {
+    let mut call = CompletionRequest::new(prompt)
+        .messages(history.iter().cloned())
+        .preamble(step_system);
+    if !last_step {
+        // Deferred tools go out once they are loaded; the rest every time.
+        let definitions = offered
+            .iter()
+            .filter(|t| {
+                !defer || !deferred::deferrable(t) || conversation.loaded_tools.contains(&t.name)
+            })
+            .filter_map(ChatTool::definition);
+        call = call.tools(definitions);
+    }
+    // This conversation's own model settings, then the app-wide defaults.
+    let params = conversation
+        .params
+        .or_defaults(&store::chat_defaults(config_dir));
+    if let Some(t) = params.temperature {
+        call = call.temperature(t);
+    }
+    if let Some(n) = params.max_tokens {
+        call = call.max_tokens(n);
+    }
+    if let Some(p) = params.top_p {
+        call = call.top_p(p);
+    }
+    if let Some(effort) = request.speed.effort().filter(|_| reasoning) {
+        call = call.reasoning(effort);
+    }
+    call
+}
+
+/// What reading one streamed reply produced.
+struct StreamRead {
+    /// The user stopped it.
+    cancelled: bool,
+    /// The answer's text as the user saw it (personal data restored).
+    text: String,
+    /// Whether anything reached the user, after which a failure is not retried.
+    anything: bool,
+    /// When the model started and stopped thinking.
+    thinking: Option<(std::time::Instant, Option<std::time::Instant>)>,
+}
+
+/// Reads a streamed reply to its end, or until the user stops it, showing its text, reasoning
+/// and pending tool calls as they come.
+async fn read_stream(
+    stream: &mut rig_core::streaming::Streamed<Completion>,
+    cancel: &mut watch::Receiver<bool>,
+    host: &Arc<dyn Host>,
+    id: &str,
+    filter: bool,
+    redactions: &privacy::Redactions,
+) -> StreamRead {
+    let mut thinking: Option<(std::time::Instant, Option<std::time::Instant>)> = None;
+    let mut streamed_text = String::new();
+    let mut streamed_anything = false;
+    let mut held = String::new();
+    let cancelled_by_user = loop {
+        tokio::select! {
+            _ = cancelled(cancel) => break true,
+            item = stream.next() => match item {
+                None => break false,
+                Some(Err(_)) => break false, // finish() reports it
+                Some(Ok(Item::Unknown(_))) => {}
+                Some(Ok(Item::Event(event))) => match event {
+                    StreamEvent::Text { text, .. } => {
+                        streamed_anything = true;
+                        if let Some((_, end @ None)) = &mut thinking {
+                            *end = Some(std::time::Instant::now());
+                        }
+                        let text = if filter { restore_streamed(redactions, &mut held, &text) } else { text };
+                        streamed_text.push_str(&text);
+                        if !text.is_empty() {
+                            host.emit(ChatEvent::Text { conversation_id: id.into(), text });
+                        }
+                    }
+                    StreamEvent::Reasoning { text, .. } => {
+                        streamed_anything = true;
+                        thinking.get_or_insert((std::time::Instant::now(), None));
+                        host.emit(ChatEvent::Reasoning { conversation_id: id.into(), text });
+                    }
+                    StreamEvent::Start { kind: PartKind::ToolCall, name: Some(name), .. } => {
+                        streamed_anything = true;
+                        if let Some((_, end @ None)) = &mut thinking {
+                            *end = Some(std::time::Instant::now());
+                        }
+                        host.emit(ChatEvent::ToolPending { conversation_id: id.into(), name: name.to_string() });
+                    }
+                    _ => {}
+                },
+            },
+        }
+    };
+    StreamRead {
+        cancelled: cancelled_by_user,
+        text: streamed_text,
+        anything: streamed_anything,
+        thinking,
+    }
+}
+
 /// The tools a turn offers the model: the connectors', the built-ins and the user's own, less
 /// what the agent, the chat or the run rules out; and whether some load only on demand.
 fn tools_for_turn(
@@ -1695,37 +1812,18 @@ impl Steps for TurnSteps<'_> {
                 }
             }
         }
-        let mut call = CompletionRequest::new(prompt)
-            .messages(history.iter().cloned())
-            .preamble(step_system);
-        if !last_step {
-            // Deferred tools go out once they are loaded; the rest every time.
-            let definitions = offered
-                .iter()
-                .filter(|t| {
-                    !defer
-                        || !deferred::deferrable(t)
-                        || conversation.loaded_tools.contains(&t.name)
-                })
-                .filter_map(ChatTool::definition);
-            call = call.tools(definitions);
-        }
-        // This conversation's own model settings, then the app-wide defaults.
-        let params = conversation
-            .params
-            .or_defaults(&store::chat_defaults(config_dir));
-        if let Some(t) = params.temperature {
-            call = call.temperature(t);
-        }
-        if let Some(n) = params.max_tokens {
-            call = call.max_tokens(n);
-        }
-        if let Some(p) = params.top_p {
-            call = call.top_p(p);
-        }
-        if let Some(effort) = request.speed.effort().filter(|_| reasoning) {
-            call = call.reasoning(effort);
-        }
+        let call = completion_request(
+            prompt,
+            history,
+            step_system,
+            last_step,
+            offered,
+            defer,
+            conversation,
+            config_dir,
+            request,
+            reasoning,
+        );
 
         // Transient failures (dropped connections, rate limits, overloaded servers) are retried
         // with backoff, as long as nothing reached the user yet.
@@ -1735,47 +1833,10 @@ impl Steps for TurnSteps<'_> {
         let mut thought_ms: Option<u32>;
         let response = loop {
             attempt += 1;
-            let mut thinking: Option<(std::time::Instant, Option<std::time::Instant>)> = None;
             let mut stream = model.stream(call.clone()).map_err(|e| e.to_string())?;
-            let mut streamed_text = String::new();
-            let mut streamed_anything = false;
-            let mut held = String::new();
-            let was_cancelled = loop {
-                tokio::select! {
-                    _ = cancelled(cancel) => break true,
-                    item = stream.next() => match item {
-                        None => break false,
-                        Some(Err(_)) => break false, // finish() reports it
-                        Some(Ok(Item::Unknown(_))) => {}
-                        Some(Ok(Item::Event(event))) => match event {
-                            StreamEvent::Text { text, .. } => {
-                                streamed_anything = true;
-                                if let Some((_, end @ None)) = &mut thinking {
-                                    *end = Some(std::time::Instant::now());
-                                }
-                                let text = if filter { restore_streamed(redactions, &mut held, &text) } else { text };
-                                streamed_text.push_str(&text);
-                                if !text.is_empty() {
-                                    host.emit(ChatEvent::Text { conversation_id: id.into(), text });
-                                }
-                            }
-                            StreamEvent::Reasoning { text, .. } => {
-                                streamed_anything = true;
-                                thinking.get_or_insert((std::time::Instant::now(), None));
-                                host.emit(ChatEvent::Reasoning { conversation_id: id.into(), text });
-                            }
-                            StreamEvent::Start { kind: PartKind::ToolCall, name: Some(name), .. } => {
-                                streamed_anything = true;
-                                if let Some((_, end @ None)) = &mut thinking {
-                                    *end = Some(std::time::Instant::now());
-                                }
-                                host.emit(ChatEvent::ToolPending { conversation_id: id.into(), name: name.to_string() });
-                            }
-                            _ => {}
-                        },
-                    },
-                }
-            };
+            let read = read_stream(&mut stream, cancel, host, id, filter, redactions).await;
+            let (was_cancelled, streamed_text, streamed_anything, thinking) =
+                (read.cancelled, read.text, read.anything, read.thinking);
 
             if was_cancelled {
                 if !streamed_text.trim().is_empty() {
