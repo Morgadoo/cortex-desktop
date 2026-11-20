@@ -29,10 +29,10 @@
 .knowledge-card:hover { border-color: color-mix(in srgb, var(--text) 24%, transparent); box-shadow: var(--hover-lift); }
 .knowledge-card-head { display: flex; align-items: center; gap: 8px; }
 .knowledge-excerpt { margin: 0; font-size: var(--fs-sm); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.knowledge-meta { display: flex; gap: 10px; font-size: var(--fs-xs); color: var(--text-muted); }
+.knowledge-meta { display: flex; gap: 10px; font-size: var(--fs-xs); color: var(--text-muted); flex-wrap: wrap; }
 .knowledge-sources { margin: 0 20px; font-size: var(--fs-xs); }
 .cite-knowledge { background: color-mix(in srgb, var(--success) 14%, transparent); color: var(--success); }
-.knowledge-meta { flex-wrap: wrap; } .knowledge-meta span { white-space: nowrap; }
+.knowledge-meta span { white-space: nowrap; }
 
 /* ------------------------------------------------------------------ sheets */
 
