@@ -1,7 +1,7 @@
 import { openChatBeside } from './side-panels';
 import { exportImage, printConversation } from './turn-actions';
 import { refreshConversations } from './send';
-import { moveToProject } from './composer';
+import { moveToProject } from './composer/pickers';
 import { tauriInvoke } from '../../../shared/tauri';
 import { api } from '../core/api';
 import { h } from '../ui/h';
@@ -10,7 +10,7 @@ import { confirmDialog, popover, promptText, toast } from '../ui/overlay';
 import { navigate, state } from '../core/state';
 import { call, shown } from '../core/call';
 import { openChatSettings } from './chat-settings';
-import { composer } from './composer';
+import { composer } from './composer/index';
 import { viewCache } from './chat-view';
 
 export function conversationMenu(anchor: HTMLElement, id: string, title: string, pinned: boolean) {

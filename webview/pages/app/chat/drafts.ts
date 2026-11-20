@@ -1,6 +1,6 @@
 /** Unsent text and attachments by conversation, kept on this device. */
 import { json } from '../core/prefs';
-import { type Attachment } from './composer';
+import type { Attachment } from './composer/composer';
 
 /** Unsent attachments by conversation, for this session. */
 export const draftAttachments = new Map<string, Attachment[]>();

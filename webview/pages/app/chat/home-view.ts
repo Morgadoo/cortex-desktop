@@ -10,7 +10,7 @@ import { button } from '../ui/ui';
 import { flag, textPref, workdir } from '../core/prefs';
 import { viewCache } from './chat-view';
 import { temporaryNext, setTemporaryNext } from './send';
-import { composer } from './composer';
+import { composer } from './composer/index';
 
 const SUGGESTIONS: { icon: string; text: string; page?: boolean; more?: boolean; image?: boolean }[] = [
   { icon: 'image', text: 'Create an image', image: true },

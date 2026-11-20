@@ -12,7 +12,7 @@ import { listen, tauriInvoke } from '../../../shared/tauri';
 import { recordStepTimes } from '../chat/transcript';
 import { scrollToTurn } from '../chat/turn-actions';
 import { refreshConversations } from '../chat/send';
-import { composer } from '../chat/composer';
+import { composer } from '../chat/composer/index';
 import { HomeView } from '../chat/home-view';
 import { CompareView } from '../chat/compare-view';
 import { viewCache } from '../chat/chat-view';

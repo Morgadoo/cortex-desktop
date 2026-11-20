@@ -1,4 +1,4 @@
-import { type ChatEvent, type UsageTotals } from '../core/api';
+import type { ChatEvent, UsageTotals } from '../core/api';
 import { openOutputsPanel } from '../canvas/outputs';
 import { applyEvent, followStreamOn } from '../core/state';
 import { closePanel, enableAskAboutSelection, setPanelHost } from '../canvas/canvas';
@@ -13,7 +13,8 @@ import { bookmarked, renderAssistantTurn, scrollToTurn, sourcesOf, versionSwitch
 import { autoPlay } from './speech';
 import { renderLiveTurn } from './live-turn';
 import { pendingUser, refreshConversations, temporaryChats } from './send';
-import { composer, userParts } from './composer';
+import { userParts } from './composer/composer';
+import { composer } from './composer/index';
 import { renderApprovals, renderQuestion } from './approvals';
 import { avatarHue } from './home-view';
 import { tauriInvoke } from '../../../shared/tauri';
@@ -27,7 +28,7 @@ import { changed, navigate, state } from '../core/state';
 import { hostOf } from '../ui/favicon';
 import { trigger } from '../ui/ui';
 import { showContext } from './chat-settings';
-import { HomeView } from './home-view';
+import type { HomeView } from './home-view';
 
 export class ChatView {
   readonly el = h('div', { class: 'chat' });

@@ -1,5 +1,5 @@
 /** A conversation's transcript: user turns, tool steps, results, reasoning and the parts of an answer. */
-import { type Part, type Turn } from '../core/api';
+import type { Part, Turn } from '../core/api';
 import { renderPageView } from './coderun';
 import { h } from '../ui/h';
 import { icon } from '../ui/icons';

@@ -6,7 +6,7 @@ import { icon } from '../ui/icons';
 import { followUpsOn, state } from '../core/state';
 import { json } from '../core/prefs';
 import { send, temporaryChats } from './send';
-import { composer } from './composer';
+import { composer } from './composer/index';
 import { viewCache } from './chat-view';
 
 /** Messages queued behind a running task, by conversation; kept across restarts. */

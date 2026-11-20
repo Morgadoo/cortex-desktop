@@ -1,8 +1,8 @@
 import { hasPanel, openSidePanel } from '../canvas/canvas';
 import { previewFor } from '../ui/favicon';
 import { host, renderParts } from './transcript';
-import { type Source } from './turn-actions';
-import { composer } from './composer';
+import type { Source } from './turn-actions';
+import { composer } from './composer/index';
 import { tauriInvoke } from '../../../shared/tauri';
 import { api, type Part } from '../core/api';
 import { clear, h } from '../ui/h';

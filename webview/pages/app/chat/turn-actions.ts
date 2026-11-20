@@ -16,7 +16,7 @@ import { json } from '../core/prefs';
 import { callQuiet } from '../core/call';
 import { numberLibraryCitations, openSourcesPanel } from './side-panels';
 import { viewCache } from './chat-view';
-import { composer } from './composer';
+import { composer } from './composer/index';
 import { refreshConversations, regenerate } from './send';
 import { readAloudButton } from './speech';
 import { host, resultRows, stepDurations, textOf, renderParts } from './transcript';
