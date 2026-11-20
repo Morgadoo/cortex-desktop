@@ -118,7 +118,7 @@ export const api = {
   cancel: (conversationId: string) => call<boolean>('chat_cancel', { conversationId }),
   answer: (callId: string, answer: string) => call<boolean>('chat_answer', { callId, answer }),
   updateConversation: (update: { id: string; title?: string; pinned?: boolean; unread?: boolean; projectId?: string | null; rating?: [number, number]; archived?: boolean; tags?: string[] }) =>
-    call<void>('chat_update_conversation', { update }),
+    call<void>('chat_set_conversation', { update }),
   selectVersion: (id: string, from: number, index: number) => call<void>('chat_select_version', { id, from, index }),
   steer: (conversationId: string, text: string) => call<boolean>('chat_steer', { conversationId, text }),
   commitChanges: (conversationId: string, message: string) => call<string>('chat_code_commit', { conversationId, message }),
@@ -145,7 +145,7 @@ export const api = {
 
   memories: () => call<Memories>('chat_get_memories'),
   addMemory: (text: string) => call<Memories>('chat_add_memory', { text }),
-  updateMemory: (id: string, text: string) => call<Memories>('chat_update_memory', { id, text }),
+  updateMemory: (id: string, text: string) => call<Memories>('chat_set_memory', { id, text }),
   deleteMemory: (id: string | null) => call<Memories>('chat_delete_memory', { id }),
   setMemoryEnabled: (enabled: boolean) => call<Memories>('chat_set_memory_enabled', { enabled }),
 

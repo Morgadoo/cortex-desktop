@@ -151,7 +151,7 @@ pub async fn chat_download_local_model(app: AppHandle, id: String) -> Result<(),
 }
 
 #[tauri::command]
-pub fn chat_remove_local_model(id: String) -> Result<(), String> {
+pub fn chat_delete_local_model(id: String) -> Result<(), String> {
     crate::chat::local_models::remove(&crate::chat::local_models::root()?, &id)
         .map_err(String::from)
 }

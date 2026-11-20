@@ -49,7 +49,7 @@ const api = {
   create: (name: string, description: string) => invoke<Library>('chat_create_library', { name, description }),
   remove: (id: string) => invoke<void>('chat_delete_library', { id }),
   add: (id: string) => invoke<{ library: Library; errors: string[] } | null>('chat_add_documents', { id }),
-  removeDoc: (libraryId: string, documentId: string) => invoke<Library>('chat_remove_document', { libraryId, documentId }),
+  removeDoc: (libraryId: string, documentId: string) => invoke<Library>('chat_delete_document', { libraryId, documentId }),
   search: (query: string, libraryId: string | null) => invoke<Passage[]>('chat_search_libraries', { query, libraryId }),
 };
 
@@ -360,7 +360,7 @@ export class LibrariesPage {
                   title: 'Stop mirroring (its documents leave the library)',
                   on: {
                     click: async () => {
-                      report(await invoke<SyncReport>('chat_remove_library_folder', { id: lib.id, folder: f }));
+                      report(await invoke<SyncReport>('chat_delete_library_folder', { id: lib.id, folder: f }));
                       await this.load();
                     },
                   },

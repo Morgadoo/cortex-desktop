@@ -32,7 +32,7 @@ pub async fn chat_set_telegram_token(
 
 /// Changes the Telegram settings: on/off, agent, changes allowed; opens pairing or unpairs.
 #[tauri::command]
-pub async fn chat_update_telegram(
+pub async fn chat_save_telegram(
     app: AppHandle,
     enabled: bool,
     agent_id: Option<String>,
@@ -93,7 +93,7 @@ pub async fn chat_set_discord_token(
 }
 
 #[tauri::command]
-pub async fn chat_update_discord(
+pub async fn chat_save_discord(
     app: AppHandle,
     enabled: bool,
     agent_id: Option<String>,
@@ -150,7 +150,7 @@ pub async fn chat_set_slack_tokens(
 }
 
 #[tauri::command]
-pub async fn chat_update_slack(
+pub async fn chat_save_slack(
     app: AppHandle,
     enabled: bool,
     agent_id: Option<String>,

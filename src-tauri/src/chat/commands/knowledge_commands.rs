@@ -134,7 +134,7 @@ pub async fn chat_add_skill_catalog(app: AppHandle, repo: String) -> Result<(), 
 }
 
 #[tauri::command]
-pub fn chat_remove_skill_catalog(app: AppHandle, repo: String) -> Result<(), String> {
+pub fn chat_delete_skill_catalog(app: AppHandle, repo: String) -> Result<(), String> {
     crate::chat::skill_catalog::remove_catalog(&config_dir(&app)?, &repo).map_err(String::from)
 }
 
@@ -269,7 +269,7 @@ pub fn chat_add_memory(
 }
 
 #[tauri::command]
-pub fn chat_update_memory(
+pub fn chat_set_memory(
     app: AppHandle,
     id: String,
     text: String,

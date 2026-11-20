@@ -79,7 +79,7 @@ function viewFiles(agent: Agent, done: () => void) {
                     title: 'Remove',
                     on: {
                       click: async () => {
-                        library = await invoke<Library>('chat_remove_document', { libraryId: library!.id, documentId: d.id });
+                        library = await invoke<Library>('chat_delete_document', { libraryId: library!.id, documentId: d.id });
                         render();
                         done();
                       },

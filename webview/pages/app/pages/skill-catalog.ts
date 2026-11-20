@@ -85,7 +85,7 @@ export async function openSkillCatalog(onAdded: () => void) {
                       title: 'Remove this catalogue',
                       on: {
                         click: async () => {
-                          await invoke('chat_remove_skill_catalog', { repo: c });
+                          await invoke('chat_delete_skill_catalog', { repo: c });
                           void load(true);
                         },
                       },

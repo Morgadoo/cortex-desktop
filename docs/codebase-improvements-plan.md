@@ -32,8 +32,7 @@ package is one or more commits there. Measured as section 7 describes:
 | Hand edits to add a command | 4 to 5 | 1, plus a script | 1 |
 | Backend calls by string name | 287 | 0 unchecked: every name is checked against the generated command list | 0 |
 
-**Done**: phase 0 (0.1 to 0.8), phase 1 (1.1 to 1.6), 2.1 to 2.6, 2.8, 3.1 to 3.5,
-3.6 to 3.9 and 3.11.
+**Done**: phase 0 (0.1 to 0.8), phase 1 (1.1 to 1.6), 2.1 to 2.6, 2.8, 3.1 to 3.11.
 
 **Partly done**:
 
@@ -44,9 +43,6 @@ package is one or more commits there. Measured as section 7 describes:
   sections arrived in; regrouping them by interface folder is a reorder, to be checked with
   `scripts/screenshot-pages.mjs`. The `--cortex-*` names stay until the old settings page is
   rewritten.
-- 3.10: the conversation, its turns and events, providers, models, projects, memories, tasks'
-  schedules, search hits, the trash, storage health, skills and workflows are generated from the
-  Rust types, and so are agents and scheduled tasks. Package item 4 (verb names) is not started.
 - 4.1: `cortex-store` holds settings files, encryption at rest and the storage errors. The
   conversation store and `cortex-tools` follow once they stop reaching into the app: sync uses
   Tauri, the vault uses the keychain, and the loaders take an `AppHandle`.

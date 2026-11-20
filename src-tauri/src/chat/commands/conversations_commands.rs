@@ -50,7 +50,7 @@ pub fn chat_answer(state: State<'_, ChatState>, call_id: String, answer: String)
 }
 
 #[tauri::command]
-pub fn chat_update_conversation(app: AppHandle, update: UpdateConversation) -> Result<(), String> {
+pub fn chat_set_conversation(app: AppHandle, update: UpdateConversation) -> Result<(), String> {
     let dir = config_dir(&app)?;
     let mut conversation = store::load_conversation(&dir, &update.id)?;
     if let Some(title) = update.title {

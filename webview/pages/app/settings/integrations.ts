@@ -39,7 +39,7 @@ export async function telegramCard(): Promise<HTMLElement> {
   let s = await invoke<TelegramSettings>('chat_telegram');
   const update = async (patch: Partial<{ enabled: boolean; agentId: string | null; allowChanges: boolean; openPairing: boolean; unpair: number }>) => {
     try {
-      s = await call<TelegramSettings>('chat_update_telegram', {
+      s = await call<TelegramSettings>('chat_save_telegram', {
         enabled: patch.enabled ?? s.enabled,
         agentId: patch.agentId !== undefined ? patch.agentId : s.agentId,
         allowChanges: patch.allowChanges ?? s.allowChanges,
@@ -140,7 +140,7 @@ export async function slackCard(): Promise<HTMLElement> {
   let s = await invoke<SlackSettings>('chat_slack');
   const update = async (patch: Partial<{ enabled: boolean; agentId: string | null; allowChanges: boolean; openPairing: boolean; unpair: string }>) => {
     try {
-      s = await call<SlackSettings>('chat_update_slack', {
+      s = await call<SlackSettings>('chat_save_slack', {
         enabled: patch.enabled ?? s.enabled,
         agentId: patch.agentId !== undefined ? patch.agentId : s.agentId,
         allowChanges: patch.allowChanges ?? s.allowChanges,
@@ -243,7 +243,7 @@ export async function discordCard(): Promise<HTMLElement> {
   let s = await invoke<DiscordSettings>('chat_discord');
   const update = async (patch: Partial<{ enabled: boolean; agentId: string | null; allowChanges: boolean; openPairing: boolean; unpair: string }>) => {
     try {
-      s = await call<DiscordSettings>('chat_update_discord', {
+      s = await call<DiscordSettings>('chat_save_discord', {
         enabled: patch.enabled ?? s.enabled,
         agentId: patch.agentId !== undefined ? patch.agentId : s.agentId,
         allowChanges: patch.allowChanges ?? s.allowChanges,

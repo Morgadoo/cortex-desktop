@@ -154,7 +154,7 @@ pub async fn chat_add_documents(app: AppHandle, id: String) -> Result<Option<Add
 }
 
 #[tauri::command]
-pub async fn chat_remove_library_folder(
+pub async fn chat_delete_library_folder(
     app: AppHandle,
     id: String,
     folder: String,
@@ -252,7 +252,7 @@ pub async fn chat_set_library_connector(
 }
 
 #[tauri::command]
-pub fn chat_remove_document(
+pub fn chat_delete_document(
     app: AppHandle,
     library_id: String,
     document_id: String,
@@ -302,7 +302,7 @@ pub async fn chat_uploads(app: AppHandle) -> Result<Vec<crate::chat::uploads::Up
 
 /// Takes a file or an image out of a chat's message.
 #[tauri::command]
-pub fn chat_remove_upload(
+pub fn chat_delete_upload(
     app: AppHandle,
     conversation_id: String,
     message_index: usize,

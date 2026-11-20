@@ -157,6 +157,10 @@ it through a temporary file. Moving a file between sealed and plain is a data mi
 
 `tests/ipc_surface.rs` fails if a command is registered but not permitted, or the reverse.
 
+Command names start with a verb: `list` for a collection, `get` for one item, `save` for writing a
+whole value, `set` for one field (or the fields given), `add` to put something into a collection,
+`delete` for removal.
+
 ### A type the window receives
 
 Derive its TypeScript declaration from the Rust type instead of writing it again in `api.ts`:

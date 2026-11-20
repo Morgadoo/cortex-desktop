@@ -175,7 +175,7 @@ pub fn chat_toggle_openapi_server(
 }
 
 #[tauri::command]
-pub async fn chat_remove_openapi_server(
+pub async fn chat_delete_openapi_server(
     app: AppHandle,
     id: String,
 ) -> Result<Vec<crate::chat::openapi::Server>, String> {

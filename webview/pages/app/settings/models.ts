@@ -412,7 +412,7 @@ export async function localModelsCard(): Promise<HTMLElement> {
             label: 'Delete',
             onClick: async () => {
               if (!(await confirmDialog(`Delete ${m.name}?`, `${size(m.sizeMb)} are freed. You can download it again.`, 'Delete'))) return;
-              await call('chat_remove_local_model', { id: m.id }).catch(shown);
+              await call('chat_delete_local_model', { id: m.id }).catch(shown);
               void draw();
               void reloadModels().catch(() => undefined);
             },

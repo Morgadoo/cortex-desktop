@@ -91,7 +91,7 @@ export function uploadsCard(): HTMLElement {
                   on: {
                     click: async () => {
                       try {
-                        await call('chat_remove_upload', { conversationId: u.conversationId, messageIndex: u.messageIndex, kind: u.kind, name: u.name });
+                        await call('chat_delete_upload', { conversationId: u.conversationId, messageIndex: u.messageIndex, kind: u.kind, name: u.name });
                         all = all.filter((x) => x !== u);
                         render();
                         window.dispatchEvent(new Event('chat:conversations-changed'));

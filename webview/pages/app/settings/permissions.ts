@@ -164,7 +164,7 @@ export async function openApiCard(): Promise<HTMLElement> {
                   {
                     class: 'link-btn',
                     on: {
-                      click: () => void call<OpenApiServer[]>('chat_remove_openapi_server', { id: s.id }).then(render).catch(shown),
+                      click: () => void call<OpenApiServer[]>('chat_delete_openapi_server', { id: s.id }).then(render).catch(shown),
                     },
                   },
                   'Remove'
