@@ -28,17 +28,16 @@ pub(super) struct TurnSteps<'a> {
     pub(super) calls: Vec<ToolCall>,
 }
 
-#[async_trait::async_trait]
-impl Steps for TurnSteps<'_> {
-    async fn call_model(&mut self, step: usize, last: bool) -> Result<Reply, String> {
+impl TurnSteps<'_> {
+    /// The request for this step: guidance sent meanwhile joins the conversation, older turns are
+    /// compacted when the window is filling, and the system prompt and the newest message get
+    /// what this step adds to them.
+    async fn prepare_request(&mut self, last: bool) -> Result<CompletionRequest, String> {
         let TurnSteps {
             host,
             request,
-            cancel,
             conversation,
             model,
-            model_ref,
-            fallback,
             redactions,
             compaction_failed,
             system,
@@ -50,10 +49,9 @@ impl Steps for TurnSteps<'_> {
             window,
             filter,
             reasoning,
-            run,
-            calls: pending,
+            ..
         } = self;
-        let (host, request, id, run) = (*host, *request, *id, *run);
+        let (host, request, id) = (*host, *request, *id);
         let (defer, window, filter, reasoning) = (*defer, *window, *filter, *reasoning);
         let config_dir = config_dir.as_path();
         // Guidance the user sent while this turn was running joins the conversation here.
@@ -125,7 +123,33 @@ impl Steps for TurnSteps<'_> {
             request,
             reasoning,
         );
+        Ok(call)
+    }
+}
 
+#[async_trait::async_trait]
+impl Steps for TurnSteps<'_> {
+    async fn call_model(&mut self, step: usize, last: bool) -> Result<Reply, String> {
+        let call = self.prepare_request(last).await?;
+        let TurnSteps {
+            host,
+            cancel,
+            conversation,
+            model,
+            model_ref,
+            fallback,
+            redactions,
+            config_dir,
+            id,
+            window,
+            filter,
+            run,
+            calls: pending,
+            ..
+        } = self;
+        let (host, id, run) = (*host, *id, *run);
+        let (window, filter) = (*window, *filter);
+        let config_dir = config_dir.as_path();
         // Transient failures (dropped connections, rate limits, overloaded servers) are retried
         // with backoff, as long as nothing reached the user yet.
         let mut attempt = 0u32;
@@ -160,32 +184,23 @@ impl Steps for TurnSteps<'_> {
                     .min(u32::MAX as u128) as u32
             });
             let finished = stream.finish().await;
-            if let Err(e) = &finished {
-                crate::chat::traces::model_call(
-                    config_dir,
-                    run,
-                    step,
-                    model_ref,
-                    call_started.elapsed().as_millis() as u64,
-                    None,
-                    Some(if e.is_retryable() {
+            crate::chat::traces::model_call(
+                config_dir,
+                run,
+                step,
+                model_ref,
+                call_started.elapsed().as_millis() as u64,
+                finished.as_ref().ok().map(|response| &response.usage),
+                finished.as_ref().err().map(|e| {
+                    if e.is_retryable() {
                         "transient"
                     } else {
                         "failed"
-                    }),
-                );
-            }
+                    }
+                }),
+            );
             match finished {
                 Ok(response) => {
-                    crate::chat::traces::model_call(
-                        config_dir,
-                        run,
-                        step,
-                        model_ref,
-                        call_started.elapsed().as_millis() as u64,
-                        Some(&response.usage),
-                        None,
-                    );
                     break response;
                 }
                 Err(e) if e.is_retryable() && !streamed_anything && attempt < MAX_ATTEMPTS => {
@@ -205,18 +220,7 @@ impl Steps for TurnSteps<'_> {
                             *model = next;
                             model_ref.clone_from(&backup);
                             attempt = 0;
-                            let label = backup.rsplit('/').next().unwrap_or(&backup).to_string();
-                            let text = format!(
-                                "{}; continuing with {label}.",
-                                crate::chat::context::brief_error(&e.to_string())
-                            );
-                            conversation
-                                .notices
-                                .push((conversation.messages.len(), text.clone()));
-                            host.emit(ChatEvent::Notice {
-                                conversation_id: id.into(),
-                                text,
-                            });
+                            note_fallback(host, id, conversation, &e.to_string(), &backup);
                         }
                         Err(_) => {
                             store::save_conversation(config_dir, conversation)?;
@@ -243,19 +247,10 @@ impl Steps for TurnSteps<'_> {
                 m
             }
         });
-        let calls: Vec<ToolCall> = match &message {
-            Some(Message::Assistant(a)) => a
-                .content
-                .iter()
-                .filter_map(|c| match c {
-                    rig_core::completion::message::AssistantContent::ToolCall(call) => {
-                        Some(call.clone())
-                    }
-                    _ => None,
-                })
-                .collect(),
-            _ => response.tool_calls().cloned().collect(),
-        };
+        let calls: Vec<ToolCall> = message
+            .as_ref()
+            .and_then(calls_in)
+            .unwrap_or_else(|| response.tool_calls().cloned().collect());
         if let Some(message) = message {
             conversation.messages.push(message);
             if let Some(ms) = thought_ms {
@@ -387,6 +382,46 @@ impl Steps for TurnSteps<'_> {
     fn has_new_guidance(&self) -> bool {
         self.host.chat_state().has_steering(self.id)
     }
+}
+
+/// Says, in the conversation and to the window, that the turn moved to the backup model.
+fn note_fallback(
+    host: &Arc<dyn Host>,
+    id: &str,
+    conversation: &mut store::Conversation,
+    error: &str,
+    backup: &str,
+) {
+    let label = backup.rsplit('/').next().unwrap_or(backup);
+    let text = format!(
+        "{}; continuing with {label}.",
+        crate::chat::context::brief_error(error)
+    );
+    conversation
+        .notices
+        .push((conversation.messages.len(), text.clone()));
+    host.emit(ChatEvent::Notice {
+        conversation_id: id.into(),
+        text,
+    });
+}
+
+/// The tool calls in an assistant message; `None` for any other message.
+fn calls_in(message: &Message) -> Option<Vec<ToolCall>> {
+    let Message::Assistant(a) = message else {
+        return None;
+    };
+    Some(
+        a.content
+            .iter()
+            .filter_map(|c| match c {
+                rig_core::completion::message::AssistantContent::ToolCall(call) => {
+                    Some(call.clone())
+                }
+                _ => None,
+            })
+            .collect(),
+    )
 }
 
 /// Calls that wait on the user run one at a time, after the rest have run at once: questions,
