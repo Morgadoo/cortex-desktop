@@ -1,5 +1,4 @@
 /** Sending a message: one model, a comparison, or a regeneration, with the options the composer set. */
-import { tauriInvoke } from '../../../shared/tauri';
 import { api, newId } from '../core/api';
 import { clear, h } from '../ui/h';
 import { modal, toast } from '../ui/overlay';
@@ -9,14 +8,15 @@ import { modalHeader } from '../ui/ui';
 import { followUps } from './queue';
 import { viewCache } from './chat-view';
 import { worktreeNext } from './home-view';
+import { call, reported } from '../core/call';
 
 export async function regenerate(conversationId: string) {
   const model = state.model;
   if (!model) return void toast('Choose a model first.', 'error');
   try {
-    await api.send({ conversationId, text: '', model, speed: state.speed, approval: state.approval });
-  } catch (e) {
-    toast(String(e), 'error');
+    await reported(api.send({ conversationId, text: '', model, speed: state.speed, approval: state.approval }));
+  } catch {
+    // Already shown.
   }
 }
 
@@ -36,14 +36,13 @@ export async function send(text: string, conversationId: string | null, images: 
   // A new Code session can work in its own git worktree, on a branch of its own.
   if (workdir && worktreeNext()) {
     try {
-      const [folder, branch] = await tauriInvoke<[string, string]>('chat_create_worktree', { dir: workdir, name: text.split('\n')[0]!.slice(0, 60) });
-      const settings = await api.appSettings();
+      const [folder, branch] = await call<[string, string]>('chat_create_worktree', { dir: workdir, name: text.split('\n')[0]!.slice(0, 60) });
+      const settings = await reported(api.appSettings());
       if (!settings.filesystem_allowed_roots.includes(folder)) settings.filesystem_allowed_roots.push(folder);
-      await api.saveAppSettings(settings);
+      await reported(api.saveAppSettings(settings));
       workdir = folder;
       toast(`Working in a new worktree on ${branch}.`);
-    } catch (e) {
-      toast(String(e), 'error');
+    } catch {
       return false;
     }
   }
@@ -56,25 +55,26 @@ export async function send(text: string, conversationId: string | null, images: 
     viewCache.chat?.addOptimistic(text, images);
   }
   try {
-    await api.send({
-      conversationId: id,
-      text,
-      model: agent?.model ?? model,
-      speed: agent?.think ? 'think' : state.speed,
-      approval: state.approval,
-      projectId,
-      workdir,
-      agentId,
-      temporary,
-      images,
-      connectors: connectorChoice(),
-      toolsOff: [...toolsOff],
-    });
+    await reported(
+      api.send({
+        conversationId: id,
+        text,
+        model: agent?.model ?? model,
+        speed: agent?.think ? 'think' : state.speed,
+        approval: state.approval,
+        projectId,
+        workdir,
+        agentId,
+        temporary,
+        images,
+        connectors: connectorChoice(),
+        toolsOff: [...toolsOff],
+      })
+    );
     if (temporary) temporaryChats.add(id);
     temporaryNext = temporaryByDefault();
     void refreshConversations();
-  } catch (e) {
-    toast(String(e), 'error');
+  } catch {
     return false;
   }
   return true;

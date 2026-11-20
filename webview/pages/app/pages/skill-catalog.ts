@@ -6,6 +6,7 @@ import { icon } from '../ui/icons';
 import { modal, promptText, toast } from '../ui/overlay';
 import { state } from '../core/state';
 import { button, modalHeader } from '../ui/ui';
+import { call } from '../core/call';
 
 interface CatalogSkill {
   catalog: string;
@@ -42,14 +43,13 @@ export async function openSkillCatalog(onAdded: () => void) {
                 onClick: async () => {
                   add.setAttribute('disabled', '');
                   try {
-                    const r = await tauriInvoke<{ name: string; files: number; note: string | null }>('chat_install_catalog_skill', { catalog: s.catalog, branch: s.branch, path: s.path });
+                    const r = await call<{ name: string; files: number; note: string | null }>('chat_install_catalog_skill', { catalog: s.catalog, branch: s.branch, path: s.path });
                     installed.add(r.name);
                     add.textContent = 'Added';
                     toast(`Added ${r.name}${r.files ? ` with ${r.files} files` : ''}.${r.note ? ` ${r.note}` : ''}`);
                     onAdded();
-                  } catch (e) {
+                  } catch {
                     add.removeAttribute('disabled');
-                    toast(String(e), 'error');
                   }
                 },
               });
@@ -104,10 +104,10 @@ export async function openSkillCatalog(onAdded: () => void) {
                   const repo = await promptText('Add a skill catalogue', '', 'owner/repo (a GitHub repository with .claude-plugin/marketplace.json)');
                   if (!repo) return;
                   try {
-                    await tauriInvoke('chat_add_skill_catalog', { repo });
+                    await call('chat_add_skill_catalog', { repo });
                     void load(true);
-                  } catch (e) {
-                    toast(String(e), 'error');
+                  } catch {
+                    // Already shown.
                   }
                 },
               },
@@ -165,12 +165,12 @@ async function publishSkills() {
       label: 'Choose a folder and publish',
       onClick: async () => {
         try {
-          const folder = await tauriInvoke<string | null>('chat_export_skill_catalog', { names: [...picked], title: title.value, author: author.value });
+          const folder = await call<string | null>('chat_export_skill_catalog', { names: [...picked], title: title.value, author: author.value });
           if (!folder) return;
           close();
           toast(`Written to ${folder}. Push that folder to a GitHub repository; anyone can then add it as a catalogue by owner/repo.`);
-        } catch (e) {
-          toast(String(e), 'error');
+        } catch {
+          // Already shown.
         }
       },
     });

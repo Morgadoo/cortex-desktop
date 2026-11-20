@@ -48,10 +48,10 @@ export function appPage(code: string, title: string): string {
 /** Shares `html` and shows its link. */
 export async function shareLink(title: string, html: string, isApp = false) {
   try {
-    const link = await tauriInvoke<SharedLink>('chat_share_link', { title, html, isApp });
+    const link = await call<SharedLink>('chat_share_link', { title, html, isApp });
     showLink(link);
-  } catch (e) {
-    toast(String(e), 'error');
+  } catch {
+    // Already shown.
   }
 }
 
@@ -84,10 +84,10 @@ function showLink(link: SharedLink) {
     );
     expiry.addEventListener('change', async () => {
       try {
-        const at = await tauriInvoke<string | null>('chat_set_share_expiry', { token: link.token, hours: Number(expiry.value) || null });
+        const at = await call<string | null>('chat_set_share_expiry', { token: link.token, hours: Number(expiry.value) || null });
         when.textContent = expiryLabel(at);
-      } catch (e) {
-        toast(String(e), 'error');
+      } catch {
+        // Already shown.
       }
     });
     field.addEventListener('focus', () => field.select());

@@ -11,6 +11,7 @@ import { characterCount } from '../core/format';
 import { navigate } from '../core/state';
 import { card } from '../ui/ui';
 import { choice } from '../core/prefs';
+import { call } from '../core/call';
 
 export type UploadMode = 'full' | 'auto' | 'search';
 const KEY = 'cortex.uploadMode';
@@ -91,13 +92,13 @@ export function uploadsCard(): HTMLElement {
                   on: {
                     click: async () => {
                       try {
-                        await tauriInvoke('chat_remove_upload', { conversationId: u.conversationId, messageIndex: u.messageIndex, kind: u.kind, name: u.name });
+                        await call('chat_remove_upload', { conversationId: u.conversationId, messageIndex: u.messageIndex, kind: u.kind, name: u.name });
                         all = all.filter((x) => x !== u);
                         render();
                         window.dispatchEvent(new Event('chat:conversations-changed'));
                         toast('Removed. The message keeps a note that a file was there.');
-                      } catch (e) {
-                        toast(String(e), 'error');
+                      } catch {
+                        // Already shown.
                       }
                     },
                   },

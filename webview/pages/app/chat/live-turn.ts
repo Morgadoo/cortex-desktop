@@ -7,6 +7,7 @@ import { toast } from '../ui/overlay';
 import { state, type LiveTurn } from '../core/state';
 import { toolLabel } from './tool-labels';
 import { renderParts } from './transcript';
+import { reported, shown } from '../core/call';
 
 export function renderLiveTurn(conversationId: string, live: LiveTurn): HTMLElement {
   const now = Date.now();
@@ -64,7 +65,7 @@ export function renderLiveTurn(conversationId: string, live: LiveTurn): HTMLElem
     const resume = h('button', { class: 'btn btn-secondary' }, icon('retry', 15), 'Continue');
     resume.addEventListener('click', () => {
       if (!state.model) return void toast('Choose a model first.', 'error');
-      void api.send({ conversationId, text: '', model: state.model, speed: state.speed, approval: state.approval, resume: true }).catch((e) => toast(String(e), 'error'));
+      void reported(api.send({ conversationId, text: '', model: state.model, speed: state.speed, approval: state.approval, resume: true })).catch(shown);
     });
     el.append(
       h(

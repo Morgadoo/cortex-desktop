@@ -1,8 +1,8 @@
-import { tauriInvoke } from '../../../shared/tauri';
 import { h } from '../ui/h';
 import { icon } from '../ui/icons';
 import { popover, toast } from '../ui/overlay';
 import { state } from '../core/state';
+import { call } from '../core/call';
 
 const IMPROVE_PRESETS: [string, string][] = [
   ['Improve writing', 'Improve the writing: clearer and tighter, same meaning.'],
@@ -44,15 +44,15 @@ export function improveButton(area: HTMLTextAreaElement, changed: () => void): H
     trigger.lastChild!.textContent = 'Improving…';
     try {
       const context = whole ? null : `${area.value.slice(Math.max(0, start - 3000), start)}[…]${area.value.slice(end, end + 3000)}`;
-      const out = await tauriInvoke<string>('chat_improve_text', { model: state.model, text, instruction, context });
+      const out = await call<string>('chat_improve_text', { model: state.model, text, instruction, context });
       before = area.value;
       if (whole) area.value = `${lead}${out}${trail}`;
       else area.setRangeText(`${lead}${out}${trail}`, start, end, 'select');
       undo.hidden = false;
       changed();
       area.focus();
-    } catch (e) {
-      toast(String(e), 'error');
+    } catch {
+      // Already shown.
     } finally {
       trigger.removeAttribute('disabled');
       trigger.lastChild!.textContent = 'Improve';

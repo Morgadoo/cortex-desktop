@@ -7,7 +7,7 @@ import { clockHour12 } from '../core/clock';
 import { characterCount } from '../core/format';
 import { modalHeader } from '../ui/ui';
 import { choice, json } from '../core/prefs';
-import { call, shown } from '../core/call';
+import { call, reported, shown } from '../core/call';
 
 interface Doc {
   id: string;
@@ -130,11 +130,11 @@ export class LibrariesPage {
       const name = await promptText('New library', '', 'e.g. Energy regulation');
       if (!name) return;
       try {
-        const lib = await api.create(name, '');
+        const lib = await reported(api.create(name, ''));
         this.open = lib.id;
-        await this.load();
-      } catch (e) {
-        toast(String(e), 'error');
+        await reported(this.load());
+      } catch {
+        // Already shown.
       }
     });
     this.el.append(
@@ -195,13 +195,13 @@ export class LibrariesPage {
     add.addEventListener('click', async () => {
       add.textContent = 'Indexing…';
       try {
-        const result = await api.add(lib.id);
+        const result = await reported(api.add(lib.id));
         if (result) {
           if (result.errors.length) toast(result.errors.join(' '), 'error');
           else toast('Documents added.');
         }
-      } catch (e) {
-        toast(String(e), 'error');
+      } catch {
+        // Already shown.
       }
       await this.load();
     });
@@ -225,12 +225,12 @@ export class LibrariesPage {
     const importZip = h('button', { class: 'btn btn-secondary', title: 'A ZIP export from Notion, Confluence or a notes app: each page becomes a document' }, icon('download', 15), 'Import an export');
     importZip.addEventListener('click', async () => {
       try {
-        const r = await tauriInvoke<{ added: number; skipped: string[] } | null>('chat_import_archive', { libraryId: lib.id });
+        const r = await call<{ added: number; skipped: string[] } | null>('chat_import_archive', { libraryId: lib.id });
         if (r) {
           toast(`Added ${r.added} ${r.added === 1 ? 'page' : 'pages'}${r.skipped.length ? `; ${r.skipped.length} left out (${r.skipped.slice(0, 2).join('; ')})` : ''}.`, r.added ? 'info' : 'error');
         }
-      } catch (e) {
-        toast(String(e), 'error');
+      } catch {
+        // Already shown.
       }
       await this.load();
     });
@@ -238,9 +238,9 @@ export class LibrariesPage {
     addFolder.addEventListener('click', async () => {
       addFolder.textContent = 'Indexing…';
       try {
-        report(await tauriInvoke<SyncReport | null>('chat_add_library_folder', { id: lib.id }));
-      } catch (e) {
-        toast(String(e), 'error');
+        report(await call<SyncReport | null>('chat_add_library_folder', { id: lib.id }));
+      } catch {
+        // Already shown.
       }
       await this.load();
     });
@@ -265,9 +265,9 @@ export class LibrariesPage {
                         close();
                         addConnector.textContent = 'Indexing…';
                         try {
-                          report(await tauriInvoke<SyncReport>('chat_set_library_connector', { id: lib.id, connectorId: c.id, on: true }));
-                        } catch (e) {
-                          toast(String(e), 'error');
+                          report(await call<SyncReport>('chat_set_library_connector', { id: lib.id, connectorId: c.id, on: true }));
+                        } catch {
+                          // Already shown.
                         }
                         await this.load();
                       },
@@ -296,7 +296,7 @@ export class LibrariesPage {
             class: 'link-btn',
             on: {
               click: async () => {
-                report(await tauriInvoke<SyncReport>('chat_sync_library', { id: lib.id }).catch((e) => (toast(String(e), 'error'), null)));
+                report(await call<SyncReport>('chat_sync_library', { id: lib.id }).catch(() => null));
                 await this.load();
               },
             },
@@ -310,7 +310,7 @@ export class LibrariesPage {
             title: 'Stop mirroring (its documents leave the library)',
             on: {
               click: async () => {
-                report(await tauriInvoke<SyncReport>('chat_set_library_connector', { id: lib.id, connectorId: id, on: false }).catch((e) => (toast(String(e), 'error'), null)));
+                report(await call<SyncReport>('chat_set_library_connector', { id: lib.id, connectorId: id, on: false }).catch(() => null));
                 await this.load();
               },
             },
@@ -347,7 +347,7 @@ export class LibrariesPage {
                   class: 'link-btn',
                   on: {
                     click: async () => {
-                      report(await tauriInvoke<SyncReport>('chat_sync_library', { id: lib.id }).catch((e) => (toast(String(e), 'error'), null)));
+                      report(await call<SyncReport>('chat_sync_library', { id: lib.id }).catch(() => null));
                       await this.load();
                     },
                   },
@@ -391,7 +391,7 @@ export class LibrariesPage {
     };
     removeSelected.addEventListener('click', async () => {
       if (!(await confirmDialog(`Remove ${selected.size} documents?`, `They leave “${lib.name}”. Files in mirrored folders come back on the next sync unless the folder stops being mirrored.`))) return;
-      for (const id of selected) await api.removeDoc(lib.id, id).catch((e) => toast(String(e), 'error'));
+      for (const id of selected) await reported(api.removeDoc(lib.id, id)).catch(shown);
       toast(`${selected.size} documents removed.`);
       await this.load();
     });

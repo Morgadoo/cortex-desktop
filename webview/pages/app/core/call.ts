@@ -11,9 +11,26 @@ export async function call<T = unknown>(command: string, args?: TauriInvokeArgs)
   try {
     return await tauriInvoke<T>(command, args);
   } catch (e) {
-    toast(String(e), 'error');
-    throw e;
+    throw showError(e);
   }
+}
+
+/**
+ * Waits for `pending`, work whose failure the user should see that is not a plain command (an
+ * `api` wrapper, a refresh, reading a file); on failure shows the error as `call` does and rejects
+ * with it.
+ */
+export async function reported<T>(pending: T | Promise<T>): Promise<T> {
+  try {
+    return await pending;
+  } catch (e) {
+    throw showError(e);
+  }
+}
+
+function showError(e: unknown): unknown {
+  toast(String(e), 'error');
+  return e;
 }
 
 /** Invokes `command`; a failure resolves to `undefined` and shows nothing. */

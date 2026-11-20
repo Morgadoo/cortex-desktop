@@ -7,6 +7,7 @@ import { confirmDialog, modal, toast } from '../ui/overlay';
 import { clockHour12 } from '../core/clock';
 import { historyButton } from '../canvas/versions';
 import { button, modalHeader, pageHeader } from '../ui/ui';
+import { reported } from '../core/call';
 
 export const workflowsApi = {
   list: () => tauriInvoke<Workflow[]>('chat_workflows'),
@@ -90,9 +91,8 @@ export function editWorkflow(workflow: Workflow | null, onSaved: (all: Workflow[
     });
     const saveOnly = async (): Promise<Workflow[] | null> => {
       try {
-        return await workflowsApi.save(current());
-      } catch (e) {
-        toast(String(e), 'error');
+        return await reported(workflowsApi.save(current()));
+      } catch {
         return null;
       }
     };
@@ -118,14 +118,14 @@ export function editWorkflow(workflow: Workflow | null, onSaved: (all: Workflow[
         draftBtn.disabled = true;
         try {
           const now = current();
-          const d = await workflowsApi.draft(request, now.steps.length || now.name ? now : null);
+          const d = await reported(workflowsApi.draft(request, now.steps.length || now.name ? now : null));
           name.value = d.name;
           description.value = d.description;
           steps.value = d.steps.join('\n');
           asked.append(h('div', { class: 'designer-turn' }, icon('sparkle', 12), h('span', {}, request)));
           ask.value = '';
-        } catch (e) {
-          toast(String(e), 'error');
+        } catch {
+          // Already shown.
         } finally {
           draftBtn.disabled = false;
         }

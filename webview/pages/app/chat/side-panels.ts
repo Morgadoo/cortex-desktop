@@ -184,12 +184,12 @@ export function openSourcesPanel(sources: Source[]) {
           full.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            void tauriInvoke<{ title: string; blocks: { text: string }[] }>('chat_read_article', { url: s.url })
+            void call<{ title: string; blocks: { text: string }[] }>('chat_read_article', { url: s.url })
               .then((a) => {
                 composer.attachText(`Page: ${a.title || s.title}`, `${a.title}\n${s.url}\n\n${a.blocks.map((b) => b.text).join('\n\n')}`);
                 toast('The page is attached to your next message.');
               })
-              .catch((err) => toast(String(err), 'error'));
+              .catch(shown);
           });
           const heading = i === 0 && s.cited ? h('div', { class: 'menu-heading sources-heading' }, 'Cited') : !s.cited && (i === 0 || list[i - 1]!.cited) ? h('div', { class: 'menu-heading sources-heading' }, 'Also found') : null;
           const entry = h(

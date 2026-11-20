@@ -5,7 +5,6 @@
  * again. Clicking the orb while it speaks interrupts it and listens; End closes the call. Uses
  * the speech-to-text and read-aloud engines chosen in Settings → Audio.
  */
-import { tauriInvoke } from '../../../shared/tauri';
 import { speakText, type Playback } from './audio';
 import { openMicrophone, type Microphone } from './dictation';
 import { blobToBase64 } from '../core/format';
@@ -13,6 +12,7 @@ import { h } from '../ui/h';
 import { icon } from '../ui/icons';
 import { toast } from '../ui/overlay';
 import { createGlowOrb, orbCssColor } from '../theme/orbgl';
+import { call, reported } from '../core/call';
 
 export interface VoiceHooks {
   /** Sends what was said; false when it could not be sent. */
@@ -126,9 +126,9 @@ export function startVoiceConversation(hooks: VoiceHooks) {
     show('transcribing');
     let text = '';
     try {
-      text = audio.size < 1000 ? '' : (await tauriInvoke<string>('chat_transcribe', { audio: await blobToBase64(audio), mime: audio.type })).trim();
-    } catch (e) {
-      toast(String(e), 'error');
+      text = audio.size < 1000 ? '' : (await call<string>('chat_transcribe', { audio: await reported(blobToBase64(audio)), mime: audio.type })).trim();
+    } catch {
+      // Already shown.
     }
     if (ended) return;
     if (!text) return void listen();
@@ -142,7 +142,7 @@ export function startVoiceConversation(hooks: VoiceHooks) {
     if (!answer?.trim()) return void listen();
     show('speaking');
     try {
-      playback = await speakText(answer);
+      playback = await reported(speakText(answer));
       // The orb follows the voice: measured where it can be, a gentle speech-like pulse otherwise.
       const started = performance.now();
       const follow = () => {
@@ -152,11 +152,11 @@ export function startVoiceConversation(hooks: VoiceHooks) {
         speakingLoop = requestAnimationFrame(follow);
       };
       follow();
-      await playback.done;
+      await reported(playback.done);
       cancelAnimationFrame(speakingLoop);
       setLevel(0);
-    } catch (e) {
-      toast(String(e), 'error');
+    } catch {
+      // Already shown.
     }
     playback = null;
     if (!ended && phase === 'speaking') void listen();

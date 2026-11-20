@@ -40,7 +40,7 @@ import { applyEvent, changed, finishNotificationsOn, finishSoundOn, navigate, pl
 import { startFluentEmoji } from '../ui/emoji-fluent';
 import { refreshAudioSettings } from '../voice/audio';
 import { workdir } from '../core/prefs';
-import { callQuiet } from '../core/call';
+import { callQuiet, reported, shown } from '../core/call';
 import { openSearch } from './search';
 import { renderSidebar } from './sidebar';
 import { switchMode } from './nav';
@@ -324,7 +324,7 @@ async function start() {
   await reloadAgents().catch(() => undefined);
   // A manager agent changed its organization (manage_agents): the lists follow.
   void listen<null>('chat://agents-changed', () => void reloadAgents().catch(() => undefined));
-  await reloadModels().catch((e) => toast(String(e), 'error'));
+  await reported(reloadModels()).catch(shown);
   if (SOLO_CHAT) {
     state.sidebarCollapsed = true;
     document.body.classList.add('solo-window');

@@ -13,6 +13,7 @@ import { icon } from '../../ui/icons';
 import { navigate, state } from '../../core/state';
 import { openModelPicker } from './pickers';
 import { Composer, SLASH_COMMANDS } from './composer';
+import { call, shown } from '../../core/call';
 
 const methods = {
   /**
@@ -378,13 +379,13 @@ const methods = {
       const word = this.textarea.value.slice(0, this.textarea.selectionStart).match(/@[^\s@]*$/);
       if (word) this.replaceBeforeCaret(word[0].length, `@${path} `);
       if (dir) {
-        void tauriInvoke<string>('chat_folder_read', { dir, path })
+        void call<string>('chat_folder_read', { dir, path })
           .then((text) => {
             if (!this.attachments.some((a) => a.name === path)) this.attachments.push({ name: path, text });
             this.renderChips();
             this.renderBar();
           })
-          .catch((e) => toast(String(e), 'error'));
+          .catch(shown);
       }
       return this.focus();
     }
@@ -428,13 +429,13 @@ const methods = {
       const chat = state.conversations.find((c) => c.id === name.slice(5));
       this.dropHashWord();
       if (chat) {
-        void tauriInvoke<string>('chat_conversation_text', { id: chat.id })
+        void call<string>('chat_conversation_text', { id: chat.id })
           .then((text) => {
             this.attachments.push({ name: `Chat: ${chat.title || 'Untitled'}`, text });
             this.renderChips();
             this.renderBar();
           })
-          .catch((e) => toast(String(e), 'error'));
+          .catch(shown);
       }
       return this.focus();
     }

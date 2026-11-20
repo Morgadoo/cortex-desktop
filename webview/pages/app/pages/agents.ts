@@ -12,6 +12,7 @@ import { agentPanel } from './agentpanel';
 import { button, modalHeader, switchInput } from '../ui/ui';
 import { openAgentMarket } from './agent-market';
 import { agentName, avatar, pinnedAgents, reloadAgents, togglePinnedAgent } from './agent-list';
+import { call, reported, shown } from '../core/call';
 
 /** Tools an agent can be given, by the name the engine matches. */
 const TOOL_CHOICES: { id: string; label: string }[] = [
@@ -461,13 +462,13 @@ export class AgentsPage {
     const importBtn = h('button', { class: 'btn btn-secondary' }, icon('upload', 15), 'Import');
     importBtn.addEventListener('click', async () => {
       try {
-        const name = await tauriInvoke<string | null>('chat_import_agent');
+        const name = await call<string | null>('chat_import_agent');
         if (name) {
-          await reloadAgents();
+          await reported(reloadAgents());
           toast(`Added ${name}.`);
         }
-      } catch (e) {
-        toast(String(e), 'error');
+      } catch {
+        // Already shown.
       }
     });
     const browse = h('button', { class: 'btn btn-secondary' }, icon('globe', 15), 'Browse community agents');
@@ -476,9 +477,9 @@ export class AgentsPage {
     const routing = switchInput(
       false,
       (on) =>
-        void tauriInvoke<boolean>('chat_agent_routing', { enabled: on })
+        void call<boolean>('chat_agent_routing', { enabled: on })
           .then((now) => toast(now ? 'New chats now go to the agent that fits them best.' : 'New chats stay with the general assistant.'))
-          .catch((e) => toast(String(e), 'error'))
+          .catch(shown)
     );
     void tauriInvoke<boolean>('chat_agent_routing', { enabled: null })
       .then((on) => {
@@ -657,9 +658,9 @@ export class AgentPage {
     exportBtn.addEventListener(
       'click',
       () =>
-        void tauriInvoke<boolean>('chat_export_agent', { id: agent.id })
+        void call<boolean>('chat_export_agent', { id: agent.id })
           .then((saved) => saved && toast('Agent exported.'))
-          .catch((e) => toast(String(e), 'error'))
+          .catch(shown)
     );
     clear(
       this.head,

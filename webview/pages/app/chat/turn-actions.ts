@@ -1,5 +1,4 @@
 /** What can be done with a finished turn: the buttons under it, its sources, versions and edits. */
-import { tauriInvoke } from '../../../shared/tauri';
 import { api, type Conversation, type Part, type Turn } from '../core/api';
 import { conversationPng } from './chatimage';
 import { clear, h } from '../ui/h';
@@ -13,7 +12,7 @@ import { hostOf, siteIcon } from '../ui/favicon';
 import { bytesToBase64 } from '../core/format';
 import { button, iconButton, modalHeader } from '../ui/ui';
 import { json } from '../core/prefs';
-import { callQuiet } from '../core/call';
+import { call, callQuiet, reported, shown } from '../core/call';
 import { numberLibraryCitations, openSourcesPanel } from './side-panels';
 import { viewCache } from './chat-view';
 import { composer } from './composer/index';
@@ -47,7 +46,7 @@ export function bookmarkButton(turn: Turn, conversationId: string, size = 16): H
   button.addEventListener('click', async () => {
     const next = !on();
     try {
-      await tauriInvoke('chat_bookmark', { id: conversationId, index: turn.index, on: next });
+      await call('chat_bookmark', { id: conversationId, index: turn.index, on: next });
       const set = bookmarked.get(conversationId) ?? new Set<number>();
       if (next) set.add(turn.index);
       else set.delete(turn.index);
@@ -55,9 +54,9 @@ export function bookmarkButton(turn: Turn, conversationId: string, size = 16): H
       button.classList.toggle('active', next);
       button.title = next ? 'Remove bookmark' : 'Bookmark';
       toast(next ? 'Bookmarked. Find it in the chat header or with Ctrl+K.' : 'Bookmark removed.');
-      await refreshConversations();
-    } catch (e) {
-      toast(String(e), 'error');
+      await reported(refreshConversations());
+    } catch {
+      // Already shown.
     }
   });
   return button;
@@ -70,18 +69,18 @@ export function bookmarkButton(turn: Turn, conversationId: string, size = 16): H
 /** The conversation as one PNG (LobeHub's screenshot export). */
 export async function exportImage(id: string) {
   try {
-    const c = await api.conversation(id);
+    const c = await reported(api.conversation(id));
     const messages = c.turns.map((t) => ({ role: t.role, text: textOf(t.parts) })).filter((m) => m.text.trim());
-    const png = await conversationPng(c.title, messages);
+    const png = await reported(conversationPng(c.title, messages));
     const name = `${
       (c.title || 'conversation')
         .replace(/[\\/:*?"<>|]+/g, ' ')
         .trim()
         .slice(0, 60) || 'conversation'
     }.png`;
-    if (await tauriInvoke<boolean>('chat_save_bytes', { name, data: bytesToBase64(png) })) toast('Image saved.');
-  } catch (e) {
-    toast(String(e), 'error');
+    if (await call<boolean>('chat_save_bytes', { name, data: bytesToBase64(png) })) toast('Image saved.');
+  } catch {
+    // Already shown.
   }
 }
 
@@ -117,12 +116,12 @@ function branchHereButton(turn: Turn, conversationId: string): HTMLElement {
     const go = async (withoutFiles: boolean) => {
       close();
       try {
-        const branch = await api.forkConversation(conversationId, turn.index, withoutFiles);
-        await refreshConversations();
+        const branch = await reported(api.forkConversation(conversationId, turn.index, withoutFiles));
+        await reported(refreshConversations());
         navigate({ kind: 'chat', id: branch });
         toast(withoutFiles ? 'Branched from that answer, without the attached files.' : 'Branched from that answer.');
-      } catch (e) {
-        toast(String(e), 'error');
+      } catch {
+        // Already shown.
       }
     };
     const close = popover(
@@ -156,11 +155,11 @@ const TRANSLATE_TO = ['English', 'Português', 'Español', 'Français', 'Deutsch
 /** Saves an edited message in place; no new reply is asked for. */
 async function rewrite(conversationId: string, index: number, text: string) {
   try {
-    await tauriInvoke('chat_rewrite_message', { id: conversationId, index, text });
-    await viewCache.chat?.refresh(false);
+    await call('chat_rewrite_message', { id: conversationId, index, text });
+    await reported(viewCache.chat?.refresh(false));
     toast('Saved.');
-  } catch (e) {
-    toast(String(e), 'error');
+  } catch {
+    // Already shown.
   }
 }
 
@@ -334,15 +333,14 @@ function translateButton(turn: Turn): HTMLElement {
       const box = h('div', { class: 'translation' }, h('div', { class: 'translation-head' }, icon('globe', 14), `Translating into ${language}…`));
       host.querySelector('.turn-actions')?.before(box);
       try {
-        const text = await tauriInvoke<string>('chat_translate', { model: state.model, text: textOf(turn.parts), language });
+        const text = await call<string>('chat_translate', { model: state.model, text: textOf(turn.parts), language });
         clear(
           box,
           h('div', { class: 'translation-head' }, icon('globe', 14), language, h('span', { class: 'spacer' }), h('button', { class: 'link-btn', on: { click: () => box.remove() } }, 'Hide')),
           h('div', { class: 'markdown' }, markdown(text))
         );
-      } catch (e) {
+      } catch {
         box.remove();
-        toast(String(e), 'error');
       }
     };
     const close = popover(
@@ -397,10 +395,10 @@ export function deleteExchangeButton(turn: Turn, conversationId: string): HTMLEl
         click: async () => {
           if (!(await confirmDialog('Delete this message?', 'The message and the reply to it are removed from the conversation.'))) return;
           try {
-            await tauriInvoke('chat_delete_exchange', { id: conversationId, index: turn.index });
-            await viewCache.chat?.refresh(false);
-          } catch (e) {
-            toast(String(e), 'error');
+            await call('chat_delete_exchange', { id: conversationId, index: turn.index });
+            await reported(viewCache.chat?.refresh(false));
+          } catch {
+            // Already shown.
           }
         },
       },
@@ -423,9 +421,9 @@ export function editButton(turn: Turn, conversationId: string, text: string): HT
     const save = async () => {
       if (!state.model) return void toast('Choose a model first.', 'error');
       try {
-        await api.send({ conversationId, text: full(), model: state.model, speed: state.speed, approval: state.approval, editIndex: turn.index });
-      } catch (e) {
-        toast(String(e), 'error');
+        await reported(api.send({ conversationId, text: full(), model: state.model, speed: state.speed, approval: state.approval, editIndex: turn.index }));
+      } catch {
+        // Already shown.
       }
     };
     area.addEventListener('keydown', (e) => {
@@ -473,7 +471,7 @@ export function renderAssistantTurn(conversation: Conversation, turn: Turn, isLa
     const resume = h('button', { class: 'btn btn-secondary' }, icon('retry', 15), 'Continue');
     resume.addEventListener('click', () => {
       if (!state.model) return void toast('Choose a model first.', 'error');
-      void api.send({ conversationId: conversation.id, text: '', model: state.model, speed: state.speed, approval: state.approval, resume: true }).catch((e) => toast(String(e), 'error'));
+      void reported(api.send({ conversationId: conversation.id, text: '', model: state.model, speed: state.speed, approval: state.approval, resume: true })).catch(shown);
     });
     el.append(h('div', { class: 'error-card' }, icon('wait', 16), h('div', { class: 'grow' }, h('strong', {}, 'This reply stopped before it finished'), h('div', { class: 'hint' }, 'Continue picks up from the work already done.')), resume));
   }
@@ -608,10 +606,10 @@ function renderActions(conversation: Conversation, turn: Turn, isLast: boolean, 
 export function versionSwitcher(conversationId: string, versions: { from: number; current: number; total: number; kind: string }): HTMLElement {
   const go = (index: number) => async () => {
     try {
-      await api.selectVersion(conversationId, versions.from, index);
-      await viewCache.chat?.refresh(false);
-    } catch (e) {
-      toast(String(e), 'error');
+      await reported(api.selectVersion(conversationId, versions.from, index));
+      await reported(viewCache.chat?.refresh(false));
+    } catch {
+      // Already shown.
     }
   };
   const prev = iconButton({ icon: 'back', title: 'Previous answer', size: 'xs', onClick: go(versions.current - 1) });
@@ -633,9 +631,9 @@ export function versionSwitcher(conversationId: string, versions: { from: number
 async function compareVersions(conversationId: string, from: number, current: number) {
   let texts: string[];
   try {
-    texts = await tauriInvoke<string[]>('chat_version_texts', { id: conversationId, from });
-  } catch (e) {
-    return void toast(String(e), 'error');
+    texts = await call<string[]>('chat_version_texts', { id: conversationId, from });
+  } catch {
+    return;
   }
   if (texts.length < 2) return;
   void modal((close) => {

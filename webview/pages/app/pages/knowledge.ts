@@ -4,12 +4,13 @@ import { api, type Memories } from '../core/api';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
 import { markdown } from '../ui/markdown';
-import { confirmDialog, modal, toast } from '../ui/overlay';
+import { confirmDialog, modal } from '../ui/overlay';
 import { improveButton } from '../chat/improve';
 import { restoreButton } from '../canvas/versions';
 import { navigate, state } from '../core/state';
 import { button, emptyState, iconButton, modalHeader, pageHeader, switchInput, tabs } from '../ui/ui';
 import { learningRows } from './learning';
+import { call, reported, shown } from '../core/call';
 
 interface KnowledgePageData {
   id: string;
@@ -47,10 +48,10 @@ function editKnowledgePage(page: KnowledgePageData | null, onSaved: (pages: Know
     renderPreview();
     const save = async () => {
       try {
-        onSaved(await knowledgeApi.save(page?.id ?? null, title.value, area.value));
+        onSaved(await reported(knowledgeApi.save(page?.id ?? null, title.value, area.value)));
         close();
-      } catch (e) {
-        toast(String(e), 'error');
+      } catch {
+        // Already shown.
       }
     };
     const improve = improveButton(area, renderPreview);
@@ -186,9 +187,9 @@ export class KnowledgePage {
     const add = async () => {
       if (!input.value.trim()) return;
       try {
-        this.set(await api.addMemory(input.value));
-      } catch (e) {
-        toast(String(e), 'error');
+        this.set(await reported(api.addMemory(input.value)));
+      } catch {
+        // Already shown.
       }
     };
     input.addEventListener('keydown', (e) => {
@@ -260,7 +261,7 @@ export class KnowledgePage {
         : null;
     const since = this.memoryDays ? Date.now() - this.memoryDays * 86_400_000 : 0;
     const words = this.memoryQuery.toLowerCase().split(/\s+/).filter(Boolean);
-    const shown = m.items.filter(
+    const matching = m.items.filter(
       (i) =>
         (this.memorySource === 'all' || (this.memorySource === 'assistant') === (i.source === 'assistant')) &&
         (!since || Date.parse(i.createdAt) >= since) &&
@@ -272,17 +273,17 @@ export class KnowledgePage {
           'div',
           { class: 'memory-list' },
           filters,
-          shown.length ? null : h('p', { class: 'muted' }, 'No fact matches.'),
-          [...shown].reverse().map((item) => {
+          matching.length ? null : h('p', { class: 'muted' }, 'No fact matches.'),
+          [...matching].reverse().map((item) => {
             const text = h('div', { class: 'memory-text' }, item.text);
             const edit = h('button', { class: 'icon-btn small', title: 'Edit' }, icon('edit', 15));
             edit.addEventListener('click', () => {
               const field = h('input', { class: 'input small', value: item.text });
               const commit = async () => {
                 try {
-                  this.set(await api.updateMemory(item.id, field.value));
-                } catch (e) {
-                  toast(String(e), 'error');
+                  this.set(await reported(api.updateMemory(item.id, field.value)));
+                } catch {
+                  // Already shown.
                 }
               };
               field.addEventListener('keydown', (e) => {
@@ -295,9 +296,9 @@ export class KnowledgePage {
             });
             // Filing (LobeHub's memory categories, weight and confidence).
             const file = (category: string, importance: number, confirmed = false) =>
-              void tauriInvoke<Memories>('chat_file_memory', { id: item.id, category, importance, confirmed })
+              void call<Memories>('chat_file_memory', { id: item.id, category, importance, confirmed })
                 .then((m) => this.set(m))
-                .catch((e) => toast(String(e), 'error'));
+                .catch(shown);
             const category = h(
               'select',
               { class: 'memory-category', title: 'What it is about' },

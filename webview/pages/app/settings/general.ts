@@ -22,17 +22,16 @@ import {
 import { card, switchInput } from '../ui/ui';
 import { SHORTCUTS, bindingFor, comboOf, display, setBinding } from '../core/shortcuts';
 import { setVimEnabled, vimEnabled } from '../ui/vim';
-import { call, shown } from '../core/call';
+import { call, reported, shown } from '../core/call';
 import { apiServerCard, discordCard, slackCard, telegramCard } from './integrations';
 import { row } from './row';
 
 export async function renderGeneral(content: HTMLElement) {
   const settings = await api.appSettings();
   const persist = () =>
-    void api
-      .saveAppSettings(settings)
+    void reported(api.saveAppSettings(settings))
       .then(() => toast('Saved.'))
-      .catch((e) => toast(String(e), 'error'));
+      .catch(shown);
   const shortcut = h('input', { class: 'input', value: settings.search_shortcut, placeholder: 'Ctrl+L' });
   shortcut.addEventListener('change', () => {
     settings.search_shortcut = shortcut.value.trim();
@@ -159,14 +158,14 @@ async function chatDefaultsCard(): Promise<HTMLElement> {
   const topP = field(current.topP, { min: '0.05', max: '1', step: '0.05' });
   const number = (el: HTMLInputElement) => (el.value.trim() === '' || Number.isNaN(Number(el.value)) ? null : Number(el.value));
   const persist = () =>
-    void tauriInvoke<Params>('chat_set_defaults', { params: { temperature: number(temperature), maxTokens: number(maxTokens), topP: number(topP), instructions: '' } })
+    void call<Params>('chat_set_defaults', { params: { temperature: number(temperature), maxTokens: number(maxTokens), topP: number(topP), instructions: '' } })
       .then((saved) => {
         temperature.value = saved.temperature?.toString() ?? '';
         maxTokens.value = saved.maxTokens?.toString() ?? '';
         topP.value = saved.topP?.toString() ?? '';
         toast('Saved. New replies use these unless a chat sets its own.');
       })
-      .catch((e) => toast(String(e), 'error'));
+      .catch(shown);
   [temperature, maxTokens, topP].forEach((el) => el.addEventListener('change', persist));
   return card(
     h('h3', {}, 'Defaults for every chat'),
@@ -183,16 +182,16 @@ async function diagnosticsCard(): Promise<HTMLElement> {
   const view = await tauriInvoke<{ prefs: Prefs; reportingBuilt: boolean }>('chat_diagnostics_prefs');
   const prefs = view.prefs;
   const persist = () =>
-    void tauriInvoke('chat_set_diagnostics_prefs', { prefs })
+    void call('chat_set_diagnostics_prefs', { prefs })
       .then(() => toast('Saved. Takes effect at the next start.'))
-      .catch((e) => toast(String(e), 'error'));
+      .catch(shown);
   const exportBtn = h('button', { class: 'btn btn-secondary' }, icon('download', 14), 'Export diagnostics');
   exportBtn.addEventListener(
     'click',
     () =>
-      void tauriInvoke<boolean>('chat_export_diagnostics')
+      void call<boolean>('chat_export_diagnostics')
         .then((saved) => saved && toast('Diagnostics saved.'))
-        .catch((e) => toast(String(e), 'error'))
+        .catch(shown)
   );
   return card(
     h('h3', {}, 'Error reports and updates'),

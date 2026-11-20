@@ -9,6 +9,7 @@ import { icon } from '../ui/icons';
 import { modal, toast } from '../ui/overlay';
 import { clockHour12 } from '../core/clock';
 import { modalHeader } from '../ui/ui';
+import { call } from '../core/call';
 
 type Kind = 'agents' | 'workflows' | 'tools';
 interface Version {
@@ -44,10 +45,10 @@ function changesButton(kind: string, id: string, version: string): HTMLElement {
       on: {
         click: async () => {
           try {
-            const diff = await tauriInvoke<string>('chat_version_diff', { kind, id, version, current: null });
+            const diff = await call<string>('chat_version_diff', { kind, id, version, current: null });
             void modal((close) => h('div', { class: 'dialog-small wide' }, modalHeader('What changed after this version', close, { flush: true }), h('pre', { class: 'version-body' }, diff || 'Nothing changed.')));
-          } catch (e) {
-            toast(String(e), 'error');
+          } catch {
+            // Already shown.
           }
         },
       },
@@ -152,12 +153,12 @@ export function restoreButton(target: () => { kind: 'memories' | 'knowledge' | '
                           on: {
                             click: async () => {
                               try {
-                                await tauriInvoke('chat_restore_version', { kind, id, version: v.id });
+                                await call('chat_restore_version', { kind, id, version: v.id });
                                 restored();
                                 close();
                                 toast('Restored. The version it replaced is kept.');
-                              } catch (e) {
-                                toast(String(e), 'error');
+                              } catch {
+                                // Already shown.
                               }
                             },
                           },

@@ -8,6 +8,7 @@ import { clockHour12 } from '../core/clock';
 import { navigate, state } from '../core/state';
 import { button, modalHeader } from '../ui/ui';
 import { choice } from '../core/prefs';
+import { call, reported } from '../core/call';
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -345,10 +346,9 @@ export class TasksPage {
     toggle.addEventListener('click', (e) => e.stopPropagation());
     toggle.addEventListener('change', async () => {
       try {
-        this.set(await api.saveTask({ ...t, enabled: toggle.checked }));
-      } catch (e) {
+        this.set(await reported(api.saveTask({ ...t, enabled: toggle.checked })));
+      } catch {
         toggle.checked = !toggle.checked;
-        toast(String(e), 'error');
       }
     });
     const run = h('button', { class: 'icon-btn small', title: 'Run now' }, icon('send', 15));
@@ -449,12 +449,12 @@ export class TasksPage {
         label: 'Add comment',
         onClick: async () => {
           try {
-            const tasks = await tauriInvoke<Task[]>('chat_task_comment', { id: t.id, text: input.value, remove: null });
+            const tasks = await call<Task[]>('chat_task_comment', { id: t.id, text: input.value, remove: null });
             this.set(tasks);
             input.value = '';
             render(tasks.find((x) => x.id === t.id) ?? t);
-          } catch (e) {
-            toast(String(e), 'error');
+          } catch {
+            // Already shown.
           }
         },
       });
@@ -571,9 +571,9 @@ class TaskCalendar {
     end.setDate(start.getDate() + 42);
     let planned: Occurrence[] = [];
     try {
-      planned = await tauriInvoke<Occurrence[]>('chat_task_calendar', { from: start.toISOString(), to: end.toISOString() });
-    } catch (e) {
-      toast(String(e), 'error');
+      planned = await call<Occurrence[]>('chat_task_calendar', { from: start.toISOString(), to: end.toISOString() });
+    } catch {
+      // Already shown.
     }
     if (load !== this.loading) return;
     const byId = new Map(this.tasks.map((t) => [t.id, t]));

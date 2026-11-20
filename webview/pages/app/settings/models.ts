@@ -5,7 +5,7 @@ import { icon } from '../ui/icons';
 import { confirmDialog, toast } from '../ui/overlay';
 import { fileSize } from '../core/format';
 import { button, card, switchInput } from '../ui/ui';
-import { call, shown } from '../core/call';
+import { call, reported, shown } from '../core/call';
 import { reloadModels } from '../core/models';
 import { row } from './row';
 
@@ -45,12 +45,12 @@ export async function searchCard(): Promise<HTMLElement> {
   const save = h('button', { class: 'btn btn-primary' }, 'Save');
   save.addEventListener('click', async () => {
     try {
-      current = await tauriInvoke<SearchSettings>('chat_save_search_settings', { settings: { engine: engine.value, baseUrl: baseUrl.value, hasKey: current.hasKey }, key: key.value.trim() || null });
+      current = await call<SearchSettings>('chat_save_search_settings', { settings: { engine: engine.value, baseUrl: baseUrl.value, hasKey: current.hasKey }, key: key.value.trim() || null });
       key.value = '';
       key.placeholder = current.hasKey ? 'Saved in the keychain' : 'API key';
       toast('Saved. If the engine fails, the keyless search answers instead.');
-    } catch (e) {
-      toast(String(e), 'error');
+    } catch {
+      // Already shown.
     }
   });
   return card(
@@ -192,10 +192,10 @@ export async function embeddingCard(): Promise<HTMLElement> {
   };
   save.addEventListener('click', async () => {
     try {
-      await persist();
+      await reported(persist());
       toast('Saved.');
-    } catch (e) {
-      toast(String(e), 'error');
+    } catch {
+      // Already shown.
     }
   });
   checkQdrant.addEventListener('click', async () => {
@@ -287,11 +287,11 @@ export async function acpCard(): Promise<HTMLElement> {
   const own = () => all.filter((a) => !['claude-code', 'codex', 'gemini'].includes(a.id) || a.command.includes('/'));
   const save = async (next: Acp[]) => {
     try {
-      all = await tauriInvoke<Acp[]>('chat_acp_agents', { agents: next });
+      all = await call<Acp[]>('chat_acp_agents', { agents: next });
       render();
-      await reloadModels();
-    } catch (e) {
-      toast(String(e), 'error');
+      await reported(reloadModels());
+    } catch {
+      // Already shown.
     }
   };
   const render = () =>
@@ -496,18 +496,18 @@ export async function mediaCard(): Promise<HTMLElement> {
     label: 'Connect',
     onClick: async () => {
       try {
-        const saved = await tauriInvoke<MediaModels>('chat_set_image_server', { url: server.value.trim() || null });
+        const saved = await call<MediaModels>('chat_set_image_server', { url: server.value.trim() || null });
         image.value = saved.imageModel ?? '';
         toast(saved.imageServer ? 'The local image server answered.' : 'Local image server removed.');
-      } catch (e) {
-        toast(String(e), 'error');
+      } catch {
+        // Already shown.
       }
     },
   });
   const save = h('button', { class: 'btn btn-primary' }, 'Save');
   save.addEventListener('click', async () => {
     try {
-      const saved = await tauriInvoke<MediaModels>('chat_set_media_models', {
+      const saved = await call<MediaModels>('chat_set_media_models', {
         imageModel: image.value.trim() || null,
         speechModel: speech.value.trim() || null,
         voiceModel: voice.value.trim() || null,
@@ -518,8 +518,8 @@ export async function mediaCard(): Promise<HTMLElement> {
       voice.value = saved.voiceModel ?? '';
       video.value = saved.videoModel ?? '';
       toast(saved.imageModel || saved.speechModel ? 'Saved.' : 'Saved. No provider set up can serve these yet.');
-    } catch (e) {
-      toast(String(e), 'error');
+    } catch {
+      // Already shown.
     }
   });
   const note = (vendors: string[], what: string) => h('small', { class: 'muted' }, vendors.length ? `Available from: ${vendors.join(', ')}. Leave empty for the default.` : `Set up a provider that offers ${what} to use this.`);

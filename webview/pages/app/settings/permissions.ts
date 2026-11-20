@@ -8,6 +8,7 @@ import { state } from '../core/state';
 import { button, card, modalHeader, switchInput } from '../ui/ui';
 import { customToolsCard, functionsCard, hooksCard } from './tools';
 import { row } from './row';
+import { call, reported, shown } from '../core/call';
 
 /** Computer use: the assistant may see the screen and use the mouse and keyboard. */
 /**
@@ -72,9 +73,9 @@ export async function workbenchCard(): Promise<HTMLElement> {
       'When it is built. Off, code runs in the basic sandbox with this computer’s programs.',
       switchInput(info.enabled, (v) => {
         info.enabled = v;
-        void tauriInvoke('chat_workbench_set_enabled', { enabled: v })
+        void call('chat_workbench_set_enabled', { enabled: v })
           .then(() => toast(v ? 'Code runs in the workbench.' : 'Code runs in the basic sandbox.'))
-          .catch((e) => toast(String(e), 'error'));
+          .catch(shown);
       })
     ),
     status,
@@ -87,9 +88,9 @@ export async function computerCard(): Promise<HTMLElement> {
   let current = await tauriInvoke<Settings>('chat_computer_settings');
   const save = (next: Partial<Settings>, said: string) => {
     current = { ...current, ...next };
-    void tauriInvoke('chat_save_computer_settings', { settings: current })
+    void call('chat_save_computer_settings', { settings: current })
       .then(() => toast(said))
-      .catch((e) => toast(String(e), 'error'));
+      .catch(shown);
   };
   const lines = (s: string) =>
     s
@@ -149,12 +150,12 @@ export async function openApiCard(): Promise<HTMLElement> {
                     title: 'Fetch the spec again',
                     on: {
                       click: () =>
-                        void tauriInvoke<OpenApiServer[]>('chat_refresh_openapi_server', { id: s.id })
+                        void call<OpenApiServer[]>('chat_refresh_openapi_server', { id: s.id })
                           .then((v) => {
                             render(v);
                             toast('Refreshed.');
                           })
-                          .catch((e) => toast(String(e), 'error')),
+                          .catch(shown),
                     },
                   },
                   'Refresh'
@@ -164,10 +165,7 @@ export async function openApiCard(): Promise<HTMLElement> {
                   {
                     class: 'link-btn',
                     on: {
-                      click: () =>
-                        void tauriInvoke<OpenApiServer[]>('chat_remove_openapi_server', { id: s.id })
-                          .then(render)
-                          .catch((e) => toast(String(e), 'error')),
+                      click: () => void call<OpenApiServer[]>('chat_remove_openapi_server', { id: s.id }).then(render).catch(shown),
                     },
                   },
                   'Remove'
@@ -187,11 +185,11 @@ export async function openApiCard(): Promise<HTMLElement> {
     if (!url.value.trim()) return void toast('Give the address of the OpenAPI spec (JSON).', 'error');
     add.setAttribute('disabled', '');
     try {
-      render(await tauriInvoke<OpenApiServer[]>('chat_add_openapi_server', { name: name.value, specUrl: url.value, key: key.value.trim() || null }));
+      render(await call<OpenApiServer[]>('chat_add_openapi_server', { name: name.value, specUrl: url.value, key: key.value.trim() || null }));
       name.value = url.value = key.value = '';
       toast('Added. Its operations are now tools; reads run freely, changes follow your mode.');
-    } catch (e) {
-      toast(String(e), 'error');
+    } catch {
+      // Already shown.
     } finally {
       add.removeAttribute('disabled');
     }
@@ -249,12 +247,12 @@ export function mcpCard(): HTMLElement {
         ? { id, display_name: display, transport: 'http', url: value, auth: auth.value === 'oauth' ? { type: 'oauth', scopes: [] } : { type: 'none' }, request_headers: {} }
         : { id, display_name: display, transport: 'stdio', command, args, env: {}, secret_env: [] };
     try {
-      await tauriInvoke('save_mcp_server', { server });
+      await call('save_mcp_server', { server });
       toast(`${display} added. Enable it in Connectors.`);
       name.value = '';
       target.value = '';
-    } catch (e) {
-      toast(String(e), 'error');
+    } catch {
+      // Already shown.
     }
   });
   return card(
@@ -275,9 +273,9 @@ export async function renderPermissions(content: HTMLElement) {
   const settings = await api.appSettings();
   const persist = async (next: AppSettings) => {
     try {
-      await api.saveAppSettings(next);
-    } catch (e) {
-      toast(String(e), 'error');
+      await reported(api.saveAppSettings(next));
+    } catch {
+      // Already shown.
     }
   };
   const roots = h('div', { class: 'root-list' });
@@ -403,11 +401,11 @@ async function vaultCard(): Promise<HTMLElement> {
                     click: async () => {
                       if (!(await confirmDialog(`Delete ${s.name}?`, 'Its value is removed from the keychain and no agent can use it any more.'))) return;
                       try {
-                        secrets = await tauriInvoke<VaultSecret[]>('chat_vault_delete', { name: s.name });
-                        state.agents = await api.agents();
+                        secrets = await call<VaultSecret[]>('chat_vault_delete', { name: s.name });
+                        state.agents = await reported(api.agents());
                         render();
-                      } catch (e) {
-                        toast(String(e), 'error');
+                      } catch {
+                        // Already shown.
                       }
                     },
                   },
@@ -486,12 +484,12 @@ async function calendarCard(): Promise<HTMLElement> {
   const list = h('div', { class: 'hook-list' });
   const save = async (next: typeof settings) => {
     try {
-      const report = await tauriInvoke<string[]>('chat_set_calendar_sources', { settings: next });
+      const report = await call<string[]>('chat_set_calendar_sources', { settings: next });
       settings = next;
       render();
       if (report.length) toast(`Read ${report.join(', ')}.`);
-    } catch (e) {
-      toast(String(e), 'error');
+    } catch {
+      // Already shown.
     }
   };
   const render = () => {
