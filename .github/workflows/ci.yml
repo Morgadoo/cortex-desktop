@@ -26,7 +26,7 @@ env:
 
 jobs:
   webview:
-    name: Webview (types, build, translations)
+    name: Webview (types, build, translations, tests)
     runs-on: cortex-desktop-ci
     timeout-minutes: 15
     steps:
@@ -40,10 +40,10 @@ jobs:
         run: npm run typecheck
       - name: Build
         run: npm run build:webview
-      - name: Every interface string is translated
+      - name: Every interface string is in the catalog
         run: npm run check:i18n
-      - name: Voice (turn ends, live transcripts)
-        run: npm run check:voice
+      - name: Unit tests
+        run: npm test
 
   rust:
     name: Rust (format, lints, tests)

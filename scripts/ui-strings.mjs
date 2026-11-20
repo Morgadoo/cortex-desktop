@@ -9,7 +9,7 @@
 //   node scripts/ui-strings.mjs --check   fails when the catalog is out of date
 
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -140,7 +140,12 @@ function isCode({ before, after }) {
 }
 
 const strings = new Set()
-for (const file of readdirSync(srcDir).filter((f) => f.endsWith('.ts')).sort()) {
+// Every source file under the page's folder, sub-folders included. Tests are not the interface.
+const sources = readdirSync(srcDir, { recursive: true, withFileTypes: true })
+  .filter((e) => e.isFile() && e.name.endsWith('.ts') && !e.name.endsWith('.test.ts'))
+  .map((e) => relative(srcDir, join(e.parentPath, e.name)))
+  .sort()
+for (const file of sources) {
   for (const lit of literals(readFileSync(join(srcDir, file), 'utf8'))) {
     if (isCode(lit)) continue
     // Whole lines of text; whitespace at the ends is layout.
