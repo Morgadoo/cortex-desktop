@@ -51,7 +51,6 @@ const api = {
   search: (query: string, libraryId: string | null) => tauriInvoke<Passage[]>('chat_search_libraries', { query, libraryId }),
 };
 
-
 /** A document's indexed text, with find-in-text. */
 function previewDocument(libraryId: string, documentId: string, name: string) {
   void modal((close) => {
@@ -62,7 +61,10 @@ function previewDocument(libraryId: string, documentId: string, name: string) {
       const q = find.value.trim();
       if (!q) return void (body.textContent = text);
       const pattern = new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-      clear(body, text.split(pattern).map((piece, i) => (i % 2 ? h('mark', {}, piece) : piece)));
+      clear(
+        body,
+        text.split(pattern).map((piece, i) => (i % 2 ? h('mark', {}, piece) : piece))
+      );
       body.querySelector('mark')?.scrollIntoView({ block: 'center' });
     };
     find.addEventListener('input', render);
@@ -133,7 +135,12 @@ export class LibrariesPage {
       }
     });
     this.el.append(
-      h('header', { class: 'page-header' }, h('div', {}, h('h1', {}, 'Libraries'), h('p', { class: 'muted' }, 'Collections of documents the assistant searches when answering, and cites. Everything stays on this device.')), h('div', { class: 'page-actions' }, create)),
+      h(
+        'header',
+        { class: 'page-header' },
+        h('div', {}, h('h1', {}, 'Libraries'), h('p', { class: 'muted' }, 'Collections of documents the assistant searches when answering, and cites. Everything stays on this device.')),
+        h('div', { class: 'page-actions' }, create)
+      ),
       this.body
     );
     void this.load();
@@ -147,7 +154,16 @@ export class LibrariesPage {
 
   private render() {
     if (!this.libraries.length) {
-      clear(this.body, h('div', { class: 'empty-state' }, h('div', { class: 'empty-icon' }, icon('library', 22)), h('h3', {}, 'No libraries yet'), h('p', { class: 'muted' }, 'Create a library and add PDFs, Markdown, text, HTML or code. The assistant searches them when your question needs them.')));
+      clear(
+        this.body,
+        h(
+          'div',
+          { class: 'empty-state' },
+          h('div', { class: 'empty-icon' }, icon('library', 22)),
+          h('h3', {}, 'No libraries yet'),
+          h('p', { class: 'muted' }, 'Create a library and add PDFs, Markdown, text, HTML or code. The assistant searches them when your question needs them.')
+        )
+      );
       return;
     }
     const tabs = h(
@@ -155,7 +171,21 @@ export class LibrariesPage {
       { class: 'tabs' },
       [...this.libraries]
         .sort((a, b) => Number(favourites().has(b.id)) - Number(favourites().has(a.id)))
-        .map((l) => h('button', { class: `tab${this.open === l.id ? ' active' : ''}`, on: { click: () => { this.open = l.id; this.render(); } } }, `${favourites().has(l.id) ? '★ ' : ''}${l.name} ${l.documents.length}`))
+        .map((l) =>
+          h(
+            'button',
+            {
+              class: `tab${this.open === l.id ? ' active' : ''}`,
+              on: {
+                click: () => {
+                  this.open = l.id;
+                  this.render();
+                },
+              },
+            },
+            `${favourites().has(l.id) ? '★ ' : ''}${l.name} ${l.documents.length}`
+          )
+        )
     );
     const lib = this.libraries.find((l) => l.id === this.open) ?? this.libraries[0]!;
     const add = h('button', { class: 'btn btn-primary' }, icon('upload', 15), 'Add documents');
@@ -222,16 +252,28 @@ export class LibrariesPage {
           h('div', { class: 'menu-heading' }, 'Index the documents of'),
           list.length
             ? list.map((c) =>
-                h('button', { class: 'menu-item', disabled: c.mirrored, on: { click: async () => {
-                  close();
-                  addConnector.textContent = 'Indexing…';
-                  try {
-                    report(await tauriInvoke<SyncReport>('chat_set_library_connector', { id: lib.id, connectorId: c.id, on: true }));
-                  } catch (e) {
-                    toast(String(e), 'error');
-                  }
-                  await this.load();
-                } } }, icon('plug', 15), h('span', {}, c.name), c.mirrored ? h('small', { class: 'muted' }, 'mirrored') : null)
+                h(
+                  'button',
+                  {
+                    class: 'menu-item',
+                    disabled: c.mirrored,
+                    on: {
+                      click: async () => {
+                        close();
+                        addConnector.textContent = 'Indexing…';
+                        try {
+                          report(await tauriInvoke<SyncReport>('chat_set_library_connector', { id: lib.id, connectorId: c.id, on: true }));
+                        } catch (e) {
+                          toast(String(e), 'error');
+                        }
+                        await this.load();
+                      },
+                    },
+                  },
+                  icon('plug', 15),
+                  h('span', {}, c.name),
+                  c.mirrored ? h('small', { class: 'muted' }, 'mirrored') : null
+                )
               )
             : h('div', { class: 'menu-empty muted' }, 'No connectors yet. Add one in Settings → Connectors.')
         )
@@ -245,18 +287,45 @@ export class LibrariesPage {
         icon('plug', 16),
         h('span', { class: 'doc-name', dataset: { connector: id } }, id),
         h('span', { class: 'muted' }, `${count} ${count === 1 ? 'document' : 'documents'}`),
-        h('button', { class: 'link-btn', on: { click: async () => { report(await tauriInvoke<SyncReport>('chat_sync_library', { id: lib.id }).catch((e) => (toast(String(e), 'error'), null))); await this.load(); } } }, 'Sync now'),
-        h('button', { class: 'icon-btn small', title: 'Stop mirroring (its documents leave the library)', on: { click: async () => { report(await tauriInvoke<SyncReport>('chat_set_library_connector', { id: lib.id, connectorId: id, on: false }).catch((e) => (toast(String(e), 'error'), null))); await this.load(); } } }, icon('close', 15))
+        h(
+          'button',
+          {
+            class: 'link-btn',
+            on: {
+              click: async () => {
+                report(await tauriInvoke<SyncReport>('chat_sync_library', { id: lib.id }).catch((e) => (toast(String(e), 'error'), null)));
+                await this.load();
+              },
+            },
+          },
+          'Sync now'
+        ),
+        h(
+          'button',
+          {
+            class: 'icon-btn small',
+            title: 'Stop mirroring (its documents leave the library)',
+            on: {
+              click: async () => {
+                report(await tauriInvoke<SyncReport>('chat_set_library_connector', { id: lib.id, connectorId: id, on: false }).catch((e) => (toast(String(e), 'error'), null)));
+                await this.load();
+              },
+            },
+          },
+          icon('close', 15)
+        )
       );
     });
     const connectors = connectorRows.length ? h('div', { class: 'folder-list' }, connectorRows) : null;
     if (connectors) {
       // Their names, once the list of connectors answers.
-      void tauriInvoke<{ id: string; name: string }[]>('chat_library_connectors', { id: lib.id }).then((all) => {
-        connectors.querySelectorAll<HTMLElement>('[data-connector]').forEach((el) => {
-          el.textContent = all.find((c) => c.id === el.dataset.connector)?.name ?? el.textContent;
-        });
-      }).catch(() => undefined);
+      void tauriInvoke<{ id: string; name: string }[]>('chat_library_connectors', { id: lib.id })
+        .then((all) => {
+          connectors.querySelectorAll<HTMLElement>('[data-connector]').forEach((el) => {
+            el.textContent = all.find((c) => c.id === el.dataset.connector)?.name ?? el.textContent;
+          });
+        })
+        .catch(() => undefined);
     }
     const folders = lib.folders.length
       ? h(
@@ -269,8 +338,33 @@ export class LibrariesPage {
               icon('folder', 16),
               h('span', { class: 'doc-name' }, f),
               h('span', { class: 'muted' }, lib.syncedAt ? `synced ${new Date(lib.syncedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: clockHour12() })}` : ''),
-              h('button', { class: 'link-btn', on: { click: async () => { report(await tauriInvoke<SyncReport>('chat_sync_library', { id: lib.id }).catch((e) => (toast(String(e), 'error'), null))); await this.load(); } } }, 'Sync now'),
-              h('button', { class: 'icon-btn small', title: 'Stop mirroring (its documents leave the library)', on: { click: async () => { report(await tauriInvoke<SyncReport>('chat_remove_library_folder', { id: lib.id, folder: f })); await this.load(); } } }, icon('close', 15))
+              h(
+                'button',
+                {
+                  class: 'link-btn',
+                  on: {
+                    click: async () => {
+                      report(await tauriInvoke<SyncReport>('chat_sync_library', { id: lib.id }).catch((e) => (toast(String(e), 'error'), null)));
+                      await this.load();
+                    },
+                  },
+                },
+                'Sync now'
+              ),
+              h(
+                'button',
+                {
+                  class: 'icon-btn small',
+                  title: 'Stop mirroring (its documents leave the library)',
+                  on: {
+                    click: async () => {
+                      report(await tauriInvoke<SyncReport>('chat_remove_library_folder', { id: lib.id, folder: f }));
+                      await this.load();
+                    },
+                  },
+                },
+                icon('close', 15)
+              )
             )
           )
         )
@@ -319,13 +413,33 @@ export class LibrariesPage {
             const sort = h(
               'select',
               { class: 'input doc-sort', 'aria-label': 'Sort documents' },
-              ...([['favourites', 'Favourites first'], ['newest', 'Newest'], ['name', 'Name'], ['largest', 'Largest']] as const).map(([v, label]) => h('option', { value: v, selected: docSort() === v }, label))
+              ...(
+                [
+                  ['favourites', 'Favourites first'],
+                  ['newest', 'Newest'],
+                  ['name', 'Name'],
+                  ['largest', 'Largest'],
+                ] as const
+              ).map(([v, label]) => h('option', { value: v, selected: docSort() === v }, label))
             );
             sort.addEventListener('change', () => {
               docSortPref.set(sort.value as DocSort);
               this.render();
             });
-            const libFav = h('button', { class: 'btn btn-secondary btn-sm', title: 'Favourite libraries come first', on: { click: () => { toggleFavourite(lib.id); this.render(); } } }, favourites().has(lib.id) ? '★ Favourite' : '☆ Favourite');
+            const libFav = h(
+              'button',
+              {
+                class: 'btn btn-secondary btn-sm',
+                title: 'Favourite libraries come first',
+                on: {
+                  click: () => {
+                    toggleFavourite(lib.id);
+                    this.render();
+                  },
+                },
+              },
+              favourites().has(lib.id) ? '★ Favourite' : '☆ Favourite'
+            );
             return h('div', { class: 'doc-row doc-tools' }, filter, sort, h('span', { class: 'spacer' }), libFav);
           })(),
           sortDocs(lib.documents, docSort(), favourites(), this.docFilter).map((d) => {
@@ -339,13 +453,39 @@ export class LibrariesPage {
               'div',
               { class: 'doc-row' },
               box,
-              h('button', { class: `icon-btn small fav-star${favourites().has(d.id) ? ' on' : ''}`, title: favourites().has(d.id) ? 'Remove from favourites' : 'Add to favourites', on: { click: () => { toggleFavourite(d.id); this.render(); } } }, favourites().has(d.id) ? '★' : '☆'),
+              h(
+                'button',
+                {
+                  class: `icon-btn small fav-star${favourites().has(d.id) ? ' on' : ''}`,
+                  title: favourites().has(d.id) ? 'Remove from favourites' : 'Add to favourites',
+                  on: {
+                    click: () => {
+                      toggleFavourite(d.id);
+                      this.render();
+                    },
+                  },
+                },
+                favourites().has(d.id) ? '★' : '☆'
+              ),
               icon('file', 16),
               h('button', { class: 'doc-name link-like', title: 'Preview its text', on: { click: () => previewDocument(lib.id, d.id, d.name) } }, d.name),
               h('span', { class: 'muted' }, characterCount(d.chars)),
               h('span', { class: 'muted' }, new Date(d.addedAt).toLocaleDateString()),
               h('button', { class: 'icon-btn small', title: 'Move to another library', on: { click: (e: MouseEvent) => void this.moveDocs(e.currentTarget as HTMLElement, lib.id, [d.id]) } }, icon('forward', 15)),
-              h('button', { class: 'icon-btn small', title: 'Remove', on: { click: async () => { await api.removeDoc(lib.id, d.id); await this.load(); } } }, icon('trash', 15))
+              h(
+                'button',
+                {
+                  class: 'icon-btn small',
+                  title: 'Remove',
+                  on: {
+                    click: async () => {
+                      await api.removeDoc(lib.id, d.id);
+                      await this.load();
+                    },
+                  },
+                },
+                icon('trash', 15)
+              )
             );
           })
         )
@@ -359,7 +499,14 @@ export class LibrariesPage {
       clear(
         results,
         hits.length
-          ? hits.map((p) => h('div', { class: 'passage' }, h('div', { class: 'passage-head' }, icon('file', 14), h('strong', {}, p.document), h('span', { class: 'muted' }, `passage ${p.passage + 1} · score ${p.score}`)), h('p', {}, p.text.length > 420 ? `${p.text.slice(0, 420)}…` : p.text)))
+          ? hits.map((p) =>
+              h(
+                'div',
+                { class: 'passage' },
+                h('div', { class: 'passage-head' }, icon('file', 14), h('strong', {}, p.document), h('span', { class: 'muted' }, `passage ${p.passage + 1} · score ${p.score}`)),
+                h('p', {}, p.text.length > 420 ? `${p.text.slice(0, 420)}…` : p.text)
+              )
+            )
           : h('p', { class: 'muted' }, 'No passage matched.')
       );
     });
@@ -387,12 +534,22 @@ export class LibrariesPage {
         { class: 'menu' },
         h('div', { class: 'menu-heading' }, ids.length > 1 ? `Move ${ids.length} documents to` : 'Move to'),
         others.map((l) =>
-          h('button', { class: 'menu-item', on: { click: async () => {
-            close();
-            for (const id of ids) await call('chat_move_document', { libraryId: from, documentId: id, to: l.id }).catch(shown);
-            toast(`Moved to ${l.name}.`);
-            await this.load();
-          } } }, icon('library', 15), h('span', {}, l.name))
+          h(
+            'button',
+            {
+              class: 'menu-item',
+              on: {
+                click: async () => {
+                  close();
+                  for (const id of ids) await call('chat_move_document', { libraryId: from, documentId: id, to: l.id }).catch(shown);
+                  toast(`Moved to ${l.name}.`);
+                  await this.load();
+                },
+              },
+            },
+            icon('library', 15),
+            h('span', {}, l.name)
+          )
         )
       )
     );

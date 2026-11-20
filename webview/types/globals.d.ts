@@ -11,10 +11,7 @@ declare global {
 
   type TauriUnlisten = () => void;
 
-  type TauriListen = (
-    event: string,
-    handler: (event: { payload?: unknown }) => void
-  ) => Promise<TauriUnlisten>;
+  type TauriListen = (event: string, handler: (event: { payload?: unknown }) => void) => Promise<TauriUnlisten>;
 
   /**
    * Tauri IPC globals. `__TAURI_INTERNALS__` is absent outside a Tauri webview, and `__TAURI__`

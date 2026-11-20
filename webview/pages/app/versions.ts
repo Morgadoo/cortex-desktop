@@ -34,14 +34,23 @@ function preview(value: Record<string, unknown>): string {
 
 /** "Show changes": what changed from a version to the next one (or to the item as it is now). */
 function changesButton(kind: string, id: string, version: string): HTMLElement {
-  return h('button', { class: 'btn btn-ghost btn-sm', on: { click: async () => {
-    try {
-      const diff = await tauriInvoke<string>('chat_version_diff', { kind, id, version, current: null });
-      void modal((close) => h('div', { class: 'dialog-small wide' }, modalHeader('What changed after this version', close, { flush: true }), h('pre', { class: 'version-body' }, diff || 'Nothing changed.')));
-    } catch (e) {
-      toast(String(e), 'error');
-    }
-  } } }, 'Show changes');
+  return h(
+    'button',
+    {
+      class: 'btn btn-ghost btn-sm',
+      on: {
+        click: async () => {
+          try {
+            const diff = await tauriInvoke<string>('chat_version_diff', { kind, id, version, current: null });
+            void modal((close) => h('div', { class: 'dialog-small wide' }, modalHeader('What changed after this version', close, { flush: true }), h('pre', { class: 'version-body' }, diff || 'Nothing changed.')));
+          } catch (e) {
+            toast(String(e), 'error');
+          }
+        },
+      },
+    },
+    'Show changes'
+  );
 }
 
 /** A History button for an editor; `load` fills the editor with the chosen version. */
@@ -64,9 +73,36 @@ export function historyButton(kind: Kind, id: string, load: (value: Record<strin
                     h(
                       'div',
                       { class: 'dialog-actions' },
-                      extra ? h('button', { class: 'btn btn-ghost btn-sm', on: { click: () => { extra.run(v.value); close(); } } }, extra.label) : null,
+                      extra
+                        ? h(
+                            'button',
+                            {
+                              class: 'btn btn-ghost btn-sm',
+                              on: {
+                                click: () => {
+                                  extra.run(v.value);
+                                  close();
+                                },
+                              },
+                            },
+                            extra.label
+                          )
+                        : null,
                       changesButton(kind, id, v.id),
-                      h('button', { class: 'btn btn-secondary btn-sm', on: { click: () => { load(v.value); close(); toast('Loaded into the editor. Save to bring it back; the current version is kept.'); } } }, 'Load this version')
+                      h(
+                        'button',
+                        {
+                          class: 'btn btn-secondary btn-sm',
+                          on: {
+                            click: () => {
+                              load(v.value);
+                              close();
+                              toast('Loaded into the editor. Save to bring it back; the current version is kept.');
+                            },
+                          },
+                        },
+                        'Load this version'
+                      )
                     )
                   )
                 )
@@ -106,7 +142,25 @@ export function restoreButton(target: () => { kind: 'memories' | 'knowledge' | '
                       'div',
                       { class: 'dialog-actions' },
                       changesButton(kind, id, v.id),
-                      h('button', { class: 'btn btn-secondary btn-sm', on: { click: async () => { try { await tauriInvoke('chat_restore_version', { kind, id, version: v.id }); restored(); close(); toast('Restored. The version it replaced is kept.'); } catch (e) { toast(String(e), 'error'); } } } }, 'Restore this version')
+                      h(
+                        'button',
+                        {
+                          class: 'btn btn-secondary btn-sm',
+                          on: {
+                            click: async () => {
+                              try {
+                                await tauriInvoke('chat_restore_version', { kind, id, version: v.id });
+                                restored();
+                                close();
+                                toast('Restored. The version it replaced is kept.');
+                              } catch (e) {
+                                toast(String(e), 'error');
+                              }
+                            },
+                          },
+                        },
+                        'Restore this version'
+                      )
                     )
                   )
                 )

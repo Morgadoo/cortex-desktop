@@ -26,7 +26,11 @@ const PREVIEW_PROMPT = 'Recommend a book for me to read.';
 export function openInstructions(): Promise<void> {
   const draft: Instructions = { ...state.instructions };
   return modal((close) => {
-    const toneSelect = h('select', { class: 'input' }, TONES.map((t) => h('option', { value: t.id, selected: t.id === draft.tone }, t.label)));
+    const toneSelect = h(
+      'select',
+      { class: 'input' },
+      TONES.map((t) => h('option', { value: t.id, selected: t.id === draft.tone }, t.label))
+    );
     const toneHint = h('p', { class: 'hint' }, TONES.find((t) => t.id === draft.tone)?.description ?? '');
     toneSelect.addEventListener('change', () => {
       draft.tone = toneSelect.value;
@@ -118,7 +122,6 @@ function pageHeader(title: string, subtitle: string, ...actions: (HTMLElement | 
   return h('header', { class: 'page-header' }, h('div', {}, h('h1', {}, title), h('p', { class: 'muted' }, subtitle)), h('div', { class: 'page-actions' }, actions));
 }
 
-
 const READINESS: Record<string, string> = {
   ready: 'Ready',
   blocked: 'Needs setup',
@@ -150,7 +153,16 @@ export class ConnectorsPage {
         (['all', 'enabled', 'catalog'] as const).map((t) =>
           h(
             'button',
-            { class: `tab${this.tab === t ? ' active' : ''}`, on: { click: () => { this.tab = t; renderTabs(); this.render(); } } },
+            {
+              class: `tab${this.tab === t ? ' active' : ''}`,
+              on: {
+                click: () => {
+                  this.tab = t;
+                  renderTabs();
+                  this.render();
+                },
+              },
+            },
             t === 'all' ? `Yours ${this.connectors.length}` : t === 'enabled' ? `Enabled ${this.connectors.filter((c) => c.enabled).length}` : `Catalog ${FEATURED_MCP_SERVERS.length}`
           )
         )
@@ -186,14 +198,15 @@ export class ConnectorsPage {
       this.renderCatalog();
       return;
     }
-    const shown = this.connectors.filter(
-      (c) => (this.tab === 'all' || c.enabled) && (!this.filter || `${c.display_name} ${c.description ?? ''}`.toLowerCase().includes(this.filter))
-    );
+    const shown = this.connectors.filter((c) => (this.tab === 'all' || c.enabled) && (!this.filter || `${c.display_name} ${c.description ?? ''}`.toLowerCase().includes(this.filter)));
     if (!shown.length) {
       clear(this.list, emptyState('plug', 'Bring your tools to the AI', 'Connect apps and data sources so the assistant can search, answer and act with the context you use every day.'));
       return;
     }
-    clear(this.list, shown.map((c) => this.row(c)));
+    clear(
+      this.list,
+      shown.map((c) => this.row(c))
+    );
   }
 
   /** Ready-made MCP servers, grouped by category; adding one registers it for OAuth sign-in. */
@@ -206,7 +219,11 @@ export class ConnectorsPage {
       groups.length ? null : emptyState('plug', 'No match', 'Try another search.'),
       groups.flatMap((g) => [
         h('div', { class: 'section-title' }, g.cat.label),
-        h('div', { class: 'catalog-grid' }, g.items.map((entry) => this.catalogCard(entry, installed.has(entry.id)))),
+        h(
+          'div',
+          { class: 'catalog-grid' },
+          g.items.map((entry) => this.catalogCard(entry, installed.has(entry.id)))
+        ),
       ])
     );
   }
@@ -242,13 +259,7 @@ export class ConnectorsPage {
         }
       });
     }
-    return h(
-      'div',
-      { class: 'catalog-card' },
-      h('img', { class: 'connector-icon', src: entry.iconSrc, alt: '' }),
-      h('div', { class: 'catalog-text' }, h('strong', {}, entry.name), h('small', { class: 'muted' }, entry.description)),
-      action
-    );
+    return h('div', { class: 'catalog-card' }, h('img', { class: 'connector-icon', src: entry.iconSrc, alt: '' }), h('div', { class: 'catalog-text' }, h('strong', {}, entry.name), h('small', { class: 'muted' }, entry.description)), action);
   }
 
   private row(c: ConnectorManifest): HTMLElement {
@@ -271,7 +282,9 @@ export class ConnectorsPage {
       h(
         'summary',
         {},
-        c.icon && c.icon.startsWith('data:') ? h('img', { class: 'connector-icon', src: c.icon, alt: '' }) : h('span', { class: 'connector-icon fallback' }, icon(c.id === 'bash' ? 'terminal' : c.id === 'filesystem' ? 'file' : c.id === 'browser' ? 'globe' : 'plug', 18)),
+        c.icon && c.icon.startsWith('data:')
+          ? h('img', { class: 'connector-icon', src: c.icon, alt: '' })
+          : h('span', { class: 'connector-icon fallback' }, icon(c.id === 'bash' ? 'terminal' : c.id === 'filesystem' ? 'file' : c.id === 'browser' ? 'globe' : 'plug', 18)),
         h('span', { class: 'connector-text' }, h('strong', {}, c.display_name), h('small', { class: 'muted' }, c.description ?? `${c.tools.length} tools`)),
         h('span', { class: `status-badge ${ready ? 'ok' : 'warn'}` }, READINESS[c.readiness.state] ?? c.readiness.state),
         !ready && c.id.startsWith('mcp-') ? this.connectButton(c) : null,
@@ -283,7 +296,12 @@ export class ConnectorsPage {
         !ready && c.readiness.reason ? h('p', { class: 'hint' }, c.readiness.reason) : null,
         // As on Vibe's connector page: read-only and interactive functions apart, each group with
         // its own "Always allow", and every function's own setting under it.
-        ([['Interactive', c.tools.filter((t) => !t.read_only)], ['Read-only', c.tools.filter((t) => t.read_only)]] as const)
+        (
+          [
+            ['Interactive', c.tools.filter((t) => !t.read_only)],
+            ['Read-only', c.tools.filter((t) => t.read_only)],
+          ] as const
+        )
           .filter(([, tools]) => tools.length)
           .map(([label, tools]) => {
             const selects: HTMLSelectElement[] = [];
@@ -315,7 +333,14 @@ export class ConnectorsPage {
             return h(
               'div',
               { class: 'tool-group' },
-              h('div', { class: 'tool-group-head' }, h('strong', {}, `${label} functions`), h('span', { class: 'muted' }, String(tools.length)), h('span', { class: 'spacer' }), h('label', { class: 'tool-group-all' }, h('span', {}, 'Always allow'), all)),
+              h(
+                'div',
+                { class: 'tool-group-head' },
+                h('strong', {}, `${label} functions`),
+                h('span', { class: 'muted' }, String(tools.length)),
+                h('span', { class: 'spacer' }),
+                h('label', { class: 'tool-group-all' }, h('span', {}, 'Always allow'), all)
+              ),
               rows
             );
           }),

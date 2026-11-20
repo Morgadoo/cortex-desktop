@@ -19,10 +19,7 @@ test('interface text is translated, whitespace around it kept', () => {
 test('templates keep inserted values and translate inserted interface words', () => {
   load(ptText);
   assert.equal(translate('Good morning. Ready when you are'), word('{0}. Ready when you are').replace('{0}', word('Good morning')));
-  assert.equal(
-    translate('90 conversations, 6.7 MB on this device.'),
-    word('{0} conversations, {1} on this device.').replace('{0}', '90').replace('{1}', '6.7 MB'),
-  );
+  assert.equal(translate('90 conversations, 6.7 MB on this device.'), word('{0} conversations, {1} on this device.').replace('{0}', '90').replace('{1}', '6.7 MB'));
 });
 
 test('what users write is not catalog text', () => {

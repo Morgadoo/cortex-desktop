@@ -54,17 +54,35 @@ export function editWorkflow(workflow: Workflow | null, onSaved: (all: Workflow[
   void modal((close) => {
     const name = h('input', { class: 'input', value: workflow?.name ?? '', placeholder: 'Weekly report' });
     const description = h('input', { class: 'input', value: workflow?.description ?? '', placeholder: 'What it is for' });
-    const steps = h('textarea', { class: 'input textarea', rows: 8, placeholder: 'One step per line. Ask for something each run with {{topic}}, {{count:number}}, {{due:date}}, {{notes?:long}} or {{tone|formal|casual}}. Start a line with “Approve:” to stop there until you approve.' });
+    const steps = h('textarea', {
+      class: 'input textarea',
+      rows: 8,
+      placeholder: 'One step per line. Ask for something each run with {{topic}}, {{count:number}}, {{due:date}}, {{notes?:long}} or {{tone|formal|casual}}. Start a line with “Approve:” to stop there until you approve.',
+    });
     steps.value = (workflow?.steps ?? []).join('\n');
     const flowPreview = h('div', {});
-    const drawFlow = () => clear(flowPreview, steps.value.trim() ? flowView(steps.value.split('\n').map((s) => s.trim()).filter(Boolean)) : null);
+    const drawFlow = () =>
+      clear(
+        flowPreview,
+        steps.value.trim()
+          ? flowView(
+              steps.value
+                .split('\n')
+                .map((s) => s.trim())
+                .filter(Boolean)
+            )
+          : null
+      );
     steps.addEventListener('input', drawFlow);
     drawFlow();
     const current = (): Workflow => ({
       id: workflow?.id ?? '',
       name: name.value,
       description: description.value,
-      steps: steps.value.split('\n').map((s) => s.trim()).filter(Boolean),
+      steps: steps.value
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean),
       builtin: workflow?.builtin ?? false,
     });
     const saveOnly = async (): Promise<Workflow[] | null> => {
@@ -86,25 +104,36 @@ export function editWorkflow(workflow: Workflow | null, onSaved: (all: Workflow[
     // into the fields; asking again revises what is there, so it works as a conversation.
     const ask = h('input', { class: 'input', placeholder: workflow ? 'What to change, e.g. “add a step that checks the sources”' : 'Describe it, e.g. “every Friday, summarize my week’s chats into a status report”' });
     const asked = h('div', { class: 'designer-log' });
-    const draftBtn = button({ variant: 'secondary', size: 'sm', icon: 'sparkle', label: 'Draft', onClick: async () => {
-      const request = ask.value.trim();
-      if (!request) return ask.focus();
-      draftBtn.disabled = true;
-      try {
-        const now = current();
-        const d = await workflowsApi.draft(request, now.steps.length || now.name ? now : null);
-        name.value = d.name;
-        description.value = d.description;
-        steps.value = d.steps.join('\n');
-        asked.append(h('div', { class: 'designer-turn' }, icon('sparkle', 12), h('span', {}, request)));
-        ask.value = '';
-      } catch (e) {
-        toast(String(e), 'error');
-      } finally {
-        draftBtn.disabled = false;
+    const draftBtn = button({
+      variant: 'secondary',
+      size: 'sm',
+      icon: 'sparkle',
+      label: 'Draft',
+      onClick: async () => {
+        const request = ask.value.trim();
+        if (!request) return ask.focus();
+        draftBtn.disabled = true;
+        try {
+          const now = current();
+          const d = await workflowsApi.draft(request, now.steps.length || now.name ? now : null);
+          name.value = d.name;
+          description.value = d.description;
+          steps.value = d.steps.join('\n');
+          asked.append(h('div', { class: 'designer-turn' }, icon('sparkle', 12), h('span', {}, request)));
+          ask.value = '';
+        } catch (e) {
+          toast(String(e), 'error');
+        } finally {
+          draftBtn.disabled = false;
+        }
+      },
+    });
+    ask.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        draftBtn.click();
       }
-    } });
-    ask.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); draftBtn.click(); } });
+    });
 
     // Production (LibreChat): the marked version is what runs; saved edits are a draft until marked.
     const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short', hour12: clockHour12() });
@@ -114,16 +143,36 @@ export function editWorkflow(workflow: Workflow | null, onSaved: (all: Workflow[
       clear(
         productionRow,
         h('span', { class: `tag${live ? ' tag-production' : ''}` }, live ? 'Production' : 'No production version'),
-        h('small', { class: 'muted grow' }, live ? `Runs the version marked ${when(live.at)}. Saved edits stay a draft until you mark them.` : 'Saved changes run right away. Mark a version as production to keep editing without changing what runs.'),
-        button({ variant: 'secondary', size: 'sm', label: 'Save and mark as production', onClick: async () => {
-          const all = await saveOnly();
-          if (!all) return;
-          await workflowsApi.setProduction(workflow.id, current() as unknown as Record<string, unknown>);
-          toast('This version is now production.');
-          close();
-          onSaved(await workflowsApi.list());
-        } }),
-        live ? button({ variant: 'subtle', size: 'sm', label: 'Clear', onClick: async () => { await workflowsApi.setProduction(workflow.id, null); renderProduction(undefined); onSaved(await workflowsApi.list()); } }) : null
+        h(
+          'small',
+          { class: 'muted grow' },
+          live ? `Runs the version marked ${when(live.at)}. Saved edits stay a draft until you mark them.` : 'Saved changes run right away. Mark a version as production to keep editing without changing what runs.'
+        ),
+        button({
+          variant: 'secondary',
+          size: 'sm',
+          label: 'Save and mark as production',
+          onClick: async () => {
+            const all = await saveOnly();
+            if (!all) return;
+            await workflowsApi.setProduction(workflow.id, current() as unknown as Record<string, unknown>);
+            toast('This version is now production.');
+            close();
+            onSaved(await workflowsApi.list());
+          },
+        }),
+        live
+          ? button({
+              variant: 'subtle',
+              size: 'sm',
+              label: 'Clear',
+              onClick: async () => {
+                await workflowsApi.setProduction(workflow.id, null);
+                renderProduction(undefined);
+                onSaved(await workflowsApi.list());
+              },
+            })
+          : null
       );
     };
     renderProduction(workflow?.production);
@@ -153,7 +202,15 @@ export function editWorkflow(workflow: Workflow | null, onSaved: (all: Workflow[
                 description.value = typeof v.description === 'string' ? v.description : '';
                 steps.value = Array.isArray(v.steps) ? (v.steps as string[]).join('\n') : '';
               },
-              { label: 'Mark as production', run: async (v) => { await workflowsApi.setProduction(workflow.id, v); toast('That version is now production.'); onSaved(await workflowsApi.list()); close(); } }
+              {
+                label: 'Mark as production',
+                run: async (v) => {
+                  await workflowsApi.setProduction(workflow.id, v);
+                  toast('That version is now production.');
+                  onSaved(await workflowsApi.list());
+                  close();
+                },
+              }
             )
           : null,
         h('span', { class: 'spacer' }),
@@ -172,10 +229,7 @@ export class WorkflowsPage {
   constructor() {
     const create = h('button', { class: 'btn btn-primary' }, icon('plus', 16), 'New workflow');
     create.addEventListener('click', () => editWorkflow(null, (all) => this.render(all)));
-    this.el.append(
-      pageHeader('Workflows', 'Step-by-step recipes for work you repeat. Pick one from the + menu and the assistant runs the steps in order, as a plan you can follow.', create),
-      this.list
-    );
+    this.el.append(pageHeader('Workflows', 'Step-by-step recipes for work you repeat. Pick one from the + menu and the assistant runs the steps in order, as a plan you can follow.', create), this.list);
     void workflowsApi.list().then((all) => this.render(all));
   }
 
@@ -193,7 +247,25 @@ export class WorkflowsPage {
           'div',
           { class: 'skill-row' },
           h('div', { class: 'skill-icon' }, icon('workflow', 18)),
-          h('div', { class: 'grow' }, h('div', { class: 'skill-name' }, w.name, w.builtin ? h('span', { class: 'tag' }, 'built-in') : null, w.production ? h('span', { class: 'tag tag-production', title: 'The marked version runs; differences below are a draft' }, JSON.stringify(w.production.steps) === JSON.stringify(w.steps) && w.production.name === w.name ? 'Production' : 'Production · draft changes') : null), h('div', { class: 'muted small' }, w.description || `${w.steps.length} steps`), flowView(w.steps)),
+          h(
+            'div',
+            { class: 'grow' },
+            h(
+              'div',
+              { class: 'skill-name' },
+              w.name,
+              w.builtin ? h('span', { class: 'tag' }, 'built-in') : null,
+              w.production
+                ? h(
+                    'span',
+                    { class: 'tag tag-production', title: 'The marked version runs; differences below are a draft' },
+                    JSON.stringify(w.production.steps) === JSON.stringify(w.steps) && w.production.name === w.name ? 'Production' : 'Production · draft changes'
+                  )
+                : null
+            ),
+            h('div', { class: 'muted small' }, w.description || `${w.steps.length} steps`),
+            flowView(w.steps)
+          ),
           edit,
           remove
         );

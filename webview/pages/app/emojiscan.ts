@@ -26,7 +26,10 @@ export function key(sequence: string): string {
 export function buildIndex(names: string[]): Map<string, string> {
   const index = new Map<string, string>();
   for (const name of names) {
-    const k = name.split('-').filter((c) => c !== 'fe0f').join('-');
+    const k = name
+      .split('-')
+      .filter((c) => c !== 'fe0f')
+      .join('-');
     if (!index.has(k) || name.length < index.get(k)!.length) index.set(k, name);
   }
   return index;

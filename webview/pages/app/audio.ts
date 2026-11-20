@@ -87,12 +87,17 @@ export function shortError(e: unknown): string {
   const status = Number(text.match(/status (\d{3})/)?.[1] ?? 0);
   const message = text.match(/"(?:message|error)"\s*:\s*"([^"]{4,200})"/)?.[1];
   const reason =
-    status === 401 || status === 403 ? 'the service refused the key'
-    : status === 402 || /credit|balance|quota|payment/i.test(text) ? 'the account is out of credit'
-    : status === 429 ? 'too many requests; try again shortly'
-    : /auth_unavailable|no auth available/i.test(text) ? 'the service has no access to that model right now'
-    : status >= 500 ? 'the service is unavailable'
-    : null;
+    status === 401 || status === 403
+      ? 'the service refused the key'
+      : status === 402 || /credit|balance|quota|payment/i.test(text)
+        ? 'the account is out of credit'
+        : status === 429
+          ? 'too many requests; try again shortly'
+          : /auth_unavailable|no auth available/i.test(text)
+            ? 'the service has no access to that model right now'
+            : status >= 500
+              ? 'the service is unavailable'
+              : null;
   const detail = (message ?? text.replace(/^(?:Error:\s*)+/, '').replace(/^\w*Error:\s*/, '')).trim();
   const short = detail.length > 120 ? `${detail.slice(0, 120)}…` : detail;
   return reason ? `${reason}${status ? ` (HTTP ${status})` : ''}` : short;

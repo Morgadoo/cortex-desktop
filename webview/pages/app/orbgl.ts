@@ -197,7 +197,13 @@ export function parseColor(css: string): [number, number, number] | null {
   const v = css.trim();
   const hex = v.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)?.[1];
   if (hex) {
-    const full = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex;
+    const full =
+      hex.length === 3
+        ? hex
+            .split('')
+            .map((c) => c + c)
+            .join('')
+        : hex;
     return [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16) / 255) as [number, number, number];
   }
   if (!v) return null;
@@ -247,11 +253,7 @@ function compile(gl: WebGLRenderingContext, type: number, source: string): WebGL
  * A WebGL context on `canvas` running `fragment` over one full-canvas quad (drawn with
  * `gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)`); null where WebGL or the shader is not available.
  */
-export function fullCanvasProgram(
-  canvas: HTMLCanvasElement,
-  fragment: string,
-  options: WebGLContextAttributes
-): { gl: WebGLRenderingContext; program: WebGLProgram } | null {
+export function fullCanvasProgram(canvas: HTMLCanvasElement, fragment: string, options: WebGLContextAttributes): { gl: WebGLRenderingContext; program: WebGLProgram } | null {
   const gl = canvas.getContext('webgl', options) as WebGLRenderingContext | null;
   if (!gl) return null;
   const vs = compile(gl, gl.VERTEX_SHADER, VERTEX);

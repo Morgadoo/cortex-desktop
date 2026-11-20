@@ -81,20 +81,19 @@ function renderMain() {
             ? new AgentsPage()
             : v.page === 'libraries'
               ? new LibrariesPage()
-            : v.page === 'apps'
-              ? new AppsPage()
-            : v.page === 'workflows'
-              ? new WorkflowsPage()
-            : v.page === 'chats'
-              ? new ChatsPage()
-            : v.page === 'resources'
-              ? new ResourcesPage()
-
-            : v.page === 'scheduled'
-              ? new TasksPage()
-          : v.page === 'knowledge'
-            ? new KnowledgePage()
-            : new PlaceholderPage(v.page);
+              : v.page === 'apps'
+                ? new AppsPage()
+                : v.page === 'workflows'
+                  ? new WorkflowsPage()
+                  : v.page === 'chats'
+                    ? new ChatsPage()
+                    : v.page === 'resources'
+                      ? new ResourcesPage()
+                      : v.page === 'scheduled'
+                        ? new TasksPage()
+                        : v.page === 'knowledge'
+                          ? new KnowledgePage()
+                          : new PlaceholderPage(v.page);
   } else if (v.kind === 'compare') {
     view = new CompareView(v.prompt, v.columns);
   } else if (v.kind === 'agent') {
@@ -128,7 +127,21 @@ const CONTEXT_PAGES: { page: Page; label: string; preview?: boolean }[] = [
 /** The app menu at the top left (Vibe's hamburger menu): the app's own actions in one place. */
 function openAppMenu(anchor: HTMLElement) {
   const item = (ic: Parameters<typeof icon>[0], label: string, keys: string | null, run: () => void) =>
-    h('button', { class: 'menu-item', on: { click: () => { close(); run(); } } }, icon(ic, 16), h('span', { class: 'grow' }, label), keys ? h('small', { class: 'muted' }, keys) : null);
+    h(
+      'button',
+      {
+        class: 'menu-item',
+        on: {
+          click: () => {
+            close();
+            run();
+          },
+        },
+      },
+      icon(ic, 16),
+      h('span', { class: 'grow' }, label),
+      keys ? h('small', { class: 'muted' }, keys) : null
+    );
   const action = (name: string) => () => void call('app_menu_action', { action: name }).catch(shown);
   const close = popover(
     anchor,
@@ -158,7 +171,20 @@ function renderSidebar() {
     'div',
     { class: 'sidebar-top' },
     h('button', { class: 'icon-btn app-menu-btn', title: 'Menu', on: { click: (e: MouseEvent) => openAppMenu(e.currentTarget as HTMLElement) } }, icon('menu', 18)),
-    h('button', { class: 'icon-btn', title: 'Toggle sidebar', on: { click: () => { state.sidebarCollapsed = !state.sidebarCollapsed; changed(); } } }, icon('sidebar', 18)),
+    h(
+      'button',
+      {
+        class: 'icon-btn',
+        title: 'Toggle sidebar',
+        on: {
+          click: () => {
+            state.sidebarCollapsed = !state.sidebarCollapsed;
+            changed();
+          },
+        },
+      },
+      icon('sidebar', 18)
+    ),
     h('button', { class: 'icon-btn', title: 'Back', disabled: state.history.length === 0, on: { click: back } }, icon('back', 18)),
     h('button', { class: 'icon-btn', title: 'Forward', disabled: state.future.length === 0, on: { click: forward } }, icon('forward', 18)),
     h('span', { class: 'spacer' }),
@@ -175,7 +201,15 @@ function renderSidebar() {
     (['work', 'code', 'agents'] as const).map((mode) =>
       h(
         'button',
-        { class: state.mode === mode ? 'active' : '', on: { click: () => { state.mode = mode; navigate(mode === 'agents' ? { kind: 'page', page: 'agents' } : { kind: 'home' }); } } },
+        {
+          class: state.mode === mode ? 'active' : '',
+          on: {
+            click: () => {
+              state.mode = mode;
+              navigate(mode === 'agents' ? { kind: 'page', page: 'agents' } : { kind: 'home' });
+            },
+          },
+        },
         mode === 'work' ? 'Work' : mode === 'code' ? 'Code' : 'Agents'
       )
     )
@@ -197,13 +231,25 @@ function renderSidebar() {
     nav.append(navItem('apps', 'Apps', isPage('apps'), () => navigate({ kind: 'page', page: 'apps' }), h('span', { class: 'badge' }, 'Preview')));
   }
   const contextActive = CONTEXT_PAGES.some((c) => isPage(c.page));
-  nav.append(navItem('context', 'Context', contextActive && !state.contextOpen, () => { state.contextOpen = !state.contextOpen; changed(); }));
+  nav.append(
+    navItem('context', 'Context', contextActive && !state.contextOpen, () => {
+      state.contextOpen = !state.contextOpen;
+      changed();
+    })
+  );
   // Code mode's Extensions, as in Vibe: the tools a session can plug in (MCP connectors).
   if (state.mode === 'code') nav.append(navItem('apps', 'Extensions', v.kind === 'page' && v.page === 'connectors', () => navigate({ kind: 'page', page: 'connectors' })));
   if (state.contextOpen || contextActive) {
     const sub = h('div', { class: 'subnav' });
     for (const c of CONTEXT_PAGES) {
-      sub.append(h('button', { class: `nav-link sub${isPage(c.page) ? ' active' : ''}`, on: { click: () => navigate({ kind: 'page', page: c.page }) } }, h('span', { class: 'nav-label' }, c.label), c.preview ? h('span', { class: 'badge' }, 'Preview') : null));
+      sub.append(
+        h(
+          'button',
+          { class: `nav-link sub${isPage(c.page) ? ' active' : ''}`, on: { click: () => navigate({ kind: 'page', page: c.page }) } },
+          h('span', { class: 'nav-label' }, c.label),
+          c.preview ? h('span', { class: 'badge' }, 'Preview') : null
+        )
+      );
     }
     sub.append(h('button', { class: 'nav-link sub', on: { click: () => void openInstructions() } }, h('span', { class: 'nav-label' }, 'Instructions')));
     nav.append(sub);
@@ -252,8 +298,7 @@ async function takeLink() {
     if (found) {
       state.mode = found.workdir ? 'code' : 'work';
       navigate({ kind: 'chat', id: link.conversationId });
-    }
-    else toast('That conversation is not here.', 'error');
+    } else toast('That conversation is not here.', 'error');
     return;
   }
   if (link.mode) state.mode = link.mode;
@@ -333,7 +378,13 @@ function renderProjects(): HTMLElement {
       projectMenu(more, project.id);
     });
     section.append(
-      h('div', { class: `conv-link project${active ? ' active' : ''}`, on: { click: () => navigate({ kind: 'home', projectId: project.id }) } }, project.icon ? h('span', { class: 'project-icon' }, project.icon) : icon('folder', 16), h('span', { class: 'conv-title' }, project.name), more)
+      h(
+        'div',
+        { class: `conv-link project${active ? ' active' : ''}`, on: { click: () => navigate({ kind: 'home', projectId: project.id }) } },
+        project.icon ? h('span', { class: 'project-icon' }, project.icon) : icon('folder', 16),
+        h('span', { class: 'conv-title' }, project.name),
+        more
+      )
     );
     for (const c of state.conversations.filter((c) => !c.archived && c.projectId === project.id)) {
       section.append(conversationLink(c.id, c.title, c.pinned, true));
@@ -350,10 +401,56 @@ function projectMenu(anchor: HTMLElement, id: string) {
     h(
       'div',
       { class: 'menu' },
-      h('button', { class: 'menu-item', on: { click: async () => { close(); const name = await promptText('Rename project', project.name); if (name) { state.projects = await api.saveProject({ ...project, name }); changed(); } } } }, icon('edit', 16), 'Rename'),
-      h('button', { class: 'menu-item', on: { click: () => { close(); void editProject(id); } } }, icon('settings', 16), 'Project settings'),
+      h(
+        'button',
+        {
+          class: 'menu-item',
+          on: {
+            click: async () => {
+              close();
+              const name = await promptText('Rename project', project.name);
+              if (name) {
+                state.projects = await api.saveProject({ ...project, name });
+                changed();
+              }
+            },
+          },
+        },
+        icon('edit', 16),
+        'Rename'
+      ),
+      h(
+        'button',
+        {
+          class: 'menu-item',
+          on: {
+            click: () => {
+              close();
+              void editProject(id);
+            },
+          },
+        },
+        icon('settings', 16),
+        'Project settings'
+      ),
       h('div', { class: 'menu-sep' }),
-      h('button', { class: 'menu-item danger', on: { click: async () => { close(); if (await confirmDialog('Delete project?', `Its conversations stay, outside any project.`)) { state.projects = await api.deleteProject(id); await refreshConversations(); } } } }, icon('trash', 16), 'Delete')
+      h(
+        'button',
+        {
+          class: 'menu-item danger',
+          on: {
+            click: async () => {
+              close();
+              if (await confirmDialog('Delete project?', `Its conversations stay, outside any project.`)) {
+                state.projects = await api.deleteProject(id);
+                await refreshConversations();
+              }
+            },
+          },
+        },
+        icon('trash', 16),
+        'Delete'
+      )
     )
   );
 }
@@ -367,9 +464,17 @@ function editProject(id: string) {
     const tone = h(
       'select',
       { class: 'input' },
-      [['', 'Same as my instructions'], ['formal', 'Polite'], ['casual', 'Casual'], ['empathetic', 'Empathetic'], ['objective', 'Objective'], ['concise', 'Concise'], ['witty', 'Witty'], ['motivational', 'Motivational'], ['reflective', 'Reflective']].map(([v, l]) =>
-        h('option', { value: v, selected: project.tone === v }, l)
-      )
+      [
+        ['', 'Same as my instructions'],
+        ['formal', 'Polite'],
+        ['casual', 'Casual'],
+        ['empathetic', 'Empathetic'],
+        ['objective', 'Objective'],
+        ['concise', 'Concise'],
+        ['witty', 'Witty'],
+        ['motivational', 'Motivational'],
+        ['reflective', 'Reflective'],
+      ].map(([v, l]) => h('option', { value: v, selected: project.tone === v }, l))
     );
     const text = h('textarea', { class: 'input textarea', rows: 6, placeholder: 'Context and rules for every conversation in this project' });
     text.value = project.instructions;
@@ -378,12 +483,7 @@ function editProject(id: string) {
     const renderFiles = async () => {
       const lib = await tauriInvoke<{ id: string; documents: { id: string; name: string }[] }>('chat_project_library', { projectId: project.id });
       project.libraryId = lib.id;
-      clear(
-        files,
-        lib.documents.length
-          ? lib.documents.map((d) => h('div', { class: 'doc-row compact' }, icon('file', 15), h('span', { class: 'doc-name' }, d.name)))
-          : h('p', { class: 'muted empty-line' }, 'No files yet.')
-      );
+      clear(files, lib.documents.length ? lib.documents.map((d) => h('div', { class: 'doc-row compact' }, icon('file', 15), h('span', { class: 'doc-name' }, d.name))) : h('p', { class: 'muted empty-line' }, 'No files yet.'));
       return lib;
     };
     void renderFiles();
@@ -465,13 +565,7 @@ const filtering = () => chatFilter.unread || chatFilter.tag !== null || chatFilt
 
 function filterChats<T extends { unread: boolean; tags: string[]; updatedAt: string; taskId: string | null }>(list: T[]): T[] {
   const since = chatFilter.within ? Date.now() - chatFilter.within * 86_400_000 : 0;
-  return list.filter(
-    (c) =>
-      (!chatFilter.unread || c.unread) &&
-      (!chatFilter.tag || c.tags.includes(chatFilter.tag)) &&
-      (!since || Date.parse(c.updatedAt) >= since) &&
-      (!chatFilter.hideRuns || !c.taskId)
-  );
+  return list.filter((c) => (!chatFilter.unread || c.unread) && (!chatFilter.tag || c.tags.includes(chatFilter.tag)) && (!since || Date.parse(c.updatedAt) >= since) && (!chatFilter.hideRuns || !c.taskId));
 }
 
 /** "Today", "Yesterday", "Previous 7 days", "Previous 30 days", then month and year. */
@@ -497,12 +591,18 @@ function renderConversations(): HTMLElement {
   const pinned = all.filter((c) => c.pinned);
   const loose = sortChats(filterChats(all.filter((c) => !c.pinned)));
   // Pinned agents (Work mode) start a new chat with the agent.
-  const agents = code ? [] : pinnedAgents().map((id) => state.agents.find((a) => a.id === id)).filter((a): a is NonNullable<typeof a> => !!a);
+  const agents = code
+    ? []
+    : pinnedAgents()
+        .map((id) => state.agents.find((a) => a.id === id))
+        .filter((a): a is NonNullable<typeof a> => !!a);
   if (pinned.length || agents.length) {
     section.append(sectionHeading('Pinned'));
     for (const a of agents) {
       const active = state.view.kind === 'home' && state.view.agentId === a.id;
-      section.append(h('div', { class: `conv-link project${active ? ' active' : ''}`, title: `New chat with ${a.name}`, on: { click: () => navigate({ kind: 'home', agentId: a.id }) } }, avatar(a), h('span', { class: 'conv-title' }, a.name)));
+      section.append(
+        h('div', { class: `conv-link project${active ? ' active' : ''}`, title: `New chat with ${a.name}`, on: { click: () => navigate({ kind: 'home', agentId: a.id }) } }, avatar(a), h('span', { class: 'conv-title' }, a.name))
+      );
     }
     for (const c of pinned) section.append(conversationLink(c.id, c.title, true));
   }
@@ -516,21 +616,108 @@ function renderConversations(): HTMLElement {
         { class: 'menu' },
         h('div', { class: 'menu-heading' }, 'Sort chats'),
         (Object.keys(CHAT_SORTS) as ChatSort[]).map((k) =>
-          h('button', { class: `menu-item${chatSort === k ? ' selected' : ''}`, on: { click: () => { close(); setChatSort(k); } } }, checkMark(chatSort === k), h('span', {}, CHAT_SORTS[k]))
+          h(
+            'button',
+            {
+              class: `menu-item${chatSort === k ? ' selected' : ''}`,
+              on: {
+                click: () => {
+                  close();
+                  setChatSort(k);
+                },
+              },
+            },
+            checkMark(chatSort === k),
+            h('span', {}, CHAT_SORTS[k])
+          )
         ),
         h('div', { class: 'menu-sep' }),
         h('div', { class: 'menu-heading' }, 'Show'),
-        h('button', { class: 'menu-item', on: { click: () => { close(); setChatFilter({ unread: !chatFilter.unread }); } } }, checkMark(chatFilter.unread), h('span', {}, 'Unread only')),
-        h('button', { class: 'menu-item', on: { click: () => { close(); setChatFilter({ hideRuns: !chatFilter.hideRuns }); } } }, checkMark(chatFilter.hideRuns), h('span', {}, 'Hide scheduled runs')),
-        ([[0, 'Any time'], [1, 'Last 24 hours'], [7, 'Last 7 days'], [30, 'Last 30 days']] as [ChatFilter['within'], string][]).map(([days, label]) =>
-          h('button', { class: 'menu-item', on: { click: () => { close(); setChatFilter({ within: days }); } } }, checkMark(chatFilter.within === days), h('span', {}, label))
+        h(
+          'button',
+          {
+            class: 'menu-item',
+            on: {
+              click: () => {
+                close();
+                setChatFilter({ unread: !chatFilter.unread });
+              },
+            },
+          },
+          checkMark(chatFilter.unread),
+          h('span', {}, 'Unread only')
+        ),
+        h(
+          'button',
+          {
+            class: 'menu-item',
+            on: {
+              click: () => {
+                close();
+                setChatFilter({ hideRuns: !chatFilter.hideRuns });
+              },
+            },
+          },
+          checkMark(chatFilter.hideRuns),
+          h('span', {}, 'Hide scheduled runs')
+        ),
+        (
+          [
+            [0, 'Any time'],
+            [1, 'Last 24 hours'],
+            [7, 'Last 7 days'],
+            [30, 'Last 30 days'],
+          ] as [ChatFilter['within'], string][]
+        ).map(([days, label]) =>
+          h(
+            'button',
+            {
+              class: 'menu-item',
+              on: {
+                click: () => {
+                  close();
+                  setChatFilter({ within: days });
+                },
+              },
+            },
+            checkMark(chatFilter.within === days),
+            h('span', {}, label)
+          )
         ),
         tags.length ? h('div', { class: 'menu-heading' }, 'Tag') : null,
         tags.map((t) =>
-          h('button', { class: 'menu-item', on: { click: () => { close(); setChatFilter({ tag: chatFilter.tag === t ? null : t }); } } }, checkMark(chatFilter.tag === t), h('span', {}, `#${t}`))
+          h(
+            'button',
+            {
+              class: 'menu-item',
+              on: {
+                click: () => {
+                  close();
+                  setChatFilter({ tag: chatFilter.tag === t ? null : t });
+                },
+              },
+            },
+            checkMark(chatFilter.tag === t),
+            h('span', {}, `#${t}`)
+          )
         ),
         filtering() ? h('div', { class: 'menu-sep' }) : null,
-        filtering() ? h('button', { class: 'menu-item', on: { click: () => { close(); setChatFilter({ ...NO_FILTER }); } } }, icon('close', 15), h('span', {}, 'Clear filters')) : null
+        filtering()
+          ? h(
+              'button',
+              {
+                class: 'menu-item',
+                on: {
+                  click: () => {
+                    close();
+                    setChatFilter({ ...NO_FILTER });
+                  },
+                },
+              },
+              icon('close', 15),
+              h('span', {}, 'Clear filters')
+            )
+          : null
       )
     );
   });
@@ -563,7 +750,15 @@ function renderConversations(): HTMLElement {
     section.append(
       h(
         'button',
-        { class: 'nav-link sub show-more', on: { click: () => { sidebarExpanded = !sidebarExpanded; changed(); } } },
+        {
+          class: 'nav-link sub show-more',
+          on: {
+            click: () => {
+              sidebarExpanded = !sidebarExpanded;
+              changed();
+            },
+          },
+        },
         icon(sidebarExpanded ? 'chevron' : 'more', 15),
         h('span', { class: 'nav-label' }, sidebarExpanded ? 'Show fewer' : `Show ${loose.length - shown.length} more`)
       )
@@ -589,9 +784,40 @@ function openArchived() {
               h(
                 'div',
                 { class: 'archived-row' },
-                h('button', { class: 'grow archived-title', on: { click: () => { close(); navigate({ kind: 'chat', id: c.id }); } } }, c.title),
-                button({ variant: 'subtle', size: 'sm', icon: 'reset', label: 'Restore', onClick: async () => { await api.updateConversation({ id: c.id, archived: false }); await refreshConversations(); render(); } }),
-                iconButton({ icon: 'trash', title: 'Delete', size: 'sm', onClick: async () => { await api.deleteConversation(c.id); await refreshConversations(); render(); } })
+                h(
+                  'button',
+                  {
+                    class: 'grow archived-title',
+                    on: {
+                      click: () => {
+                        close();
+                        navigate({ kind: 'chat', id: c.id });
+                      },
+                    },
+                  },
+                  c.title
+                ),
+                button({
+                  variant: 'subtle',
+                  size: 'sm',
+                  icon: 'reset',
+                  label: 'Restore',
+                  onClick: async () => {
+                    await api.updateConversation({ id: c.id, archived: false });
+                    await refreshConversations();
+                    render();
+                  },
+                }),
+                iconButton({
+                  icon: 'trash',
+                  title: 'Delete',
+                  size: 'sm',
+                  onClick: async () => {
+                    await api.deleteConversation(c.id);
+                    await refreshConversations();
+                    render();
+                  },
+                })
               )
             )
           : emptyState('archive', 'Nothing archived', 'Archive a conversation from its menu to tidy the sidebar without deleting it.')
@@ -625,11 +851,7 @@ const WHATS_NEW: { title: string; items: string[] }[] = [
   },
   {
     title: 'Safety and data',
-    items: [
-      'Commands that are hard to undo always ask, even in Full auto.',
-      'Deleted chats stay 30 days in Recently deleted; daily copies protect against damage.',
-      'Settings → Audio: choose speech-to-text and text-to-speech providers.',
-    ],
+    items: ['Commands that are hard to undo always ask, even in Full auto.', 'Deleted chats stay 30 days in Recently deleted; daily copies protect against damage.', 'Settings → Audio: choose speech-to-text and text-to-speech providers.'],
   },
 ];
 
@@ -639,25 +861,51 @@ function openWhatsNew() {
       'div',
       { class: 'dialog-small wide whats-new' },
       modalHeader(`What's new in Cortex ${window.lumoDesktopVersion ?? ''}`, close, { flush: true }),
-      WHATS_NEW.map((section) => h('section', {}, h('h4', {}, section.title), h('ul', {}, section.items.map((item) => h('li', {}, item)))))
+      WHATS_NEW.map((section) =>
+        h(
+          'section',
+          {},
+          h('h4', {}, section.title),
+          h(
+            'ul',
+            {},
+            section.items.map((item) => h('li', {}, item))
+          )
+        )
+      )
     )
   );
 }
 
 function renderFooter(): HTMLElement {
   const name = state.instructions.name || 'You';
-  const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('') || 'U';
+  const initials =
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((w) => w[0]!.toUpperCase())
+      .join('') || 'U';
   const model = state.models.find((m) => m.reference === state.model);
-  const user = h(
-    'button',
-    { class: 'user-btn' },
-    h('span', { class: 'avatar' }, initials),
-    h('span', { class: 'user-text' }, h('strong', {}, name), h('small', {}, model ? model.providerLabel : 'No provider yet'))
-  );
+  const user = h('button', { class: 'user-btn' }, h('span', { class: 'avatar' }, initials), h('span', { class: 'user-text' }, h('strong', {}, name), h('small', {}, model ? model.providerLabel : 'No provider yet')));
   user.addEventListener('click', () => {
     const theme = storedTheme();
     // This month's usage across every conversation, as Vibe's footer gauge.
-    const usage = h('button', { class: 'usage-gauge', title: 'Usage by model and by agent', on: { click: () => { close(); openUsageBreakdown(); } } }, h('span', { class: 'muted' }, 'This month'), h('span', { class: 'dots' }));
+    const usage = h(
+      'button',
+      {
+        class: 'usage-gauge',
+        title: 'Usage by model and by agent',
+        on: {
+          click: () => {
+            close();
+            openUsageBreakdown();
+          },
+        },
+      },
+      h('span', { class: 'muted' }, 'This month'),
+      h('span', { class: 'dots' })
+    );
     void api
       .usageMonth()
       .then((u) => {
@@ -666,7 +914,20 @@ function renderFooter(): HTMLElement {
       })
       .catch(() => clear(usage));
     const themeBtn = (t: 'light' | 'dark' | 'system', ic: string) =>
-      h('button', { class: `icon-btn${theme === t ? ' active' : ''}`, title: t, on: { click: () => { setTheme(t); close(); } } }, icon(ic, 17));
+      h(
+        'button',
+        {
+          class: `icon-btn${theme === t ? ' active' : ''}`,
+          title: t,
+          on: {
+            click: () => {
+              setTheme(t);
+              close();
+            },
+          },
+        },
+        icon(ic, 17)
+      );
     const close = popover(
       user,
       h(
@@ -674,10 +935,63 @@ function renderFooter(): HTMLElement {
         { class: 'menu user-menu' },
         h('div', { class: 'user-head' }, h('span', { class: 'avatar' }, initials), h('div', {}, h('strong', {}, name), h('small', { class: 'muted' }, 'Local profile'))),
         h('div', { class: 'menu-sep' }),
-        h('button', { class: 'menu-item', on: { click: () => { close(); void openSettings('profile'); } } }, icon('settings', 16), h('span', {}, 'Settings'), h('kbd', {}, 'Ctrl+,')),
-        h('button', { class: 'menu-item', on: { click: () => { close(); void openSettings('providers'); } } }, icon('key', 16), 'Providers & models'),
-        h('button', { class: 'menu-item', on: { click: () => { close(); void openSettings('permissions'); } } }, icon('shield', 16), 'Permissions'),
-        h('button', { class: 'menu-item', on: { click: () => { close(); openWhatsNew(); } } }, icon('sparkle', 16), "What's new"),
+        h(
+          'button',
+          {
+            class: 'menu-item',
+            on: {
+              click: () => {
+                close();
+                void openSettings('profile');
+              },
+            },
+          },
+          icon('settings', 16),
+          h('span', {}, 'Settings'),
+          h('kbd', {}, 'Ctrl+,')
+        ),
+        h(
+          'button',
+          {
+            class: 'menu-item',
+            on: {
+              click: () => {
+                close();
+                void openSettings('providers');
+              },
+            },
+          },
+          icon('key', 16),
+          'Providers & models'
+        ),
+        h(
+          'button',
+          {
+            class: 'menu-item',
+            on: {
+              click: () => {
+                close();
+                void openSettings('permissions');
+              },
+            },
+          },
+          icon('shield', 16),
+          'Permissions'
+        ),
+        h(
+          'button',
+          {
+            class: 'menu-item',
+            on: {
+              click: () => {
+                close();
+                openWhatsNew();
+              },
+            },
+          },
+          icon('sparkle', 16),
+          "What's new"
+        ),
         h('div', { class: 'menu-sep' }),
         usage,
         h('div', { class: 'theme-row' }, themeBtn('light', 'sun'), themeBtn('dark', 'moon'), themeBtn('system', 'monitor')),
@@ -710,10 +1024,24 @@ function openSearch() {
     const row = (c: { id: string; title: string; archived: boolean; tags: string[]; updatedAt: string }, snippet: HTMLElement | null) =>
       h(
         'button',
-        { class: `menu-item${snippet ? ' rich' : ''}`, on: { click: () => { close(); navigate({ kind: 'chat', id: c.id }); } } },
+        {
+          class: `menu-item${snippet ? ' rich' : ''}`,
+          on: {
+            click: () => {
+              close();
+              navigate({ kind: 'chat', id: c.id });
+            },
+          },
+        },
         icon(c.archived ? 'archive' : 'chat', 16),
         snippet ? h('span', {}, h('strong', {}, c.title), snippet) : h('span', {}, c.title),
-        c.tags.length ? h('span', { class: 'tag-list' }, c.tags.map((t) => h('span', { class: 'tag' }, `#${t}`))) : null,
+        c.tags.length
+          ? h(
+              'span',
+              { class: 'tag-list' },
+              c.tags.map((t) => h('span', { class: 'tag' }, `#${t}`))
+            )
+          : null,
         h('span', { class: 'search-date' }, new Date(c.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }))
       );
     /** The snippet with the searched words marked. */
@@ -742,7 +1070,15 @@ function openSearch() {
       { label: 'Appearance', icon: 'palette', run: () => void openSettings('appearance') },
       { label: 'Recently deleted', icon: 'trash', run: () => void openSettings('profile') },
       { label: 'Archived chats', icon: 'archive', run: openArchived },
-      { label: 'Toggle sidebar', icon: 'sidebar', keys: 'Ctrl+B', run: () => { state.sidebarCollapsed = !state.sidebarCollapsed; changed(); } },
+      {
+        label: 'Toggle sidebar',
+        icon: 'sidebar',
+        keys: 'Ctrl+B',
+        run: () => {
+          state.sidebarCollapsed = !state.sidebarCollapsed;
+          changed();
+        },
+      },
       { label: "What's new", icon: 'sparkle', run: openWhatsNew },
     ];
     const actionRows = (q: string) => {
@@ -751,7 +1087,21 @@ function openSearch() {
       return [
         h('div', { class: 'menu-heading' }, 'Actions'),
         ...found.slice(0, q ? 6 : 15).map((a) =>
-          h('button', { class: 'menu-item', on: { click: () => { close(); a.run(); } } }, icon(a.icon, 16), h('span', {}, a.label), a.keys ? h('kbd', {}, a.keys) : null)
+          h(
+            'button',
+            {
+              class: 'menu-item',
+              on: {
+                click: () => {
+                  close();
+                  a.run();
+                },
+              },
+            },
+            icon(a.icon, 16),
+            h('span', {}, a.label),
+            a.keys ? h('kbd', {}, a.keys) : null
+          )
         ),
       ];
     };
@@ -762,8 +1112,39 @@ function openSearch() {
       if (!pinned.length && !agents.length) return [];
       return [
         h('div', { class: 'menu-heading' }, 'Pinned and agents'),
-        ...pinned.map((c) => h('button', { class: 'menu-item', on: { click: () => { close(); navigate({ kind: 'chat', id: c.id }); } } }, icon('pin', 16), h('span', {}, c.title))),
-        ...agents.map((a) => h('button', { class: 'menu-item', on: { click: () => { close(); state.mode = 'agents'; navigate({ kind: 'home', agentId: a.id }); } } }, h('span', { class: 'agent-avatar small' }, a.avatar || a.name.charAt(0)), h('span', {}, `Chat with ${a.name}`))),
+        ...pinned.map((c) =>
+          h(
+            'button',
+            {
+              class: 'menu-item',
+              on: {
+                click: () => {
+                  close();
+                  navigate({ kind: 'chat', id: c.id });
+                },
+              },
+            },
+            icon('pin', 16),
+            h('span', {}, c.title)
+          )
+        ),
+        ...agents.map((a) =>
+          h(
+            'button',
+            {
+              class: 'menu-item',
+              on: {
+                click: () => {
+                  close();
+                  state.mode = 'agents';
+                  navigate({ kind: 'home', agentId: a.id });
+                },
+              },
+            },
+            h('span', { class: 'agent-avatar small' }, a.avatar || a.name.charAt(0)),
+            h('span', {}, `Chat with ${a.name}`)
+          )
+        ),
       ];
     };
     /** Bookmarked messages across chats, matched by their snippet or chat title. */
@@ -776,7 +1157,15 @@ function openSearch() {
         ...found.slice(0, q ? 8 : 5).map((m) =>
           h(
             'button',
-            { class: 'menu-item rich', on: { click: () => { close(); openAt(m.c.id, m.index); } } },
+            {
+              class: 'menu-item rich',
+              on: {
+                click: () => {
+                  close();
+                  openAt(m.c.id, m.index);
+                },
+              },
+            },
             icon('bookmark', 16),
             h('span', {}, h('strong', {}, m.c.title), h('small', {}, m.snippet))
           )
@@ -790,7 +1179,13 @@ function openSearch() {
       if (!q || q.startsWith('#')) {
         const tag = q.slice(1);
         const found = state.conversations.filter((c) => !q || c.tags.some((t) => t.startsWith(tag))).slice(0, q ? 30 : 8);
-        clear(results, q ? null : pinnedRows(), q ? null : bookmarkRows(''), q ? null : actionRows(''), found.length ? [h('div', { class: 'menu-heading' }, 'Chats'), ...found.map((c) => row(c, null))] : h('p', { class: 'muted' }, 'Nothing found.'));
+        clear(
+          results,
+          q ? null : pinnedRows(),
+          q ? null : bookmarkRows(''),
+          q ? null : actionRows(''),
+          found.length ? [h('div', { class: 'menu-heading' }, 'Chats'), ...found.map((c) => row(c, null))] : h('p', { class: 'muted' }, 'Nothing found.')
+        );
         return;
       }
       const ticket = ++latest;
@@ -851,8 +1246,15 @@ async function start() {
     // Scheduled tasks post their own notification.
     if (summary?.taskId) return;
     const live = state.live.get(id);
-    const text = (live?.parts ?? []).filter((p): p is Extract<typeof p, { kind: 'text' }> => p.kind === 'text').map((p) => p.text).join(' ');
-    const plain = text.replace(/```[\s\S]*?```/g, ' [code] ').replace(/[#*_`>|]/g, '').replace(/\s+/g, ' ').trim();
+    const text = (live?.parts ?? [])
+      .filter((p): p is Extract<typeof p, { kind: 'text' }> => p.kind === 'text')
+      .map((p) => p.text)
+      .join(' ');
+    const plain = text
+      .replace(/```[\s\S]*?```/g, ' [code] ')
+      .replace(/[#*_`>|]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
     const body = failed ? `The reply could not finish${live?.error ? `: ${live.error}` : '.'}` : plain || 'Your answer is ready.';
     void callQuiet('chat_notify', { title: summary?.title || 'Cortex', body });
     if (finishSoundOn()) playChime();
@@ -958,11 +1360,7 @@ async function start() {
     }
   });
 
-  const [instructions, projects, conversations] = await Promise.all([
-    api.instructions().catch(() => state.instructions),
-    api.projects().catch(() => []),
-    api.conversations().catch(() => []),
-  ]);
+  const [instructions, projects, conversations] = await Promise.all([api.instructions().catch(() => state.instructions), api.projects().catch(() => []), api.conversations().catch(() => [])]);
   state.instructions = instructions;
   state.projects = projects;
   state.conversations = conversations;

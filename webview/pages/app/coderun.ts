@@ -37,7 +37,6 @@ function parse(output: string | null): RunReport | null {
   }
 }
 
-
 /** An image the model generated, saved in the conversation's workspace. */
 export function renderImage(part: Extract<Part, { kind: 'tool' }>, live: boolean, conversationId: string): HTMLElement {
   const prompt = typeof part.arguments.prompt === 'string' ? part.arguments.prompt : '';
@@ -150,7 +149,11 @@ export function renderVideo(part: Extract<Part, { kind: 'tool' }>, live: boolean
   return h(
     'div',
     { class: 'canvas-step' },
-    h('div', { class: 'canvas-label' }, running ? (animation ? 'Rendering an animation…' : 'Creating a video…') : part.isError ? (animation ? 'Could not render the animation' : 'Could not create the video') : animation ? 'Rendered an animation' : 'Created a video'),
+    h(
+      'div',
+      { class: 'canvas-label' },
+      running ? (animation ? 'Rendering an animation…' : 'Creating a video…') : part.isError ? (animation ? 'Could not render the animation' : 'Could not create the video') : animation ? 'Rendered an animation' : 'Created a video'
+    ),
     h('div', { class: 'image-card' }, body, h('div', { class: 'image-caption' }, h('span', { class: 'muted' }, prompt), copy))
   );
 }
@@ -187,23 +190,28 @@ export function renderCodeRun(part: Extract<Part, { kind: 'tool' }>, live: boole
   if (report) {
     const out = [report.stdout.trimEnd(), report.stderr.trimEnd()].filter(Boolean);
     if (out.length) {
-      body.push(
-        h(
-          'div',
-          { class: 'run-output' },
-          report.stdout.trim() ? h('pre', { class: 'run-stdout' }, report.stdout.trimEnd()) : null,
-          report.stderr.trim() ? h('pre', { class: 'run-stderr' }, report.stderr.trimEnd()) : null
-        )
-      );
+      body.push(h('div', { class: 'run-output' }, report.stdout.trim() ? h('pre', { class: 'run-stdout' }, report.stdout.trimEnd()) : null, report.stderr.trim() ? h('pre', { class: 'run-stderr' }, report.stderr.trimEnd()) : null));
     }
     const made = report.files.filter((f) => f.new);
     const images = made.filter((f) => IMAGE.test(f.name));
     if (images.length) {
-      body.push(h('div', { class: 'run-images' }, images.map((f) => h('img', { src: workspaceUrl(conversationId, f.name), alt: f.name, title: f.name }))));
+      body.push(
+        h(
+          'div',
+          { class: 'run-images' },
+          images.map((f) => h('img', { src: workspaceUrl(conversationId, f.name), alt: f.name, title: f.name }))
+        )
+      );
     }
     const others = made.filter((f) => !IMAGE.test(f.name));
     if (others.length) {
-      body.push(h('div', { class: 'run-files' }, others.map((f) => h('span', { class: 'run-file' }, icon('file', 13), f.name, h('small', { class: 'muted' }, fileSize(f.bytes))))));
+      body.push(
+        h(
+          'div',
+          { class: 'run-files' },
+          others.map((f) => h('span', { class: 'run-file' }, icon('file', 13), f.name, h('small', { class: 'muted' }, fileSize(f.bytes))))
+        )
+      );
     }
   } else if (part.output && !running) {
     body.push(h('pre', { class: 'run-stderr' }, part.output));
@@ -213,12 +221,7 @@ export function renderCodeRun(part: Extract<Part, { kind: 'tool' }>, live: boole
     'div',
     { class: 'canvas-step' },
     h('div', { class: 'canvas-label' }, running ? `Running ${name}…` : `Ran ${name}`),
-    h(
-      'div',
-      { class: `run-card${failed ? ' failed' : ''}` },
-      h('div', { class: 'run-head' }, icon('terminal', 15), h('strong', {}, name), status, h('span', { class: 'spacer' }), h('span', { class: 'muted run-meta' }, meta)),
-      ...body
-    )
+    h('div', { class: `run-card${failed ? ' failed' : ''}` }, h('div', { class: 'run-head' }, icon('terminal', 15), h('strong', {}, name), status, h('span', { class: 'spacer' }), h('span', { class: 'muted run-meta' }, meta)), ...body)
   );
 }
 
@@ -239,16 +242,28 @@ export function renderPageView(part: Extract<Part, { kind: 'tool' }>, live: bool
     img.addEventListener('click', () => void modal((close) => h('div', { class: 'image-modal', on: { click: close } }, h('img', { src, alt: out.title || url })), true));
     shot = img;
   }
-  const text = out.text ? h('details', { class: 'bubble-file' }, h('summary', {}, icon('file', 14), h('span', {}, 'What the page says'), h('small', { class: 'muted' }, `${out.text.length.toLocaleString()} characters`)), h('pre', {}, out.text)) : null;
+  const text = out.text
+    ? h('details', { class: 'bubble-file' }, h('summary', {}, icon('file', 14), h('span', {}, 'What the page says'), h('small', { class: 'muted' }, `${out.text.length.toLocaleString()} characters`)), h('pre', {}, out.text))
+    : null;
   return h(
     'div',
     { class: 'canvas-step' },
-    h('div', { class: 'canvas-label' }, running ? (part.name === 'browser_act' ? 'Using the page…' : 'Opening the page in the browser…') : part.isError ? 'Could not open the page' : part.name === 'browser_act' ? 'Used the page' : 'Opened the page in the browser'),
+    h(
+      'div',
+      { class: 'canvas-label' },
+      running ? (part.name === 'browser_act' ? 'Using the page…' : 'Opening the page in the browser…') : part.isError ? 'Could not open the page' : part.name === 'browser_act' ? 'Used the page' : 'Opened the page in the browser'
+    ),
     h(
       'div',
       { class: 'image-card' },
       running ? h('div', { class: 'image-wait' }, h('span', { class: 'dots' }), url) : part.isError ? h('pre', { class: 'run-stderr' }, part.output ?? '') : shot,
-      out.steps?.length ? h('ol', { class: 'page-steps' }, out.steps.map((s) => h('li', { class: s.includes('failed:') ? 'error-text' : '' }, s.replace(/^\d+\.\s*/, '')))) : null,
+      out.steps?.length
+        ? h(
+            'ol',
+            { class: 'page-steps' },
+            out.steps.map((s) => h('li', { class: s.includes('failed:') ? 'error-text' : '' }, s.replace(/^\d+\.\s*/, '')))
+          )
+        : null,
       text,
       h('div', { class: 'image-caption' }, h('a', { class: 'muted', href: url, target: '_blank', rel: 'noopener noreferrer' }, out.title ? `${out.title} · ${url}` : url))
     )

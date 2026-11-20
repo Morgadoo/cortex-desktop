@@ -8,9 +8,6 @@ import { navigate, state } from './state';
 import { button, emptyState, iconButton, modalHeader, pageHeader, switchInput, tabs } from './ui';
 import { call, callQuiet, shown } from './call';
 
-
-
-
 // ---------------------------------------------------------------------------------------------
 // Skills
 
@@ -26,7 +23,11 @@ export function editSkill(skill: Skill | null, onSaved: (skills: Skill[]) => voi
     const error = h('p', { class: 'error-text' });
     const save = async () => {
       try {
-        const slug = name.value.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
+        const slug = name.value
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9-]+/g, '-')
+          .replace(/^-+|-+$/g, '');
         onSaved(await api.saveSkill(slug, description.value, body.value));
         toast(builtin ? `Your copy of ${slug} replaces the built-in one.` : draft ? `Skill saved. Call it with /${slug}, or the assistant uses it when a request matches.` : 'Skill saved.');
         close();
@@ -36,49 +37,75 @@ export function editSkill(skill: Skill | null, onSaved: (skills: Skill[]) => voi
     };
     const remove =
       skill && !builtin && !draft
-        ? h('button', {
-            class: 'btn btn-danger',
-            on: {
-              click: async () => {
-                if (!(await confirmDialog('Delete skill?', `“${skill.name}” will be removed from this device.`))) return;
-                onSaved(await api.deleteSkill(skill.name));
-                close();
+        ? h(
+            'button',
+            {
+              class: 'btn btn-danger',
+              on: {
+                click: async () => {
+                  if (!(await confirmDialog('Delete skill?', `“${skill.name}” will be removed from this device.`))) return;
+                  onSaved(await api.deleteSkill(skill.name));
+                  close();
+                },
               },
             },
-          }, 'Delete')
+            'Delete'
+          )
         : null;
     // Earlier versions of the user's own skill, newest first, each restorable.
     const historyBtn =
       skill && !builtin && !draft
-        ? h('button', {
-            class: 'btn btn-secondary',
-            on: {
-              click: async () => {
-                const versions = await tauriInvoke<{ id: string; description: string; body: string }[]>('chat_skill_history', { name: skill.name });
-                if (!versions.length) return void toast('No earlier versions yet: each save keeps the one it replaces.');
-                const when = (id: string) => {
-                  const m = id.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/);
-                  return m ? new Date(Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!, +m[6]!)).toLocaleString(undefined, { hour12: clockHour12() }) : id;
-                };
-                void modal((closeHistory) =>
-                  h(
-                    'div',
-                    { class: 'dialog-small wide' },
-                    modalHeader(`Versions of ${skill.name}`, closeHistory, { flush: true }),
-                    versions.map((v) =>
-                      h(
-                        'details',
-                        { class: 'bubble-file' },
-                        h('summary', {}, icon('clock', 14), h('span', {}, when(v.id)), h('small', { class: 'muted' }, v.description.slice(0, 60))),
-                        h('pre', {}, v.body),
-                        h('div', { class: 'dialog-actions' }, h('button', { class: 'btn btn-secondary btn-sm', on: { click: async () => { onSaved(await tauriInvoke('chat_restore_skill', { name: skill.name, version: v.id })); toast('Restored. The version it replaced is kept.'); closeHistory(); close(); } } }, 'Restore this version'))
+        ? h(
+            'button',
+            {
+              class: 'btn btn-secondary',
+              on: {
+                click: async () => {
+                  const versions = await tauriInvoke<{ id: string; description: string; body: string }[]>('chat_skill_history', { name: skill.name });
+                  if (!versions.length) return void toast('No earlier versions yet: each save keeps the one it replaces.');
+                  const when = (id: string) => {
+                    const m = id.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/);
+                    return m ? new Date(Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!, +m[6]!)).toLocaleString(undefined, { hour12: clockHour12() }) : id;
+                  };
+                  void modal((closeHistory) =>
+                    h(
+                      'div',
+                      { class: 'dialog-small wide' },
+                      modalHeader(`Versions of ${skill.name}`, closeHistory, { flush: true }),
+                      versions.map((v) =>
+                        h(
+                          'details',
+                          { class: 'bubble-file' },
+                          h('summary', {}, icon('clock', 14), h('span', {}, when(v.id)), h('small', { class: 'muted' }, v.description.slice(0, 60))),
+                          h('pre', {}, v.body),
+                          h(
+                            'div',
+                            { class: 'dialog-actions' },
+                            h(
+                              'button',
+                              {
+                                class: 'btn btn-secondary btn-sm',
+                                on: {
+                                  click: async () => {
+                                    onSaved(await tauriInvoke('chat_restore_skill', { name: skill.name, version: v.id }));
+                                    toast('Restored. The version it replaced is kept.');
+                                    closeHistory();
+                                    close();
+                                  },
+                                },
+                              },
+                              'Restore this version'
+                            )
+                          )
+                        )
                       )
                     )
-                  )
-                );
+                  );
+                },
               },
             },
-          }, 'History')
+            'History'
+          )
         : null;
     // Supporting files (templates, reference notes, scripts) the assistant can read when the
     // instructions call for them; only a saved skill of the user's own has a folder for them.
@@ -95,7 +122,26 @@ export function editSkill(skill: Skill | null, onSaved: (skills: Skill[]) => voi
                 { class: 'skill-file' },
                 icon('file', 14),
                 h('button', { class: 'btn-link grow', title: 'View', on: { click: () => void viewSkillFile(current!.name, f) } }, f),
-                h('button', { class: 'icon-btn small', title: 'Remove', on: { click: async () => { try { const all = await tauriInvoke<Skill[]>('chat_skill_remove_file', { name: current!.name, path: f }); current = all.find((s) => s.name === current!.name) ?? current; onSaved(all); renderFiles(); } catch (e) { toast(String(e), 'error'); } } } }, icon('trash', 14))
+                h(
+                  'button',
+                  {
+                    class: 'icon-btn small',
+                    title: 'Remove',
+                    on: {
+                      click: async () => {
+                        try {
+                          const all = await tauriInvoke<Skill[]>('chat_skill_remove_file', { name: current!.name, path: f });
+                          current = all.find((s) => s.name === current!.name) ?? current;
+                          onSaved(all);
+                          renderFiles();
+                        } catch (e) {
+                          toast(String(e), 'error');
+                        }
+                      },
+                    },
+                  },
+                  icon('trash', 14)
+                )
               )
             )
           : h('p', { class: 'muted small' }, 'None. Templates, reference notes or scripts the instructions mention go here; the assistant reads them when it needs them.')
@@ -104,30 +150,44 @@ export function editSkill(skill: Skill | null, onSaved: (skills: Skill[]) => voi
     renderFiles();
     const ownSkill = Boolean(skill && !builtin && !draft);
     const addFiles = ownSkill
-      ? h('div', { class: 'skill-file-actions' },
-          button({ variant: 'secondary', size: 'sm', icon: 'plus', label: 'Add files…', onClick: async () => {
-            try {
-              const all = await tauriInvoke<Skill[]>('chat_skill_add_files', { name: skill!.name, folder: null });
-              current = all.find((s) => s.name === skill!.name) ?? current;
-              onSaved(all);
-              renderFiles();
-            } catch (e) {
-              toast(String(e), 'error');
-            }
-          } }),
-          button({ variant: 'subtle', size: 'sm', icon: 'pencil', label: 'New text file', onClick: async () => {
-            const path = await promptText('New file', '', 'Path inside the skill, e.g. templates/report.md');
-            if (!path) return;
-            try {
-              const all = await tauriInvoke<Skill[]>('chat_skill_write_file', { name: skill!.name, path, text: '' });
-              current = all.find((s) => s.name === skill!.name) ?? current;
-              onSaved(all);
-              renderFiles();
-              void viewSkillFile(skill!.name, path.trim());
-            } catch (e) {
-              toast(String(e), 'error');
-            }
-          } })
+      ? h(
+          'div',
+          { class: 'skill-file-actions' },
+          button({
+            variant: 'secondary',
+            size: 'sm',
+            icon: 'plus',
+            label: 'Add files…',
+            onClick: async () => {
+              try {
+                const all = await tauriInvoke<Skill[]>('chat_skill_add_files', { name: skill!.name, folder: null });
+                current = all.find((s) => s.name === skill!.name) ?? current;
+                onSaved(all);
+                renderFiles();
+              } catch (e) {
+                toast(String(e), 'error');
+              }
+            },
+          }),
+          button({
+            variant: 'subtle',
+            size: 'sm',
+            icon: 'pencil',
+            label: 'New text file',
+            onClick: async () => {
+              const path = await promptText('New file', '', 'Path inside the skill, e.g. templates/report.md');
+              if (!path) return;
+              try {
+                const all = await tauriInvoke<Skill[]>('chat_skill_write_file', { name: skill!.name, path, text: '' });
+                current = all.find((s) => s.name === skill!.name) ?? current;
+                onSaved(all);
+                renderFiles();
+                void viewSkillFile(skill!.name, path.trim());
+              } catch (e) {
+                toast(String(e), 'error');
+              }
+            },
+          })
         )
       : null;
     return h(
@@ -145,7 +205,15 @@ export function editSkill(skill: Skill | null, onSaved: (skills: Skill[]) => voi
       ownSkill || (current?.files.length ?? 0) > 0 ? filesList : null,
       addFiles,
       error,
-      h('div', { class: 'dialog-actions' }, remove, historyBtn, h('span', { class: 'spacer' }), h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Save'))
+      h(
+        'div',
+        { class: 'dialog-actions' },
+        remove,
+        historyBtn,
+        h('span', { class: 'spacer' }),
+        h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'),
+        h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Save')
+      )
     );
   });
 }
@@ -162,15 +230,19 @@ async function viewSkillFile(name: string, path: string): Promise<void> {
   return modal((close) => {
     const area = h('textarea', { class: 'input textarea mono', rows: 18, disabled: binary });
     area.value = text;
-    const save = button({ variant: 'primary', label: 'Save', onClick: async () => {
-      try {
-        await tauriInvoke('chat_skill_write_file', { name, path, text: area.value });
-        toast('File saved.');
-        close();
-      } catch (e) {
-        toast(String(e), 'error');
-      }
-    } });
+    const save = button({
+      variant: 'primary',
+      label: 'Save',
+      onClick: async () => {
+        try {
+          await tauriInvoke('chat_skill_write_file', { name, path, text: area.value });
+          toast('File saved.');
+          close();
+        } catch (e) {
+          toast(String(e), 'error');
+        }
+      },
+    });
     return h('div', { class: 'dialog-small wide' }, modalHeader(`${name} / ${path}`, close, { flush: true }), area, binary ? null : h('div', { class: 'dialog-actions' }, h('span', { class: 'spacer' }), save));
   });
 }
@@ -179,43 +251,68 @@ async function viewSkillFile(name: string, path: string): Promise<void> {
 function learningRows(): HTMLElement {
   type Learning = { reviewKnowledge: boolean; skillsFromWork: boolean; lastReview?: string | null; nightlyEvals: boolean; lastEvals?: string | null };
   const box = h('div', {});
-  void tauriInvoke<Learning>('chat_learning', { change: null }).then((l) => {
-    const change = async (next: Partial<Learning>) => {
-      try {
-        l = await tauriInvoke<Learning>('chat_learning', { change: { ...l, ...next } });
-      } catch (e) {
-        toast(String(e), 'error');
-      }
-    };
-    clear(
-      box,
-      h(
-        'div',
-        { class: 'setting-row' },
-        h('div', {}, h('strong', {}, 'Review my knowledge weekly'), h('small', { class: 'muted' }, `Once a week, a background review looks for duplicates, contradictions, stale and sensitive facts, and leaves its proposals in an unread chat. Nothing changes until you answer there.${l.lastReview ? ` Last review: ${new Date(l.lastReview).toLocaleDateString()}.` : ''}`)),
-        switchInput(l.reviewKnowledge, (v) => void change({ reviewKnowledge: v }))
-      ),
-      h(
-        'div',
-        { class: 'setting-row' },
-        h('div', {}, h('strong', {}, 'Agents learn skills from their work'), h('small', { class: 'muted' }, 'After an agent works through several steps, it considers whether the procedure is worth reusing and, if so, saves it as a skill, turned off until you review it.')),
-        switchInput(l.skillsFromWork, (v) => void change({ skillsFromWork: v }))
-      ),
-      h(
-        'div',
-        { class: 'setting-row' },
-        h('div', {}, h('strong', {}, 'Run my eval suites daily'), h('small', { class: 'muted' }, `Once a day, the suites in the evals folder run on your default model, and you are told when a score drops. Each case costs a model call.${l.lastEvals ? ` Last run: ${new Date(l.lastEvals).toLocaleDateString()}.` : ''}`)),
-        switchInput(l.nightlyEvals, (v) => void change({ nightlyEvals: v }))
-      ),
-      h(
-        'div',
-        { class: 'setting-row' },
-        h('div', {}, h('strong', {}, 'Eval cases'), h('small', { class: 'muted' }, 'What a good answer does, case by case. You own these: the assistant cannot read or change them.')),
-        button({ variant: 'secondary', size: 'sm', label: 'Edit cases…', onClick: () => editEvalCases() })
-      ),
-      artifactRows()
-    );
-  }).catch(() => undefined);
+  void tauriInvoke<Learning>('chat_learning', { change: null })
+    .then((l) => {
+      const change = async (next: Partial<Learning>) => {
+        try {
+          l = await tauriInvoke<Learning>('chat_learning', { change: { ...l, ...next } });
+        } catch (e) {
+          toast(String(e), 'error');
+        }
+      };
+      clear(
+        box,
+        h(
+          'div',
+          { class: 'setting-row' },
+          h(
+            'div',
+            {},
+            h('strong', {}, 'Review my knowledge weekly'),
+            h(
+              'small',
+              { class: 'muted' },
+              `Once a week, a background review looks for duplicates, contradictions, stale and sensitive facts, and leaves its proposals in an unread chat. Nothing changes until you answer there.${l.lastReview ? ` Last review: ${new Date(l.lastReview).toLocaleDateString()}.` : ''}`
+            )
+          ),
+          switchInput(l.reviewKnowledge, (v) => void change({ reviewKnowledge: v }))
+        ),
+        h(
+          'div',
+          { class: 'setting-row' },
+          h(
+            'div',
+            {},
+            h('strong', {}, 'Agents learn skills from their work'),
+            h('small', { class: 'muted' }, 'After an agent works through several steps, it considers whether the procedure is worth reusing and, if so, saves it as a skill, turned off until you review it.')
+          ),
+          switchInput(l.skillsFromWork, (v) => void change({ skillsFromWork: v }))
+        ),
+        h(
+          'div',
+          { class: 'setting-row' },
+          h(
+            'div',
+            {},
+            h('strong', {}, 'Run my eval suites daily'),
+            h(
+              'small',
+              { class: 'muted' },
+              `Once a day, the suites in the evals folder run on your default model, and you are told when a score drops. Each case costs a model call.${l.lastEvals ? ` Last run: ${new Date(l.lastEvals).toLocaleDateString()}.` : ''}`
+            )
+          ),
+          switchInput(l.nightlyEvals, (v) => void change({ nightlyEvals: v }))
+        ),
+        h(
+          'div',
+          { class: 'setting-row' },
+          h('div', {}, h('strong', {}, 'Eval cases'), h('small', { class: 'muted' }, 'What a good answer does, case by case. You own these: the assistant cannot read or change them.')),
+          button({ variant: 'secondary', size: 'sm', label: 'Edit cases…', onClick: () => editEvalCases() })
+        ),
+        artifactRows()
+      );
+    })
+    .catch(() => undefined);
   return box;
 }
 
@@ -226,7 +323,11 @@ type EvalSuite = { suite: string; cases: EvalCase[]; lastScore?: number | null }
 function editEvalCases(): void {
   void modal((close) => {
     const body = h('div', { class: 'version-list' }, h('p', { class: 'muted' }, 'Loading…'));
-    const lines = (text: string) => text.split(/\n|,/).map((t) => t.trim()).filter(Boolean);
+    const lines = (text: string) =>
+      text
+        .split(/\n|,/)
+        .map((t) => t.trim())
+        .filter(Boolean);
     const caseForm = (suite: string, c: EvalCase | null): HTMLElement => {
       const id = h('input', { class: 'input', value: c?.id ?? '', placeholder: 'case-id', disabled: Boolean(c) }) as HTMLInputElement;
       const prompt = h('textarea', { class: 'input', rows: 2, placeholder: 'The message to send' }, c?.prompt ?? '') as HTMLTextAreaElement;
@@ -235,14 +336,41 @@ function editEvalCases(): void {
       const facts = h('textarea', { class: 'input', rows: 2, placeholder: 'What the answer must contain, one per line' }, (c?.facts ?? []).join('\n')) as HTMLTextAreaElement;
       const save = async () => {
         try {
-          render(await tauriInvoke<EvalSuite[]>('chat_save_eval_case', { suite, case: { id: id.value.trim(), prompt: prompt.value, tools: lines(tools.value), notTools: lines(notTools.value), facts: facts.value.split('\n').map((f) => f.trim()).filter(Boolean), needsExpectation: c?.needsExpectation ?? false, note: c?.note ?? '' } }));
+          render(
+            await tauriInvoke<EvalSuite[]>('chat_save_eval_case', {
+              suite,
+              case: {
+                id: id.value.trim(),
+                prompt: prompt.value,
+                tools: lines(tools.value),
+                notTools: lines(notTools.value),
+                facts: facts.value
+                  .split('\n')
+                  .map((f) => f.trim())
+                  .filter(Boolean),
+                needsExpectation: c?.needsExpectation ?? false,
+                note: c?.note ?? '',
+              },
+            })
+          );
           toast('Saved.');
         } catch (e) {
           toast(String(e), 'error');
         }
       };
       const remove = c
-        ? h('button', { class: 'btn btn-danger btn-sm', on: { click: async () => { if (await confirmDialog(`Delete “${c.id}”?`, 'The case is removed from its suite.', 'Delete')) render(await tauriInvoke<EvalSuite[]>('chat_delete_eval_case', { suite, id: c.id })); } } }, 'Delete')
+        ? h(
+            'button',
+            {
+              class: 'btn btn-danger btn-sm',
+              on: {
+                click: async () => {
+                  if (await confirmDialog(`Delete “${c.id}”?`, 'The case is removed from its suite.', 'Delete')) render(await tauriInvoke<EvalSuite[]>('chat_delete_eval_case', { suite, id: c.id }));
+                },
+              },
+            },
+            'Delete'
+          )
         : null;
       return h(
         'details',
@@ -261,19 +389,35 @@ function editEvalCases(): void {
       const newSuite = h('input', { class: 'input', placeholder: 'new-suite-name' }) as HTMLInputElement;
       clear(
         body,
-        ...suites.map((s) =>
+        ...suites.map((s) => h('div', {}, h('h4', {}, s.suite, s.lastScore != null ? h('small', { class: 'muted' }, ` · last score ${s.lastScore.toFixed(2)}`) : null), ...s.cases.map((c) => caseForm(s.suite, c)), caseForm(s.suite, null))),
+        h(
+          'div',
+          {},
+          h('h4', {}, 'A new suite'),
+          newSuite,
           h(
             'div',
-            {},
-            h('h4', {}, s.suite, s.lastScore != null ? h('small', { class: 'muted' }, ` · last score ${s.lastScore.toFixed(2)}`) : null),
-            ...s.cases.map((c) => caseForm(s.suite, c)),
-            caseForm(s.suite, null)
+            { class: 'dialog-actions' },
+            h(
+              'button',
+              {
+                class: 'btn btn-secondary btn-sm',
+                on: {
+                  click: () => {
+                    const name = newSuite.value.trim();
+                    if (name) render([...suites, { suite: name, cases: [] }]);
+                  },
+                },
+              },
+              'Add suite'
+            )
           )
-        ),
-        h('div', {}, h('h4', {}, 'A new suite'), newSuite, h('div', { class: 'dialog-actions' }, h('button', { class: 'btn btn-secondary btn-sm', on: { click: () => { const name = newSuite.value.trim(); if (name) render([...suites, { suite: name, cases: [] }]); } } }, 'Add suite')))
+        )
       );
     };
-    void tauriInvoke<EvalSuite[]>('chat_eval_suites').then(render).catch((e) => clear(body, h('p', { class: 'error-text' }, String(e))));
+    void tauriInvoke<EvalSuite[]>('chat_eval_suites')
+      .then(render)
+      .catch((e) => clear(body, h('p', { class: 'error-text' }, String(e))));
     return h('div', { class: 'dialog-small wide' }, modalHeader('Eval cases', close, { flush: true }), body);
   });
 }
@@ -285,32 +429,57 @@ function editEvalCases(): void {
 function artifactRows(): HTMLElement {
   type Artifact = { kind: string; id: string; status: string; used: number; critical: boolean; provenance?: string | null };
   const box = h('div', {});
-  void tauriInvoke<Artifact[]>('chat_artifacts').then((all) => {
-    const made = all.filter((a) => (a.kind === 'skill' || a.kind === 'script_tool') && a.provenance);
-    clear(
-      box,
-      h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'What the assistant made'), h('small', { class: 'muted' }, 'Skills and tools the assistant wrote or learned. Unused ones are retired after a month; mark one critical to keep it.'))),
-      ...(made.length
-        ? made.map((a) =>
-            h(
-              'div',
-              { class: 'setting-row' },
-              h('div', {}, h('strong', {}, a.id), h('small', { class: 'muted' }, `${a.kind === 'skill' ? 'Skill' : 'Tool'}, ${a.status}, used ${a.used} times`)),
-              h('label', { class: 'row-gap' }, h('small', { class: 'muted' }, 'Critical'), switchInput(a.critical, (v) => {
-                void call('chat_set_artifact_critical', { kind: a.kind, id: a.id, critical: v }).catch(shown);
-              })),
-              // A tool the assistant wrote keeps only what it was granted; this takes it all back.
-              a.kind === 'script_tool'
-                ? h('button', { class: 'btn btn-ghost btn-sm', on: { click: async () => {
-                    if (!(await confirmDialog(`Revoke ${a.id}'s access?`, 'It keeps working but can no longer reach the network, read or write files, or call other tools, until you approve more.', 'Revoke'))) return;
-                    try { await tauriInvoke('chat_revoke_tool', { name: a.id }); toast('Access revoked.'); } catch (e) { toast(String(e), 'error'); }
-                  } } }, 'Revoke access')
-                : null
+  void tauriInvoke<Artifact[]>('chat_artifacts')
+    .then((all) => {
+      const made = all.filter((a) => (a.kind === 'skill' || a.kind === 'script_tool') && a.provenance);
+      clear(
+        box,
+        h(
+          'div',
+          { class: 'setting-row' },
+          h('div', {}, h('strong', {}, 'What the assistant made'), h('small', { class: 'muted' }, 'Skills and tools the assistant wrote or learned. Unused ones are retired after a month; mark one critical to keep it.'))
+        ),
+        ...(made.length
+          ? made.map((a) =>
+              h(
+                'div',
+                { class: 'setting-row' },
+                h('div', {}, h('strong', {}, a.id), h('small', { class: 'muted' }, `${a.kind === 'skill' ? 'Skill' : 'Tool'}, ${a.status}, used ${a.used} times`)),
+                h(
+                  'label',
+                  { class: 'row-gap' },
+                  h('small', { class: 'muted' }, 'Critical'),
+                  switchInput(a.critical, (v) => {
+                    void call('chat_set_artifact_critical', { kind: a.kind, id: a.id, critical: v }).catch(shown);
+                  })
+                ),
+                // A tool the assistant wrote keeps only what it was granted; this takes it all back.
+                a.kind === 'script_tool'
+                  ? h(
+                      'button',
+                      {
+                        class: 'btn btn-ghost btn-sm',
+                        on: {
+                          click: async () => {
+                            if (!(await confirmDialog(`Revoke ${a.id}'s access?`, 'It keeps working but can no longer reach the network, read or write files, or call other tools, until you approve more.', 'Revoke'))) return;
+                            try {
+                              await tauriInvoke('chat_revoke_tool', { name: a.id });
+                              toast('Access revoked.');
+                            } catch (e) {
+                              toast(String(e), 'error');
+                            }
+                          },
+                        },
+                      },
+                      'Revoke access'
+                    )
+                  : null
+              )
             )
-          )
-        : [h('p', { class: 'muted small' }, 'Nothing yet.')])
-    );
-  }).catch(() => undefined);
+          : [h('p', { class: 'muted small' }, 'Nothing yet.')])
+      );
+    })
+    .catch(() => undefined);
   return box;
 }
 
@@ -335,7 +504,12 @@ export class SkillsPage {
       if (!out) return;
       await this.load();
       const parts = [
-        out.skills.length ? `${out.skills.length} skill${out.skills.length === 1 ? '' : 's'} (${out.skills.slice(0, 6).map((n) => `/${n}`).join(', ')}${out.skills.length > 6 ? '…' : ''})` : '',
+        out.skills.length
+          ? `${out.skills.length} skill${out.skills.length === 1 ? '' : 's'} (${out.skills
+              .slice(0, 6)
+              .map((n) => `/${n}`)
+              .join(', ')}${out.skills.length > 6 ? '…' : ''})`
+          : '',
         out.agents.length ? `${out.agents.length} agent${out.agents.length === 1 ? '' : 's'} (${out.agents.join(', ')})` : '',
         out.servers.length ? `the tool server${out.servers.length === 1 ? '' : 's'} ${out.servers.join(', ')} under Connectors` : '',
         out.hooks ? `${out.hooks} hook${out.hooks === 1 ? '' : 's'}, turned off until you review ${out.hooks === 1 ? 'it' : 'them'} in Settings → Permissions → Hooks` : '',
@@ -396,7 +570,13 @@ export class SkillsPage {
                 'label',
                 { class: `market-row${e.link ? '' : ' disabled'}` },
                 box,
-                h('span', { class: 'market-text' }, h('strong', {}, e.name), e.category ? h('small', { class: 'muted' }, ` · ${e.category}`) : null, h('span', { class: 'muted small' }, e.description || (e.link ? '' : 'Its source is not on GitHub; it cannot be fetched from here.')))
+                h(
+                  'span',
+                  { class: 'market-text' },
+                  h('strong', {}, e.name),
+                  e.category ? h('small', { class: 'muted' }, ` · ${e.category}`) : null,
+                  h('span', { class: 'muted small' }, e.description || (e.link ? '' : 'Its source is not on GitHub; it cannot be fetched from here.'))
+                )
               );
             })
         );
@@ -446,7 +626,23 @@ export class SkillsPage {
         h(
           'div',
           { class: 'menu' },
-          h('button', { class: 'menu-item', on: { click: () => { close(); void api.importSkill().then(done).catch((e) => toast(String(e), 'error')); } } }, icon('upload', 15), h('span', {}, 'From a file…')),
+          h(
+            'button',
+            {
+              class: 'menu-item',
+              on: {
+                click: () => {
+                  close();
+                  void api
+                    .importSkill()
+                    .then(done)
+                    .catch((e) => toast(String(e), 'error'));
+                },
+              },
+            },
+            icon('upload', 15),
+            h('span', {}, 'From a file…')
+          ),
           h(
             'button',
             {
@@ -457,16 +653,44 @@ export class SkillsPage {
                   const url = await promptText('Import a skill from a link', '', 'https://github.com/owner/repo/tree/main/skills/name');
                   if (!url) return;
                   toast('Downloading the skill…');
-                  await tauriInvoke<string>('chat_import_skill_url', { url }).then(done).catch((e) => toast(String(e), 'error'));
+                  await tauriInvoke<string>('chat_import_skill_url', { url })
+                    .then(done)
+                    .catch((e) => toast(String(e), 'error'));
                 },
               },
             },
             icon('link', 15),
             h('span', {}, 'From a link (GitHub)…')
           ),
-          h('button', { class: 'menu-item', on: { click: () => { close(); void openSkillCatalog(() => void this.load()); } } }, icon('globe', 15), h('span', {}, 'Browse skill catalogues…')),
+          h(
+            'button',
+            {
+              class: 'menu-item',
+              on: {
+                click: () => {
+                  close();
+                  void openSkillCatalog(() => void this.load());
+                },
+              },
+            },
+            icon('globe', 15),
+            h('span', {}, 'Browse skill catalogues…')
+          ),
           h('div', { class: 'menu-sep' }),
-          h('button', { class: 'menu-item', on: { click: () => { close(); void this.importPlugin(null); } } }, icon('folder', 15), h('span', {}, 'Claude plugin from a folder…')),
+          h(
+            'button',
+            {
+              class: 'menu-item',
+              on: {
+                click: () => {
+                  close();
+                  void this.importPlugin(null);
+                },
+              },
+            },
+            icon('folder', 15),
+            h('span', {}, 'Claude plugin from a folder…')
+          ),
           h(
             'button',
             {
@@ -530,12 +754,7 @@ export class SkillsPage {
     );
     const shown = (this.tab === 'mine' ? mine : builtin).filter((s) => !this.filter || `${s.name} ${s.description}`.toLowerCase().includes(this.filter));
     if (!shown.length) {
-      clear(
-        this.list,
-        this.tab === 'mine'
-          ? emptyState('skill', 'No skills of your own yet', 'Create one, import a SKILL.md, or customize a built-in skill.')
-          : emptyState('skill', 'No match', 'Try another search.')
-      );
+      clear(this.list, this.tab === 'mine' ? emptyState('skill', 'No skills of your own yet', 'Create one, import a SKILL.md, or customize a built-in skill.') : emptyState('skill', 'No match', 'Try another search.'));
       return;
     }
     clear(
@@ -610,7 +829,15 @@ function editKnowledgePage(page: KnowledgePageData | null, onSaved: (pages: Know
       modalHeader(title, close),
       h('div', { class: 'canvas-split' }, area, preview),
       page?.sources.length ? h('p', { class: 'muted knowledge-sources' }, `Sources: ${page.sources.join(' · ')}`) : null,
-      h('div', { class: 'dialog-actions canvas-actions' }, improve, h('span', { class: 'hint' }, 'Markdown'), h('span', { class: 'spacer' }), button({ variant: 'secondary', label: 'Cancel', onClick: close }), button({ variant: 'primary', label: 'Save', onClick: () => void save() }))
+      h(
+        'div',
+        { class: 'dialog-actions canvas-actions' },
+        improve,
+        h('span', { class: 'hint' }, 'Markdown'),
+        h('span', { class: 'spacer' }),
+        button({ variant: 'secondary', label: 'Cancel', onClick: close }),
+        button({ variant: 'primary', label: 'Save', onClick: () => void save() })
+      )
     );
   }, true);
 }
@@ -665,9 +892,30 @@ export class KnowledgePage {
         h(
           'div',
           { class: 'knowledge-card', on: { click: () => editKnowledgePage(p, (all) => this.setPages(all)) } },
-          h('div', { class: 'knowledge-card-head' }, icon('book', 16), h('strong', {}, p.title), h('span', { class: 'spacer' }), iconButton({ icon: 'trash', title: 'Delete page', size: 'sm', onClick: async (e) => { e.stopPropagation(); if (await confirmDialog(`Delete “${p.title}”?`, 'The assistant will no longer recall it.', 'Delete')) this.setPages(await knowledgeApi.remove(p.id)); } })),
+          h(
+            'div',
+            { class: 'knowledge-card-head' },
+            icon('book', 16),
+            h('strong', {}, p.title),
+            h('span', { class: 'spacer' }),
+            iconButton({
+              icon: 'trash',
+              title: 'Delete page',
+              size: 'sm',
+              onClick: async (e) => {
+                e.stopPropagation();
+                if (await confirmDialog(`Delete “${p.title}”?`, 'The assistant will no longer recall it.', 'Delete')) this.setPages(await knowledgeApi.remove(p.id));
+              },
+            })
+          ),
           h('p', { class: 'muted knowledge-excerpt' }, p.body.replace(/[#*_`>]/g, '').slice(0, 220) || 'Empty page'),
-          h('div', { class: 'knowledge-meta' }, h('span', {}, p.author === 'assistant' ? 'Written by the assistant' : 'Written by you'), h('span', {}, new Date(p.updatedAt).toLocaleDateString()), p.sources.length ? h('span', {}, `${p.sources.length} source${p.sources.length === 1 ? '' : 's'}`) : null)
+          h(
+            'div',
+            { class: 'knowledge-meta' },
+            h('span', {}, p.author === 'assistant' ? 'Written by the assistant' : 'Written by you'),
+            h('span', {}, new Date(p.updatedAt).toLocaleDateString()),
+            p.sources.length ? h('span', {}, `${p.sources.length} source${p.sources.length === 1 ? '' : 's'}`) : null
+          )
         )
       )
     );
@@ -726,26 +974,59 @@ export class KnowledgePage {
       again?.setSelectionRange(again.value.length, again.value.length);
     });
     const chip = (value: 'all' | 'you' | 'assistant', label: string) =>
-      h('button', { class: `chip-btn${this.memorySource === value ? ' active' : ''}`, on: { click: () => { this.memorySource = value; this.render(); } } }, label);
+      h(
+        'button',
+        {
+          class: `chip-btn${this.memorySource === value ? ' active' : ''}`,
+          on: {
+            click: () => {
+              this.memorySource = value;
+              this.render();
+            },
+          },
+        },
+        label
+      );
     const sinceChip = (days: number, label: string) =>
-      h('button', { class: `chip-btn${this.memoryDays === days ? ' active' : ''}`, on: { click: () => { this.memoryDays = days; this.render(); } } }, label);
-    const filters = m.items.length > 3
-      ? h(
-          'div',
-          { class: 'memory-filters' },
-          query,
-          chip('all', 'All'),
-          chip('you', 'Added by you'),
-          chip('assistant', 'Saved by the assistant'),
-          sinceChip(0, 'Any time'),
-          sinceChip(30, 'Last 30 days'),
-          (() => {
-            const pick = h('select', { class: 'memory-category' }, h('option', { value: '' }, 'Every subject'), MEMORY_CATEGORIES.map(([v, l]) => h('option', { value: v, selected: this.memoryCategory === v }, l)));
-            pick.addEventListener('change', () => { this.memoryCategory = pick.value; this.render(); });
-            return pick;
-          })()
-        )
-      : null;
+      h(
+        'button',
+        {
+          class: `chip-btn${this.memoryDays === days ? ' active' : ''}`,
+          on: {
+            click: () => {
+              this.memoryDays = days;
+              this.render();
+            },
+          },
+        },
+        label
+      );
+    const filters =
+      m.items.length > 3
+        ? h(
+            'div',
+            { class: 'memory-filters' },
+            query,
+            chip('all', 'All'),
+            chip('you', 'Added by you'),
+            chip('assistant', 'Saved by the assistant'),
+            sinceChip(0, 'Any time'),
+            sinceChip(30, 'Last 30 days'),
+            (() => {
+              const pick = h(
+                'select',
+                { class: 'memory-category' },
+                h('option', { value: '' }, 'Every subject'),
+                MEMORY_CATEGORIES.map(([v, l]) => h('option', { value: v, selected: this.memoryCategory === v }, l))
+              );
+              pick.addEventListener('change', () => {
+                this.memoryCategory = pick.value;
+                this.render();
+              });
+              return pick;
+            })()
+          )
+        : null;
     const since = this.memoryDays ? Date.now() - this.memoryDays * 86_400_000 : 0;
     const words = this.memoryQuery.toLowerCase().split(/\s+/).filter(Boolean);
     const shown = m.items.filter(
@@ -783,18 +1064,25 @@ export class KnowledgePage {
             });
             // Filing (LobeHub's memory categories, weight and confidence).
             const file = (category: string, importance: number, confirmed = false) =>
-              void tauriInvoke<Memories>('chat_file_memory', { id: item.id, category, importance, confirmed }).then((m) => this.set(m)).catch((e) => toast(String(e), 'error'));
-            const category = h('select', { class: 'memory-category', title: 'What it is about' }, h('option', { value: '' }, 'Other'), MEMORY_CATEGORIES.map(([v, l]) => h('option', { value: v, selected: item.category === v }, l)));
+              void tauriInvoke<Memories>('chat_file_memory', { id: item.id, category, importance, confirmed })
+                .then((m) => this.set(m))
+                .catch((e) => toast(String(e), 'error'));
+            const category = h(
+              'select',
+              { class: 'memory-category', title: 'What it is about' },
+              h('option', { value: '' }, 'Other'),
+              MEMORY_CATEGORIES.map(([v, l]) => h('option', { value: v, selected: item.category === v }, l))
+            );
             category.addEventListener('change', () => file(category.value, item.importance ?? 2));
             const weight = item.importance ?? 2;
             const importance = h('button', { class: `memory-weight w${weight}`, title: `Importance: ${['', 'a detail', 'normal', 'always keep in mind'][weight]} (click to change)` }, '●'.repeat(weight) + '○'.repeat(3 - weight));
             importance.addEventListener('click', () => file(item.category ?? '', (weight % 3) + 1));
-            const inferred = item.confidence === 'inferred'
-              ? h('button', { class: 'memory-inferred', title: 'The assistant concluded this. Click to confirm it is right.', on: { click: () => file(item.category ?? '', weight, true) } }, 'inferred')
-              : null;
-            const source = item.conversation && state.conversations.some((c) => c.id === item.conversation)
-              ? h('button', { class: 'icon-btn small', title: 'Open the chat it came from', on: { click: () => navigate({ kind: 'chat', id: item.conversation! }) } }, icon('chat', 15))
-              : null;
+            const inferred =
+              item.confidence === 'inferred' ? h('button', { class: 'memory-inferred', title: 'The assistant concluded this. Click to confirm it is right.', on: { click: () => file(item.category ?? '', weight, true) } }, 'inferred') : null;
+            const source =
+              item.conversation && state.conversations.some((c) => c.id === item.conversation)
+                ? h('button', { class: 'icon-btn small', title: 'Open the chat it came from', on: { click: () => navigate({ kind: 'chat', id: item.conversation! }) } }, icon('chat', 15))
+                : null;
             return h(
               'div',
               { class: 'memory-row' },
@@ -868,9 +1156,13 @@ export function reviewRecording(status: { seconds: number; steps: number }) {
         try {
           const draft = await tauriInvoke<{ name: string; description: string; body: string }>('chat_record_draft', { model: state.model, note: note.value });
           close();
-          void editSkill({ ...draft, origin: 'user' } as Skill, (skills) => {
-            state.skills = skills;
-          }, true);
+          void editSkill(
+            { ...draft, origin: 'user' } as Skill,
+            (skills) => {
+              state.skills = skills;
+            },
+            true
+          );
         } catch (e) {
           error.textContent = String(e);
         }
@@ -918,19 +1210,23 @@ async function openSkillCatalog(onAdded: () => void) {
         grid,
         shown.length
           ? shown.map((s) => {
-              const add = button({ variant: 'secondary', label: installed.has(s.name) ? 'Added' : 'Add', onClick: async () => {
-                add.setAttribute('disabled', '');
-                try {
-                  const r = await tauriInvoke<{ name: string; files: number; note: string | null }>('chat_install_catalog_skill', { catalog: s.catalog, branch: s.branch, path: s.path });
-                  installed.add(r.name);
-                  add.textContent = 'Added';
-                  toast(`Added ${r.name}${r.files ? ` with ${r.files} files` : ''}.${r.note ? ` ${r.note}` : ''}`);
-                  onAdded();
-                } catch (e) {
-                  add.removeAttribute('disabled');
-                  toast(String(e), 'error');
-                }
-              } });
+              const add = button({
+                variant: 'secondary',
+                label: installed.has(s.name) ? 'Added' : 'Add',
+                onClick: async () => {
+                  add.setAttribute('disabled', '');
+                  try {
+                    const r = await tauriInvoke<{ name: string; files: number; note: string | null }>('chat_install_catalog_skill', { catalog: s.catalog, branch: s.branch, path: s.path });
+                    installed.add(r.name);
+                    add.textContent = 'Added';
+                    toast(`Added ${r.name}${r.files ? ` with ${r.files} files` : ''}.${r.note ? ` ${r.note}` : ''}`);
+                    onAdded();
+                  } catch (e) {
+                    add.removeAttribute('disabled');
+                    toast(String(e), 'error');
+                  }
+                },
+              });
               if (installed.has(s.name)) add.setAttribute('disabled', '');
               return h(
                 'div',
@@ -951,18 +1247,48 @@ async function openSkillCatalog(onAdded: () => void) {
         clear(
           sources,
           r.catalogs.map((c) =>
-            h('span', { class: 'chip' }, c, c === 'anthropics/skills' ? null : h('button', { class: 'chip-x', title: 'Remove this catalogue', on: { click: async () => { await tauriInvoke('chat_remove_skill_catalog', { repo: c }); void load(true); } } }, icon('close', 12)))
+            h(
+              'span',
+              { class: 'chip' },
+              c,
+              c === 'anthropics/skills'
+                ? null
+                : h(
+                    'button',
+                    {
+                      class: 'chip-x',
+                      title: 'Remove this catalogue',
+                      on: {
+                        click: async () => {
+                          await tauriInvoke('chat_remove_skill_catalog', { repo: c });
+                          void load(true);
+                        },
+                      },
+                    },
+                    icon('close', 12)
+                  )
+            )
           ),
-          h('button', { class: 'chip add', on: { click: async () => {
-            const repo = await promptText('Add a skill catalogue', '', 'owner/repo (a GitHub repository with .claude-plugin/marketplace.json)');
-            if (!repo) return;
-            try {
-              await tauriInvoke('chat_add_skill_catalog', { repo });
-              void load(true);
-            } catch (e) {
-              toast(String(e), 'error');
-            }
-          } } }, icon('plus', 12), 'Add catalogue')
+          h(
+            'button',
+            {
+              class: 'chip add',
+              on: {
+                click: async () => {
+                  const repo = await promptText('Add a skill catalogue', '', 'owner/repo (a GitHub repository with .claude-plugin/marketplace.json)');
+                  if (!repo) return;
+                  try {
+                    await tauriInvoke('chat_add_skill_catalog', { repo });
+                    void load(true);
+                  } catch (e) {
+                    toast(String(e), 'error');
+                  }
+                },
+              },
+            },
+            icon('plus', 12),
+            'Add catalogue'
+          )
         );
         if (r.errors.length) toast(r.errors.slice(0, 2).join(' '), 'error');
         draw();
@@ -976,9 +1302,15 @@ async function openSkillCatalog(onAdded: () => void) {
       'div',
       { class: 'dialog-small wide market-dialog' },
       modalHeader('Skill catalogues', close, { flush: true }),
-      h('p', { class: 'muted' }, 'Skills others publish on GitHub, starting with Anthropic\'s. Adding one copies its instructions, and its scripts and files where GitHub lists them, into your skills, to read and change like your own.'),
+      h('p', { class: 'muted' }, "Skills others publish on GitHub, starting with Anthropic's. Adding one copies its instructions, and its scripts and files where GitHub lists them, into your skills, to read and change like your own."),
       sources,
-      h('div', { class: 'row-inline' }, h('div', { class: 'grow' }, search), button({ variant: 'secondary', icon: 'retry', label: 'Refresh', onClick: () => void load(true) }), button({ variant: 'secondary', icon: 'share', label: 'Publish my skills…', onClick: () => void publishSkills() })),
+      h(
+        'div',
+        { class: 'row-inline' },
+        h('div', { class: 'grow' }, search),
+        button({ variant: 'secondary', icon: 'retry', label: 'Refresh', onClick: () => void load(true) }),
+        button({ variant: 'secondary', icon: 'share', label: 'Publish my skills…', onClick: () => void publishSkills() })
+      ),
       count,
       grid
     );
@@ -1002,21 +1334,29 @@ async function publishSkills() {
         return h('label', { class: 'hook-row publish-row' }, box, h('div', { class: 'grow' }, h('strong', {}, s.name), h('small', { class: 'muted' }, s.description)));
       })
     );
-    const go = button({ variant: 'primary', label: 'Choose a folder and publish', onClick: async () => {
-      try {
-        const folder = await tauriInvoke<string | null>('chat_export_skill_catalog', { names: [...picked], title: title.value, author: author.value });
-        if (!folder) return;
-        close();
-        toast(`Written to ${folder}. Push that folder to a GitHub repository; anyone can then add it as a catalogue by owner/repo.`);
-      } catch (e) {
-        toast(String(e), 'error');
-      }
-    } });
+    const go = button({
+      variant: 'primary',
+      label: 'Choose a folder and publish',
+      onClick: async () => {
+        try {
+          const folder = await tauriInvoke<string | null>('chat_export_skill_catalog', { names: [...picked], title: title.value, author: author.value });
+          if (!folder) return;
+          close();
+          toast(`Written to ${folder}. Push that folder to a GitHub repository; anyone can then add it as a catalogue by owner/repo.`);
+        } catch (e) {
+          toast(String(e), 'error');
+        }
+      },
+    });
     return h(
       'div',
       { class: 'dialog-small' },
       modalHeader('Publish skills', close, { flush: true }),
-      h('p', { class: 'muted' }, 'Cortex writes the chosen skills as a catalogue (a .claude-plugin/marketplace.json and a folder per skill). Put it in a GitHub repository, and others add it in Cortex, Claude Code or any app that reads that format.'),
+      h(
+        'p',
+        { class: 'muted' },
+        'Cortex writes the chosen skills as a catalogue (a .claude-plugin/marketplace.json and a folder per skill). Put it in a GitHub repository, and others add it in Cortex, Claude Code or any app that reads that format.'
+      ),
       h('label', { class: 'field-label' }, 'Catalogue name'),
       title,
       h('label', { class: 'field-label' }, 'Author'),

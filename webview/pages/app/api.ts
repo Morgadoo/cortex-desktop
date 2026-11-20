@@ -319,14 +319,7 @@ const call = tauriInvoke;
 
 export const api = {
   providers: () => call<Provider[]>('chat_list_providers'),
-  saveProvider: (provider: {
-    vendor: string;
-    enabled: boolean;
-    baseUrl?: string | null;
-    customModels?: string[];
-    apiKey?: string;
-    clearKey?: boolean;
-  }) => call<Provider>('chat_save_provider', { provider }),
+  saveProvider: (provider: { vendor: string; enabled: boolean; baseUrl?: string | null; customModels?: string[]; apiKey?: string; clearKey?: boolean }) => call<Provider>('chat_save_provider', { provider }),
   models: () => call<{ models: Model[]; defaultModel: string | null }>('chat_list_models'),
   setDefaultModel: (reference: string) => call<void>('chat_set_default_model', { reference }),
   testModel: (reference: string) => call<string>('chat_test_model', { reference }),
@@ -354,16 +347,8 @@ export const api = {
   }) => call<void>('chat_send', { request }),
   cancel: (conversationId: string) => call<boolean>('chat_cancel', { conversationId }),
   answer: (callId: string, answer: string) => call<boolean>('chat_answer', { callId, answer }),
-  updateConversation: (update: {
-    id: string;
-    title?: string;
-    pinned?: boolean;
-    unread?: boolean;
-    projectId?: string | null;
-    rating?: [number, number];
-    archived?: boolean;
-    tags?: string[];
-  }) => call<void>('chat_update_conversation', { update }),
+  updateConversation: (update: { id: string; title?: string; pinned?: boolean; unread?: boolean; projectId?: string | null; rating?: [number, number]; archived?: boolean; tags?: string[] }) =>
+    call<void>('chat_update_conversation', { update }),
   selectVersion: (id: string, from: number, index: number) => call<void>('chat_select_version', { id, from, index }),
   steer: (conversationId: string, text: string) => call<boolean>('chat_steer', { conversationId, text }),
   commitChanges: (conversationId: string, message: string) => call<string>('chat_code_commit', { conversationId, message }),
@@ -386,8 +371,7 @@ export const api = {
 
   instructions: () => call<Instructions>('chat_get_instructions'),
   saveInstructions: (instructions: Instructions) => call<void>('chat_save_instructions', { instructions }),
-  previewInstructions: (instructions: Instructions, model: string, prompt: string) =>
-    call<string>('chat_preview_instructions', { instructions, model, prompt }),
+  previewInstructions: (instructions: Instructions, model: string, prompt: string) => call<string>('chat_preview_instructions', { instructions, model, prompt }),
 
   memories: () => call<Memories>('chat_get_memories'),
   addMemory: (text: string) => call<Memories>('chat_add_memory', { text }),
@@ -418,14 +402,11 @@ export const api = {
   deleteTask: (id: string) => call<Task[]>('chat_delete_task', { id }),
   runTask: (id: string) => call<void>('chat_run_task', { id }),
 
-  respondApproval: (requestId: string, approved: boolean, always = false) =>
-    call<void>('respond_tool_approval', { requestId, approved, always }),
+  respondApproval: (requestId: string, approved: boolean, always = false) => call<void>('respond_tool_approval', { requestId, approved, always }),
 
   connectors: () => call<ConnectorManifest[]>('get_tool_registry', {}),
-  setConnectorEnabled: (connectorId: string, enabled: boolean) =>
-    call<void>('set_connector_enabled', { connectorId, enabled }),
-  setToolPolicy: (connectorId: string, toolName: string, policy: string) =>
-    call<void>('set_tool_policy', { connectorId, toolName, policy }),
+  setConnectorEnabled: (connectorId: string, enabled: boolean) => call<void>('set_connector_enabled', { connectorId, enabled }),
+  setToolPolicy: (connectorId: string, toolName: string, policy: string) => call<void>('set_tool_policy', { connectorId, toolName, policy }),
 
   pickDirectory: () => call<string | null>('pick_directory'),
   appSettings: () => call<AppSettings>('get_app_settings'),

@@ -107,35 +107,17 @@ export function switchInput(checked: boolean, onChange: (value: boolean) => void
 
 /** A labelled form control, with an optional hint under it. */
 export function field(label: string, control: HTMLElement, hint?: string | HTMLElement | null, ...trailing: HTMLElement[]): HTMLElement {
-  return h(
-    'div',
-    { class: 'field' },
-    h('label', { class: 'field-label' }, label, ...trailing),
-    control,
-    hint ? (typeof hint === 'string' ? h('small', { class: 'field-hint' }, hint) : hint) : null
-  );
+  return h('div', { class: 'field' }, h('label', { class: 'field-label' }, label, ...trailing), control, hint ? (typeof hint === 'string' ? h('small', { class: 'field-hint' }, hint) : hint) : null);
 }
 
 /** A page's title row: heading, one-line description, and its main actions on the right. */
 export function pageHeader(title: string, subtitle: string, ...actions: (HTMLElement | null)[]): HTMLElement {
-  return h(
-    'header',
-    { class: 'page-header' },
-    h('div', {}, h('h1', {}, title), subtitle ? h('p', { class: 'muted' }, subtitle) : null),
-    actions.some(Boolean) ? h('div', { class: 'page-actions' }, actions) : null
-  );
+  return h('header', { class: 'page-header' }, h('div', {}, h('h1', {}, title), subtitle ? h('p', { class: 'muted' }, subtitle) : null), actions.some(Boolean) ? h('div', { class: 'page-actions' }, actions) : null);
 }
 
 /** What a list shows when it has nothing in it, with the action that fills it. */
 export function emptyState(ic: string, title: string, body: string, ...actions: (HTMLElement | null)[]): HTMLElement {
-  return h(
-    'div',
-    { class: 'empty-state' },
-    h('div', { class: 'empty-icon' }, icon(ic, 22)),
-    h('h3', {}, title),
-    h('p', { class: 'muted' }, body),
-    actions.some(Boolean) ? h('div', { class: 'empty-actions' }, actions) : null
-  );
+  return h('div', { class: 'empty-state' }, h('div', { class: 'empty-icon' }, icon(ic, 22)), h('h3', {}, title), h('p', { class: 'muted' }, body), actions.some(Boolean) ? h('div', { class: 'empty-actions' }, actions) : null);
 }
 
 /** A dialog's header: its title, optional extra controls, and the close button. */

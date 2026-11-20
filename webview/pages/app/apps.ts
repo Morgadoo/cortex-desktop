@@ -52,7 +52,14 @@ export class AppsPage {
         ? shown.map((c) => {
             const exportBtn = button({ variant: 'subtle', size: 'sm', icon: 'download', label: 'Download', onClick: () => void tauriInvoke<boolean>('chat_export_canvas', { id: c.id }).catch(() => false) });
             const chat = button({ variant: 'subtle', size: 'sm', icon: 'chat', label: 'Open', onClick: () => navigate({ kind: 'chat', id: c.conversationId }) });
-            return h('div', { class: 'hook-row' }, icon(c.kind === 'sheet' ? 'apps' : 'file', 16), h('div', { class: 'grow' }, h('strong', {}, c.title || 'Untitled'), h('div', { class: 'muted small' }, c.kind === 'sheet' ? 'Sheet' : 'Document')), exportBtn, chat);
+            return h(
+              'div',
+              { class: 'hook-row' },
+              icon(c.kind === 'sheet' ? 'apps' : 'file', 16),
+              h('div', { class: 'grow' }, h('strong', {}, c.title || 'Untitled'), h('div', { class: 'muted small' }, c.kind === 'sheet' ? 'Sheet' : 'Document')),
+              exportBtn,
+              chat
+            );
           })
         : h('p', { class: 'muted' }, this.canvases.length ? 'Nothing matches.' : 'No documents yet. Ask for one in a chat: “write the project brief in a canvas”.')
     );

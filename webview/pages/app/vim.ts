@@ -281,32 +281,36 @@ export function attachVim(area: HTMLTextAreaElement, busy: () => boolean, onMode
       onMode(m);
     }
   };
-  area.addEventListener('keydown', (e) => {
-    if (!vimEnabled() || busy() || e.isComposing || e.altKey || e.metaKey) return;
-    if (mode === 'insert' && e.key !== 'Escape') return;
-    const before = area.value;
-    const r = step({ text: before, cursor: area.selectionStart, mode, pending, register }, e.key, e.ctrlKey);
-    if (!r.handled) return;
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    pending = r.pending;
-    register = r.register;
-    if (r.history) document.execCommand(r.history);
-    else if (r.text !== before) {
-      // Replace only what changed, through the editor, so Ctrl+Z and `u` undo it.
-      let a = 0;
-      while (a < before.length && a < r.text.length && before[a] === r.text[a]) a++;
-      let b = 0;
-      while (b < before.length - a && b < r.text.length - a && before[before.length - 1 - b] === r.text[r.text.length - 1 - b]) b++;
-      area.setSelectionRange(a, before.length - b);
-      const piece = r.text.slice(a, r.text.length - b);
-      if (piece) document.execCommand('insertText', false, piece);
-      else document.execCommand('delete');
-      area.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-    area.setSelectionRange(r.cursor, r.cursor);
-    setMode(r.mode);
-  }, true);
+  area.addEventListener(
+    'keydown',
+    (e) => {
+      if (!vimEnabled() || busy() || e.isComposing || e.altKey || e.metaKey) return;
+      if (mode === 'insert' && e.key !== 'Escape') return;
+      const before = area.value;
+      const r = step({ text: before, cursor: area.selectionStart, mode, pending, register }, e.key, e.ctrlKey);
+      if (!r.handled) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      pending = r.pending;
+      register = r.register;
+      if (r.history) document.execCommand(r.history);
+      else if (r.text !== before) {
+        // Replace only what changed, through the editor, so Ctrl+Z and `u` undo it.
+        let a = 0;
+        while (a < before.length && a < r.text.length && before[a] === r.text[a]) a++;
+        let b = 0;
+        while (b < before.length - a && b < r.text.length - a && before[before.length - 1 - b] === r.text[r.text.length - 1 - b]) b++;
+        area.setSelectionRange(a, before.length - b);
+        const piece = r.text.slice(a, r.text.length - b);
+        if (piece) document.execCommand('insertText', false, piece);
+        else document.execCommand('delete');
+        area.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      area.setSelectionRange(r.cursor, r.cursor);
+      setMode(r.mode);
+    },
+    true
+  );
   // A click or new text never leaves the box in a half-typed command.
   area.addEventListener('blur', () => {
     pending = '';

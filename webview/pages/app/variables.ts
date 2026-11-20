@@ -43,7 +43,11 @@ function askValues(wanted: Variable[]): Promise<Record<string, string> | null> {
     // Each input is the control for its type, and a value is checked before anything is sent.
     const inputs = wanted.map((v) => {
       const input = v.options.length
-        ? h('select', { class: 'input' }, v.options.map((o) => h('option', { value: o }, o)))
+        ? h(
+            'select',
+            { class: 'input' },
+            v.options.map((o) => h('option', { value: o }, o))
+          )
         : v.type === 'long'
           ? h('textarea', { class: 'input textarea short', rows: 3, placeholder: label(v.name) })
           : h('input', { class: 'input', type: v.type === 'text' ? 'text' : v.type === 'number' ? 'number' : v.type, step: v.type === 'number' ? 'any' : undefined, placeholder: label(v.name) });
@@ -79,12 +83,7 @@ function askValues(wanted: Variable[]): Promise<Record<string, string> | null> {
       h('h2', {}, 'Fill in the prompt'),
       h('p', { class: 'muted' }, 'This prompt has blanks to fill before it is sent.'),
       inputs.map(({ v, input, error }) => h('label', { class: 'field' }, h('span', { class: 'field-label' }, label(v.name), v.optional ? h('small', { class: 'muted' }, ' (optional)') : null), input, error)),
-      h(
-        'div',
-        { class: 'dialog-actions' },
-        h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'),
-        h('button', { class: 'btn btn-primary', on: { click: submit } }, 'Send')
-      )
+      h('div', { class: 'dialog-actions' }, h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: submit } }, 'Send'))
     );
   }).then(() => result);
 }

@@ -82,7 +82,12 @@ export function renderSheetCard(part: Extract<Part, { kind: 'tool' }>, live: boo
   const render = () => {
     const cols = width();
     const table = h('table', { class: 'sheet' });
-    const colLetters = h('tr', {}, h('th', { class: 'corner' }), Array.from({ length: cols }, (_, c) => h('th', { class: 'col-head' }, String.fromCharCode(65 + (c % 26)))));
+    const colLetters = h(
+      'tr',
+      {},
+      h('th', { class: 'corner' }),
+      Array.from({ length: cols }, (_, c) => h('th', { class: 'col-head' }, String.fromCharCode(65 + (c % 26))))
+    );
     table.append(h('thead', {}, colLetters));
     const body = h('tbody');
     rows.forEach((row, r) => {
@@ -114,9 +119,40 @@ export function renderSheetCard(part: Extract<Part, { kind: 'tool' }>, live: boo
     clear(
       tabs,
       sheets.map((s, i) =>
-        h('button', { class: `sheet-tab${i === current ? ' active' : ''}`, on: { click: () => { sheets[current]!.rows = rows; current = i; rows = sheets[i]!.rows; render(); } } }, s.name)
+        h(
+          'button',
+          {
+            class: `sheet-tab${i === current ? ' active' : ''}`,
+            on: {
+              click: () => {
+                sheets[current]!.rows = rows;
+                current = i;
+                rows = sheets[i]!.rows;
+                render();
+              },
+            },
+          },
+          s.name
+        )
       ),
-      h('button', { class: 'sheet-tab add', title: 'Add a sheet', on: { click: () => { sheets[current]!.rows = rows; sheets.push({ name: `Sheet${sheets.length + 1}`, rows: [['Column 1']] }); current = sheets.length - 1; rows = sheets[current]!.rows; markDirty(); render(); } } }, icon('plus', 13))
+      h(
+        'button',
+        {
+          class: 'sheet-tab add',
+          title: 'Add a sheet',
+          on: {
+            click: () => {
+              sheets[current]!.rows = rows;
+              sheets.push({ name: `Sheet${sheets.length + 1}`, rows: [['Column 1']] });
+              current = sheets.length - 1;
+              rows = sheets[current]!.rows;
+              markDirty();
+              render();
+            },
+          },
+        },
+        icon('plus', 13)
+      )
     );
   };
   const multi = sheets.length > 1;
@@ -125,8 +161,28 @@ export function renderSheetCard(part: Extract<Part, { kind: 'tool' }>, live: boo
     return sheets.length > 1 ? sheets.map((s) => `## Sheet: ${s.name}\n${toCsv(s.rows)}`).join('\n\n') : toCsv(rows);
   };
   render();
-  const addRow = button({ variant: 'subtle', size: 'sm', icon: 'plus', label: 'Row', onClick: () => { rows.push(Array.from({ length: width() }, () => '')); markDirty(); render(); } });
-  const addCol = button({ variant: 'subtle', size: 'sm', icon: 'plus', label: 'Column', onClick: () => { rows = rows.map((r, i) => [...r, i === 0 ? `Column ${width() + 1}` : '']); markDirty(); render(); } });
+  const addRow = button({
+    variant: 'subtle',
+    size: 'sm',
+    icon: 'plus',
+    label: 'Row',
+    onClick: () => {
+      rows.push(Array.from({ length: width() }, () => ''));
+      markDirty();
+      render();
+    },
+  });
+  const addCol = button({
+    variant: 'subtle',
+    size: 'sm',
+    icon: 'plus',
+    label: 'Column',
+    onClick: () => {
+      rows = rows.map((r, i) => [...r, i === 0 ? `Column ${width() + 1}` : '']);
+      markDirty();
+      render();
+    },
+  });
   save.addEventListener('click', async () => {
     const id = idOf(part);
     if (!id || !dirty) return;
@@ -139,7 +195,15 @@ export function renderSheetCard(part: Extract<Part, { kind: 'tool' }>, live: boo
       toast(String(e), 'error');
     }
   });
-  const copy = iconButton({ icon: 'copy', title: 'Copy as CSV', size: 'sm', onClick: () => { void navigator.clipboard.writeText(toCsv(rows)); toast('Copied as CSV.'); } });
+  const copy = iconButton({
+    icon: 'copy',
+    title: 'Copy as CSV',
+    size: 'sm',
+    onClick: () => {
+      void navigator.clipboard.writeText(toCsv(rows));
+      toast('Copied as CSV.');
+    },
+  });
   const download = iconButton({
     icon: 'download',
     title: 'Download as Excel or CSV',
@@ -174,7 +238,20 @@ export function renderSheetCard(part: Extract<Part, { kind: 'tool' }>, live: boo
     h(
       'div',
       { class: 'canvas-card sheet-card' },
-      h('div', { class: 'canvas-head' }, icon('apps', 16), h('span', { class: 'canvas-title' }, title), h('span', { class: 'muted sheet-size' }, sheets.length > 1 ? `${sheets.length} sheets` : `${Math.max(0, rows.length - 1)} rows × ${width()} columns`), h('span', { class: 'spacer' }), addRow, addCol, save, copy, sheets_, download),
+      h(
+        'div',
+        { class: 'canvas-head' },
+        icon('apps', 16),
+        h('span', { class: 'canvas-title' }, title),
+        h('span', { class: 'muted sheet-size' }, sheets.length > 1 ? `${sheets.length} sheets` : `${Math.max(0, rows.length - 1)} rows × ${width()} columns`),
+        h('span', { class: 'spacer' }),
+        addRow,
+        addCol,
+        save,
+        copy,
+        sheets_,
+        download
+      ),
       grid,
       tabs
     )

@@ -117,7 +117,16 @@ export async function conversationPng(title: string, messages: ImageMessage[]): 
   let y = head;
   for (const b of blocks) {
     if (b.role === 'user') {
-      const w = Math.min(b.inner, Math.max(...b.lines.map((l) => { ctx.font = `15px ${font}`; return ctx.measureText(l.text).width; }))) + 32;
+      const w =
+        Math.min(
+          b.inner,
+          Math.max(
+            ...b.lines.map((l) => {
+              ctx.font = `15px ${font}`;
+              return ctx.measureText(l.text).width;
+            })
+          )
+        ) + 32;
       const x = width - pad - w;
       ctx.fillStyle = colors.bubble;
       ctx.beginPath();

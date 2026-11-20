@@ -67,35 +67,80 @@ export const BACKGROUNDS: BackgroundPreset[] = [
     label: 'T3 Chat',
     accent: { dark: 'oklch(0.68 0.2 0.58)', light: 'oklch(0.591646 0.217985 0.584)' },
     dark: tintedDark(325, 0.02),
-    light: { bg: 'oklch(0.982446 0.010114 325.653)', sidebar: 'oklch(0.971835 0.012884 321.894)', elevated: 'oklch(0.988235 0.005049 325.615)', input: 'oklch(1 0 0)', bubble: 'oklch(0.939552 0.024286 321.664)', code: 'oklch(0.971835 0.012884 321.894)', border: 'oklch(0.923531 0.021247 328.096)', borderStrong: 'oklch(0.851713 0.055822 336.6)' },
+    light: {
+      bg: 'oklch(0.982446 0.010114 325.653)',
+      sidebar: 'oklch(0.971835 0.012884 321.894)',
+      elevated: 'oklch(0.988235 0.005049 325.615)',
+      input: 'oklch(1 0 0)',
+      bubble: 'oklch(0.939552 0.024286 321.664)',
+      code: 'oklch(0.971835 0.012884 321.894)',
+      border: 'oklch(0.923531 0.021247 328.096)',
+      borderStrong: 'oklch(0.851713 0.055822 336.6)',
+    },
   },
   {
     id: 'grove',
     label: 'Grove',
     accent: { dark: 'oklch(0.7 0.13 158)', light: 'oklch(0.523295 0.112292 158.089)' },
     dark: tintedDark(160),
-    light: { bg: 'oklch(0.972369 0.005497 157.15)', sidebar: 'oklch(0.949276 0.004496 159.002)', elevated: 'oklch(0.985 0.004 157)', input: 'oklch(0.99 0.003 157)', bubble: 'oklch(0.936464 0.014601 163.554)', code: 'oklch(0.949276 0.004496 159.002)', border: 'oklch(0.909438 0.021521 164.612)', borderStrong: 'oklch(0.864831 0.01312 167.255)' },
+    light: {
+      bg: 'oklch(0.972369 0.005497 157.15)',
+      sidebar: 'oklch(0.949276 0.004496 159.002)',
+      elevated: 'oklch(0.985 0.004 157)',
+      input: 'oklch(0.99 0.003 157)',
+      bubble: 'oklch(0.936464 0.014601 163.554)',
+      code: 'oklch(0.949276 0.004496 159.002)',
+      border: 'oklch(0.909438 0.021521 164.612)',
+      borderStrong: 'oklch(0.864831 0.01312 167.255)',
+    },
   },
   {
     id: 'ocean',
     label: 'Ocean',
     accent: { dark: 'oklch(0.7 0.13 247)', light: 'oklch(0.536684 0.120219 247.01)' },
     dark: tintedDark(245, 0.016),
-    light: { bg: 'oklch(0.974199 0.002856 241.597)', sidebar: 'oklch(0.951058 0.002962 258.339)', elevated: 'oklch(0.987 0.002 241)', input: 'oklch(0.992 0.002 241)', bubble: 'oklch(0.939254 0.01193 241.729)', code: 'oklch(0.951058 0.002962 258.339)', border: 'oklch(0.91295 0.018827 241.836)', borderStrong: 'oklch(0.867646 0.013482 252.362)' },
+    light: {
+      bg: 'oklch(0.974199 0.002856 241.597)',
+      sidebar: 'oklch(0.951058 0.002962 258.339)',
+      elevated: 'oklch(0.987 0.002 241)',
+      input: 'oklch(0.992 0.002 241)',
+      bubble: 'oklch(0.939254 0.01193 241.729)',
+      code: 'oklch(0.951058 0.002962 258.339)',
+      border: 'oklch(0.91295 0.018827 241.836)',
+      borderStrong: 'oklch(0.867646 0.013482 252.362)',
+    },
   },
   {
     id: 'ember',
     label: 'Ember',
     accent: { dark: 'oklch(0.72 0.15 45)', light: 'oklch(0.552831 0.129438 44.656)' },
     dark: tintedDark(50, 0.014),
-    light: { bg: 'oklch(0.976527 0.002685 60.725)', sidebar: 'oklch(0.953321 0.002701 42.266)', elevated: 'oklch(0.988 0.002 60)', input: 'oklch(0.993 0.002 60)', bubble: 'oklch(0.942267 0.01151 50.785)', code: 'oklch(0.953321 0.002701 42.266)', border: 'oklch(0.916502 0.01832 49.597)', borderStrong: 'oklch(0.870631 0.013204 39.431)' },
+    light: {
+      bg: 'oklch(0.976527 0.002685 60.725)',
+      sidebar: 'oklch(0.953321 0.002701 42.266)',
+      elevated: 'oklch(0.988 0.002 60)',
+      input: 'oklch(0.993 0.002 60)',
+      bubble: 'oklch(0.942267 0.01151 50.785)',
+      code: 'oklch(0.953321 0.002701 42.266)',
+      border: 'oklch(0.916502 0.01832 49.597)',
+      borderStrong: 'oklch(0.870631 0.013204 39.431)',
+    },
   },
   {
     id: 'iris',
     label: 'Iris',
     accent: { dark: 'oklch(0.72 0.15 295)', light: 'oklch(0.55 0.16 295)' },
     dark: tintedDark(300, 0.018),
-    light: { bg: 'oklch(0.976531 0.003855 303.226)', sidebar: 'oklch(0.955 0.005 300)', elevated: 'oklch(0.988 0.003 303)', input: 'oklch(0.993 0.002 303)', bubble: 'oklch(0.941387 0.014687 300.474)', code: 'oklch(0.955 0.005 300)', border: 'oklch(0.914882 0.022965 299.986)', borderStrong: 'oklch(0.87 0.02 300)' },
+    light: {
+      bg: 'oklch(0.976531 0.003855 303.226)',
+      sidebar: 'oklch(0.955 0.005 300)',
+      elevated: 'oklch(0.988 0.003 303)',
+      input: 'oklch(0.993 0.002 303)',
+      bubble: 'oklch(0.941387 0.014687 300.474)',
+      code: 'oklch(0.955 0.005 300)',
+      border: 'oklch(0.914882 0.022965 299.986)',
+      borderStrong: 'oklch(0.87 0.02 300)',
+    },
   },
 ];
 
@@ -258,11 +303,20 @@ export function setBackground(id: string) {
 /** `shader` backdrops are drawn live with WebGL (backdropgl.ts); their `css` is only the tile's preview. */
 export const BACKDROPS: { id: string; label: string; css: string; shader?: boolean }[] = [
   { id: 'none', label: 'None', css: '' },
-  { id: 'liquid', label: 'Liquid', css: 'radial-gradient(900px 640px at 12% 8%, rgba(120,90,255,.55), transparent 62%), radial-gradient(800px 600px at 92% 18%, rgba(0,190,255,.42), transparent 60%), radial-gradient(900px 700px at 70% 100%, rgba(255,90,160,.40), transparent 62%), radial-gradient(700px 520px at 5% 95%, rgba(255,170,60,.35), transparent 60%)' },
+  {
+    id: 'liquid',
+    label: 'Liquid',
+    css: 'radial-gradient(900px 640px at 12% 8%, rgba(120,90,255,.55), transparent 62%), radial-gradient(800px 600px at 92% 18%, rgba(0,190,255,.42), transparent 60%), radial-gradient(900px 700px at 70% 100%, rgba(255,90,160,.40), transparent 62%), radial-gradient(700px 520px at 5% 95%, rgba(255,170,60,.35), transparent 60%)',
+  },
   { id: 'dusk', label: 'Dusk', css: 'radial-gradient(1200px 700px at 15% 10%, rgba(139,109,255,.35), transparent 60%), radial-gradient(900px 600px at 90% 90%, rgba(255,120,90,.28), transparent 60%)' },
   { id: 'aurora', label: 'Aurora', css: 'radial-gradient(1000px 600px at 80% 0%, rgba(52,211,153,.30), transparent 60%), radial-gradient(900px 700px at 0% 100%, rgba(56,132,255,.30), transparent 60%)' },
   { id: 'paper', label: 'Paper', css: 'repeating-linear-gradient(0deg, rgba(127,127,127,.06) 0 1px, transparent 1px 28px), repeating-linear-gradient(90deg, rgba(127,127,127,.06) 0 1px, transparent 1px 28px)' },
-  { id: 'nebula', label: 'Nebula', shader: true, css: 'radial-gradient(60% 70% at 25% 30%, rgba(120,90,255,.55), transparent 70%), radial-gradient(55% 60% at 75% 70%, rgba(204,41,5,.45), transparent 70%), radial-gradient(50% 55% at 70% 20%, rgba(5,115,122,.45), transparent 70%)' },
+  {
+    id: 'nebula',
+    label: 'Nebula',
+    shader: true,
+    css: 'radial-gradient(60% 70% at 25% 30%, rgba(120,90,255,.55), transparent 70%), radial-gradient(55% 60% at 75% 70%, rgba(204,41,5,.45), transparent 70%), radial-gradient(50% 55% at 70% 20%, rgba(5,115,122,.45), transparent 70%)',
+  },
   { id: 'custom', label: 'Your picture', css: '' },
 ];
 
@@ -291,8 +345,7 @@ export function backdropPreview(id: string): string {
   return (
     preset.css
       // "900px 640px at": the ellipse's radii, as shares of the window.
-      .replace(/(\d+(?:\.\d+)?)px (\d+(?:\.\d+)?)px at/g, (_, w: string, hgt: string) =>
-        `${((Number(w) / PREVIEW_WINDOW.width) * 100).toFixed(1)}% ${((Number(hgt) / PREVIEW_WINDOW.height) * 100).toFixed(1)}% at`)
+      .replace(/(\d+(?:\.\d+)?)px (\d+(?:\.\d+)?)px at/g, (_, w: string, hgt: string) => `${((Number(w) / PREVIEW_WINDOW.width) * 100).toFixed(1)}% ${((Number(hgt) / PREVIEW_WINDOW.height) * 100).toFixed(1)}% at`)
       // A repeating pattern's spacing ("transparent 1px 28px"), shrunk with the window.
       .replace(/transparent 1px (\d+)px/g, (_, gap: string) => `transparent 1px ${Math.max(4, Math.round(Number(gap) * 0.22))}px`)
   );

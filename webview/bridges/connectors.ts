@@ -34,13 +34,7 @@ import type {
   ToolResultMessage,
   ToolsChangedDetail,
 } from '../types';
-import {
-  BUILTIN_CONNECTORS,
-  CONNECTOR_CATEGORIES,
-  getFeaturedMcpServers,
-  SETTINGS_CONNECTOR_TAB_PREFIX,
-  categoryOf,
-} from '../shared/connector-catalog';
+import { BUILTIN_CONNECTORS, CONNECTOR_CATEGORIES, getFeaturedMcpServers, SETTINGS_CONNECTOR_TAB_PREFIX, categoryOf } from '../shared/connector-catalog';
 import { logWarn } from '../shared/logger';
 import { tauriInvoke as rawInvoke } from '../shared/tauri';
 
@@ -54,22 +48,10 @@ const connectorIcons = typeof __CORTEX_CONNECTOR_ICONS__ === 'undefined' ? {} : 
   const GATEWAY_API = window.LUMO_CONNECTOR_API || '/api/connectors';
 
   function isTauri(): boolean {
-    return (
-      typeof window.__TAURI_INTERNALS__ !== 'undefined' ||
-      typeof window.__TAURI__ !== 'undefined'
-    );
+    return typeof window.__TAURI_INTERNALS__ !== 'undefined' || typeof window.__TAURI__ !== 'undefined';
   }
 
-  const ACCOUNT_SCOPED_COMMANDS = new Set([
-    'get_tool_registry',
-    'get_builtin_tools',
-    'invoke_tool',
-    'register_schedule_execution_context',
-    'connect_connector',
-    'disconnect_connector',
-    'set_connector_enabled',
-    'set_tool_policy',
-  ]);
+  const ACCOUNT_SCOPED_COMMANDS = new Set(['get_tool_registry', 'get_builtin_tools', 'invoke_tool', 'register_schedule_execution_context', 'connect_connector', 'disconnect_connector', 'set_connector_enabled', 'set_tool_policy']);
 
   function withAccount(command: string, args?: TauriInvokeArgs): TauriInvokeArgs | undefined {
     if (!ACCOUNT_SCOPED_COMMANDS.has(command)) return args;
@@ -81,10 +63,7 @@ const connectorIcons = typeof __CORTEX_CONNECTOR_ICONS__ === 'undefined' ? {} : 
     return rawInvoke<T>(command, withAccount(command, args));
   }
 
-  async function gatewayFetch<T = unknown>(
-    path: string,
-    options?: RequestInit
-  ): Promise<T | null> {
+  async function gatewayFetch<T = unknown>(path: string, options?: RequestInit): Promise<T | null> {
     const res = await fetch(`${GATEWAY_API}${path}`, {
       credentials: 'include',
       headers: { 'Content-Type': 'application/json', ...(options?.headers || {}) },
@@ -147,10 +126,7 @@ const connectorIcons = typeof __CORTEX_CONNECTOR_ICONS__ === 'undefined' ? {} : 
   const JSON_SCHEMA_DRAFT = 'https://json-schema.org/draft/2020-12/schema';
 
   function normalizeParameters(schema: unknown): JsonSchemaObject {
-    const base: JsonSchemaObject =
-      schema && typeof schema === 'object'
-        ? { ...(schema as JsonSchemaObject) }
-        : { type: 'object', properties: {} };
+    const base: JsonSchemaObject = schema && typeof schema === 'object' ? { ...(schema as JsonSchemaObject) } : { type: 'object', properties: {} };
     if (!base.type) {
       base.type = 'object';
     }
@@ -305,9 +281,7 @@ const connectorIcons = typeof __CORTEX_CONNECTOR_ICONS__ === 'undefined' ? {} : 
     return {
       ...manifest,
       category: categoryOf(manifest.id),
-      server_id: manifest.id.startsWith(MCP_ID_PREFIX)
-        ? manifest.id.slice(MCP_ID_PREFIX.length)
-        : undefined,
+      server_id: manifest.id.startsWith(MCP_ID_PREFIX) ? manifest.id.slice(MCP_ID_PREFIX.length) : undefined,
       url: httpUrlOf(manifest),
     };
   }
@@ -315,8 +289,7 @@ const connectorIcons = typeof __CORTEX_CONNECTOR_ICONS__ === 'undefined' ? {} : 
   async function loadRegistry(): Promise<ConnectorManifest[]> {
     if (isTauri()) {
       const registry = await tauriInvoke<ConnectorManifest[]>('get_tool_registry');
-      desktopFeatureFlags = await tauriInvoke<{ experimentalConnectors: boolean }>('get_desktop_feature_flags')
-        .catch(() => ({ experimentalConnectors: false }));
+      desktopFeatureFlags = await tauriInvoke<{ experimentalConnectors: boolean }>('get_desktop_feature_flags').catch(() => ({ experimentalConnectors: false }));
       manifests = registry.map(describeManifest);
       const builtins = await tauriInvoke<ToolDefinition[]>('get_builtin_tools');
       builtinTools = builtins.map((tool) => {
@@ -337,9 +310,7 @@ const connectorIcons = typeof __CORTEX_CONNECTOR_ICONS__ === 'undefined' ? {} : 
     await loadRegistry();
 
     if (isTauri()) {
-      const listen =
-        window.__TAURI__?.event?.listen ||
-        window.__TAURI_INTERNALS__?.event?.listen;
+      const listen = window.__TAURI__?.event?.listen || window.__TAURI_INTERNALS__?.event?.listen;
       if (listen) {
         await listen('connector:changed', () => loadRegistry());
         await listen('connectors:changed', () => loadRegistry());
@@ -454,9 +425,7 @@ const connectorIcons = typeof __CORTEX_CONNECTOR_ICONS__ === 'undefined' ? {} : 
     try {
       return JSON.parse(raw as string) as Record<string, unknown>;
     } catch (err) {
-      throw new Error(
-        `Invalid tool call arguments JSON: ${err instanceof Error ? err.message : String(err)}`
-      );
+      throw new Error(`Invalid tool call arguments JSON: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -554,9 +523,7 @@ const connectorIcons = typeof __CORTEX_CONNECTOR_ICONS__ === 'undefined' ? {} : 
       return browserClientFetch(input as BrowserFetchInput);
     }
 
-    throw new Error(
-      `Connector "${connectorId}" is not available in the browser. Use Cortex Desktop or connect via the Lumo web settings.`
-    );
+    throw new Error(`Connector "${connectorId}" is not available in the browser. Use Cortex Desktop or connect via the Lumo web settings.`);
   }
 
   /**
@@ -581,7 +548,7 @@ const connectorIcons = typeof __CORTEX_CONNECTOR_ICONS__ === 'undefined' ? {} : 
       const output = await dispatchNativeTool(name, args, scheduleContext, true, options);
       // Only the native invocation response owns this marker. Connector content
       // and browser/gateway fallbacks cannot supply transport metadata.
-      const envelope = isTauri() ? output as { value: unknown; file_transport?: boolean } : undefined;
+      const envelope = isTauri() ? (output as { value: unknown; file_transport?: boolean }) : undefined;
       const result = envelope ? envelope.value : output;
       const fileTransfer = envelope?.file_transport === true ? result : undefined;
       return {
@@ -610,10 +577,7 @@ const connectorIcons = typeof __CORTEX_CONNECTOR_ICONS__ === 'undefined' ? {} : 
     return Promise.all(toolCalls.map((call) => executeToolCall(call, scheduleContext, options)));
   }
 
-  async function connectConnector(
-    connectorId: string,
-    credentials?: unknown
-  ): Promise<unknown> {
+  async function connectConnector(connectorId: string, credentials?: unknown): Promise<unknown> {
     if (isTauri()) {
       return tauriInvoke('connect_connector', { connectorId, credentials });
     }
@@ -635,22 +599,14 @@ const connectorIcons = typeof __CORTEX_CONNECTOR_ICONS__ === 'undefined' ? {} : 
     throw new Error('Enabling or disabling connectors requires Cortex Desktop.');
   }
 
-  async function setToolPolicy(
-    connectorId: string,
-    toolName: string,
-    policy: ToolPolicy
-  ): Promise<void> {
+  async function setToolPolicy(connectorId: string, toolName: string, policy: ToolPolicy): Promise<void> {
     if (isTauri()) {
       return tauriInvoke('set_tool_policy', { connectorId, toolName, policy });
     }
     throw new Error('Setting tool approval policy requires Cortex Desktop.');
   }
 
-  async function respondToolApproval(
-    requestId: string,
-    approved: boolean,
-    always = false
-  ): Promise<void> {
+  async function respondToolApproval(requestId: string, approved: boolean, always = false): Promise<void> {
     if (isTauri()) {
       return tauriInvoke('respond_tool_approval', { requestId, approved, always });
     }
@@ -686,10 +642,7 @@ const connectorIcons = typeof __CORTEX_CONNECTOR_ICONS__ === 'undefined' ? {} : 
   /** Read the latest registry snapshot after `ready`, or after a tools-changed event. */
   function getCatalog(): ConnectorCatalog {
     const entries = new Map<string, ConnectorCatalog['connectors'][number]>(
-      [...BUILTIN_CONNECTORS, ...getFeaturedMcpServers(desktopFeatureFlags.experimentalConnectors)]
-        .map(
-          ({ iconSrc, ...entry }) => [entry.id, { ...entry, icon: connectorIcons[iconSrc], registered: false, tools: [] }]
-        )
+      [...BUILTIN_CONNECTORS, ...getFeaturedMcpServers(desktopFeatureFlags.experimentalConnectors)].map(({ iconSrc, ...entry }) => [entry.id, { ...entry, icon: connectorIcons[iconSrc], registered: false, tools: [] }])
     );
     for (const manifest of manifests) {
       const preset = entries.get(manifest.id);
@@ -707,7 +660,10 @@ const connectorIcons = typeof __CORTEX_CONNECTOR_ICONS__ === 'undefined' ? {} : 
         readiness: { ...manifest.readiness },
         status: { ...manifest.status },
         tools: (manifest.tools ?? []).map(({ name, title, description, read_only }) => ({
-          name, title, description, read_only,
+          name,
+          title,
+          description,
+          read_only,
         })),
       });
     }
@@ -792,8 +748,7 @@ const connectorIcons = typeof __CORTEX_CONNECTOR_ICONS__ === 'undefined' ? {} : 
       isNativeTool: isAvailableTool,
       executeToolCall,
       executeToolCalls,
-      completeFileRead: (resultId: string, value: unknown) =>
-        dispatchNativeTool('tool_results__complete_file', { result_id: resultId, value }),
+      completeFileRead: (resultId: string, value: unknown) => dispatchNativeTool('tool_results__complete_file', { result_id: resultId, value }),
       scheduleExecutionCapabilities: { readOnlyConnectors: true },
       registerScheduleExecutionContext,
     };

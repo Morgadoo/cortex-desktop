@@ -13,11 +13,7 @@ type Attrs = Record<string, unknown> & {
 };
 
 /** `h('button', { class: 'x', on: { click } }, 'Label')`. Strings become text, never HTML. */
-export function h<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  attrs: Attrs = {},
-  ...children: (Child | Child[])[]
-): HTMLElementTagNameMap[K] {
+export function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Attrs = {}, ...children: (Child | Child[])[]): HTMLElementTagNameMap[K] {
   const el = document.createElement(tag);
   for (const [key, value] of Object.entries(attrs)) {
     if (value === undefined || value === null || value === false) continue;
@@ -138,7 +134,8 @@ const ICONS: Record<string, string> = {
   code: 'M9 7l-5 5 5 5M15 7l5 5-5 5',
   eye: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
   expand: 'M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7',
-  react: 'M12 10.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM12 7c5 0 9 2.2 9 5s-4 5-9 5-9-2.2-9-5 4-5 9-5zM7.7 9.5c2.5-4.3 6.3-6.8 8.7-5.4s2 6-.4 10.4-6.3 6.8-8.7 5.4-2-6 .4-10.4zM16.3 9.5c2.5 4.4 2.9 9 .4 10.4s-6.2-1.1-8.7-5.4-2.9-9-.4-10.4 6.2 1.1 8.7 5.4z',
+  react:
+    'M12 10.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM12 7c5 0 9 2.2 9 5s-4 5-9 5-9-2.2-9-5 4-5 9-5zM7.7 9.5c2.5-4.3 6.3-6.8 8.7-5.4s2 6-.4 10.4-6.3 6.8-8.7 5.4-2-6 .4-10.4zM16.3 9.5c2.5 4.4 2.9 9 .4 10.4s-6.2-1.1-8.7-5.4-2.9-9-.4-10.4 6.2 1.1 8.7 5.4z',
 };
 
 const DIRECTIONAL = new Set(['back', 'forward', 'chevronRight', 'chevronLeft', 'arrowRight', 'arrowLeft', 'send']);
@@ -238,12 +235,41 @@ function renderMath(root: DocumentFragment, formulas: { tex: string; display: bo
 const RUNNABLE: Record<string, string> = { python: 'python', py: 'python', python3: 'python', javascript: 'javascript', js: 'javascript', node: 'javascript', bash: 'bash', sh: 'bash', shell: 'bash' };
 /** The sandbox's installed languages, learned once. */
 let runnable: string[] = [];
-void tauriInvoke<string[]>('chat_snippet_languages').then((l) => (runnable = l)).catch(() => undefined);
+void tauriInvoke<string[]>('chat_snippet_languages')
+  .then((l) => (runnable = l))
+  .catch(() => undefined);
 
 const EXTENSIONS: Record<string, string> = {
-  python: 'py', py: 'py', javascript: 'js', js: 'js', typescript: 'ts', ts: 'ts', rust: 'rs', go: 'go', java: 'java',
-  c: 'c', cpp: 'cpp', csharp: 'cs', ruby: 'rb', php: 'php', swift: 'swift', kotlin: 'kt', bash: 'sh', sh: 'sh', shell: 'sh',
-  html: 'html', css: 'css', json: 'json', yaml: 'yaml', yml: 'yml', toml: 'toml', sql: 'sql', markdown: 'md', md: 'md', xml: 'xml', csv: 'csv',
+  python: 'py',
+  py: 'py',
+  javascript: 'js',
+  js: 'js',
+  typescript: 'ts',
+  ts: 'ts',
+  rust: 'rs',
+  go: 'go',
+  java: 'java',
+  c: 'c',
+  cpp: 'cpp',
+  csharp: 'cs',
+  ruby: 'rb',
+  php: 'php',
+  swift: 'swift',
+  kotlin: 'kt',
+  bash: 'sh',
+  sh: 'sh',
+  shell: 'sh',
+  html: 'html',
+  css: 'css',
+  json: 'json',
+  yaml: 'yaml',
+  yml: 'yml',
+  toml: 'toml',
+  sql: 'sql',
+  markdown: 'md',
+  md: 'md',
+  xml: 'xml',
+  csv: 'csv',
 };
 
 /**
@@ -286,11 +312,7 @@ export function markdown(text: string, options: { breaks?: boolean } = {}): Docu
     let last = 0;
     for (const m of value.matchAll(docRef)) {
       frag.append(value.slice(last, m.index));
-      frag.append(
-        m[1]
-          ? h('span', { class: 'cite cite-doc cite-knowledge', title: 'From your knowledge pages' }, icon('book', 12), m[1])
-          : h('span', { class: 'cite cite-doc', title: 'From your library' }, icon('file', 12), m[2]!)
-      );
+      frag.append(m[1] ? h('span', { class: 'cite cite-doc cite-knowledge', title: 'From your knowledge pages' }, icon('book', 12), m[1]) : h('span', { class: 'cite cite-doc', title: 'From your library' }, icon('file', 12), m[2]!));
       last = (m.index ?? 0) + m[0].length;
     }
     frag.append(value.slice(last));
@@ -413,12 +435,7 @@ export function promptText(title: string, value = '', placeholder = ''): Promise
       { class: 'dialog-small' },
       h('h2', {}, title),
       input,
-      h(
-        'div',
-        { class: 'dialog-actions' },
-        h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'),
-        h('button', { class: 'btn btn-primary', on: { click: submit } }, 'Save')
-      )
+      h('div', { class: 'dialog-actions' }, h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: submit } }, 'Save'))
     );
   }).then(() => result);
 }
@@ -435,7 +452,19 @@ export function confirmDialog(title: string, body: string, action = 'Delete', da
         'div',
         { class: 'dialog-actions' },
         h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'),
-        h('button', { class: danger ? 'btn btn-danger' : 'btn btn-primary', on: { click: () => { ok = true; close(); } } }, action)
+        h(
+          'button',
+          {
+            class: danger ? 'btn btn-danger' : 'btn btn-primary',
+            on: {
+              click: () => {
+                ok = true;
+                close();
+              },
+            },
+          },
+          action
+        )
       )
     )
   ).then(() => ok);

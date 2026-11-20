@@ -4,7 +4,27 @@
  * physical key, so Shift+1 stays "1" on every layout. Changes are kept on this device.
  */
 
-export type ShortcutAction = 'settings' | 'search' | 'searchAll' | 'newChat' | 'sidebar' | 'work' | 'code' | 'agents' | 'promptHistory' | 'toggleSteps' | 'cycleMode' | 'chat1' | 'chat2' | 'chat3' | 'chat4' | 'chat5' | 'chat6' | 'chat7' | 'chat8' | 'chat9';
+export type ShortcutAction =
+  | 'settings'
+  | 'search'
+  | 'searchAll'
+  | 'newChat'
+  | 'sidebar'
+  | 'work'
+  | 'code'
+  | 'agents'
+  | 'promptHistory'
+  | 'toggleSteps'
+  | 'cycleMode'
+  | 'chat1'
+  | 'chat2'
+  | 'chat3'
+  | 'chat4'
+  | 'chat5'
+  | 'chat6'
+  | 'chat7'
+  | 'chat8'
+  | 'chat9';
 import { json } from './prefs';
 
 export const SHORTCUTS: { action: ShortcutAction; label: string; fallback: string }[] = [

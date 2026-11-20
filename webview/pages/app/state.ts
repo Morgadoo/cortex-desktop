@@ -1,18 +1,5 @@
 /** The page's state, and the live turns Rust streams into it. */
-import type {
-  ApprovalMode,
-  ApprovalRequest,
-  ChatEvent,
-  Agent,
-  ConversationSummary,
-  Instructions,
-  UsageTotals,
-  Skill,
-  Model,
-  Part,
-  Project,
-  Speed,
-} from './api';
+import type { ApprovalMode, ApprovalRequest, ChatEvent, Agent, ConversationSummary, Instructions, UsageTotals, Skill, Model, Part, Project, Speed } from './api';
 import { choice, flag } from './prefs';
 
 export type Page = 'connectors' | 'skills' | 'scheduled' | 'apps' | 'agents' | 'knowledge' | 'libraries' | 'workflows' | 'chats' | 'resources';
@@ -254,7 +241,6 @@ export function applyEvent(event: ChatEvent): boolean {
       return true;
   }
 }
-
 
 /** Whether new chats start temporary (not saved to history), as Open WebUI allows. */
 const temporaryDefault = flag('cortex.temporaryDefault', false);

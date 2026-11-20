@@ -55,12 +55,11 @@ export function createVad(options: VadOptions): { push(samples: Float32Array): V
     for (let i = start; i < start + frameLength; i++) {
       const v = samples[i]!;
       sum += v * v;
-      if (i > start && (v >= 0) !== (samples[i - 1]! >= 0)) crossings++;
+      if (i > start && v >= 0 !== samples[i - 1]! >= 0) crossings++;
     }
     const rms = Math.sqrt(sum / frameLength);
     if (background < 0) background = rms;
-    const speech =
-      rms > Math.max(ABSOLUTE_FLOOR, background * ABOVE_BACKGROUND) && crossings / frameLength < MAX_ZERO_CROSSINGS;
+    const speech = rms > Math.max(ABSOLUTE_FLOOR, background * ABOVE_BACKGROUND) && crossings / frameLength < MAX_ZERO_CROSSINGS;
     // The background follows quiet frames quickly and loud ones slowly (about four seconds),
     // so a steady noise becomes the new background while speech barely moves it.
     background = rms < background ? background * 0.8 + rms * 0.2 : background * 0.995 + rms * 0.005;

@@ -9,21 +9,13 @@
 import type { ConnectorCatalogEntry, ConnectorCategory, ConnectorCategoryId } from '../shared/connector-catalog';
 
 /** `Readiness`, internally tagged on `state`. Whether a call is worth attempting. */
-export type Readiness =
-  | { state: 'ready' }
-  | { state: 'blocked'; reason: string };
+export type Readiness = { state: 'ready' } | { state: 'blocked'; reason: string };
 
 /** `Activity`, internally tagged on `state`. How the last attempt to reach the remote went. */
-export type Activity =
-  | { state: 'untried' }
-  | { state: 'succeeded' }
-  | { state: 'failed'; error: string };
+export type Activity = { state: 'untried' } | { state: 'succeeded' } | { state: 'failed'; error: string };
 
 /** `ConnectorStatus`, internally tagged on `state`. The judgement the connector list renders. */
-export type ConnectorStatus =
-  | { state: 'ready' }
-  | { state: 'warning'; error: string }
-  | { state: 'not_ready'; reason: string };
+export type ConnectorStatus = { state: 'ready' } | { state: 'warning'; error: string } | { state: 'not_ready'; reason: string };
 
 /** `Capabilities`. Fixed at construction, so it gates which buttons a card offers. */
 export type Capabilities = {

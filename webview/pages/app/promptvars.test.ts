@@ -12,7 +12,13 @@ const at = (i: number) => {
 test('variables are found once each, with type, optionality and options', () => {
   assert.deepEqual(
     vars.map((v) => [v.name, v.type, v.optional, v.options.length]),
-    [['days', 'number', false, 0], ['city', 'text', false, 0], ['start', 'date', false, 0], ['pace', 'text', false, 2], ['notes', 'long', true, 0]],
+    [
+      ['days', 'number', false, 0],
+      ['city', 'text', false, 0],
+      ['start', 'date', false, 0],
+      ['pace', 'text', false, 2],
+      ['notes', 'long', true, 0],
+    ]
   );
 });
 

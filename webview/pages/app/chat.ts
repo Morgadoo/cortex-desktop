@@ -239,7 +239,7 @@ function resultRows(part: Extract<Part, { kind: 'tool' }>): { heading: string; r
           const href = [x.url, x.href, x.link].find((v): v is string => typeof v === 'string');
           const path = typeof x.path === 'string' ? x.path : '';
           const title = [x.title, x.document, x.name, x.text, path, href].find((v): v is string => typeof v === 'string' && v.length > 0) ?? '';
-          const source = href ? host(href) : typeof x.library === 'string' ? x.library : path ? path.split(/[\\/]/).slice(-2, -1)[0] ?? '' : '';
+          const source = href ? host(href) : typeof x.library === 'string' ? x.library : path ? (path.split(/[\\/]/).slice(-2, -1)[0] ?? '') : '';
           return { title, source, href };
         })
         .filter((r) => r.title);
@@ -296,9 +296,17 @@ function runRows(part: Extract<Part, { kind: 'tool' }>, running: boolean): HTMLE
   if (results?.heading) {
     return [
       h('div', { class: 'results-head' }, icon('search', 15), h('span', { class: 'results-query' }, results.heading), h('span', { class: 'muted' }, `${results.rows.length} results`)),
-      ...results.rows.slice(0, 3).map((row) =>
-        h(row.href ? 'a' : 'div', { class: 'result-row', ...(row.href ? { href: row.href, target: '_blank', rel: 'noopener noreferrer' } : {}) }, icon(row.href ? 'globe' : 'file', 15), h('span', { class: 'result-title' }, row.title), h('span', { class: 'result-source' }, row.source))
-      ),
+      ...results.rows
+        .slice(0, 3)
+        .map((row) =>
+          h(
+            row.href ? 'a' : 'div',
+            { class: 'result-row', ...(row.href ? { href: row.href, target: '_blank', rel: 'noopener noreferrer' } : {}) },
+            icon(row.href ? 'globe' : 'file', 15),
+            h('span', { class: 'result-title' }, row.title),
+            h('span', { class: 'result-source' }, row.source)
+          )
+        ),
     ];
   }
   const row = results?.rows[0];
@@ -338,7 +346,15 @@ function renderToolRun(run: Extract<Part, { kind: 'tool' }>[], live: boolean, du
       failed ? h('span', { class: 'step-badge' }, `${failed} failed`) : null,
       seconds(duration) ? h('span', { class: 'step-time' }, seconds(duration)) : null
     ),
-    h('div', { class: 'step-content' }, h('div', { class: 'results-card' }, run.flatMap((p) => runRows(p, live && p.output === null)))),
+    h(
+      'div',
+      { class: 'step-content' },
+      h(
+        'div',
+        { class: 'results-card' },
+        run.flatMap((p) => runRows(p, live && p.output === null))
+      )
+    ),
     h('div', { class: 'step-content' }, raw)
   );
 }
@@ -357,14 +373,7 @@ export function renderChecklist(steps: PlanStep[]): HTMLElement {
   return h(
     'div',
     { class: 'checklist' },
-    steps.map((s) =>
-      h(
-        'div',
-        { class: `check-item ${s.status}` },
-        h('span', { class: 'check-box' }, s.status === 'done' ? icon('check', 12) : s.status === 'in_progress' ? h('span', { class: 'check-dot' }) : null),
-        h('span', {}, s.text)
-      )
-    )
+    steps.map((s) => h('div', { class: `check-item ${s.status}` }, h('span', { class: 'check-box' }, s.status === 'done' ? icon('check', 12) : s.status === 'in_progress' ? h('span', { class: 'check-dot' }) : null), h('span', {}, s.text)))
   );
 }
 
@@ -391,7 +400,7 @@ function renderDelegate(part: Extract<Part, { kind: 'tool' }>, live: boolean, du
   const tasks = Array.isArray(part.arguments.tasks) ? (part.arguments.tasks as { title?: string; instructions?: string }[]) : [];
   let reports: WorkerReport[] = [];
   try {
-    reports = part.output ? (JSON.parse(part.output) as { reports: WorkerReport[] }).reports ?? [] : [];
+    reports = part.output ? ((JSON.parse(part.output) as { reports: WorkerReport[] }).reports ?? []) : [];
   } catch {
     reports = [];
   }
@@ -414,7 +423,7 @@ function renderDelegate(part: Extract<Part, { kind: 'tool' }>, live: boolean, du
         {},
         h('span', { class: 'worker-status' }, statusIcon),
         h('span', { class: 'worker-title' }, task.title ?? `Task ${i + 1}`),
-        h('span', { class: 'worker-activity muted' }, report ? `${report.steps} tool steps` : now?.activity ?? (running ? 'Waiting' : ''))
+        h('span', { class: 'worker-activity muted' }, report ? `${report.steps} tool steps` : (now?.activity ?? (running ? 'Waiting' : '')))
       )
     );
     const body = h('div', { class: 'worker-body' }, h('div', { class: 'step-label' }, 'Task'), h('p', { class: 'muted' }, task.instructions ?? ''));
@@ -434,7 +443,19 @@ function renderDelegate(part: Extract<Part, { kind: 'tool' }>, live: boolean, du
       'div',
       { class: 'step-row' },
       h('span', { class: `step-icon${running ? ' spin' : ''}` }, icon(running ? 'wait' : 'workflow', 16)),
-      h('span', { class: 'step-title' }, running ? (tasks.length === 1 ? 'Running a sub-agent' : mode === 'sequential' ? `Running ${tasks.length} sub-agents one after another` : mode === 'debate' ? `${tasks.length} agents debating` : `Running ${tasks.length} sub-agents in parallel`) : `Ran ${tasks.length === 1 ? 'a sub-agent' : `${tasks.length} sub-agents`}${mode === 'debate' ? ' in a two-round debate' : mode === 'sequential' ? ' in turn' : ''} · ${doneCount} reported`),
+      h(
+        'span',
+        { class: 'step-title' },
+        running
+          ? tasks.length === 1
+            ? 'Running a sub-agent'
+            : mode === 'sequential'
+              ? `Running ${tasks.length} sub-agents one after another`
+              : mode === 'debate'
+                ? `${tasks.length} agents debating`
+                : `Running ${tasks.length} sub-agents in parallel`
+          : `Ran ${tasks.length === 1 ? 'a sub-agent' : `${tasks.length} sub-agents`}${mode === 'debate' ? ' in a two-round debate' : mode === 'sequential' ? ' in turn' : ''} · ${doneCount} reported`
+      ),
       seconds(duration) ? h('span', { class: 'step-time' }, seconds(duration)) : null
     ),
     h('div', { class: 'step-content' }, h('div', { class: 'workers' }, rows))
@@ -480,11 +501,7 @@ function renderToolStep(part: Extract<Part, { kind: 'tool' }>, live: boolean, du
       written = {};
     }
     const content = typeof part.arguments.content === 'string' ? part.arguments.content : '';
-    const lines = written.diff && written.diff !== 'unchanged'
-      ? written.diff.split('\n').filter((l) => !l.startsWith('---') && !l.startsWith('+++'))
-      : written.created
-        ? content.split('\n').map((l) => `+${l}`)
-        : [];
+    const lines = written.diff && written.diff !== 'unchanged' ? written.diff.split('\n').filter((l) => !l.startsWith('---') && !l.startsWith('+++')) : written.created ? content.split('\n').map((l) => `+${l}`) : [];
     if (lines.length) step.append(h('div', { class: 'step-content' }, diffLines(lines.length > 80 ? [...lines.slice(0, 80), ` … ${lines.length - 80} more lines`] : lines)));
   }
   // The raw call, for anyone who wants to see exactly what ran.
@@ -505,12 +522,7 @@ function renderReasoning(text: string, live: boolean, duration: number | undefin
   return h(
     'div',
     { class: 'step' },
-    h(
-      'div',
-      { class: 'step-row' },
-      h('span', { class: 'step-icon' }, icon(live ? 'brain' : 'checkCircle', 16)),
-      h('span', { class: 'step-title' }, live ? 'Thinking' : took ? `Thought for ${took}` : 'Thought')
-    ),
+    h('div', { class: 'step-row' }, h('span', { class: 'step-icon' }, icon(live ? 'brain' : 'checkCircle', 16)), h('span', { class: 'step-title' }, live ? 'Thinking' : took ? `Thought for ${took}` : 'Thought')),
     h('div', { class: 'step-content reasoning-text' }, text.trim())
   );
 }
@@ -558,7 +570,7 @@ function groupSummary(parts: Part[], live: boolean): string {
   const tools = parts.filter((p): p is Extract<Part, { kind: 'tool' }> => p.kind === 'tool');
   if (!tools.length) {
     // "Thought for 4s", from the time measured while it streamed or the one stored with it.
-    const ms = parts.reduce((n, p) => n + (p.kind === 'reasoning' ? p.ms ?? 0 : 0), 0);
+    const ms = parts.reduce((n, p) => n + (p.kind === 'reasoning' ? (p.ms ?? 0) : 0), 0);
     const took = seconds(ms || undefined);
     return took ? `Thought for ${took}` : 'Thought';
   }
@@ -818,19 +830,28 @@ function renderUserTurn(turn: Turn, conversationId: string, branch: HTMLElement 
   }
   const images = turn.parts.filter((p): p is Extract<Part, { kind: 'image' }> => p.kind === 'image');
   const gallery = images.length
-    ? h('div', { class: 'bubble-images' }, images.map((i) => h('img', { src: `data:${i.mediaType};base64,${i.data}`, alt: 'Attached image' })))
+    ? h(
+        'div',
+        { class: 'bubble-images' },
+        images.map((i) => h('img', { src: `data:${i.mediaType};base64,${i.data}`, alt: 'Attached image' }))
+      )
     : null;
   // Attached text files read as file chips that open in place, not as raw markup.
   const files: HTMLElement[] = [];
-  rest = rest.replace(/\n*<attachment name="([^"]*)">\n?([\s\S]*?)\n?<\/attachment>/g, (_, name: string, body: string) => {
-    files.push(h('details', { class: 'bubble-file' }, h('summary', {}, icon('file', 14), h('span', {}, name), h('small', { class: 'muted' }, `${body.split('\n').length} lines`)), h('pre', {}, body)));
-    return '';
-  }).trim();
+  rest = rest
+    .replace(/\n*<attachment name="([^"]*)">\n?([\s\S]*?)\n?<\/attachment>/g, (_, name: string, body: string) => {
+      files.push(h('details', { class: 'bubble-file' }, h('summary', {}, icon('file', 14), h('span', {}, name), h('small', { class: 'muted' }, `${body.split('\n').length} lines`)), h('pre', {}, body)));
+      return '';
+    })
+    .trim();
   // Files kept in the Uploads library to be searched: chips too, without the note to the model.
-  rest = rest.replace(/\n*\(Attached and kept in the "Uploads" library: ([^)]*)\. Search it with search_library[^)]*\)/g, (_, list: string) => {
-    for (const m of list.matchAll(/"([^"]+)"/g)) files.push(h('div', { class: 'bubble-file searched', title: 'Kept in the Uploads library; the assistant searches it' }, icon('library', 14), h('span', {}, m[1]!), h('small', { class: 'muted' }, 'searched')));
-    return '';
-  }).trim();
+  rest = rest
+    .replace(/\n*\(Attached and kept in the "Uploads" library: ([^)]*)\. Search it with search_library[^)]*\)/g, (_, list: string) => {
+      for (const m of list.matchAll(/"([^"]+)"/g))
+        files.push(h('div', { class: 'bubble-file searched', title: 'Kept in the Uploads library; the assistant searches it' }, icon('library', 14), h('span', {}, m[1]!), h('small', { class: 'muted' }, 'searched')));
+      return '';
+    })
+    .trim();
   const body = h('div', { class: 'bubble-text' }, rest);
   const bubble = h('div', { class: 'bubble' }, gallery, quoteEl, chips, body, files.length ? h('div', { class: 'bubble-files' }, files) : null);
   // Long messages (pasted documents, logs) fold to a few lines, with Show more.
@@ -849,7 +870,16 @@ function renderUserTurn(turn: Turn, conversationId: string, branch: HTMLElement 
     'div',
     { class: 'turn turn-user', 'data-index': String(turn.index) },
     bubble,
-    h('div', { class: `turn-actions user-actions${branch ? ' pinned' : ''}` }, branch, turn.index >= 0 ? editButton(turn, conversationId, text) : null, copy, turn.index >= 0 ? bookmarkButton(turn, conversationId, 15) : null, turn.index >= 0 ? deleteExchangeButton(turn, conversationId) : null, h('span', { class: 'turn-time' }, timeLabel(turn.time)))
+    h(
+      'div',
+      { class: `turn-actions user-actions${branch ? ' pinned' : ''}` },
+      branch,
+      turn.index >= 0 ? editButton(turn, conversationId, text) : null,
+      copy,
+      turn.index >= 0 ? bookmarkButton(turn, conversationId, 15) : null,
+      turn.index >= 0 ? deleteExchangeButton(turn, conversationId) : null,
+      h('span', { class: 'turn-time' }, timeLabel(turn.time))
+    )
   );
 }
 
@@ -905,7 +935,12 @@ async function exportImage(id: string) {
     const c = await api.conversation(id);
     const messages = c.turns.map((t) => ({ role: t.role, text: textOf(t.parts) })).filter((m) => m.text.trim());
     const png = await conversationPng(c.title, messages);
-    const name = `${(c.title || 'conversation').replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 60) || 'conversation'}.png`;
+    const name = `${
+      (c.title || 'conversation')
+        .replace(/[\\/:*?"<>|]+/g, ' ')
+        .trim()
+        .slice(0, 60) || 'conversation'
+    }.png`;
     if (await tauriInvoke<boolean>('chat_save_bytes', { name, data: bytesToBase64(png) })) toast('Image saved.');
   } catch (e) {
     toast(String(e), 'error');
@@ -1063,7 +1098,9 @@ function editAnswerActions() {
     };
     answerActions().forEach(addRow);
     const save = () => {
-      const list = [...rows.querySelectorAll('.action-row')].map((r) => ({ name: (r.querySelector('input') as HTMLInputElement).value.trim(), prompt: (r.querySelector('textarea') as HTMLTextAreaElement).value.trim() })).filter((a) => a.name && a.prompt);
+      const list = [...rows.querySelectorAll('.action-row')]
+        .map((r) => ({ name: (r.querySelector('input') as HTMLInputElement).value.trim(), prompt: (r.querySelector('textarea') as HTMLTextAreaElement).value.trim() }))
+        .filter((a) => a.name && a.prompt);
       saveAnswerActions(list);
       close();
       toast('Actions saved.');
@@ -1077,8 +1114,25 @@ function editAnswerActions() {
       h(
         'div',
         { class: 'dialog-actions' },
-        button({ variant: 'secondary', icon: 'plus', label: 'Add an action', onClick: () => { addRow({ name: '', prompt: '' }); const last = rows.lastElementChild; last?.scrollIntoView({ block: 'nearest' }); last?.querySelector('input')?.focus(); } }),
-        button({ variant: 'subtle', label: 'Restore the built-in ones', onClick: () => { clear(rows); DEFAULT_ANSWER_ACTIONS.forEach(addRow); } }),
+        button({
+          variant: 'secondary',
+          icon: 'plus',
+          label: 'Add an action',
+          onClick: () => {
+            addRow({ name: '', prompt: '' });
+            const last = rows.lastElementChild;
+            last?.scrollIntoView({ block: 'nearest' });
+            last?.querySelector('input')?.focus();
+          },
+        }),
+        button({
+          variant: 'subtle',
+          label: 'Restore the built-in ones',
+          onClick: () => {
+            clear(rows);
+            DEFAULT_ANSWER_ACTIONS.forEach(addRow);
+          },
+        }),
         h('span', { class: 'spacer' }),
         button({ variant: 'secondary', label: 'Cancel', onClick: close }),
         button({ variant: 'primary', label: 'Save', onClick: save })
@@ -1111,7 +1165,20 @@ function actionsButton(turn: Turn, isLast: boolean): HTMLElement {
         h('div', { class: 'menu-heading' }, 'Ask about this answer'),
         ...answerActions().map((a) => h('button', { class: 'menu-item', title: a.prompt, on: { click: () => run(a) } }, icon('bolt', 15), h('span', {}, a.name))),
         h('div', { class: 'menu-sep' }),
-        h('button', { class: 'menu-item', on: { click: () => { close(); editAnswerActions(); } } }, icon('settings', 15), h('span', {}, 'Edit actions…'))
+        h(
+          'button',
+          {
+            class: 'menu-item',
+            on: {
+              click: () => {
+                close();
+                editAnswerActions();
+              },
+            },
+          },
+          icon('settings', 15),
+          h('span', {}, 'Edit actions…')
+        )
       ),
       'above'
     );
@@ -1146,8 +1213,35 @@ function translateButton(turn: Turn): HTMLElement {
         'div',
         { class: 'menu' },
         h('div', { class: 'menu-heading' }, 'Translate into'),
-        TRANSLATE_TO.map((l) => h('button', { class: 'menu-item', on: { click: () => { close(); void show(l); } } }, l)),
-        h('button', { class: 'menu-item', on: { click: async () => { close(); const other = await promptText('Translate into', '', 'Any language'); if (other) void show(other); } } }, 'Other…')
+        TRANSLATE_TO.map((l) =>
+          h(
+            'button',
+            {
+              class: 'menu-item',
+              on: {
+                click: () => {
+                  close();
+                  void show(l);
+                },
+              },
+            },
+            l
+          )
+        ),
+        h(
+          'button',
+          {
+            class: 'menu-item',
+            on: {
+              click: async () => {
+                close();
+                const other = await promptText('Translate into', '', 'Any language');
+                if (other) void show(other);
+              },
+            },
+          },
+          'Other…'
+        )
       )
     );
   });
@@ -1228,18 +1322,20 @@ function renderAssistantTurn(conversation: Conversation, turn: Turn, isLast: boo
   const el = h('div', { class: 'turn turn-assistant', 'data-index': String(turn.index) }, ...renderParts(turn.parts, false, `${conversation.id}:${turn.index}`, durations));
   numberLibraryCitations(el, turn.parts);
   // Opening a link the answer gave says it pointed somewhere useful: a signal in the run trace.
-  el.addEventListener('click', (e) => {
-    if ((e.target as HTMLElement | null)?.closest('a[href]')) void callQuiet('chat_signal', { id: conversation.id, index: turn.index, kind: 'opened_source' });
-  }, { capture: true });
+  el.addEventListener(
+    'click',
+    (e) => {
+      if ((e.target as HTMLElement | null)?.closest('a[href]')) void callQuiet('chat_signal', { id: conversation.id, index: turn.index, kind: 'opened_source' });
+    },
+    { capture: true }
+  );
   // A reply that stopped after its tools ran, before answering, can pick up where it left off.
   const unfinished = isLast && !running && turn.parts[turn.parts.length - 1]?.kind === 'tool' && !state.live.has(conversation.id);
   if (unfinished) {
     const resume = h('button', { class: 'btn btn-secondary' }, icon('retry', 15), 'Continue');
     resume.addEventListener('click', () => {
       if (!state.model) return void toast('Choose a model first.', 'error');
-      void api
-        .send({ conversationId: conversation.id, text: '', model: state.model, speed: state.speed, approval: state.approval, resume: true })
-        .catch((e) => toast(String(e), 'error'));
+      void api.send({ conversationId: conversation.id, text: '', model: state.model, speed: state.speed, approval: state.approval, resume: true }).catch((e) => toast(String(e), 'error'));
     });
     el.append(h('div', { class: 'error-card' }, icon('wait', 16), h('div', { class: 'grow' }, h('strong', {}, 'This reply stopped before it finished'), h('div', { class: 'hint' }, 'Continue picks up from the work already done.')), resume));
   }
@@ -1307,7 +1403,16 @@ function renderSources(all: Source[]): HTMLElement | null {
   if (!sources.length) return null;
   // The sites' icons, overlapping, as on Vibe's Sources chip.
   const distinct = [...new Map(sources.map((s) => [hostOf(s.url), s])).values()];
-  const chip = h('button', { class: 'sources-chip' }, 'Sources', h('span', { class: 'source-dots' }, distinct.slice(0, 3).map((s) => siteIcon(s.url, 'source-dot'))));
+  const chip = h(
+    'button',
+    { class: 'sources-chip' },
+    'Sources',
+    h(
+      'span',
+      { class: 'source-dots' },
+      distinct.slice(0, 3).map((s) => siteIcon(s.url, 'source-dot'))
+    )
+  );
   chip.addEventListener('click', () => openSourcesPanel(all));
   return h('div', { class: 'sources-row' }, chip);
 }
@@ -1330,9 +1435,10 @@ function renderActions(conversation: Conversation, turn: Turn, isLast: boolean, 
     // Formatted for Office and mail apps, plain Markdown for editors (LibreChat's rich copy).
     const text = textOf(turn.parts);
     const html = h('div', {}, markdown(text)).innerHTML;
-    const rich = typeof ClipboardItem !== 'undefined'
-      ? navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([text], { type: 'text/plain' }) })])
-      : Promise.reject(new Error('no rich clipboard'));
+    const rich =
+      typeof ClipboardItem !== 'undefined'
+        ? navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([text], { type: 'text/plain' }) })])
+        : Promise.reject(new Error('no rich clipboard'));
     void rich.catch(() => navigator.clipboard.writeText(text));
     // Copying an answer says it was useful; it goes into the run trace as a signal.
     void callQuiet('chat_signal', { id: conversation.id, index: turn.index, kind: 'copied' });
@@ -1375,7 +1481,14 @@ function versionSwitcher(conversationId: string, versions: { from: number; curre
   prev.disabled = versions.current === 0;
   next.disabled = versions.current >= versions.total - 1;
   const compare = iconButton({ icon: 'columns', title: 'Compare two versions', size: 'xs', onClick: () => void compareVersions(conversationId, versions.from, versions.current) });
-  return h('span', { class: 'versions', title: versions.kind === 'prompt' ? 'Versions of this message and what followed' : 'Answers to this message' }, prev, h('span', { class: 'versions-label' }, `${versions.current + 1} / ${versions.total}`), next, compare);
+  return h(
+    'span',
+    { class: 'versions', title: versions.kind === 'prompt' ? 'Versions of this message and what followed' : 'Answers to this message' },
+    prev,
+    h('span', { class: 'versions-label' }, `${versions.current + 1} / ${versions.total}`),
+    next,
+    compare
+  );
 }
 
 /** Two versions of an answer side by side as one text, words removed and added marked (Open WebUI's Compare Text). */
@@ -1388,7 +1501,12 @@ async function compareVersions(conversationId: string, from: number, current: nu
   }
   if (texts.length < 2) return;
   void modal((close) => {
-    const pick = (value: number) => h('select', { class: 'input select-sm' }, texts.map((_, i) => h('option', { value: String(i), selected: i === value }, `Version ${i + 1}`)));
+    const pick = (value: number) =>
+      h(
+        'select',
+        { class: 'input select-sm' },
+        texts.map((_, i) => h('option', { value: String(i), selected: i === value }, `Version ${i + 1}`))
+      );
     const left = pick(current > 0 ? current - 1 : 1);
     const right = pick(current);
     const out = h('div', { class: 'word-diff' });
@@ -1397,7 +1515,11 @@ async function compareVersions(conversationId: string, from: number, current: nu
       const b = texts[Number(right.value)] ?? '';
       // Words, with line breaks kept as their own token; runs of one kind join into one mark.
       const NL = '\u2028';
-      const tokens = (t: string) => t.replace(/\n+/g, ` ${NL} `).split(/[ \t]+/).filter((x) => x !== '');
+      const tokens = (t: string) =>
+        t
+          .replace(/\n+/g, ` ${NL} `)
+          .split(/[ \t]+/)
+          .filter((x) => x !== '');
       const diff = lineDiff(tokens(a).join('\n'), tokens(b).join('\n'));
       let removed = 0;
       let added = 0;
@@ -1412,7 +1534,10 @@ async function compareVersions(conversationId: string, from: number, current: nu
         else runs.push({ kind: d.kind, words: [d.text] });
       }
       const show = (words: string[]) =>
-        words.join(' ').split(NL).flatMap((part, i) => (i ? [h('br'), part.trim()] : [part.trim()]));
+        words
+          .join(' ')
+          .split(NL)
+          .flatMap((part, i) => (i ? [h('br'), part.trim()] : [part.trim()]));
       clear(
         out,
         runs.flatMap((r, i) => {
@@ -1426,13 +1551,7 @@ async function compareVersions(conversationId: string, from: number, current: nu
     left.addEventListener('change', render);
     right.addEventListener('change', render);
     render();
-    return h(
-      'div',
-      { class: 'dialog-small wide' },
-      modalHeader('Compare versions', close, { flush: true }),
-      h('div', { class: 'freq-row' }, left, h('span', { class: 'muted' }, '\u2192'), right, h('span', { class: 'spacer' }), stats),
-      out
-    );
+    return h('div', { class: 'dialog-small wide' }, modalHeader('Compare versions', close, { flush: true }), h('div', { class: 'freq-row' }, left, h('span', { class: 'muted' }, '\u2192'), right, h('span', { class: 'spacer' }), stats), out);
   });
 }
 
@@ -1509,7 +1628,13 @@ function renderLiveTurn(conversationId: string, live: LiveTurn): HTMLElement {
   } else if (busy && (live.parts.length === 0 || live.parts[live.parts.length - 1]?.kind !== 'text')) {
     const last = live.parts[live.parts.length - 1];
     // While it reasons, the first words of the thought say what it is working out.
-    const hint = last?.kind === 'reasoning' ? last.text.trim().split(/(?<=[.!?])\s/)[0]?.slice(0, 90) ?? '' : '';
+    const hint =
+      last?.kind === 'reasoning'
+        ? (last.text
+            .trim()
+            .split(/(?<=[.!?])\s/)[0]
+            ?.slice(0, 90) ?? '')
+        : '';
     el.append(
       h(
         'div',
@@ -1523,14 +1648,25 @@ function renderLiveTurn(conversationId: string, live: LiveTurn): HTMLElement {
   }
   if (live.error?.startsWith('Not sent. ')) {
     // A filter of the user's refused the message: nothing failed, and nothing to continue.
-    el.append(h('div', { class: 'error-card notice' }, icon('shield', 16), h('div', { class: 'grow' }, h('strong', {}, 'Not sent'), h('div', {}, live.error.slice('Not sent. '.length)), h('p', { class: 'hint' }, 'A filter under Settings → Permissions → Functions stopped this message. Change it and send again.'))));
+    el.append(
+      h(
+        'div',
+        { class: 'error-card notice' },
+        icon('shield', 16),
+        h(
+          'div',
+          { class: 'grow' },
+          h('strong', {}, 'Not sent'),
+          h('div', {}, live.error.slice('Not sent. '.length)),
+          h('p', { class: 'hint' }, 'A filter under Settings → Permissions → Functions stopped this message. Change it and send again.')
+        )
+      )
+    );
   } else if (live.error) {
     const resume = h('button', { class: 'btn btn-secondary' }, icon('retry', 15), 'Continue');
     resume.addEventListener('click', () => {
       if (!state.model) return void toast('Choose a model first.', 'error');
-      void api
-        .send({ conversationId, text: '', model: state.model, speed: state.speed, approval: state.approval, resume: true })
-        .catch((e) => toast(String(e), 'error'));
+      void api.send({ conversationId, text: '', model: state.model, speed: state.speed, approval: state.approval, resume: true }).catch((e) => toast(String(e), 'error'));
     });
     el.append(
       h(
@@ -1592,8 +1728,8 @@ async function send(text: string, conversationId: string | null, images: { media
   }
   if (!conversationId && compareModels.length > 1) return sendComparison(text, images);
   const id = conversationId ?? newId();
-  const projectId = state.view.kind === 'home' ? state.view.projectId ?? null : null;
-  const agentId = !conversationId && state.view.kind === 'home' ? state.view.agentId ?? null : null;
+  const projectId = state.view.kind === 'home' ? (state.view.projectId ?? null) : null;
+  const agentId = !conversationId && state.view.kind === 'home' ? (state.view.agentId ?? null) : null;
   const agent = agentId ? state.agents.find((a) => a.id === agentId) : undefined;
   let workdir = !conversationId && state.mode === 'code' ? state.workdir : null;
   // A new Code session can work in its own git worktree, on a branch of its own.
@@ -1664,11 +1800,32 @@ const toolsOff = new Set<string>();
 
 /** Image templates (Grok's "Modelo" cards): what to ask first and how to draw it. */
 const IMAGE_TEMPLATES: { id: string; label: string; icon: string; brief: string }[] = [
-  { id: 'mascot', label: 'Mascot maker', icon: 'sparkle', brief: 'This is a mascot or avatar. Unless I said, first ask me with ask_user for the style (options: Polished 2D game mascot, Chibi cute, Retro cartoon, Flat vector) and then the background (options: Plain white, Transparent look, In a scene). Then design one friendly, memorable character that fits the subject, centred, full body.' },
-  { id: 'logo', label: 'Logo', icon: 'star', brief: 'This is a logo. Unless I said, first ask me with ask_user for the style (options: Minimal wordmark, Emblem or badge, Geometric icon, Hand-drawn) and the colours. Keep it simple, readable at small sizes, on a plain background.' },
-  { id: 'sticker', label: 'Sticker', icon: 'image', brief: 'This is a die-cut sticker: bold outlines, a white border, plain background. Unless I said, ask me with ask_user for the style (options: Kawaii, Cartoon, Pixel art, Watercolour).' },
+  {
+    id: 'mascot',
+    label: 'Mascot maker',
+    icon: 'sparkle',
+    brief:
+      'This is a mascot or avatar. Unless I said, first ask me with ask_user for the style (options: Polished 2D game mascot, Chibi cute, Retro cartoon, Flat vector) and then the background (options: Plain white, Transparent look, In a scene). Then design one friendly, memorable character that fits the subject, centred, full body.',
+  },
+  {
+    id: 'logo',
+    label: 'Logo',
+    icon: 'star',
+    brief: 'This is a logo. Unless I said, first ask me with ask_user for the style (options: Minimal wordmark, Emblem or badge, Geometric icon, Hand-drawn) and the colours. Keep it simple, readable at small sizes, on a plain background.',
+  },
+  {
+    id: 'sticker',
+    label: 'Sticker',
+    icon: 'image',
+    brief: 'This is a die-cut sticker: bold outlines, a white border, plain background. Unless I said, ask me with ask_user for the style (options: Kawaii, Cartoon, Pixel art, Watercolour).',
+  },
   { id: 'poster', label: 'Poster', icon: 'file', brief: 'This is a poster. Unless I said, ask me with ask_user for the mood (options: Bold and modern, Vintage, Minimal, Playful) and any text to show; keep text short and spelled exactly.' },
-  { id: 'product', label: 'Product photo', icon: 'image', brief: 'This is a product photo. Unless I said, ask me with ask_user for the setting (options: White studio, Lifestyle scene, Flat lay, Dramatic dark). Realistic lighting, sharp focus on the product.' },
+  {
+    id: 'product',
+    label: 'Product photo',
+    icon: 'image',
+    brief: 'This is a product photo. Unless I said, ask me with ask_user for the setting (options: White studio, Lifestyle scene, Flat lay, Dramatic dark). Realistic lighting, sharp focus on the product.',
+  },
 ];
 
 /** The message for image mode: use the image tool, with the chosen shape, count and template. */
@@ -1692,14 +1849,10 @@ let compareModels: string[] = [];
 
 /** Sends one prompt to every compared model, each in a temporary conversation of its own. */
 async function sendComparison(text: string, images: { mediaType: string; data: string }[]) {
-  const projectId = state.view.kind === 'home' ? state.view.projectId ?? null : null;
+  const projectId = state.view.kind === 'home' ? (state.view.projectId ?? null) : null;
   const columns = compareModels.map((model) => ({ id: newId(), model }));
   navigate({ kind: 'compare', prompt: text, columns });
-  const results = await Promise.allSettled(
-    columns.map((c) =>
-      api.send({ conversationId: c.id, text, model: c.model, speed: state.speed, approval: state.approval, projectId, temporary: true, images })
-    )
-  );
+  const results = await Promise.allSettled(columns.map((c) => api.send({ conversationId: c.id, text, model: c.model, speed: state.speed, approval: state.approval, projectId, temporary: true, images })));
   const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
   if (failed) toast(String(failed.reason), 'error');
   return results.some((r) => r.status === 'fulfilled');
@@ -1803,9 +1956,13 @@ class Composer {
   constructor() {
     this.textarea = h('textarea', { class: 'composer-input', rows: 1, placeholder: this.placeholder });
     // Vim keys (Settings → General), ahead of the box's own keys; menus keep theirs.
-    attachVim(this.textarea, () => !!this.slashMenu || !!document.querySelector('.popover'), (mode) => {
-      this.el.dataset.vim = mode;
-    });
+    attachVim(
+      this.textarea,
+      () => !!this.slashMenu || !!document.querySelector('.popover'),
+      (mode) => {
+        this.el.dataset.vim = mode;
+      }
+    );
     this.textarea.addEventListener('input', () => {
       this.scheduleSuggestion();
       this.autosize();
@@ -1895,7 +2052,10 @@ class Composer {
     });
     this.chips = h('div', { class: 'chips' });
     this.bar = h('div', { class: 'composer-bar' });
-    this.hint.addEventListener('mousedown', (e) => { e.preventDefault(); this.acceptSuggestion(); });
+    this.hint.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      this.acceptSuggestion();
+    });
     this.el = h('div', { class: 'composer' }, h('div', { class: 'composer-box' }, this.chips, this.hint, this.liveEl, this.textarea, this.bar));
     // Files dropped on the composer are attached like picked ones.
     let depth = 0;
@@ -1969,7 +2129,7 @@ class Composer {
         instruction:
           'This is a prompt the user is about to send to an AI assistant. Rewrite it as a clearer, more complete prompt: ' +
           'state the goal, the useful context and constraints the user implied, and the form of the answer wanted. ' +
-          'Keep the user\'s language, voice and every detail; do not answer it, and do not invent facts or requirements. ' +
+          "Keep the user's language, voice and every detail; do not answer it, and do not invent facts or requirements. " +
           'Keep {{placeholders}}, /commands and @mentions as they are. Keep it short when the request is simple.',
         context: null,
       });
@@ -2035,10 +2195,33 @@ class Composer {
       const render = () => {
         const q = input.value.toLowerCase().trim();
         const found = history.filter((p) => !q || p.toLowerCase().includes(q)).slice(0, 30);
-        clear(results, found.length ? found.map((p) => h('button', { class: 'menu-item', on: { click: () => { close(); this.setText(p); this.focus(); } } }, icon('clock', 15), h('span', { class: 'history-text' }, p))) : h('p', { class: 'muted' }, 'No match.'));
+        clear(
+          results,
+          found.length
+            ? found.map((p) =>
+                h(
+                  'button',
+                  {
+                    class: 'menu-item',
+                    on: {
+                      click: () => {
+                        close();
+                        this.setText(p);
+                        this.focus();
+                      },
+                    },
+                  },
+                  icon('clock', 15),
+                  h('span', { class: 'history-text' }, p)
+                )
+              )
+            : h('p', { class: 'muted' }, 'No match.')
+        );
       };
       input.addEventListener('input', render);
-      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') (results.querySelector('button') as HTMLButtonElement | null)?.click(); });
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') (results.querySelector('button') as HTMLButtonElement | null)?.click();
+      });
       render();
       setTimeout(() => input.focus());
       return h('div', { class: 'dialog-small wide' }, input, results);
@@ -2076,13 +2259,37 @@ class Composer {
     const q = match[1]!.toLowerCase();
     const has = (t: string) => (t || '').toLowerCase().includes(q);
     const groups: { heading: string; icon: Parameters<typeof icon>[0]; entries: { key: string; label: string }[] }[] = [
-      { heading: 'Search a library', icon: 'library', entries: this.hashSources.libraries.filter(has).slice(0, 4).map((n) => ({ key: `lib:${n}`, label: n })) },
-      { heading: 'Add a knowledge page', icon: 'book', entries: this.hashSources.pages.filter((p) => has(p.title)).slice(0, 4).map((p) => ({ key: `page:${p.id}`, label: p.title || 'Untitled' })) },
-      { heading: 'Add a canvas', icon: 'file', entries: this.hashSources.canvases.filter((c) => has(c.title)).slice(0, 4).map((c) => ({ key: `canvas:${c.id}`, label: c.title || 'Untitled' })) },
+      {
+        heading: 'Search a library',
+        icon: 'library',
+        entries: this.hashSources.libraries
+          .filter(has)
+          .slice(0, 4)
+          .map((n) => ({ key: `lib:${n}`, label: n })),
+      },
+      {
+        heading: 'Add a knowledge page',
+        icon: 'book',
+        entries: this.hashSources.pages
+          .filter((p) => has(p.title))
+          .slice(0, 4)
+          .map((p) => ({ key: `page:${p.id}`, label: p.title || 'Untitled' })),
+      },
+      {
+        heading: 'Add a canvas',
+        icon: 'file',
+        entries: this.hashSources.canvases
+          .filter((c) => has(c.title))
+          .slice(0, 4)
+          .map((c) => ({ key: `canvas:${c.id}`, label: c.title || 'Untitled' })),
+      },
       {
         heading: 'Add a chat as context',
         icon: 'chat',
-        entries: state.conversations.filter((c) => c.id !== this.conversationId && !c.archived && has(c.title)).slice(0, 5).map((c) => ({ key: `chat:${c.id}`, label: c.title || 'Untitled' })),
+        entries: state.conversations
+          .filter((c) => c.id !== this.conversationId && !c.archived && has(c.title))
+          .slice(0, 5)
+          .map((c) => ({ key: `chat:${c.id}`, label: c.title || 'Untitled' })),
       },
     ].filter((g) => g.entries.length);
     if (!groups.length) {
@@ -2097,7 +2304,22 @@ class Composer {
       list.append(h('div', { class: 'menu-heading' }, g.heading));
       for (const e of g.entries) {
         const i = items.indexOf(e.key);
-        list.append(h('button', { class: `menu-item${i === index ? ' selected' : ''}`, on: { mousedown: (ev: MouseEvent) => { ev.preventDefault(); this.pickSkill(e.key); } } }, icon(g.icon, 16), h('span', {}, e.label)));
+        list.append(
+          h(
+            'button',
+            {
+              class: `menu-item${i === index ? ' selected' : ''}`,
+              on: {
+                mousedown: (ev: MouseEvent) => {
+                  ev.preventDefault();
+                  this.pickSkill(e.key);
+                },
+              },
+            },
+            icon(g.icon, 16),
+            h('span', {}, e.label)
+          )
+        );
       }
     }
     this.slashMenu?.close();
@@ -2132,7 +2354,20 @@ class Composer {
     const list = h('div', { class: 'menu slash-menu' }, h('div', { class: 'menu-heading' }, 'Emoji'));
     found.forEach(([name, emoji], i) =>
       list.append(
-        h('button', { class: `menu-item${i === index ? ' selected' : ''}`, on: { mousedown: (e: MouseEvent) => { e.preventDefault(); this.pickSkill(`emoji:${name}`); } } }, h('span', { class: 'emoji-glyph' }, emoji), h('span', {}, `:${name}:`))
+        h(
+          'button',
+          {
+            class: `menu-item${i === index ? ' selected' : ''}`,
+            on: {
+              mousedown: (e: MouseEvent) => {
+                e.preventDefault();
+                this.pickSkill(`emoji:${name}`);
+              },
+            },
+          },
+          h('span', { class: 'emoji-glyph' }, emoji),
+          h('span', {}, `:${name}:`)
+        )
       )
     );
     const close = popover(this.textarea, list, 'above');
@@ -2206,7 +2441,15 @@ class Composer {
       list.append(
         h(
           'button',
-          { class: `menu-item rich${i === index ? ' selected' : ''}`, on: { mousedown: (e: MouseEvent) => { e.preventDefault(); this.pickSkill(`file:${f}`); } } },
+          {
+            class: `menu-item rich${i === index ? ' selected' : ''}`,
+            on: {
+              mousedown: (e: MouseEvent) => {
+                e.preventDefault();
+                this.pickSkill(`file:${f}`);
+              },
+            },
+          },
           icon('file', 16),
           h('span', {}, h('strong', { class: 'no-translate' }, f.slice(slash + 1)), h('small', { class: 'mono no-translate' }, slash > 0 ? f.slice(0, slash) : './'))
         )
@@ -2246,7 +2489,15 @@ class Composer {
       list.append(
         h(
           'button',
-          { class: `menu-item rich${i === index ? ' selected' : ''}`, on: { mousedown: (e: MouseEvent) => { e.preventDefault(); this.pickSkill(`cmd:${c.name}`); } } },
+          {
+            class: `menu-item rich${i === index ? ' selected' : ''}`,
+            on: {
+              mousedown: (e: MouseEvent) => {
+                e.preventDefault();
+                this.pickSkill(`cmd:${c.name}`);
+              },
+            },
+          },
           icon(c.icon, 17),
           h('span', {}, h('strong', {}, `/${c.name}`), h('small', {}, c.desc))
         )
@@ -2258,7 +2509,15 @@ class Composer {
       list.append(
         h(
           'button',
-          { class: `menu-item rich${i === index ? ' selected' : ''}`, on: { mousedown: (e: MouseEvent) => { e.preventDefault(); this.pickSkill(`model:${m.reference}`); } } },
+          {
+            class: `menu-item rich${i === index ? ' selected' : ''}`,
+            on: {
+              mousedown: (e: MouseEvent) => {
+                e.preventDefault();
+                this.pickSkill(`model:${m.reference}`);
+              },
+            },
+          },
           icon('sparkle', 17),
           h('span', {}, h('strong', {}, m.name), h('small', {}, m.providerLabel))
         )
@@ -2270,7 +2529,15 @@ class Composer {
       list.append(
         h(
           'button',
-          { class: `menu-item rich${i === index ? ' selected' : ''}`, on: { mousedown: (e: MouseEvent) => { e.preventDefault(); this.pickSkill(`agent:${a.id}`); } } },
+          {
+            class: `menu-item rich${i === index ? ' selected' : ''}`,
+            on: {
+              mousedown: (e: MouseEvent) => {
+                e.preventDefault();
+                this.pickSkill(`agent:${a.id}`);
+              },
+            },
+          },
           h('span', { class: 'agent-avatar small' }, a.avatar || a.name.charAt(0)),
           h('span', {}, h('strong', {}, a.name), h('small', {}, a.description))
         )
@@ -2282,7 +2549,15 @@ class Composer {
       list.append(
         h(
           'button',
-          { class: `menu-item rich${i === index ? ' selected' : ''}`, on: { mousedown: (e: MouseEvent) => { e.preventDefault(); this.pickSkill(skill.name); } } },
+          {
+            class: `menu-item rich${i === index ? ' selected' : ''}`,
+            on: {
+              mousedown: (e: MouseEvent) => {
+                e.preventDefault();
+                this.pickSkill(skill.name);
+              },
+            },
+          },
           icon('skill', 17),
           h('span', {}, h('strong', {}, `/${skill.name}`), h('small', {}, skill.description))
         )
@@ -2414,7 +2689,12 @@ class Composer {
         toast('The next new chat is temporary: it is not saved to your history.');
         return navigate({ kind: 'home' });
       case 'fork':
-        if (id) void api.forkConversation(id).then(async (branch) => { await refreshConversations(); navigate({ kind: 'chat', id: branch }); toast('Branched into a new chat.'); });
+        if (id)
+          void api.forkConversation(id).then(async (branch) => {
+            await refreshConversations();
+            navigate({ kind: 'chat', id: branch });
+            toast('Branched into a new chat.');
+          });
         return;
       case 'export':
         if (id) void api.exportConversation(id).then((saved) => saved && toast('Conversation exported.'));
@@ -2508,7 +2788,10 @@ class Composer {
     let text = this.textarea.value.trim();
     if (!text && this.attachments.length === 0 && !this.quote && !this.workflow) return;
     if (this.quote) {
-      const quoted = this.quote.split('\n').map((l) => `> ${l}`).join('\n');
+      const quoted = this.quote
+        .split('\n')
+        .map((l) => `> ${l}`)
+        .join('\n');
       text = `${quoted}\n\n${text || 'Tell me more about this.'}`;
     }
     if (this.useCanvas) text = `Use a canvas for this.\n\n${text}`;
@@ -2590,8 +2873,13 @@ class Composer {
     if (!this.image) return;
     const img = this.image;
     let close = () => {};
-    const pick = (change: Partial<typeof img>) => { this.setImage({ ...img, ...change }); close(); this.focus(); };
-    const row = (label: string, on: boolean, run: () => void, ic?: string) => h('button', { class: `menu-item${on ? ' selected' : ''}`, on: { click: run } }, ic ? icon(ic, 15) : icon(on ? 'check' : 'dot', 14), h('span', { class: 'grow' }, label));
+    const pick = (change: Partial<typeof img>) => {
+      this.setImage({ ...img, ...change });
+      close();
+      this.focus();
+    };
+    const row = (label: string, on: boolean, run: () => void, ic?: string) =>
+      h('button', { class: `menu-item${on ? ' selected' : ''}`, on: { click: run } }, ic ? icon(ic, 15) : icon(on ? 'check' : 'dot', 14), h('span', { class: 'grow' }, label));
     close = popover(
       anchor,
       h(
@@ -2600,7 +2888,11 @@ class Composer {
         h('div', { class: 'menu-heading' }, 'Shape'),
         (['square', 'landscape', 'portrait'] as const).map((s) => row(s === 'square' ? 'Square 1:1' : s === 'landscape' ? 'Landscape 3:2' : 'Portrait 2:3', img.shape === s, () => pick({ shape: s }))),
         h('div', { class: 'menu-heading' }, 'How many'),
-        h('div', { class: 'count-row' }, [1, 2, 3, 4].map((n) => h('button', { class: `count-btn${img.count === n ? ' active' : ''}`, on: { click: () => pick({ count: n }) } }, String(n)))),
+        h(
+          'div',
+          { class: 'count-row' },
+          [1, 2, 3, 4].map((n) => h('button', { class: `count-btn${img.count === n ? ' active' : ''}`, on: { click: () => pick({ count: n }) } }, String(n)))
+        ),
         h('div', { class: 'menu-heading' }, 'Template'),
         row('None: just my description', !img.template, () => pick({ template: null })),
         IMAGE_TEMPLATES.map((t) => row(t.label, img.template === t.id, () => pick({ template: t.id }), t.icon))
@@ -2619,7 +2911,7 @@ class Composer {
     this.chipsDrawnRunning = this.running();
     const extra: HTMLElement[] = [];
     // Messages waiting for the running task to end, with Send now (steer) and remove.
-    const waiting = this.conversationId ? queued.get(this.conversationId) ?? [] : [];
+    const waiting = this.conversationId ? (queued.get(this.conversationId) ?? []) : [];
     if (waiting.length && this.conversationId) {
       const id = this.conversationId;
       const paused = pausedQueues.has(id);
@@ -2633,22 +2925,59 @@ class Composer {
           h('span', { class: 'queued-label' }, `${waiting.length} queued${paused ? ' · paused' : ''}`),
           h('span', { class: 'spacer' }),
           idle
-            ? h('button', { class: 'link-btn', title: 'Send the first queued message now', on: { click: () => {
-                // A reply started meanwhile: the queue resumes, so this goes as soon as it ends.
-                if (this.running()) {
-                  pausedQueues.delete(id);
+            ? h(
+                'button',
+                {
+                  class: 'link-btn',
+                  title: 'Send the first queued message now',
+                  on: {
+                    click: () => {
+                      // A reply started meanwhile: the queue resumes, so this goes as soon as it ends.
+                      if (this.running()) {
+                        pausedQueues.delete(id);
+                        saveQueues();
+                        this.renderChips();
+                        return void toast('A reply is running; the queue resumes and this goes next.');
+                      }
+                      const [next, ...rest] = waiting;
+                      setQueue(id, rest);
+                      this.renderChips();
+                      if (next) void send(next, id);
+                    },
+                  },
+                },
+                'Send next'
+              )
+            : null,
+          h(
+            'button',
+            {
+              class: 'link-btn',
+              title: paused ? 'Send queued messages again as each turn ends' : 'Keep them waiting until you resume',
+              on: {
+                click: () => {
+                  if (paused) pausedQueues.delete(id);
+                  else pausedQueues.add(id);
                   saveQueues();
                   this.renderChips();
-                  return void toast('A reply is running; the queue resumes and this goes next.');
-                }
-                const [next, ...rest] = waiting;
-                setQueue(id, rest);
-                this.renderChips();
-                if (next) void send(next, id);
-              } } }, 'Send next')
-            : null,
-          h('button', { class: 'link-btn', title: paused ? 'Send queued messages again as each turn ends' : 'Keep them waiting until you resume', on: { click: () => { if (paused) pausedQueues.delete(id); else pausedQueues.add(id); saveQueues(); this.renderChips(); } } }, paused ? 'Resume' : 'Pause'),
-          h('button', { class: 'link-btn', on: { click: () => { setQueue(id, []); this.renderChips(); } } }, 'Clear')
+                },
+              },
+            },
+            paused ? 'Resume' : 'Pause'
+          ),
+          h(
+            'button',
+            {
+              class: 'link-btn',
+              on: {
+                click: () => {
+                  setQueue(id, []);
+                  this.renderChips();
+                },
+              },
+            },
+            'Clear'
+          )
         )
       );
     }
@@ -2677,8 +3006,37 @@ class Composer {
           h('span', { class: 'queued-text', title: text }, text),
           waiting.length > 1 ? iconButton({ icon: 'chevronUp', title: 'Move up', size: 'xs', class: 'chip-x', onClick: () => move(-1) }) : null,
           waiting.length > 1 ? iconButton({ icon: 'chevron', title: 'Move down', size: 'xs', class: 'chip-x', onClick: () => move(1) }) : null,
-          this.running() ? h('button', { class: 'link-btn', title: 'Send it to the running task now', on: { click: () => { drop(); void api.steer(id, text); } } }, 'Send now') : null,
-          h('button', { class: 'link-btn', title: 'Edit', on: { click: () => { drop(); this.setText(text); this.focus(); } } }, 'Edit'),
+          this.running()
+            ? h(
+                'button',
+                {
+                  class: 'link-btn',
+                  title: 'Send it to the running task now',
+                  on: {
+                    click: () => {
+                      drop();
+                      void api.steer(id, text);
+                    },
+                  },
+                },
+                'Send now'
+              )
+            : null,
+          h(
+            'button',
+            {
+              class: 'link-btn',
+              title: 'Edit',
+              on: {
+                click: () => {
+                  drop();
+                  this.setText(text);
+                  this.focus();
+                },
+              },
+            },
+            'Edit'
+          ),
           iconButton({ icon: 'close', title: 'Remove from the queue', size: 'xs', class: 'chip-x', onClick: drop })
         )
       );
@@ -2690,28 +3048,78 @@ class Composer {
           { class: 'quote-chip' },
           icon('forward', 15),
           h('span', {}, this.quote),
-          iconButton({ icon: 'close', title: 'Remove quote', size: 'xs', class: 'chip-x', onClick: () => { this.quote = null; this.renderChips(); } })
+          iconButton({
+            icon: 'close',
+            title: 'Remove quote',
+            size: 'xs',
+            class: 'chip-x',
+            onClick: () => {
+              this.quote = null;
+              this.renderChips();
+            },
+          })
         )
       );
     }
     if (!this.conversationId && compareModels.length > 1) {
-      extra.push(chip({ icon: 'apps', tone: 'accent', label: `Compare · ${compareModels.map(modelName).join(' vs ')}`, onRemove: () => { compareModels = []; this.renderChips(); } }));
+      extra.push(
+        chip({
+          icon: 'apps',
+          tone: 'accent',
+          label: `Compare · ${compareModels.map(modelName).join(' vs ')}`,
+          onRemove: () => {
+            compareModels = [];
+            this.renderChips();
+          },
+        })
+      );
     }
     const tokenChip = (ic: string, label: string, clearIt: () => void) =>
-      chip({ icon: ic, label, tone: 'accent', onRemove: () => { clearIt(); this.renderChips(); this.renderBar(); } });
+      chip({
+        icon: ic,
+        label,
+        tone: 'accent',
+        onRemove: () => {
+          clearIt();
+          this.renderChips();
+          this.renderBar();
+        },
+      });
     if (this.workflow) extra.push(tokenChip('workflow', `Workflow · ${this.workflow.name}`, () => (this.workflow = null)));
     if (this.library) extra.push(tokenChip('library', `Library · ${this.library}`, () => (this.library = null)));
     if (this.folder) extra.push(tokenChip('folder', this.folder.split(/[\\/]/).pop() || this.folder, () => (this.folder = null)));
     if (this.useCanvas) {
-      extra.push(chip({ icon: 'file', tone: 'accent', label: 'Canvas', onRemove: () => { this.useCanvas = false; this.renderChips(); } }));
+      extra.push(
+        chip({
+          icon: 'file',
+          tone: 'accent',
+          label: 'Canvas',
+          onRemove: () => {
+            this.useCanvas = false;
+            this.renderChips();
+          },
+        })
+      );
     }
     if (this.image) {
       const img = this.image;
-      const label = ['Image', img.template ? IMAGE_TEMPLATES.find((t) => t.id === img.template)?.label : null, img.shape !== 'square' ? (img.shape === 'landscape' ? 'Landscape' : 'Portrait') : null, img.count > 1 ? `×${img.count}` : null].filter(Boolean).join(' · ');
-      const c = chip({ icon: 'image', tone: 'accent', label, onRemove: () => { this.setImage(null); this.renderChips(); } });
+      const label = ['Image', img.template ? IMAGE_TEMPLATES.find((t) => t.id === img.template)?.label : null, img.shape !== 'square' ? (img.shape === 'landscape' ? 'Landscape' : 'Portrait') : null, img.count > 1 ? `×${img.count}` : null]
+        .filter(Boolean)
+        .join(' · ');
+      const c = chip({
+        icon: 'image',
+        tone: 'accent',
+        label,
+        onRemove: () => {
+          this.setImage(null);
+          this.renderChips();
+        },
+      });
       c.classList.add('chip-clickable');
       c.title = 'Shape, how many, and templates';
-      c.addEventListener('click', (e) => { if (!(e.target as HTMLElement).closest('.chip-x')) this.imageOptions(c); });
+      c.addEventListener('click', (e) => {
+        if (!(e.target as HTMLElement).closest('.chip-x')) this.imageOptions(c);
+      });
       extra.push(c);
     }
     clear(
@@ -2721,7 +3129,11 @@ class Composer {
         chip({
           leading: file.image ? h('img', { class: 'chip-thumb', src: `data:${file.image.mediaType};base64,${file.image.data}`, alt: '' }) : icon('file', 14),
           label: file.name,
-          onRemove: () => { this.attachments.splice(i, 1); this.renderChips(); this.renderBar(); },
+          onRemove: () => {
+            this.attachments.splice(i, 1);
+            this.renderChips();
+            this.renderBar();
+          },
         })
       )
     );
@@ -2884,7 +3296,16 @@ class Composer {
       const option = (value: Speed, name: string, desc: string, ic: string) =>
         h(
           'button',
-          { class: `menu-item rich${state.speed === value ? ' selected' : ''}`, on: { click: () => { state.speed = value; close(); this.renderBar(); } } },
+          {
+            class: `menu-item rich${state.speed === value ? ' selected' : ''}`,
+            on: {
+              click: () => {
+                state.speed = value;
+                close();
+                this.renderBar();
+              },
+            },
+          },
           icon(ic, 18),
           h('span', {}, h('strong', {}, name), h('small', {}, desc))
         );
@@ -2910,13 +3331,14 @@ class Composer {
     modelBtn.addEventListener('click', () => (state.models.length ? openModelPicker(modelBtn, () => this.renderBar()) : void openSettings('providers')));
 
     const hasText = this.textarea.value.trim().length > 0 || this.attachments.length > 0 || Boolean(this.workflow);
-    const action = running && hasText
-      ? h('button', { class: 'send-btn', title: 'Send guidance to the running task', on: { click: () => void this.submit() } }, icon('send', 18))
-      : running
-      ? h('button', { class: 'send-btn stop', title: 'Stop', on: { click: () => this.conversationId && void api.cancel(this.conversationId) } }, icon('stop', 16))
-      : hasText || this.recorder || this.transcribing
-        ? h('button', { class: 'send-btn', title: 'Send', disabled: !hasText, on: { click: () => void this.submit() } }, icon('send', 18))
-        : h('button', { class: 'send-btn mic', title: 'Dictate', on: { click: () => void this.toggleDictation() } }, icon('mic', 18));
+    const action =
+      running && hasText
+        ? h('button', { class: 'send-btn', title: 'Send guidance to the running task', on: { click: () => void this.submit() } }, icon('send', 18))
+        : running
+          ? h('button', { class: 'send-btn stop', title: 'Stop', on: { click: () => this.conversationId && void api.cancel(this.conversationId) } }, icon('stop', 16))
+          : hasText || this.recorder || this.transcribing
+            ? h('button', { class: 'send-btn', title: 'Send', disabled: !hasText, on: { click: () => void this.submit() } }, icon('send', 18))
+            : h('button', { class: 'send-btn mic', title: 'Dictate', on: { click: () => void this.toggleDictation() } }, icon('mic', 18));
 
     const mic = h('button', { class: `icon-btn${this.recorder ? ' recording' : ''}`, title: this.recorder ? 'Stop and transcribe' : 'Dictate' }, icon(this.recorder ? 'stop' : 'mic', 17));
     mic.addEventListener('click', () => void this.toggleDictation());
@@ -2930,9 +3352,7 @@ class Composer {
     });
     const dictation = this.transcribing ? h('span', { class: 'dots' }) : this.recorder ? h('span', { class: 'dictation' }, discard, mic) : null;
     // Hands-free: talk, it answers aloud, and listens again.
-    const voice = !running && !hasText && !this.recorder && !this.transcribing
-      ? h('button', { class: 'icon-btn', title: 'Voice conversation: talk hands-free', on: { click: () => this.startVoice() } }, icon('wave', 17))
-      : null;
+    const voice = !running && !hasText && !this.recorder && !this.transcribing ? h('button', { class: 'icon-btn', title: 'Voice conversation: talk hands-free', on: { click: () => this.startVoice() } }, icon('wave', 17)) : null;
     // A taller editor for long prompts (Open WebUI's expand).
     const expand = h('button', { class: `icon-btn${this.expanded ? ' active' : ''}`, title: this.expanded ? 'Shrink the editor' : 'Expand the editor' }, icon('expand', 16));
     expand.addEventListener('click', () => {
@@ -3054,9 +3474,11 @@ class Composer {
     const flyout = h('div', { class: 'flyout' });
     const menu = h('div', { class: 'menu plus-menu' });
     let close: () => void = () => {};
-    const done = (f: () => void) => () => { close(); f(); };
-    const item = (ic: string, label: string, onClick: () => void) =>
-      h('button', { class: 'menu-item', on: { click: done(onClick), mouseenter: () => flyout.classList.remove('open') } }, icon(ic, 17), h('span', {}, label));
+    const done = (f: () => void) => () => {
+      close();
+      f();
+    };
+    const item = (ic: string, label: string, onClick: () => void) => h('button', { class: 'menu-item', on: { click: done(onClick), mouseenter: () => flyout.classList.remove('open') } }, icon(ic, 17), h('span', {}, label));
     const sub = (ic: string, label: string, fill: () => Promise<(HTMLElement | null)[]>) => {
       const row = h('button', { class: 'menu-item has-sub' }, icon(ic, 17), h('span', { class: 'grow' }, label), icon('chevronRight', 15));
       const show = async () => {
@@ -3079,7 +3501,14 @@ class Composer {
       return row;
     };
     const entry = (ic: string, label: string, hint: string | null, onClick: () => void, selected = false) =>
-      h('button', { class: `menu-item${selected ? ' selected' : ''}`, on: { click: done(onClick) } }, icon(ic, 16), h('span', { class: 'grow ellipsis' }, label), hint ? h('small', { class: 'muted' }, hint) : null, selected ? icon('check', 14) : null);
+      h(
+        'button',
+        { class: `menu-item${selected ? ' selected' : ''}`, on: { click: done(onClick) } },
+        icon(ic, 16),
+        h('span', { class: 'grow ellipsis' }, label),
+        hint ? h('small', { class: 'muted' }, hint) : null,
+        selected ? icon('check', 14) : null
+      );
     const heading = (text: string) => h('div', { class: 'menu-heading' }, text);
     const empty = (text: string) => h('div', { class: 'empty-small' }, text);
     const sep = () => h('div', { class: 'menu-sep' });
@@ -3089,7 +3518,21 @@ class Composer {
       const roots = settings.filesystem_allowed_roots;
       return [
         heading('Folders the assistant can read'),
-        ...(roots.length ? roots.map((r: string) => entry('folder', r.split(/[\\/]/).pop() || r, null, () => { this.folder = r; this.renderChips(); this.renderBar(); }, this.folder === r)) : [empty('No folders yet.')]),
+        ...(roots.length
+          ? roots.map((r: string) =>
+              entry(
+                'folder',
+                r.split(/[\\/]/).pop() || r,
+                null,
+                () => {
+                  this.folder = r;
+                  this.renderChips();
+                  this.renderBar();
+                },
+                this.folder === r
+              )
+            )
+          : [empty('No folders yet.')]),
         sep(),
         entry('plus', 'Add a folder…', null, () => void grantFolder()),
       ];
@@ -3101,10 +3544,37 @@ class Composer {
       let tab: 'all' | 'user' | 'builtin' = 'all';
       const tabs = h('div', { class: 'mini-tabs' });
       const render = () => {
-        clear(tabs, (['all', 'user', 'builtin'] as const).map((t) => h('button', { class: `mini-tab${tab === t ? ' active' : ''}`, on: { click: () => { tab = t; render(); } } }, t === 'all' ? 'All' : t === 'user' ? 'Mine' : 'Built-in')));
+        clear(
+          tabs,
+          (['all', 'user', 'builtin'] as const).map((t) =>
+            h(
+              'button',
+              {
+                class: `mini-tab${tab === t ? ' active' : ''}`,
+                on: {
+                  click: () => {
+                    tab = t;
+                    render();
+                  },
+                },
+              },
+              t === 'all' ? 'All' : t === 'user' ? 'Mine' : 'Built-in'
+            )
+          )
+        );
         const q = search.value.toLowerCase();
         const shown = all.filter((sk) => sk.enabled && (tab === 'all' || sk.origin === tab) && (!q || `${sk.name} ${sk.description}`.toLowerCase().includes(q)));
-        clear(list, shown.length ? shown.map((sk) => entry('skill', sk.name, null, () => { this.setText(`/${sk.name} ${this.textarea.value.replace(/^\/[a-z0-9-]+\s*/, '')}`); this.focus(); })) : empty('No skill matches.'));
+        clear(
+          list,
+          shown.length
+            ? shown.map((sk) =>
+                entry('skill', sk.name, null, () => {
+                  this.setText(`/${sk.name} ${this.textarea.value.replace(/^\/[a-z0-9-]+\s*/, '')}`);
+                  this.focus();
+                })
+              )
+            : empty('No skill matches.')
+        );
       };
       search.addEventListener('input', render);
       render();
@@ -3128,7 +3598,7 @@ class Composer {
       ...TOOL_GROUPS.map((g) => {
         const on = h('input', { type: 'checkbox', class: 'switch', checked: !g.names.every((n) => toolsOff.has(n)) });
         on.addEventListener('change', () => {
-          for (const n of g.names) (on.checked ? toolsOff.delete(n) : toolsOff.add(n));
+          for (const n of g.names) on.checked ? toolsOff.delete(n) : toolsOff.add(n);
           if (!on.checked && g.names.includes('generate_image')) this.setImage(null);
         });
         return h('label', { class: 'menu-item static', title: g.hint }, icon(g.icon, 16), h('span', { class: 'grow ellipsis' }, g.label), on);
@@ -3162,7 +3632,21 @@ class Composer {
       const libs = await tauriInvoke<{ id: string; name: string; documents: unknown[] }[]>('chat_list_libraries');
       return [
         heading('Search a library'),
-        ...(libs.length ? libs.map((l) => entry('library', l.name, `${l.documents.length} docs`, () => { this.library = l.name; this.renderChips(); this.renderBar(); }, this.library === l.name)) : [empty('No libraries yet.')]),
+        ...(libs.length
+          ? libs.map((l) =>
+              entry(
+                'library',
+                l.name,
+                `${l.documents.length} docs`,
+                () => {
+                  this.library = l.name;
+                  this.renderChips();
+                  this.renderBar();
+                },
+                this.library === l.name
+              )
+            )
+          : [empty('No libraries yet.')]),
         sep(),
         entry('settings', 'Manage libraries', null, () => navigate({ kind: 'page', page: 'libraries' })),
       ];
@@ -3208,12 +3692,14 @@ class Composer {
       return [
         heading('Attach again'),
         ...(files.length
-          ? files.map((f) => entry(f.image ? 'eye' : 'file', f.name, ago(f.usedAt), () => {
-              this.attachments.push({ name: f.name, text: f.text, image: f.image, file: true });
-              this.renderChips();
-              this.renderBar();
-              this.focus();
-            }))
+          ? files.map((f) =>
+              entry(f.image ? 'eye' : 'file', f.name, ago(f.usedAt), () => {
+                this.attachments.push({ name: f.name, text: f.text, image: f.image, file: true });
+                this.renderChips();
+                this.renderBar();
+                this.focus();
+              })
+            )
           : [empty('Files you attach show here.')]),
         files.length ? sep() : null,
         files.length ? entry('trash', 'Clear the list', null, () => void tauriInvoke('chat_forget_recent_file', { index: null }).then(() => toast('Recent files cleared.'))) : null,
@@ -3223,7 +3709,20 @@ class Composer {
       const all = await workflowsApi.list();
       return [
         heading('Run a workflow'),
-        ...all.map((w) => entry('workflow', w.name, `${liveWorkflow(w).steps.length} steps${w.production ? ' · production' : ''}`, () => { this.workflow = w; this.renderChips(); this.renderBar(); this.focus(); }, this.workflow?.id === w.id)),
+        ...all.map((w) =>
+          entry(
+            'workflow',
+            w.name,
+            `${liveWorkflow(w).steps.length} steps${w.production ? ' · production' : ''}`,
+            () => {
+              this.workflow = w;
+              this.renderChips();
+              this.renderBar();
+              this.focus();
+            },
+            this.workflow?.id === w.id
+          )
+        ),
         sep(),
         entry('plus', 'New workflow', null, () => editWorkflow(null, () => toast('Workflow saved.'))),
         entry('settings', 'Manage workflows', null, () => navigate({ kind: 'page', page: 'workflows' })),
@@ -3242,15 +3741,32 @@ class Composer {
       sub('library', 'Libraries', libraries),
       sub('workflow', 'Workflows', workflows),
       sub('chat', 'Other chats', chats),
-      item('file', 'Canvas', () => { this.useCanvas = true; this.renderChips(); this.focus(); }),
-      item('image', 'Create an image', () => { this.setImage(this.image ?? { shape: 'square', count: 1, template: null }); this.focus(); }),
+      item('file', 'Canvas', () => {
+        this.useCanvas = true;
+        this.renderChips();
+        this.focus();
+      }),
+      item('image', 'Create an image', () => {
+        this.setImage(this.image ?? { shape: 'square', count: 1, template: null });
+        this.focus();
+      }),
       sub('tool', 'Tools', tools),
       sep(),
-      item('reset', 'Reset input', () => { this.setText(''); this.attachments = []; this.folder = null; this.library = null; this.workflow = null; this.quote = null; this.useCanvas = false; this.setImage(null); this.renderChips(); this.renderBar(); })
+      item('reset', 'Reset input', () => {
+        this.setText('');
+        this.attachments = [];
+        this.folder = null;
+        this.library = null;
+        this.workflow = null;
+        this.quote = null;
+        this.useCanvas = false;
+        this.setImage(null);
+        this.renderChips();
+        this.renderBar();
+      })
     );
     close = popover(anchor, h('div', { class: 'plus-wrap' }, menu, flyout), 'below');
   }
-
 }
 
 export const composer = new Composer();
@@ -3337,9 +3853,38 @@ function openModelPicker(anchor: HTMLElement, onPick: () => void) {
       list,
       h('div', { class: 'menu-sep' }),
       state.view.kind === 'home' && state.models.length > 1
-        ? h('button', { class: 'menu-item', on: { click: () => { close(); openCompareDialog(() => { onPick(); composer.renderChips(); }); } } }, icon('apps', 16), 'Compare models…')
+        ? h(
+            'button',
+            {
+              class: 'menu-item',
+              on: {
+                click: () => {
+                  close();
+                  openCompareDialog(() => {
+                    onPick();
+                    composer.renderChips();
+                  });
+                },
+              },
+            },
+            icon('apps', 16),
+            'Compare models…'
+          )
         : null,
-      h('button', { class: 'menu-item', on: { click: () => { close(); void openSettings('providers'); } } }, icon('settings', 16), 'Manage providers')
+      h(
+        'button',
+        {
+          class: 'menu-item',
+          on: {
+            click: () => {
+              close();
+              void openSettings('providers');
+            },
+          },
+        },
+        icon('settings', 16),
+        'Manage providers'
+      )
     ),
     'above'
   );
@@ -3364,10 +3909,13 @@ function renderQuestion(conversationId: string, q: NonNullable<LiveTurn['questio
   const card = h(
     'div',
     { class: 'question-card' },
-    h('div', { class: 'question-head' }, h('strong', {}, q.question), h('button', { class: 'icon-btn small', title: 'Dismiss', on: { click: () => answer('(The user dismissed the question; continue with your best judgement.)') } }, icon('close', 16))),
-    ...q.options.map((option, i) =>
-      h('button', { class: 'question-option', on: { click: () => answer(option) } }, h('span', { class: 'num' }, String(i + 1)), h('span', {}, option), icon('send', 15))
+    h(
+      'div',
+      { class: 'question-head' },
+      h('strong', {}, q.question),
+      h('button', { class: 'icon-btn small', title: 'Dismiss', on: { click: () => answer('(The user dismissed the question; continue with your best judgement.)') } }, icon('close', 16))
     ),
+    ...q.options.map((option, i) => h('button', { class: 'question-option', on: { click: () => answer(option) } }, h('span', { class: 'num' }, String(i + 1)), h('span', {}, option), icon('send', 15))),
     h('div', { class: 'question-option free' }, h('span', { class: 'num' }, String(q.options.length + 1)), input),
     // Skip (Grok's "Ignorar"): the assistant decides by itself and goes on.
     h('div', { class: 'question-foot' }, h('small', { class: 'muted' }, 'Esc skips'), h('span', { class: 'spacer' }), h('button', { class: 'btn btn-ghost btn-sm', title: 'Let the assistant choose and go on', on: { click: skip } }, 'Skip'))
@@ -3394,13 +3942,14 @@ function renderApprovals(): HTMLElement | null {
     state.approvals.shift();
     changed();
   };
-  const reason = request.reason?.kind === 'auto'
-    ? h('p', { class: 'approval-risk auto' }, icon('sparkle', 14), `Auto checked this and wants your OK: ${request.reason.detail ?? 'it goes beyond what you asked'}.`)
-    : request.reason?.kind === 'risky'
-    ? h('p', { class: 'approval-risk' }, icon('shield', 14), `This asks even in the current mode: ${request.reason.detail ?? 'it is hard to undo'}.`)
-    : request.reason
-    ? h('p', { class: 'muted' }, `This conversation has read content from ${request.reason.sources.join(', ') || 'an untrusted source'}, so the call needs your approval.`)
-    : null;
+  const reason =
+    request.reason?.kind === 'auto'
+      ? h('p', { class: 'approval-risk auto' }, icon('sparkle', 14), `Auto checked this and wants your OK: ${request.reason.detail ?? 'it goes beyond what you asked'}.`)
+      : request.reason?.kind === 'risky'
+        ? h('p', { class: 'approval-risk' }, icon('shield', 14), `This asks even in the current mode: ${request.reason.detail ?? 'it is hard to undo'}.`)
+        : request.reason
+          ? h('p', { class: 'muted' }, `This conversation has read content from ${request.reason.sources.join(', ') || 'an untrusted source'}, so the call needs your approval.`)
+          : null;
   return h(
     'div',
     { class: 'approval-card' },
@@ -3409,8 +3958,8 @@ function renderApprovals(): HTMLElement | null {
     request.tool_name === 'start' && request.connector_id === 'terminal'
       ? h('pre', { class: 'step-pre' }, h('code', {}, `$ ${String((request.input as { command?: unknown }).command ?? '')}`))
       : request.tool_name === 'run_code' && typeof (request.input as { code?: unknown }).code === 'string'
-      ? h('pre', { class: 'step-pre' }, h('code', {}, (request.input as { code: string }).code))
-      : h('pre', { class: 'step-pre' }, JSON.stringify(request.input, null, 2)),
+        ? h('pre', { class: 'step-pre' }, h('code', {}, (request.input as { code: string }).code))
+        : h('pre', { class: 'step-pre' }, JSON.stringify(request.input, null, 2)),
     h(
       'div',
       { class: 'dialog-actions' },
@@ -3445,7 +3994,10 @@ let showMoreSuggestions = false;
 export class HomeView {
   readonly el = h('div', { class: 'home' });
   readonly key: string;
-  constructor(private projectId: string | null, private agentId: string | null = null) {
+  constructor(
+    private projectId: string | null,
+    private agentId: string | null = null
+  ) {
     this.key = `home:${projectId ?? ''}:${agentId ?? ''}:${state.mode}`;
     this.build();
   }
@@ -3460,25 +4012,26 @@ export class HomeView {
           'h1',
           { class: 'greeting' },
           'Ready for a session in ',
-          h('button', { class: 'folder-pick', on: { click: () => void pickWorkdir() } }, icon('folder', 26), state.workdir ? state.workdir.split(/[\\/]/).pop() ?? state.workdir : 'Choose a folder'),
+          h('button', { class: 'folder-pick', on: { click: () => void pickWorkdir() } }, icon('folder', 26), state.workdir ? (state.workdir.split(/[\\/]/).pop() ?? state.workdir) : 'Choose a folder'),
           '?'
         )
       : agent
         ? h('h1', { class: 'greeting' }, `What should ${agent.name} do?`)
         : h('h1', { class: 'greeting' }, project ? `${project.icon ? `${project.icon} ` : ''}New chat in ${project.name}` : greeting(state.instructions.name));
     // Code sessions can each get their own git worktree (Vibe's worktrees).
-    const worktreeToggle = code && state.workdir
-      ? h(
-          'label',
-          { class: 'worktree-toggle', title: 'The session works in a git worktree beside the repository, on a branch of its own, so the main checkout stays as it is' },
-          (() => {
-            const box = h('input', { type: 'checkbox', checked: worktreeNext() });
-            box.addEventListener('change', () => setWorktreeNext(box.checked));
-            return box;
-          })(),
-          h('span', {}, 'In a new worktree, on its own branch')
-        )
-      : null;
+    const worktreeToggle =
+      code && state.workdir
+        ? h(
+            'label',
+            { class: 'worktree-toggle', title: 'The session works in a git worktree beside the repository, on a branch of its own, so the main checkout stays as it is' },
+            (() => {
+              const box = h('input', { type: 'checkbox', checked: worktreeNext() });
+              box.addEventListener('change', () => setWorktreeNext(box.checked));
+              return box;
+            })(),
+            h('span', {}, 'In a new worktree, on its own branch')
+          )
+        : null;
     composer.attach(null, code ? 'What do you want to build?' : 'Type / for quick access');
     const dismiss = h('button', { class: 'icon-btn small', title: 'Dismiss' }, icon('close', 16));
     dismiss.addEventListener('click', () => {
@@ -3505,31 +4058,65 @@ export class HomeView {
           'div',
           { class: 'suggestions' },
           agent.starters.map((text) =>
-            h('button', { class: 'suggestion', on: { click: () => { composer.setText(text); void composer.submit(); } } }, icon('sparkle', 17), text)
-          )
-        )
-      : null;
-    const suggestions = code || agent
-      ? starters
-      : h(
-          'div',
-          { class: 'suggestions' },
-          SUGGESTIONS.filter((s) => showMoreSuggestions || !s.more).map((s) =>
             h(
               'button',
               {
                 class: 'suggestion',
-                on: { click: () => (s.page ? navigate({ kind: 'page', page: 'connectors' }) : s.image ? (composer.setImage({ shape: 'square', count: 1, template: null }), composer.focus()) : (composer.setText(s.text), composer.focus())) },
+                on: {
+                  click: () => {
+                    composer.setText(text);
+                    void composer.submit();
+                  },
+                },
               },
-              icon(s.icon, 17),
-              s.text.replace(/: $/, '')
+              icon('sparkle', 17),
+              text
             )
-          ),
-          showMoreSuggestions
-            ? null
-            : h('button', { class: 'suggestion', on: { click: () => { showMoreSuggestions = true; this.build(); } } }, icon('more', 17), 'Discover more')
-        );
-    const ghost = h('button', { class: `temp-toggle icon-only${temporaryNext ? ' on' : ''}`, title: temporaryNext ? 'Temporary chat: on (not saved to history)' : 'Temporary chat' }, icon('chatDashed', 20), temporaryNext ? h('span', {}, 'Temporary') : null);
+          )
+        )
+      : null;
+    const suggestions =
+      code || agent
+        ? starters
+        : h(
+            'div',
+            { class: 'suggestions' },
+            SUGGESTIONS.filter((s) => showMoreSuggestions || !s.more).map((s) =>
+              h(
+                'button',
+                {
+                  class: 'suggestion',
+                  on: {
+                    click: () => (s.page ? navigate({ kind: 'page', page: 'connectors' }) : s.image ? (composer.setImage({ shape: 'square', count: 1, template: null }), composer.focus()) : (composer.setText(s.text), composer.focus())),
+                  },
+                },
+                icon(s.icon, 17),
+                s.text.replace(/: $/, '')
+              )
+            ),
+            showMoreSuggestions
+              ? null
+              : h(
+                  'button',
+                  {
+                    class: 'suggestion',
+                    on: {
+                      click: () => {
+                        showMoreSuggestions = true;
+                        this.build();
+                      },
+                    },
+                  },
+                  icon('more', 17),
+                  'Discover more'
+                )
+          );
+    const ghost = h(
+      'button',
+      { class: `temp-toggle icon-only${temporaryNext ? ' on' : ''}`, title: temporaryNext ? 'Temporary chat: on (not saved to history)' : 'Temporary chat' },
+      icon('chatDashed', 20),
+      temporaryNext ? h('span', {}, 'Temporary') : null
+    );
     ghost.addEventListener('click', () => {
       temporaryNext = !temporaryNext;
       this.build();
@@ -3537,7 +4124,16 @@ export class HomeView {
     clear(
       this.el,
       code ? null : ghost,
-      h('div', { class: 'home-inner' }, agent ? h('span', { class: 'agent-avatar large' }, agent.avatar || agent.name.charAt(0)) : h('div', { class: 'brand-mark' }), title, h('div', { class: 'composer-wrap' }, banner, composer.el), worktreeToggle, suggestions, agent ? agentPanel(agent.id) : null)
+      h(
+        'div',
+        { class: 'home-inner' },
+        agent ? h('span', { class: 'agent-avatar large' }, agent.avatar || agent.name.charAt(0)) : h('div', { class: 'brand-mark' }),
+        title,
+        h('div', { class: 'composer-wrap' }, banner, composer.el),
+        worktreeToggle,
+        suggestions,
+        agent ? agentPanel(agent.id) : null
+      )
     );
     setTimeout(() => composer.focus());
   }
@@ -3557,8 +4153,13 @@ export class HomeView {
  */
 export function avatarHue(avatar: string): number {
   const known: [RegExp, number][] = [
-    [/[🍎🍓🍒🌹❤️🔥🚒🐞🦀]/u, 4], [/[🍊🧡🦊🎃🏀🥕]/u, 28], [/[🍋🌻⭐💛🐝🌟☀️]/u, 48], [/[🌿🍀🌱💚🐸🥝🌲🌵]/u, 135],
-    [/[🐳💧🌊💙🧊🦋🫐]/u, 205], [/[🍇🔮💜🦄☂️]/u, 275], [/[🌸🎀🩷🐷🌷]/u, 330],
+    [/[🍎🍓🍒🌹❤️🔥🚒🐞🦀]/u, 4],
+    [/[🍊🧡🦊🎃🏀🥕]/u, 28],
+    [/[🍋🌻⭐💛🐝🌟☀️]/u, 48],
+    [/[🌿🍀🌱💚🐸🥝🌲🌵]/u, 135],
+    [/[🐳💧🌊💙🧊🦋🫐]/u, 205],
+    [/[🍇🔮💜🦄☂️]/u, 275],
+    [/[🌸🎀🩷🐷🌷]/u, 330],
   ];
   for (const [re, hue] of known) if (re.test(avatar)) return hue;
   let hash = 0;
@@ -3824,9 +4425,7 @@ export class ChatView {
         // The branch switcher sits on the turn that varies: an edited message, or a regenerated answer.
         const previous = c.turns[i - 1];
         const v = c.versions.find(
-          (b) =>
-            (turn.role === 'user' && b.kind === 'prompt' && turn.index === b.from) ||
-            (turn.role === 'assistant' && b.kind === 'answer' && previous?.role === 'user' && (previous.index === b.from || previous.index + 1 === b.from))
+          (b) => (turn.role === 'user' && b.kind === 'prompt' && turn.index === b.from) || (turn.role === 'assistant' && b.kind === 'answer' && previous?.role === 'user' && (previous.index === b.from || previous.index + 1 === b.from))
         );
         const branch = v ? versionSwitcher(c.id, v) : null;
         const el = turn.role === 'user' ? renderUserTurn(turn, c.id, branch) : renderAssistantTurn(c, turn, i === last, running, branch);
@@ -3868,8 +4467,26 @@ export class ChatView {
           marked = true;
           items.push(h('div', { class: 'menu-note muted' }, '↑ summarized for the model'));
         }
-        const text = textOf(t.parts).replace(/<attachment[\s\S]*?<\/attachment>/g, '').replace(/\s+/g, ' ').trim();
-        items.push(h('button', { class: 'menu-item outline-item', on: { click: () => { close(); scrollToTurn(t.index); } } }, h('span', { class: 'outline-n' }, String(i + 1)), h('span', {}, text.length > 90 ? `${text.slice(0, 90)}…` : text || '(attachments)')));
+        const text = textOf(t.parts)
+          .replace(/<attachment[\s\S]*?<\/attachment>/g, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        items.push(
+          h(
+            'button',
+            {
+              class: 'menu-item outline-item',
+              on: {
+                click: () => {
+                  close();
+                  scrollToTurn(t.index);
+                },
+              },
+            },
+            h('span', { class: 'outline-n' }, String(i + 1)),
+            h('span', {}, text.length > 90 ? `${text.slice(0, 90)}…` : text || '(attachments)')
+          )
+        );
       });
       const close = popover(outlineBtn, h('div', { class: 'menu outline-menu' }, h('div', { class: 'menu-heading' }, `${prompts.length} messages`), items));
     });
@@ -3884,7 +4501,20 @@ export class ChatView {
           { class: 'menu bookmarks-menu' },
           h('div', { class: 'menu-heading' }, 'Bookmarks'),
           marks.map(([index, snippet]) =>
-            h('button', { class: 'menu-item rich', on: { click: () => { close(); if (!scrollToTurn(index)) toast('That message is in another version of this chat.'); } } }, icon('bookmark', 15), h('span', {}, snippet))
+            h(
+              'button',
+              {
+                class: 'menu-item rich',
+                on: {
+                  click: () => {
+                    close();
+                    if (!scrollToTurn(index)) toast('That message is in another version of this chat.');
+                  },
+                },
+              },
+              icon('bookmark', 15),
+              h('span', {}, snippet)
+            )
           )
         )
       );
@@ -3902,17 +4532,37 @@ export class ChatView {
           .catch(() => (this.changeCount = -1))
           .then(() => this.renderHeader());
       }
-      debugBtn = trigger({ icon: 'tool', label: 'Debug', title: 'The session\'s raw history and usage', chevron: false, onClick: () => openDebug(this.id) });
+      debugBtn = trigger({ icon: 'tool', label: 'Debug', title: "The session's raw history and usage", chevron: false, onClick: () => openDebug(this.id) });
       filesBtn = trigger({ icon: 'folder', label: 'Files', title: 'Browse the files in this folder', chevron: false, onClick: () => openFiles(this.id, workdir.split(/[\\/]/).pop() ?? workdir) });
       if (this.changeCount !== -1) {
         terminalBtn = trigger({ icon: 'terminal', label: 'Terminal', title: 'Background commands in this folder', chevron: false, onClick: () => openTerminal(this.id, workdir.split(/[\\/]/).pop() ?? workdir) });
-        changesBtn = trigger({ icon: 'file', label: 'Changes', title: 'Uncommitted changes in this folder', chevron: false, class: 'changes-btn', trailing: this.changeCount ? h('span', { class: 'count-badge' }, String(this.changeCount)) : null });
+        changesBtn = trigger({
+          icon: 'file',
+          label: 'Changes',
+          title: 'Uncommitted changes in this folder',
+          chevron: false,
+          class: 'changes-btn',
+          trailing: this.changeCount ? h('span', { class: 'count-badge' }, String(this.changeCount)) : null,
+        });
         changesBtn.addEventListener('click', () => openChanges(this.id, workdir.split(/[\\/]/).pop() ?? workdir));
       }
     }
     exportBtn.addEventListener('click', () => {
       const item = (ic: string, label: string, hint: string, run: () => void) =>
-        h('button', { class: 'menu-item rich', on: { click: () => { close(); run(); } } }, icon(ic, 17), h('span', {}, h('strong', {}, label), h('small', {}, hint)));
+        h(
+          'button',
+          {
+            class: 'menu-item rich',
+            on: {
+              click: () => {
+                close();
+                run();
+              },
+            },
+          },
+          icon(ic, 17),
+          h('span', {}, h('strong', {}, label), h('small', {}, hint))
+        );
       const close = popover(
         exportBtn,
         h(
@@ -3938,7 +4588,20 @@ export class ChatView {
         project || workdir ? h('span', { class: 'crumb-sep' }, '/') : null,
         titleBtn
       ),
-      h('div', { class: 'header-actions' }, filesBtn, terminalBtn, changesBtn, debugBtn, meter, outlineBtn, marksBtn, h('button', { class: 'icon-btn', title: 'Outputs: what this chat made', on: { click: () => void openOutputsPanel(this.id) } }, icon('outputs', 17)), pin, exportBtn)
+      h(
+        'div',
+        { class: 'header-actions' },
+        filesBtn,
+        terminalBtn,
+        changesBtn,
+        debugBtn,
+        meter,
+        outlineBtn,
+        marksBtn,
+        h('button', { class: 'icon-btn', title: 'Outputs: what this chat made', on: { click: () => void openOutputsPanel(this.id) } }, icon('outputs', 17)),
+        pin,
+        exportBtn
+      )
     );
   }
 
@@ -4004,7 +4667,18 @@ export class ChatView {
           { class: 'assistant' },
           h('div', { class: 'who' }, 'Assistant'),
           answer,
-          sources.length ? h('div', { class: 'sources' }, h('strong', {}, 'Sources'), h('ol', {}, sources.map((s) => h('li', {}, h('a', { href: s.url }, s.title), ` · ${hostOf(s.url)}`)))) : null
+          sources.length
+            ? h(
+                'div',
+                { class: 'sources' },
+                h('strong', {}, 'Sources'),
+                h(
+                  'ol',
+                  {},
+                  sources.map((s) => h('li', {}, h('a', { href: s.url }, s.title), ` · ${hostOf(s.url)}`))
+                )
+              )
+            : null
         )
       );
     }
@@ -4102,7 +4776,10 @@ function selectMessages(conversationId: string) {
     const user = turn.classList.contains('turn-user');
     const body = user
       ? [turn.querySelector<HTMLElement>('.bubble-text')?.innerText ?? '', ...[...turn.querySelectorAll<HTMLElement>('.bubble-file summary span')].map((f) => `[Attached: ${f.innerText}]`)].filter(Boolean).join('\n')
-      : [...turn.querySelectorAll<HTMLElement>('.markdown')].filter((m) => !m.closest('details, .activity') && !m.parentElement?.closest('.markdown')).map((m) => m.innerText).join('\n\n');
+      : [...turn.querySelectorAll<HTMLElement>('.markdown')]
+          .filter((m) => !m.closest('details, .activity') && !m.parentElement?.closest('.markdown'))
+          .map((m) => m.innerText)
+          .join('\n\n');
     return `${user ? 'You' : 'Assistant'}:\n${body.trim()}`;
   };
   const chosen = () => turns.filter((t) => selected.has(t));
@@ -4183,24 +4860,57 @@ function selectMessages(conversationId: string) {
           'div',
           { class: 'menu' },
           h('div', { class: 'menu-heading' }, 'Forward to'),
-          h('button', { class: 'menu-item', on: { click: () => { close(); forwardTo(null); } } }, icon('plus', 16), h('span', {}, 'A new chat')),
-          ...state.agents.map((a) => h('button', { class: 'menu-item', on: { click: () => { close(); forwardTo(a.id); } } }, icon('sparkle', 16), h('span', {}, a.name)))
+          h(
+            'button',
+            {
+              class: 'menu-item',
+              on: {
+                click: () => {
+                  close();
+                  forwardTo(null);
+                },
+              },
+            },
+            icon('plus', 16),
+            h('span', {}, 'A new chat')
+          ),
+          ...state.agents.map((a) =>
+            h(
+              'button',
+              {
+                class: 'menu-item',
+                on: {
+                  click: () => {
+                    close();
+                    forwardTo(a.id);
+                  },
+                },
+              },
+              icon('sparkle', 16),
+              h('span', {}, a.name)
+            )
+          )
         ),
         'above'
       );
     }),
-    action('trash', 'Delete', async () => {
-      const indices = chosen().map((t) => Number(t.dataset.index));
-      if (!(await confirmDialog(`Delete ${indices.length === 1 ? 'this message' : `${indices.length} messages`}?`, 'Each message goes with the question or answer it belongs to, and any other versions of them.', 'Delete'))) return;
-      try {
-        const n = await tauriInvoke<number>('chat_delete_exchanges', { id: conversationId, indices });
-        exit();
-        await viewCache.chat?.refresh(false);
-        toast(`Deleted ${n} ${n === 1 ? 'exchange' : 'exchanges'}.`);
-      } catch (e) {
-        toast(String(e), 'error');
-      }
-    }, true),
+    action(
+      'trash',
+      'Delete',
+      async () => {
+        const indices = chosen().map((t) => Number(t.dataset.index));
+        if (!(await confirmDialog(`Delete ${indices.length === 1 ? 'this message' : `${indices.length} messages`}?`, 'Each message goes with the question or answer it belongs to, and any other versions of them.', 'Delete'))) return;
+        try {
+          const n = await tauriInvoke<number>('chat_delete_exchanges', { id: conversationId, indices });
+          exit();
+          await viewCache.chat?.refresh(false);
+          toast(`Deleted ${n} ${n === 1 ? 'exchange' : 'exchanges'}.`);
+        } catch (e) {
+          toast(String(e), 'error');
+        }
+      },
+      true
+    ),
     h('button', { class: 'btn btn-sm btn-ghost', on: { click: () => exit() } }, 'Done')
   );
   document.addEventListener('keydown', onKey);
@@ -4210,7 +4920,20 @@ function selectMessages(conversationId: string) {
 
 export function conversationMenu(anchor: HTMLElement, id: string, title: string, pinned: boolean) {
   const item = (ic: string, label: string, action: () => void, danger = false) =>
-    h('button', { class: `menu-item${danger ? ' danger' : ''}`, on: { click: () => { close(); action(); } } }, icon(ic, 16), label);
+    h(
+      'button',
+      {
+        class: `menu-item${danger ? ' danger' : ''}`,
+        on: {
+          click: () => {
+            close();
+            action();
+          },
+        },
+      },
+      icon(ic, 16),
+      label
+    );
   const close = popover(
     anchor,
     h(
@@ -4245,18 +4968,28 @@ export function conversationMenu(anchor: HTMLElement, id: string, title: string,
                   { class: 'menu' },
                   h('div', { class: 'menu-heading' }, 'Continue with'),
                   state.agents.map((a) =>
-                    h('button', { class: 'menu-item', on: { click: async () => {
-                      close();
-                      try {
-                        const next = await api.forkConversation(id, null, false, a.id);
-                        await refreshConversations();
-                        state.mode = 'agents';
-                        navigate({ kind: 'chat', id: next });
-                        toast(`${a.name} has the conversation now.`);
-                      } catch (e) {
-                        toast(String(e), 'error');
-                      }
-                    } } }, h('span', { class: 'agent-avatar small' }, a.avatar || a.name.charAt(0)), h('span', {}, a.name))
+                    h(
+                      'button',
+                      {
+                        class: 'menu-item',
+                        on: {
+                          click: async () => {
+                            close();
+                            try {
+                              const next = await api.forkConversation(id, null, false, a.id);
+                              await refreshConversations();
+                              state.mode = 'agents';
+                              navigate({ kind: 'chat', id: next });
+                              toast(`${a.name} has the conversation now.`);
+                            } catch (e) {
+                              toast(String(e), 'error');
+                            }
+                          },
+                        },
+                      },
+                      h('span', { class: 'agent-avatar small' }, a.avatar || a.name.charAt(0)),
+                      h('span', {}, a.name)
+                    )
                   )
                 )
               );
@@ -4273,7 +5006,14 @@ export function conversationMenu(anchor: HTMLElement, id: string, title: string,
       item('expand', 'Open in new window', () => void call('chat_open_chat_window', { id }).catch(shown)),
       item('download', 'Print or save as PDF', () => void printConversation(id, title)),
       item('image', 'Export as image', () => void exportImage(id)),
-      item('code', 'Export as JSON', () => void tauriInvoke<boolean>('chat_export_conversation_json', { id }).then((saved) => saved && toast('Conversation exported.')).catch((e) => toast(String(e), 'error'))),
+      item(
+        'code',
+        'Export as JSON',
+        () =>
+          void tauriInvoke<boolean>('chat_export_conversation_json', { id })
+            .then((saved) => saved && toast('Conversation exported.'))
+            .catch((e) => toast(String(e), 'error'))
+      ),
       item('settings', 'Chat settings…', () => void openChatSettings(id)),
       item('dot', 'Mark as unread', async () => {
         await api.updateConversation({ id, unread: true });
@@ -4295,13 +5035,18 @@ export function conversationMenu(anchor: HTMLElement, id: string, title: string,
         toast(archived ? 'Archived. Find it under Archived at the end of the list.' : 'Back in your conversations.');
       }),
       h('div', { class: 'menu-sep' }),
-      item('trash', 'Delete', async () => {
-        if (await confirmDialog('Delete conversation?', `“${title}” moves to Recently deleted, where it stays for 30 days (Settings → Profile).`)) {
-          await api.deleteConversation(id);
-          if (state.view.kind === 'chat' && state.view.id === id) navigate({ kind: 'home' });
-          await refreshConversations();
-        }
-      }, true)
+      item(
+        'trash',
+        'Delete',
+        async () => {
+          if (await confirmDialog('Delete conversation?', `“${title}” moves to Recently deleted, where it stays for 30 days (Settings → Profile).`)) {
+            await api.deleteConversation(id);
+            if (state.view.kind === 'chat' && state.view.id === id) navigate({ kind: 'home' });
+            await refreshConversations();
+          }
+        },
+        true
+      )
     )
   );
 }
@@ -4380,7 +5125,22 @@ function followUpRow(id: string): HTMLElement | null {
     'div',
     { class: 'follow-ups' },
     h('span', { class: 'follow-ups-label' }, 'Follow-ups'),
-    list.map((text) => h('button', { class: 'follow-up', on: { click: () => { followUps.delete(id); void send(text, id); } } }, icon('forward', 14), h('span', {}, text)))
+    list.map((text) =>
+      h(
+        'button',
+        {
+          class: 'follow-up',
+          on: {
+            click: () => {
+              followUps.delete(id);
+              void send(text, id);
+            },
+          },
+        },
+        icon('forward', 14),
+        h('span', {}, text)
+      )
+    )
   );
 }
 
@@ -4416,12 +5176,7 @@ async function openChatSettings(id: string) {
       h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Longest reply (tokens)'), maxTokens),
       h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Top-p'), topP, h('span', { class: 'field-hint' }, 'Only the likeliest words adding up to this share are considered; lower is more predictable.')),
       h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Instructions for this chat'), instructions, h('span', { class: 'field-hint' }, 'Added to your standing instructions.')),
-      h(
-        'div',
-        { class: 'dialog-actions' },
-        h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'),
-        h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Save')
-      )
+      h('div', { class: 'dialog-actions' }, h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Save'))
     );
   });
 }
@@ -4453,7 +5208,13 @@ async function showContext(id: string) {
         'div',
         { class: 'context-legend' },
         view.slices.map((s, i) =>
-          h('div', { class: 'context-row' }, h('span', { class: 'context-dot', style: { background: SLICE_COLORS[i % SLICE_COLORS.length]! } }), h('span', { class: 'grow' }, s.label), h('span', { class: 'muted' }, `${k(s.tokens)} · ${((s.tokens / view.window) * 100).toFixed(1)}%`))
+          h(
+            'div',
+            { class: 'context-row' },
+            h('span', { class: 'context-dot', style: { background: SLICE_COLORS[i % SLICE_COLORS.length]! } }),
+            h('span', { class: 'grow' }, s.label),
+            h('span', { class: 'muted' }, `${k(s.tokens)} · ${((s.tokens / view.window) * 100).toFixed(1)}%`)
+          )
         )
       ),
       view.summarizedMessages ? h('p', { class: 'muted small' }, `${view.summarizedMessages} earlier messages are carried as a summary.`) : null,
@@ -4550,7 +5311,9 @@ async function saveToLibrary(anchor: HTMLElement, url: string) {
       'div',
       { class: 'menu' },
       h('div', { class: 'menu-heading' }, 'Save page to'),
-      libraries.length ? libraries.map((l) => h('button', { class: 'menu-item', on: { click: () => void save(l.id, l.name) } }, icon('library', 15), h('span', {}, l.name))) : h('p', { class: 'muted menu-note' }, 'No libraries yet: make one under Libraries.')
+      libraries.length
+        ? libraries.map((l) => h('button', { class: 'menu-item', on: { click: () => void save(l.id, l.name) } }, icon('library', 15), h('span', {}, l.name)))
+        : h('p', { class: 'muted menu-note' }, 'No libraries yet: make one under Libraries.')
     )
   );
 }
@@ -4607,11 +5370,16 @@ export function openChatBeside(id: string) {
   const current = state.view.id;
   const body = h('div', { class: 'chat-beside' }, h('p', { class: 'muted small' }, 'Loading…'));
   const title = h('strong', { class: 'panel-title' }, state.conversations.find((c) => c.id === id)?.title || 'Chat');
-  const swap = iconButton({ icon: 'columns', title: 'Swap: this one in front, the current one beside', size: 'sm', onClick: () => {
-    closePanel();
-    navigate({ kind: 'chat', id });
-    setTimeout(() => openChatBeside(current), 500);
-  } });
+  const swap = iconButton({
+    icon: 'columns',
+    title: 'Swap: this one in front, the current one beside',
+    size: 'sm',
+    onClick: () => {
+      closePanel();
+      navigate({ kind: 'chat', id });
+      setTimeout(() => openChatBeside(current), 500);
+    },
+  });
   const open = iconButton({ icon: 'expand', title: 'Open this chat', size: 'sm', onClick: () => navigate({ kind: 'chat', id }) });
   const close = iconButton({ icon: 'close', title: 'Close', size: 'sm', onClick: closePanel });
   const panel = h('div', { class: 'panel-inner' }, h('div', { class: 'panel-head' }, icon('chat', 15), title, h('span', { class: 'spacer' }), swap, open, close), body);
@@ -4632,7 +5400,14 @@ export function openChatBeside(id: string) {
           c.turns.length
             ? c.turns.map((t) =>
                 t.role === 'user'
-                  ? h('div', { class: 'beside-user' }, t.parts.filter((p) => p.kind === 'text').map((p) => (p as { text: string }).text.replace(/<attachment[\s\S]*$/, '').trim()).join('\n'))
+                  ? h(
+                      'div',
+                      { class: 'beside-user' },
+                      t.parts
+                        .filter((p) => p.kind === 'text')
+                        .map((p) => (p as { text: string }).text.replace(/<attachment[\s\S]*$/, '').trim())
+                        .join('\n')
+                    )
                   : h('div', { class: 'beside-assistant' }, renderParts(t.parts, c.running && t === c.turns[c.turns.length - 1], `${id}:${t.index}`))
               )
             : h('p', { class: 'muted small' }, 'Nothing here yet.')
@@ -4816,7 +5591,22 @@ function setBlindCompare(on: boolean) {
 export async function openLeaderboard() {
   const board = await tauriInvoke<{ model: string; rating: number; wins: number; losses: number }[]>('chat_arena_board').catch(() => []);
   await modal((close) => {
-    const reset = h('button', { class: 'btn btn-secondary', on: { click: async () => { if (await confirmDialog('Reset the leaderboard?', 'Every recorded comparison is forgotten.', 'Reset')) { await tauriInvoke('chat_arena_reset'); close(); toast('Leaderboard reset.'); } } } }, 'Reset');
+    const reset = h(
+      'button',
+      {
+        class: 'btn btn-secondary',
+        on: {
+          click: async () => {
+            if (await confirmDialog('Reset the leaderboard?', 'Every recorded comparison is forgotten.', 'Reset')) {
+              await tauriInvoke('chat_arena_reset');
+              close();
+              toast('Leaderboard reset.');
+            }
+          },
+        },
+      },
+      'Reset'
+    );
     return h(
       'div',
       { class: 'dialog-small wide' },
@@ -4827,7 +5617,11 @@ export async function openLeaderboard() {
             'table',
             { class: 'leaderboard' },
             h('thead', {}, h('tr', {}, h('th', {}, '#'), h('th', {}, 'Model'), h('th', {}, 'Rating'), h('th', {}, 'Won'), h('th', {}, 'Lost'))),
-            h('tbody', {}, board.map((s, i) => h('tr', {}, h('td', {}, String(i + 1)), h('td', {}, modelName(s.model)), h('td', {}, String(s.rating)), h('td', {}, String(s.wins)), h('td', {}, String(s.losses)))))
+            h(
+              'tbody',
+              {},
+              board.map((s, i) => h('tr', {}, h('td', {}, String(i + 1)), h('td', {}, modelName(s.model)), h('td', {}, String(s.rating)), h('td', {}, String(s.wins)), h('td', {}, String(s.losses))))
+            )
           )
         : h('p', { class: 'muted' }, 'No comparisons decided yet. Compare 2–3 models from a new chat and keep the best answer.'),
       h('div', { class: 'dialog-actions' }, board.length ? reset : null, h('span', { class: 'spacer' }), h('button', { class: 'btn btn-primary', on: { click: close } }, 'Close'))

@@ -39,7 +39,11 @@ export function inStatus(c: Pick<ConversationSummary, 'archived' | 'unread' | 'p
 export class ChatsPage {
   readonly el = h('div', { class: 'page chats-page' });
   readonly key = 'page:chats';
-  private status: Status = stored('cortex.chatsTab', 'all', STATUSES.map(([s]) => s));
+  private status: Status = stored(
+    'cortex.chatsTab',
+    'all',
+    STATUSES.map(([s]) => s)
+  );
   private layout: Layout = stored('cortex.chatsLayout', 'list', ['list', 'cards'] as const);
   private query = '';
   private tabs = h('div', { class: 'tabs' });
@@ -67,13 +71,47 @@ export class ChatsPage {
       this.tabs,
       STATUSES.map(([s, label]) => {
         const n = all.filter((c) => inStatus(c, s)).length;
-        return h('button', { class: `tab${this.status === s ? ' active' : ''}`, on: { click: () => { this.status = s; keep('cortex.chatsTab', s); this.update(); } } }, label, h('span', { class: 'tab-count' }, String(n)));
+        return h(
+          'button',
+          {
+            class: `tab${this.status === s ? ' active' : ''}`,
+            on: {
+              click: () => {
+                this.status = s;
+                keep('cortex.chatsTab', s);
+                this.update();
+              },
+            },
+          },
+          label,
+          h('span', { class: 'tab-count' }, String(n))
+        );
       })
     );
     clear(
       this.views,
-      ([['list', 'list', 'List'], ['cards', 'grid', 'Cards']] as [Layout, string, string][]).map(([l, ic, title]) =>
-        h('button', { class: `icon-btn${this.layout === l ? ' active' : ''}`, title, 'aria-pressed': String(this.layout === l), on: { click: () => { this.layout = l; keep('cortex.chatsLayout', l); this.update(); } } }, icon(ic, 16))
+      (
+        [
+          ['list', 'list', 'List'],
+          ['cards', 'grid', 'Cards'],
+        ] as [Layout, string, string][]
+      ).map(([l, ic, title]) =>
+        h(
+          'button',
+          {
+            class: `icon-btn${this.layout === l ? ' active' : ''}`,
+            title,
+            'aria-pressed': String(this.layout === l),
+            on: {
+              click: () => {
+                this.layout = l;
+                keep('cortex.chatsLayout', l);
+                this.update();
+              },
+            },
+          },
+          icon(ic, 16)
+        )
       )
     );
     const shown = all
@@ -84,18 +122,22 @@ export class ChatsPage {
     const agentOf = (c: ConversationSummary) => state.agents.find((a) => a.id === c.agentId);
     const where = (c: ConversationSummary) => agentOf(c)?.name ?? state.projects.find((p) => p.id === c.projectId)?.name ?? (c.workdir ? c.workdir.split(/[\\/]/).pop() : '') ?? '';
     const archiveBtn = (c: ConversationSummary) =>
-      h('button', {
-        class: 'icon-btn small',
-        title: c.archived ? 'Restore from the archive' : 'Archive',
-        on: {
-          click: async (e: MouseEvent) => {
-            e.stopPropagation();
-            await api.updateConversation({ id: c.id, archived: !c.archived });
-            state.conversations = await api.conversations();
-            changed();
+      h(
+        'button',
+        {
+          class: 'icon-btn small',
+          title: c.archived ? 'Restore from the archive' : 'Archive',
+          on: {
+            click: async (e: MouseEvent) => {
+              e.stopPropagation();
+              await api.updateConversation({ id: c.id, archived: !c.archived });
+              state.conversations = await api.conversations();
+              changed();
+            },
           },
         },
-      }, icon('archive', 15));
+        icon('archive', 15)
+      );
     if (this.layout === 'cards') {
       clear(
         this.body,
@@ -108,7 +150,14 @@ export class ChatsPage {
               { class: 'chat-card', on: { click: () => navigate({ kind: 'chat', id: c.id }) } },
               h('div', { class: 'chat-card-head' }, c.unread ? h('span', { class: 'unread-dot' }) : null, c.pinned ? icon('pin', 13) : null, h('strong', { class: 'grow' }, c.title || 'Untitled'), archiveBtn(c)),
               h('p', { class: 'chat-card-preview' }, c.preview || ''),
-              h('div', { class: 'chat-card-foot muted' }, where(c) ? h('span', {}, where(c)) : null, c.tags.map((t) => h('span', { class: 'tag' }, `#${t}`)), h('span', { class: 'spacer' }), h('span', {}, timeLabel(c.updatedAt)))
+              h(
+                'div',
+                { class: 'chat-card-foot muted' },
+                where(c) ? h('span', {}, where(c)) : null,
+                c.tags.map((t) => h('span', { class: 'tag' }, `#${t}`)),
+                h('span', { class: 'spacer' }),
+                h('span', {}, timeLabel(c.updatedAt))
+              )
             )
           )
         )

@@ -22,7 +22,10 @@ const part = (i: number): Part => {
 test('a turn starts fresh, and text and reasoning deltas join their part', () => {
   send({ type: 'started' }, { type: 'reasoning', text: 'thinking ' }, { type: 'reasoning', text: 'more' }, { type: 'text', text: 'Hel' }, { type: 'text', text: 'lo' });
   assert.equal(live().seenStart, true);
-  assert.deepEqual(live().parts, [{ kind: 'reasoning', text: 'thinking more' }, { kind: 'text', text: 'Hello' }]);
+  assert.deepEqual(live().parts, [
+    { kind: 'reasoning', text: 'thinking more' },
+    { kind: 'text', text: 'Hello' },
+  ]);
   assert.equal(live().ends[0] !== undefined, true, 'starting the text part ended the reasoning part');
 });
 

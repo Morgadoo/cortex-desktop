@@ -24,7 +24,10 @@ export function variablesIn(text: string, known: Record<string, string>): Variab
   for (const m of text.matchAll(PATTERN)) {
     const name = m[1]!.trim();
     if (name.toLowerCase() in known || out.some((v) => v.name === name)) continue;
-    const options = (m[4] ?? '').split('|').map((o) => o.trim()).filter(Boolean);
+    const options = (m[4] ?? '')
+      .split('|')
+      .map((o) => o.trim())
+      .filter(Boolean);
     out.push({ name, type: (m[3] as InputType | undefined) ?? 'text', options, optional: Boolean(m[2]) });
   }
   return out;

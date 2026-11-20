@@ -106,13 +106,24 @@ function showPanel() {
               closeTab(t.id);
             });
             const where = t.id === panelId ? ' active' : t.id === splitId ? ' beside' : '';
-            return h('button', { class: `panel-tab${where}`, title: t.title, on: { click: () => {
-              // Split: a tab clicked goes in the pane it is not already in.
-              if (splitId && t.id !== panelId && t.id !== splitId) splitId = t.id;
-              else if (t.id === splitId) [panelId, splitId] = [splitId, panelId];
-              else panelId = t.id;
-              showPanel();
-            } } }, h('span', { class: 'panel-tab-title' }, t.title), close);
+            return h(
+              'button',
+              {
+                class: `panel-tab${where}`,
+                title: t.title,
+                on: {
+                  click: () => {
+                    // Split: a tab clicked goes in the pane it is not already in.
+                    if (splitId && t.id !== panelId && t.id !== splitId) splitId = t.id;
+                    else if (t.id === splitId) [panelId, splitId] = [splitId, panelId];
+                    else panelId = t.id;
+                    showPanel();
+                  },
+                },
+              },
+              h('span', { class: 'panel-tab-title' }, t.title),
+              close
+            );
           }),
           h('span', { class: 'spacer' }),
           splitBtn
@@ -214,7 +225,10 @@ function viewSwitch(app: AppInfo, body: HTMLElement, frameClass = '') {
 }
 
 function download(id: string) {
-  void api.export(id).then((saved) => saved && toast('App saved.')).catch((e) => toast(String(e), 'error'));
+  void api
+    .export(id)
+    .then((saved) => saved && toast('App saved.'))
+    .catch((e) => toast(String(e), 'error'));
 }
 
 export function openAppPanel(app: AppInfo) {
@@ -223,7 +237,10 @@ export function openAppPanel(app: AppInfo) {
   const close = iconButton({ icon: 'close', title: 'Close', size: 'sm' });
   close.addEventListener('click', closePanel);
   const copy = iconButton({ icon: 'copy', title: 'Copy code', size: 'sm' });
-  copy.addEventListener('click', () => { void navigator.clipboard.writeText(appCodeText(app.code)); toast('Code copied.'); });
+  copy.addEventListener('click', () => {
+    void navigator.clipboard.writeText(appCodeText(app.code));
+    toast('Code copied.');
+  });
   const full = iconButton({ icon: 'expand', title: 'Full screen', size: 'sm' });
   full.addEventListener('click', () => void modal((done) => h('div', { class: 'app-modal' }, modalHeader(app.title, done), appFrame(app.id, app.version)), true));
   const windowed = iconButton({ icon: 'share', title: 'Open in a window of its own', size: 'sm' });
@@ -255,11 +272,7 @@ export function openAppPanel(app: AppInfo) {
 function renderAppCard(part: Extract<Part, { kind: 'tool' }>, live: boolean): HTMLElement {
   const title = typeof part.arguments.title === 'string' && part.arguments.title ? part.arguments.title : 'App';
   // A multi-file app sends `files`; it is kept as the same bundle the app is stored as.
-  const code = Array.isArray(part.arguments.files)
-    ? JSON.stringify({ lumoAppFiles: part.arguments.files })
-    : typeof part.arguments.content === 'string'
-      ? part.arguments.content
-      : '';
+  const code = Array.isArray(part.arguments.files) ? JSON.stringify({ lumoAppFiles: part.arguments.files }) : typeof part.arguments.content === 'string' ? part.arguments.content : '';
   const id = idOf(part);
   let version = 0;
   try {
@@ -314,7 +327,11 @@ export function renderCanvasCard(part: Extract<Part, { kind: 'tool' }>, live: bo
   const download = iconButton({ icon: 'download', title: 'Download as Markdown', size: 'sm' });
   download.addEventListener('click', () => {
     const id = idOf(part);
-    if (id) void api.export(id).then((saved) => saved && toast('Canvas saved.')).catch((e) => toast(String(e), 'error'));
+    if (id)
+      void api
+        .export(id)
+        .then((saved) => saved && toast('Canvas saved.'))
+        .catch((e) => toast(String(e), 'error'));
   });
   const edit = button({ variant: 'subtle', size: 'sm', icon: 'edit', label: 'Edit', title: 'Edit' });
   edit.addEventListener('click', async () => {
@@ -349,34 +366,64 @@ export function renderCanvasCard(part: Extract<Part, { kind: 'tool' }>, live: bo
     const render = () => {
       const version = canvas.versions[at]!;
       const previous = canvas.versions[at - 1];
-      const prev = iconButton({ icon: 'back', title: 'Older version', size: 'sm', onClick: () => { at -= 1; render(); } });
-      const next = iconButton({ icon: 'forward', title: 'Newer version', size: 'sm', onClick: () => { at += 1; render(); } });
+      const prev = iconButton({
+        icon: 'back',
+        title: 'Older version',
+        size: 'sm',
+        onClick: () => {
+          at -= 1;
+          render();
+        },
+      });
+      const next = iconButton({
+        icon: 'forward',
+        title: 'Newer version',
+        size: 'sm',
+        onClick: () => {
+          at += 1;
+          render();
+        },
+      });
       prev.disabled = at === 0;
       next.disabled = at === canvas.versions.length - 1;
-      const changes = button({ variant: showChanges ? 'secondary' : 'subtle', size: 'sm', label: 'Changes', onClick: () => { showChanges = !showChanges; render(); } });
+      const changes = button({
+        variant: showChanges ? 'secondary' : 'subtle',
+        size: 'sm',
+        label: 'Changes',
+        onClick: () => {
+          showChanges = !showChanges;
+          render();
+        },
+      });
       changes.disabled = !previous;
-      const restore = at < canvas.versions.length - 1
-        ? button({
-            variant: 'secondary',
-            size: 'sm',
-            icon: 'reset',
-            label: 'Restore',
-            onClick: async () => {
-              const saved = await api.save(id, canvas.title, version.content);
-              canvas.versions = saved.versions;
-              content = version.content;
-              at = canvas.versions.length - 1;
-              showChanges = false;
-              render();
-              toast('Restored as a new version. The assistant sees it on its next reply.');
-            },
-          })
-        : null;
+      const restore =
+        at < canvas.versions.length - 1
+          ? button({
+              variant: 'secondary',
+              size: 'sm',
+              icon: 'reset',
+              label: 'Restore',
+              onClick: async () => {
+                const saved = await api.save(id, canvas.title, version.content);
+                canvas.versions = saved.versions;
+                content = version.content;
+                at = canvas.versions.length - 1;
+                showChanges = false;
+                render();
+                toast('Restored as a new version. The assistant sees it on its next reply.');
+              },
+            })
+          : null;
       const who = version.author === 'user' ? 'you' : 'the assistant';
       clear(
         historyBar,
         prev,
-        h('span', { class: 'history-label' }, `Version ${at + 1} of ${canvas.versions.length}`, h('small', { class: 'muted' }, ` · by ${who}, ${new Date(version.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: clockHour12() })}`)),
+        h(
+          'span',
+          { class: 'history-label' },
+          `Version ${at + 1} of ${canvas.versions.length}`,
+          h('small', { class: 'muted' }, ` · by ${who}, ${new Date(version.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: clockHour12() })}`)
+        ),
         next,
         h('span', { class: 'spacer' }),
         changes,
@@ -443,7 +490,15 @@ function openEditor(title: string, content: string, onSave: (title: string, cont
       modalHeader(titleInput, close),
       markdownToolbar(area, renderPreview),
       h('div', { class: 'canvas-split' }, area, preview),
-      h('div', { class: 'dialog-actions canvas-actions' }, improveButton(area, renderPreview), h('span', { class: 'hint' }, 'Markdown · Ctrl+S saves a new version'), h('span', { class: 'spacer' }), h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'), h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Save'))
+      h(
+        'div',
+        { class: 'dialog-actions canvas-actions' },
+        improveButton(area, renderPreview),
+        h('span', { class: 'hint' }, 'Markdown · Ctrl+S saves a new version'),
+        h('span', { class: 'spacer' }),
+        h('button', { class: 'btn btn-secondary', on: { click: close } }, 'Cancel'),
+        h('button', { class: 'btn btn-primary', on: { click: () => void save() } }, 'Save')
+      )
     );
   }, true);
 }

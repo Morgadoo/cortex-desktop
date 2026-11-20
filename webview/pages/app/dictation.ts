@@ -100,10 +100,14 @@ function mediaRecorder(stream: MediaStream, release: () => void): Recording {
   return {
     stop: () =>
       new Promise<Blob>((resolve) => {
-        recorder.addEventListener('stop', () => {
-          release();
-          resolve(new Blob(chunks, { type: recorder.mimeType || type || 'audio/webm' }));
-        }, { once: true });
+        recorder.addEventListener(
+          'stop',
+          () => {
+            release();
+            resolve(new Blob(chunks, { type: recorder.mimeType || type || 'audio/webm' }));
+          },
+          { once: true }
+        );
         recorder.stop();
       }),
     cancel: () => {

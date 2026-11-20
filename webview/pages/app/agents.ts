@@ -86,14 +86,29 @@ export function newAgent(): Promise<void> {
     let current: Agent | null = null;
     const log = h('div', { class: 'builder-log' });
     const preview = h('div', { class: 'builder-preview' });
-    const review = button({ variant: 'primary', label: 'Review and save', onClick: () => { if (current) { close(); void editAgent(null, current); } } });
+    const review = button({
+      variant: 'primary',
+      label: 'Review and save',
+      onClick: () => {
+        if (current) {
+          close();
+          void editAgent(null, current);
+        }
+      },
+    });
     review.hidden = true;
     const showDraft = (agent: Agent) => {
       clear(
         preview,
         h('div', { class: 'builder-head' }, avatar(agent), h('div', {}, h('strong', {}, agent.name), h('div', { class: 'muted small' }, agent.description))),
         h('p', { class: 'builder-instructions' }, agent.instructions),
-        agent.tools.length ? h('div', { class: 'builder-tags' }, agent.tools.map((t) => h('span', { class: 'tag' }, t))) : null
+        agent.tools.length
+          ? h(
+              'div',
+              { class: 'builder-tags' },
+              agent.tools.map((t) => h('span', { class: 'tag' }, t))
+            )
+          : null
       );
     };
     const draft = button({
@@ -126,7 +141,14 @@ export function newAgent(): Promise<void> {
         }
       },
     });
-    const blank = button({ variant: 'secondary', label: 'Start from scratch', onClick: () => { close(); void editAgent(null); } });
+    const blank = button({
+      variant: 'secondary',
+      label: 'Start from scratch',
+      onClick: () => {
+        close();
+        void editAgent(null);
+      },
+    });
     text.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) draft.click();
     });
@@ -155,9 +177,7 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
       'select',
       { class: 'input' },
       h('option', { value: '' }, 'Nobody (top level)'),
-      ...state.agents
-        .filter((a) => a.id !== existing?.id && !under.has(a.id))
-        .map((a) => h('option', { value: a.id, selected: (existing?.reportsTo ?? '') === a.id }, a.title ? `${a.name} [${a.title}]` : a.name))
+      ...state.agents.filter((a) => a.id !== existing?.id && !under.has(a.id)).map((a) => h('option', { value: a.id, selected: (existing?.reportsTo ?? '') === a.id }, a.title ? `${a.name} [${a.title}]` : a.name))
     );
     const description = h('input', { class: 'input', value: base?.description ?? '', placeholder: 'What this agent is for, in one line' });
     const instructions = h('textarea', { class: 'input textarea', rows: 7, placeholder: 'Who the agent is, how it works and what it must never do.' });
@@ -181,9 +201,16 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
           const now = level(t.id);
           const cycle = () => {
             // Allowed → Ask first → Blocked (only when choosing tools) → Allowed.
-            if (now === 'allowed') { asking.add(t.id); chosen.add(t.id); }
-            else if (now === 'ask' && !allTools.checked) { asking.delete(t.id); chosen.delete(t.id); }
-            else { asking.delete(t.id); chosen.add(t.id); }
+            if (now === 'allowed') {
+              asking.add(t.id);
+              chosen.add(t.id);
+            } else if (now === 'ask' && !allTools.checked) {
+              asking.delete(t.id);
+              chosen.delete(t.id);
+            } else {
+              asking.delete(t.id);
+              chosen.add(t.id);
+            }
             renderTools();
           };
           return h(
@@ -208,7 +235,7 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
     const budget = h('input', { class: 'input', type: 'number', min: '0', step: '0.5', value: base?.monthlyBudget ? String(base.monthlyBudget) : '', placeholder: 'No limit' });
     // Conversation starters, one a line, shown on the agent's new-chat page.
     const reminder = h('input', { class: 'input', value: base?.reminder ?? '', placeholder: 'Always answer in Portuguese; never give legal advice' });
-    const starters = h('textarea', { class: 'input textarea', rows: 3, placeholder: 'Summarise this week\'s notes\nDraft a reply to the last email' });
+    const starters = h('textarea', { class: 'input textarea', rows: 3, placeholder: "Summarise this week's notes\nDraft a reply to the last email" });
     starters.value = (base?.starters ?? []).join('\n');
     // Its own reference material: libraries it searches before answering.
     const pickedLibraries = new Set(base?.libraries ?? []);
@@ -267,9 +294,9 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
     const paintMembers = () =>
       clear(
         memberList,
-        state.agents.filter((a) => a.id !== existing?.id && !(a.members?.length)).length
+        state.agents.filter((a) => a.id !== existing?.id && !a.members?.length).length
           ? state.agents
-              .filter((a) => a.id !== existing?.id && !(a.members?.length))
+              .filter((a) => a.id !== existing?.id && !a.members?.length)
               .map((a) => {
                 const at = pickedMembers.indexOf(a.id);
                 return h(
@@ -318,7 +345,11 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
           think: think.checked,
           fallbackModel: fallback.value || null,
           monthlyBudget: Number(budget.value) > 0 ? Number(budget.value) : null,
-          starters: starters.value.split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 8),
+          starters: starters.value
+            .split('\n')
+            .map((l) => l.trim())
+            .filter(Boolean)
+            .slice(0, 8),
           reminder: reminder.value.trim(),
           libraries: [...pickedLibraries],
           secrets: [...pickedSecrets],
@@ -337,31 +368,43 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
       }
     };
     const remove = existing
-      ? h('button', {
-          class: 'btn btn-danger',
-          on: {
-            click: async () => {
-              if (!(await confirmDialog('Delete agent?', `${existing.name} and its settings will be removed. Its conversations stay.`))) return;
-              state.agents = await api.deleteAgent(existing.id);
-              changed();
-              close();
-              navigate({ kind: 'page', page: 'agents' });
+      ? h(
+          'button',
+          {
+            class: 'btn btn-danger',
+            on: {
+              click: async () => {
+                if (!(await confirmDialog('Delete agent?', `${existing.name} and its settings will be removed. Its conversations stay.`))) return;
+                state.agents = await api.deleteAgent(existing.id);
+                changed();
+                close();
+                navigate({ kind: 'page', page: 'agents' });
+              },
             },
           },
-        }, 'Delete')
+          'Delete'
+        )
       : null;
     return h(
       'div',
       { class: 'dialog-small wide agent-editor' },
       modalHeader(existing ? `Edit ${existing.name}` : 'New agent', close, { flush: true }),
-      h('div', { class: 'freq-row' }, h('div', { class: 'grow' }, h('label', { class: 'field-label' }, 'Name'), name), h('div', { class: 'grow' }, h('label', { class: 'field-label', title: 'Its role in the team, shown next to its name. It sets its responsibilities: the agent takes on what the role owns.' }, 'Title'), titleInput), h('div', {}, h('label', { class: 'field-label' }, 'Avatar'), avatarInput)),
+      h(
+        'div',
+        { class: 'freq-row' },
+        h('div', { class: 'grow' }, h('label', { class: 'field-label' }, 'Name'), name),
+        h('div', { class: 'grow' }, h('label', { class: 'field-label', title: 'Its role in the team, shown next to its name. It sets its responsibilities: the agent takes on what the role owns.' }, 'Title'), titleInput),
+        h('div', {}, h('label', { class: 'field-label' }, 'Avatar'), avatarInput)
+      ),
       h('label', { class: 'field-label' }, 'Description'),
       description,
       h('label', { class: 'field-label', title: 'Its manager in your organization of agents' }, 'Reports to'),
       reportsTo,
       h('label', { class: 'field-label' }, 'Instructions'),
       instructions,
-      h('div', { class: 'freq-row' },
+      h(
+        'div',
+        { class: 'freq-row' },
         h('div', { class: 'grow' }, h('label', { class: 'field-label' }, 'Model'), model),
         h('div', { class: 'grow' }, h('label', { class: 'field-label', title: 'Used when the main model fails: a provider down, a plan out of credit' }, 'Backup model'), fallback)
       ),
@@ -370,8 +413,27 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
       h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'All tools'), h('small', { class: 'muted' }, 'Click a tool to cycle: allowed, ask first, blocked. Turn off to block what you do not pick.')), allTools),
       toolGrid,
       h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Think longer'), h('small', { class: 'muted' }, 'Use extended reasoning by default, where the model supports it.')), think),
-      h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Internet for its code'), h('small', { class: 'muted' }, 'Its code runs in an environment of its own, kept across its chats. Allow the network there to install packages (pip, npm) or download data.')), codeNetwork),
-      h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Builds its own team'), h('small', { class: 'muted' }, 'A manager agent: it can create agents under it, each with a name, personality, rules, model and tools of its own, then change or remove them. It can only give tools it has, and only change agents under it.')), manages),
+      h(
+        'div',
+        { class: 'setting-row' },
+        h('div', {}, h('strong', {}, 'Internet for its code'), h('small', { class: 'muted' }, 'Its code runs in an environment of its own, kept across its chats. Allow the network there to install packages (pip, npm) or download data.')),
+        codeNetwork
+      ),
+      h(
+        'div',
+        { class: 'setting-row' },
+        h(
+          'div',
+          {},
+          h('strong', {}, 'Builds its own team'),
+          h(
+            'small',
+            { class: 'muted' },
+            'A manager agent: it can create agents under it, each with a name, personality, rules, model and tools of its own, then change or remove them. It can only give tools it has, and only change agents under it.'
+          )
+        ),
+        manages
+      ),
       h('label', { class: 'field-label', title: 'Added to your newest message on every request, so long chats do not drift from it' }, 'Reminder on every turn'),
       reminder,
       h('label', { class: 'field-label' }, 'Conversation starters (one a line)'),
@@ -438,11 +500,31 @@ export class AgentsPage {
     const browse = h('button', { class: 'btn btn-secondary' }, icon('globe', 15), 'Browse community agents');
     browse.addEventListener('click', () => void openAgentMarket());
     // The orchestrator (Osaurus): new chats go to the agent that fits them.
-    const routing = switchInput(false, (on) => void tauriInvoke<boolean>('chat_agent_routing', { enabled: on }).then((now) => toast(now ? 'New chats now go to the agent that fits them best.' : 'New chats stay with the general assistant.')).catch((e) => toast(String(e), 'error')));
-    void tauriInvoke<boolean>('chat_agent_routing', { enabled: null }).then((on) => { routing.checked = on; }).catch(() => undefined);
+    const routing = switchInput(
+      false,
+      (on) =>
+        void tauriInvoke<boolean>('chat_agent_routing', { enabled: on })
+          .then((now) => toast(now ? 'New chats now go to the agent that fits them best.' : 'New chats stay with the general assistant.'))
+          .catch((e) => toast(String(e), 'error'))
+    );
+    void tauriInvoke<boolean>('chat_agent_routing', { enabled: null })
+      .then((on) => {
+        routing.checked = on;
+      })
+      .catch(() => undefined);
     this.el.append(
-      h('header', { class: 'page-header' }, h('div', {}, h('h1', {}, 'Your agents'), h('p', { class: 'muted' }, 'A workforce of assistants with their own instructions, tools and schedules. Chat with one, or give it tasks that run on their own.')), h('div', { class: 'page-actions' }, browse, importBtn, create)),
-      h('div', { class: 'setting-row routing-row' }, h('div', {}, h('strong', {}, 'Route new chats to agents'), h('small', { class: 'muted' }, 'When a new chat clearly fits one of your agents, it goes to that agent, and the chat says so. A quick question to the fast model decides.')), routing),
+      h(
+        'header',
+        { class: 'page-header' },
+        h('div', {}, h('h1', {}, 'Your agents'), h('p', { class: 'muted' }, 'A workforce of assistants with their own instructions, tools and schedules. Chat with one, or give it tasks that run on their own.')),
+        h('div', { class: 'page-actions' }, browse, importBtn, create)
+      ),
+      h(
+        'div',
+        { class: 'setting-row routing-row' },
+        h('div', {}, h('strong', {}, 'Route new chats to agents'), h('small', { class: 'muted' }, 'When a new chat clearly fits one of your agents, it goes to that agent, and the chat says so. A quick question to the fast model decides.')),
+        routing
+      ),
       this.chartSection,
       this.grid,
       h('div', { class: 'section-title' }, 'Add a ready-made agent'),
@@ -462,7 +544,10 @@ export class AgentsPage {
       );
     });
     void reloadAgents();
-    void api.agentSpend().then((spend) => { this.spend = spend; this.update(); });
+    void api.agentSpend().then((spend) => {
+      this.spend = spend;
+      this.update();
+    });
     this.update();
   }
 
@@ -520,9 +605,7 @@ export class AgentsPage {
 function orgChart(agents: Agent[]): HTMLElement | null {
   const ids = new Set(agents.map((a) => a.id));
   const reports = (id: string) => agents.filter((a) => a.reportsTo === id).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  const roots = agents
-    .filter((a) => (!a.reportsTo || !ids.has(a.reportsTo)) && reports(a.id).length > 0)
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const roots = agents.filter((a) => (!a.reportsTo || !ids.has(a.reportsTo)) && reports(a.id).length > 0).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   if (!roots.length) return null;
   const seen = new Set<string>();
   const node = (agent: Agent): HTMLElement => {
@@ -547,10 +630,7 @@ function orgChart(agents: Agent[]): HTMLElement | null {
 /** Agents as an organization chart reads: each manager followed by the agents under it. */
 export function orgOrder(agents: Agent[]): Agent[] {
   const ids = new Set(agents.map((a) => a.id));
-  const under = (id: string | null) =>
-    agents
-      .filter((a) => (id === null ? !a.reportsTo || !ids.has(a.reportsTo) : a.reportsTo === id))
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const under = (id: string | null) => agents.filter((a) => (id === null ? !a.reportsTo || !ids.has(a.reportsTo) : a.reportsTo === id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const out: Agent[] = [];
   const seen = new Set<string>();
   const walk = (list: Agent[]) => {
@@ -575,12 +655,18 @@ export class AgentPage {
   private stats = h('div', { class: 'agent-stats' });
   private spend: AgentSpend | undefined;
 
-  constructor(private id: string, private onChat: (agentId: string) => void) {
+  constructor(
+    private id: string,
+    private onChat: (agentId: string) => void
+  ) {
     this.key = `agent:${id}`;
     const tasks = new TasksPage(id);
     tasks.el.classList.add('embedded');
     this.el.append(this.head, this.stats, agentPanel(id), h('div', { class: 'section-title' }, 'Recent conversations'), this.runs, tasks.el);
-    void api.agentSpend().then((spend) => { this.spend = spend[id]; this.update(); });
+    void api.agentSpend().then((spend) => {
+      this.spend = spend[id];
+      this.update();
+    });
     this.update();
   }
 
@@ -595,7 +681,13 @@ export class AgentPage {
     const edit = h('button', { class: 'btn btn-secondary' }, icon('edit', 15), 'Edit');
     edit.addEventListener('click', () => void editAgent(agent));
     const exportBtn = h('button', { class: 'btn btn-secondary', title: 'Save this agent, its notebook and its skills as one file' }, icon('download', 15), 'Export');
-    exportBtn.addEventListener('click', () => void tauriInvoke<boolean>('chat_export_agent', { id: agent.id }).then((saved) => saved && toast('Agent exported.')).catch((e) => toast(String(e), 'error')));
+    exportBtn.addEventListener(
+      'click',
+      () =>
+        void tauriInvoke<boolean>('chat_export_agent', { id: agent.id })
+          .then((saved) => saved && toast('Agent exported.'))
+          .catch((e) => toast(String(e), 'error'))
+    );
     clear(
       this.head,
       h('div', { class: 'agent-title' }, avatar(agent, 'large'), h('div', {}, h('h1', {}, ...agentName(agent)), h('p', { class: 'muted' }, agent.description))),
@@ -603,17 +695,22 @@ export class AgentPage {
         'div',
         { class: 'page-actions' },
         exportBtn,
-        h('button', {
-          class: 'btn btn-secondary',
-          title: 'Pinned agents are in the sidebar, one click from a new chat',
-          on: {
-            click: (e: MouseEvent) => {
-              togglePinnedAgent(agent.id);
-              (e.currentTarget as HTMLElement).replaceChildren(icon('pin', 15), pinnedAgents().includes(agent.id) ? 'Unpin' : 'Pin');
-              changed();
+        h(
+          'button',
+          {
+            class: 'btn btn-secondary',
+            title: 'Pinned agents are in the sidebar, one click from a new chat',
+            on: {
+              click: (e: MouseEvent) => {
+                togglePinnedAgent(agent.id);
+                (e.currentTarget as HTMLElement).replaceChildren(icon('pin', 15), pinnedAgents().includes(agent.id) ? 'Unpin' : 'Pin');
+                changed();
+              },
             },
           },
-        }, icon('pin', 15), pinnedAgents().includes(agent.id) ? 'Unpin' : 'Pin'),
+          icon('pin', 15),
+          pinnedAgents().includes(agent.id) ? 'Unpin' : 'Pin'
+        ),
         edit,
         chat
       )
@@ -687,24 +784,42 @@ async function openAgentMarket() {
         grid,
         shown.length
           ? shown.slice(0, 120).map((a) => {
-              const add = button({ variant: 'secondary', label: 'Add', onClick: async () => {
-                add.setAttribute('disabled', '');
-                try {
-                  const agent = await tauriInvoke<Agent>('chat_install_market_agent', { identifier: a.identifier, source: marketSource(), language });
-                  await reloadAgents();
-                  toast(`${agent.name} is now one of your agents.`);
-                  add.textContent = 'Added';
-                } catch (e) {
-                  add.removeAttribute('disabled');
-                  toast(String(e), 'error');
-                }
-              } });
+              const add = button({
+                variant: 'secondary',
+                label: 'Add',
+                onClick: async () => {
+                  add.setAttribute('disabled', '');
+                  try {
+                    const agent = await tauriInvoke<Agent>('chat_install_market_agent', { identifier: a.identifier, source: marketSource(), language });
+                    await reloadAgents();
+                    toast(`${agent.name} is now one of your agents.`);
+                    add.textContent = 'Added';
+                  } catch (e) {
+                    add.removeAttribute('disabled');
+                    toast(String(e), 'error');
+                  }
+                },
+              });
               return h(
                 'div',
                 { class: 'market-card' },
-                h('div', { class: 'market-head' }, h('span', { class: 'agent-avatar' }, a.avatar && !a.avatar.startsWith('http') ? a.avatar : a.title.charAt(0)), h('div', { class: 'grow' }, h('strong', {}, a.title), h('small', { class: 'muted' }, [a.category, a.author && `by ${a.author}`].filter(Boolean).join(' · ')))),
+                h(
+                  'div',
+                  { class: 'market-head' },
+                  h('span', { class: 'agent-avatar' }, a.avatar && !a.avatar.startsWith('http') ? a.avatar : a.title.charAt(0)),
+                  h('div', { class: 'grow' }, h('strong', {}, a.title), h('small', { class: 'muted' }, [a.category, a.author && `by ${a.author}`].filter(Boolean).join(' · ')))
+                ),
                 h('p', { class: 'market-desc' }, a.description),
-                h('div', { class: 'market-foot' }, h('div', { class: 'market-tags' }, a.tags.slice(0, 3).map((t) => h('span', { class: 'chip small' }, t))), add)
+                h(
+                  'div',
+                  { class: 'market-foot' },
+                  h(
+                    'div',
+                    { class: 'market-tags' },
+                    a.tags.slice(0, 3).map((t) => h('span', { class: 'chip small' }, t))
+                  ),
+                  add
+                )
               );
             })
           : h('p', { class: 'muted' }, 'No agent matches.')
@@ -717,7 +832,11 @@ async function openAgentMarket() {
         .then((list) => {
           all = list;
           const cats = [...new Set(list.map((a) => a.category).filter(Boolean))].sort();
-          clear(category, h('option', { value: '' }, 'All categories'), cats.map((c) => h('option', { value: c }, c.charAt(0).toUpperCase() + c.slice(1))));
+          clear(
+            category,
+            h('option', { value: '' }, 'All categories'),
+            cats.map((c) => h('option', { value: c }, c.charAt(0).toUpperCase() + c.slice(1)))
+          );
           draw();
         })
         .catch((e) => clear(grid, h('p', { class: 'error-text' }, String(e))));

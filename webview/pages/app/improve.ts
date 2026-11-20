@@ -70,7 +70,21 @@ export function improveButton(area: HTMLTextAreaElement, changed: () => void): H
       'div',
       { class: 'menu improve-menu' },
       h('div', { class: 'menu-heading' }, `Rewrite ${scope}`),
-      ...IMPROVE_PRESETS.map(([label, instruction]) => h('button', { class: 'menu-item', on: { click: () => { closeMenu(); void run(instruction); } } }, h('span', {}, label))),
+      ...IMPROVE_PRESETS.map(([label, instruction]) =>
+        h(
+          'button',
+          {
+            class: 'menu-item',
+            on: {
+              click: () => {
+                closeMenu();
+                void run(instruction);
+              },
+            },
+          },
+          h('span', {}, label)
+        )
+      ),
       custom
     );
     closeMenu = popover(trigger, list, 'above');
@@ -78,4 +92,3 @@ export function improveButton(area: HTMLTextAreaElement, changed: () => void): H
   });
   return h('span', { class: 'improve-tools' }, trigger, undo);
 }
-

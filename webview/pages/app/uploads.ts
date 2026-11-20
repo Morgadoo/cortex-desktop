@@ -67,7 +67,19 @@ export function uploadsCard(): HTMLElement {
               { class: 'upload-row' },
               icon(u.kind === 'image' ? 'image' : 'file', 15),
               h('div', { class: 'grow' }, h('div', { class: 'upload-name' }, u.name), h('small', { class: 'muted' }, `${size(u)} · ${u.conversationTitle || 'Untitled chat'}${u.at ? ` · ${timeLabel(u.at)}` : ''}`)),
-              h('button', { class: 'btn btn-link btn-sm', on: { click: () => { document.querySelector<HTMLElement>('.modal .modal-close, .modal [aria-label="Close"]')?.click(); navigate({ kind: 'chat', id: u.conversationId }); } } }, 'Open chat'),
+              h(
+                'button',
+                {
+                  class: 'btn btn-link btn-sm',
+                  on: {
+                    click: () => {
+                      document.querySelector<HTMLElement>('.modal .modal-close, .modal [aria-label="Close"]')?.click();
+                      navigate({ kind: 'chat', id: u.conversationId });
+                    },
+                  },
+                },
+                'Open chat'
+              ),
               h(
                 'button',
                 {
@@ -104,7 +116,12 @@ export function uploadsCard(): HTMLElement {
   return card(
     h('h3', {}, 'Uploaded files'),
     h('p', { class: 'muted' }, 'Every file and image you sent in a chat. Removing one takes it out of that message and out of what the assistant reads.'),
-    h('div', { class: 'setting-row' }, h('div', {}, h('strong', {}, 'Files you attach'), h('small', { class: 'muted' }, 'A searched file goes to the Uploads library, and the assistant looks up the parts it needs; one in full is read whole with the message.')), mode),
+    h(
+      'div',
+      { class: 'setting-row' },
+      h('div', {}, h('strong', {}, 'Files you attach'), h('small', { class: 'muted' }, 'A searched file goes to the Uploads library, and the assistant looks up the parts it needs; one in full is read whole with the message.')),
+      mode
+    ),
     filter,
     list
   );

@@ -9,10 +9,26 @@ import { choice } from './prefs';
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 const SUGGESTIONS: { title: string; prompt: string; frequency: Frequency }[] = [
-  { title: 'Weekly AI industry news summary', prompt: 'Send me a summary of the most important AI industry news from the past week: model releases, funding, regulation and notable research. Five bullets with dates and sources.', frequency: { kind: 'weekly', days: [0], time: '05:30' } },
-  { title: 'Weekly deep research report on AI agent tools', prompt: 'Research what changed this week in AI agent tools and frameworks (open source and commercial). Write a short report with a comparison table and sources.', frequency: { kind: 'weekly', days: [0], time: '10:50' } },
-  { title: 'Track major AI product announcements', prompt: 'Check for major AI product announcements since the last run and alert me to anything significant, with one line on why it matters and a link.', frequency: { kind: 'weekly', days: [4], time: '10:10' } },
-  { title: 'Weekly economy and market trends', prompt: 'Send me a weekly summary of the main economic and market trends: indices, rates, energy prices and notable company news, with sources.', frequency: { kind: 'weekly', days: [0], time: '08:15' } },
+  {
+    title: 'Weekly AI industry news summary',
+    prompt: 'Send me a summary of the most important AI industry news from the past week: model releases, funding, regulation and notable research. Five bullets with dates and sources.',
+    frequency: { kind: 'weekly', days: [0], time: '05:30' },
+  },
+  {
+    title: 'Weekly deep research report on AI agent tools',
+    prompt: 'Research what changed this week in AI agent tools and frameworks (open source and commercial). Write a short report with a comparison table and sources.',
+    frequency: { kind: 'weekly', days: [0], time: '10:50' },
+  },
+  {
+    title: 'Track major AI product announcements',
+    prompt: 'Check for major AI product announcements since the last run and alert me to anything significant, with one line on why it matters and a link.',
+    frequency: { kind: 'weekly', days: [4], time: '10:10' },
+  },
+  {
+    title: 'Weekly economy and market trends',
+    prompt: 'Send me a weekly summary of the main economic and market trends: indices, rates, energy prices and notable company news, with sources.',
+    frequency: { kind: 'weekly', days: [0], time: '08:15' },
+  },
 ];
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -34,7 +50,11 @@ export function editTask(existing: Task | null, onSaved: (tasks: Task[]) => void
       'select',
       { class: 'input' },
       (['once', 'daily', 'weekly', 'monthly', 'yearly', 'cron', 'newFiles', 'newFeedItems'] as const).map((k) =>
-        h('option', { value: k, selected: freq.kind === k }, k === 'once' ? 'Once' : k === 'cron' ? 'Custom (cron)' : k === 'newFiles' ? 'When new files arrive in a folder' : k === 'newFeedItems' ? 'When a feed has new items' : k.charAt(0).toUpperCase() + k.slice(1))
+        h(
+          'option',
+          { value: k, selected: freq.kind === k },
+          k === 'once' ? 'Once' : k === 'cron' ? 'Custom (cron)' : k === 'newFiles' ? 'When new files arrive in a folder' : k === 'newFeedItems' ? 'When a feed has new items' : k.charAt(0).toUpperCase() + k.slice(1)
+        )
       )
     );
     const time = h('input', { class: 'input', type: 'time', value: 'time' in freq ? freq.time : '09:00' });
@@ -65,7 +85,20 @@ export function editTask(existing: Task | null, onSaved: (tasks: Task[]) => void
       clear(
         dayPicker,
         DAY_LABELS.map((label, i) =>
-          h('button', { class: `day${days.has(i) ? ' on' : ''}`, on: { click: () => { if (days.has(i)) days.delete(i); else days.add(i); renderDays(); } } }, label)
+          h(
+            'button',
+            {
+              class: `day${days.has(i) ? ' on' : ''}`,
+              on: {
+                click: () => {
+                  if (days.has(i)) days.delete(i);
+                  else days.add(i);
+                  renderDays();
+                },
+              },
+            },
+            label
+          )
         )
       );
     renderDays();
@@ -81,7 +114,13 @@ export function editTask(existing: Task | null, onSaved: (tasks: Task[]) => void
           ? h('div', {}, h('label', { class: 'field-label' }, 'Folder'), folderBtn, h('small', { class: 'muted' }, 'Files already there are left alone. Each new file starts a run, with its path added to the prompt.'))
           : null,
         kind.value === 'newFeedItems'
-          ? h('div', {}, h('label', { class: 'field-label' }, 'Feed address (RSS or Atom)'), feed, h('small', { class: 'muted' }, 'Checked every 10 minutes. What the feed shows today is left alone; new items start a run, with their titles and links added to the prompt.'))
+          ? h(
+              'div',
+              {},
+              h('label', { class: 'field-label' }, 'Feed address (RSS or Atom)'),
+              feed,
+              h('small', { class: 'muted' }, 'Checked every 10 minutes. What the feed shows today is left alone; new items start a run, with their titles and links added to the prompt.')
+            )
           : null,
         kind.value === 'cron'
           ? h('div', {}, h('label', { class: 'field-label' }, 'Cron expression'), cron, h('small', { class: 'muted' }, 'Minute, hour, day of the month, month, day of the week, in your time zone. 30 9 * * 1-5 is 9:30 on weekdays.'))
@@ -122,18 +161,18 @@ export function editTask(existing: Task | null, onSaved: (tasks: Task[]) => void
         kind.value === 'cron'
           ? { kind: 'cron', expression: cron.value.trim() }
           : kind.value === 'newFiles'
-          ? { kind: 'newFiles', folder }
-          : kind.value === 'newFeedItems'
-          ? { kind: 'newFeedItems', url: feed.value.trim() }
-          : kind.value === 'once'
-          ? { kind: 'once', date: date.value, time: t }
-          : kind.value === 'daily'
-            ? { kind: 'daily', time: t }
-            : kind.value === 'monthly'
-              ? { kind: 'monthly', day: Number(dayOfMonth.value) || 1, time: t }
-              : kind.value === 'yearly'
-                ? { kind: 'yearly', month: Number(month.value) || 1, day: Number(dayOfMonth.value) || 1, time: t }
-              : { kind: 'weekly', days: [...days].sort(), time: t };
+            ? { kind: 'newFiles', folder }
+            : kind.value === 'newFeedItems'
+              ? { kind: 'newFeedItems', url: feed.value.trim() }
+              : kind.value === 'once'
+                ? { kind: 'once', date: date.value, time: t }
+                : kind.value === 'daily'
+                  ? { kind: 'daily', time: t }
+                  : kind.value === 'monthly'
+                    ? { kind: 'monthly', day: Number(dayOfMonth.value) || 1, time: t }
+                    : kind.value === 'yearly'
+                      ? { kind: 'yearly', month: Number(month.value) || 1, day: Number(dayOfMonth.value) || 1, time: t }
+                      : { kind: 'weekly', days: [...days].sort(), time: t };
       try {
         onSaved(
           await api.saveTask({
@@ -235,7 +274,21 @@ export class TasksPage {
     clear(
       this.viewSwitch,
       (['list', 'calendar'] as const).map((v) =>
-        h('button', { class: `seg${this.view === v ? ' active' : ''}`, on: { click: () => { this.view = v; saveView(v); this.render(); } } }, icon(v === 'list' ? 'list' : 'calendar', 15), v === 'list' ? 'List' : 'Calendar')
+        h(
+          'button',
+          {
+            class: `seg${this.view === v ? ' active' : ''}`,
+            on: {
+              click: () => {
+                this.view = v;
+                saveView(v);
+                this.render();
+              },
+            },
+          },
+          icon(v === 'list' ? 'list' : 'calendar', 15),
+          v === 'list' ? 'List' : 'Calendar'
+        )
       )
     );
     const calendar = this.view === 'calendar';
@@ -248,7 +301,19 @@ export class TasksPage {
     clear(
       this.tabs,
       (['scheduled', 'paused', 'done'] as const).map((b) =>
-        h('button', { class: `tab${this.tab === b ? ' active' : ''}`, on: { click: () => { this.tab = b; this.render(); } } }, `${b === 'scheduled' ? 'Scheduled' : b === 'paused' ? 'Paused' : 'Done'} ${count(b)}`)
+        h(
+          'button',
+          {
+            class: `tab${this.tab === b ? ' active' : ''}`,
+            on: {
+              click: () => {
+                this.tab = b;
+                this.render();
+              },
+            },
+          },
+          `${b === 'scheduled' ? 'Scheduled' : b === 'paused' ? 'Paused' : 'Done'} ${count(b)}`
+        )
       )
     );
     const shown = this.tasks.filter((t) => this.bucket(t) === this.tab && (!this.filter || `${t.title} ${t.prompt}`.toLowerCase().includes(this.filter)));
@@ -268,11 +333,7 @@ export class TasksPage {
             ),
           ]
         : [];
-    clear(
-      this.list,
-      rows.length ? rows : this.tab !== 'scheduled' ? h('p', { class: 'muted empty-line' }, this.tab === 'paused' ? 'No paused tasks.' : 'No finished one-time tasks.') : null,
-      suggestions
-    );
+    clear(this.list, rows.length ? rows : this.tab !== 'scheduled' ? h('p', { class: 'muted empty-line' }, this.tab === 'paused' ? 'No paused tasks.' : 'No finished one-time tasks.') : null, suggestions);
   }
 
   private row(t: Task): HTMLElement {
@@ -299,15 +360,46 @@ export class TasksPage {
       if (await confirmDialog('Delete task?', `“${t.title}” will stop running.`)) this.set(await api.deleteTask(t.id));
     });
     // Comments (LobeHub): notes on the task that every run follows.
-    const comments = h('button', { class: 'btn btn-link btn-sm', title: 'Notes every run follows', on: { click: (e: MouseEvent) => { e.stopPropagation(); this.openComments(t); } } }, icon('chat', 14), t.comments?.length ? String(t.comments.length) : '');
+    const comments = h(
+      'button',
+      {
+        class: 'btn btn-link btn-sm',
+        title: 'Notes every run follows',
+        on: {
+          click: (e: MouseEvent) => {
+            e.stopPropagation();
+            this.openComments(t);
+          },
+        },
+      },
+      icon('chat', 14),
+      t.comments?.length ? String(t.comments.length) : ''
+    );
     const last = t.lastConversation
-      ? h('button', { class: 'btn btn-link btn-sm', on: { click: (e: MouseEvent) => { e.stopPropagation(); navigate({ kind: 'chat', id: t.lastConversation! }); } } }, t.lastStatus === 'failed' ? 'Last run failed' : t.lastStatus === 'running' ? 'Running…' : 'Last result')
+      ? h(
+          'button',
+          {
+            class: 'btn btn-link btn-sm',
+            on: {
+              click: (e: MouseEvent) => {
+                e.stopPropagation();
+                navigate({ kind: 'chat', id: t.lastConversation! });
+              },
+            },
+          },
+          t.lastStatus === 'failed' ? 'Last run failed' : t.lastStatus === 'running' ? 'Running…' : 'Last result'
+        )
       : null;
     return h(
       'div',
       { class: 'task-row', on: { click: () => void editTask(t, (tasks) => this.set(tasks)) } },
       agent ? h('span', { class: 'agent-avatar small' }, agent.avatar || agent.name.charAt(0)) : icon('clock', 17),
-      h('div', { class: 'task-text' }, h('strong', {}, t.title), h('span', { class: 'muted' }, `${t.schedule}${t.nextRun ? ` · next ${when(t.nextRun)}` : ''}${t.replyIn ? ` · continues “${state.conversations.find((c) => c.id === t.replyIn)?.title ?? 'a chat'}”` : ''}`)),
+      h(
+        'div',
+        { class: 'task-text' },
+        h('strong', {}, t.title),
+        h('span', { class: 'muted' }, `${t.schedule}${t.nextRun ? ` · next ${when(t.nextRun)}` : ''}${t.replyIn ? ` · continues “${state.conversations.find((c) => c.id === t.replyIn)?.title ?? 'a chat'}”` : ''}`)
+      ),
       comments,
       last,
       run,
@@ -328,7 +420,21 @@ export class TasksPage {
                   'div',
                   { class: 'hook-row' },
                   h('div', { class: 'grow' }, h('div', {}, c.text), h('small', { class: 'muted' }, new Date(c.at).toLocaleString())),
-                  h('button', { class: 'icon-btn small', title: 'Remove', on: { click: async () => { const tasks = await tauriInvoke<Task[]>('chat_task_comment', { id: t.id, text: null, remove: i }); this.set(tasks); render(tasks.find((x) => x.id === t.id) ?? task); } } }, icon('trash', 14))
+                  h(
+                    'button',
+                    {
+                      class: 'icon-btn small',
+                      title: 'Remove',
+                      on: {
+                        click: async () => {
+                          const tasks = await tauriInvoke<Task[]>('chat_task_comment', { id: t.id, text: null, remove: i });
+                          this.set(tasks);
+                          render(tasks.find((x) => x.id === t.id) ?? task);
+                        },
+                      },
+                    },
+                    icon('trash', 14)
+                  )
                 )
               )
             : h('p', { class: 'muted' }, 'No comments yet.')
@@ -349,7 +455,15 @@ export class TasksPage {
           }
         },
       });
-      return h('div', { class: 'dialog-small' }, modalHeader(`Comments on “${t.title}”`, close, { flush: true }), h('p', { class: 'muted' }, 'Every run gets these as notes to follow, newest last, so you can steer the task without rewriting it.'), list, input, h('div', { class: 'dialog-actions' }, add));
+      return h(
+        'div',
+        { class: 'dialog-small' },
+        modalHeader(`Comments on “${t.title}”`, close, { flush: true }),
+        h('p', { class: 'muted' }, 'Every run gets these as notes to follow, newest last, so you can steer the task without rewriting it.'),
+        list,
+        input,
+        h('div', { class: 'dialog-actions' }, add)
+      );
     });
   }
 
@@ -483,7 +597,20 @@ class TaskCalendar {
       h('h2', {}, title),
       h('button', { class: 'icon-btn', title: 'Next month', on: { click: () => this.move(1) } }, icon('chevronRight', 16)),
       h('span', { class: 'spacer' }),
-      h('button', { class: 'btn btn-secondary btn-sm', on: { click: () => { this.month = new Date(today.getFullYear(), today.getMonth(), 1); this.selected = today; void this.render(); } } }, 'Today')
+      h(
+        'button',
+        {
+          class: 'btn btn-secondary btn-sm',
+          on: {
+            click: () => {
+              this.month = new Date(today.getFullYear(), today.getMonth(), 1);
+              this.selected = today;
+              void this.render();
+            },
+          },
+        },
+        'Today'
+      )
     );
     const weekdays = Array.from({ length: 7 }, (_, i) => new Date(2026, 10, 16 + i).toLocaleDateString(undefined, { weekday: 'short' }));
     const cells: HTMLElement[] = [];
@@ -491,21 +618,29 @@ class TaskCalendar {
       const day = new Date(start);
       day.setDate(start.getDate() + i);
       const items = perDay.get(dayKey(day)) ?? [];
-      const chips = items.slice(0, 3).map((e) =>
-        h(
-          'div',
-          { class: `cal-chip${e.conversationId ? ' ran' : ''}`, style: { '--chip': colorOf(e.task) }, title: `${e.task.title} · ${e.at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: clockHour12() })}` },
-          h('span', { class: 'cal-time' }, e.at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: clockHour12() })),
-          h('span', { class: 'cal-title' }, e.task.title)
-        )
-      );
+      const chips = items
+        .slice(0, 3)
+        .map((e) =>
+          h(
+            'div',
+            { class: `cal-chip${e.conversationId ? ' ran' : ''}`, style: { '--chip': colorOf(e.task) }, title: `${e.task.title} · ${e.at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: clockHour12() })}` },
+            h('span', { class: 'cal-time' }, e.at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: clockHour12() })),
+            h('span', { class: 'cal-title' }, e.task.title)
+          )
+        );
       const more = items.length > 3 ? h('div', { class: 'cal-more' }, `+${items.length - 3} more`) : null;
       cells.push(
         h(
           'button',
           {
             class: `cal-day${day.getMonth() !== this.month.getMonth() ? ' other' : ''}${sameDay(day, today) ? ' today' : ''}${sameDay(day, this.selected) ? ' selected' : ''}`,
-            on: { click: () => { this.selected = day; if (day.getMonth() !== this.month.getMonth()) this.month = new Date(day.getFullYear(), day.getMonth(), 1); void this.render(); } },
+            on: {
+              click: () => {
+                this.selected = day;
+                if (day.getMonth() !== this.month.getMonth()) this.month = new Date(day.getFullYear(), day.getMonth(), 1);
+                void this.render();
+              },
+            },
           },
           h('span', { class: 'cal-num' }, String(day.getDate())),
           chips,
@@ -521,9 +656,7 @@ class TaskCalendar {
         'div',
         { class: 'cal-agenda-head' },
         h('h3', {}, this.selected.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })),
-        this.selected >= new Date(new Date().setHours(0, 0, 0, 0))
-          ? h('button', { class: 'btn btn-secondary btn-sm', on: { click: () => this.onNew(isoDate(this.selected)) } }, icon('plus', 14), 'New task on this day')
-          : null
+        this.selected >= new Date(new Date().setHours(0, 0, 0, 0)) ? h('button', { class: 'btn btn-secondary btn-sm', on: { click: () => this.onNew(isoDate(this.selected)) } }, icon('plus', 14), 'New task on this day') : null
       ),
       dayItems.length
         ? dayItems.map((e) =>
@@ -543,7 +676,17 @@ class TaskCalendar {
         : h('p', { class: 'muted empty-line' }, 'Nothing runs on this day.'),
       this.tasks.some((t) => t.frequency.kind === 'newFiles' || t.frequency.kind === 'newFeedItems') ? h('p', { class: 'muted cal-note' }, 'Tasks started by new files or feed items show on the days they ran.') : null
     );
-    clear(this.el, head, h('div', { class: 'cal-grid' }, weekdays.map((w) => h('div', { class: 'cal-weekday' }, w)), cells), agenda);
+    clear(
+      this.el,
+      head,
+      h(
+        'div',
+        { class: 'cal-grid' },
+        weekdays.map((w) => h('div', { class: 'cal-weekday' }, w)),
+        cells
+      ),
+      agenda
+    );
   }
 }
 

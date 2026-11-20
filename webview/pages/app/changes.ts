@@ -61,9 +61,12 @@ export function splitDiffLines(lines: string[]): HTMLElement {
     }
   }
   flush();
-  const cell = (text: string | null, kind: string, side: 'del' | 'add') =>
-    h('div', { class: `split-cell ${text === null ? 'empty' : kind === 'change' ? side : kind}` }, text ?? '');
-  return h('div', { class: 'diff split' }, rows.map(([left, right, kind]) => h('div', { class: 'split-row' }, cell(left, kind, 'del'), cell(right, kind, 'add'))));
+  const cell = (text: string | null, kind: string, side: 'del' | 'add') => h('div', { class: `split-cell ${text === null ? 'empty' : kind === 'change' ? side : kind}` }, text ?? '');
+  return h(
+    'div',
+    { class: 'diff split' },
+    rows.map(([left, right, kind]) => h('div', { class: 'split-row' }, cell(left, kind, 'del'), cell(right, kind, 'add')))
+  );
 }
 
 /** The diff of each file, keyed by its path, from `git diff` output. */
@@ -156,7 +159,15 @@ export function openChanges(conversationId: string, folder: string) {
           toast(String(e), 'error');
         }
       });
-      const all = h('button', { class: 'chg-row all active' }, h('span', { class: 'grow' }, `All files (${changes.files.length})`), stat(changes.files.reduce((a, f) => a + f.additions, 0), changes.files.reduce((a, f) => a + f.deletions, 0)));
+      const all = h(
+        'button',
+        { class: 'chg-row all active' },
+        h('span', { class: 'grow' }, `All files (${changes.files.length})`),
+        stat(
+          changes.files.reduce((a, f) => a + f.additions, 0),
+          changes.files.reduce((a, f) => a + f.deletions, 0)
+        )
+      );
       all.addEventListener('click', () => show(null, all));
       clear(
         list,
@@ -202,16 +213,18 @@ export function openChanges(conversationId: string, folder: string) {
       const pr = await tauriInvoke<Pr | null>('chat_code_pr_status', { conversationId }).catch(() => null);
       if (!pr) return void clear(prBar);
       const count = (s: string) => pr.checks.filter((c) => c.state === s).length;
-      const summary = pr.checks.length
-        ? count('failed') ? `${count('failed')} failing` : count('running') + count('pending') ? `${count('running') + count('pending')} running` : `${count('passed')} passing`
-        : 'no checks';
+      const summary = pr.checks.length ? (count('failed') ? `${count('failed')} failing` : count('running') + count('pending') ? `${count('running') + count('pending')} running` : `${count('passed')} passing`) : 'no checks';
       clear(
         prBar,
         h('a', { class: 'pr-link', href: pr.url, target: '_blank', rel: 'noopener noreferrer' }, icon('share', 14), `#${pr.number} ${pr.title}`),
         h('span', { class: `pr-state ${pr.state}` }, pr.state),
         pr.review ? h('span', { class: `pr-review ${pr.review.replace(/\s/g, '-')}` }, pr.review) : null,
-        h('details', { class: 'pr-checks' }, h('summary', { class: count('failed') ? 'failed' : count('running') + count('pending') ? 'running' : 'passed' }, summary),
-          pr.checks.map((c) => h('a', { class: `pr-check ${c.state}`, href: c.url || pr.url, target: '_blank', rel: 'noopener noreferrer' }, h('span', { class: 'dot' }), c.name, h('small', { class: 'muted' }, c.state))))
+        h(
+          'details',
+          { class: 'pr-checks' },
+          h('summary', { class: count('failed') ? 'failed' : count('running') + count('pending') ? 'running' : 'passed' }, summary),
+          pr.checks.map((c) => h('a', { class: `pr-check ${c.state}`, href: c.url || pr.url, target: '_blank', rel: 'noopener noreferrer' }, h('span', { class: 'dot' }), c.name, h('small', { class: 'muted' }, c.state)))
+        )
       );
     };
     refresh.addEventListener('click', () => void loadPr());
@@ -247,7 +260,11 @@ export function openFiles(conversationId: string, folder: string) {
         clear(
           view,
           h('div', { class: 'diff-file-head' }, icon('file', 14), h('strong', {}, path), h('span', { class: 'muted' }, `${lines.length} lines`)),
-          h('div', { class: 'file-view' }, lines.map((line, i) => h('div', { class: 'file-line' }, h('span', { class: 'line-no' }, String(i + 1)), h('span', {}, line || ' '))))
+          h(
+            'div',
+            { class: 'file-view' },
+            lines.map((line, i) => h('div', { class: 'file-line' }, h('span', { class: 'line-no' }, String(i + 1)), h('span', {}, line || ' ')))
+          )
         );
       } catch (e) {
         clear(view, h('p', { class: 'muted diff-note' }, String(e)));
@@ -276,12 +293,7 @@ export function openFiles(conversationId: string, folder: string) {
       })
       .catch((e) => clear(list, h('p', { class: 'muted diff-note' }, String(e))));
     setTimeout(() => filter.focus());
-    return h(
-      'div',
-      { class: 'changes-modal' },
-      modalHeader(h('div', { class: 'modal-title' }, h('h2', {}, 'Files'), h('span', { class: 'muted' }, folder)), close, { actions: [filter] }),
-      h('div', { class: 'changes-body' }, list, view)
-    );
+    return h('div', { class: 'changes-modal' }, modalHeader(h('div', { class: 'modal-title' }, h('h2', {}, 'Files'), h('span', { class: 'muted' }, folder)), close, { actions: [filter] }), h('div', { class: 'changes-body' }, list, view));
   }, true);
 }
 
@@ -306,7 +318,10 @@ export function openDebug(conversationId: string) {
         };
         const raw = JSON.stringify(d.messages, null, 2);
         const copy = h('button', { class: 'btn btn-secondary btn-sm' }, icon('copy', 14), 'Copy history as JSON');
-        copy.addEventListener('click', () => { void navigator.clipboard.writeText(raw); toast('History copied.'); });
+        copy.addEventListener('click', () => {
+          void navigator.clipboard.writeText(raw);
+          toast('History copied.');
+        });
         const fact = (k: string, v: string) => h('div', { class: 'debug-fact' }, h('span', { class: 'muted' }, k), h('code', {}, v));
         clear(
           body,
@@ -314,7 +329,7 @@ export function openDebug(conversationId: string) {
             'div',
             { class: 'debug-facts' },
             fact('Session', d.id),
-            fact('Model', d.model ?? 'the composer\'s'),
+            fact('Model', d.model ?? "the composer's"),
             fact('Folder', d.workdir ?? 'none'),
             fact('Agent', d.agentId ?? 'none'),
             fact('Tokens', `${d.usage.inputTokens.toLocaleString()} in · ${d.usage.outputTokens.toLocaleString()} out · ${d.usage.contextTokens.toLocaleString()} in the last request`),
@@ -329,7 +344,15 @@ export function openDebug(conversationId: string) {
               return h(
                 'details',
                 { class: 'debug-msg' },
-                h('summary', {}, h('span', { class: 'muted' }, `${i + 1}.`), h('strong', {}, String(m.role ?? '?')), h('span', { class: 'muted' }, kindOf(m)), h('span', { class: 'spacer' }), h('span', { class: 'muted' }, `${(json.length / 1024).toFixed(1)} KB`)),
+                h(
+                  'summary',
+                  {},
+                  h('span', { class: 'muted' }, `${i + 1}.`),
+                  h('strong', {}, String(m.role ?? '?')),
+                  h('span', { class: 'muted' }, kindOf(m)),
+                  h('span', { class: 'spacer' }),
+                  h('span', { class: 'muted' }, `${(json.length / 1024).toFixed(1)} KB`)
+                ),
                 h('pre', { class: 'step-pre' }, json.length > 20000 ? `${json.slice(0, 20000)}\n…` : json)
               );
             })

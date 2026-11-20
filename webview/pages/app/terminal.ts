@@ -39,7 +39,19 @@ export function openTerminal(conversationId: string, folder: string) {
         list,
         commands.map((c) => {
           const status = h('span', { class: `term-status ${c.status}` }, c.status === 'running' ? 'running' : c.status === 'stopped' ? 'stopped' : `exit ${c.exitCode ?? '?'}`);
-          const stop = c.status === 'running' ? iconButton({ icon: 'stop', title: 'Stop', size: 'sm', onClick: async (e) => { e.stopPropagation(); await terminalApi.stop(c.id).catch((err) => toast(String(err), 'error')); void render(); } }) : null;
+          const stop =
+            c.status === 'running'
+              ? iconButton({
+                  icon: 'stop',
+                  title: 'Stop',
+                  size: 'sm',
+                  onClick: async (e) => {
+                    e.stopPropagation();
+                    await terminalApi.stop(c.id).catch((err) => toast(String(err), 'error'));
+                    void render();
+                  },
+                })
+              : null;
           const pre = outputs.get(c.id) ?? h('pre', { class: 'term-output' });
           outputs.set(c.id, pre);
           const atBottom = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 30;
@@ -48,11 +60,38 @@ export function openTerminal(conversationId: string, folder: string) {
           const open = c.id === selected;
           // A dev server's address in the output (Open WebUI's site preview): open it beside the chat.
           const site = c.status === 'running' ? localSite(c.output) : null;
-          const preview = site ? iconButton({ icon: 'globe', title: `Preview ${site}`, size: 'sm', onClick: (e) => { e.stopPropagation(); void tauriInvoke('chat_open_preview', { url: site }).catch((err) => toast(String(err), 'error')); } }) : null;
+          const preview = site
+            ? iconButton({
+                icon: 'globe',
+                title: `Preview ${site}`,
+                size: 'sm',
+                onClick: (e) => {
+                  e.stopPropagation();
+                  void tauriInvoke('chat_open_preview', { url: site }).catch((err) => toast(String(err), 'error'));
+                },
+              })
+            : null;
           return h(
             'section',
             { class: `term-item${open ? ' open' : ''}` },
-            h('button', { class: 'term-head', on: { click: () => { selected = open ? null : c.id; void render(); } } }, icon('terminal', 15), h('code', {}, c.command), h('span', { class: 'spacer' }), preview, status, stop),
+            h(
+              'button',
+              {
+                class: 'term-head',
+                on: {
+                  click: () => {
+                    selected = open ? null : c.id;
+                    void render();
+                  },
+                },
+              },
+              icon('terminal', 15),
+              h('code', {}, c.command),
+              h('span', { class: 'spacer' }),
+              preview,
+              status,
+              stop
+            ),
             open ? pre : null
           );
         })
@@ -74,14 +113,28 @@ export function openTerminal(conversationId: string, folder: string) {
     });
     timer = window.setInterval(() => void render(), 1000);
     void render();
-    const clearDone = button({ variant: 'subtle', size: 'sm', label: 'Clear finished', onClick: async () => { await terminalApi.clear(conversationId); void render(); } });
+    const clearDone = button({
+      variant: 'subtle',
+      size: 'sm',
+      label: 'Clear finished',
+      onClick: async () => {
+        await terminalApi.clear(conversationId);
+        void render();
+      },
+    });
     return h(
       'div',
       { class: 'term-modal' },
-      modalHeader(h('div', { class: 'modal-title' }, h('h2', {}, 'Terminal'), h('span', { class: 'muted' }, folder)), () => { clearInterval(timer); close(); }, { actions: [clearDone] }),
+      modalHeader(
+        h('div', { class: 'modal-title' }, h('h2', {}, 'Terminal'), h('span', { class: 'muted' }, folder)),
+        () => {
+          clearInterval(timer);
+          close();
+        },
+        { actions: [clearDone] }
+      ),
       h('div', { class: 'term-run' }, h('span', { class: 'term-prompt' }, '$'), input, button({ variant: 'primary', size: 'sm', label: 'Run in background', onClick: () => void run() })),
       list
     );
   }, true);
 }
-

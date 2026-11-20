@@ -59,7 +59,13 @@ function qrImage(link: SharedLink, size = 168): HTMLElement | null {
   return h('img', { class: 'share-qr', width: size, height: size, alt: 'QR code of the link', src: `data:image/svg+xml;base64,${btoa(link.qrSvg)}` });
 }
 
-const EXPIRY: [number, string][] = [[0, 'Never'], [1, 'In 1 hour'], [24, 'In 1 day'], [168, 'In 7 days'], [720, 'In 30 days']];
+const EXPIRY: [number, string][] = [
+  [0, 'Never'],
+  [1, 'In 1 hour'],
+  [24, 'In 1 day'],
+  [168, 'In 7 days'],
+  [720, 'In 30 days'],
+];
 
 function expiryLabel(at?: string | null): string {
   return at ? `Expires ${new Date(at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}` : 'Never expires';
@@ -69,7 +75,11 @@ function showLink(link: SharedLink) {
   void modal((close) => {
     const field = h('input', { class: 'input mono no-translate', value: link.url, readonly: true, 'aria-label': 'Link' });
     const when = h('small', { class: 'muted' }, expiryLabel(link.expiresAt));
-    const expiry = h('select', { class: 'input', 'aria-label': 'Link expires' }, EXPIRY.map(([hours, label]) => h('option', { value: String(hours) }, label)));
+    const expiry = h(
+      'select',
+      { class: 'input', 'aria-label': 'Link expires' },
+      EXPIRY.map(([hours, label]) => h('option', { value: String(hours) }, label))
+    );
     expiry.addEventListener('change', async () => {
       try {
         const at = await tauriInvoke<string | null>('chat_set_share_expiry', { token: link.token, hours: Number(expiry.value) || null });
@@ -94,8 +104,17 @@ function showLink(link: SharedLink) {
       'div',
       { class: 'dialog-small' },
       modalHeader('Shared on your network', close, { flush: true }),
-      h('p', { class: 'muted' }, `Anyone on the same network (home or office Wi-Fi) with this link can open “${link.title}” while Cortex is running. It is one page: it ${link.app ? 'runs the app but cannot reach the internet' : 'loads nothing and runs no code'}. Settings → Profile lists your shared links.`),
-      h('div', { class: 'share-body' }, qrImage(link), h('div', { class: 'grow share-fields' }, field, h('label', { class: 'field-label' }, 'Link expires'), expiry, when, h('small', { class: 'muted' }, 'Scan the code with a phone on the same Wi-Fi to open it there.'))),
+      h(
+        'p',
+        { class: 'muted' },
+        `Anyone on the same network (home or office Wi-Fi) with this link can open “${link.title}” while Cortex is running. It is one page: it ${link.app ? 'runs the app but cannot reach the internet' : 'loads nothing and runs no code'}. Settings → Profile lists your shared links.`
+      ),
+      h(
+        'div',
+        { class: 'share-body' },
+        qrImage(link),
+        h('div', { class: 'grow share-fields' }, field, h('label', { class: 'field-label' }, 'Link expires'), expiry, when, h('small', { class: 'muted' }, 'Scan the code with a phone on the same Wi-Fi to open it there.'))
+      ),
       h('div', { class: 'dialog-actions' }, stop, open, copy)
     );
   });
@@ -124,7 +143,19 @@ export function sharedLinksCard(): HTMLElement {
               ),
               h('button', { class: 'link-btn', on: { click: () => showLink(l) } }, 'QR code'),
               h('button', { class: 'link-btn', on: { click: () => void navigator.clipboard.writeText(l.url).then(() => toast('Link copied.')) } }, 'Copy'),
-              h('button', { class: 'link-btn', on: { click: async () => { await tauriInvoke('chat_stop_share', { token: l.token }); void render(); } } }, 'Stop sharing')
+              h(
+                'button',
+                {
+                  class: 'link-btn',
+                  on: {
+                    click: async () => {
+                      await tauriInvoke('chat_stop_share', { token: l.token });
+                      void render();
+                    },
+                  },
+                },
+                'Stop sharing'
+              )
             )
           )
         : h('p', { class: 'muted' }, 'Nothing is shared. Share a conversation (its Share menu) or an app (the share button on it) to get a link others on your network can open.')
