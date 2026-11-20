@@ -360,7 +360,7 @@ export function renderCanvasCard(part: Extract<Part, { kind: 'tool' }>, live: bo
     }
     const id = idOf(part);
     const canvas = id ? await api.get(id).catch(() => null) : null;
-    if (!id || !canvas || !canvas.versions.length) return toast('No earlier versions yet.');
+    if (!id || !canvas?.versions.length) return toast('No earlier versions yet.');
     let at = canvas.versions.length - 1;
     let showChanges = false;
     const render = () => {

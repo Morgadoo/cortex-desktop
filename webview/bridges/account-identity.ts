@@ -26,7 +26,7 @@ import { tauriInvoke } from '../shared/tauri';
   function readItem(key: string): string | null {
     try {
       return localStorage.getItem(key);
-    } catch (e) {
+    } catch (_e) {
       return null;
     }
   }
@@ -37,7 +37,7 @@ import { tauriInvoke } from '../shared/tauri';
     try {
       const userId = (JSON.parse(raw) as { UserID?: unknown }).UserID;
       return typeof userId === 'string' && userId ? userId : null;
-    } catch (e) {
+    } catch (_e) {
       return null;
     }
   }
@@ -57,7 +57,7 @@ import { tauriInvoke } from '../shared/tauri';
     let keys: string[];
     try {
       keys = Object.keys(localStorage);
-    } catch (e) {
+    } catch (_e) {
       return null;
     }
     const slots = keys.map((key) => SESSION_KEY.exec(key)).filter(Boolean);

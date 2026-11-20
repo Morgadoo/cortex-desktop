@@ -7,9 +7,7 @@
  */
 declare module 'node:test' {
   type Body = () => void | Promise<void>;
-  interface Test {
-    (name: string, body: Body): Promise<void>;
-  }
+  type Test = (name: string, body: Body) => Promise<void>;
   const test: Test;
   export default test;
   export const describe: (name: string, body: () => void) => void;

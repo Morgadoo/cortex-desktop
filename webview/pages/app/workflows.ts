@@ -16,11 +16,11 @@ export const workflowsApi = {
 
 /** An approval step (OpenBot's workflow approvals): the run stops there until the user approves. */
 export function isApproval(step: string): boolean {
-  return /^\s*(approve|approval|\[approve\])\s*[:\-]/i.test(step);
+  return /^\s*(approve|approval|\[approve\])\s*[:-]/i.test(step);
 }
 
 export function approvalText(step: string): string {
-  return step.replace(/^\s*(approve|approval|\[approve\])\s*[:\-]\s*/i, '').trim() || 'Check the result so far';
+  return step.replace(/^\s*(approve|approval|\[approve\])\s*[:-]\s*/i, '').trim() || 'Check the result so far';
 }
 
 /** The steps as a flow: one node per step, approvals marked, arrows between. */

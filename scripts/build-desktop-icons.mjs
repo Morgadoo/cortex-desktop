@@ -3,7 +3,7 @@
 // Regenerate desktop bundle icons (macOS .icns, Windows .ico, PNG sizes).
 // Preserves tray-icon-light.png / tray-icon-dark.png and removes generated android/ + ios/ trees.
 
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, rmSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'

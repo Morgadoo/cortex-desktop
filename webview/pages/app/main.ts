@@ -14,7 +14,7 @@ import { startUiLanguage } from './i18n';
 import { startWakeWord, stopWakeWord, wakePrefs } from './wakeword';
 import { ConnectorsPage, PlaceholderPage, openInstructions } from './pages';
 import { KnowledgePage, SkillsPage, reviewRecording } from './context';
-import { AgentPage, AgentsPage, agentName, avatar, editAgent, newAgent, orgOrder, pinnedAgents, reloadAgents } from './agents';
+import { AgentPage, AgentsPage, agentName, avatar, newAgent, orgOrder, pinnedAgents, reloadAgents } from './agents';
 import { TasksPage } from './tasks';
 import { LibrariesPage } from './libraries';
 import { AppsPage } from './apps';

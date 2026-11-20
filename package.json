@@ -13,6 +13,7 @@
     "i18n:catalog": "node scripts/ui-strings.mjs",
     "check:i18n": "node scripts/check-i18n.mjs",
     "format": "biome format --write",
+    "lint": "biome check && node scripts/check-html-sinks.mjs",
     "test": "node scripts/test-webview.mjs && node --test scripts/*.test.mjs"
   },
   "devDependencies": {

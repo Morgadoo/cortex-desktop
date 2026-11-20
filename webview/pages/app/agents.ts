@@ -6,7 +6,7 @@ import { historyButton } from './versions';
 import { changed, navigate, state } from './state';
 import { TasksPage } from './tasks';
 import { agentPanel } from './agentpanel';
-import { button, card, modalHeader, switchInput } from './ui';
+import { button, modalHeader, switchInput } from './ui';
 import { storedLanguage } from './i18n';
 import { json, textPref } from './prefs';
 

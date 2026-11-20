@@ -282,7 +282,7 @@ export class ConnectorsPage {
       h(
         'summary',
         {},
-        c.icon && c.icon.startsWith('data:')
+        c.icon?.startsWith('data:')
           ? h('img', { class: 'connector-icon', src: c.icon, alt: '' })
           : h('span', { class: 'connector-icon fallback' }, icon(c.id === 'bash' ? 'terminal' : c.id === 'filesystem' ? 'file' : c.id === 'browser' ? 'globe' : 'plug', 18)),
         h('span', { class: 'connector-text' }, h('strong', {}, c.display_name), h('small', { class: 'muted' }, c.description ?? `${c.tools.length} tools`)),

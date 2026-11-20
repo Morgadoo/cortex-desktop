@@ -985,7 +985,7 @@ async function localModelsCard(): Promise<HTMLElement> {
     const list = await tauriInvoke<LocalModel[]>('chat_local_models').catch(() => []);
     const row = (m: LocalModel) => {
       const p = progress.get(m.id);
-      const pct = p && p.total ? Math.floor((p.done / p.total) * 100) : 0;
+      const pct = p?.total ? Math.floor((p.done / p.total) * 100) : 0;
       const action = m.installed
         ? button({
             variant: 'secondary',

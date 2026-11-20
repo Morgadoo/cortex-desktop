@@ -67,7 +67,7 @@ function draw(text: Text) {
   text.replaceWith(out);
   // A message that is only an emoji or three shows them large.
   const block = parent?.closest('p, .bubble-text');
-  if (block && block.closest('.bubble, .assistant-text, .turn') && onlyEmoji(block.textContent ?? '', active.index)) block.classList.add('emoji-jumbo');
+  if (block?.closest('.bubble, .assistant-text, .turn') && onlyEmoji(block.textContent ?? '', active.index)) block.classList.add('emoji-jumbo');
 }
 
 function scan(root: Node) {

@@ -20,7 +20,7 @@ window.addEventListener('message', (e) => {
   }
   if (!data?.diagramKey || typeof data.height !== 'number') return;
   const frame = frames.get(data.diagramKey);
-  if (!frame || !frame.isConnected) {
+  if (!frame?.isConnected) {
     frames.delete(data.diagramKey);
     return;
   }

@@ -15,7 +15,6 @@ import { actionFor } from './shortcuts';
 import { clear, confirmDialog, greeting, h, icon, markdown, modal, popover, promptText, timeLabel, toast, clockHour12 } from './dom';
 import { applyEvent, changed, currentModel, followUpsOn, navigate, setMode, state, temporaryByDefault, type LiveTurn, followStreamOn } from './state';
 import { openSettings } from './settings';
-import { openInstructions } from './pages';
 import { closePanel, enableAskAboutSelection, hasPanel, openSidePanel, renderCanvasCard, setPanelHost, lineDiff } from './canvas';
 import { hostOf, previewFor, siteIcon } from './favicon';
 import './diagrams';
@@ -23,7 +22,7 @@ import { renderCodeRun, renderImage, renderVideo } from './coderun';
 import { startRecording, type Recording } from './dictation';
 import { blobToBase64, bytesToBase64, escapeHtml } from './format';
 import { liveCapable, liveTranscript, renderLive } from './live';
-import { audioSettings, shortError, speakText, type Playback } from './audio';
+import { audioSettings, speakText, type Playback } from './audio';
 import { editWorkflow, liveWorkflow, workflowPrompt, workflowsApi } from './workflows';
 import type { Speed, Workflow } from './api';
 import { diffLines, loadChanges, openChanges, openFiles, openDebug } from './changes';
@@ -2178,7 +2177,7 @@ class Composer {
           // Only while the text is as it was when asked.
           if (seq !== this.suggestionSeq || this.textarea.value !== typed || !continuation.trim()) return;
           this.suggestion = continuation;
-          clear(this.hint, h('span', { class: 'muted' }, '…' + typed.slice(-24).trimStart()), h('strong', {}, continuation), h('kbd', {}, 'Tab'));
+          clear(this.hint, h('span', { class: 'muted' }, `…${typed.slice(-24).trimStart()}`), h('strong', {}, continuation), h('kbd', {}, 'Tab'));
           this.hint.hidden = false;
         })
         .catch(() => undefined);
@@ -3152,83 +3151,81 @@ class Composer {
 
   /** Attaches files: images as images, documents and workbooks as their text. */
   async addFiles(files: File[]) {
-    {
-      for (const file of files) {
-        if (IMAGE_TYPES.includes(file.type)) {
-          if (file.size > 8 * 1024 * 1024) {
-            toast(`${file.name} is larger than 8 MB.`, 'error');
-            continue;
-          }
-          this.attachments.push({ name: file.name, text: '', image: await readImage(file), file: true });
+    for (const file of files) {
+      if (IMAGE_TYPES.includes(file.type)) {
+        if (file.size > 8 * 1024 * 1024) {
+          toast(`${file.name} is larger than 8 MB.`, 'error');
           continue;
         }
-        // Videos: spread-out frames as images, and what is said as a transcript (ffmpeg).
-        if (file.type.startsWith('video/') || /\.(mp4|mov|m4v|mkv|avi)$/i.test(file.name)) {
-          try {
-            if (file.size > 200 * 1024 * 1024) throw new Error(`${file.name} is larger than 200 MB.`);
-            toast(`Reading ${file.name}…`);
-            const data = await blobToBase64(file);
-            const v = await tauriInvoke<{ seconds: number; frames: { at: number; data: string }[]; transcript: string | null; note: string | null }>('chat_read_video', { name: file.name, data });
-            const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-            for (const f of v.frames) this.attachments.push({ name: `${file.name} · ${clock(f.at)}`, text: '', image: { mediaType: 'image/jpeg', data: f.data }, file: true });
-            const about = `Video ${file.name}, ${clock(v.seconds)} long: ${v.frames.length} frames are attached as images, taken at ${v.frames.map((f) => clock(f.at)).join(', ')}.`;
-            this.attachments.push({ name: `${file.name} (${v.transcript ? 'transcript' : 'about'})`, text: v.transcript ? `${about}\n\nWhat is said in it:\n${v.transcript}` : `${about} ${v.note ?? ''}`, file: true });
-            if (v.note) toast(`${file.name}: ${v.note}`);
-          } catch (e) {
-            toast(`${file.name}: ${String(e)}`, 'error');
-          }
-          continue;
-        }
-        // Recordings are transcribed with the speech-to-text model, and the transcript attached.
-        if (file.type.startsWith('audio/') || /\.(mp3|m4a|wav|ogg|oga|opus|flac|webm)$/i.test(file.name)) {
-          try {
-            if (file.size > 25 * 1024 * 1024) throw new Error(`${file.name} is larger than 25 MB.`);
-            toast(`Transcribing ${file.name}…`);
-            const data = await blobToBase64(file);
-            const text = await tauriInvoke<string>('chat_transcribe', { audio: data, mime: file.type || 'audio/mpeg' });
-            this.attachments.push({ name: `${file.name} (transcript)`, text, file: true });
-          } catch (e) {
-            toast(`${file.name}: ${String(e)}`, 'error');
-          }
-          continue;
-        }
-        // PDFs, Office documents and ZIP archives are read into text, as libraries read them.
-        if (/\.(pdf|docx|pptx|odt|odp|zip)$/i.test(file.name)) {
-          try {
-            const data = await blobToBase64(file);
-            const text = await tauriInvoke<string>('chat_read_document', { name: file.name, data });
-            this.attachments.push({ name: file.name, text: text.length > 400_000 ? `${text.slice(0, 400_000)}\n… (cut; add the file to a library to search all of it)` : text, file: true });
-          } catch (e) {
-            toast(`${file.name}: ${String(e)}`, 'error');
-          }
-          continue;
-        }
-        // Workbooks are read into CSV, one block per sheet.
-        if (/\.(xlsx|xlsm|xls|ods)$/i.test(file.name)) {
-          try {
-            const data = await blobToBase64(file);
-            const sheets = await tauriInvoke<[string, string][]>('chat_read_spreadsheet', { data });
-            const text = sheets.map(([name, csv]) => `Sheet "${name}" (CSV):\n${csv}`).join('\n\n');
-            this.attachments.push({ name: file.name, text: text.length > 400_000 ? `${text.slice(0, 400_000)}\n… (cut; analyse the full file with run_code)` : text, file: true });
-          } catch (e) {
-            toast(String(e), 'error');
-          }
-          continue;
-        }
-        if (file.size > 512 * 1024) {
-          toast(`${file.name} is larger than 512 KB.`, 'error');
-          continue;
-        }
-        const text = await file.text();
-        if (text.includes('\u0000')) {
-          toast(`${file.name} is not a text file.`, 'error');
-          continue;
-        }
-        this.attachments.push({ name: file.name, text, file: true });
+        this.attachments.push({ name: file.name, text: '', image: await readImage(file), file: true });
+        continue;
       }
-      this.renderChips();
-      this.renderBar();
+      // Videos: spread-out frames as images, and what is said as a transcript (ffmpeg).
+      if (file.type.startsWith('video/') || /\.(mp4|mov|m4v|mkv|avi)$/i.test(file.name)) {
+        try {
+          if (file.size > 200 * 1024 * 1024) throw new Error(`${file.name} is larger than 200 MB.`);
+          toast(`Reading ${file.name}…`);
+          const data = await blobToBase64(file);
+          const v = await tauriInvoke<{ seconds: number; frames: { at: number; data: string }[]; transcript: string | null; note: string | null }>('chat_read_video', { name: file.name, data });
+          const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+          for (const f of v.frames) this.attachments.push({ name: `${file.name} · ${clock(f.at)}`, text: '', image: { mediaType: 'image/jpeg', data: f.data }, file: true });
+          const about = `Video ${file.name}, ${clock(v.seconds)} long: ${v.frames.length} frames are attached as images, taken at ${v.frames.map((f) => clock(f.at)).join(', ')}.`;
+          this.attachments.push({ name: `${file.name} (${v.transcript ? 'transcript' : 'about'})`, text: v.transcript ? `${about}\n\nWhat is said in it:\n${v.transcript}` : `${about} ${v.note ?? ''}`, file: true });
+          if (v.note) toast(`${file.name}: ${v.note}`);
+        } catch (e) {
+          toast(`${file.name}: ${String(e)}`, 'error');
+        }
+        continue;
+      }
+      // Recordings are transcribed with the speech-to-text model, and the transcript attached.
+      if (file.type.startsWith('audio/') || /\.(mp3|m4a|wav|ogg|oga|opus|flac|webm)$/i.test(file.name)) {
+        try {
+          if (file.size > 25 * 1024 * 1024) throw new Error(`${file.name} is larger than 25 MB.`);
+          toast(`Transcribing ${file.name}…`);
+          const data = await blobToBase64(file);
+          const text = await tauriInvoke<string>('chat_transcribe', { audio: data, mime: file.type || 'audio/mpeg' });
+          this.attachments.push({ name: `${file.name} (transcript)`, text, file: true });
+        } catch (e) {
+          toast(`${file.name}: ${String(e)}`, 'error');
+        }
+        continue;
+      }
+      // PDFs, Office documents and ZIP archives are read into text, as libraries read them.
+      if (/\.(pdf|docx|pptx|odt|odp|zip)$/i.test(file.name)) {
+        try {
+          const data = await blobToBase64(file);
+          const text = await tauriInvoke<string>('chat_read_document', { name: file.name, data });
+          this.attachments.push({ name: file.name, text: text.length > 400_000 ? `${text.slice(0, 400_000)}\n… (cut; add the file to a library to search all of it)` : text, file: true });
+        } catch (e) {
+          toast(`${file.name}: ${String(e)}`, 'error');
+        }
+        continue;
+      }
+      // Workbooks are read into CSV, one block per sheet.
+      if (/\.(xlsx|xlsm|xls|ods)$/i.test(file.name)) {
+        try {
+          const data = await blobToBase64(file);
+          const sheets = await tauriInvoke<[string, string][]>('chat_read_spreadsheet', { data });
+          const text = sheets.map(([name, csv]) => `Sheet "${name}" (CSV):\n${csv}`).join('\n\n');
+          this.attachments.push({ name: file.name, text: text.length > 400_000 ? `${text.slice(0, 400_000)}\n… (cut; analyse the full file with run_code)` : text, file: true });
+        } catch (e) {
+          toast(String(e), 'error');
+        }
+        continue;
+      }
+      if (file.size > 512 * 1024) {
+        toast(`${file.name} is larger than 512 KB.`, 'error');
+        continue;
+      }
+      const text = await file.text();
+      if (text.includes('\u0000')) {
+        toast(`${file.name} is not a text file.`, 'error');
+        continue;
+      }
+      this.attachments.push({ name: file.name, text, file: true });
     }
+    this.renderChips();
+    this.renderBar();
   }
 
   /** Attaches a block of text (forwarded messages and the like) to the next message. */
@@ -4201,7 +4198,7 @@ export class CompareView {
   private blind = blindCompare();
 
   constructor(
-    private prompt: string,
+    prompt: string,
     private columns: { id: string; model: string }[]
   ) {
     this.key = `compare:${columns.map((c) => c.id).join(',')}`;
@@ -4744,8 +4741,8 @@ ${body.innerHTML}
 function usageMeter(id: string, live: { usage: UsageTotals; window: number } | undefined, stored: UsageTotals | undefined): HTMLElement | null {
   const usage = live?.usage ?? stored;
   if (!usage || !(usage.inputTokens || usage.outputTokens)) return null;
-  const pct = live && live.window ? Math.min(100, Math.round((usage.contextTokens / live.window) * 100)) : null;
-  const money = (n: number) => '$' + n.toFixed(n < 0.01 ? 4 : 2);
+  const pct = live?.window ? Math.min(100, Math.round((usage.contextTokens / live.window) * 100)) : null;
+  const money = (n: number) => `$${n.toFixed(n < 0.01 ? 4 : 2)}`;
   const lines = [
     pct !== null && live ? `Context: ${usage.contextTokens.toLocaleString()} of ${live.window.toLocaleString()} tokens (${pct}%)` : '',
     `Used: ${usage.inputTokens.toLocaleString()} in, ${usage.outputTokens.toLocaleString()} out`,
@@ -4756,7 +4753,7 @@ function usageMeter(id: string, live: { usage: UsageTotals; window: number } | u
     'button',
     { class: 'usage-meter', title: `${lines.join('. ')}. Click to see what fills the context.`, on: { click: () => void showContext(id) } },
     pct !== null ? h('span', { class: 'ring', style: { '--pct': String(pct) } }) : null,
-    h('span', {}, `${total}k tokens${usage.cost > 0 ? ' · ' + money(usage.cost) : ''}`)
+    h('span', {}, `${total}k tokens${usage.cost > 0 ? ` · ${money(usage.cost)}` : ''}`)
   );
 }
 

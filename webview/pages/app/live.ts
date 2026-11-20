@@ -11,7 +11,7 @@
  */
 
 import { tauriInvoke } from '../../shared/tauri';
-import { type Recording } from './dictation';
+import type { Recording } from './dictation';
 import { blobToBase64 } from './format';
 
 /** How often the audio so far is transcribed again, at most. */
@@ -96,6 +96,7 @@ export function renderLive(el: HTMLElement, previous: string, next: string, maxC
   fresh.forEach((word, i) => {
     const span = document.createElement('span');
     span.className = 'word-in';
+    // biome-ignore lint/style/useTemplate: a template here would put "{0}ms" in the translation catalog.
     span.style.animationDelay = String(i * 45) + 'ms';
     span.textContent = word;
     el.append(span, i < fresh.length - 1 ? ' ' : '');

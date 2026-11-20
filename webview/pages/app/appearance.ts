@@ -4,7 +4,6 @@
  * The choice is a per-device preference kept in localStorage, like the theme.
  */
 
-import { tauriInvoke } from '../../shared/tauri';
 import { createShaderBackdrop, renderShaderPreview, type ShaderBackdrop } from './backdropgl';
 import { json, textPref } from './prefs';
 import { callQuiet } from './call';

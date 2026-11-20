@@ -84,7 +84,7 @@ export function effectiveLanguage(offered: string[]): string {
   return offered.includes(system) ? system : '';
 }
 
-const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Builds the lookups from English → translation; keys with `{n}` become templates. */
 export function load(map: Record<string, string>) {
@@ -99,7 +99,7 @@ export function load(map: Record<string, string>) {
     const order: number[] = [];
     const source = parts.map((p) => {
       const slot = p.match(/^\{(\d+)\}$/);
-      if (!slot) return escape(p);
+      if (!slot) return escapeRegExp(p);
       order.push(Number(slot[1]));
       return '(.+?)';
     });
