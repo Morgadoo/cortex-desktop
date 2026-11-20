@@ -42,7 +42,8 @@ async function bridge({ desktop = true, signedIn = true, invokeError } = {}) {
                 if (command === 'get_builtin_tools') return signedIn ? [reader] : [];
                 if (command === 'invoke_tool') {
                     if (invokeError) throw invokeError;
-                    return 'saved page';
+                    // The bridge asks for file transport, so the native side wraps the result.
+                    return args.fileTransport ? { value: 'saved page' } : 'saved page';
                 }
                 throw new Error(`Unexpected command: ${command}`);
             },
@@ -50,6 +51,7 @@ async function bridge({ desktop = true, signedIn = true, invokeError } = {}) {
     vm.runInNewContext(source, {
         window,
         console,
+        navigator: { platform: 'Linux x86_64', userAgent: 'Linux' },
         TextEncoder,
         fetch: async () => ({ ok: true, json: async () => [] }),
         CustomEvent: class {

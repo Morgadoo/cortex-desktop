@@ -1,9 +1,18 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { build } from 'esbuild';
 
-const source = readFileSync(new URL('../webview/pages/settings/index.js', import.meta.url), 'utf8');
+// The page imports shared modules, so it runs as the build bundles it.
+const bundle = await build({
+    entryPoints: [new URL('../webview/pages/settings/index.js', import.meta.url).pathname],
+    bundle: true,
+    write: false,
+    format: 'iife',
+    platform: 'browser',
+    define: { __CORTEX_CONNECTOR_ICONS__: '{}' },
+});
+const source = bundle.outputFiles[0].text;
 
 async function recoveryUI(reset, signedIn = true) {
     const button = { disabled: true };
