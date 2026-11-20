@@ -10,19 +10,7 @@
 //! - [`engine`]: one turn: stream a reply, run the tools it calls, repeat
 //! - [`tools`]: the app's connectors (filesystem, shell, MCP) and built-ins offered to the model
 
-pub mod builtins;
 pub mod commands;
-pub mod context;
-mod deferred;
-pub mod engine;
-pub mod functions;
-pub mod hooks;
-pub mod host;
-pub mod privacy;
-pub mod prompt;
-pub mod subagents;
-pub mod tools;
-pub mod traces;
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -48,6 +36,9 @@ pub mod cli;
 pub use cli::{config_cli, headless, terminal_chat};
 pub mod ui;
 pub use ui::{emoji_pack, ui_language};
+pub mod turn;
+pub use turn::{builtins, context, engine, functions, hooks, host, privacy, prompt, subagents, tools, traces};
+use turn::deferred;
 
 /// The account every account-scoped subsystem (connectors, secrets, skills) runs under. Proton
 /// accounts are gone; one local profile takes their place.

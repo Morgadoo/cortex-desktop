@@ -268,7 +268,7 @@ pub struct TurnRequest {
     pub instructions_off: bool,
 }
 
-pub(super) fn emit(app: &AppHandle, event: ChatEvent) {
+pub(in crate::chat) fn emit(app: &AppHandle, event: ChatEvent) {
     if let (Some(state), Ok(value)) = (app.try_state::<ChatState>(), serde_json::to_value(&event)) {
         state.record(&value);
     }

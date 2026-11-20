@@ -85,7 +85,7 @@ const LANGUAGES: &[Language] = &[
     },
 ];
 
-pub(super) fn find_program(name: &str) -> Option<PathBuf> {
+pub(in crate::chat) fn find_program(name: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
     std::env::split_paths(&path).find_map(|dir| {
         let candidate = dir.join(name);

@@ -1108,7 +1108,7 @@ pub(crate) fn search_chats(config_dir: &Path, query: &str) -> Vec<crate::chat::i
 }
 
 /// What was said in a conversation, as plain text, cut at `limit` characters.
-pub(super) fn chat_transcript(
+pub(in crate::chat) fn chat_transcript(
     conversation: &crate::chat::store::Conversation,
     limit: usize,
 ) -> String {
