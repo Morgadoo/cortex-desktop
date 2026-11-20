@@ -105,28 +105,15 @@ gateway. Speech-to-text and text-to-speech engines are set separately in **Setti
 ## How it is built
 
 ```
-webview/pages/app/   TypeScript UI (no framework): chat, canvases, side panel, settings
-        ↕  Tauri IPC (allowlisted commands) and chat://event streams
-src-tauri/src/chat/  Rust chat engine on rig: turns, tools, context, storage
-src-tauri/src/tools/ connector registry: files, shell, browser, MCP; approvals; keychain
+webview/pages/app/   TypeScript UI (no framework), in folders: core, ui, shell, chat, canvas, pages, settings
+        ↕  Tauri IPC (generated command list, per-file permissions) and chat://event streams
+src-tauri/src/chat/  Rust chat engine on rig, in layers: storage → models, grounding, toolkit → turn, automation → commands
+src-tauri/crates/    the AI core that needs no window: agent loop, retrieval, traces, WASM sandbox
 ```
 
-| Module | Role |
-|---|---|
-| `engine.rs` | One turn: stream the reply, run the tools it calls (in parallel where safe), repeat; failover to a backup model |
-| `providers.rs` | Providers, base URLs and models, from rig's catalog or a local server's own list |
-| `tools.rs`, `deferred.rs` | Connector tools under the approval mode, smart-approve, Auto's check; tools loaded on demand |
-| `context.rs` | Context budget: clearing old results, summaries, token and cost tracking, the context view |
-| `store.rs`, `index.rs`, `backup.rs` | Conversations as rig's message history (versioned files), the search index, backups and trash |
-| `subagents.rs`, `agents.rs`, `tasks.rs` | Parallel workers, the agent workforce, the scheduler |
-| `builtins.rs`, `search.rs`, `libraries.rs`, `knowledge.rs`, `memory.rs` | Web search, retrieval, knowledge |
-| `canvas.rs`, `sheets.rs`, `sandbox.rs`, `media.rs`, `audio.rs` | Canvases and apps (`cortexapp://`), spreadsheets, code runs, images, voice |
-| `code.rs`, `terminal.rs` | Coding sessions: git, Changes, Files, background commands |
-| `favicon.rs`, `preview.rs` | Site icons and link previews, fetched and cached for the page's strict CSP |
-| `skills.rs`, `workflows.rs`, `import.rs`, `privacy.rs` | Skills, workflows, ChatGPT and Claude import, the personal-data filter |
-| `embeddings.rs` | Semantic search: embeddings, cached vectors, reciprocal rank fusion with BM25 |
-| `openapi.rs`, `computer.rs` | OpenAPI tool servers; computer use (screenshots, mouse, keyboard) |
-| `api_server.rs` | The local OpenAI-compatible API (axum, 127.0.0.1, bearer key) |
+[docs/architecture.md](docs/architecture.md) maps every folder, the layering rule, where each data file
+lives, and the steps for adding a command, a tool, a connector or a setting.
+[CONTRIBUTING.md](CONTRIBUTING.md) has the checks to run and the conventions reviews hold to.
 
 ## Hosted mode (the original Lumo Desktop)
 
@@ -255,7 +242,7 @@ emits a request to the webview, and resolves on the user's answer or a timeout.
 You also need the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your platform (WebKitGTK
 on Linux, WebView2 on Windows).
 
-Optionally, enable the pre-push type-check hook:
+Optionally, enable the pre-push hook (type check and unit tests):
 
 ```bash
 git config core.hooksPath .githooks
@@ -284,7 +271,7 @@ For the hosted mode, build with the `hosted` feature (`npm run dev -- --features
 ## Testing
 
 ```bash
-npm run typecheck                                                       # TypeScript
+npm run typecheck && npm run lint && npm test                           # TypeScript
 cargo test --manifest-path src-tauri/Cargo.toml --features test-utils   # Rust unit and integration tests
 ```
 
