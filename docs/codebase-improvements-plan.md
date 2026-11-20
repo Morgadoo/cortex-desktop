@@ -9,6 +9,72 @@ references such as "review 6.1" point into the review.
 Nothing in this plan changes what the app does for its user, except the handful of small fixes
 listed in package 0.8.
 
+## Status, 2026-11-20
+
+Work happened on one branch (pull request #7) rather than one pull request per package; each
+package is one or more commits there. Measured as section 7 describes:
+
+| Measure | Start | Now | Target |
+|---|---|---|---|
+| Tracked files that are ignored | 12 | 0 | 0 |
+| Interface tests failing | 5 of 9, not run | 0, run in CI | 0 |
+| Commands in the largest permission | 143 | 48 | Under 50 |
+| Hand-written settings loaders | About 28 | 0 | 0 |
+| HTTP clients built in place | 36 | 10, each for a reason (below) | 1 |
+| Raw error toasts | 148 | 1, the helper itself | 0 |
+| Files directly in `src-tauri/src/chat/` | 86 | 2 | Under 15 |
+| Files directly in `webview/pages/app/` | 51 | 0 | Under 5 |
+| Largest interface file | 4,892 lines | 723 | Under 800 |
+| Rust functions over 150 lines | 11 | 7 | 0 |
+| Layering violations allowed | About 69 modules in one cycle | 0 | 0 |
+| Public functions in chat | About 1,060 | 841, 287 of them commands | Under 400 |
+| `Result<_, String>` in chat, outside `commands/` | About 420 | 419 | 0 below the entry points |
+| Hand edits to add a command | 4 to 5 | 1, plus a script | 1 |
+| Backend calls by string name | 287 | 165 | 0 |
+
+**Done**: phase 0 (0.1 to 0.8), phase 1 (1.1 to 1.6), 2.1 to 2.4, 2.6 to 2.8, 3.1 to 3.3,
+3.6 to 3.9 and 3.11.
+
+**Partly done**:
+
+- 2.5: four of the eleven long functions are split. Left: `traced_turn` (252 lines),
+  `call_model` (248), `sync_once` (202), `transcribe` (184), `run_calls` (164),
+  `preamble_prompt` (154), and the tool schema table `definitions` (392, data rather than logic).
+- 2.7: one token file for every page, no colour literal outside it (the agent tints computed from
+  a hue variable aside), `app.css` split into eleven files the build joins in order, and the
+  duplicate selectors that can be merged without changing the cascade merged (four; seven others
+  have a rule in between that sets the same properties). The files follow the order the
+  sections arrived in; regrouping them by interface folder is a reorder, to be checked with
+  `scripts/screenshot-pages.mjs`. The `--cortex-*` names stay until the old settings page is
+  rewritten.
+- 3.4: 240 functions narrowed. The rest wait on the crate split, which decides what is public.
+- 3.5: storage has a typed `StoreError` (in `cortex-store`); the other layers still return
+  `String`.
+- 3.10: the conversation, its turns and events, providers, models, projects, memories, tasks'
+  schedules, search hits, the trash, storage health, skills and workflows are generated from the
+  Rust types. Agents and scheduled tasks wait on fields serde leaves out when empty, which ts-rs
+  can only mark optional on an `Option`. Package item 4 (verb names) is not started.
+- 4.1: `cortex-store` holds settings files, encryption at rest and the storage errors. The
+  conversation store and `cortex-tools` follow once they stop reaching into the app: sync uses
+  Tauri, the vault uses the keychain, and the loaders take an `AppHandle`.
+
+**Deliberate departures**:
+
+- Which connectors are exposed, and which send data out, stays in central fail-closed tables
+  (`tools/exposure.rs`) instead of moving onto the connector trait (review 6.4): one table is
+  easier to audit, and pseudo-connectors have no implementation to carry it.
+- `pending_deletes` keeps its process-wide root (3.7): it already fails loudly when not set up.
+- Of the ten HTTP clients still counted, two are the helper itself and one is in a test. Five are
+  built in place on purpose: web search sends a full browser user agent, crash reports send
+  Sentry's headers, the Luminance connector turns redirects off, the HEX image server is local
+  and skips the proxy, and model downloads set only a connect timeout. The MCP OAuth client is
+  handed to the auth library, and the hosted sign-in (`browser_login.rs`, `hosted` builds only)
+  is left as it is.
+
+**Found on the way**: a DeepSeek model behind an OpenAI-compatible gateway got a 404, because
+the `/v1` of the gateway's address was dropped; fixed, and checked with a headless run against a
+real gateway.
+
 ## 1. How to read this plan
 
 - **A package is one pull request**, unless it says "one pull request per folder" or similar.
