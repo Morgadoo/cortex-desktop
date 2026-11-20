@@ -1061,33 +1061,149 @@ pub(crate) async fn turn(
     outcome
 }
 
-async fn traced_turn(
+/// Titles a new conversation in the background, once its first answer is in.
+fn name_unless(
+    named: bool,
     host: &Arc<dyn Host>,
     request: &TurnRequest,
-    mut cancel: watch::Receiver<bool>,
-    run: &str,
-) -> Result<bool, String> {
-    let config_dir = host.config_dir()?;
-    let id = request.conversation_id.as_str();
-    let mut conversation = match store::load_conversation(&config_dir, id) {
-        Ok(c) => c,
-        Err(_) => {
-            let mut c = Conversation::new(id.to_string(), request.project_id.clone(), None);
-            c.workdir = request.workdir.clone().filter(|d| !d.trim().is_empty());
-            c.agent_id = request.agent_id.clone();
-            c.temporary = request.temporary;
-            c
-        }
-    };
-    conversation.model = Some(request.model.clone());
-    // Filters see the message first: they can rewrite it or refuse it.
-    let mut text = request.text.trim().to_string();
-    if !text.is_empty() && crate::chat::functions::has_filters(&config_dir) {
-        text = crate::chat::functions::apply(&config_dir, id, "inlet", &request.model, &text)
-            .await
-            .map_err(|reason| format!("Not sent. {reason}"))?;
+    conversation: Conversation,
+) {
+    if !named {
+        let host = host.clone();
+        let reference = request.model.clone();
+        tauri::async_runtime::spawn(async move {
+            name_conversation(host, reference, conversation).await
+        });
     }
+}
 
+/// A pipe (a function of the user's) answers with whatever its code prints. Returns whether the
+/// user cancelled.
+async fn answer_with_pipe(
+    host: &Arc<dyn Host>,
+    request: &TurnRequest,
+    config_dir: &std::path::Path,
+    mut conversation: Conversation,
+    cancel: &mut watch::Receiver<bool>,
+    pipe: &crate::chat::functions::Function,
+) -> Result<bool, String> {
+    let id = request.conversation_id.as_str();
+    let named = !conversation.title.is_empty();
+    let args = serde_json::json!({ "messages": crate::chat::functions::messages(&conversation), "model": pipe.id });
+    let answer = tokio::select! {
+        out = crate::chat::functions::run(config_dir, id, pipe, &args) => Some(out?),
+        _ = cancelled(cancel) => None,
+    };
+    let Some(answer) = answer else {
+        return Ok(true);
+    };
+    if answer.trim().is_empty() {
+        return Err(format!("{} printed nothing.", pipe.name));
+    }
+    host.emit(ChatEvent::Text {
+        conversation_id: id.into(),
+        text: answer.clone(),
+    });
+    conversation.messages.push(Message::assistant(answer));
+    conversation
+        .times
+        .push((conversation.messages.len() - 1, Utc::now()));
+    conversation.updated_at = Utc::now();
+    store::save_conversation(config_dir, &conversation)?;
+    name_unless(named, host, request, conversation);
+    Ok(false)
+}
+
+/// The prompt's sections that depend on this turn rather than on who the user is: secrets the
+/// run may use, this chat's own instructions, tools to load, the agent's notebook and team,
+/// knowledge pages for this message, and plan mode.
+#[allow(clippy::too_many_arguments)]
+fn add_turn_sections(
+    prompt: &mut crate::chat::prompt::Prompt,
+    config_dir: &std::path::Path,
+    request: &TurnRequest,
+    conversation: &Conversation,
+    agent: Option<&agents::Agent>,
+    offered: &[ChatTool],
+    defer: bool,
+    memories: &memory::Memories,
+    pages: &[knowledge::Page],
+    latest_prompt: &str,
+) {
+    use crate::chat::prompt::{ESSENTIAL, OPTIONAL, USEFUL};
+    if let Some(secrets) = crate::chat::vault::prompt(&crate::chat::vault::granted(
+        &crate::chat::vault::list(config_dir),
+        agent.map(|a| a.secrets.as_slice()),
+    )) {
+        prompt.push("vault", ESSENTIAL, secrets);
+    }
+    if !conversation.params.instructions.is_empty() {
+        prompt.push(
+            "chat instructions",
+            ESSENTIAL,
+            format!(
+                "\n\n## Instructions for this conversation\n{}",
+                conversation.params.instructions
+            ),
+        );
+    }
+    if defer {
+        prompt.push(
+            "tools to load",
+            ESSENTIAL,
+            deferred::prompt(offered, &conversation.loaded_tools),
+        );
+    }
+    if let Some(agent) = agent {
+        prompt.push(
+            "notebook",
+            ESSENTIAL,
+            agents::notebook_prompt(&agents::notebook(config_dir, &agent.id)),
+        );
+        if agent.can_manage_agents {
+            prompt.push(
+                "organization",
+                USEFUL,
+                crate::chat::org::prompt(&agents::load(config_dir), agent),
+            );
+        }
+    }
+    if offered.iter().any(|t| t.name == builtins::DELEGATE) {
+        let all = agents::load(config_dir);
+        // A group hosts its members; any other chat may call on the whole team.
+        match agent.and_then(|a| agents::group_prompt(&all, a)) {
+            Some(group) => prompt.push("group", USEFUL, group),
+            None => {
+                if let Some(team) = agents::team_prompt(&all, agent.map(|a| a.id.as_str())) {
+                    prompt.push("team", OPTIONAL, team);
+                }
+            }
+        }
+    }
+    // Knowledge pages that matter for this message come in full; the rest by title.
+    if memories.enabled {
+        if let Some(section) = knowledge::prompt(pages, latest_prompt) {
+            prompt.push("knowledge pages", OPTIONAL, section);
+        }
+    }
+    if request.approval == ApprovalMode::Plan {
+        prompt.push(
+            "plan mode",
+            ESSENTIAL,
+            "\n\nPlan mode is on. Investigate with read-only tools, then present a numbered plan \
+             of the changes you would make (files, commands, risks) and stop. Do not try to change \
+             anything; the user approves the plan and then switches to an editing mode.",
+        );
+    }
+}
+
+/// Puts the request into the conversation: an edited prompt (the old one kept as a branch), a
+/// nudge to continue, a rewind to regenerate, or the new message.
+fn apply_request(
+    conversation: &mut Conversation,
+    request: &TurnRequest,
+    text: &str,
+) -> Result<(), String> {
     if let Some(index) = request.edit_index {
         let is_prompt = conversation.messages.get(index).is_some_and(|m| {
             matches!(m, Message::User { content } if content.iter().any(|c| matches!(c, rig_core::completion::message::UserContent::Text(_))))
@@ -1096,7 +1212,7 @@ async fn traced_turn(
             return Err("That message cannot be edited.".into());
         }
         // The old message and everything after it stay available as a branch.
-        store::keep_branch(&mut conversation, index, "prompt");
+        store::keep_branch(conversation, index, "prompt");
         conversation.messages.truncate(index);
         conversation.times.retain(|(i, _)| *i < index);
         conversation.ratings.retain(|(i, _)| *i < index);
@@ -1107,7 +1223,7 @@ async fn traced_turn(
         {
             conversation.summary = None;
         }
-        conversation.messages.push(Message::user(text.as_str()));
+        conversation.messages.push(Message::user(text));
         conversation
             .times
             .push((conversation.messages.len() - 1, Utc::now()));
@@ -1120,154 +1236,44 @@ async fn traced_turn(
             conversation.messages.push(Message::user("Continue."));
         }
     } else if request.text.trim().is_empty() {
-        if !rewind_to_last_prompt(&mut conversation) {
+        if !rewind_to_last_prompt(conversation) {
             return Err("There is nothing to regenerate yet.".into());
         }
     } else {
         conversation
             .messages
-            .push(user_message(&text, &request.images)?);
+            .push(user_message(text, &request.images)?);
         conversation
             .times
             .push((conversation.messages.len() - 1, Utc::now()));
     }
-    conversation.updated_at = Utc::now();
-    // What the user did says something about the last answer, rated or not.
-    let signal = if request.edit_index.is_some() {
-        Some("edited")
-    } else if request.resume {
-        Some("resumed")
-    } else if request.text.trim().is_empty() {
-        Some("regenerated")
-    } else {
-        None
-    };
-    if let Some(kind) = signal {
-        crate::chat::traces::signal(&config_dir, id, request.edit_index, kind);
-    }
-    if let Some(note) = &request.route_note {
-        conversation
-            .notices
-            .push((conversation.messages.len(), note.clone()));
-        host.emit(ChatEvent::Notice {
-            conversation_id: id.into(),
-            text: note.clone(),
-        });
-    }
-    store::save_conversation(&config_dir, &conversation)?;
+    Ok(())
+}
 
-    // A pipe (a function of the user's) answers with whatever its code prints.
-    if let Some(pipe) = crate::chat::functions::find_pipe(&config_dir, &request.model) {
-        let named = !conversation.title.is_empty();
-        let args = serde_json::json!({ "messages": crate::chat::functions::messages(&conversation), "model": pipe.id });
-        let answer = tokio::select! {
-            out = crate::chat::functions::run(&config_dir, id, &pipe, &args) => Some(out?),
-            _ = cancelled(&mut cancel) => None,
-        };
-        let Some(answer) = answer else {
-            return Ok(true);
-        };
-        if answer.trim().is_empty() {
-            return Err(format!("{} printed nothing.", pipe.name));
-        }
-        host.emit(ChatEvent::Text {
-            conversation_id: id.into(),
-            text: answer.clone(),
-        });
-        conversation.messages.push(Message::assistant(answer));
-        conversation
-            .times
-            .push((conversation.messages.len() - 1, Utc::now()));
-        conversation.updated_at = Utc::now();
-        store::save_conversation(&config_dir, &conversation)?;
-        if !named {
-            let host = host.clone();
-            let reference = request.model.clone();
-            tauri::async_runtime::spawn(async move {
-                name_conversation(host, reference, conversation).await
-            });
-        }
-        return Ok(false);
-    }
-    // An ACP agent answers over the Agent Client Protocol, with its own tools.
-    if let Some(acp_agent) = crate::chat::acp::find(&config_dir, &request.model) {
-        let named = !conversation.title.is_empty();
-        let cancelled = crate::chat::acp::run(
-            host.app().ok_or(NO_APP)?,
-            &config_dir,
-            conversation.clone(),
-            &acp_agent,
-            cancel,
-        )
-        .await?;
-        if !named {
-            let host = host.clone();
-            let reference = request.model.clone();
-            tauri::async_runtime::spawn(async move {
-                name_conversation(host, reference, conversation).await
-            });
-        }
-        return Ok(cancelled);
-    }
-    // A coding agent program (Claude Code, Codex, Gemini CLI) answers with its own tools.
-    if let Some(cli) = crate::chat::agent_cli::find(&request.model) {
-        let named = !conversation.title.is_empty();
-        let cancelled = crate::chat::agent_cli::run(
-            host.app().ok_or(NO_APP)?,
-            &config_dir,
-            conversation.clone(),
-            cli,
-            cancel,
-        )
-        .await?;
-        if !named {
-            let host = host.clone();
-            let reference = request.model.clone();
-            tauri::async_runtime::spawn(async move {
-                name_conversation(host, reference, conversation).await
-            });
-        }
-        return Ok(cancelled);
-    }
-
-    let model = host.connect_model(&request.model).await?;
-    let registry = host.registry();
-    let agent = conversation
-        .agent_id
-        .as_deref()
-        .and_then(|a| agents::find(&config_dir, a));
-    if let Some(agent) = &agent {
-        agents::check_budget(&config_dir, agent)?;
-    }
-    crate::chat::traces::start_run(
-        &config_dir,
-        run,
-        id,
-        agent.as_ref().map(|a| a.id.as_str()),
-        &request.model,
-    );
-    let model_ref = request.model.clone();
-    // The backup model, tried once when the main one fails before anything streamed.
-    let fallback = agent
-        .as_ref()
-        .and_then(|a| a.fallback_model.clone())
-        .or_else(|| providers::load(&config_dir).backup_model)
-        .filter(|f| f != &request.model);
+/// The tools a turn offers the model: the connectors', the built-ins and the user's own, less
+/// what the agent, the chat or the run rules out; and whether some load only on demand.
+fn tools_for_turn(
+    registry: &crate::tools::registry::ToolRegistry,
+    config_dir: &std::path::Path,
+    request: &TurnRequest,
+    conversation: &Conversation,
+    agent: Option<&agents::Agent>,
+) -> (Vec<ChatTool>, bool) {
     let mut offered = tools::available(registry, request.connectors.as_deref());
-    offered.splice(1..1, builtins::definitions(&config_dir));
+    offered.splice(1..1, builtins::definitions(config_dir));
     offered.push(read_tool_output_tool());
-    offered.extend(crate::chat::openapi::tools(&config_dir));
-    offered.extend(crate::chat::custom_tools::definitions(&config_dir));
+    offered.extend(crate::chat::openapi::tools(config_dir));
+    offered.extend(crate::chat::custom_tools::definitions(config_dir));
     // Tools the assistant wrote and the user approved, and the way to write more.
-    offered.extend(crate::chat::script_tools::definitions(&config_dir));
+    offered.extend(crate::chat::script_tools::definitions(config_dir));
     offered.extend(crate::chat::script_tools::builtin_definitions());
     if !conversation.temporary {
         offered.push(crate::chat::proposals::definition());
     }
-    if crate::chat::computer::load(&config_dir).enabled {
+    if crate::chat::computer::load(config_dir).enabled {
         offered.push(crate::chat::computer::definition());
     }
-    if let Some(agent) = &agent {
+    if let Some(agent) = agent {
         offered.retain(|t| t.name == ASK_USER || agents::allows(agent, &t.name));
     }
     // The composer's Tools menu: what the user turned off for this chat.
@@ -1290,7 +1296,7 @@ async fn traced_turn(
         // An agent keeps a notebook across its conversations and runs.
         offered.push(agents::notebook_tool());
     }
-    if agent.as_ref().is_some_and(|a| a.can_manage_agents) {
+    if agent.is_some_and(|a| a.can_manage_agents) {
         // A manager, as the user allowed, builds and runs its own organization of agents.
         offered.push(crate::chat::org::definition());
     }
@@ -1322,6 +1328,117 @@ async fn traced_turn(
         offered.push(handlers::unload_tools_tool());
     }
     offered.push(handlers::context_status_tool());
+    (offered, defer)
+}
+
+async fn traced_turn(
+    host: &Arc<dyn Host>,
+    request: &TurnRequest,
+    mut cancel: watch::Receiver<bool>,
+    run: &str,
+) -> Result<bool, String> {
+    let config_dir = host.config_dir()?;
+    let id = request.conversation_id.as_str();
+    let mut conversation = match store::load_conversation(&config_dir, id) {
+        Ok(c) => c,
+        Err(_) => {
+            let mut c = Conversation::new(id.to_string(), request.project_id.clone(), None);
+            c.workdir = request.workdir.clone().filter(|d| !d.trim().is_empty());
+            c.agent_id = request.agent_id.clone();
+            c.temporary = request.temporary;
+            c
+        }
+    };
+    conversation.model = Some(request.model.clone());
+    // Filters see the message first: they can rewrite it or refuse it.
+    let mut text = request.text.trim().to_string();
+    if !text.is_empty() && crate::chat::functions::has_filters(&config_dir) {
+        text = crate::chat::functions::apply(&config_dir, id, "inlet", &request.model, &text)
+            .await
+            .map_err(|reason| format!("Not sent. {reason}"))?;
+    }
+
+    apply_request(&mut conversation, request, &text)?;
+    conversation.updated_at = Utc::now();
+    // What the user did says something about the last answer, rated or not.
+    let signal = if request.edit_index.is_some() {
+        Some("edited")
+    } else if request.resume {
+        Some("resumed")
+    } else if request.text.trim().is_empty() {
+        Some("regenerated")
+    } else {
+        None
+    };
+    if let Some(kind) = signal {
+        crate::chat::traces::signal(&config_dir, id, request.edit_index, kind);
+    }
+    if let Some(note) = &request.route_note {
+        conversation
+            .notices
+            .push((conversation.messages.len(), note.clone()));
+        host.emit(ChatEvent::Notice {
+            conversation_id: id.into(),
+            text: note.clone(),
+        });
+    }
+    store::save_conversation(&config_dir, &conversation)?;
+
+    // Some "models" are not models: a pipe (a function of the user's), an ACP agent, or a coding
+    // agent program (Claude Code, Codex, Gemini CLI) answers in their place, with its own tools.
+    if let Some(pipe) = crate::chat::functions::find_pipe(&config_dir, &request.model) {
+        return answer_with_pipe(host, request, &config_dir, conversation, &mut cancel, &pipe)
+            .await;
+    }
+    if let Some(acp_agent) = crate::chat::acp::find(&config_dir, &request.model) {
+        let named = !conversation.title.is_empty();
+        let app = host.app().ok_or(NO_APP)?;
+        let cancelled =
+            crate::chat::acp::run(app, &config_dir, conversation.clone(), &acp_agent, cancel)
+                .await?;
+        name_unless(named, host, request, conversation);
+        return Ok(cancelled);
+    }
+    if let Some(cli) = crate::chat::agent_cli::find(&request.model) {
+        let named = !conversation.title.is_empty();
+        let app = host.app().ok_or(NO_APP)?;
+        let cancelled =
+            crate::chat::agent_cli::run(app, &config_dir, conversation.clone(), cli, cancel)
+                .await?;
+        name_unless(named, host, request, conversation);
+        return Ok(cancelled);
+    }
+
+    let model = host.connect_model(&request.model).await?;
+    let registry = host.registry();
+    let agent = conversation
+        .agent_id
+        .as_deref()
+        .and_then(|a| agents::find(&config_dir, a));
+    if let Some(agent) = &agent {
+        agents::check_budget(&config_dir, agent)?;
+    }
+    crate::chat::traces::start_run(
+        &config_dir,
+        run,
+        id,
+        agent.as_ref().map(|a| a.id.as_str()),
+        &request.model,
+    );
+    let model_ref = request.model.clone();
+    // The backup model, tried once when the main one fails before anything streamed.
+    let fallback = agent
+        .as_ref()
+        .and_then(|a| a.fallback_model.clone())
+        .or_else(|| providers::load(&config_dir).backup_model)
+        .filter(|f| f != &request.model);
+    let (mut offered, defer) = tools_for_turn(
+        registry,
+        &config_dir,
+        request,
+        &conversation,
+        agent.as_ref(),
+    );
     let project = conversation.project_id.as_ref().and_then(|pid| {
         store::load_projects(&config_dir)
             .into_iter()
@@ -1386,7 +1503,6 @@ async fn traced_turn(
         },
         &offered,
     );
-    use crate::chat::prompt::{ESSENTIAL, OPTIONAL, USEFUL};
     // A built-in model runs on this computer's processor: it gets a short brief and no tools, so
     // it starts answering in seconds rather than reading thousands of tokens of tool manuals.
     if request.model.starts_with("local/") {
@@ -1402,71 +1518,18 @@ async fn traced_turn(
             ),
         );
     }
-    if let Some(secrets) = crate::chat::vault::prompt(&crate::chat::vault::granted(
-        &crate::chat::vault::list(&config_dir),
-        agent.as_ref().map(|a| a.secrets.as_slice()),
-    )) {
-        prompt.push("vault", ESSENTIAL, secrets);
-    }
-    if !conversation.params.instructions.is_empty() {
-        prompt.push(
-            "chat instructions",
-            ESSENTIAL,
-            format!(
-                "\n\n## Instructions for this conversation\n{}",
-                conversation.params.instructions
-            ),
-        );
-    }
-    if defer {
-        prompt.push(
-            "tools to load",
-            ESSENTIAL,
-            deferred::prompt(&offered, &conversation.loaded_tools),
-        );
-    }
-    if let Some(agent) = &agent {
-        prompt.push(
-            "notebook",
-            ESSENTIAL,
-            agents::notebook_prompt(&agents::notebook(&config_dir, &agent.id)),
-        );
-        if agent.can_manage_agents {
-            prompt.push(
-                "organization",
-                USEFUL,
-                crate::chat::org::prompt(&agents::load(&config_dir), agent),
-            );
-        }
-    }
-    if offered.iter().any(|t| t.name == builtins::DELEGATE) {
-        let all = agents::load(&config_dir);
-        // A group hosts its members; any other chat may call on the whole team.
-        match agent.as_ref().and_then(|a| agents::group_prompt(&all, a)) {
-            Some(group) => prompt.push("group", USEFUL, group),
-            None => {
-                if let Some(team) = agents::team_prompt(&all, agent.as_ref().map(|a| a.id.as_str()))
-                {
-                    prompt.push("team", OPTIONAL, team);
-                }
-            }
-        }
-    }
-    // Knowledge pages that matter for this message come in full; the rest by title.
-    if memories.enabled {
-        if let Some(section) = knowledge::prompt(&pages, &latest_prompt) {
-            prompt.push("knowledge pages", OPTIONAL, section);
-        }
-    }
-    if request.approval == ApprovalMode::Plan {
-        prompt.push(
-            "plan mode",
-            ESSENTIAL,
-            "\n\nPlan mode is on. Investigate with read-only tools, then present a numbered plan \
-             of the changes you would make (files, commands, risks) and stop. Do not try to change \
-             anything; the user approves the plan and then switches to an editing mode.",
-        );
-    }
+    add_turn_sections(
+        &mut prompt,
+        &config_dir,
+        request,
+        &conversation,
+        agent.as_ref(),
+        &offered,
+        defer,
+        &memories,
+        &pages,
+        &latest_prompt,
+    );
     if let Some(brief) = &request.system {
         prompt.replace_all("brief", brief.clone());
     }
@@ -1517,14 +1580,7 @@ async fn traced_turn(
         return Ok(true);
     }
     let conversation = steps.conversation;
-
-    if conversation.title.is_empty() {
-        let host = host.clone();
-        let reference = request.model.clone();
-        tauri::async_runtime::spawn(async move {
-            name_conversation(host, reference, conversation).await
-        });
-    }
+    name_unless(!conversation.title.is_empty(), host, request, conversation);
     Ok(false)
 }
 
