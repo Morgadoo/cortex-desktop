@@ -47,7 +47,7 @@ pub const PACKS: &[Pack] = &[
 const MAX_DOWNLOAD: usize = 80 * 1024 * 1024;
 const MAX_IMAGE: u64 = 2 * 1024 * 1024;
 
-pub fn pack(style: &str) -> Option<&'static Pack> {
+pub(crate) fn pack(style: &str) -> Option<&'static Pack> {
     PACKS.iter().find(|p| p.style == style)
 }
 
@@ -69,7 +69,7 @@ pub(in crate::chat::ui) fn installed(root: &Path, style: &str) -> bool {
 }
 
 /// The image names in an installed pack, without their extension.
-pub fn index(root: &Path, style: &str) -> Vec<String> {
+pub(crate) fn index(root: &Path, style: &str) -> Vec<String> {
     let Some(pack) = pack(style) else {
         return Vec::new();
     };
@@ -163,7 +163,7 @@ fn set_running(style: &str, value: Option<Option<String>>) {
     }
 }
 
-pub fn status(root: &Path, style: &str) -> Status {
+pub(crate) fn status(root: &Path, style: &str) -> Status {
     if installed(root, style) {
         return Status {
             state: "ready".into(),
@@ -188,7 +188,7 @@ pub fn status(root: &Path, style: &str) -> Status {
 }
 
 /// Downloads, checks and unpacks a pack. Marks it ready only once every image is in place.
-pub async fn install(root: &Path, style: &str) -> Result<usize, ChatError> {
+pub(crate) async fn install(root: &Path, style: &str) -> Result<usize, ChatError> {
     let pack = pack(style).ok_or_else(|| ChatError::Invalid("Unknown emoji style.".into()))?;
     if installed(root, style) {
         return Ok(index(root, style).len());
@@ -251,7 +251,7 @@ async fn download_and_unpack(root: &Path, pack: &Pack) -> Result<usize, ChatErro
 }
 
 /// Serves `<style>/<name>.<ext>` from an installed pack.
-pub fn serve(root: &Path, rest: &str) -> tauri::http::Response<Vec<u8>> {
+pub(crate) fn serve(root: &Path, rest: &str) -> tauri::http::Response<Vec<u8>> {
     let builder = tauri::http::Response::builder();
     let not_found = || {
         tauri::http::Response::builder()

@@ -20,7 +20,7 @@ impl OneAtATime {
     }
 
     /// The right to run, or `None` while a loop already runs. Released when the claim drops.
-    pub fn claim(&'static self) -> Option<Claim> {
+    pub(crate) fn claim(&'static self) -> Option<Claim> {
         (!self.0.swap(true, Ordering::SeqCst)).then_some(Claim(&self.0))
     }
 }

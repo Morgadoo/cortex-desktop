@@ -104,14 +104,14 @@ fn newest_first(mut out: Vec<Output>) -> Vec<Output> {
 }
 
 /// What one chat made.
-pub fn for_conversation(config_dir: &Path, conversation_id: &str) -> Vec<Output> {
+pub(in crate::chat) fn for_conversation(config_dir: &Path, conversation_id: &str) -> Vec<Output> {
     let mut out = canvases(crate::chat::canvas::list_for(config_dir, conversation_id));
     out.extend(files(config_dir, conversation_id));
     newest_first(out)
 }
 
 /// What every chat made.
-pub fn all(config_dir: &Path) -> Vec<Output> {
+pub(crate) fn all(config_dir: &Path) -> Vec<Output> {
     let mut out = canvases(crate::chat::canvas::list_all(config_dir));
     let sandbox = crate::chat::store::chat_dir(config_dir).join("sandbox");
     for entry in std::fs::read_dir(sandbox).into_iter().flatten().flatten() {

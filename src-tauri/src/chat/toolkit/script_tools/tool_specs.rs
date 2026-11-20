@@ -3,7 +3,7 @@
 use super::*;
 
 /// The definitions of `create_tool` and `promote_tool`.
-pub fn builtin_definitions() -> Vec<ChatTool> {
+pub(in crate::chat) fn builtin_definitions() -> Vec<ChatTool> {
     let tool = |name: &str, description: &str, parameters: Value, read_only: bool| ChatTool {
         name: name.into(),
         description: description.into(),

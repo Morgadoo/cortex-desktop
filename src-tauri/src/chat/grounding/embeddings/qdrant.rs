@@ -290,7 +290,7 @@ pub(in crate::chat::grounding) async fn sync(
 }
 
 /// The `k` passages nearest to `vector`, in the given libraries (all when empty).
-pub async fn search(
+pub(crate) async fn search(
     config_dir: &Path,
     settings: &EmbeddingSettings,
     only: &[String],

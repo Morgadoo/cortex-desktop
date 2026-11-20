@@ -471,7 +471,7 @@ pub struct UsageLine {
 }
 
 /// Manages chat state at startup.
-pub fn setup(app: &tauri::App) {
+pub(crate) fn setup(app: &tauri::App) {
     app.manage(ChatState::default());
     if let Ok(dir) = config_dir(app.handle()) {
         crate::chat::store::purge_temporary(&dir);

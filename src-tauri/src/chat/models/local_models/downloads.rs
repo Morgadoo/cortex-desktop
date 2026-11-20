@@ -15,7 +15,7 @@ pub(super) fn cancelled() -> &'static Mutex<Vec<String>> {
     CANCELLED.get_or_init(|| Mutex::new(Vec::new()))
 }
 
-pub fn cancel(id: &str) {
+pub(crate) fn cancel(id: &str) {
     if let Ok(mut c) = cancelled().lock() {
         c.push(id.to_string());
     }
@@ -29,7 +29,7 @@ pub(super) fn file_url(repo: &str, path: &str) -> String {
 }
 
 /// Downloads a model's files, reporting `(bytes done, bytes in all)` as it goes.
-pub async fn download(
+pub(crate) async fn download(
     root: &Path,
     id: &str,
     mut progress: impl FnMut(u64, u64),
@@ -128,7 +128,7 @@ pub async fn download(
     result
 }
 
-pub fn remove(root: &Path, id: &str) -> Result<(), ChatError> {
+pub(crate) fn remove(root: &Path, id: &str) -> Result<(), ChatError> {
     unload(id);
     match std::fs::remove_dir_all(model_dir(root, id)?) {
         Ok(()) => Ok(()),

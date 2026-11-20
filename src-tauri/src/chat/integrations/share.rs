@@ -43,7 +43,7 @@ pub struct Share {
 }
 
 impl Share {
-    pub fn expired(&self, now: chrono::DateTime<chrono::Utc>) -> bool {
+    pub(crate) fn expired(&self, now: chrono::DateTime<chrono::Utc>) -> bool {
         self.expires_at.is_some_and(|e| e <= now)
     }
 }
@@ -202,7 +202,7 @@ async fn page(State(config_dir): State<PathBuf>, UrlPath(token): UrlPath<String>
 }
 
 /// Shares `html` under a new link.
-pub async fn share(
+pub(crate) async fn share(
     config_dir: &Path,
     title: &str,
     html: &str,
@@ -237,7 +237,7 @@ pub async fn share(
     Ok(link(share, port))
 }
 
-pub async fn links(config_dir: &Path) -> Vec<SharedLink> {
+pub(crate) async fn links(config_dir: &Path) -> Vec<SharedLink> {
     // Expired links are taken down for good.
     let now = chrono::Utc::now();
     for s in list(config_dir).into_iter().filter(|s| s.expired(now)) {
@@ -251,7 +251,7 @@ pub async fn links(config_dir: &Path) -> Vec<SharedLink> {
     shares.into_iter().map(|s| link(s, port)).collect()
 }
 
-pub fn stop(config_dir: &Path, token: &str) -> Result<(), String> {
+pub(crate) fn stop(config_dir: &Path, token: &str) -> Result<(), String> {
     if !valid_token(token) {
         return Err("No such share.".into());
     }
@@ -263,7 +263,7 @@ pub fn stop(config_dir: &Path, token: &str) -> Result<(), String> {
 }
 
 /// Sets when a link stops working (`None` or 0: never).
-pub fn set_expiry(
+pub(in crate::chat) fn set_expiry(
     config_dir: &Path,
     token: &str,
     hours: Option<u32>,

@@ -236,7 +236,7 @@ pub(in crate::chat::toolkit) fn page_text(html: &str) -> (String, String) {
     (title, lines.join("\n"))
 }
 
-pub fn definition() -> Option<ChatTool> {
+pub(crate) fn definition() -> Option<ChatTool> {
     find_browser()?;
     Some(ChatTool {
         name: BROWSER_VIEW.into(),
@@ -262,7 +262,7 @@ pub fn definition() -> Option<ChatTool> {
 }
 
 /// Runs `browser_view` for a chat (and its agent's profile).
-pub async fn view(
+pub(crate) async fn view(
     config_dir: &Path,
     conversation_id: &str,
     agent: Option<&str>,
@@ -347,7 +347,11 @@ pub async fn view(
 }
 
 /// Opens an agent's profile in a visible browser window, to sign in to sites for it.
-pub fn open_profile(config_dir: &Path, agent: Option<&str>, url: &str) -> Result<(), ChatError> {
+pub(in crate::chat) fn open_profile(
+    config_dir: &Path,
+    agent: Option<&str>,
+    url: &str,
+) -> Result<(), ChatError> {
     let browser = find_browser().ok_or_else(|| {
         ChatError::Invalid("No Chrome, Chromium, Edge or Brave is installed.".into())
     })?;
@@ -375,7 +379,10 @@ pub fn open_profile(config_dir: &Path, agent: Option<&str>, url: &str) -> Result
 }
 
 /// Forgets an agent's browser session (its cookies and logins).
-pub fn clear_profile(config_dir: &Path, agent: Option<&str>) -> Result<(), ChatError> {
+pub(in crate::chat) fn clear_profile(
+    config_dir: &Path,
+    agent: Option<&str>,
+) -> Result<(), ChatError> {
     match std::fs::remove_dir_all(profile_dir(config_dir, agent)) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -453,7 +460,7 @@ mod tests {
 pub const BROWSER_ACT: &str = "browser_act";
 const MAX_STEPS: usize = 20;
 
-pub fn act_definition() -> Option<ChatTool> {
+pub(in crate::chat) fn act_definition() -> Option<ChatTool> {
     find_browser()?;
     Some(ChatTool {
         name: BROWSER_ACT.into(),
@@ -680,7 +687,7 @@ async fn launch(
 }
 
 /// Runs `browser_act`.
-pub async fn act(
+pub(crate) async fn act(
     config_dir: &Path,
     conversation_id: &str,
     agent: Option<&str>,

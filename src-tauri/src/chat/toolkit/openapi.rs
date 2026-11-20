@@ -67,7 +67,7 @@ fn spec_path(config_dir: &Path, id: &str) -> Result<PathBuf, ChatError> {
     Ok(dir(config_dir).join(format!("{id}.json")))
 }
 
-pub fn secret_name(id: &str) -> String {
+pub(in crate::chat) fn secret_name(id: &str) -> String {
     format!("openapi-{id}")
 }
 
@@ -322,7 +322,7 @@ pub async fn add(config_dir: &Path, name: &str, spec_url: &str) -> Result<Vec<Se
     Ok(servers)
 }
 
-pub async fn refresh(config_dir: &Path, id: &str) -> Result<Vec<Server>, ChatError> {
+pub(crate) async fn refresh(config_dir: &Path, id: &str) -> Result<Vec<Server>, ChatError> {
     let mut servers = list(config_dir);
     let server = servers
         .iter_mut()
@@ -336,7 +336,7 @@ pub async fn refresh(config_dir: &Path, id: &str) -> Result<Vec<Server>, ChatErr
     Ok(servers)
 }
 
-pub fn update(
+pub(crate) fn update(
     config_dir: &Path,
     id: &str,
     enabled: Option<bool>,
@@ -357,7 +357,7 @@ pub fn update(
     Ok(servers)
 }
 
-pub fn remove(config_dir: &Path, id: &str) -> Result<Vec<Server>, ChatError> {
+pub(crate) fn remove(config_dir: &Path, id: &str) -> Result<Vec<Server>, ChatError> {
     let mut servers = list(config_dir);
     servers.retain(|s| s.id != id);
     let _ = std::fs::remove_file(spec_path(config_dir, id)?);

@@ -22,11 +22,11 @@ pub struct PrivacySettings {
 
 const PRIVACY_FILE: SettingsFile<PrivacySettings> = SettingsFile::sealed("chat/privacy.json");
 
-pub fn load(config_dir: &Path) -> PrivacySettings {
+pub(crate) fn load(config_dir: &Path) -> PrivacySettings {
     PRIVACY_FILE.load(config_dir)
 }
 
-pub fn save(config_dir: &Path, settings: &PrivacySettings) -> Result<(), ChatError> {
+pub(crate) fn save(config_dir: &Path, settings: &PrivacySettings) -> Result<(), ChatError> {
     PRIVACY_FILE
         .save(config_dir, settings)
         .map_err(String::from)

@@ -16,7 +16,7 @@ pub(super) fn result_text(content: &[ToolResultContent]) -> String {
 
 /// Flattens rig's history into turns. Tool results, which rig carries as user messages, fold into
 /// the assistant turn that made the call, so a turn reads: thought, tool, tool, answer.
-pub fn turns(conversation: &Conversation) -> Vec<Turn> {
+pub(crate) fn turns(conversation: &Conversation) -> Vec<Turn> {
     let mut out: Vec<Turn> = Vec::new();
     let time_of = |i: usize| {
         conversation
@@ -144,7 +144,11 @@ pub fn turns(conversation: &Conversation) -> Vec<Turn> {
 
 /// What the project's other conversations were about: titles and how each ended, for a new
 /// conversation that may build on them.
-pub fn project_digest(config_dir: &Path, project_id: &str, except: &str) -> Option<String> {
+pub(in crate::chat) fn project_digest(
+    config_dir: &Path,
+    project_id: &str,
+    except: &str,
+) -> Option<String> {
     let mut lines = Vec::new();
     for summary in list_conversations(config_dir)
         .into_iter()
@@ -179,7 +183,7 @@ pub fn project_digest(config_dir: &Path, project_id: &str, except: &str) -> Opti
     (!lines.is_empty()).then(|| lines.join("\n"))
 }
 
-pub fn view(conversation: &Conversation) -> ConversationView {
+pub(crate) fn view(conversation: &Conversation) -> ConversationView {
     ConversationView {
         id: conversation.id.clone(),
         usage: conversation.usage.clone(),

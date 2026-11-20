@@ -56,7 +56,7 @@ pub struct Report {
 }
 
 impl Report {
-    pub fn summary(&self) -> String {
+    pub(crate) fn summary(&self) -> String {
         let mut parts = Vec::new();
         if self.sent > 0 {
             parts.push(format!("{} sent", self.sent));
@@ -131,7 +131,7 @@ pub fn settings(config_dir: &Path) -> Settings {
     read(&settings_path(config_dir)).unwrap_or_default()
 }
 
-pub fn save_settings(config_dir: &Path, s: &Settings) -> Result<(), StoreError> {
+pub(in crate::chat) fn save_settings(config_dir: &Path, s: &Settings) -> Result<(), StoreError> {
     write(&settings_path(config_dir), s)
 }
 
@@ -215,7 +215,7 @@ fn item_name(key: &[u8; 32], path: &str) -> String {
 
 /// Opens the sync folder with `passphrase`: the first device sets it up, the others must give
 /// the same passphrase.
-pub fn unlock(remote: &Path, passphrase: &str) -> Result<[u8; 32], StoreError> {
+pub(crate) fn unlock(remote: &Path, passphrase: &str) -> Result<[u8; 32], StoreError> {
     if passphrase.chars().count() < 8 {
         return Err(StoreError::Invalid(
             "Use a passphrase of at least 8 characters.".into(),
@@ -608,14 +608,14 @@ fn remove_local_file(config_dir: &Path, rel: &str) -> Result<(), StoreError> {
 
 // ---- passphrase and running ----------------------------------------------------------------
 
-pub async fn passphrase() -> Result<Option<String>, StoreError> {
+pub(in crate::chat) async fn passphrase() -> Result<Option<String>, StoreError> {
     crate::chat::secrets::local()?
         .load(PASSPHRASE)
         .await
         .map_err(StoreError::Keychain)
 }
 
-pub async fn set_passphrase(value: Option<&str>) -> Result<(), StoreError> {
+pub(in crate::chat) async fn set_passphrase(value: Option<&str>) -> Result<(), StoreError> {
     let store = crate::chat::secrets::local()?;
     match value {
         Some(v) => store.store(PASSPHRASE, v).await,
@@ -627,7 +627,7 @@ pub async fn set_passphrase(value: Option<&str>) -> Result<(), StoreError> {
 /// Where Cortex works for a chosen folder: the folder's own `Cortex Sync`, or, when the choice is
 /// a `Cortex Sync` folder or inside one (its `items`), that folder, so picking a folder one level
 /// too deep never starts a second, separate store.
-pub fn remote_dir(folder: &str) -> PathBuf {
+pub(in crate::chat) fn remote_dir(folder: &str) -> PathBuf {
     let folder = PathBuf::from(folder);
     folder
         .ancestors()

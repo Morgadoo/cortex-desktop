@@ -148,7 +148,7 @@ struct SkillState {
     enabled: BTreeMap<String, bool>,
 }
 
-pub fn skills_dir(config_dir: &Path) -> PathBuf {
+pub(in crate::chat) fn skills_dir(config_dir: &Path) -> PathBuf {
     config_dir.join("skills")
 }
 
@@ -281,7 +281,12 @@ pub fn find(config_dir: &Path, name: &str) -> Option<Skill> {
     list(config_dir).into_iter().find(|s| s.name == name)
 }
 
-pub fn save(config_dir: &Path, name: &str, description: &str, body: &str) -> Result<(), ChatError> {
+pub(crate) fn save(
+    config_dir: &Path,
+    name: &str,
+    description: &str,
+    body: &str,
+) -> Result<(), ChatError> {
     if !valid_name(name) {
         return Err(ChatError::Invalid(
             "A skill name uses lowercase letters, digits and hyphens, like `weekly-report`.".into(),
@@ -343,7 +348,7 @@ pub struct Version {
 }
 
 /// A skill's earlier versions, newest first.
-pub fn history(config_dir: &Path, name: &str) -> Result<Vec<Version>, ChatError> {
+pub(crate) fn history(config_dir: &Path, name: &str) -> Result<Vec<Version>, ChatError> {
     if !valid_name(name) {
         return Err(ChatError::Invalid("invalid skill name".into()));
     }
@@ -368,7 +373,7 @@ pub fn history(config_dir: &Path, name: &str) -> Result<Vec<Version>, ChatError>
 }
 
 /// Brings an earlier version back (the current one joins the history).
-pub fn restore(config_dir: &Path, name: &str, version: &str) -> Result<(), ChatError> {
+pub(crate) fn restore(config_dir: &Path, name: &str, version: &str) -> Result<(), ChatError> {
     let found = history(config_dir, name)?
         .into_iter()
         .find(|v| v.id == version)
@@ -376,7 +381,7 @@ pub fn restore(config_dir: &Path, name: &str, version: &str) -> Result<(), ChatE
     save(config_dir, name, &found.description, &found.body)
 }
 
-pub fn delete(config_dir: &Path, name: &str) -> Result<(), ChatError> {
+pub(crate) fn delete(config_dir: &Path, name: &str) -> Result<(), ChatError> {
     if !valid_name(name) {
         return Err(ChatError::Invalid("invalid skill name".into()));
     }
@@ -388,7 +393,7 @@ pub fn delete(config_dir: &Path, name: &str) -> Result<(), ChatError> {
     }
 }
 
-pub fn set_enabled(config_dir: &Path, name: &str, enabled: bool) -> Result<(), ChatError> {
+pub(crate) fn set_enabled(config_dir: &Path, name: &str, enabled: bool) -> Result<(), ChatError> {
     let mut state = load_state(config_dir);
     state.enabled.insert(name.to_string(), enabled);
     SKILLS_FILE
@@ -398,7 +403,7 @@ pub fn set_enabled(config_dir: &Path, name: &str, enabled: bool) -> Result<(), C
 }
 
 /// Imports a `SKILL.md`, or a folder holding one with its supporting files.
-pub fn import(config_dir: &Path, source: &Path) -> Result<String, ChatError> {
+pub(crate) fn import(config_dir: &Path, source: &Path) -> Result<String, ChatError> {
     let file = if source.is_dir() {
         source.join("SKILL.md")
     } else {
@@ -487,7 +492,12 @@ fn user_skill_dir(config_dir: &Path, name: &str) -> Result<PathBuf, ChatError> {
 }
 
 /// Adds or replaces a supporting file.
-pub fn add_file(config_dir: &Path, name: &str, rel: &str, bytes: &[u8]) -> Result<(), ChatError> {
+pub(in crate::chat) fn add_file(
+    config_dir: &Path,
+    name: &str,
+    rel: &str,
+    bytes: &[u8],
+) -> Result<(), ChatError> {
     let dir = user_skill_dir(config_dir, name)?;
     let rel = rel.replace('\\', "/");
     if !file_path_ok(&rel) {
@@ -520,7 +530,7 @@ pub fn add_file(config_dir: &Path, name: &str, rel: &str, bytes: &[u8]) -> Resul
     Ok(())
 }
 
-pub fn remove_file(config_dir: &Path, name: &str, rel: &str) -> Result<(), ChatError> {
+pub(crate) fn remove_file(config_dir: &Path, name: &str, rel: &str) -> Result<(), ChatError> {
     let dir = user_skill_dir(config_dir, name)?;
     if !file_path_ok(rel) {
         return Err(ChatError::Invalid("No such file.".into()));
@@ -538,7 +548,11 @@ pub fn remove_file(config_dir: &Path, name: &str, rel: &str) -> Result<(), ChatE
 }
 
 /// A supporting file's text; a binary file is described with its full path, for tools that run it.
-pub fn read_file(config_dir: &Path, name: &str, rel: &str) -> Result<String, ChatError> {
+pub(in crate::chat) fn read_file(
+    config_dir: &Path,
+    name: &str,
+    rel: &str,
+) -> Result<String, ChatError> {
     if !valid_name(name) || !file_path_ok(rel) {
         return Err(ChatError::Invalid("No such file in that skill.".into()));
     }
@@ -561,7 +575,7 @@ pub fn read_file(config_dir: &Path, name: &str, rel: &str) -> Result<String, Cha
 }
 
 /// What `use_skill` returns: the instructions, and the files that come with them.
-pub fn loaded(skill: &Skill) -> String {
+pub(crate) fn loaded(skill: &Skill) -> String {
     let mut out = format!("# Skill: {}\n\n{}", skill.name, skill.body);
     if !skill.files.is_empty() {
         out.push_str("\n\n## Supporting files\nRead one with `use_skill` and its `file` argument when the instructions call for it:");
@@ -619,7 +633,10 @@ pub(in crate::chat::automation) fn skill_sources(link: &str) -> Result<Vec<Strin
 
 /// Downloads a skill from a link and saves it; returns its name. Only the instructions come
 /// along: scripts and other files in the skill's folder are not downloaded.
-pub async fn import_from_link(config_dir: &Path, link: &str) -> Result<String, ChatError> {
+pub(in crate::chat) async fn import_from_link(
+    config_dir: &Path,
+    link: &str,
+) -> Result<String, ChatError> {
     let client = crate::support::http::client(std::time::Duration::from_secs(20))
         .map_err(ChatError::Invalid)?;
     let mut last = String::from("No SKILL.md was found there.");
@@ -661,7 +678,7 @@ const LIST_RELEVANT: usize = 15;
 /// The skills section of the system prompt. With many skills, it names those that fit `query`
 /// (the user's message) and says how to find the rest, so the prompt stays the same size however
 /// many skills there are.
-pub fn prompt_for(skills: &[Skill], query: &str) -> Option<String> {
+pub(in crate::chat) fn prompt_for(skills: &[Skill], query: &str) -> Option<String> {
     let enabled: Vec<&Skill> = skills.iter().filter(|s| s.enabled).collect();
     if enabled.is_empty() {
         return None;
@@ -692,7 +709,7 @@ pub fn prompt_for(skills: &[Skill], query: &str) -> Option<String> {
 }
 
 /// Skills ranked by how well their name and description fit `query`, best first.
-pub fn relevant<'a>(skills: &[&'a Skill], query: &str) -> Vec<&'a Skill> {
+pub(in crate::chat) fn relevant<'a>(skills: &[&'a Skill], query: &str) -> Vec<&'a Skill> {
     use crate::chat::retrieval::{tokens, Corpus};
     let corpus = Corpus::new(skills.iter().map(|s| {
         let mut words = tokens(&s.name.replace('-', " "));

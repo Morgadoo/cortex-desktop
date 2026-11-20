@@ -22,7 +22,7 @@ pub(in crate::chat::grounding) fn text_fingerprint(text: &str) -> i64 {
 
 /// Brings the documents a library mirrors from its connectors in line with what they offer.
 /// A connector that cannot be reached keeps its documents until it answers again.
-pub async fn sync_connectors(
+pub(in crate::chat) async fn sync_connectors(
     config_dir: &Path,
     library_id: &str,
     connectors: &[std::sync::Arc<dyn crate::tools::registry::Connector>],
@@ -142,7 +142,7 @@ pub async fn sync_connectors(
 }
 
 /// Mirrors a connector's documents into a library.
-pub fn set_connector(
+pub(in crate::chat) fn set_connector(
     config_dir: &Path,
     library_id: &str,
     connector_id: &str,

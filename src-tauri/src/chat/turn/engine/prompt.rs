@@ -65,7 +65,7 @@ pub struct Context<'a> {
     pub query: &'a str,
 }
 
-pub fn preamble(context: &Context<'_>, tools: &[ChatTool]) -> String {
+pub(in crate::chat) fn preamble(context: &Context<'_>, tools: &[ChatTool]) -> String {
     preamble_prompt(context, tools).render()
 }
 

@@ -4,7 +4,7 @@ use super::*;
 use crate::chat::error::ChatError;
 
 /// The agents another agent (or the assistant) can hand tasks to.
-pub fn team_prompt(agents: &[Agent], except: Option<&str>) -> Option<String> {
+pub(in crate::chat) fn team_prompt(agents: &[Agent], except: Option<&str>) -> Option<String> {
     let team: Vec<String> = agents
         .iter()
         .filter(|a| Some(a.id.as_str()) != except)
@@ -39,7 +39,11 @@ pub const MAX_MESSAGE_DEPTH: usize = 2;
 pub(super) const SHARED_FILE_CHARS: usize = 60_000;
 
 /// What the receiving agent gets: who wrote, the message, and the shared files' text.
-pub fn message_text(from: &str, message: &str, files: &[(String, String)]) -> String {
+pub(in crate::chat) fn message_text(
+    from: &str,
+    message: &str,
+    files: &[(String, String)],
+) -> String {
     let mut out = format!("Message from {from}:\n\n{}", message.trim());
     for (name, text) in files {
         let text: String = crate::support::text::clip(text, SHARED_FILE_CHARS);
@@ -52,7 +56,7 @@ pub fn message_text(from: &str, message: &str, files: &[(String, String)]) -> St
 }
 
 /// Reads the files an agent shares: paths inside its folder (or absolute), text only.
-pub fn read_shared(
+pub(in crate::chat) fn read_shared(
     paths: &[String],
     workdir: Option<&Path>,
 ) -> Result<Vec<(String, String)>, ChatError> {
@@ -83,7 +87,7 @@ pub fn read_shared(
 }
 
 /// The agent's own files: a library named for it, made and given to it on first use.
-pub fn files_library(
+pub(in crate::chat) fn files_library(
     config_dir: &Path,
     id: &str,
 ) -> Result<crate::chat::libraries::Library, ChatError> {
@@ -112,7 +116,7 @@ pub fn files_library(
 }
 
 /// Whether new chats are handed to the best-suited agent (Osaurus's orchestrator).
-pub fn routing_enabled(config_dir: &Path) -> bool {
+pub(in crate::chat) fn routing_enabled(config_dir: &Path) -> bool {
     crate::chat::at_rest::read_to_string(chat_dir(config_dir).join("agent-routing.json"))
         .ok()
         .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
@@ -120,7 +124,7 @@ pub fn routing_enabled(config_dir: &Path) -> bool {
         .unwrap_or(false)
 }
 
-pub fn set_routing(config_dir: &Path, enabled: bool) -> Result<(), ChatError> {
+pub(in crate::chat) fn set_routing(config_dir: &Path, enabled: bool) -> Result<(), ChatError> {
     crate::chat::store::write_json(
         &chat_dir(config_dir).join("agent-routing.json"),
         &serde_json::json!({ "enabled": enabled }),
@@ -130,7 +134,7 @@ pub fn set_routing(config_dir: &Path, enabled: bool) -> Result<(), ChatError> {
 }
 
 /// The question that picks an agent for a new chat.
-pub fn route_prompt(agents: &[Agent], message: &str) -> String {
+pub(in crate::chat) fn route_prompt(agents: &[Agent], message: &str) -> String {
     let list: Vec<String> = agents
         .iter()
         .map(|a| {
@@ -155,7 +159,7 @@ pub fn route_prompt(agents: &[Agent], message: &str) -> String {
 }
 
 /// The agent a routing reply names, if any.
-pub fn parse_route<'a>(agents: &'a [Agent], reply: &str) -> Option<&'a Agent> {
+pub(in crate::chat) fn parse_route<'a>(agents: &'a [Agent], reply: &str) -> Option<&'a Agent> {
     let line = reply
         .trim()
         .lines()
@@ -176,7 +180,7 @@ pub fn parse_route<'a>(agents: &'a [Agent], reply: &str) -> Option<&'a Agent> {
 }
 
 /// What a group's host is told: its members, and how to run them.
-pub fn group_prompt(agents: &[Agent], group: &Agent) -> Option<String> {
+pub(in crate::chat) fn group_prompt(agents: &[Agent], group: &Agent) -> Option<String> {
     let members: Vec<&Agent> = group
         .members
         .iter()
@@ -221,7 +225,7 @@ pub fn group_prompt(agents: &[Agent], group: &Agent) -> Option<String> {
 }
 
 /// Finds an agent by name (any case) or id; a label with its title (`João [3D Artist]`) works too.
-pub fn by_name<'a>(agents: &'a [Agent], name: &str) -> Option<&'a Agent> {
+pub(in crate::chat) fn by_name<'a>(agents: &'a [Agent], name: &str) -> Option<&'a Agent> {
     let name = name.trim();
     let bare = match name.rsplit_once(" [") {
         Some((n, rest)) if rest.ends_with(']') => n.trim(),

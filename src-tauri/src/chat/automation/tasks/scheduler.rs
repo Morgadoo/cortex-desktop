@@ -98,7 +98,7 @@ pub fn start(app: AppHandle) {
 }
 
 /// Runs a task now, outside its schedule.
-pub fn run_now(app: &AppHandle, id: &str) -> Result<(), ChatError> {
+pub(in crate::chat) fn run_now(app: &AppHandle, id: &str) -> Result<(), ChatError> {
     let config_dir = crate::settings::get_config_dir(app).map_err(ChatError::Invalid)?;
     let task = load(&config_dir)
         .into_iter()

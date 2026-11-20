@@ -30,7 +30,7 @@ pub(in crate::chat::turn) fn strip_directives(text: &str) -> String {
 }
 
 /// The first user message, cut to a sidebar-sized title.
-pub fn fallback_title(conversation: &Conversation) -> String {
+pub(in crate::chat) fn fallback_title(conversation: &Conversation) -> String {
     let first = conversation
         .messages
         .iter()

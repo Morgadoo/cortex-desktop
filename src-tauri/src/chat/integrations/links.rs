@@ -73,11 +73,11 @@ pub fn parse(url: &url::Url) -> Option<Link> {
 pub struct PendingLink(Mutex<Option<Link>>);
 
 impl PendingLink {
-    pub fn put(&self, link: Link) {
+    pub(crate) fn put(&self, link: Link) {
         *self.0.lock().unwrap_or_else(|p| p.into_inner()) = Some(link);
     }
 
-    pub fn take(&self) -> Option<Link> {
+    pub(crate) fn take(&self) -> Option<Link> {
         self.0.lock().unwrap_or_else(|p| p.into_inner()).take()
     }
 }

@@ -27,7 +27,7 @@ pub const MAX_DEPTH: usize = 4;
 /// Agents one manager may have under it, at every level.
 pub const MAX_ORG: usize = 40;
 
-pub fn definition() -> ChatTool {
+pub(crate) fn definition() -> ChatTool {
     ChatTool {
         name: MANAGE_AGENTS.into(),
         description: "Build and run your organization of agents. `list` shows who is under you. \
@@ -192,7 +192,7 @@ pub(in crate::chat::automation) fn tree(all: &[Agent], root: &Agent) -> String {
 }
 
 /// The part of a manager's prompt about its organization.
-pub fn prompt(all: &[Agent], manager: &Agent) -> String {
+pub(crate) fn prompt(all: &[Agent], manager: &Agent) -> String {
     let reports = descendants(all, &manager.id);
     let chart = if reports.is_empty() {
         "No agents report to you yet.".to_string()
@@ -262,7 +262,7 @@ fn name_taken(all: &[Agent], name: &str, except: Option<&str>) -> bool {
 
 /// Runs one `manage_agents` call for the agent `manager_id`. The text is the result for the
 /// model; `true` with it when the agents changed.
-pub fn apply(
+pub(crate) fn apply(
     config_dir: &Path,
     manager_id: &str,
     arguments: &Value,

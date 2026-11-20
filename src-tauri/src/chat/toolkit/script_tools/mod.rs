@@ -187,7 +187,7 @@ pub(in crate::chat::toolkit) fn hash(content: &str) -> String {
 
 /// What the user approves: the script, and the description and parameters the model reads to
 /// decide when and how to call it. A change to any of them needs a new approval.
-pub fn approval_hash(tool: &ScriptTool) -> String {
+pub(in crate::chat) fn approval_hash(tool: &ScriptTool) -> String {
     hash(
         &serde_json::to_string(&json!({
             "script": tool.script,
@@ -198,7 +198,7 @@ pub fn approval_hash(tool: &ScriptTool) -> String {
     )
 }
 
-pub fn load(config_dir: &Path, name: &str) -> Option<ScriptTool> {
+pub(crate) fn load(config_dir: &Path, name: &str) -> Option<ScriptTool> {
     let text = crate::chat::at_rest::read_to_string(path(config_dir, name).ok()?).ok()?;
     serde_json::from_str(&text).ok()
 }
@@ -275,7 +275,7 @@ fn save_resigned(config_dir: &Path, tool: &ScriptTool) -> Result<(), ChatError> 
 }
 
 /// The tools on offer: the active ones, as the model sees them.
-pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
+pub(crate) fn definitions(config_dir: &Path) -> Vec<ChatTool> {
     list(config_dir)
         .into_iter()
         // Only what the user approved and the app saved: a tool whose file was changed outside
@@ -303,7 +303,7 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
 
 /// Whether a tool can reach the network or write files, itself or through any tool it may call,
 /// however deep: a tool's effect is the union of its callees' effects.
-pub fn has_effects(config_dir: &Path, tool: &ScriptTool) -> bool {
+pub(in crate::chat) fn has_effects(config_dir: &Path, tool: &ScriptTool) -> bool {
     let mut seen = std::collections::HashSet::new();
     let mut queue = vec![tool.clone()];
     while let Some(tool) = queue.pop() {
@@ -331,8 +331,8 @@ mod tool_specs;
 pub use authoring::*;
 pub use calling::*;
 pub use review::*;
-pub use signing::*;
-pub use tool_specs::*;
+pub(crate) use signing::*;
+pub(in crate::chat) use tool_specs::*;
 
 #[cfg(test)]
 mod tests;

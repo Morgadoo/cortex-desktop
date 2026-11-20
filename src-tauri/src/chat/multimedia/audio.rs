@@ -98,11 +98,11 @@ pub struct AudioSettings {
 
 const AUDIO_FILE: SettingsFile<AudioSettings> = SettingsFile::sealed("chat/audio.json");
 
-pub fn load(config_dir: &Path) -> AudioSettings {
+pub(crate) fn load(config_dir: &Path) -> AudioSettings {
     AUDIO_FILE.load(config_dir)
 }
 
-pub fn save(config_dir: &Path, settings: &AudioSettings) -> Result<(), ChatError> {
+pub(crate) fn save(config_dir: &Path, settings: &AudioSettings) -> Result<(), ChatError> {
     AUDIO_FILE
         .save(config_dir, settings)
         .map_err(String::from)
@@ -111,7 +111,7 @@ pub fn save(config_dir: &Path, settings: &AudioSettings) -> Result<(), ChatError
 
 /// Whether live transcripts may use this engine: one on this computer, asked again about once a
 /// second while the speaker talks (never a paid service). `live.ts` in the page decides the same.
-pub fn live_capable(stt: &SttSettings) -> bool {
+pub(in crate::chat) fn live_capable(stt: &SttSettings) -> bool {
     match stt.engine.as_str() {
         "builtin" | "hex" => true,
         "openai" => {
@@ -130,7 +130,7 @@ pub fn live_capable(stt: &SttSettings) -> bool {
 }
 
 /// Settings cleaned before saving: known engines, a speed in range, trimmed fields.
-pub fn normalize(mut s: AudioSettings) -> AudioSettings {
+pub(crate) fn normalize(mut s: AudioSettings) -> AudioSettings {
     if !["provider", "builtin", "hex", "openai", "elevenlabs", "off"]
         .contains(&s.stt.engine.as_str())
     {
@@ -162,7 +162,7 @@ pub fn normalize(mut s: AudioSettings) -> AudioSettings {
 
 /// Voices an engine offers, for the settings page: listed by the service where it can, else
 /// the well-known ones.
-pub fn known_voices(engine: &str) -> Vec<(String, String)> {
+pub(in crate::chat) fn known_voices(engine: &str) -> Vec<(String, String)> {
     let names: &[&str] = match engine {
         "openai" | "provider" => &[
             "alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer",
@@ -199,7 +199,7 @@ fn http() -> reqwest::Client {
 
 /// Reads `text` (already prose) aloud with the chosen engine. `Ok(None)` means the page speaks it
 /// itself (the `browser` engine).
-pub async fn speak(
+pub(in crate::chat) async fn speak(
     config_dir: &Path,
     text: &str,
     settings: &TtsSettings,
@@ -333,7 +333,7 @@ pub async fn speak(
 
 /// Transcribes recorded speech with the chosen engine. `live` marks a guess made while the
 /// speaker is still talking (`live.ts` in the page), which the built-in Whisper answers faster.
-pub async fn transcribe(
+pub(in crate::chat) async fn transcribe(
     config_dir: &Path,
     audio: Vec<u8>,
     file_name: &str,
@@ -500,7 +500,9 @@ async fn with_hex(
 }
 
 /// ElevenLabs voices on the user's account, as (id, name).
-pub async fn elevenlabs_voices(base_url: &str) -> Result<Vec<(String, String)>, ChatError> {
+pub(in crate::chat) async fn elevenlabs_voices(
+    base_url: &str,
+) -> Result<Vec<(String, String)>, ChatError> {
     let key = secret(TTS_SECRET)
         .await?
         .ok_or_else(|| ChatError::Invalid("Add your ElevenLabs API key first.".into()))?;

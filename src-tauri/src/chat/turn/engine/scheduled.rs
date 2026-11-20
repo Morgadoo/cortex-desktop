@@ -3,7 +3,7 @@
 use super::*;
 
 /// Runs a scheduled task: a new unread conversation with the task's prompt, under its agent.
-pub async fn run_task(app: AppHandle, task: tasks::Task) {
+pub(in crate::chat) async fn run_task(app: AppHandle, task: tasks::Task) {
     let Ok(config_dir) = config_dir(&app) else {
         return;
     };

@@ -60,7 +60,11 @@ fn rewind_to_last_prompt(conversation: &mut Conversation) -> bool {
 }
 
 /// Runs a turn to its end. Always emits `Done` or `Error` last.
-pub async fn run_turn(app: AppHandle, request: TurnRequest, cancel: watch::Receiver<bool>) {
+pub(in crate::chat) async fn run_turn(
+    app: AppHandle,
+    request: TurnRequest,
+    cancel: watch::Receiver<bool>,
+) {
     run_turn_on(Arc::new(TauriHost::new(app)), request, cancel).await
 }
 
@@ -646,7 +650,7 @@ fn attribute_loaded(
     }
 }
 
-pub fn notify(app: &AppHandle, title: &str, body: &str) {
+pub(crate) fn notify(app: &AppHandle, title: &str, body: &str) {
     use tauri_plugin_notification::NotificationExt;
     if let Err(e) = app.notification().builder().title(title).body(body).show() {
         warn!("could not show a notification: {e}");
@@ -701,9 +705,9 @@ use reflection::*;
 pub use request::*;
 use routing::*;
 use runner::*;
-pub use scheduled::*;
+pub(in crate::chat) use scheduled::*;
 use steps::*;
-pub use titles::*;
+pub(in crate::chat) use titles::*;
 pub use tool_output::*;
 
 mod turn_parts;

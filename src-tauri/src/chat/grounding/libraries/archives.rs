@@ -97,7 +97,7 @@ pub struct ArchiveReport {
 }
 
 /// Adds every readable file of a ZIP archive to a library, one document each.
-pub fn import_archive(
+pub(in crate::chat) fn import_archive(
     config_dir: &Path,
     library_id: &str,
     bytes: &[u8],
@@ -143,7 +143,7 @@ pub fn import_archive(
 
 impl Document {
     /// When the document last changed: its file's time for a mirrored folder, else when it was added.
-    pub fn changed_at(&self) -> DateTime<Utc> {
+    pub(super) fn changed_at(&self) -> DateTime<Utc> {
         self.modified
             .and_then(|secs| DateTime::from_timestamp(secs, 0))
             .unwrap_or(self.added_at)

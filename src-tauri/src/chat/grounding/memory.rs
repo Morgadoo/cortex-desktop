@@ -85,7 +85,7 @@ impl Default for Memories {
 }
 
 /// Why the assistant may not save `text`, when the user keeps sensitive data out.
-pub fn refuse_sensitive(memories: &Memories, text: &str) -> Option<String> {
+pub(in crate::chat) fn refuse_sensitive(memories: &Memories, text: &str) -> Option<String> {
     let kinds = crate::chat::privacy::sensitive_kinds(text);
     (memories.keep_sensitive_out && !kinds.is_empty()).then(|| {
         format!("Not saved: it holds {}, and the user keeps sensitive data out of knowledge. Tell them you did not save it.", kinds.join(" and "))
@@ -99,11 +99,11 @@ pub const MAX_LENGTH: usize = 500;
 
 const MEMORIES_FILE: SettingsFile<Memories> = SettingsFile::sealed("chat/memories.json");
 
-pub fn load(config_dir: &Path) -> Memories {
+pub(crate) fn load(config_dir: &Path) -> Memories {
     MEMORIES_FILE.load(config_dir)
 }
 
-pub fn save(config_dir: &Path, memories: &Memories) -> Result<(), ChatError> {
+pub(crate) fn save(config_dir: &Path, memories: &Memories) -> Result<(), ChatError> {
     // The memories as they were stay restorable.
     crate::chat::versions::keep(config_dir, "memories", "all", &load(config_dir), memories)?;
     MEMORIES_FILE
@@ -118,7 +118,7 @@ pub fn add(memories: &mut Memories, text: &str, source: &str) -> Result<Memory, 
 }
 
 /// Adds a memory with its category, importance and confidence.
-pub fn add_filed(
+pub(in crate::chat) fn add_filed(
     memories: &mut Memories,
     text: &str,
     source: &str,
@@ -175,7 +175,7 @@ pub fn add_filed(
     Ok(memory)
 }
 
-pub fn remove(memories: &mut Memories, id: &str) -> bool {
+pub(crate) fn remove(memories: &mut Memories, id: &str) -> bool {
     let before = memories.items.len();
     memories.items.retain(|m| m.id != id);
     memories.items.len() != before
@@ -200,7 +200,7 @@ pub(in crate::chat::grounding) fn applies(
 }
 
 /// The facts that apply here that best fit `query`, best first.
-pub fn search<'a>(
+pub(crate) fn search<'a>(
     memories: &'a Memories,
     query: &str,
     project: Option<&str>,
@@ -225,7 +225,7 @@ pub fn search<'a>(
 
 /// The memory section of the system prompt for a chat of `project` with `agent`. With many facts,
 /// a short index: the important ones and those that fit `query`, and how to find the rest.
-pub fn prompt_for(
+pub(in crate::chat) fn prompt_for(
     memories: &Memories,
     query: &str,
     project: Option<&str>,
@@ -255,7 +255,7 @@ pub fn prompt_for(
 
 /// The facts [`prompt_for`] lists: all that apply when they are few, otherwise the important ones
 /// and those that fit `query`. What a run is attributed as having had in front of it.
-pub fn shown(
+pub(crate) fn shown(
     memories: &Memories,
     query: &str,
     project: Option<&str>,
@@ -349,7 +349,10 @@ fn render(memories: &Memories) -> Option<String> {
 /// The kernel's `consolidate(scope)` for facts: duplicates within a scope (`None` for all) are
 /// merged into the one kept, which keeps the highest importance. Returns how many were merged.
 /// The memories as they were stay restorable (`save` keeps a version).
-pub fn consolidate(config_dir: &std::path::Path, scope: Option<&str>) -> Result<usize, ChatError> {
+pub(in crate::chat) fn consolidate(
+    config_dir: &std::path::Path,
+    scope: Option<&str>,
+) -> Result<usize, ChatError> {
     let mut memories = load(config_dir);
     let facts: Vec<cortex_kernel::lifecycle::Fact> = memories
         .items
@@ -385,7 +388,7 @@ pub fn consolidate(config_dir: &std::path::Path, scope: Option<&str>) -> Result<
 }
 
 /// Finds a memory by its full id or the short id shown in the prompt.
-pub fn resolve<'a>(memories: &'a Memories, id: &str) -> Option<&'a Memory> {
+pub(crate) fn resolve<'a>(memories: &'a Memories, id: &str) -> Option<&'a Memory> {
     let id = id.trim();
     memories.items.iter().find(|m| m.id == id).or_else(|| {
         (id.len() >= 6)

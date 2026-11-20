@@ -140,11 +140,11 @@ impl Default for SearchSettings {
 
 const SEARCH_FILE: SettingsFile<SearchSettings> = SettingsFile::sealed("chat/search.json");
 
-pub fn load_settings(config_dir: &Path) -> SearchSettings {
+pub(in crate::chat) fn load_settings(config_dir: &Path) -> SearchSettings {
     SEARCH_FILE.load(config_dir)
 }
 
-pub fn save_settings(
+pub(in crate::chat) fn save_settings(
     config_dir: &std::path::Path,
     settings: &SearchSettings,
 ) -> Result<(), ChatError> {
@@ -283,7 +283,7 @@ impl Recency {
 
 /// Domains to keep results to, from what a model sent: bare hosts like `docs.rs`, lowercase,
 /// without scheme, `www.` or path; at most 5.
-pub fn clean_sites(values: &[String]) -> Vec<String> {
+pub(in crate::chat) fn clean_sites(values: &[String]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for v in values {
         let v = v.trim().to_lowercase();
@@ -341,7 +341,7 @@ pub(in crate::chat::grounding) fn on_sites(url: &str, sites: &[String]) -> bool 
 
 /// Searches only the given sites. Results from other sites are dropped, so an engine that
 /// ignores `site:` gives fewer results, never wrong ones.
-pub async fn search_sites(
+pub(in crate::chat) async fn search_sites(
     config_dir: &std::path::Path,
     query: &str,
     max: usize,

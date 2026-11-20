@@ -98,7 +98,7 @@ fn skipped_dir(name: &str) -> bool {
 }
 
 /// The files of a folder on disk.
-pub fn from_dir(root: &Path) -> Result<Files, ChatError> {
+pub(in crate::chat) fn from_dir(root: &Path) -> Result<Files, ChatError> {
     let mut files = Files::new();
     let mut total = 0;
     let mut stack = vec![root.to_path_buf()];
@@ -136,7 +136,7 @@ pub fn from_dir(root: &Path) -> Result<Files, ChatError> {
 
 /// The files of a ZIP archive; a single folder holding everything (as GitHub's downloads have)
 /// is taken off the paths.
-pub fn from_zip(bytes: &[u8]) -> Result<Files, ChatError> {
+pub(in crate::chat) fn from_zip(bytes: &[u8]) -> Result<Files, ChatError> {
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
         .map_err(|e| ChatError::Invalid(format!("not a ZIP archive: {e}")))?;
     let mut files = Files::new();
@@ -173,7 +173,7 @@ pub fn from_zip(bytes: &[u8]) -> Result<Files, ChatError> {
 
 /// The ZIP downloads to try for a GitHub link, and the folder inside the repository it points
 /// at: `github.com/owner/repo`, or `…/tree/<ref>/<folder>`.
-pub fn github_sources(link: &str) -> Result<(Vec<String>, String), ChatError> {
+pub(in crate::chat) fn github_sources(link: &str) -> Result<(Vec<String>, String), ChatError> {
     let rest = link.trim().trim_end_matches('/').trim_end_matches(".git");
     let rest = rest
         .strip_prefix("https://")
@@ -306,7 +306,9 @@ pub(in crate::chat::automation) fn market_entries(
 
 /// Reads the marketplace a GitHub link points at, from its raw file; `None` when the
 /// repository has no `.claude-plugin/marketplace.json` (it is then a plugin itself).
-pub async fn read_market(link: &str) -> Result<Option<Vec<MarketEntry>>, ChatError> {
+pub(in crate::chat) async fn read_market(
+    link: &str,
+) -> Result<Option<Vec<MarketEntry>>, ChatError> {
     let rest = link.trim().trim_end_matches('/').trim_end_matches(".git");
     let rest = rest
         .strip_prefix("https://")
@@ -357,7 +359,7 @@ pub async fn read_market(link: &str) -> Result<Option<Vec<MarketEntry>>, ChatErr
 }
 
 /// Only the files under `folder`, with the folder taken off their paths.
-pub fn subfolder(files: Files, folder: &str) -> Files {
+pub(in crate::chat) fn subfolder(files: Files, folder: &str) -> Files {
     if folder.is_empty() {
         return files;
     }
@@ -412,7 +414,7 @@ fn join(root: &str, path: &str) -> String {
 
 /// Where the plugins are: those a marketplace lists in its own folders, every folder with a
 /// `.claude-plugin/plugin.json`, or the root when it holds plugin parts itself.
-pub fn plugin_roots(files: &Files) -> Vec<String> {
+pub(in crate::chat) fn plugin_roots(files: &Files) -> Vec<String> {
     let mut roots: Vec<String> = Vec::new();
     if let Some(market) = text(files, ".claude-plugin/marketplace.json")
         .and_then(|t| serde_json::from_str::<Value>(&t).ok())
@@ -495,7 +497,7 @@ fn inline_commands(body: &str) -> String {
 }
 
 /// Reads one plugin.
-pub fn read_plugin(files: &Files, root: &str) -> PluginDraft {
+pub(in crate::chat) fn read_plugin(files: &Files, root: &str) -> PluginDraft {
     let manifest = text(files, &join(root, ".claude-plugin/plugin.json"))
         .and_then(|t| serde_json::from_str::<Value>(&t).ok())
         .unwrap_or(Value::Null);
@@ -601,7 +603,7 @@ pub fn read_plugin(files: &Files, root: &str) -> PluginDraft {
 
 /// A server from `.mcp.json` as a Connectors tool server. `${CLAUDE_PLUGIN_ROOT}` becomes the
 /// folder the plugin's files were kept in.
-pub fn server_config(
+pub(crate) fn server_config(
     plugin: &str,
     server: &ServerDraft,
     plugin_dir: &Path,
@@ -646,14 +648,14 @@ pub fn server_config(
 }
 
 /// Where a plugin's files are kept, for servers that run them.
-pub fn plugin_dir(config_dir: &Path, name: &str) -> PathBuf {
+pub(in crate::chat) fn plugin_dir(config_dir: &Path, name: &str) -> PathBuf {
     crate::chat::store::chat_dir(config_dir)
         .join("plugins")
         .join(slug(name))
 }
 
 /// Keeps the plugin's files on disk, replacing an earlier copy.
-pub fn keep_files(files: &Files, root: &str, dir: &Path) -> Result<(), ChatError> {
+pub(in crate::chat) fn keep_files(files: &Files, root: &str, dir: &Path) -> Result<(), ChatError> {
     let _ = std::fs::remove_dir_all(dir);
     let prefix = if root.is_empty() {
         String::new()
@@ -681,7 +683,7 @@ pub fn keep_files(files: &Files, root: &str, dir: &Path) -> Result<(), ChatError
 
 /// Saves a plugin's skills and agents. A skill whose name is taken by a different skill gets the
 /// plugin's name in front; an agent of the same name is updated.
-pub fn install(
+pub(crate) fn install(
     config_dir: &Path,
     plugin: &PluginDraft,
     out: &mut Imported,

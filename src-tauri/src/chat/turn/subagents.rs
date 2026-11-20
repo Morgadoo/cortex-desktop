@@ -586,7 +586,7 @@ fn save_transcript(config_dir: &Path, call_id: &str, index: usize, steps: &[Step
 }
 
 /// What a worker did, step by step; empty when it was not kept.
-pub fn transcript(config_dir: &Path, call_id: &str, index: usize) -> Vec<Step> {
+pub(crate) fn transcript(config_dir: &Path, call_id: &str, index: usize) -> Vec<Step> {
     transcript_path(config_dir, call_id, index)
         .and_then(|p| crate::chat::at_rest::read_to_string(p).ok())
         .and_then(|t| serde_json::from_str(&t).ok())

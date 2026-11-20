@@ -3,7 +3,7 @@
 use super::*;
 
 /// Ready-made agents a user can add with one click.
-pub fn templates() -> Vec<Agent> {
+pub(in crate::chat) fn templates() -> Vec<Agent> {
     let make = |id: &str,
                 name: &str,
                 avatar: &str,

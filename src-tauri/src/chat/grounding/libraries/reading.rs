@@ -7,7 +7,7 @@ use crate::chat::error::ChatError;
 pub const OFFICE_EXTENSIONS: &[&str] = &["docx", "pptx", "odt", "odp"];
 
 /// The text of an Office document: paragraphs on their own lines, slides in order.
-pub fn office_text(bytes: &[u8], ext: &str) -> Result<String, ChatError> {
+pub(in crate::chat) fn office_text(bytes: &[u8], ext: &str) -> Result<String, ChatError> {
     use std::io::Read as _;
     let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes))
         .map_err(|_| "The document could not be opened (not an Office file?).".to_string())
@@ -148,7 +148,7 @@ pub(super) fn decode_entities(s: &str) -> String {
 
 /// The text files in a ZIP archive, each under its path, until `budget` characters (OpenBot's ZIP
 /// attachments). Office documents inside are read too; binaries are listed but skipped.
-pub fn zip_text(bytes: &[u8], budget: usize) -> Result<String, ChatError> {
+pub(in crate::chat) fn zip_text(bytes: &[u8], budget: usize) -> Result<String, ChatError> {
     use std::io::Read as _;
     let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes))
         .map_err(|_| "That is not a ZIP archive.".to_string())
@@ -223,7 +223,7 @@ pub fn zip_text(bytes: &[u8], budget: usize) -> Result<String, ChatError> {
 }
 
 /// Moves a document to another library, its text and name kept.
-pub fn move_document(
+pub(in crate::chat) fn move_document(
     config_dir: &Path,
     from: &str,
     document_id: &str,
@@ -249,7 +249,7 @@ pub fn move_document(
 }
 
 /// The text of a file with its line breaks, by its kind: PDF, Office, HTML or plain text.
-pub fn read_text(path: &Path) -> Result<String, ChatError> {
+pub(in crate::chat) fn read_text(path: &Path) -> Result<String, ChatError> {
     let ext = path
         .extension()
         .and_then(|e| e.to_str())

@@ -94,7 +94,7 @@ pub(in crate::chat::storage) fn valid_name(name: &str) -> Result<(), StoreError>
 }
 
 /// Adds or updates a secret; `value` replaces the stored one when given (required when new).
-pub async fn save(
+pub(crate) async fn save(
     config_dir: &Path,
     secret: Secret,
     value: Option<String>,
@@ -121,7 +121,7 @@ pub async fn save(
     Ok(all)
 }
 
-pub async fn delete(config_dir: &Path, name: &str) -> Result<Vec<Secret>, StoreError> {
+pub(crate) async fn delete(config_dir: &Path, name: &str) -> Result<Vec<Secret>, StoreError> {
     let mut all = list(config_dir);
     all.retain(|s| s.name != name);
     write(config_dir, &all)?;
@@ -134,7 +134,7 @@ pub async fn delete(config_dir: &Path, name: &str) -> Result<Vec<Secret>, StoreE
 
 /// The secrets a run may use: those the agent was given (`agent`, by name), and those marked
 /// everywhere.
-pub fn granted(all: &[Secret], agent: Option<&[String]>) -> Vec<Secret> {
+pub(crate) fn granted(all: &[Secret], agent: Option<&[String]>) -> Vec<Secret> {
     all.iter()
         .filter(|s| s.everywhere || agent.is_some_and(|names| names.contains(&s.name)))
         .cloned()
@@ -142,7 +142,10 @@ pub fn granted(all: &[Secret], agent: Option<&[String]>) -> Vec<Secret> {
 }
 
 /// Names and values of the granted secrets, read from the keychain; a missing value is skipped.
-pub async fn env_for(config_dir: &Path, agent: Option<&[String]>) -> Vec<(String, String)> {
+pub(in crate::chat) async fn env_for(
+    config_dir: &Path,
+    agent: Option<&[String]>,
+) -> Vec<(String, String)> {
     let granted = granted(&list(config_dir), agent);
     if granted.is_empty() {
         return Vec::new();
@@ -170,18 +173,18 @@ pub async fn value(config_dir: &Path, name: &str) -> Option<String> {
 }
 
 /// Runs `f` with `env` as the secrets of the current tool call.
-pub async fn scope<F: std::future::Future>(env: Vec<(String, String)>, f: F) -> F::Output {
+pub(crate) async fn scope<F: std::future::Future>(env: Vec<(String, String)>, f: F) -> F::Output {
     ENV.scope(env, f).await
 }
 
 /// The secrets of the tool call running now, for the code that starts processes.
-pub fn current() -> Vec<(String, String)> {
+pub(crate) fn current() -> Vec<(String, String)> {
     ENV.try_with(Clone::clone).unwrap_or_default()
 }
 
 /// Hides every secret value in `text`; very short values (under 4 characters) are left, as
 /// masking them would garble ordinary output.
-pub fn mask(text: &str, env: &[(String, String)]) -> String {
+pub(crate) fn mask(text: &str, env: &[(String, String)]) -> String {
     let mut out = text.to_string();
     let mut env: Vec<_> = env.iter().filter(|(_, v)| v.chars().count() >= 4).collect();
     // Longest first, so a value containing another is masked whole.
@@ -195,7 +198,7 @@ pub fn mask(text: &str, env: &[(String, String)]) -> String {
 }
 
 /// The system-prompt lines naming the secrets this run may use.
-pub fn prompt(granted: &[Secret]) -> Option<String> {
+pub(crate) fn prompt(granted: &[Secret]) -> Option<String> {
     if granted.is_empty() {
         return None;
     }

@@ -44,7 +44,7 @@ fn git(dir: &Path, args: &[&str]) -> Option<String> {
 }
 
 /// The system-prompt section for a coding session in `dir`.
-pub fn prompt(dir: &str) -> String {
+pub(crate) fn prompt(dir: &str) -> String {
     let path = Path::new(dir);
     let mut out = format!(
         "\n\nThis is a coding session in the folder `{dir}`. Read the code before changing it, \

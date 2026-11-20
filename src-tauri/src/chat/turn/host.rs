@@ -145,14 +145,14 @@ pub(crate) mod testing {
         }
 
         /// Serves `model` for `reference`.
-        pub fn model(&self, reference: &str, model: DynModel<Completion>) {
+        pub(crate) fn model(&self, reference: &str, model: DynModel<Completion>) {
             self.models
                 .lock()
                 .unwrap()
                 .insert(reference.to_string(), model);
         }
 
-        pub fn events(&self) -> Vec<ChatEvent> {
+        pub(crate) fn events(&self) -> Vec<ChatEvent> {
             self.events.lock().unwrap().clone()
         }
 

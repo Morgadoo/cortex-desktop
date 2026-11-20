@@ -19,14 +19,18 @@ pub(super) fn notebook_path(config_dir: &Path, id: &str) -> Result<PathBuf, Chat
 }
 
 /// The agent's notebook: what it keeps across conversations and runs, in Markdown.
-pub fn notebook(config_dir: &Path, id: &str) -> String {
+pub(in crate::chat) fn notebook(config_dir: &Path, id: &str) -> String {
     notebook_path(config_dir, id)
         .ok()
         .and_then(|p| crate::chat::at_rest::read_to_string(p).ok())
         .unwrap_or_default()
 }
 
-pub fn save_notebook(config_dir: &Path, id: &str, text: &str) -> Result<(), ChatError> {
+pub(in crate::chat) fn save_notebook(
+    config_dir: &Path,
+    id: &str,
+    text: &str,
+) -> Result<(), ChatError> {
     let text = text.trim();
     if text.chars().count() > NOTEBOOK_CHARS {
         return Err(ChatError::Invalid(format!(
@@ -48,7 +52,7 @@ pub fn save_notebook(config_dir: &Path, id: &str, text: &str) -> Result<(), Chat
     crate::chat::at_rest::write(path, text).map_err(ChatError::internal)
 }
 
-pub fn notebook_tool() -> cortex_kernel::tool::ChatTool {
+pub(in crate::chat) fn notebook_tool() -> cortex_kernel::tool::ChatTool {
     cortex_kernel::tool::ChatTool {
         name: NOTEBOOK_TOOL.into(),
         description: format!(
@@ -65,7 +69,7 @@ pub fn notebook_tool() -> cortex_kernel::tool::ChatTool {
 }
 
 /// The part of the agent's prompt about its notebook.
-pub fn notebook_prompt(text: &str) -> String {
+pub(in crate::chat) fn notebook_prompt(text: &str) -> String {
     let body = if text.trim().is_empty() {
         "(empty: start it when you learn something worth keeping)"
     } else {

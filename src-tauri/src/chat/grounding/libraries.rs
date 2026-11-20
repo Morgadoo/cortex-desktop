@@ -89,7 +89,7 @@ pub fn list(config_dir: &Path) -> Vec<Library> {
     out
 }
 
-pub fn load(config_dir: &Path, id: &str) -> Result<Library, ChatError> {
+pub(crate) fn load(config_dir: &Path, id: &str) -> Result<Library, ChatError> {
     let text = crate::chat::at_rest::read_to_string(lib_dir(config_dir, id)?.join("library.json"))
         .map_err(|_| "No such library.".to_string())
         .map_err(ChatError::Invalid)?;
@@ -105,7 +105,11 @@ fn save(config_dir: &Path, library: &Library) -> Result<(), ChatError> {
     .map_err(ChatError::Invalid)
 }
 
-pub fn create(config_dir: &Path, name: &str, description: &str) -> Result<Library, ChatError> {
+pub(crate) fn create(
+    config_dir: &Path,
+    name: &str,
+    description: &str,
+) -> Result<Library, ChatError> {
     let name = name.trim();
     if name.is_empty() {
         return Err(ChatError::Invalid("A library needs a name.".into()));
@@ -124,7 +128,7 @@ pub fn create(config_dir: &Path, name: &str, description: &str) -> Result<Librar
     Ok(library)
 }
 
-pub fn delete(config_dir: &Path, id: &str) -> Result<(), ChatError> {
+pub(crate) fn delete(config_dir: &Path, id: &str) -> Result<(), ChatError> {
     let dir = lib_dir(config_dir, id)?;
     match std::fs::remove_dir_all(&dir) {
         Ok(()) => Ok(()),
@@ -143,7 +147,7 @@ pub fn add(config_dir: &Path, library_id: &str, path: &Path) -> Result<Library, 
 }
 
 /// Image files, whose text is read by a model that can see (`ocr`).
-pub fn is_image(path: &Path) -> Option<&'static str> {
+pub(in crate::chat) fn is_image(path: &Path) -> Option<&'static str> {
     match path
         .extension()
         .and_then(|e| e.to_str())
@@ -160,7 +164,7 @@ pub fn is_image(path: &Path) -> Option<&'static str> {
 }
 
 /// Adds text already extracted (from a file, or read from an image) as a document.
-pub fn add_text(
+pub(in crate::chat) fn add_text(
     config_dir: &Path,
     library_id: &str,
     name: &str,
@@ -192,7 +196,7 @@ pub fn add_text(
 }
 
 /// A date cutoff from what a model or a person wrote: `2026-03-01`, or `30d`, `6m`, `1y` ago.
-pub fn parse_since(text: &str, now: DateTime<Utc>) -> Option<DateTime<Utc>> {
+pub(in crate::chat) fn parse_since(text: &str, now: DateTime<Utc>) -> Option<DateTime<Utc>> {
     let t = text.trim().to_lowercase();
     if t.is_empty() {
         return None;
@@ -213,7 +217,7 @@ pub fn parse_since(text: &str, now: DateTime<Utc>) -> Option<DateTime<Utc>> {
 }
 
 /// Keeps the passages from documents changed on or after `since` (Onyx's time cutoff).
-pub fn changed_since(
+pub(in crate::chat) fn changed_since(
     config_dir: &Path,
     passages: Vec<Passage>,
     since: DateTime<Utc>,
@@ -244,7 +248,7 @@ pub(in crate::chat::grounding) fn docs_dir(
     Ok(lib_dir(config_dir, library_id)?.join("docs"))
 }
 
-pub fn remove(
+pub(crate) fn remove(
     config_dir: &Path,
     library_id: &str,
     document_id: &str,
@@ -273,7 +277,7 @@ pub fn remove(
 const READ_PART: usize = 40_000;
 
 /// A whole document (or one part of a long one), found by name, for `read_document`.
-pub fn read_document(
+pub(in crate::chat) fn read_document(
     config_dir: &Path,
     library: &str,
     name: &str,
@@ -324,7 +328,7 @@ pub fn read_document(
 
 /// Saves a web page's readable text into a library (Onyx's web connector, Open WebUI's "add a
 /// webpage"); the document is named after the page and starts with its address.
-pub async fn add_web_page(
+pub(in crate::chat) async fn add_web_page(
     config_dir: &Path,
     library_id: &str,
     url: &str,
@@ -384,7 +388,7 @@ pub async fn add_web_page(
 }
 
 /// The indexed text of a document, for its preview (at most `max` characters).
-pub fn document_text(
+pub(in crate::chat) fn document_text(
     config_dir: &Path,
     library_id: &str,
     document_id: &str,
@@ -411,7 +415,7 @@ pub fn document_text(
 }
 
 /// Mirrors a folder into a library and syncs it.
-pub fn add_folder(
+pub(in crate::chat) fn add_folder(
     config_dir: &Path,
     library_id: &str,
     folder: &Path,
@@ -429,7 +433,7 @@ pub fn add_folder(
 }
 
 /// Stops mirroring a folder; its documents leave the library.
-pub fn remove_folder(
+pub(in crate::chat) fn remove_folder(
     config_dir: &Path,
     library_id: &str,
     folder: &str,
@@ -441,7 +445,7 @@ pub fn remove_folder(
 }
 
 /// Syncs every library that mirrors folders (at start and every few minutes).
-pub fn sync_all(config_dir: &Path) {
+pub(crate) fn sync_all(config_dir: &Path) {
     for library in list(config_dir)
         .into_iter()
         .filter(|l| !l.folders.is_empty())

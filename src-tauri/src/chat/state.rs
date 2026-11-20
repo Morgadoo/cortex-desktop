@@ -27,18 +27,18 @@ pub struct ChatState {
 
 impl ChatState {
     /// Whether the user always allowed `tool` in `conversation`.
-    pub fn session_allowed(&self, conversation: &str, tool: &str) -> bool {
+    pub(super) fn session_allowed(&self, conversation: &str, tool: &str) -> bool {
         Self::lock(&self.allowed).contains(&(conversation.to_string(), tool.to_string()))
     }
 
     /// Lets `tool` run without asking in `conversation`, until the app quits.
-    pub fn allow_for_session(&self, conversation: &str, tool: &str) {
+    pub(super) fn allow_for_session(&self, conversation: &str, tool: &str) {
         Self::lock(&self.allowed).insert((conversation.to_string(), tool.to_string()));
     }
 
     /// Starts one agent-to-agent message; `None` when `limit` are already in flight. The depth is
     /// given back when the returned guard drops.
-    pub fn enter_message(&self, limit: usize) -> Option<MessageDepth<'_>> {
+    pub(super) fn enter_message(&self, limit: usize) -> Option<MessageDepth<'_>> {
         if self.message_depth.fetch_add(1, Ordering::SeqCst) >= limit {
             self.message_depth.fetch_sub(1, Ordering::SeqCst);
             return None;
@@ -53,7 +53,7 @@ impl ChatState {
     }
 
     /// Registers a turn for `conversation`; `None` when one is already running.
-    pub fn begin(&self, conversation: &str) -> Option<watch::Receiver<bool>> {
+    pub(crate) fn begin(&self, conversation: &str) -> Option<watch::Receiver<bool>> {
         let mut running = Self::lock(&self.running);
         if running.contains_key(conversation) {
             return None;
@@ -63,11 +63,11 @@ impl ChatState {
         Some(rx)
     }
 
-    pub fn finish(&self, conversation: &str) {
+    pub(crate) fn finish(&self, conversation: &str) {
         Self::lock(&self.running).remove(conversation);
     }
 
-    pub fn cancel(&self, conversation: &str) -> bool {
+    pub(crate) fn cancel(&self, conversation: &str) -> bool {
         match Self::lock(&self.running).get(conversation) {
             Some(tx) => tx.send(true).is_ok(),
             None => false,
@@ -75,7 +75,7 @@ impl ChatState {
     }
 
     /// Queues guidance for a running turn; false when nothing is running.
-    pub fn steer(&self, conversation: &str, text: String) -> bool {
+    pub(crate) fn steer(&self, conversation: &str, text: String) -> bool {
         if !self.is_running(conversation) {
             return false;
         }
@@ -87,25 +87,25 @@ impl ChatState {
     }
 
     /// The guidance waiting for a turn, removed from the queue.
-    pub fn take_steering(&self, conversation: &str) -> Vec<String> {
+    pub(super) fn take_steering(&self, conversation: &str) -> Vec<String> {
         Self::lock(&self.steering)
             .remove(conversation)
             .unwrap_or_default()
     }
 
-    pub fn has_steering(&self, conversation: &str) -> bool {
+    pub(super) fn has_steering(&self, conversation: &str) -> bool {
         Self::lock(&self.steering)
             .get(conversation)
             .is_some_and(|v| !v.is_empty())
     }
 
-    pub fn is_running(&self, conversation: &str) -> bool {
+    pub(super) fn is_running(&self, conversation: &str) -> bool {
         Self::lock(&self.running).contains_key(conversation)
     }
 
     /// Keeps a streamed event for replay: a new turn starts afresh, an ended one is forgotten,
     /// and text pieces in a row are joined so the buffer stays small.
-    pub fn record(&self, event: &serde_json::Value) {
+    pub(crate) fn record(&self, event: &serde_json::Value) {
         let Some(id) = event
             .get("conversationId")
             .and_then(serde_json::Value::as_str)
@@ -152,7 +152,7 @@ impl ChatState {
     }
 
     /// What a running turn has streamed so far.
-    pub fn replay(&self, conversation: &str) -> Vec<serde_json::Value> {
+    pub(crate) fn replay(&self, conversation: &str) -> Vec<serde_json::Value> {
         if !self.is_running(conversation) {
             return Vec::new();
         }
@@ -162,20 +162,20 @@ impl ChatState {
             .unwrap_or_default()
     }
 
-    pub fn ask(&self, call_id: &str) -> oneshot::Receiver<String> {
+    pub(crate) fn ask(&self, call_id: &str) -> oneshot::Receiver<String> {
         let (tx, rx) = oneshot::channel();
         Self::lock(&self.questions).insert(call_id.to_string(), tx);
         rx
     }
 
-    pub fn answer(&self, call_id: &str, answer: String) -> bool {
+    pub(crate) fn answer(&self, call_id: &str, answer: String) -> bool {
         match Self::lock(&self.questions).remove(call_id) {
             Some(tx) => tx.send(answer).is_ok(),
             None => false,
         }
     }
 
-    pub fn forget_question(&self, call_id: &str) {
+    pub(super) fn forget_question(&self, call_id: &str) {
         Self::lock(&self.questions).remove(call_id);
     }
 }

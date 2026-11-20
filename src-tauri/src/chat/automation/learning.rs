@@ -28,11 +28,11 @@ pub struct Learning {
 
 const LEARNING_FILE: SettingsFile<Learning> = SettingsFile::sealed("chat/learning.json");
 
-pub fn load(config_dir: &Path) -> Learning {
+pub(crate) fn load(config_dir: &Path) -> Learning {
     LEARNING_FILE.load(config_dir)
 }
 
-pub fn save(config_dir: &Path, learning: &Learning) -> Result<(), ChatError> {
+pub(crate) fn save(config_dir: &Path, learning: &Learning) -> Result<(), ChatError> {
     LEARNING_FILE
         .save(config_dir, learning)
         .map_err(String::from)
@@ -102,7 +102,7 @@ pub(in crate::chat::automation) fn review_task(config_dir: &Path) -> crate::chat
 pub const MIN_STEPS: usize = 3;
 
 /// The reflection on a finished agent turn.
-pub fn reflect_prompt(
+pub(in crate::chat) fn reflect_prompt(
     agent: &str,
     request: &str,
     steps: &[String],
@@ -129,7 +129,7 @@ pub struct LearnedSkill {
 }
 
 /// The skill a reflection proposes, if any and if it is usable.
-pub fn parse_reflection(text: &str, existing: &[String]) -> Option<LearnedSkill> {
+pub(in crate::chat) fn parse_reflection(text: &str, existing: &[String]) -> Option<LearnedSkill> {
     let text = text.trim();
     if text.eq_ignore_ascii_case("none") || text.starts_with("NONE") {
         return None;
@@ -153,7 +153,7 @@ pub fn parse_reflection(text: &str, existing: &[String]) -> Option<LearnedSkill>
 }
 
 /// Saves a learned skill, turned off, marked with the agent it came from.
-pub fn keep(config_dir: &Path, agent: &str, skill: &LearnedSkill) -> Result<(), ChatError> {
+pub(crate) fn keep(config_dir: &Path, agent: &str, skill: &LearnedSkill) -> Result<(), ChatError> {
     let body = format!(
         "{}\n\n(Learned by {agent} from its own work; review before relying on it.)",
         skill.body

@@ -128,7 +128,7 @@ pub struct Comment {
 }
 
 /// The prompt a run gets: the task's, with the user's comments as notes.
-pub fn run_prompt(task: &Task) -> String {
+pub(in crate::chat) fn run_prompt(task: &Task) -> String {
     if task.comments.is_empty() {
         return task.prompt.clone();
     }
@@ -145,7 +145,7 @@ pub fn run_prompt(task: &Task) -> String {
 }
 
 /// Adds a comment to a task; `None` text removes the comment at `remove`.
-pub fn comment(
+pub(crate) fn comment(
     config_dir: &Path,
     id: &str,
     text: Option<&str>,
@@ -198,14 +198,14 @@ fn yes() -> bool {
     true
 }
 
-pub fn weekday_index(name: &str) -> Option<u8> {
+pub(in crate::chat) fn weekday_index(name: &str) -> Option<u8> {
     let w: Weekday = name.trim().parse().ok()?;
     Some(w.num_days_from_monday() as u8)
 }
 
 const TASKS_FILE: SettingsFile<Vec<Task>> = SettingsFile::sealed("chat/tasks.json");
 
-pub fn load(config_dir: &Path) -> Vec<Task> {
+pub(crate) fn load(config_dir: &Path) -> Vec<Task> {
     TASKS_FILE.load(config_dir)
 }
 
@@ -226,7 +226,11 @@ pub struct Occurrence {
 
 /// The planned runs of enabled tasks between `from` and `to`, in time order. Tasks started by
 /// files have none.
-pub fn occurrences(tasks: &[Task], from: DateTime<Utc>, to: DateTime<Utc>) -> Vec<Occurrence> {
+pub(crate) fn occurrences(
+    tasks: &[Task],
+    from: DateTime<Utc>,
+    to: DateTime<Utc>,
+) -> Vec<Occurrence> {
     let mut out = Vec::new();
     for task in tasks.iter().filter(|t| t.enabled) {
         // Runs still to come: from now on, never before.
@@ -249,7 +253,7 @@ pub fn occurrences(tasks: &[Task], from: DateTime<Utc>, to: DateTime<Utc>) -> Ve
 }
 
 /// Saves a task, validating it and computing its next run.
-pub fn save(config_dir: &Path, mut task: Task) -> Result<Vec<Task>, ChatError> {
+pub(crate) fn save(config_dir: &Path, mut task: Task) -> Result<Vec<Task>, ChatError> {
     if !valid_id(&task.id) {
         return Err(ChatError::Invalid("invalid task id".into()));
     }
@@ -298,7 +302,7 @@ pub fn save(config_dir: &Path, mut task: Task) -> Result<Vec<Task>, ChatError> {
     Ok(tasks)
 }
 
-pub fn delete(config_dir: &Path, id: &str) -> Result<Vec<Task>, ChatError> {
+pub(crate) fn delete(config_dir: &Path, id: &str) -> Result<Vec<Task>, ChatError> {
     let mut tasks = load(config_dir);
     tasks.retain(|t| t.id != id);
     store(config_dir, &tasks)?;
@@ -330,7 +334,7 @@ pub(in crate::chat::automation) fn take_due(config_dir: &Path, now: DateTime<Utc
     due
 }
 
-pub fn record(config_dir: &Path, id: &str, conversation_id: &str, status: TaskStatus) {
+pub(crate) fn record(config_dir: &Path, id: &str, conversation_id: &str, status: TaskStatus) {
     let mut tasks = load(config_dir);
     if let Some(task) = tasks.iter_mut().find(|t| t.id == id) {
         task.last_conversation = Some(conversation_id.to_string());
@@ -347,8 +351,8 @@ mod webhooks;
 pub use feeds::*;
 pub(in crate::chat::automation) use folders::*;
 pub use scheduler::*;
-pub use timing::*;
-pub use webhooks::*;
+pub(in crate::chat) use timing::*;
+pub(in crate::chat) use webhooks::*;
 
 #[cfg(test)]
 mod tests {

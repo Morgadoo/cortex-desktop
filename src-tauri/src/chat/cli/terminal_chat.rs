@@ -152,7 +152,7 @@ fn read_line(prompt: &str) -> Option<String> {
 }
 
 /// Runs `chat` when asked; `None` to start the app.
-pub fn maybe_run() -> Option<i32> {
+pub(crate) fn maybe_run() -> Option<i32> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().map(String::as_str) != Some("chat") {
         return None;

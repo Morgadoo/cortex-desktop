@@ -45,11 +45,11 @@ fn path(config_dir: &Path) -> PathBuf {
     crate::chat::store::chat_dir(config_dir).join("telegram.json")
 }
 
-pub fn load(config_dir: &Path) -> Settings {
+pub(crate) fn load(config_dir: &Path) -> Settings {
     crate::chat::store::read_json(&path(config_dir)).unwrap_or_default()
 }
 
-pub fn save(config_dir: &Path, s: &Settings) -> Result<(), String> {
+pub(crate) fn save(config_dir: &Path, s: &Settings) -> Result<(), String> {
     crate::chat::store::write_json(&path(config_dir), s).map_err(String::from)
 }
 
@@ -66,7 +66,7 @@ pub async fn token() -> Option<String> {
         .filter(|t| !t.is_empty())
 }
 
-pub async fn set_token(token: &str) -> Result<(), String> {
+pub(in crate::chat) async fn set_token(token: &str) -> Result<(), String> {
     let secrets = crate::chat::secrets::local()?;
     if token.trim().is_empty() {
         secrets

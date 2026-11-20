@@ -60,7 +60,7 @@ pub(in crate::chat::models) fn load(config_dir: &Path) -> Vec<AcpAgent> {
         .unwrap_or_default()
 }
 
-pub fn save(config_dir: &Path, agents: &[AcpAgent]) -> Result<(), ChatError> {
+pub(crate) fn save(config_dir: &Path, agents: &[AcpAgent]) -> Result<(), ChatError> {
     for a in agents {
         if !store::valid_id(&a.id) || a.name.trim().is_empty() || a.command.trim().is_empty() {
             return Err(ChatError::Invalid(
@@ -91,7 +91,7 @@ fn locate(program: &str) -> Option<PathBuf> {
 }
 
 /// Every ACP agent that can start: the user's, then the known ones installed.
-pub fn all(config_dir: &Path) -> Vec<AcpAgent> {
+pub(crate) fn all(config_dir: &Path) -> Vec<AcpAgent> {
     let mut out = load(config_dir);
     for (id, name, program, args) in KNOWN {
         if !out.iter().any(|a| a.id == *id) && locate(program).is_some() {
@@ -106,7 +106,7 @@ pub fn all(config_dir: &Path) -> Vec<AcpAgent> {
     out
 }
 
-pub fn models(config_dir: &Path) -> Vec<ModelView> {
+pub(in crate::chat) fn models(config_dir: &Path) -> Vec<ModelView> {
     all(config_dir)
         .into_iter()
         .map(|a| ModelView {

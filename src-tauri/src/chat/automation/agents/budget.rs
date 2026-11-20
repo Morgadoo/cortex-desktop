@@ -18,7 +18,9 @@ pub struct Spend {
     pub cost: f64,
 }
 
-pub fn spend_this_month(config_dir: &Path) -> std::collections::HashMap<String, Spend> {
+pub(in crate::chat) fn spend_this_month(
+    config_dir: &Path,
+) -> std::collections::HashMap<String, Spend> {
     use chrono::Datelike;
     let now = Utc::now();
     let mut out: std::collections::HashMap<String, Spend> = Default::default();
@@ -38,7 +40,7 @@ pub fn spend_this_month(config_dir: &Path) -> std::collections::HashMap<String, 
 }
 
 /// Refuses a turn when the agent's monthly budget is used up.
-pub fn check_budget(config_dir: &Path, agent: &Agent) -> Result<(), ChatError> {
+pub(in crate::chat) fn check_budget(config_dir: &Path, agent: &Agent) -> Result<(), ChatError> {
     let Some(budget) = agent.monthly_budget.filter(|b| *b > 0.0) else {
         return Ok(());
     };

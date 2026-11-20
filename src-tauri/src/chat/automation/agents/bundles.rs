@@ -23,7 +23,7 @@ pub struct Bundle {
 
 /// The MCP servers an agent names in its tools (`mcp-<id>`), made safe to share: environment
 /// values are blanked, since a key may have been typed there instead of the keychain.
-pub fn shareable_mcp_servers(
+pub(in crate::chat) fn shareable_mcp_servers(
     agent: &Agent,
     servers: Vec<serde_json::Value>,
 ) -> Vec<serde_json::Value> {
@@ -60,7 +60,7 @@ pub struct BundledSkill {
     pub body: String,
 }
 
-pub fn bundle(config_dir: &Path, id: &str) -> Result<Bundle, ChatError> {
+pub(crate) fn bundle(config_dir: &Path, id: &str) -> Result<Bundle, ChatError> {
     let agent =
         find(config_dir, id).ok_or_else(|| ChatError::Invalid("There is no such agent.".into()))?;
     // Built-in skills exist everywhere; only the user's own travel with the agent.
@@ -84,7 +84,7 @@ pub fn bundle(config_dir: &Path, id: &str) -> Result<Bundle, ChatError> {
 }
 
 /// Adds a bundled agent as a new one; skills of the same name already here are kept as they are.
-pub fn install(config_dir: &Path, bundle: Bundle) -> Result<Agent, ChatError> {
+pub(crate) fn install(config_dir: &Path, bundle: Bundle) -> Result<Agent, ChatError> {
     // `lumo-agent` files were exported before the rename to Cortex.
     if !matches!(bundle.format.as_str(), "cortex-agent" | "lumo-agent") {
         return Err(ChatError::Invalid(

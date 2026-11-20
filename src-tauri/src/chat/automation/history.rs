@@ -11,7 +11,7 @@ use serde_json::Value;
 
 /// What changed from version `version` of an item to the one after it, or to the item as it is
 /// now when `version` is the newest: `current` when the caller has it, else read here.
-pub fn diff(
+pub(crate) fn diff(
     config_dir: &Path,
     kind: &str,
     id: &str,
@@ -71,7 +71,12 @@ pub(in crate::chat::automation) fn now(config_dir: &Path, kind: &str, id: &str) 
 /// Brings back version `version` of an item: it is saved again the way the item is always saved,
 /// so the version it replaces is kept in turn and the change can itself be undone. The kernel's
 /// `revert`, for every kind kept here.
-pub fn restore(config_dir: &Path, kind: &str, id: &str, version: &str) -> Result<(), ChatError> {
+pub(crate) fn restore(
+    config_dir: &Path,
+    kind: &str,
+    id: &str,
+    version: &str,
+) -> Result<(), ChatError> {
     let value = crate::chat::versions::list(config_dir, kind, id)?
         .into_iter()
         .find(|v| v.id == version)

@@ -316,7 +316,7 @@ pub fn find(config_dir: &Path, home_dir: Option<&Path>) -> Vec<Found> {
 }
 
 /// Imports one session as a Code-mode conversation; again for a file updates the same one.
-pub fn import(config_dir: &Path, path: &Path) -> Result<String, StoreError> {
+pub(crate) fn import(config_dir: &Path, path: &Path) -> Result<String, StoreError> {
     let session = read(path)?;
     if !session.turns.iter().any(|t| t.user) {
         return Err(StoreError::Invalid("That session has no messages.".into()));

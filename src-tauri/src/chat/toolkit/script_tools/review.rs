@@ -5,7 +5,7 @@ use crate::chat::error::ChatError;
 
 /// What the approval card shows for a promotion: the script, the description the model will read
 /// and the capabilities asked for.
-pub fn review(tool: &ScriptTool) -> Value {
+pub(in crate::chat) fn review(tool: &ScriptTool) -> Value {
     json!({
         "tool": tool.name,
         "description": tool.description,
@@ -30,7 +30,7 @@ pub fn review(tool: &ScriptTool) -> Value {
 /// [`promote`], only if the tool is still exactly what the user was shown: its script,
 /// description, parameters and the access it asks for. Anything changed in between (another call
 /// in the same step, another chat) is refused, not approved unseen.
-pub async fn promote_as_shown(
+pub(in crate::chat) async fn promote_as_shown(
     config_dir: &Path,
     shown: &ScriptTool,
     days: Option<i64>,
@@ -38,7 +38,7 @@ pub async fn promote_as_shown(
     promote_with(config_dir, &shown.name, days, Some(shown)).await
 }
 
-pub async fn promote(
+pub(in crate::chat) async fn promote(
     config_dir: &Path,
     name: &str,
     days: Option<i64>,
@@ -224,7 +224,7 @@ pub(super) async fn promote_with(
 
 /// Takes a tool off offer until it is promoted again: the lifecycle does this to one that keeps
 /// failing.
-pub fn demote(config_dir: &Path, name: &str) -> Result<(), ChatError> {
+pub(in crate::chat) fn demote(config_dir: &Path, name: &str) -> Result<(), ChatError> {
     let mut tool = load(config_dir, name)
         .ok_or_else(|| ChatError::Invalid("There is no tool by that name.".into()))?;
     // Judged on the file as it is, before this change.
@@ -238,7 +238,7 @@ pub fn demote(config_dir: &Path, name: &str) -> Result<(), ChatError> {
 }
 
 /// Takes back a tool's capabilities; it stays on offer, able only to compute.
-pub fn revoke(config_dir: &Path, name: &str) -> Result<(), ChatError> {
+pub(in crate::chat) fn revoke(config_dir: &Path, name: &str) -> Result<(), ChatError> {
     let mut tool = load(config_dir, name)
         .ok_or_else(|| ChatError::Invalid("There is no tool by that name.".into()))?;
     // Judged on the file as it is, before this change: a tool the app saved stays on offer.
@@ -265,7 +265,7 @@ pub(super) fn forget_approval_if_tampered(config_dir: &Path, tool: &mut ScriptTo
 
 /// What a capability request would change, for its card: what the tool may reach now, what lapsed
 /// (and is not renewed), and what it asks for.
-pub fn access_card(tool: &ScriptTool, wanted: &Capabilities) -> Value {
+pub(in crate::chat) fn access_card(tool: &ScriptTool, wanted: &Capabilities) -> Value {
     let active = active_grants(tool, Utc::now());
     let lapsed: Vec<String> = keyed(&tool.granted)
         .into_iter()
@@ -334,7 +334,10 @@ pub fn extend(
 /// Brings back an earlier version from History. Its script comes back; its access does not grow
 /// past what the tool may reach now, and a version that does not verify (written into the history
 /// from outside) comes back only as a candidate, to be promoted again.
-pub fn restore_version(config_dir: &Path, mut old: ScriptTool) -> Result<(), ChatError> {
+pub(in crate::chat) fn restore_version(
+    config_dir: &Path,
+    mut old: ScriptTool,
+) -> Result<(), ChatError> {
     let now = Utc::now();
     let current = load(config_dir, &old.name);
     let limit = current
@@ -445,7 +448,7 @@ pub struct Checked {
 
 /// Runs every active tool's regression checks. A tool that fails one goes back to its previous
 /// approved version when that version passes them; otherwise it goes back to candidate.
-pub async fn check_all(config_dir: &Path) -> Checked {
+pub(in crate::chat) async fn check_all(config_dir: &Path) -> Checked {
     sandbox::cache_in(config_dir);
     let mut done = Checked::default();
     for tool in list(config_dir)
@@ -467,7 +470,11 @@ pub async fn check_all(config_dir: &Path) -> Checked {
 /// Brings a tool back to its newest earlier version that the user approved, runs a different
 /// script, and passes `checks`. The version it replaces is kept, so this too can be undone.
 /// `Ok(false)` when there is no such version.
-pub async fn revert(config_dir: &Path, name: &str, checks: &[Check]) -> Result<bool, ChatError> {
+pub(in crate::chat) async fn revert(
+    config_dir: &Path,
+    name: &str,
+    checks: &[Check],
+) -> Result<bool, ChatError> {
     let current = load(config_dir, name)
         .ok_or_else(|| ChatError::Invalid("There is no tool by that name.".into()))?;
     for version in crate::chat::versions::list(config_dir, "tools", &format!("script-{name}"))? {

@@ -53,7 +53,7 @@ fn dir(config_dir: &Path, kind: &str, id: &str) -> Result<PathBuf, StoreError> {
 }
 
 /// Keeps `previous` as a version of the item, when it differs from what is about to be saved.
-pub fn keep<T: Serialize>(
+pub(crate) fn keep<T: Serialize>(
     config_dir: &Path,
     kind: &str,
     id: &str,
@@ -125,7 +125,7 @@ pub fn list(config_dir: &Path, kind: &str, id: &str) -> Result<Vec<Version>, Sto
 
 /// What changed from version `id` of an item to the version after it (or to `current()`, the
 /// item as it is now, when `id` is the newest), as a line diff.
-pub fn diff(
+pub(crate) fn diff(
     config_dir: &Path,
     kind: &str,
     id: &str,
@@ -165,7 +165,7 @@ fn production_path(config_dir: &Path, kind: &str, id: &str) -> Result<PathBuf, S
     Ok(dir.with_file_name(format!("{id}.production.json")))
 }
 
-pub fn production(config_dir: &Path, kind: &str, id: &str) -> Option<Production> {
+pub(crate) fn production(config_dir: &Path, kind: &str, id: &str) -> Option<Production> {
     let text =
         crate::chat::at_rest::read_to_string(production_path(config_dir, kind, id).ok()?).ok()?;
     serde_json::from_str(&text).ok()
@@ -173,7 +173,7 @@ pub fn production(config_dir: &Path, kind: &str, id: &str) -> Option<Production>
 
 /// Marks `value` as the item's production version, or, with `None`, goes back to running the
 /// current one.
-pub fn set_production(
+pub(in crate::chat) fn set_production(
     config_dir: &Path,
     kind: &str,
     id: &str,

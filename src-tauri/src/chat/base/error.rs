@@ -28,7 +28,7 @@ impl ChatError {
     /// The same failure, for another receiver (several jobs waiting on one run): the kind is kept,
     /// except that a storage error, which holds an I/O error that cannot be copied, travels as its
     /// message.
-    pub fn copy_for_another(&self) -> Self {
+    pub(in crate::chat) fn copy_for_another(&self) -> Self {
         match self {
             Self::Store(e) => Self::Internal(e.to_string()),
             Self::Network { what, reason } => Self::Network {
@@ -42,12 +42,12 @@ impl ChatError {
     }
 
     /// An unclassified failure, as its message: `.map_err(ChatError::internal)`.
-    pub fn internal(error: impl std::fmt::Display) -> Self {
+    pub(in crate::chat) fn internal(error: impl std::fmt::Display) -> Self {
         Self::Internal(error.to_string())
     }
 
     /// A failed request for `what` (a file, a page, a pack).
-    pub fn network(what: impl Into<String>, reason: impl std::fmt::Display) -> Self {
+    pub(crate) fn network(what: impl Into<String>, reason: impl std::fmt::Display) -> Self {
         Self::Network {
             what: what.into(),
             reason: reason.to_string(),

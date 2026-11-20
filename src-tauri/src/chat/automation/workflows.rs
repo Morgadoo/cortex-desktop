@@ -100,7 +100,7 @@ fn builtins() -> Vec<Workflow> {
 }
 
 /// The user's workflows, then the built-in ones they have not replaced.
-pub fn load(config_dir: &Path) -> Vec<Workflow> {
+pub(crate) fn load(config_dir: &Path) -> Vec<Workflow> {
     let mut mine: Vec<Workflow> = crate::chat::at_rest::read_to_string(path(config_dir))
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok())
@@ -124,7 +124,7 @@ fn save_mine(config_dir: &Path, workflows: &[Workflow]) -> Result<(), ChatError>
         .map_err(ChatError::Invalid)
 }
 
-pub fn save(config_dir: &Path, mut workflow: Workflow) -> Result<Vec<Workflow>, ChatError> {
+pub(crate) fn save(config_dir: &Path, mut workflow: Workflow) -> Result<Vec<Workflow>, ChatError> {
     workflow.name = crate::support::text::clip(workflow.name.trim(), 80);
     workflow.steps.retain(|s| !s.trim().is_empty());
     if workflow.name.is_empty() || workflow.steps.is_empty() {
@@ -155,7 +155,7 @@ pub fn save(config_dir: &Path, mut workflow: Workflow) -> Result<Vec<Workflow>, 
     Ok(load(config_dir))
 }
 
-pub fn delete(config_dir: &Path, id: &str) -> Result<Vec<Workflow>, ChatError> {
+pub(crate) fn delete(config_dir: &Path, id: &str) -> Result<Vec<Workflow>, ChatError> {
     let mut all = load(config_dir);
     all.retain(|w| w.builtin || w.id != id);
     save_mine(config_dir, &all)?;
@@ -227,7 +227,7 @@ pub struct Live {
     pub steps: Vec<String>,
 }
 
-pub fn views(config_dir: &Path, all: Vec<Workflow>) -> Vec<WorkflowView> {
+pub(in crate::chat) fn views(config_dir: &Path, all: Vec<Workflow>) -> Vec<WorkflowView> {
     all.into_iter()
         .map(|workflow| {
             let production = if workflow.builtin {
@@ -252,7 +252,7 @@ pub fn views(config_dir: &Path, all: Vec<Workflow>) -> Vec<WorkflowView> {
 }
 
 /// The prompt asking a model to design a workflow, or to change `current` as `request` says.
-pub fn draft_prompt(request: &str, current: Option<&Workflow>) -> String {
+pub(in crate::chat) fn draft_prompt(request: &str, current: Option<&Workflow>) -> String {
     let base = match current {
         Some(w) => format!(
             "Here is a workflow as JSON:\n{}\n\nRevise it as the user asks: {request}\nKeep what they did not ask to change.",
@@ -273,7 +273,7 @@ pub fn draft_prompt(request: &str, current: Option<&Workflow>) -> String {
 }
 
 /// Reads a model's draft workflow.
-pub fn parse_draft(text: &str) -> Result<Workflow, ChatError> {
+pub(in crate::chat) fn parse_draft(text: &str) -> Result<Workflow, ChatError> {
     let start = text
         .find('{')
         .ok_or_else(|| ChatError::Invalid("The model did not return a workflow.".into()))?;

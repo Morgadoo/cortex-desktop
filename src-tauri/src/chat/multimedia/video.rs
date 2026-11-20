@@ -104,7 +104,7 @@ fn probe(path: &Path) -> Result<(f64, bool), ChatError> {
 }
 
 /// Frames and transcript of the video at `path`.
-pub async fn digest(config_dir: &Path, path: &Path) -> Result<Digest, ChatError> {
+pub(crate) async fn digest(config_dir: &Path, path: &Path) -> Result<Digest, ChatError> {
     let file = path.to_path_buf();
     let (seconds, has_audio, frames) =
         tokio::task::spawn_blocking(move || -> Result<(f64, bool, Vec<Frame>), ChatError> {

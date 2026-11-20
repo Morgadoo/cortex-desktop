@@ -117,7 +117,7 @@ pub const RUN_SCRIPT: &str = "run_script";
 
 /// The kernel's `run(code, limits)`: a one-off JavaScript program in the sandbox, with no access
 /// to anything, within the limits asked for (capped at the defaults). Nothing is saved.
-pub async fn run_once(config_dir: &Path, args: &Value) -> Result<String, ChatError> {
+pub(crate) async fn run_once(config_dir: &Path, args: &Value) -> Result<String, ChatError> {
     sandbox::cache_in(config_dir);
     let code = args
         .get("code")
@@ -156,7 +156,7 @@ pub async fn run_once(config_dir: &Path, args: &Value) -> Result<String, ChatErr
 
 /// `create_tool`: saves (or replaces) a candidate and runs it once on its test arguments, with no
 /// capabilities. A promoted tool that is rewritten goes back to being a candidate.
-pub async fn create(
+pub(crate) async fn create(
     config_dir: &Path,
     conversation: &str,
     args: &Value,

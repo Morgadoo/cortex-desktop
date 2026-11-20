@@ -60,7 +60,7 @@ fn clip(text: &str, n: usize) -> String {
 }
 
 /// Searches the libraries, knowledge pages and chats, and the web when `web` is set.
-pub async fn search(config_dir: &Path, query: &str, web: bool) -> Results {
+pub(crate) async fn search(config_dir: &Path, query: &str, web: bool) -> Results {
     let mut out = Results::default();
     let query = query.trim();
     if query.is_empty() {
@@ -138,7 +138,7 @@ pub async fn search(config_dir: &Path, query: &str, web: bool) -> Results {
 }
 
 /// The prompt for an answer built only from the cards, citing them by number.
-pub fn answer_prompt(query: &str, cards: &[Card]) -> String {
+pub(in crate::chat) fn answer_prompt(query: &str, cards: &[Card]) -> String {
     let sources: Vec<serde_json::Value> = cards
         .iter()
         .enumerate()

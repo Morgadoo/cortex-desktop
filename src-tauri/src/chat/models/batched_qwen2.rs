@@ -158,7 +158,7 @@ fn precomput_freqs_cis(
 }
 
 impl ModelWeights {
-    pub fn from_gguf<R: std::io::Seek + std::io::Read>(
+    pub(super) fn from_gguf<R: std::io::Seek + std::io::Read>(
         ct: gguf_file::Content,
         reader: &mut R,
         device: &Device,
@@ -280,7 +280,7 @@ impl ModelWeights {
     }
 
     /// Keeps only the given rows of the batch (in that order) in the KV cache.
-    pub fn retain_rows(&mut self, rows: &[usize]) -> Result<()> {
+    pub(super) fn retain_rows(&mut self, rows: &[usize]) -> Result<()> {
         let index = Tensor::new(
             rows.iter()
                 .map(|&r| r as u32)
@@ -300,7 +300,7 @@ impl ModelWeights {
     ///
     /// Call this between independent conversations to free cached attention
     /// state without recreating the model.
-    pub fn clear_kv_cache(&mut self) {
+    pub(super) fn clear_kv_cache(&mut self) {
         for layer in self.layers.iter_mut() {
             layer.kv_cache = None;
         }
@@ -308,7 +308,12 @@ impl ModelWeights {
 
     /// Logits for the last position of each row. `pads[b]` is how many positions at the start
     /// of row `b` are padding (prompts are padded on the left to the same length).
-    pub fn forward(&mut self, x: &Tensor, index_pos: usize, pads: &[usize]) -> Result<Tensor> {
+    pub(crate) fn forward(
+        &mut self,
+        x: &Tensor,
+        index_pos: usize,
+        pads: &[usize],
+    ) -> Result<Tensor> {
         let (_b_sz, seq_len) = x.dims2()?;
         let mask = if seq_len == 1 && pads.iter().all(|&p| p == 0) {
             None

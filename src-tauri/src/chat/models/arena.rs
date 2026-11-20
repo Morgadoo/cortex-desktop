@@ -34,12 +34,12 @@ pub struct Standing {
 
 const ARENA_FILE: SettingsFile<Vec<Match>> = SettingsFile::sealed("chat/arena.json");
 
-pub fn load(config_dir: &Path) -> Vec<Match> {
+pub(crate) fn load(config_dir: &Path) -> Vec<Match> {
     ARENA_FILE.load(config_dir)
 }
 
 /// Records a comparison's result.
-pub fn record(config_dir: &Path, winner: &str, losers: &[String]) -> Result<(), ChatError> {
+pub(crate) fn record(config_dir: &Path, winner: &str, losers: &[String]) -> Result<(), ChatError> {
     let losers: Vec<String> = losers
         .iter()
         .filter(|l| l.as_str() != winner)
@@ -63,7 +63,7 @@ pub fn record(config_dir: &Path, winner: &str, losers: &[String]) -> Result<(), 
 }
 
 /// Ratings from the results, best first.
-pub fn standings(matches: &[Match]) -> Vec<Standing> {
+pub(in crate::chat) fn standings(matches: &[Match]) -> Vec<Standing> {
     let mut rating: HashMap<String, f64> = HashMap::new();
     let mut wins: HashMap<String, u32> = HashMap::new();
     let mut losses: HashMap<String, u32> = HashMap::new();
@@ -91,7 +91,7 @@ pub fn standings(matches: &[Match]) -> Vec<Standing> {
     out
 }
 
-pub fn reset(config_dir: &Path) -> Result<(), ChatError> {
+pub(crate) fn reset(config_dir: &Path) -> Result<(), ChatError> {
     ARENA_FILE
         .save(config_dir, &Vec::<Match>::new())
         .map_err(String::from)

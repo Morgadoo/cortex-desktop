@@ -27,11 +27,11 @@ pub struct Settings {
 
 const CALENDARS_FILE: SettingsFile<Settings> = SettingsFile::sealed("chat/calendars.json");
 
-pub fn load(config_dir: &Path) -> Settings {
+pub(crate) fn load(config_dir: &Path) -> Settings {
     CALENDARS_FILE.load(config_dir)
 }
 
-pub fn save(config_dir: &Path, settings: &Settings) -> Result<(), ChatError> {
+pub(crate) fn save(config_dir: &Path, settings: &Settings) -> Result<(), ChatError> {
     CALENDARS_FILE
         .save(config_dir, settings)
         .map_err(String::from)
@@ -39,7 +39,7 @@ pub fn save(config_dir: &Path, settings: &Settings) -> Result<(), ChatError> {
 }
 
 /// The text of a source: fetched for a link, read for a file.
-pub async fn fetch(location: &str) -> Result<String, ChatError> {
+pub(crate) async fn fetch(location: &str) -> Result<String, ChatError> {
     let location = location.trim();
     if let Some(rest) = location.strip_prefix("webcal://") {
         return fetch_url(&format!("https://{rest}")).await;
@@ -160,7 +160,7 @@ pub struct Event {
 }
 
 /// The events of an ICS calendar.
-pub fn parse_ics(text: &str) -> Vec<Event> {
+pub(in crate::chat) fn parse_ics(text: &str) -> Vec<Event> {
     let mut out = Vec::new();
     let mut current: Option<Event> = None;
     for (head, value) in properties(text) {
@@ -341,7 +341,7 @@ pub(in crate::chat::grounding) fn starts(
 }
 
 /// The occurrences of every event between `from` and `to`, soonest first.
-pub fn occurrences(
+pub(crate) fn occurrences(
     calendar: &str,
     events: &[Event],
     from: DateTime<Utc>,
@@ -413,7 +413,7 @@ pub struct Contact {
 }
 
 /// The contacts of a vCard file.
-pub fn parse_vcards(text: &str) -> Vec<Contact> {
+pub(in crate::chat) fn parse_vcards(text: &str) -> Vec<Contact> {
     let mut out = Vec::new();
     let mut current: Option<Contact> = None;
     for (head, value) in properties(text) {

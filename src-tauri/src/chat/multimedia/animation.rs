@@ -52,7 +52,7 @@ pub(in crate::chat::multimedia) fn engines() -> Vec<&'static str> {
     out
 }
 
-pub fn definition() -> ChatTool {
+pub(crate) fn definition() -> ChatTool {
     let available = engines();
     let note = if available.is_empty() {
         " Neither engine is installed yet: HyperFrames needs Node.js 22+, ManimGX needs `uv tool install manimgx`; the call says what to install.".to_string()

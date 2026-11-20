@@ -126,7 +126,7 @@ pub(in crate::chat::models) fn resample(samples: &[f32], from: usize, to: usize)
 }
 
 /// Samples from any recording: WAV directly, other formats through ffmpeg when installed.
-pub fn audio_samples(bytes: &[u8]) -> Result<Vec<f32>, ChatError> {
+pub(in crate::chat) fn audio_samples(bytes: &[u8]) -> Result<Vec<f32>, ChatError> {
     if let Ok(s) = wav_samples(bytes) {
         return Ok(s);
     }
@@ -181,7 +181,7 @@ pub(super) const LIVE_MARGIN_FRAMES: usize = 100;
 /// 30-second window padded with silence, which is many times less work for a short recording
 /// and a little less accurate (a repeated phrase is said once, see [`collapse_repeats`]); the
 /// final transcript reads whole windows.
-pub fn transcribe(
+pub(in crate::chat) fn transcribe(
     root: &Path,
     id: &str,
     samples: &[f32],

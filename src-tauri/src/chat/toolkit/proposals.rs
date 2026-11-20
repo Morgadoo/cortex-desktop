@@ -50,7 +50,7 @@ pub fn parse(args: &Value) -> Result<Proposal, ChatError> {
 }
 
 /// The instruction for the reviewer, which sees only the proposal, not the chat that wrote it.
-pub fn review_prompt(p: &Proposal, original: &Value) -> String {
+pub(in crate::chat) fn review_prompt(p: &Proposal, original: &Value) -> String {
     format!(
         "You review a change an AI assistant proposes to its own memory, skills or instructions. \
          You did not write it. Check that the evidence supports it, that it is the smallest change \
@@ -65,7 +65,11 @@ pub fn review_prompt(p: &Proposal, original: &Value) -> String {
 }
 
 /// Applies an approved change.
-pub fn apply(config_dir: &Path, conversation: &str, change: &Change) -> Result<String, ChatError> {
+pub(crate) fn apply(
+    config_dir: &Path,
+    conversation: &str,
+    change: &Change,
+) -> Result<String, ChatError> {
     match change {
         Change::Memory { fact } => {
             let mut memories = crate::chat::memory::load(config_dir);
@@ -119,7 +123,7 @@ pub fn apply(config_dir: &Path, conversation: &str, change: &Change) -> Result<S
     }
 }
 
-pub fn definition() -> ChatTool {
+pub(crate) fn definition() -> ChatTool {
     ChatTool {
         name: PROPOSE_CHANGE.into(),
         description: "Propose a change to how you work, when you notice a gap that will recur: a \

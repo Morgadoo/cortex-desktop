@@ -105,11 +105,11 @@ fn settings_path(config_dir: &Path) -> PathBuf {
     API_SERVER_FILE.path(config_dir)
 }
 
-pub fn load(config_dir: &Path) -> ApiServerSettings {
+pub(crate) fn load(config_dir: &Path) -> ApiServerSettings {
     API_SERVER_FILE.load(config_dir)
 }
 
-pub fn save(config_dir: &Path, settings: &ApiServerSettings) -> Result<(), String> {
+pub(crate) fn save(config_dir: &Path, settings: &ApiServerSettings) -> Result<(), String> {
     if settings.port < 1024 {
         return Err("Choose a port from 1024 up.".into());
     }
@@ -155,7 +155,7 @@ pub async fn token(regenerate: bool) -> Result<String, String> {
 }
 
 /// The widget's own key, created on first use.
-pub async fn widget_token(regenerate: bool) -> Result<String, String> {
+pub(in crate::chat) async fn widget_token(regenerate: bool) -> Result<String, String> {
     let secrets = secrets()?;
     if !regenerate {
         if let Some(existing) = secrets.load(WIDGET_SECRET).await?.filter(|t| !t.is_empty()) {
@@ -183,7 +183,7 @@ pub struct Status {
 }
 
 impl ApiServer {
-    pub fn status(&self) -> Status {
+    pub(crate) fn status(&self) -> Status {
         self.status.lock().map(|s| s.clone()).unwrap_or_default()
     }
 
@@ -201,7 +201,7 @@ impl ApiServer {
 }
 
 /// Starts, restarts or stops the server to match the saved settings.
-pub async fn apply(app: &AppHandle) -> Status {
+pub(crate) async fn apply(app: &AppHandle) -> Status {
     let Some(server) = app.try_state::<ApiServer>() else {
         return Status::default();
     };
@@ -311,7 +311,7 @@ fn record(endpoint: &str, model: &str, status: StatusCode, started: std::time::I
 }
 
 /// The latest requests, newest first.
-pub fn recent() -> Vec<LogEntry> {
+pub(crate) fn recent() -> Vec<LogEntry> {
     log()
         .lock()
         .map(|l| l.iter().cloned().collect())

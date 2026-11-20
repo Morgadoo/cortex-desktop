@@ -78,7 +78,7 @@ pub fn files(dir: &str) -> (Vec<String>, bool) {
 }
 
 /// One file of the folder as text; refuses paths that leave it.
-pub fn read_file(dir: &str, path: &str) -> Result<String, ChatError> {
+pub(in crate::chat) fn read_file(dir: &str, path: &str) -> Result<String, ChatError> {
     let root = std::fs::canonicalize(dir).map_err(ChatError::internal)?;
     let full = std::fs::canonicalize(root.join(path))
         .map_err(|_| "No such file.".to_string())
@@ -167,7 +167,7 @@ pub fn changes(dir: &str) -> Changes {
 
 /// Commits every change in `dir` (untracked files included) with `message`; returns the commit
 /// summary line.
-pub fn commit(dir: &str, message: &str) -> Result<String, ChatError> {
+pub(crate) fn commit(dir: &str, message: &str) -> Result<String, ChatError> {
     let message = message.trim();
     if message.is_empty() {
         return Err(ChatError::Invalid("Write a commit message.".into()));
@@ -204,7 +204,10 @@ pub fn commit(dir: &str, message: &str) -> Result<String, ChatError> {
 /// A session's own copy of a repository (Vibe's worktrees): a git worktree beside it, on a new
 /// branch from the current commit, so the session's changes stay apart from the main checkout.
 /// Returns the worktree's folder and branch.
-pub fn create_worktree(dir: &str, name: &str) -> Result<(String, String), ChatError> {
+pub(in crate::chat) fn create_worktree(
+    dir: &str,
+    name: &str,
+) -> Result<(String, String), ChatError> {
     let path = Path::new(dir);
     let top = git(path, &["rev-parse", "--show-toplevel"])
         .map(|t| t.trim().to_string())

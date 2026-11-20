@@ -70,7 +70,7 @@ pub(in crate::chat::storage) fn before_overwrite(config_dir: &Path, path: &Path)
 }
 
 /// Once a day: copies the state files and removes backups and trash past [`KEEP_DAYS`].
-pub fn daily(config_dir: &Path) {
+pub(crate) fn daily(config_dir: &Path) {
     let chat = chat_dir(config_dir);
     let state = backups_dir(config_dir).join(today()).join("state");
     if !state.exists() && std::fs::create_dir_all(&state).is_ok() {
@@ -148,7 +148,7 @@ pub struct TrashItem {
 }
 
 /// Deleted conversations, newest first.
-pub fn list_trash(config_dir: &Path) -> Vec<TrashItem> {
+pub(in crate::chat) fn list_trash(config_dir: &Path) -> Vec<TrashItem> {
     let mut out: Vec<TrashItem> = std::fs::read_dir(trash_dir(config_dir))
         .into_iter()
         .flatten()
@@ -174,7 +174,7 @@ pub fn list_trash(config_dir: &Path) -> Vec<TrashItem> {
 }
 
 /// Puts a deleted conversation back.
-pub fn restore(config_dir: &Path, id: &str) -> Result<(), StoreError> {
+pub(crate) fn restore(config_dir: &Path, id: &str) -> Result<(), StoreError> {
     let dest = conversation_file(config_dir, id)?;
     let from = trash_dir(config_dir).join(format!("{id}.json"));
     if dest.exists() {
@@ -190,7 +190,10 @@ pub fn restore(config_dir: &Path, id: &str) -> Result<(), StoreError> {
 }
 
 /// Deletes one conversation from the trash for good, or all of them.
-pub fn delete_forever(config_dir: &Path, id: Option<&str>) -> Result<(), StoreError> {
+pub(in crate::chat) fn delete_forever(
+    config_dir: &Path,
+    id: Option<&str>,
+) -> Result<(), StoreError> {
     match id {
         Some(id) => {
             conversation_file(config_dir, id)?;
@@ -226,7 +229,7 @@ pub(in crate::chat::storage) fn latest_backup(
 }
 
 /// Replaces a damaged conversation with its newest backup; returns the backup's date.
-pub fn recover(config_dir: &Path, id: &str) -> Result<String, StoreError> {
+pub(crate) fn recover(config_dir: &Path, id: &str) -> Result<String, StoreError> {
     let path = conversation_file(config_dir, id)?;
     let (day, backup) = latest_backup(config_dir, id).ok_or_else(|| StoreError::NotFound {
         kind: "backup of conversation",
@@ -273,7 +276,7 @@ pub struct Health {
     pub keep_days: i64,
 }
 
-pub fn health(config_dir: &Path) -> Health {
+pub(crate) fn health(config_dir: &Path) -> Health {
     let mut days: Vec<String> = std::fs::read_dir(backups_dir(config_dir))
         .into_iter()
         .flatten()

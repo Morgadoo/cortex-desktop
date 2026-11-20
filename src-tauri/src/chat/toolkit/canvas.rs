@@ -120,7 +120,7 @@ struct Bundle {
 }
 
 /// The files of a multi-file app, or `None` for a one-file app.
-pub fn app_files(content: &str) -> Option<Vec<AppFile>> {
+pub(in crate::chat) fn app_files(content: &str) -> Option<Vec<AppFile>> {
     let trimmed = content.trim_start();
     if !trimmed.starts_with('{') {
         return None;
@@ -132,7 +132,7 @@ pub fn app_files(content: &str) -> Option<Vec<AppFile>> {
 }
 
 /// Stores files as an app's content, checking their paths: relative, no `..`, at most 40 files.
-pub fn bundle(files: &[AppFile]) -> Result<String, ChatError> {
+pub(crate) fn bundle(files: &[AppFile]) -> Result<String, ChatError> {
     if files.is_empty() || files.len() > 40 {
         return Err(ChatError::Invalid("An app has 1 to 40 files.".into()));
     }
@@ -189,7 +189,7 @@ fn mime(path: &str) -> &'static str {
 }
 
 /// An app's files as a ZIP archive, to download.
-pub fn app_zip(content: &str) -> Result<Vec<u8>, ChatError> {
+pub(in crate::chat) fn app_zip(content: &str) -> Result<Vec<u8>, ChatError> {
     let files = app_files(content).unwrap_or_else(|| {
         vec![AppFile {
             path: "index.html".into(),
@@ -211,7 +211,7 @@ pub fn app_zip(content: &str) -> Result<Vec<u8>, ChatError> {
 }
 
 /// An app's HTML: its content, unwrapped from a ```html fence if the model added one.
-pub fn app_html(content: &str) -> String {
+pub(in crate::chat) fn app_html(content: &str) -> String {
     let trimmed = content.trim();
     let inner = trimmed
         .strip_prefix("```html")
@@ -251,7 +251,7 @@ const WINDOW_CSP: &str =
 
 /// Serves `cortexapp://localhost/<canvas id>` to the sandboxed preview frame, and
 /// `cortexapp://localhost/window/<canvas id>` to an app's own window.
-pub fn serve(config_dir: &Path, path: &str) -> tauri::http::Response<Vec<u8>> {
+pub(crate) fn serve(config_dir: &Path, path: &str) -> tauri::http::Response<Vec<u8>> {
     let builder = tauri::http::Response::builder();
     if let Some(id) = path.trim_start_matches('/').strip_prefix("window/") {
         let id = id.split(['?', '/', '#']).next().unwrap_or_default();
@@ -339,7 +339,7 @@ pub fn serve(config_dir: &Path, path: &str) -> tauri::http::Response<Vec<u8>> {
 }
 
 /// Every app canvas, newest first.
-pub fn list_apps(config_dir: &Path) -> Vec<Canvas> {
+pub(in crate::chat) fn list_apps(config_dir: &Path) -> Vec<Canvas> {
     list_all(config_dir)
         .into_iter()
         .filter(|c| c.kind == "app")
@@ -347,7 +347,7 @@ pub fn list_apps(config_dir: &Path) -> Vec<Canvas> {
 }
 
 /// Every canvas, newest change first.
-pub fn list_all(config_dir: &Path) -> Vec<Canvas> {
+pub(in crate::chat) fn list_all(config_dir: &Path) -> Vec<Canvas> {
     let Ok(entries) = std::fs::read_dir(dir(config_dir)) else {
         return Vec::new();
     };
@@ -376,13 +376,13 @@ fn path(config_dir: &Path, id: &str) -> Result<PathBuf, ChatError> {
     Ok(dir(config_dir).join(format!("{id}.json")))
 }
 
-pub fn load(config_dir: &Path, id: &str) -> Result<Canvas, ChatError> {
+pub(crate) fn load(config_dir: &Path, id: &str) -> Result<Canvas, ChatError> {
     let text = crate::chat::at_rest::read_to_string(path(config_dir, id)?)
         .map_err(|_| ChatError::Invalid(format!("no canvas `{id}`")))?;
     serde_json::from_str(&text).map_err(ChatError::internal)
 }
 
-pub fn list_for(config_dir: &Path, conversation_id: &str) -> Vec<Canvas> {
+pub(in crate::chat) fn list_for(config_dir: &Path, conversation_id: &str) -> Vec<Canvas> {
     let Ok(entries) = std::fs::read_dir(dir(config_dir)) else {
         return Vec::new();
     };
@@ -417,7 +417,7 @@ pub fn write(
 }
 
 /// [`write`], setting the kind of a new canvas (an existing one keeps its own).
-pub fn write_kind(
+pub(in crate::chat) fn write_kind(
     config_dir: &Path,
     conversation_id: &str,
     id: Option<&str>,
@@ -473,7 +473,7 @@ pub fn write_kind(
 }
 
 /// The system-prompt section listing a conversation's canvases with their current text.
-pub fn prompt(canvases: &[Canvas]) -> Option<String> {
+pub(crate) fn prompt(canvases: &[Canvas]) -> Option<String> {
     if canvases.is_empty() {
         return None;
     }

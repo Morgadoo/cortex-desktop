@@ -40,7 +40,7 @@ const RECALL_CHARS: usize = 3_000;
 
 const KNOWLEDGE_FILE: SettingsFile<Vec<Page>> = SettingsFile::sealed("chat/knowledge.json");
 
-pub fn load(config_dir: &Path) -> Vec<Page> {
+pub(crate) fn load(config_dir: &Path) -> Vec<Page> {
     KNOWLEDGE_FILE.load(config_dir)
 }
 
@@ -130,7 +130,7 @@ pub fn write(
     Ok(page)
 }
 
-pub fn delete(config_dir: &Path, id: &str) -> Result<Vec<Page>, ChatError> {
+pub(crate) fn delete(config_dir: &Path, id: &str) -> Result<Vec<Page>, ChatError> {
     let mut pages = load(config_dir);
     pages.retain(|p| p.id != id);
     save_all(config_dir, &pages)?;
@@ -138,7 +138,7 @@ pub fn delete(config_dir: &Path, id: &str) -> Result<Vec<Page>, ChatError> {
 }
 
 /// Pages ranked by BM25 against `query`, best first, with their scores; the title counts twice.
-pub fn rank<'a>(pages: &'a [Page], query: &str) -> Vec<(&'a Page, f64)> {
+pub(in crate::chat) fn rank<'a>(pages: &'a [Page], query: &str) -> Vec<(&'a Page, f64)> {
     let corpus = crate::chat::retrieval::Corpus::new(pages.iter().map(|p| {
         let mut words = tokens(&p.title);
         words.extend(tokens(&p.title));
@@ -154,7 +154,7 @@ pub fn rank<'a>(pages: &'a [Page], query: &str) -> Vec<(&'a Page, f64)> {
 
 /// The pages that come into the prompt in full for `query`: clear matches only, within reach of
 /// the best score and above a floor.
-pub fn recalled<'a>(pages: &'a [Page], query: &str) -> Vec<&'a Page> {
+pub(in crate::chat) fn recalled<'a>(pages: &'a [Page], query: &str) -> Vec<&'a Page> {
     let ranked = rank(pages, query);
     let best = ranked.first().map_or(0.0, |r| r.1);
     ranked
@@ -166,7 +166,7 @@ pub fn recalled<'a>(pages: &'a [Page], query: &str) -> Vec<&'a Page> {
 }
 
 /// The system-prompt section: the pages that matter for `query` in full, the rest by title.
-pub fn prompt(pages: &[Page], query: &str) -> Option<String> {
+pub(crate) fn prompt(pages: &[Page], query: &str) -> Option<String> {
     if pages.is_empty() {
         return Some(
             "\n\nKnowledge pages: none yet. When the user shares lasting, detailed context (a project, \

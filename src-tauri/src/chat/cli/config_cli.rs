@@ -260,7 +260,7 @@ pub(in crate::chat::cli) fn warnings(config_dir: &Path) -> Vec<String> {
 
 /// At start: unknown settings are logged; with `CORTEX_STRICT_CONFIG=1` (Vibe's `strict_config`)
 /// the app refuses to start on them, or on a file it cannot read.
-pub fn startup_check() -> Option<i32> {
+pub(crate) fn startup_check() -> Option<i32> {
     let dir = crate::reporting::early_config_dir()?;
     let problems: Vec<String> = check(&dir)
         .into_iter()
@@ -283,7 +283,7 @@ pub fn startup_check() -> Option<i32> {
 }
 
 /// Runs `config …` when asked; `None` to start the app.
-pub fn maybe_run() -> Option<i32> {
+pub(crate) fn maybe_run() -> Option<i32> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().map(String::as_str) != Some("config") {
         return None;

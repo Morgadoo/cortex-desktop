@@ -96,7 +96,7 @@ pub(in crate::chat::grounding) fn search(
 }
 
 /// The system-prompt line naming the libraries the model can search.
-pub fn prompt(libraries: &[Library]) -> Option<String> {
+pub(crate) fn prompt(libraries: &[Library]) -> Option<String> {
     let useful: Vec<&Library> = libraries
         .iter()
         .filter(|l| !l.documents.is_empty())

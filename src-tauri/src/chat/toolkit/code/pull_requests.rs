@@ -179,7 +179,7 @@ pub(in crate::chat::toolkit) fn pr_status_with(
     parse_glab_mr(&String::from_utf8_lossy(&out.stdout))
 }
 
-pub fn pr_status(dir: &str) -> Option<PrStatus> {
+pub(in crate::chat) fn pr_status(dir: &str) -> Option<PrStatus> {
     pr_status_with(dir, "gh", "glab")
 }
 
@@ -315,7 +315,7 @@ pub(super) fn branch_name(title: &str) -> String {
 /// otherwise by handing back the host's new-pull-request page, where the user finishes it. The
 /// page comes from the remote for GitHub, GitLab, Bitbucket, Codeberg, Gitea and Forgejo, or from
 /// the link the host printed during the push.
-pub fn open_pull_request(dir: &str, title: &str) -> Result<PullRequest, ChatError> {
+pub(in crate::chat) fn open_pull_request(dir: &str, title: &str) -> Result<PullRequest, ChatError> {
     let path = Path::new(dir);
     let run = |args: &[&str]| -> Result<String, ChatError> {
         let out = Command::new("git")

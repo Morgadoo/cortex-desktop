@@ -47,7 +47,7 @@ fn month_file(config_dir: &Path, at: DateTime<Utc>) -> PathBuf {
     dir(config_dir).join(format!("{}.jsonl", at.format("%Y-%m")))
 }
 
-pub fn short(text: &str) -> String {
+pub(crate) fn short(text: &str) -> String {
     let t: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if t.chars().count() > KEEP {
         format!("{}…", crate::support::text::clip(&t, KEEP))
@@ -62,7 +62,7 @@ fn lock() -> &'static std::sync::Mutex<()> {
 }
 
 /// Adds an entry. Failing to log never stops a call: it is reported in the app's log instead.
-pub fn record(config_dir: &Path, entry: Entry) {
+pub(crate) fn record(config_dir: &Path, entry: Entry) {
     let _guard = lock().lock();
     let path = month_file(config_dir, entry.at);
     let result = (|| -> Result<(), StoreError> {
@@ -99,7 +99,7 @@ pub fn record(config_dir: &Path, entry: Entry) {
 }
 
 /// Entries since `since` (all when `None`), oldest first.
-pub fn entries(config_dir: &Path, since: Option<DateTime<Utc>>) -> Vec<Entry> {
+pub(crate) fn entries(config_dir: &Path, since: Option<DateTime<Utc>>) -> Vec<Entry> {
     let Ok(read) = std::fs::read_dir(dir(config_dir)) else {
         return Vec::new();
     };
@@ -122,7 +122,7 @@ pub fn entries(config_dir: &Path, since: Option<DateTime<Utc>>) -> Vec<Entry> {
         .collect()
 }
 
-pub fn clear(config_dir: &Path) -> Result<(), crate::support::error::StoreError> {
+pub(crate) fn clear(config_dir: &Path) -> Result<(), crate::support::error::StoreError> {
     match std::fs::remove_dir_all(dir(config_dir)) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -147,7 +147,7 @@ fn csv_cell(s: &str) -> String {
     }
 }
 
-pub fn to_csv(entries: &[Entry]) -> String {
+pub(in crate::chat) fn to_csv(entries: &[Entry]) -> String {
     let mut out =
         String::from("time,kind,conversation,agent,tool,arguments,outcome,detail,milliseconds\n");
     for e in entries {

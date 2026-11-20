@@ -66,7 +66,7 @@ pub(super) fn modified_secs(path: &Path) -> Option<i64> {
 
 /// Brings a library's mirrored documents in line with its folders: new files are added, changed
 /// ones re-read, and files that are gone (or folders no longer mirrored) leave the library.
-pub fn sync(config_dir: &Path, library_id: &str) -> Result<SyncReport, ChatError> {
+pub(crate) fn sync(config_dir: &Path, library_id: &str) -> Result<SyncReport, ChatError> {
     let mut library = load(config_dir, library_id)?;
     let docs = docs_dir(config_dir, library_id)?;
     std::fs::create_dir_all(&docs).map_err(ChatError::internal)?;

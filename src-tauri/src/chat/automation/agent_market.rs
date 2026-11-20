@@ -127,7 +127,7 @@ async fn fetch_json(url: &str) -> Result<Value, ChatError> {
 }
 
 /// The catalog, from the cache when it is recent.
-pub async fn listings(
+pub(in crate::chat) async fn listings(
     config_dir: &Path,
     source: &str,
     language: &str,
@@ -246,7 +246,7 @@ pub(in crate::chat::automation) fn to_agent(
 }
 
 /// Adds a catalog agent as one of yours; returns its new id.
-pub async fn install(
+pub(crate) async fn install(
     config_dir: &Path,
     source: &str,
     language: &str,

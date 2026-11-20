@@ -204,15 +204,15 @@ pub(crate) fn image_b64(image: &rig_core::completion::message::Image) -> Option<
     }
 }
 
-pub fn speech_model(file: &ProvidersFile) -> Option<String> {
+pub(in crate::chat) fn speech_model(file: &ProvidersFile) -> Option<String> {
     pick(file, file.speech_model.as_ref(), SPEECH_DEFAULTS)
 }
 
-pub fn voice_model(file: &ProvidersFile) -> Option<String> {
+pub(in crate::chat) fn voice_model(file: &ProvidersFile) -> Option<String> {
     pick(file, file.voice_model.as_ref(), VOICE_DEFAULTS)
 }
 
-pub fn models(config_dir: &Path) -> MediaModels {
+pub(in crate::chat) fn models(config_dir: &Path) -> MediaModels {
     let file = providers::load(config_dir);
     let vendors = |defaults: &[(&str, &str)]| {
         defaults
@@ -276,7 +276,7 @@ pub(crate) async fn connect(
 }
 
 /// The `generate_image` tool, when a provider can make images.
-pub fn definition(config_dir: &Path) -> Option<ChatTool> {
+pub(crate) fn definition(config_dir: &Path) -> Option<ChatTool> {
     let model = image_model(&providers::load(config_dir))?;
     Some(ChatTool {
         name: GENERATE_IMAGE.into(),
@@ -409,7 +409,7 @@ pub(crate) fn reference_image(
 const SPEAK_CHARS: usize = 4_000;
 
 /// The prose of a Markdown answer, as it should sound: no code, links read as their text.
-pub fn speakable(markdown: &str) -> String {
+pub(in crate::chat) fn speakable(markdown: &str) -> String {
     let mut out = String::new();
     let mut in_code = false;
     for line in markdown.lines() {

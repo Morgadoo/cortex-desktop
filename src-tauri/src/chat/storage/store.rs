@@ -17,7 +17,7 @@ use serde_json::Value;
 /// files record the format they were written in, so a migration knows what it is reading.
 pub const SCHEMA: u32 = 2;
 
-pub fn chat_dir(config_dir: &Path) -> PathBuf {
+pub(in crate::chat) fn chat_dir(config_dir: &Path) -> PathBuf {
     config_dir.join("chat")
 }
 
@@ -26,7 +26,7 @@ fn conversations_dir(config_dir: &Path) -> PathBuf {
 }
 
 /// Ids name files, so only a uuid-like alphabet is accepted.
-pub fn valid_id(id: &str) -> bool {
+pub(in crate::chat) fn valid_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 64
         && id
@@ -46,12 +46,12 @@ fn conversation_path(config_dir: &Path, id: &str) -> Result<PathBuf, StoreError>
 
 /// Writes through a temporary file, so a crash never leaves half a conversation. Sealed when
 /// encryption at rest is on.
-pub fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), StoreError> {
+pub(crate) fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), StoreError> {
     settings_file::write_json(path, Storage::Sealed, value)
 }
 
 /// Reads a sealed-or-plain JSON file; `None` when it is absent or (logged) unreadable.
-pub fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Option<T> {
+pub(crate) fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Option<T> {
     settings_file::read_json(path, Storage::Sealed).unwrap_or_else(|e| {
         log::warn!("ignoring {e}");
         None
@@ -203,7 +203,7 @@ impl ChatParams {
     }
 
     /// Settings within what providers accept.
-    pub fn clamped(self) -> Self {
+    pub(in crate::chat) fn clamped(self) -> Self {
         Self {
             temperature: self
                 .temperature
@@ -222,7 +222,7 @@ impl ChatParams {
     }
 
     /// This chat's settings, with the app-wide defaults filling what it leaves unset.
-    pub fn or_defaults(&self, defaults: &ChatParams) -> ChatParams {
+    pub(in crate::chat) fn or_defaults(&self, defaults: &ChatParams) -> ChatParams {
         ChatParams {
             temperature: self.temperature.or(defaults.temperature),
             max_tokens: self.max_tokens.or(defaults.max_tokens),
@@ -237,11 +237,14 @@ fn defaults_path(config_dir: &Path) -> PathBuf {
 }
 
 /// Model settings every chat starts from (Open WebUI's global model defaults).
-pub fn chat_defaults(config_dir: &Path) -> ChatParams {
+pub(in crate::chat) fn chat_defaults(config_dir: &Path) -> ChatParams {
     read_json(&defaults_path(config_dir)).unwrap_or_default()
 }
 
-pub fn save_chat_defaults(config_dir: &Path, params: ChatParams) -> Result<ChatParams, StoreError> {
+pub(in crate::chat) fn save_chat_defaults(
+    config_dir: &Path,
+    params: ChatParams,
+) -> Result<ChatParams, StoreError> {
     let params = ChatParams {
         instructions: String::new(),
         ..params.clamped()
@@ -250,14 +253,20 @@ pub fn save_chat_defaults(config_dir: &Path, params: ChatParams) -> Result<ChatP
     Ok(params)
 }
 
-pub fn load_conversation(config_dir: &Path, id: &str) -> Result<Conversation, StoreError> {
+pub(in crate::chat) fn load_conversation(
+    config_dir: &Path,
+    id: &str,
+) -> Result<Conversation, StoreError> {
     read_json(&conversation_path(config_dir, id)?).ok_or_else(|| StoreError::NotFound {
         kind: "conversation",
         id: id.to_string(),
     })
 }
 
-pub fn save_conversation(config_dir: &Path, conversation: &Conversation) -> Result<(), StoreError> {
+pub(in crate::chat) fn save_conversation(
+    config_dir: &Path,
+    conversation: &Conversation,
+) -> Result<(), StoreError> {
     let path = conversation_path(config_dir, &conversation.id)?;
     if !conversation.temporary {
         crate::chat::backup::before_overwrite(config_dir, &path);
@@ -271,7 +280,7 @@ pub fn save_conversation(config_dir: &Path, conversation: &Conversation) -> Resu
 }
 
 /// Deletes the temporary conversations a previous session left behind.
-pub fn purge_temporary(config_dir: &Path) {
+pub(in crate::chat) fn purge_temporary(config_dir: &Path) {
     let Ok(entries) = std::fs::read_dir(conversations_dir(config_dir)) else {
         return;
     };
@@ -283,7 +292,7 @@ pub fn purge_temporary(config_dir: &Path) {
 }
 
 /// Deleting moves the conversation to the trash, where it stays for 30 days.
-pub fn delete_conversation(config_dir: &Path, id: &str) -> Result<(), StoreError> {
+pub(in crate::chat) fn delete_conversation(config_dir: &Path, id: &str) -> Result<(), StoreError> {
     crate::chat::backup::trash(config_dir, id)
 }
 
@@ -322,7 +331,7 @@ pub struct ConversationSummary {
 }
 
 /// The sidebar rows, from the index (see [`super::index`]), so a long history stays fast.
-pub fn list_conversations(config_dir: &Path) -> Vec<ConversationSummary> {
+pub(in crate::chat) fn list_conversations(config_dir: &Path) -> Vec<ConversationSummary> {
     crate::chat::index::list(config_dir)
 }
 
@@ -353,11 +362,14 @@ fn projects_path(config_dir: &Path) -> PathBuf {
     chat_dir(config_dir).join("projects.json")
 }
 
-pub fn load_projects(config_dir: &Path) -> Vec<Project> {
+pub(in crate::chat) fn load_projects(config_dir: &Path) -> Vec<Project> {
     read_json(&projects_path(config_dir)).unwrap_or_default()
 }
 
-pub fn save_projects(config_dir: &Path, projects: &[Project]) -> Result<(), StoreError> {
+pub(in crate::chat) fn save_projects(
+    config_dir: &Path,
+    projects: &[Project],
+) -> Result<(), StoreError> {
     write_json(&projects_path(config_dir), &projects)
 }
 
@@ -376,11 +388,14 @@ fn instructions_path(config_dir: &Path) -> PathBuf {
     chat_dir(config_dir).join("instructions.json")
 }
 
-pub fn load_instructions(config_dir: &Path) -> Instructions {
+pub(in crate::chat) fn load_instructions(config_dir: &Path) -> Instructions {
     read_json(&instructions_path(config_dir)).unwrap_or_default()
 }
 
-pub fn save_instructions(config_dir: &Path, instructions: &Instructions) -> Result<(), StoreError> {
+pub(in crate::chat) fn save_instructions(
+    config_dir: &Path,
+    instructions: &Instructions,
+) -> Result<(), StoreError> {
     crate::chat::versions::keep(
         config_dir,
         "instructions",
@@ -394,8 +409,8 @@ pub fn save_instructions(config_dir: &Path, instructions: &Instructions) -> Resu
 mod editing;
 mod rendering;
 mod views;
-pub use editing::*;
-pub use rendering::*;
+pub(in crate::chat) use editing::*;
+pub(crate) use rendering::*;
 pub use views::*;
 
 #[cfg(test)]

@@ -21,7 +21,11 @@ pub(super) const EMBED_BATCH: usize = 16;
 
 /// Unit-length vectors for `texts`, in order: the mean of the token vectors (as
 /// sentence-transformers does), normalized so a dot product is the cosine.
-pub fn embed_texts(root: &Path, id: &str, texts: &[String]) -> Result<Vec<Vec<f32>>, ChatError> {
+pub(in crate::chat) fn embed_texts(
+    root: &Path,
+    id: &str,
+    texts: &[String],
+) -> Result<Vec<Vec<f32>>, ChatError> {
     use candle_transformers::models::bert;
     if !installed(root, id) || entry(id).is_none_or(|e| e.kind != Kind::Embedding) {
         return Err(ChatError::Invalid(format!(

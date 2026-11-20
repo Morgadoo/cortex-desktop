@@ -51,7 +51,7 @@ pub fn list(config_dir: &Path) -> Vec<Function> {
     read_json::<Vec<Function>>(&path(config_dir)).unwrap_or_default()
 }
 
-pub fn save(config_dir: &Path, f: Function) -> Result<Vec<Function>, ChatError> {
+pub(crate) fn save(config_dir: &Path, f: Function) -> Result<Vec<Function>, ChatError> {
     if f.id.is_empty()
         || f.id.len() > 48
         || !f
@@ -83,7 +83,7 @@ pub fn save(config_dir: &Path, f: Function) -> Result<Vec<Function>, ChatError> 
     Ok(all)
 }
 
-pub fn delete(config_dir: &Path, id: &str) -> Result<Vec<Function>, ChatError> {
+pub(crate) fn delete(config_dir: &Path, id: &str) -> Result<Vec<Function>, ChatError> {
     let mut all = list(config_dir);
     all.retain(|x| x.id != id);
     write_json(&path(config_dir), &all)?;
@@ -91,7 +91,7 @@ pub fn delete(config_dir: &Path, id: &str) -> Result<Vec<Function>, ChatError> {
 }
 
 /// Pipes, for the model menu.
-pub fn models(config_dir: &Path) -> Vec<crate::chat::providers::ModelView> {
+pub(in crate::chat) fn models(config_dir: &Path) -> Vec<crate::chat::providers::ModelView> {
     list(config_dir)
         .into_iter()
         .filter(|f| f.enabled && f.kind == "pipe")
@@ -168,7 +168,7 @@ pub enum Verdict {
 
 /// A filter's output: nothing keeps the text, `{"block": ...}` refuses it, `{"text": ...}` or
 /// plain text replaces it.
-pub fn verdict(output: &str) -> Verdict {
+pub(in crate::chat) fn verdict(output: &str) -> Verdict {
     let out = output.trim();
     if out.is_empty() {
         return Verdict::Keep;

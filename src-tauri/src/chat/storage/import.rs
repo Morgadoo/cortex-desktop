@@ -236,7 +236,7 @@ fn convert(export: &Value) -> Result<(Vec<Conversation>, usize, &'static str), S
 }
 
 /// Imports every conversation in the export at `path`.
-pub fn import(config_dir: &Path, path: &Path) -> Result<ImportReport, StoreError> {
+pub(crate) fn import(config_dir: &Path, path: &Path) -> Result<ImportReport, StoreError> {
     let (conversations, skipped, source) = convert(&read_export(path)?)?;
     let imported = conversations.len();
     for conversation in &conversations {

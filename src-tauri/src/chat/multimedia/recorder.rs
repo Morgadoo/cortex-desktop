@@ -145,7 +145,7 @@ pub(in crate::chat::multimedia) fn pick(frames: &[Frame], n: usize) -> Vec<usize
 }
 
 impl Recorder {
-    pub fn status(&self) -> Status {
+    pub(crate) fn status(&self) -> Status {
         match self.inner.lock().unwrap().as_ref() {
             Some(s) => Status {
                 recording: true,
@@ -213,7 +213,7 @@ impl Recorder {
     }
 
     /// Stops recording; the frames wait for [`Recorder::draft`].
-    pub fn stop(&self) -> Status {
+    pub(crate) fn stop(&self) -> Status {
         let session = self.inner.lock().unwrap().take();
         if let Some(session) = session {
             session.stop.store(true, Ordering::Relaxed);
@@ -231,12 +231,12 @@ impl Recorder {
         self.status()
     }
 
-    pub fn discard(&self) {
+    pub(crate) fn discard(&self) {
         self.stop();
         self.done.lock().unwrap().clear();
     }
 
-    pub fn frames(&self) -> Vec<Frame> {
+    pub(crate) fn frames(&self) -> Vec<Frame> {
         self.done.lock().unwrap().clone()
     }
 }
@@ -277,7 +277,7 @@ pub(in crate::chat::multimedia) fn parse_draft(reply: &str) -> Result<Draft, Cha
 }
 
 /// Asks `model` (one that reads images) to turn the recording into a skill.
-pub async fn draft(
+pub(in crate::chat) async fn draft(
     config_dir: &std::path::Path,
     model: &str,
     frames: &[Frame],

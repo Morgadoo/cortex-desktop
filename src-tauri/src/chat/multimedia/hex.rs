@@ -119,7 +119,7 @@ pub struct Model {
 impl Model {
     /// Downloaded and checked: Hex can transcribe with it now. Cortex never asks Hex to
     /// download or prepare one.
-    pub fn usable(&self) -> bool {
+    pub(crate) fn usable(&self) -> bool {
         self.installed && self.verified
     }
 }
@@ -212,7 +212,7 @@ fn refusal(code: &str) -> String {
 
 impl Client {
     /// Hex at the discovery file `path`, after checking it answers and speaks API 2.
-    pub async fn connect_at(path: &Path) -> Result<Self, Failure> {
+    async fn connect_at(path: &Path) -> Result<Self, Failure> {
         let bytes = std::fs::read(path).map_err(|_| Failure::Unavailable(NOT_RUNNING.into()))?;
         let endpoint = parse_discovery(&bytes).map_err(|e| Failure::Unavailable(e.to_string()))?;
         let client = Self {
@@ -262,7 +262,7 @@ impl Client {
     }
 
     /// Hex's version, after checking it speaks API 2.
-    pub async fn health(&self) -> Result<String, Failure> {
+    pub(crate) async fn health(&self) -> Result<String, Failure> {
         let health: Health = serde_json::from_slice(&self.get("/health").await?)
             .map_err(|_| Failure::Unavailable("Hex sent an unreadable health answer.".into()))?;
         if health.api_version != "2" {
@@ -274,14 +274,14 @@ impl Client {
         Ok(health.version)
     }
 
-    pub async fn models(&self) -> Result<Vec<Model>, Failure> {
+    pub(in crate::chat) async fn models(&self) -> Result<Vec<Model>, Failure> {
         serde_json::from_slice(&self.get("/models").await?)
             .map_err(|_| Failure::Unavailable("Hex sent an unreadable model list.".into()))
     }
 
     /// Transcribes 16 kHz mono `samples` with `model`, in pieces of at most 30 seconds, and
     /// joins the pieces' text.
-    pub async fn transcribe(
+    pub(in crate::chat) async fn transcribe(
         &self,
         samples: &[f32],
         model: &str,
@@ -351,7 +351,7 @@ impl Client {
 }
 
 /// What Settings shows: whether Hex is running, its version and its models.
-pub async fn status() -> Status {
+pub(crate) async fn status() -> Status {
     status_of(Client::connect().await).await
 }
 

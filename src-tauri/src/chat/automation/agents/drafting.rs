@@ -4,7 +4,11 @@ use super::*;
 use crate::chat::error::ChatError;
 
 /// The instruction that turns a one-line description into an agent.
-pub fn draft_prompt(description: &str, tools: &[&str], skills: &[String]) -> String {
+pub(in crate::chat) fn draft_prompt(
+    description: &str,
+    tools: &[&str],
+    skills: &[String],
+) -> String {
     format!(
         "Design an AI agent from this description:\n\n{description}\n\nReply with only a JSON object, \
          no prose and no code fence, with these fields:\n\
@@ -21,7 +25,12 @@ pub fn draft_prompt(description: &str, tools: &[&str], skills: &[String]) -> Str
 }
 
 /// The prompt asking a model to change a drafted agent as the user asks, keeping the rest.
-pub fn refine_prompt(current: &Agent, request: &str, tools: &[&str], skills: &[String]) -> String {
+pub(in crate::chat) fn refine_prompt(
+    current: &Agent,
+    request: &str,
+    tools: &[&str],
+    skills: &[String],
+) -> String {
     let now = serde_json::json!({
         "name": current.name, "title": current.title, "avatar": current.avatar, "description": current.description,
         "instructions": current.instructions, "tools": current.tools, "skills": current.skills, "think": current.think,
@@ -34,7 +43,11 @@ pub fn refine_prompt(current: &Agent, request: &str, tools: &[&str], skills: &[S
 }
 
 /// Reads the model's draft. Unknown tools and skills are dropped.
-pub fn parse_draft(text: &str, tools: &[&str], skills: &[String]) -> Result<Agent, ChatError> {
+pub(in crate::chat) fn parse_draft(
+    text: &str,
+    tools: &[&str],
+    skills: &[String],
+) -> Result<Agent, ChatError> {
     let start = text
         .find('{')
         .ok_or_else(|| ChatError::Invalid("The model did not return an agent.".into()))?;

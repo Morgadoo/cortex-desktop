@@ -52,7 +52,7 @@ const DEMANDING: &[&str] = &[
 
 /// Picks the model for a message: the strong one for code, long or attached input, images,
 /// several questions at once, and words that ask for analysis or design; the fast one otherwise.
-pub fn route(text: &str, images: usize) -> Route {
+pub(crate) fn route(text: &str, images: usize) -> Route {
     let lower = text.to_lowercase();
     if text.contains("```") || text.contains("<attachment") {
         return Route {
@@ -112,7 +112,7 @@ pub fn route(text: &str, images: usize) -> Route {
 }
 
 /// The fast and strong models, when both are set.
-pub fn models(file: &providers::ProvidersFile) -> Option<(String, String)> {
+pub(in crate::chat) fn models(file: &providers::ProvidersFile) -> Option<(String, String)> {
     Some((
         file.router_fast.clone().filter(|m| !m.is_empty())?,
         file.router_strong.clone().filter(|m| !m.is_empty())?,

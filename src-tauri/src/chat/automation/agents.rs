@@ -94,7 +94,7 @@ pub struct Agent {
 
 impl Agent {
     /// Its name with its title, as the team sees it: `João [3D Artist]`.
-    pub fn label(&self) -> String {
+    pub(crate) fn label(&self) -> String {
         if self.title.trim().is_empty() {
             self.name.clone()
         } else {
@@ -103,7 +103,7 @@ impl Agent {
     }
 
     /// What its title means for how it works, for its own prompt; empty without a title.
-    pub fn role_prompt(&self) -> String {
+    pub(in crate::chat) fn role_prompt(&self) -> String {
         let title = self.title.trim();
         if title.is_empty() {
             return String::new();
@@ -118,7 +118,7 @@ impl Agent {
 
 const AGENTS_FILE: SettingsFile<Vec<Agent>> = SettingsFile::sealed("chat/agents.json");
 
-pub fn load(config_dir: &Path) -> Vec<Agent> {
+pub(crate) fn load(config_dir: &Path) -> Vec<Agent> {
     AGENTS_FILE.load(config_dir)
 }
 
@@ -126,7 +126,7 @@ pub fn find(config_dir: &Path, id: &str) -> Option<Agent> {
     load(config_dir).into_iter().find(|a| a.id == id)
 }
 
-pub fn save(config_dir: &Path, agent: Agent) -> Result<Vec<Agent>, ChatError> {
+pub(crate) fn save(config_dir: &Path, agent: Agent) -> Result<Vec<Agent>, ChatError> {
     if !valid_id(&agent.id) {
         return Err(ChatError::Invalid("invalid agent id".into()));
     }
@@ -145,7 +145,7 @@ pub fn save(config_dir: &Path, agent: Agent) -> Result<Vec<Agent>, ChatError> {
     Ok(agents)
 }
 
-pub fn delete(config_dir: &Path, id: &str) -> Result<Vec<Agent>, ChatError> {
+pub(crate) fn delete(config_dir: &Path, id: &str) -> Result<Vec<Agent>, ChatError> {
     let mut agents = load(config_dir);
     agents.retain(|a| a.id != id);
     AGENTS_FILE.save(config_dir, &agents)?;
@@ -175,13 +175,13 @@ pub fn allows(agent: &Agent, name: &str) -> bool {
 }
 
 /// Whether the agent's policy says to ask before every use of `tool`.
-pub fn asks_first(agent: &Agent, tool: &str) -> bool {
+pub(in crate::chat) fn asks_first(agent: &Agent, tool: &str) -> bool {
     let connector = tool.split_once("__").map_or(tool, |(c, _)| c);
     agent.ask_tools.iter().any(|t| t == tool || t == connector)
 }
 
 /// The approval mode for one call: an agent's "ask" tools ask even when the mode would not.
-pub fn mode_for(
+pub(in crate::chat) fn mode_for(
     agent: Option<&Agent>,
     tool: &str,
     mode: cortex_kernel::approval::ApprovalMode,
@@ -205,10 +205,10 @@ mod team;
 mod templates;
 pub use budget::*;
 pub use bundles::*;
-pub use drafting::*;
+pub(in crate::chat) use drafting::*;
 pub use notebook::*;
 pub use team::*;
-pub use templates::*;
+pub(in crate::chat) use templates::*;
 
 #[cfg(test)]
 mod group_tests {

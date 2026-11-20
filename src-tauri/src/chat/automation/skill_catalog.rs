@@ -193,7 +193,7 @@ pub struct Browse {
 }
 
 /// Every catalogue's skills, from the cache when it is recent.
-pub async fn browse(config_dir: &Path, refresh: bool) -> Result<Browse, ChatError> {
+pub(in crate::chat) async fn browse(config_dir: &Path, refresh: bool) -> Result<Browse, ChatError> {
     let mut store = load(config_dir);
     let fresh = store
         .fetched_at
@@ -226,7 +226,7 @@ pub async fn browse(config_dir: &Path, refresh: bool) -> Result<Browse, ChatErro
     })
 }
 
-pub async fn add_catalog(config_dir: &Path, input: &str) -> Result<(), ChatError> {
+pub(in crate::chat) async fn add_catalog(config_dir: &Path, input: &str) -> Result<(), ChatError> {
     let repo = repo_of(input)
         .ok_or_else(|| ChatError::Invalid("Give a GitHub repository, like owner/repo.".into()))?;
     read_catalog(&client()?, &repo).await?;
@@ -238,7 +238,7 @@ pub async fn add_catalog(config_dir: &Path, input: &str) -> Result<(), ChatError
     save(config_dir, &store)
 }
 
-pub fn remove_catalog(config_dir: &Path, repo: &str) -> Result<(), ChatError> {
+pub(in crate::chat) fn remove_catalog(config_dir: &Path, repo: &str) -> Result<(), ChatError> {
     let mut store = load(config_dir);
     store.catalogs.retain(|c| c != repo);
     store.listings.retain(|l| l.catalog != repo);
@@ -268,7 +268,7 @@ pub struct Installed {
 }
 
 /// Adds a catalogue skill as one of the user's: its instructions, then its files.
-pub async fn install(
+pub(crate) async fn install(
     config_dir: &Path,
     catalog: &str,
     branch: &str,
@@ -342,7 +342,7 @@ pub async fn install(
 /// Publishes skills as a catalogue: writes `.claude-plugin/marketplace.json` and
 /// `skills/<name>/` (SKILL.md and its files) into `dest`, ready to push to a GitHub repository
 /// that others add by `owner/repo`. Returns how many skills were written.
-pub fn export(
+pub(crate) fn export(
     config_dir: &Path,
     names: &[String],
     dest: &Path,

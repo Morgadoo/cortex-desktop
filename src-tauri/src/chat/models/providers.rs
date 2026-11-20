@@ -119,12 +119,12 @@ pub const PROVIDERS: &[ProviderInfo] = &[
     },
 ];
 
-pub fn info(vendor: &str) -> Option<&'static ProviderInfo> {
+pub(crate) fn info(vendor: &str) -> Option<&'static ProviderInfo> {
     PROVIDERS.iter().find(|p| p.vendor == vendor)
 }
 
 /// Keychain entry name for a vendor's key.
-pub fn secret_name(vendor: &str) -> String {
+pub(in crate::chat) fn secret_name(vendor: &str) -> String {
     format!("llm-provider:{vendor}")
 }
 
@@ -180,14 +180,14 @@ pub(in crate::chat::models) fn file_path(config_dir: &Path) -> PathBuf {
     config_dir.join("chat").join("providers.json")
 }
 
-pub fn load(config_dir: &Path) -> ProvidersFile {
+pub(crate) fn load(config_dir: &Path) -> ProvidersFile {
     crate::chat::at_rest::read_to_string(file_path(config_dir))
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
         .unwrap_or_default()
 }
 
-pub fn save(config_dir: &Path, file: &ProvidersFile) -> Result<(), ChatError> {
+pub(crate) fn save(config_dir: &Path, file: &ProvidersFile) -> Result<(), ChatError> {
     crate::chat::store::write_json(&file_path(config_dir), file)
         .map_err(String::from)
         .map_err(ChatError::Invalid)
@@ -221,7 +221,7 @@ pub(in crate::chat::models) fn default_base_url(vendor: &str) -> Option<String> 
 /// it out of the base URL; a user pasting `https://gateway/v1` for one of those would otherwise
 /// send to `/v1/v1/...`. Others (DeepSeek) send to `{base}/chat/completions`, so a gateway's
 /// `/v1` must stay.
-pub fn normalize_base_url(vendor: &str, base_url: &str) -> String {
+pub(in crate::chat) fn normalize_base_url(vendor: &str, base_url: &str) -> String {
     let url = base_url.trim().trim_end_matches('/');
     match url.strip_suffix("/v1") {
         Some(root) if paths_carry_v1(vendor) => root.to_string(),
@@ -246,7 +246,7 @@ pub(in crate::chat::models) fn requires_key(vendor: &str) -> bool {
 /// The environment variable holding a key for `vendor`, if one is set, such as
 /// `OPENAI_API_KEY`. rig reads it when no saved key is given, which also covers machines without
 /// a keychain.
-pub fn env_key(vendor: &str) -> Option<&'static str> {
+pub(in crate::chat) fn env_key(vendor: &str) -> Option<&'static str> {
     ProviderId::catalog(vendor)?
         .api_key_envs()
         .into_iter()
@@ -257,7 +257,7 @@ pub(in crate::chat::models) fn is_ready(vendor: &str, settings: &ProviderSetting
     settings.enabled && (settings.has_key || !requires_key(vendor) || env_key(vendor).is_some())
 }
 
-pub fn views(file: &ProvidersFile) -> Vec<ProviderView> {
+pub(in crate::chat) fn views(file: &ProvidersFile) -> Vec<ProviderView> {
     PROVIDERS
         .iter()
         .filter(|p| ProviderId::catalog(p.vendor).is_some())
@@ -400,7 +400,7 @@ async fn openai_compatible_models(base_url: &str) -> Vec<String> {
 
 /// Every model of every ready provider. A local server's own listing replaces the catalog's,
 /// which names models the user may not have pulled.
-pub async fn models(file: &ProvidersFile) -> Vec<ModelView> {
+pub(in crate::chat) async fn models(file: &ProvidersFile) -> Vec<ModelView> {
     let mut out = Vec::new();
     for provider in PROVIDERS {
         let Some(settings) = file.providers.get(provider.vendor) else {
@@ -449,7 +449,7 @@ pub async fn models(file: &ProvidersFile) -> Vec<ModelView> {
 }
 
 /// Splits `vendor/model` at the first `/`; model ids can hold more (`openrouter/a/b`).
-pub fn split_reference(reference: &str) -> Option<(&str, &str)> {
+pub(in crate::chat) fn split_reference(reference: &str) -> Option<(&str, &str)> {
     reference
         .split_once('/')
         .filter(|(vendor, model)| !vendor.is_empty() && !model.is_empty())
@@ -488,14 +488,14 @@ pub(in crate::chat::models) fn connect(
 }
 
 /// Whether the catalog says `reference` can reason, so a "think" request is not refused.
-pub fn supports_reasoning(reference: &str) -> bool {
+pub(in crate::chat) fn supports_reasoning(reference: &str) -> bool {
     Catalog::builtin()
         .resolve(reference)
         .is_ok_and(|r| !matches!(r.spec.reasoning, ReasoningSupport::None))
 }
 
 /// The API key for `vendor` from the keychain, if one is saved.
-pub async fn api_key(vendor: &str) -> Result<Option<String>, ChatError> {
+pub(in crate::chat) async fn api_key(vendor: &str) -> Result<Option<String>, ChatError> {
     crate::chat::secrets::local()?
         .load(&secret_name(vendor))
         .await

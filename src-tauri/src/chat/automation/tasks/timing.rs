@@ -158,7 +158,7 @@ pub(in crate::chat::automation) fn next_run(
 }
 
 /// "Every Monday and Thursday at 09:00", in the words the task list shows.
-pub fn describe(frequency: &Frequency) -> String {
+pub(in crate::chat) fn describe(frequency: &Frequency) -> String {
     const NAMES: [&str; 7] = [
         "Monday",
         "Tuesday",

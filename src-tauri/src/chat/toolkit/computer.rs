@@ -64,18 +64,18 @@ pub(in crate::chat::toolkit) fn app_allowed(
 
 const COMPUTER_FILE: SettingsFile<ComputerSettings> = SettingsFile::sealed("chat/computer.json");
 
-pub fn load(config_dir: &Path) -> ComputerSettings {
+pub(crate) fn load(config_dir: &Path) -> ComputerSettings {
     COMPUTER_FILE.load(config_dir)
 }
 
-pub fn save(config_dir: &Path, settings: &ComputerSettings) -> Result<(), ChatError> {
+pub(crate) fn save(config_dir: &Path, settings: &ComputerSettings) -> Result<(), ChatError> {
     COMPUTER_FILE
         .save(config_dir, settings)
         .map_err(String::from)
         .map_err(ChatError::Invalid)
 }
 
-pub fn definition() -> ChatTool {
+pub(crate) fn definition() -> ChatTool {
     ChatTool {
         name: TOOL.into(),
         description:
@@ -116,7 +116,7 @@ fn scales() -> &'static Mutex<HashMap<String, f64>> {
 }
 
 /// The screenshot the last call took, for the tool result; taken once.
-pub fn take_image(conversation_id: &str) -> Option<String> {
+pub(in crate::chat) fn take_image(conversation_id: &str) -> Option<String> {
     shots().lock().ok()?.remove(conversation_id)
 }
 
@@ -388,7 +388,10 @@ pub(crate) async fn capture() -> Result<Vec<u8>, ChatError> {
 }
 
 /// Scales a PNG to at most `max_width` wide as JPEG; returns base64 and the scale back to screen.
-pub fn shrink(png: &[u8], max_width: u32) -> Result<(String, f64, u32, u32), ChatError> {
+pub(in crate::chat) fn shrink(
+    png: &[u8],
+    max_width: u32,
+) -> Result<(String, f64, u32, u32), ChatError> {
     let image = image::load_from_memory(png)
         .map_err(|e| ChatError::Invalid(format!("The screenshot could not be read: {e}")))?;
     let (w, h) = (image.width(), image.height());

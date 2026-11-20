@@ -59,7 +59,7 @@ pub struct Place;
 
 impl Place {
     /// A place, or `None` when the queue is full.
-    pub fn take() -> Option<Place> {
+    pub(crate) fn take() -> Option<Place> {
         use std::sync::atomic::Ordering;
         let mut now = QUEUED.load(Ordering::SeqCst);
         loop {
@@ -224,7 +224,7 @@ pub(super) async fn completions(axum::Json(body): axum::Json<Value>) -> axum::re
 
 /// The system prompt of a built-in model: who it is, today's date, and the user's own
 /// instructions; short, because a small model on a processor reads every token.
-pub fn brief(
+pub(in crate::chat) fn brief(
     instructions: &crate::chat::store::Instructions,
     project: Option<&str>,
     agent: Option<(&str, &str)>,

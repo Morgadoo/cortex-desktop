@@ -66,7 +66,7 @@ pub struct EmbeddingSettings {
 }
 
 impl EmbeddingSettings {
-    pub fn uses_qdrant(&self) -> bool {
+    fn uses_qdrant(&self) -> bool {
         self.vector_store == "qdrant" && !self.qdrant_url.is_empty()
     }
 }
@@ -78,11 +78,11 @@ fn settings_path(config_dir: &Path) -> PathBuf {
     EMBEDDINGS_FILE.path(config_dir)
 }
 
-pub fn load(config_dir: &Path) -> EmbeddingSettings {
+pub(crate) fn load(config_dir: &Path) -> EmbeddingSettings {
     EMBEDDINGS_FILE.load(config_dir)
 }
 
-pub fn save(config_dir: &Path, settings: &EmbeddingSettings) -> Result<(), ChatError> {
+pub(crate) fn save(config_dir: &Path, settings: &EmbeddingSettings) -> Result<(), ChatError> {
     let mut s = settings.clone();
     s.base_url = s.base_url.trim().trim_end_matches('/').to_string();
     s.model = s.model.trim().to_string();
@@ -111,7 +111,7 @@ async fn key() -> Result<String, ChatError> {
 }
 
 /// Vectors for `texts`, in order, from the configured model.
-pub async fn embed(
+pub(in crate::chat) async fn embed(
     settings: &EmbeddingSettings,
     texts: Vec<String>,
 ) -> Result<Vec<Vec<f32>>, ChatError> {
@@ -203,7 +203,7 @@ fn write_cache(
     .map_err(ChatError::Invalid)
 }
 
-pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
+pub(in crate::chat) fn cosine(a: &[f32], b: &[f32]) -> f32 {
     if a.len() != b.len() || a.is_empty() {
         return 0.0;
     }
@@ -251,7 +251,7 @@ pub(in crate::chat::grounding) fn fuse(lists: &[Vec<Passage>], k: usize) -> Vec<
 }
 
 /// Embeds every passage of the given libraries not cached yet; returns how many were embedded.
-pub async fn index(
+pub(crate) async fn index(
     config_dir: &Path,
     settings: &EmbeddingSettings,
     only: &[String],
@@ -339,7 +339,7 @@ async fn semantic(
 
 /// Library search: hybrid when semantic search is set up, keyword-only otherwise. The note says
 /// when semantic search was wanted but could not run.
-pub async fn search(
+pub(crate) async fn search(
     config_dir: &Path,
     only: &[String],
     query: &str,

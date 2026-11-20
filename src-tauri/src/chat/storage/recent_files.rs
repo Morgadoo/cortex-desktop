@@ -54,7 +54,7 @@ fn path(config_dir: &Path) -> PathBuf {
     RECENT_FILES_FILE.path(config_dir)
 }
 
-pub fn load(config_dir: &Path) -> Vec<RecentFile> {
+pub(crate) fn load(config_dir: &Path) -> Vec<RecentFile> {
     RECENT_FILES_FILE.load(config_dir)
 }
 
@@ -82,7 +82,10 @@ pub fn add(config_dir: &Path, files: Vec<RecentFile>) -> Result<(), StoreError> 
 }
 
 /// Takes one file off the list, or every file when `index` is `None`.
-pub fn forget(config_dir: &Path, index: Option<usize>) -> Result<Vec<RecentFile>, StoreError> {
+pub(crate) fn forget(
+    config_dir: &Path,
+    index: Option<usize>,
+) -> Result<Vec<RecentFile>, StoreError> {
     let mut list = load(config_dir);
     match index {
         Some(i) if i < list.len() => {

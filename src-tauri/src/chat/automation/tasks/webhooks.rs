@@ -24,7 +24,12 @@ pub(in crate::chat::automation) fn webhook_payload(
 }
 
 /// Posts a finished run to the task's webhook, when it has one (http or https only).
-pub async fn notify_webhook(task: &Task, conversation_id: &str, status: TaskStatus, answer: &str) {
+pub(in crate::chat) async fn notify_webhook(
+    task: &Task,
+    conversation_id: &str,
+    status: TaskStatus,
+    answer: &str,
+) {
     let Some(url) = task
         .webhook
         .as_deref()

@@ -40,11 +40,11 @@ fn path(config_dir: &Path) -> PathBuf {
     crate::chat::store::chat_dir(config_dir).join("slack.json")
 }
 
-pub fn load(config_dir: &Path) -> Settings {
+pub(crate) fn load(config_dir: &Path) -> Settings {
     crate::chat::store::read_json(&path(config_dir)).unwrap_or_default()
 }
 
-pub fn save(config_dir: &Path, s: &Settings) -> Result<(), String> {
+pub(crate) fn save(config_dir: &Path, s: &Settings) -> Result<(), String> {
     crate::chat::store::write_json(&path(config_dir), s).map_err(String::from)
 }
 
@@ -53,7 +53,7 @@ fn api_base() -> String {
     std::env::var("CORTEX_SLACK_API").unwrap_or_else(|_| "https://slack.com/api".into())
 }
 
-pub async fn tokens() -> Option<(String, String)> {
+pub(crate) async fn tokens() -> Option<(String, String)> {
     let app = crate::chat::providers::api_key(APP_TOKEN)
         .await
         .ok()
@@ -67,7 +67,7 @@ pub async fn tokens() -> Option<(String, String)> {
     Some((app, bot))
 }
 
-pub async fn set_tokens(app_token: &str, bot_token: &str) -> Result<(), String> {
+pub(in crate::chat) async fn set_tokens(app_token: &str, bot_token: &str) -> Result<(), String> {
     let secrets = crate::chat::secrets::local()?;
     for (name, value) in [(APP_TOKEN, app_token), (BOT_TOKEN, bot_token)] {
         if value.trim().is_empty() {

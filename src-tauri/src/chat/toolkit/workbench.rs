@@ -33,7 +33,7 @@ pub const CONTAINERFILE: &str = include_str!("../../../assets/workbench/Containe
 
 /// The image this version of the app runs: a hash of its Containerfile, so a changed recipe
 /// builds a new image instead of reusing a stale one.
-pub fn image_tag() -> String {
+pub(in crate::chat) fn image_tag() -> String {
     let hash = Sha256::digest(CONTAINERFILE.as_bytes());
     let hex: String = hash.iter().take(6).map(|b| format!("{b:02x}")).collect();
     format!("localhost/cortex-workbench:{hex}")
@@ -75,7 +75,7 @@ fn settings_path(config_dir: &Path) -> PathBuf {
 }
 
 /// Whether code runs in the workbench when it is ready (on unless the user turned it off).
-pub fn enabled(config_dir: &Path) -> bool {
+pub(crate) fn enabled(config_dir: &Path) -> bool {
     crate::chat::at_rest::read_to_string(settings_path(config_dir))
         .ok()
         .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
@@ -83,7 +83,7 @@ pub fn enabled(config_dir: &Path) -> bool {
         .unwrap_or(true)
 }
 
-pub fn set_enabled(config_dir: &Path, on: bool) -> Result<(), ChatError> {
+pub(crate) fn set_enabled(config_dir: &Path, on: bool) -> Result<(), ChatError> {
     write_json(
         &settings_path(config_dir),
         &serde_json::json!({ "enabled": on }),
@@ -168,7 +168,7 @@ async fn gpu_works(tag: &str) -> bool {
 }
 
 /// The workbench's state, checked once and then kept until a build changes it.
-pub async fn status() -> Status {
+pub(crate) async fn status() -> Status {
     if let Some(s) = cached() {
         return s;
     }

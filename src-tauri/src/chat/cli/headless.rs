@@ -72,7 +72,7 @@ pub enum Ending {
 }
 
 impl Ending {
-    pub fn code(self) -> i32 {
+    pub(crate) fn code(self) -> i32 {
         match self {
             Ending::Done => 0,
             Ending::UsageError => 1,
@@ -164,7 +164,7 @@ fn read_stdin() -> String {
 }
 
 /// Runs the app headless when asked to; returns the exit code, or `None` to start the app.
-pub fn maybe_run() -> Option<i32> {
+pub(crate) fn maybe_run() -> Option<i32> {
     let args: Vec<String> = std::env::args().collect();
     let parsed = match parse(&args, read_stdin)? {
         Ok(p) => p,

@@ -48,11 +48,11 @@ fn enabled() -> bool {
 
 const HOOKS_FILE: SettingsFile<Vec<Hook>> = SettingsFile::sealed("chat/hooks.json");
 
-pub fn load(config_dir: &Path) -> Vec<Hook> {
+pub(crate) fn load(config_dir: &Path) -> Vec<Hook> {
     HOOKS_FILE.load(config_dir)
 }
 
-pub fn save(config_dir: &Path, hooks: &[Hook]) -> Result<(), ChatError> {
+pub(crate) fn save(config_dir: &Path, hooks: &[Hook]) -> Result<(), ChatError> {
     for hook in hooks {
         if !EVENTS.contains(&hook.event.as_str()) {
             return Err(ChatError::Invalid(format!(
@@ -276,7 +276,11 @@ pub(in crate::chat::turn) fn claude_matcher(matcher: &str) -> String {
 
 /// Hooks from a Claude plugin's `hooks/hooks.json`, turned off until the user looks at them;
 /// also the events Cortex has no counterpart for. `${CLAUDE_PLUGIN_ROOT}` becomes `root`.
-pub fn from_claude(config: &Value, root: &Path, source: &str) -> (Vec<Hook>, Vec<String>) {
+pub(in crate::chat) fn from_claude(
+    config: &Value,
+    root: &Path,
+    source: &str,
+) -> (Vec<Hook>, Vec<String>) {
     let root = root.to_string_lossy();
     let mut hooks = Vec::new();
     let mut skipped = Vec::new();
@@ -320,7 +324,11 @@ pub fn from_claude(config: &Value, root: &Path, source: &str) -> (Vec<Hook>, Vec
 }
 
 /// Replaces the hooks that came with `source` by `hooks`.
-pub fn replace_from(config_dir: &Path, source: &str, hooks: Vec<Hook>) -> Result<(), ChatError> {
+pub(in crate::chat) fn replace_from(
+    config_dir: &Path,
+    source: &str,
+    hooks: Vec<Hook>,
+) -> Result<(), ChatError> {
     let mut all: Vec<Hook> = load(config_dir)
         .into_iter()
         .filter(|h| h.source.as_deref() != Some(source))

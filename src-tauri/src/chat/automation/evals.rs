@@ -36,7 +36,7 @@ pub const REGRESSIONS: &str = "regressions";
 pub const STARTER: &str = "tool-selection";
 
 /// Where suites live: beside the app's data, not inside `chat/`, which tools write.
-pub fn evals_dir(config_dir: &Path) -> PathBuf {
+pub(in crate::chat) fn evals_dir(config_dir: &Path) -> PathBuf {
     config_dir.join("evals")
 }
 
@@ -57,7 +57,7 @@ fn suite_dir(config_dir: &Path, suite: &str) -> Result<PathBuf, ChatError> {
     Ok(evals_dir(config_dir).join(suite))
 }
 
-pub fn suites(config_dir: &Path) -> Vec<String> {
+pub(in crate::chat) fn suites(config_dir: &Path) -> Vec<String> {
     let mut out: Vec<String> = std::fs::read_dir(evals_dir(config_dir))
         .into_iter()
         .flatten()
@@ -69,7 +69,7 @@ pub fn suites(config_dir: &Path) -> Vec<String> {
     out
 }
 
-pub fn cases(config_dir: &Path, suite: &str) -> Vec<Case> {
+pub(crate) fn cases(config_dir: &Path, suite: &str) -> Vec<Case> {
     let Ok(dir) = suite_dir(config_dir, suite) else {
         return Vec::new();
     };
@@ -91,7 +91,11 @@ pub fn cases(config_dir: &Path, suite: &str) -> Vec<Case> {
     out
 }
 
-pub fn add_case(config_dir: &Path, suite: &str, case: &Case) -> Result<(), ChatError> {
+pub(in crate::chat) fn add_case(
+    config_dir: &Path,
+    suite: &str,
+    case: &Case,
+) -> Result<(), ChatError> {
     if !valid(&case.id) {
         return Err(ChatError::Invalid(format!(
             "`{}` is not a case id.",
@@ -116,7 +120,7 @@ pub struct SuiteView {
     pub last_score: Option<f64>,
 }
 
-pub fn suite_views(config_dir: &Path) -> Vec<SuiteView> {
+pub(in crate::chat) fn suite_views(config_dir: &Path) -> Vec<SuiteView> {
     suites(config_dir)
         .into_iter()
         .map(|suite| SuiteView {
@@ -131,7 +135,11 @@ pub fn suite_views(config_dir: &Path) -> Vec<SuiteView> {
 
 /// The user writes or edits a case. Once it says what a good answer does, a case saved from a
 /// rating stops waiting and runs.
-pub fn save_case(config_dir: &Path, suite: &str, mut case: Case) -> Result<(), ChatError> {
+pub(in crate::chat) fn save_case(
+    config_dir: &Path,
+    suite: &str,
+    mut case: Case,
+) -> Result<(), ChatError> {
     let clean = |items: &mut Vec<String>| {
         for item in items.iter_mut() {
             *item = item.trim().to_string();
@@ -153,7 +161,11 @@ pub fn save_case(config_dir: &Path, suite: &str, mut case: Case) -> Result<(), C
     add_case(config_dir, suite, &case)
 }
 
-pub fn delete_case(config_dir: &Path, suite: &str, id: &str) -> Result<(), ChatError> {
+pub(in crate::chat) fn delete_case(
+    config_dir: &Path,
+    suite: &str,
+    id: &str,
+) -> Result<(), ChatError> {
     if !valid(id) {
         return Err(ChatError::Invalid(format!("`{id}` is not a case id.")));
     }
@@ -319,11 +331,11 @@ impl Drop for TrialFolder {
 }
 
 /// Removes trial copies a crash or a quit left behind; run at start, before any trial.
-pub fn sweep_trials(config_dir: &Path) {
+pub(crate) fn sweep_trials(config_dir: &Path) {
     let _ = std::fs::remove_dir_all(config_dir.join("cache").join("trials"));
 }
 
-pub fn trial_folder(config_dir: &Path) -> Result<TrialFolder, ChatError> {
+pub(in crate::chat) fn trial_folder(config_dir: &Path) -> Result<TrialFolder, ChatError> {
     fn copy(from: &Path, to: &Path, root: &Path) -> std::io::Result<()> {
         std::fs::create_dir_all(to)?;
         for entry in std::fs::read_dir(from)?.flatten() {
@@ -429,7 +441,7 @@ impl Host for InFolder {
     fn notify(&self, _title: &str, _body: &str) {}
 }
 
-pub async fn run_case(
+pub(in crate::chat) async fn run_case(
     host: &Arc<dyn Host>,
     model: &str,
     case: &Case,
@@ -500,7 +512,7 @@ pub async fn run_case(
 }
 
 /// Runs every case of `suite` on `model`, saves the run, and returns it.
-pub async fn run_suite(
+pub(in crate::chat) async fn run_suite(
     host: &Arc<dyn Host>,
     suite: &str,
     model: &str,
@@ -561,7 +573,7 @@ pub(in crate::chat::automation) fn on_a_copy(
 }
 
 /// The latest saved run of `suite`, if any.
-pub fn last_run(config_dir: &Path, suite: &str) -> Option<SuiteRun> {
+pub(in crate::chat) fn last_run(config_dir: &Path, suite: &str) -> Option<SuiteRun> {
     let dir = suite_dir(config_dir, suite).ok()?.join("runs");
     let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
         .ok()?
@@ -576,7 +588,11 @@ pub fn last_run(config_dir: &Path, suite: &str) -> Option<SuiteRun> {
 
 /// The latest full run of `suite` on `model`: what a new run on that model is compared with. A
 /// run on another model, or one that left something out, is no baseline.
-pub fn last_full_run(config_dir: &Path, suite: &str, model: &str) -> Option<SuiteRun> {
+pub(in crate::chat) fn last_full_run(
+    config_dir: &Path,
+    suite: &str,
+    model: &str,
+) -> Option<SuiteRun> {
     let dir = suite_dir(config_dir, suite).ok()?.join("runs");
     let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
         .ok()?
@@ -603,7 +619,7 @@ pub struct Nightly {
 }
 
 /// Runs every suite that has cases to check, on `model`, and compares each with its last run.
-pub async fn nightly(host: &Arc<dyn Host>, model: &str) -> Vec<Nightly> {
+pub(in crate::chat) async fn nightly(host: &Arc<dyn Host>, model: &str) -> Vec<Nightly> {
     let Ok(config_dir) = host.config_dir() else {
         return Vec::new();
     };
@@ -638,7 +654,7 @@ pub async fn nightly(host: &Arc<dyn Host>, model: &str) -> Vec<Nightly> {
 }
 
 /// The nightly run: every suite, and a notification for each whose score dropped.
-pub async fn nightly_and_notify(host: &Arc<dyn Host>, model: &str) -> Vec<Nightly> {
+pub(in crate::chat) async fn nightly_and_notify(host: &Arc<dyn Host>, model: &str) -> Vec<Nightly> {
     let results = nightly(host, model).await;
     for result in &results {
         log::info!("nightly evals: {result:?}");
@@ -668,7 +684,7 @@ pub(in crate::chat::automation) fn drop_notice(result: &Nightly) -> Option<(&'st
 
 /// Runs a suite with everything, then without `left_out`. If the score holds without it, the
 /// artifact does not help on this suite.
-pub async fn ablate(
+pub(in crate::chat) async fn ablate(
     host: &Arc<dyn Host>,
     suite: &str,
     model: &str,
@@ -682,7 +698,7 @@ pub async fn ablate(
 
 /// A rated-down answer becomes a case in the regressions suite: the prompt that led to it, and
 /// the answer that was wrong in its note. It waits for the user to add what a right answer does.
-pub fn regression_from_rating(
+pub(in crate::chat) fn regression_from_rating(
     config_dir: &Path,
     conversation: &crate::chat::store::Conversation,
     answer_index: usize,
@@ -727,7 +743,7 @@ pub fn regression_from_rating(
 
 /// `cortex-desktop eval <suite> [--model ref] [--without kind:name ...]`: runs a suite and prints
 /// its score; with `--without`, the comparison with and without. Returns the exit code.
-pub fn maybe_run() -> Option<i32> {
+pub(crate) fn maybe_run() -> Option<i32> {
     let args: Vec<String> = std::env::args().collect();
     if args.get(1).map(String::as_str) != Some("eval") {
         return None;

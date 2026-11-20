@@ -59,7 +59,7 @@ pub struct Coverage {
     pub total: usize,
 }
 
-pub fn coverage(config_dir: &Path, code: &str) -> Coverage {
+pub(in crate::chat) fn coverage(config_dir: &Path, code: &str) -> Coverage {
     let all = translations(config_dir, code);
     let catalog = catalog();
     Coverage {
@@ -69,7 +69,7 @@ pub fn coverage(config_dir: &Path, code: &str) -> Coverage {
 }
 
 /// Everything known for `code`: the bundled translations, then the model's for the rest.
-pub fn translations(config_dir: &Path, code: &str) -> BTreeMap<String, String> {
+pub(in crate::chat) fn translations(config_dir: &Path, code: &str) -> BTreeMap<String, String> {
     let mut all = load(config_dir, code);
     if let Some(text) = bundled(code) {
         let shipped: BTreeMap<String, String> = serde_json::from_str(text).unwrap_or_default();
@@ -144,7 +144,11 @@ pub(in crate::chat::ui) fn parse_reply(reply: &str, asked: &[String]) -> BTreeMa
 }
 
 /// Translates the catalog strings not yet known for `code` with `model`.
-pub async fn translate(config_dir: &Path, model: &str, code: &str) -> Result<Coverage, ChatError> {
+pub(in crate::chat) async fn translate(
+    config_dir: &Path,
+    model: &str,
+    code: &str,
+) -> Result<Coverage, ChatError> {
     let (_, name) = LANGUAGES
         .iter()
         .find(|(c, _)| *c == code)
@@ -182,7 +186,7 @@ pub async fn translate(config_dir: &Path, model: &str, code: &str) -> Result<Cov
 }
 
 /// Forgets the model's translations for `code` (the bundled ones stay).
-pub fn reset(config_dir: &Path, code: &str) -> Result<(), ChatError> {
+pub(crate) fn reset(config_dir: &Path, code: &str) -> Result<(), ChatError> {
     match path(config_dir, code) {
         Some(p) if p.exists() => std::fs::remove_file(&p)
             .map_err(|e| crate::support::error::StoreError::write(&p, e).into()),

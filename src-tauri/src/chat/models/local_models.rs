@@ -260,7 +260,7 @@ static ROOT: OnceLock<PathBuf> = OnceLock::new();
 
 /// Where models are kept: the app's local data folder (not the settings folder, so backups and
 /// sync leave gigabytes of weights alone). Set once at start.
-pub fn init(local_data_dir: &Path) {
+pub(crate) fn init(local_data_dir: &Path) {
     let _ = ROOT.set(local_data_dir.join("models"));
 }
 
@@ -277,7 +277,7 @@ fn model_dir(root: &Path, id: &str) -> Result<PathBuf, ChatError> {
     Ok(root.join(id))
 }
 
-pub fn installed(root: &Path, id: &str) -> bool {
+pub(crate) fn installed(root: &Path, id: &str) -> bool {
     model_dir(root, id).is_ok_and(|d| d.join(".complete").exists())
 }
 
@@ -311,7 +311,7 @@ pub fn list(root: &Path) -> Vec<View> {
 }
 
 /// The chat models downloaded, for the model picker.
-pub fn models(root: &Path) -> Vec<crate::chat::providers::ModelView> {
+pub(in crate::chat) fn models(root: &Path) -> Vec<crate::chat::providers::ModelView> {
     CATALOG
         .iter()
         .filter(|e| e.kind == Kind::Chat && installed(root, e.id))
@@ -333,11 +333,11 @@ mod embedding;
 mod generation;
 mod server;
 mod speech;
-pub use downloads::*;
-pub use embedding::*;
+pub(crate) use downloads::*;
+pub(in crate::chat) use embedding::*;
 pub use generation::*;
 pub use server::*;
-pub use speech::*;
+pub(in crate::chat) use speech::*;
 
 #[cfg(test)]
 mod tests;

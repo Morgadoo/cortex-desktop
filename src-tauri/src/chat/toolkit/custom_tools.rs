@@ -64,7 +64,7 @@ pub fn list(config_dir: &Path) -> Vec<CustomTool> {
     out
 }
 
-pub fn save(config_dir: &Path, tool: &CustomTool) -> Result<Vec<CustomTool>, ChatError> {
+pub(crate) fn save(config_dir: &Path, tool: &CustomTool) -> Result<Vec<CustomTool>, ChatError> {
     if !valid_name(&tool.name) {
         return Err(ChatError::Invalid(
             "A tool name uses lowercase letters, digits and underscores, like `convert_units`."
@@ -91,7 +91,7 @@ pub fn save(config_dir: &Path, tool: &CustomTool) -> Result<Vec<CustomTool>, Cha
     Ok(list(config_dir))
 }
 
-pub fn delete(config_dir: &Path, name: &str) -> Result<Vec<CustomTool>, ChatError> {
+pub(crate) fn delete(config_dir: &Path, name: &str) -> Result<Vec<CustomTool>, ChatError> {
     if !valid_name(name) {
         return Err(ChatError::Invalid("invalid tool name".into()));
     }
@@ -100,7 +100,7 @@ pub fn delete(config_dir: &Path, name: &str) -> Result<Vec<CustomTool>, ChatErro
 }
 
 /// The enabled tools, as the model sees them.
-pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
+pub(crate) fn definitions(config_dir: &Path) -> Vec<ChatTool> {
     list(config_dir)
         .into_iter()
         .filter(|t| t.enabled)
@@ -121,7 +121,7 @@ pub(in crate::chat::toolkit) fn program(tool: &CustomTool, args: &Value) -> Stri
 }
 
 /// `code` with `args` bound, in its language (also used by functions).
-pub fn program_for(language: &str, code: &str, args: &Value) -> String {
+pub(in crate::chat) fn program_for(language: &str, code: &str, args: &Value) -> String {
     let json = serde_json::to_string(args).unwrap_or_else(|_| "{}".into());
     match language {
         // A JSON string literal is a valid Python string literal for `json.loads`.

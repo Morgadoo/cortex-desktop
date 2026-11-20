@@ -17,7 +17,7 @@ pub(super) fn rate_calls() -> &'static Calls {
 }
 
 /// Drops a folder's rate counters, for a folder that is going away (a trial's copy).
-pub fn forget_rates(config_dir: &Path) {
+pub(in crate::chat) fn forget_rates(config_dir: &Path) {
     let prefix = format!("{}:", config_dir.display());
     rate_calls()
         .lock()
@@ -44,7 +44,7 @@ pub(super) fn within_rate(name: &str) -> bool {
 }
 
 /// Hides a tool; promoting it again brings it back.
-pub fn retire(config_dir: &Path, name: &str) -> Result<(), ChatError> {
+pub(crate) fn retire(config_dir: &Path, name: &str) -> Result<(), ChatError> {
     let mut tool = load(config_dir, name)
         .ok_or_else(|| ChatError::Invalid("There is no tool by that name.".into()))?;
     tool.status = Status::Deprecated;
@@ -68,7 +68,7 @@ tokio::task_local! {
 }
 
 /// Runs `call` as part of `run`'s trace.
-pub async fn in_run<F: std::future::Future>(run: String, call: F) -> F::Output {
+pub(in crate::chat) async fn in_run<F: std::future::Future>(run: String, call: F) -> F::Output {
     RUN.scope(run, call).await
 }
 

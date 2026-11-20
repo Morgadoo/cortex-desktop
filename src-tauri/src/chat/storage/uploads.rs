@@ -109,7 +109,7 @@ pub fn list(config_dir: &Path) -> Vec<Upload> {
 }
 
 /// Takes a file (by name) or an image (`Image n`) out of a message.
-pub fn remove(
+pub(crate) fn remove(
     c: &mut store::Conversation,
     index: usize,
     kind: &str,

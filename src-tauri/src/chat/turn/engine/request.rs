@@ -18,7 +18,10 @@ pub(super) const MAX_IMAGES: usize = 6;
 pub(super) const MAX_IMAGE_BYTES: usize = 8 * 1024 * 1024;
 
 /// The user's message with its images, checked for type and size.
-pub fn user_message(text: &str, images: &[ImageInput]) -> Result<Message, ChatError> {
+pub(in crate::chat) fn user_message(
+    text: &str,
+    images: &[ImageInput],
+) -> Result<Message, ChatError> {
     use rig_core::completion::message::{ImageMediaType, MimeType, UserContent};
     if images.is_empty() {
         return Ok(Message::user(text));
@@ -67,7 +70,7 @@ pub enum Speed {
 
 impl Speed {
     /// The reasoning effort asked of the model, if any.
-    pub fn effort(self) -> Option<Effort> {
+    pub(crate) fn effort(self) -> Option<Effort> {
         match self {
             Speed::Fast => None,
             Speed::Low => Some(Effort::Low),

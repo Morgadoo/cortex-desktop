@@ -40,7 +40,7 @@ fn settings_path(config_dir: &Path) -> PathBuf {
     chat_dir(config_dir).join("sandbox.json")
 }
 
-pub fn always_allowed(config_dir: &Path) -> bool {
+pub(crate) fn always_allowed(config_dir: &Path) -> bool {
     let mut cache = ALWAYS.lock().unwrap_or_else(|p| p.into_inner());
     *cache.entry(config_dir.to_path_buf()).or_insert_with(|| {
         crate::chat::at_rest::read_to_string(settings_path(config_dir))
@@ -51,7 +51,10 @@ pub fn always_allowed(config_dir: &Path) -> bool {
     })
 }
 
-pub fn set_always_allowed(config_dir: &Path, allowed: bool) -> Result<(), ChatError> {
+pub(in crate::chat) fn set_always_allowed(
+    config_dir: &Path,
+    allowed: bool,
+) -> Result<(), ChatError> {
     crate::chat::store::write_json(
         &settings_path(config_dir),
         &json!({ "alwaysAllow": allowed }),
@@ -154,7 +157,7 @@ fn bubblewrap() -> Option<&'static PathBuf> {
 }
 
 /// The languages a run may use, for the tool description; empty when none is installed.
-pub fn languages() -> Vec<&'static str> {
+pub(in crate::chat) fn languages() -> Vec<&'static str> {
     LANGUAGES
         .iter()
         .map(|l| l.name)
@@ -165,7 +168,7 @@ pub fn languages() -> Vec<&'static str> {
 /// Whether `run_code` runs isolated here: in the workbench container, or under bubblewrap. Where
 /// it does not (macOS, Windows, a Linux without user namespaces), code runs on the user's machine,
 /// and every run asks first.
-pub fn isolated(config_dir: &Path) -> bool {
+pub(in crate::chat) fn isolated(config_dir: &Path) -> bool {
     #[cfg(test)]
     if unsandboxed_for_test()
         .lock()
@@ -203,7 +206,11 @@ pub const UNSANDBOXED: &str = "it runs on this computer without a sandbox";
 
 /// The kernel's second tier for native code: isolated runs follow the approval mode; a run that
 /// would not be isolated always asks, whatever the mode, and never runs unattended.
-pub fn code_gate(mode: ApprovalMode, isolated: bool, always_allowed: bool) -> CodeGate {
+pub(in crate::chat) fn code_gate(
+    mode: ApprovalMode,
+    isolated: bool,
+    always_allowed: bool,
+) -> CodeGate {
     match mode {
         ApprovalMode::Unattended => CodeGate::Refuse(
             "This scheduled run may not run code; the user can allow changes for this task.",
@@ -223,7 +230,7 @@ pub fn code_gate(mode: ApprovalMode, isolated: bool, always_allowed: bool) -> Co
 }
 
 /// The `run_code` tool, when an interpreter is installed (or the workbench is ready).
-pub fn definition(config_dir: &Path) -> Option<ChatTool> {
+pub(crate) fn definition(config_dir: &Path) -> Option<ChatTool> {
     // The workbench is checked in the background the first time; until then, and wherever it is
     // off or not built, runs use what this machine has.
     let bench = if crate::chat::workbench::enabled(config_dir) {
@@ -277,7 +284,10 @@ pub fn definition(config_dir: &Path) -> Option<ChatTool> {
 }
 
 /// A conversation's workspace folder.
-pub fn workspace(config_dir: &Path, conversation_id: &str) -> Result<PathBuf, ChatError> {
+pub(in crate::chat) fn workspace(
+    config_dir: &Path,
+    conversation_id: &str,
+) -> Result<PathBuf, ChatError> {
     if !valid_id(conversation_id) {
         return Err(ChatError::Invalid("invalid conversation id".into()));
     }
@@ -338,7 +348,11 @@ pub struct AgentEnv {
 }
 
 /// The environment of agent `id`, made on first use.
-pub fn agent_env(config_dir: &Path, id: &str, network: bool) -> Result<AgentEnv, ChatError> {
+pub(in crate::chat) fn agent_env(
+    config_dir: &Path,
+    id: &str,
+    network: bool,
+) -> Result<AgentEnv, ChatError> {
     if !valid_id(id) {
         return Err(ChatError::Invalid("invalid agent id".into()));
     }
@@ -348,7 +362,7 @@ pub fn agent_env(config_dir: &Path, id: &str, network: bool) -> Result<AgentEnv,
 }
 
 /// Forgets an agent's environment: its files and packages.
-pub fn reset_agent_env(config_dir: &Path, id: &str) -> Result<(), ChatError> {
+pub(in crate::chat) fn reset_agent_env(config_dir: &Path, id: &str) -> Result<(), ChatError> {
     if !valid_id(id) {
         return Err(ChatError::Invalid("invalid agent id".into()));
     }
@@ -364,7 +378,7 @@ pub async fn run(config_dir: &Path, conversation_id: &str, args: &Value) -> Outc
 }
 
 /// Runs code in the conversation's workspace, inside an agent's environment when given.
-pub async fn run_in(
+pub(in crate::chat) async fn run_in(
     config_dir: &Path,
     conversation_id: &str,
     args: &Value,
@@ -812,7 +826,7 @@ pub(in crate::chat::toolkit) fn byte_range(header: &str, len: usize) -> Option<(
 
 /// Like `serve`, answering a byte range when one is asked for: the media player reads videos
 /// in pieces and will not play one served only whole.
-pub fn serve_range(
+pub(crate) fn serve_range(
     config_dir: &Path,
     rest: &str,
     range: Option<&str>,

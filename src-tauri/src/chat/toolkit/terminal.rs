@@ -91,7 +91,7 @@ fn append(id: &str, text: &str) {
 }
 
 /// The terminal tools, offered in coding sessions.
-pub fn definitions() -> Vec<ChatTool> {
+pub(crate) fn definitions() -> Vec<ChatTool> {
     let tool =
         |name: &str, description: &str, parameters: serde_json::Value, read_only: bool| ChatTool {
             name: name.into(),
@@ -243,7 +243,7 @@ async fn stop_group(pid: Option<u32>) {
 }
 
 /// Ends every running command and what it started, synchronously: the app is quitting.
-pub fn stop_all() {
+pub(crate) fn stop_all() {
     let pids: Vec<u32> = lock()
         .values()
         .filter(|r| r.view.status == CommandStatus::Running)
@@ -262,7 +262,7 @@ pub fn stop_all() {
 }
 
 /// Stops a running command.
-pub fn stop(id: &str) -> Result<(), ChatError> {
+pub(crate) fn stop(id: &str) -> Result<(), ChatError> {
     let kill = lock().get_mut(id).and_then(|r| r.kill.take());
     match kill {
         Some(tx) => {
@@ -289,14 +289,14 @@ pub fn get(id: &str) -> Option<CommandView> {
 }
 
 /// Forgets finished commands of a conversation.
-pub fn clear_finished(conversation_id: &str) {
+pub(in crate::chat) fn clear_finished(conversation_id: &str) {
     lock().retain(|_, r| {
         r.view.conversation_id != conversation_id || r.view.status == CommandStatus::Running
     });
 }
 
 /// The tail of a command's output, for the model.
-pub fn tail(view: &CommandView, chars: usize) -> String {
+pub(crate) fn tail(view: &CommandView, chars: usize) -> String {
     let count = view.output.chars().count();
     if count <= chars {
         view.output.clone()

@@ -314,7 +314,7 @@ fn snippet(text: &str, lower: &str, term: &str) -> String {
 
 /// Full-text search over titles and what was said: every word must appear. Title matches come
 /// first, then the newest.
-pub fn search(config_dir: &Path, query: &str, limit: usize) -> Vec<Hit> {
+pub(crate) fn search(config_dir: &Path, query: &str, limit: usize) -> Vec<Hit> {
     let terms: Vec<String> = query
         .to_lowercase()
         .split_whitespace()

@@ -25,18 +25,18 @@ pub struct Extraction {
 }
 
 impl Extraction {
-    pub fn external(&self) -> bool {
+    pub(crate) fn external(&self) -> bool {
         matches!(self.engine.as_str(), "tika" | "docling") && !self.url.trim().is_empty()
     }
 }
 
 const EXTRACTION_FILE: SettingsFile<Extraction> = SettingsFile::sealed("chat/extraction.json");
 
-pub fn load(config_dir: &Path) -> Extraction {
+pub(crate) fn load(config_dir: &Path) -> Extraction {
     EXTRACTION_FILE.load(config_dir)
 }
 
-pub fn save(config_dir: &Path, e: &Extraction) -> Result<(), ChatError> {
+pub(crate) fn save(config_dir: &Path, e: &Extraction) -> Result<(), ChatError> {
     if !matches!(e.engine.as_str(), "builtin" | "tika" | "docling" | "") {
         return Err(ChatError::Invalid("Unknown extraction engine.".into()));
     }
@@ -67,7 +67,11 @@ pub(in crate::chat::grounding) fn docling_text(body: &serde_json::Value) -> Opti
 }
 
 /// Converts a file with the configured server.
-pub async fn convert(e: &Extraction, name: &str, bytes: Vec<u8>) -> Result<String, ChatError> {
+pub(in crate::chat) async fn convert(
+    e: &Extraction,
+    name: &str,
+    bytes: Vec<u8>,
+) -> Result<String, ChatError> {
     let base = e.url.trim().trim_end_matches('/');
     let client = crate::support::http::client(std::time::Duration::from_secs(300))
         .map_err(ChatError::Invalid)?;

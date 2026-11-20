@@ -47,7 +47,7 @@ pub(in crate::chat::multimedia) fn vendors(file: &ProvidersFile) -> Vec<String> 
 }
 
 /// The tool, when a provider can make videos.
-pub fn definition(config_dir: &Path) -> Option<ChatTool> {
+pub(crate) fn definition(config_dir: &Path) -> Option<ChatTool> {
     let model = video_model(&providers::load(config_dir))?;
     Some(ChatTool {
         name: GENERATE_VIDEO.into(),

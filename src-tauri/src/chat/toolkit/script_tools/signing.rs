@@ -12,7 +12,7 @@ pub(super) fn keys() -> &'static Keys {
 }
 
 /// Signs and verifies the tools in `config_dir` with `key` from now on.
-pub fn set_signing_key(config_dir: &Path, key: [u8; 32]) {
+pub(in crate::chat) fn set_signing_key(config_dir: &Path, key: [u8; 32]) {
     let mut keys = keys().write().unwrap_or_else(|p| p.into_inner());
     keys.retain(|(dir, _)| dir != config_dir);
     keys.push((config_dir.to_path_buf(), key));
@@ -42,7 +42,7 @@ pub(super) fn set_trial_keys(trial: &Path, live: [u8; 32]) {
 /// Gives a trial's copy the live folder's key and its record of each tool's latest signature, so
 /// a file changed outside the app is refused there as it is in the app. The copy's record is never
 /// kept in the keychain.
-pub fn share_signing_key(from: &Path, to: &Path) {
+pub(in crate::chat) fn share_signing_key(from: &Path, to: &Path) {
     if let Some(key) = signing_key(from) {
         set_trial_keys(to, key);
     }
@@ -61,7 +61,7 @@ pub fn share_signing_key(from: &Path, to: &Path) {
 }
 
 /// Drops the key for a folder that is going away (a trial's copy).
-pub fn forget_signing_key(config_dir: &Path) {
+pub(in crate::chat) fn forget_signing_key(config_dir: &Path) {
     keys()
         .write()
         .unwrap_or_else(|p| p.into_inner())
@@ -289,7 +289,7 @@ pub(in crate::chat::toolkit) async fn ensure_signing_key_in(
 }
 
 /// At start, when the assistant has written tools: their signing key, before any runs.
-pub fn unlock_signing(config_dir: &Path) {
+pub(crate) fn unlock_signing(config_dir: &Path) {
     if dir(config_dir).is_dir() {
         tauri::async_runtime::block_on(ensure_signing_key(config_dir));
     }

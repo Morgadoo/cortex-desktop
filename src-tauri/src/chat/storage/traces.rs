@@ -7,7 +7,7 @@ use std::path::Path;
 
 /// One model call, from rig's usage report.
 #[allow(clippy::too_many_arguments)]
-pub fn model_call(
+pub(in crate::chat) fn model_call(
     config_dir: &Path,
     run: &str,
     step: usize,

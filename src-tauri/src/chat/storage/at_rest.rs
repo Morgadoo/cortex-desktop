@@ -37,7 +37,7 @@ pub async fn enable(config_dir: &Path) -> Result<usize, StoreError> {
         .map_err(StoreError::Invalid)
 }
 
-pub async fn disable(config_dir: &Path) -> Result<usize, StoreError> {
+pub(crate) async fn disable(config_dir: &Path) -> Result<usize, StoreError> {
     let dir = config_dir.to_path_buf();
     let n = tokio::task::spawn_blocking(move || disable_files(&dir))
         .await
@@ -51,7 +51,7 @@ pub async fn disable(config_dir: &Path) -> Result<usize, StoreError> {
 }
 
 /// At start, before anything reads the folder: unlock with the keychain's key when on.
-pub fn unlock_at_start() {
+pub(crate) fn unlock_at_start() {
     let Some(config_dir) = crate::reporting::early_config_dir() else {
         return;
     };

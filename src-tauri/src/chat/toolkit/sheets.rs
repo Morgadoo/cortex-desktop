@@ -10,7 +10,7 @@ use std::path::Path;
 const MAX_ROWS: usize = 5_000;
 
 /// Parses CSV (quoted fields, embedded commas, quotes and newlines) into rows.
-pub fn parse_csv(text: &str) -> Vec<Vec<String>> {
+pub(in crate::chat) fn parse_csv(text: &str) -> Vec<Vec<String>> {
     let mut rows = Vec::new();
     let mut row = Vec::new();
     let mut field = String::new();
@@ -73,7 +73,7 @@ pub(in crate::chat::toolkit) fn sheet_csv(content: &str) -> String {
 }
 
 /// The sheets of a sheet canvas: `## Sheet: Name` starts each; content without one is one sheet.
-pub fn split_sheets(content: &str, fallback_name: &str) -> Vec<(String, String)> {
+pub(in crate::chat) fn split_sheets(content: &str, fallback_name: &str) -> Vec<(String, String)> {
     let text = sheet_csv(content);
     if !text
         .lines()
@@ -96,7 +96,10 @@ pub fn split_sheets(content: &str, fallback_name: &str) -> Vec<(String, String)>
 }
 
 /// Writes sheets into one workbook, in order: numbers stay numbers, each first row is a bold header.
-pub fn write_workbook(path: &Path, sheets: &[(String, Vec<Vec<String>>)]) -> Result<(), ChatError> {
+pub(in crate::chat) fn write_workbook(
+    path: &Path,
+    sheets: &[(String, Vec<Vec<String>>)],
+) -> Result<(), ChatError> {
     use rust_xlsxwriter::{Format, Workbook};
     let mut workbook = Workbook::new();
     let mut used: Vec<String> = Vec::new();
@@ -152,7 +155,7 @@ pub fn write_workbook(path: &Path, sheets: &[(String, Vec<Vec<String>>)]) -> Res
 }
 
 /// Reads a workbook (`.xlsx`, `.xls`, `.ods`) into CSV text per sheet, for the model.
-pub fn read_workbook(bytes: &[u8]) -> Result<Vec<(String, String)>, ChatError> {
+pub(in crate::chat) fn read_workbook(bytes: &[u8]) -> Result<Vec<(String, String)>, ChatError> {
     use calamine::{open_workbook_auto_from_rs, Data, Reader};
     let mut workbook = open_workbook_auto_from_rs(std::io::Cursor::new(bytes.to_vec()))
         .map_err(|e| ChatError::Invalid(format!("Not a readable spreadsheet: {e}")))?;
