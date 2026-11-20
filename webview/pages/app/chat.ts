@@ -29,6 +29,7 @@ import type { Speed, Workflow } from './api';
 import { diffLines, loadChanges, openChanges, openFiles, openDebug } from './changes';
 import { openTerminal } from './terminal';
 import { button, chip, iconButton, modalHeader, trigger } from './ui';
+import { flag, textPref, workdir } from './prefs';
 
 // ---------------------------------------------------------------------------------------------
 // Tool labels
@@ -3442,13 +3443,8 @@ const SUGGESTIONS: { icon: string; text: string; page?: boolean; more?: boolean;
 
 /** Connectors the banner above the composer suggests, shown in turn. */
 const BANNER_APPS = ['M', 'S', 'G', 'N'];
-let bannerDismissed = (() => {
-  try {
-    return localStorage.getItem('connectBannerDismissed') === '1';
-  } catch {
-    return false;
-  }
-})();
+const connectBanner = textPref('connectBannerDismissed');
+let bannerDismissed = connectBanner.get() === '1';
 let showMoreSuggestions = false;
 
 export class HomeView {
@@ -3492,11 +3488,7 @@ export class HomeView {
     const dismiss = h('button', { class: 'icon-btn small', title: 'Dismiss' }, icon('close', 16));
     dismiss.addEventListener('click', () => {
       bannerDismissed = true;
-      try {
-        localStorage.setItem('connectBannerDismissed', '1');
-      } catch {
-        /* per-viewer convenience only */
-      }
+      connectBanner.set('1');
       this.build();
     });
     const banner =
@@ -3580,20 +3572,14 @@ export function avatarHue(avatar: string): number {
 }
 
 /** Whether the next Code session starts in a new git worktree. */
+const worktree = flag('cortex.worktree', false);
+
 function worktreeNext(): boolean {
-  try {
-    return localStorage.getItem('cortex.worktree') === 'on';
-  } catch {
-    return false;
-  }
+  return worktree.get();
 }
 
 function setWorktreeNext(on: boolean) {
-  try {
-    localStorage.setItem('cortex.worktree', on ? 'on' : 'off');
-  } catch {
-    /* per-device convenience only */
-  }
+  worktree.set(on);
 }
 
 async function pickWorkdir() {
@@ -3605,11 +3591,7 @@ async function pickWorkdir() {
   settings.bash_enabled = true;
   await api.saveAppSettings(settings);
   state.workdir = dir;
-  try {
-    localStorage.setItem('workdir', dir);
-  } catch {
-    /* per-device convenience only */
-  }
+  workdir.set(dir);
   viewCache.home?.build();
 }
 
@@ -4843,20 +4825,14 @@ const SLASH_COMMANDS: { name: string; desc: string; icon: string; inChat?: boole
   { name: 'clear', desc: 'Remove the attachments from the composer', icon: 'close' },
 ];
 
+const blind = flag('cortex.blindCompare', false);
+
 function blindCompare(): boolean {
-  try {
-    return localStorage.getItem('cortex.blindCompare') === 'on';
-  } catch {
-    return false;
-  }
+  return blind.get();
 }
 
 function setBlindCompare(on: boolean) {
-  try {
-    localStorage.setItem('cortex.blindCompare', on ? 'on' : 'off');
-  } catch {
-    // A convenience only.
-  }
+  blind.set(on);
 }
 
 /** Your models ranked by the comparisons you decided (Elo). */

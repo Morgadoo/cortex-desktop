@@ -1,3 +1,4 @@
+import { flag } from './prefs';
 /**
  * Vim keys in the message box (Vibe's Vim keybindings, 3.0.2), off unless chosen in
  * Settings → General. The box starts in Insert mode, so typing works as usual; Esc goes to Normal
@@ -256,22 +257,14 @@ export function step(s: VimState, key: string, ctrl = false): Step {
   }
 }
 
-const KEY = 'cortex.vimKeys';
+const vimKeys = flag('cortex.vimKeys', false);
 
 export function vimEnabled(): boolean {
-  try {
-    return localStorage.getItem(KEY) === 'on';
-  } catch {
-    return false;
-  }
+  return vimKeys.get();
 }
 
 export function setVimEnabled(on: boolean) {
-  try {
-    localStorage.setItem(KEY, on ? 'on' : 'off');
-  } catch {
-    /* this session only */
-  }
+  vimKeys.set(on);
 }
 
 /**

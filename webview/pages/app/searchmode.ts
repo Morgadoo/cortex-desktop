@@ -8,6 +8,7 @@ import { clear, h, icon, markdown, modal, toast } from './dom';
 import { navigate, state } from './state';
 import { button, modalHeader, switchInput } from './ui';
 import { composer } from './chat';
+import { flag } from './prefs';
 
 interface Card {
   kind: 'library' | 'knowledge' | 'chat' | 'web';
@@ -24,13 +25,8 @@ const KIND: Record<Card['kind'], [string, string]> = {
   web: ['globe', 'Web'],
 };
 
-function webOn(): boolean {
-  try {
-    return localStorage.getItem('cortex.searchWeb') !== 'off';
-  } catch {
-    return true;
-  }
-}
+const searchWeb = flag('cortex.searchWeb', true);
+const webOn = searchWeb.get;
 
 export function openSearchMode(initial = '') {
   void modal((close) => {
@@ -38,11 +34,7 @@ export function openSearchMode(initial = '') {
     let web = webOn();
     const webSwitch = switchInput(web, (v) => {
       web = v;
-      try {
-        localStorage.setItem('cortex.searchWeb', v ? 'on' : 'off');
-      } catch {
-        /* per-device convenience only */
-      }
+      searchWeb.set(v);
     });
     const status = h('div', { class: 'muted small search-mode-status' });
     const answer = h('div', { class: 'search-answer', hidden: true });

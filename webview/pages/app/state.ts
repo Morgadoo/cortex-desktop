@@ -13,6 +13,7 @@ import type {
   Project,
   Speed,
 } from './api';
+import { choice, flag } from './prefs';
 
 export type Page = 'connectors' | 'skills' | 'scheduled' | 'apps' | 'agents' | 'knowledge' | 'libraries' | 'workflows' | 'chats' | 'resources';
 
@@ -67,6 +68,13 @@ function begin(turn: LiveTurn, part: Part) {
 export function endSteps(turn: LiveTurn) {
   const last = turn.parts.length - 1;
   if (last >= 0 && turn.ends[last] === undefined) turn.ends[last] = Date.now();
+}
+
+/** The approval mode, remembered per device; Auto unless chosen. */
+const approvalMode = choice<ApprovalMode>('cortex.mode', ['ask', 'accept_edits', 'plan', 'auto'], 'auto');
+
+function storedMode(): ApprovalMode {
+  return approvalMode.get();
 }
 
 export const state = {
@@ -247,92 +255,36 @@ export function applyEvent(event: ChatEvent): boolean {
   }
 }
 
-function storedMode(): ApprovalMode {
-  try {
-    const saved = localStorage.getItem('cortex.mode');
-    if (saved === 'ask' || saved === 'accept_edits' || saved === 'plan' || saved === 'auto') return saved;
-  } catch {
-    // Storage unavailable: the default.
-  }
-  return 'auto';
-}
 
 /** Whether new chats start temporary (not saved to history), as Open WebUI allows. */
-export function temporaryByDefault(): boolean {
-  try {
-    return localStorage.getItem('cortex.temporaryDefault') === 'on';
-  } catch {
-    return false;
-  }
-}
-
-export function setTemporaryByDefault(on: boolean) {
-  try {
-    localStorage.setItem('cortex.temporaryDefault', on ? 'on' : 'off');
-  } catch {
-    // Remembering is a convenience.
-  }
-}
+const temporaryDefault = flag('cortex.temporaryDefault', false);
+export const temporaryByDefault = temporaryDefault.get;
+export const setTemporaryByDefault = temporaryDefault.set;
 
 /** Whether three follow-up questions are suggested after each answer (on unless turned off). */
-export function followUpsOn(): boolean {
-  try {
-    return localStorage.getItem('cortex.followUps') !== 'off';
-  } catch {
-    return true;
-  }
-}
+const followUps = flag('cortex.followUps', true);
+export const followUpsOn = followUps.get;
+export const setFollowUps = followUps.set;
 
 /** Suggest how the message being typed continues (off unless turned on: each pause is a request). */
-export function autocompleteOn(): boolean {
-  try {
-    return localStorage.getItem('cortex.autocomplete') === 'on';
-  } catch {
-    return false;
-  }
-}
-
-export function setAutocomplete(on: boolean) {
-  try {
-    localStorage.setItem('cortex.autocomplete', on ? 'on' : 'off');
-  } catch {
-    /* per-device convenience only */
-  }
-}
+const autocomplete = flag('cortex.autocomplete', false);
+export const autocompleteOn = autocomplete.get;
+export const setAutocomplete = autocomplete.set;
 
 /** Follow an answer down the page as it streams (on unless turned off). */
-export function followStreamOn(): boolean {
-  try {
-    return localStorage.getItem('cortex.followStream') !== 'off';
-  } catch {
-    return true;
-  }
-}
-
-export function setFollowStream(on: boolean) {
-  try {
-    localStorage.setItem('cortex.followStream', on ? 'on' : 'off');
-  } catch {
-    // Remembering is a convenience.
-  }
-}
+const followStream = flag('cortex.followStream', true);
+export const followStreamOn = followStream.get;
+export const setFollowStream = followStream.set;
 
 /** A short chime with the "reply ready" notification (off unless turned on). */
-export function finishSoundOn(): boolean {
-  try {
-    return localStorage.getItem('cortex.finishSound') === 'on';
-  } catch {
-    return false;
-  }
-}
+const finishSound = flag('cortex.finishSound', false);
+export const finishSoundOn = finishSound.get;
+export const setFinishSound = finishSound.set;
 
-export function setFinishSound(on: boolean) {
-  try {
-    localStorage.setItem('cortex.finishSound', on ? 'on' : 'off');
-  } catch {
-    // Remembering is a convenience.
-  }
-}
+/** Notify when a reply finishes while the window is in the background (on unless turned off). */
+const notifyFinished = flag('cortex.notifyFinished', true);
+export const finishNotificationsOn = notifyFinished.get;
+export const setFinishNotifications = notifyFinished.set;
 
 /** Two soft notes, made on the spot (no sound file). */
 export function playChime() {
@@ -356,36 +308,7 @@ export function playChime() {
   }
 }
 
-/** Notify when a reply finishes while the window is in the background (on unless turned off). */
-export function finishNotificationsOn(): boolean {
-  try {
-    return localStorage.getItem('cortex.notifyFinished') !== 'off';
-  } catch {
-    return true;
-  }
-}
-
-export function setFinishNotifications(on: boolean) {
-  try {
-    localStorage.setItem('cortex.notifyFinished', on ? 'on' : 'off');
-  } catch {
-    // Remembering is a convenience.
-  }
-}
-
-export function setFollowUps(on: boolean) {
-  try {
-    localStorage.setItem('cortex.followUps', on ? 'on' : 'off');
-  } catch {
-    // Remembering is a convenience.
-  }
-}
-
 export function setMode(mode: ApprovalMode) {
   state.approval = mode;
-  try {
-    localStorage.setItem('cortex.mode', mode);
-  } catch {
-    // Remembering is a convenience.
-  }
+  approvalMode.set(mode);
 }

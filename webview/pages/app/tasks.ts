@@ -4,6 +4,7 @@ import { tauriInvoke } from '../../shared/tauri';
 import { clear, confirmDialog, h, icon, modal, toast, clockHour12 } from './dom';
 import { navigate, state } from './state';
 import { button, modalHeader } from './ui';
+import { choice } from './prefs';
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -384,20 +385,14 @@ function describe(f: Frequency): string {
   }
 }
 
+const tasksView = choice('cortex.tasksView', ['list', 'calendar'] as const, 'list');
+
 function storedView(): 'list' | 'calendar' {
-  try {
-    return localStorage.getItem('cortex.tasksView') === 'calendar' ? 'calendar' : 'list';
-  } catch {
-    return 'list';
-  }
+  return tasksView.get();
 }
 
 function saveView(view: 'list' | 'calendar') {
-  try {
-    localStorage.setItem('cortex.tasksView', view);
-  } catch {
-    // A convenience only.
-  }
+  tasksView.set(view);
 }
 
 interface Occurrence {

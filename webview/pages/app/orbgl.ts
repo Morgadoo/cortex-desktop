@@ -1,3 +1,4 @@
+import { choice } from './prefs';
 /**
  * The voice orb as a glowing glass sphere, drawn with a WebGL fragment shader. It follows the
  * shading of DGriffin91's "glowy orb" (bevy_glowy_orb_tutorial): a hot core that glows where the
@@ -180,21 +181,15 @@ const EMBER: [number, number, number] = [0.5, 0.1, 0.0];
 
 export type OrbColor = 'ember' | 'accent';
 
+const orbColorPref = choice<OrbColor>('voiceOrbColor', ['accent', 'ember'], 'accent');
+
 /** The colour chosen in Settings → Audio: the theme's accent (the default), or the tutorial's ember. */
 export function storedOrbColor(): OrbColor {
-  try {
-    return localStorage.getItem('voiceOrbColor') === 'ember' ? 'ember' : 'accent';
-  } catch {
-    return 'accent';
-  }
+  return orbColorPref.get();
 }
 
 export function setOrbColor(c: OrbColor) {
-  try {
-    localStorage.setItem('voiceOrbColor', c);
-  } catch {
-    /* this session only */
-  }
+  orbColorPref.set(c);
 }
 
 /** A CSS colour as 0–1 RGB: hex read directly, anything else resolved through the page. */

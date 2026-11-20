@@ -27,6 +27,7 @@ import { applyEvent, back, changed, finishNotificationsOn, finishSoundOn, forwar
 import { button, emptyState, iconButton, modalHeader } from './ui';
 import { startFluentEmoji } from './fluent';
 import { refreshAudioSettings } from './audio';
+import { workdir } from './prefs';
 
 interface View {
   readonly el: HTMLElement;
@@ -850,7 +851,7 @@ async function start() {
   applyTheme(storedTheme());
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme(storedTheme()));
   try {
-    state.workdir = localStorage.getItem('workdir');
+    state.workdir = workdir.get();
   } catch {
     /* per-device convenience only */
   }
