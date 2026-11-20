@@ -633,3 +633,30 @@ pub fn chat_restore_skill(
     crate::chat::skills::restore(&dir, &name, &version)?;
     Ok(crate::chat::skills::list(&dir))
 }
+
+/// Vibe's "Sensitive data" switch for knowledge.
+#[tauri::command]
+pub fn chat_set_keep_sensitive_out(
+    app: AppHandle,
+    on: bool,
+) -> Result<crate::chat::memory::Memories, String> {
+    let dir = config_dir(&app)?;
+    let mut memories = crate::chat::memory::load(&dir);
+    memories.keep_sensitive_out = on;
+    crate::chat::memory::save(&dir, &memories)?;
+    Ok(memories)
+}
+
+/// Turns the finished recording into a skill draft for review; the screenshots are dropped then.
+#[tauri::command]
+pub async fn chat_record_draft(
+    app: AppHandle,
+    recorder: tauri::State<'_, crate::chat::recorder::Recorder>,
+    model: String,
+    note: String,
+) -> Result<crate::chat::recorder::Draft, String> {
+    let frames = recorder.frames();
+    let draft = crate::chat::recorder::draft(&config_dir(&app)?, &model, &frames, &note).await?;
+    recorder.discard();
+    Ok(draft)
+}

@@ -225,6 +225,12 @@
           "markdownDescription": "Conversations (src/chat/commands/conversations_commands.rs)"
         },
         {
+          "description": "Exports and imports (src/chat/commands/exports_commands.rs)",
+          "type": "string",
+          "const": "allow-chat-commands-exports-commands",
+          "markdownDescription": "Exports and imports (src/chat/commands/exports_commands.rs)"
+        },
+        {
           "description": "What the assistant knows and how it works (src/chat/commands/knowledge_commands.rs)",
           "type": "string",
           "const": "allow-chat-commands-knowledge-commands",
@@ -249,10 +255,22 @@
           "markdownDescription": "Model providers, models, local models and usage. (src/chat/commands/providers_commands.rs)"
         },
         {
+          "description": "Search (src/chat/commands/search_commands.rs)",
+          "type": "string",
+          "const": "allow-chat-commands-search-commands",
+          "markdownDescription": "Search (src/chat/commands/search_commands.rs)"
+        },
+        {
           "description": "App-wide settings (src/chat/commands/settings_commands.rs)",
           "type": "string",
           "const": "allow-chat-commands-settings-commands",
           "markdownDescription": "App-wide settings (src/chat/commands/settings_commands.rs)"
+        },
+        {
+          "description": "Share links (src/chat/commands/sharing_commands.rs)",
+          "type": "string",
+          "const": "allow-chat-commands-sharing-commands",
+          "markdownDescription": "Share links (src/chat/commands/sharing_commands.rs)"
         },
         {
           "description": "Scheduled tasks and the calendar of their runs. (src/chat/commands/tasks_commands.rs)",
@@ -271,6 +289,12 @@
           "type": "string",
           "const": "allow-chat-commands-voice-commands",
           "markdownDescription": "Voice (src/chat/commands/voice_commands.rs)"
+        },
+        {
+          "description": "Writing help (src/chat/commands/writing_commands.rs)",
+          "type": "string",
+          "const": "allow-chat-commands-writing-commands",
+          "markdownDescription": "Writing help (src/chat/commands/writing_commands.rs)"
         },
         {
           "description": "System-wide dictation (Osaurus's dictation hotkey) (src/dictation.rs)",

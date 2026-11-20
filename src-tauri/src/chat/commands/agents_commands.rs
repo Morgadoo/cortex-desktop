@@ -261,3 +261,40 @@ pub fn chat_subagent_transcript(
         index,
     ))
 }
+
+/// Drafts an agent from a description, with the default model.
+#[tauri::command]
+pub async fn chat_draft_agent(
+    app: AppHandle,
+    description: String,
+    current: Option<crate::chat::agents::Agent>,
+) -> Result<crate::chat::agents::Agent, String> {
+    use rig_core::completion::CompletionRequest;
+    let dir = config_dir(&app)?;
+    if description.trim().len() < 8 {
+        return Err("Describe the agent in a sentence or two.".into());
+    }
+    let reference = providers::load(&dir)
+        .default_model
+        .ok_or("Choose a default model under Providers & models first.")?;
+    let tools: Vec<&str> = TOOL_CHOICES.to_vec();
+    let skills: Vec<String> = crate::chat::skills::list(&dir)
+        .into_iter()
+        .filter(|s| s.enabled)
+        .map(|s| s.name)
+        .collect();
+    // With a draft already made, the description is a change to it (the builder is a conversation).
+    let prompt = match &current {
+        Some(agent) => {
+            crate::chat::agents::refine_prompt(agent, description.trim(), &tools, &skills)
+        }
+        None => crate::chat::agents::draft_prompt(description.trim(), &tools, &skills),
+    };
+    let request = CompletionRequest::new(rig_core::completion::Message::user(prompt));
+    let text = engine::ask_text(&dir, &reference, request, 120).await?;
+    let mut agent = crate::chat::agents::parse_draft(&text, &tools, &skills)?;
+    if let Some(c) = current {
+        agent.id = c.id;
+    }
+    Ok(agent)
+}

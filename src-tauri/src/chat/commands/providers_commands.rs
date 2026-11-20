@@ -208,3 +208,8 @@ pub fn chat_usage_breakdown(app: AppHandle) -> Result<(Vec<UsageLine>, Vec<Usage
     };
     Ok((sorted(by_model), sorted(by_agent)))
 }
+
+#[tauri::command]
+pub fn chat_cancel_local_model(id: String) {
+    crate::chat::local_models::cancel(&id);
+}

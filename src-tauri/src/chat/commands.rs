@@ -17,6 +17,8 @@ mod code_commands;
 pub use code_commands::*;
 mod conversations_commands;
 pub use conversations_commands::*;
+mod exports_commands;
+pub use exports_commands::*;
 mod knowledge_commands;
 pub use knowledge_commands::*;
 mod libraries_commands;
@@ -25,14 +27,20 @@ mod misc_commands;
 pub use misc_commands::*;
 mod providers_commands;
 pub use providers_commands::*;
+mod search_commands;
+pub use search_commands::*;
 mod settings_commands;
 pub use settings_commands::*;
+mod sharing_commands;
+pub use sharing_commands::*;
 mod tasks_commands;
 pub use tasks_commands::*;
 mod tools_commands;
 pub use tools_commands::*;
 mod voice_commands;
 pub use voice_commands::*;
+mod writing_commands;
+pub use writing_commands::*;
 
 fn config_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
     crate::settings::get_config_dir(app)
