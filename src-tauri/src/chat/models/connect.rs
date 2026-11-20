@@ -65,17 +65,65 @@ pub async fn ask_text(
         }
         Ok::<String, String>(text).map_err(ChatError::Invalid)
     };
-    match attempt(reference.to_string(), request.clone()).await {
-        Ok(text) => Ok(text),
-        Err(first) => match providers::load(config_dir)
-            .backup_model
-            .filter(|b| b != reference)
-        {
-            Some(backup) => {
-                log::warn!("{reference} failed ({first}); trying the backup model {backup}");
-                attempt(backup, request).await.map_err(|_| first)
+    let first = match attempt(reference.to_string(), request.clone()).await {
+        Ok(text) => return Ok(text),
+        // A gateway that failed once (a 502, a timeout) usually answers a moment later: one more
+        // try, so a background job (a title, a reflection) is not lost to a passing fault.
+        Err(e) if transient(&e.to_string()) => {
+            log::warn!("{reference} failed ({e}); trying again");
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            match attempt(reference.to_string(), request.clone()).await {
+                Ok(text) => return Ok(text),
+                Err(e) => e,
             }
-            None => Err(first),
-        },
+        }
+        Err(e) => e,
+    };
+    match providers::load(config_dir)
+        .backup_model
+        .filter(|b| b != reference)
+    {
+        Some(backup) => {
+            log::warn!("{reference} failed ({first}); trying the backup model {backup}");
+            attempt(backup, request).await.map_err(|_| first)
+        }
+        None => Err(first),
+    }
+}
+
+/// Whether a failed call is worth one more try: the provider or its gateway was unavailable for
+/// a moment, not the request itself wrong.
+fn transient(error: &str) -> bool {
+    let error = error.to_ascii_lowercase();
+    [
+        "status 500",
+        "status 502",
+        "status 503",
+        "status 504",
+        "status 429",
+        "did not answer in time",
+        "timed out",
+        "connection reset",
+        "connection closed",
+        "error sending request",
+    ]
+    .iter()
+    .any(|sign| error.contains(sign))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::transient;
+
+    #[test]
+    fn a_passing_fault_is_tried_again_and_a_wrong_request_is_not() {
+        assert!(transient(
+            "ProviderResponseError: status 502 Bad Gateway: upstream request failed"
+        ));
+        assert!(transient("The provider did not answer in time."));
+        assert!(transient("status 429 Too Many Requests"));
+        assert!(!transient("status 401 Unauthorized: invalid api key"));
+        assert!(!transient("status 400 Bad Request: unknown model"));
+        assert!(!transient("The model gave no text back."));
     }
 }
