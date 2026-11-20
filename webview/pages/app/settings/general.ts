@@ -217,7 +217,7 @@ async function diagnosticsCard(): Promise<HTMLElement> {
     ),
     row(
       'Check for updates at start',
-      'Asks the update server whether a newer version exists. Help → Check for updates works either way.',
+      'Asks the update server whether a newer version exists. Check for Updates in the app menu works either way.',
       switchInput(prefs.updateChecks, (v) => {
         prefs.updateChecks = v;
         persist();

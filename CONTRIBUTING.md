@@ -84,3 +84,19 @@ Error reports and updates → Export diagnostics saves the app's log, which usua
 ## Releases
 
 See [docs/releasing.md](docs/releasing.md): one-time signing setup, `node scripts/set-version.mjs`, a tag, and the release workflow does the rest.
+
+## Trying the real app without a display
+
+The app runs under a virtual X display, which is enough to click through it on a server or in CI
+(WebKitGTK renders in software):
+
+```sh
+npm run build:webview && (cd src-tauri && cargo build)
+xvfb-run -a -s "-screen 0 1440x900x24" sh -c '
+  WEBKIT_DISABLE_COMPOSITING_MODE=1 src-tauri/target/debug/cortex-desktop & sleep 15
+  xdotool mousemove 870 378 click 1 && xdotool type "Hello" && xdotool key Return && sleep 20
+  import -window root shot.png; kill %1'
+```
+
+Set `HOME` (and `XDG_CONFIG_HOME`) to a scratch folder to start from an empty profile. For the
+page alone, in a browser and with sample data, `scripts/screenshot-pages.mjs` is quicker.

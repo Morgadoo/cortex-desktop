@@ -63,6 +63,8 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Open links in Cortex\u2019s browser', 'general', 'browser links integrated external open in app web page'],
   ['Autocomplete as you type', 'general', 'autocomplete suggest complete typing tab continuation'],
   ['New chats are temporary', 'general', 'temporary incognito history'],
+  ['Update channel', 'general', 'updates stable preview beta pre-release releases upgrade version'],
+  ['Check for updates at start', 'general', 'update upgrade new version startup'],
   ['Keyboard shortcuts', 'general', 'hotkeys keys rebind'],
   ['Slack', 'general', 'slack bot socket mode workspace channel message agent'],
   ['Discord', 'general', 'discord bot server gateway channel direct message agent'],
