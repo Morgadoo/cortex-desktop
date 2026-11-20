@@ -1,19 +1,9 @@
-@import url("cortex-tokens.css");
+@import url("tokens.css");
 
 /*
  * Light and dark come from the shared tokens: scripts/theme.js sets `data-theme` on <html> to the
  * web app's theme, else the OS preference. Only what has no shared token is defined here.
  */
-:root {
-    --search-border: #DDDEFB; /* matches the web app composer */
-    --search-shadow: 0 4px 10px rgba(55, 37, 128, 0.12);
-}
-
-:root[data-theme="dark"] {
-    --search-border: rgba(221, 222, 251, 0.16);
-    --search-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
-}
-
 * {
     box-sizing: border-box;
 }
@@ -121,7 +111,7 @@ body {
     height: 26px;
     font-family: inherit;
     font-size: 15px;
-    color: #FFFFFF;
+    color: var(--cortex-on-solid);
     background: var(--cortex-purple);
     border: 1px solid var(--cortex-purple);
     border-radius: var(--cortex-radius-sm);

@@ -2,6 +2,12 @@
 
 use super::*;
 
+/// The workbench's state, in the app's state.
+fn bench(app: &AppHandle) -> std::sync::Arc<crate::chat::workbench::Bench> {
+    app.state::<ChatState>()
+        .part::<crate::chat::workbench::Bench>()
+}
+
 /// The agent workbench (workbench.rs): whether it is on, and its state.
 #[tauri::command]
 pub async fn chat_workbench_status(app: AppHandle) -> Result<serde_json::Value, String> {
@@ -9,13 +15,13 @@ pub async fn chat_workbench_status(app: AppHandle) -> Result<serde_json::Value, 
     Ok(serde_json::json!({
         "enabled": crate::chat::workbench::enabled(&dir),
         "image": crate::chat::workbench::image_tag(),
-        "status": crate::chat::workbench::status().await,
+        "status": crate::chat::workbench::status(&bench(&app)).await,
     }))
 }
 
 #[tauri::command]
 pub fn chat_workbench_set_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
-    crate::chat::workbench::set_enabled(&config_dir(&app)?, enabled)
+    crate::chat::workbench::set_enabled(&config_dir(&app)?, enabled).map_err(String::from)
 }
 
 /// Builds the workbench image (a large download, so only when the user asks).
@@ -23,7 +29,7 @@ pub fn chat_workbench_set_enabled(app: AppHandle, enabled: bool) -> Result<(), S
 pub async fn chat_workbench_build(
     app: AppHandle,
 ) -> Result<crate::chat::workbench::Status, String> {
-    Ok(crate::chat::workbench::build(&config_dir(&app)?).await)
+    Ok(crate::chat::workbench::build(&bench(&app), &config_dir(&app)?).await)
 }
 
 #[tauri::command]
@@ -36,7 +42,7 @@ pub fn chat_save_function(
     app: AppHandle,
     function: crate::chat::functions::Function,
 ) -> Result<Vec<crate::chat::functions::Function>, String> {
-    crate::chat::functions::save(&config_dir(&app)?, function)
+    crate::chat::functions::save(&config_dir(&app)?, function).map_err(String::from)
 }
 
 #[tauri::command]
@@ -44,7 +50,7 @@ pub fn chat_delete_function(
     app: AppHandle,
     id: String,
 ) -> Result<Vec<crate::chat::functions::Function>, String> {
-    crate::chat::functions::delete(&config_dir(&app)?, &id)
+    crate::chat::functions::delete(&config_dir(&app)?, &id).map_err(String::from)
 }
 
 /// Runs a function on a sample, without saving it, to see what it does.
@@ -60,7 +66,8 @@ pub async fn chat_test_function(
     } else {
         serde_json::json!({ "stage": "inlet", "text": sample, "model": "test" })
     };
-    let out = crate::chat::functions::run(&dir, "function-test", &function, &args).await?;
+    let out =
+        crate::chat::functions::run(&bench(&app), &dir, "function-test", &function, &args).await?;
     Ok(
         match (
             function.kind.as_str(),
@@ -89,7 +96,9 @@ pub async fn chat_vault_save(
     secret: crate::chat::vault::Secret,
     value: Option<String>,
 ) -> Result<Vec<crate::chat::vault::Secret>, String> {
-    crate::chat::vault::save(&config_dir(&app)?, secret, value).await
+    crate::chat::vault::save(&config_dir(&app)?, secret, value)
+        .await
+        .map_err(String::from)
 }
 
 /// Removes a vault secret, its stored value, and every agent's access to it.
@@ -106,7 +115,9 @@ pub async fn chat_vault_delete(
         agent.secrets.retain(|s| s != &name);
         crate::chat::agents::save(&dir, agent)?;
     }
-    crate::chat::vault::delete(&dir, &name).await
+    crate::chat::vault::delete(&dir, &name)
+        .await
+        .map_err(String::from)
 }
 
 /// The user's hooks.
@@ -118,7 +129,7 @@ pub fn chat_get_hooks(app: AppHandle) -> Result<Vec<crate::chat::hooks::Hook>, S
 /// Saves the user's hooks.
 #[tauri::command]
 pub fn chat_save_hooks(app: AppHandle, hooks: Vec<crate::chat::hooks::Hook>) -> Result<(), String> {
-    crate::chat::hooks::save(&config_dir(&app)?, &hooks)
+    crate::chat::hooks::save(&config_dir(&app)?, &hooks).map_err(String::from)
 }
 
 #[tauri::command]
@@ -145,6 +156,7 @@ pub async fn chat_add_openapi_server(
                 .store(&crate::chat::openapi::secret_name(&added.id), &key)
                 .await?;
             crate::chat::openapi::update(&dir, &added.id.clone(), None, Some(true))
+                .map_err(String::from)
         }
         _ => Ok(servers),
     }
@@ -155,7 +167,9 @@ pub async fn chat_refresh_openapi_server(
     app: AppHandle,
     id: String,
 ) -> Result<Vec<crate::chat::openapi::Server>, String> {
-    crate::chat::openapi::refresh(&config_dir(&app)?, &id).await
+    crate::chat::openapi::refresh(&config_dir(&app)?, &id)
+        .await
+        .map_err(String::from)
 }
 
 #[tauri::command]
@@ -164,18 +178,18 @@ pub fn chat_toggle_openapi_server(
     id: String,
     enabled: bool,
 ) -> Result<Vec<crate::chat::openapi::Server>, String> {
-    crate::chat::openapi::update(&config_dir(&app)?, &id, Some(enabled), None)
+    crate::chat::openapi::update(&config_dir(&app)?, &id, Some(enabled), None).map_err(String::from)
 }
 
 #[tauri::command]
-pub async fn chat_remove_openapi_server(
+pub async fn chat_delete_openapi_server(
     app: AppHandle,
     id: String,
 ) -> Result<Vec<crate::chat::openapi::Server>, String> {
     let _ = secrets()?
         .delete(&crate::chat::openapi::secret_name(&id))
         .await;
-    crate::chat::openapi::remove(&config_dir(&app)?, &id)
+    crate::chat::openapi::remove(&config_dir(&app)?, &id).map_err(String::from)
 }
 
 #[tauri::command]
@@ -190,7 +204,7 @@ pub fn chat_save_computer_settings(
     app: AppHandle,
     settings: crate::chat::computer::ComputerSettings,
 ) -> Result<(), String> {
-    crate::chat::computer::save(&config_dir(&app)?, &settings)
+    crate::chat::computer::save(&config_dir(&app)?, &settings).map_err(String::from)
 }
 
 #[tauri::command]
@@ -205,7 +219,7 @@ pub fn chat_save_custom_tool(
     app: AppHandle,
     tool: crate::chat::custom_tools::CustomTool,
 ) -> Result<Vec<crate::chat::custom_tools::CustomTool>, String> {
-    crate::chat::custom_tools::save(&config_dir(&app)?, &tool)
+    crate::chat::custom_tools::save(&config_dir(&app)?, &tool).map_err(String::from)
 }
 
 #[tauri::command]
@@ -213,7 +227,7 @@ pub fn chat_delete_custom_tool(
     app: AppHandle,
     name: String,
 ) -> Result<Vec<crate::chat::custom_tools::CustomTool>, String> {
-    crate::chat::custom_tools::delete(&config_dir(&app)?, &name)
+    crate::chat::custom_tools::delete(&config_dir(&app)?, &name).map_err(String::from)
 }
 
 /// Runs a tool with sample input from its editor, in the sandbox.
@@ -223,7 +237,9 @@ pub async fn chat_test_custom_tool(
     name: String,
     args: serde_json::Value,
 ) -> Result<String, String> {
-    crate::chat::custom_tools::run(&config_dir(&app)?, "tool-tests", &name, &args).await
+    crate::chat::custom_tools::run(&bench(&app), &config_dir(&app)?, "tool-tests", &name, &args)
+        .await
+        .map_err(String::from)
 }
 
 #[tauri::command]
@@ -236,5 +252,5 @@ pub fn chat_set_privacy(
     app: AppHandle,
     settings: crate::chat::privacy::PrivacySettings,
 ) -> Result<(), String> {
-    crate::chat::privacy::save(&config_dir(&app)?, &settings)
+    crate::chat::privacy::save(&config_dir(&app)?, &settings).map_err(String::from)
 }

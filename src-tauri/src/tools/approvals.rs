@@ -8,19 +8,11 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::oneshot;
 
 const DEFAULT_APPROVAL_TIMEOUT: Duration = Duration::from_secs(120);
 const APPROVAL_TIMEOUT_ENV: &str = "CORTEX_APPROVAL_TIMEOUT_MS";
-
-static PENDING: OnceLock<Mutex<HashMap<String, oneshot::Sender<ApprovalDecision>>>> =
-    OnceLock::new();
-static REQUEST_SEQ: AtomicU64 = AtomicU64::new(0);
-
-fn pending() -> &'static Mutex<HashMap<String, oneshot::Sender<ApprovalDecision>>> {
-    PENDING.get_or_init(|| Mutex::new(HashMap::new()))
-}
 
 fn parse_timeout_ms(raw: &str) -> Option<Duration> {
     raw.trim()
@@ -54,52 +46,55 @@ fn approval_timeout() -> Duration {
     })
 }
 
-pub fn register() -> (String, oneshot::Receiver<ApprovalDecision>) {
-    let id = format!(
-        "approval-{}",
-        REQUEST_SEQ.fetch_add(1, Ordering::SeqCst) + 1
-    );
-    let (tx, rx) = oneshot::channel();
-    pending()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .insert(id.clone(), tx);
-    (id, rx)
+/// Approval requests waiting for the user's answer, by request id. Held in Tauri's managed state;
+/// switching accounts denies everything pending.
+#[derive(Default)]
+pub struct PendingApprovals {
+    waiting: Mutex<HashMap<String, oneshot::Sender<ApprovalDecision>>>,
+    sequence: AtomicU64,
 }
 
-pub fn respond(request_id: &str, decision: ApprovalDecision) {
-    if let Some(tx) = pending()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .remove(request_id)
-    {
-        let _ = tx.send(decision);
+impl PendingApprovals {
+    fn waiting(
+        &self,
+    ) -> std::sync::MutexGuard<'_, HashMap<String, oneshot::Sender<ApprovalDecision>>> {
+        self.waiting
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
-}
 
-pub fn cancel(request_id: &str) {
-    pending()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .remove(request_id);
-}
-
-/// Called when the app stops acting as an account. An approval granted while one account was
-/// active must not resolve a tool call running under another. Dropping a waiter's sender is how a
-/// timeout already denies, so no explicit denial is sent.
-pub fn cancel_all() {
-    cancel_all_in(pending());
-}
-
-fn cancel_all_in(pending: &Mutex<HashMap<String, oneshot::Sender<ApprovalDecision>>>) {
-    let mut pending = pending
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if pending.is_empty() {
-        return;
+    /// A new request's id, and where its answer arrives.
+    pub fn register(&self) -> (String, oneshot::Receiver<ApprovalDecision>) {
+        let id = format!(
+            "approval-{}",
+            self.sequence.fetch_add(1, Ordering::SeqCst) + 1
+        );
+        let (tx, rx) = oneshot::channel();
+        self.waiting().insert(id.clone(), tx);
+        (id, rx)
     }
-    info!("denying {} pending approval(s)", pending.len());
-    pending.clear();
+
+    /// The user's answer to request `request_id`; ignored when nothing waits for it.
+    pub fn respond(&self, request_id: &str, decision: ApprovalDecision) {
+        if let Some(tx) = self.waiting().remove(request_id) {
+            let _ = tx.send(decision);
+        }
+    }
+
+    /// Stops waiting for `request_id`: the waiter sees a denial.
+    pub fn cancel(&self, request_id: &str) {
+        self.waiting().remove(request_id);
+    }
+
+    /// Denies every request still waiting.
+    pub fn cancel_all(&self) {
+        let mut waiting = self.waiting();
+        if waiting.is_empty() {
+            return;
+        }
+        info!("denying {} pending approval(s)", waiting.len());
+        waiting.clear();
+    }
 }
 
 pub struct InteractiveApprovalGate {
@@ -121,7 +116,8 @@ impl ApprovalGate for InteractiveApprovalGate {
         input: &Value,
         reason: Option<&ApprovalReason>,
     ) -> ApprovalDecision {
-        let (request_id, rx) = register();
+        let approvals = self.app_handle.state::<PendingApprovals>();
+        let (request_id, rx) = approvals.register();
         if self
             .app_handle
             .emit(
@@ -142,7 +138,7 @@ impl ApprovalGate for InteractiveApprovalGate {
         match tokio::time::timeout(approval_timeout(), rx).await {
             Ok(Ok(decision)) => decision,
             _ => {
-                cancel(&request_id);
+                approvals.cancel(&request_id);
                 if self
                     .app_handle
                     .emit(
@@ -165,36 +161,35 @@ mod tests {
 
     #[test]
     fn respond_wakes_the_registered_waiter() {
-        let (request_id, rx) = register();
-        respond(&request_id, ApprovalDecision::Always);
+        let approvals = PendingApprovals::default();
+        let (request_id, rx) = approvals.register();
+        approvals.respond(&request_id, ApprovalDecision::Always);
         assert_eq!(rx.blocking_recv(), Ok(ApprovalDecision::Always));
     }
 
-    /// Uses its own map rather than the process-global one. Cargo runs tests on parallel threads,
-    /// so draining the shared map would deny another test's waiter.
     #[test]
     fn cancelling_all_denies_every_waiter() {
-        let pending = Mutex::new(HashMap::new());
-        let (first_tx, first_rx) = oneshot::channel();
-        let (second_tx, second_rx) = oneshot::channel();
-        {
-            let mut map = pending.lock().unwrap();
-            map.insert("approval-1".to_string(), first_tx);
-            map.insert("approval-2".to_string(), second_tx);
-        }
-
-        cancel_all_in(&pending);
-
+        let approvals = PendingApprovals::default();
+        let (_, first_rx) = approvals.register();
+        let (_, second_rx) = approvals.register();
+        approvals.cancel_all();
         assert!(first_rx.blocking_recv().is_err());
         assert!(second_rx.blocking_recv().is_err());
-        assert!(pending.lock().unwrap().is_empty());
+        assert!(approvals.waiting().is_empty());
     }
 
     #[test]
     fn cancel_drops_the_registered_waiter() {
-        let (request_id, rx) = register();
-        cancel(&request_id);
+        let approvals = PendingApprovals::default();
+        let (request_id, rx) = approvals.register();
+        approvals.cancel(&request_id);
         assert!(rx.blocking_recv().is_err());
-        respond(&request_id, ApprovalDecision::Once);
+        approvals.respond(&request_id, ApprovalDecision::Once);
+    }
+
+    #[test]
+    fn request_ids_are_unique() {
+        let approvals = PendingApprovals::default();
+        assert_ne!(approvals.register().0, approvals.register().0);
     }
 }

@@ -1,0 +1,21 @@
+/* ------------------------------------------------------------------ side panel tabs */
+
+.panel-shell { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.panel-shell > .panel-inner { flex: 1; min-height: 0; }
+.panel-tabs { display: flex; gap: 2px; margin: 0 0 8px 10px; overflow-x: auto; }
+.panel-tab { display: inline-flex; align-items: center; gap: 6px; max-width: 200px; padding: 5px 8px 5px 12px; border-radius: var(--radius-sm); font-size: var(--fs-sm); color: var(--text-secondary); }
+.panel-tab:hover { background: var(--bg-hover); }
+.panel-tab.active { background: var(--bg-elevated); color: var(--text); border: 1px solid var(--border); }
+.panel-tab-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.panel-tab-close { display: inline-flex; padding: 2px; border-radius: 4px; color: var(--text-muted); }
+.panel-tab-close:hover { background: var(--bg-active); color: var(--text); }
+
+.debug-body { padding: 0 20px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.debug-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 20px; font-size: var(--fs-sm); }
+.debug-fact { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.debug-fact code { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.debug-list { display: flex; flex-direction: column; gap: 2px; }
+.debug-msg summary { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: var(--radius-sm); cursor: pointer; font-size: var(--fs-sm); }
+.debug-msg summary:hover { background: var(--bg-hover); }
+.debug-msg pre { max-height: 360px; overflow: auto; }
+

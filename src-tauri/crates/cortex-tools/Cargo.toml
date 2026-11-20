@@ -1,0 +1,35 @@
+[package]
+name = "cortex-tools"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-only"
+publish = false
+description = "The tool contract: the connector trait and registry, approval and exposure rules, credentials and connector state, tool results, and the errors of all of these."
+
+[dependencies]
+async-trait = { workspace = true }
+base64 = "0.22.1"
+cortex-store = { workspace = true }
+log = { workspace = true }
+process-wrap = { version = "10.0", features = ["tokio1"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "io-util", "process", "net", "time"] }
+url = { workspace = true }
+uuid = { version = "1.16.0", features = ["v4", "serde"] }
+
+[features]
+# Parts only the hosted web app uses (the app's `hosted` feature turns this on).
+hosted = []
+# Fake connectors for the app's own tests.
+test-utils = []
+
+[dev-dependencies]
+futures = "0.3"
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true

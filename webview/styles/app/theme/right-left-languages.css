@@ -1,0 +1,5 @@
+/* Right-to-left languages: directional arrows mirror with the layout. */
+[dir="rtl"] .icon-dir{transform:scaleX(-1)}
+/* Messages take their direction from their own text, so English reads left to right inside an Arabic interface and the other way round. */
+.conv-title,.bubble-text,.markdown p,.markdown li,.markdown h1,.markdown h2,.markdown h3,.markdown td,.composer-input,.run-title,.chat-card-preview{unicode-bidi:plaintext}
+

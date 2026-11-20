@@ -177,790 +177,136 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "The Proton account the app is acting as. (src/account.rs)",
+          "type": "string",
+          "const": "allow-account",
+          "markdownDescription": "The Proton account the app is acting as. (src/account.rs)"
+        },
+        {
           "description": "Lets a connector tool run without asking even after untrusted content has been read.",
           "type": "string",
           "const": "allow-always-allow-tool",
           "markdownDescription": "Lets a connector tool run without asking even after untrusted content has been read."
         },
         {
-          "description": "Add documents the user picks to a library.",
+          "description": "Browser sign-in. (src/browser_login.rs)",
           "type": "string",
-          "const": "allow-chat-add-documents",
-          "markdownDescription": "Add documents the user picks to a library."
+          "const": "allow-browser-login",
+          "markdownDescription": "Browser sign-in. (src/browser_login.rs)"
         },
         {
-          "description": "Add a memory.",
+          "description": "IPC for the chat page. (src/chat/commands.rs)",
           "type": "string",
-          "const": "allow-chat-add-memory",
-          "markdownDescription": "Add a memory."
+          "const": "allow-chat-commands",
+          "markdownDescription": "IPC for the chat page. (src/chat/commands.rs)"
         },
         {
-          "description": "Read an agent's notebook.",
+          "description": "Agents and workflows (src/chat/commands/agents_commands.rs)",
           "type": "string",
-          "const": "allow-chat-agent-notebook",
-          "markdownDescription": "Read an agent's notebook."
+          "const": "allow-chat-commands-agents-commands",
+          "markdownDescription": "Agents and workflows (src/chat/commands/agents_commands.rs)"
         },
         {
-          "description": "Read what agents spent this month.",
+          "description": "The app itself (src/chat/commands/app_commands.rs)",
           "type": "string",
-          "const": "allow-chat-agent-spend",
-          "markdownDescription": "Read what agents spent this month."
+          "const": "allow-chat-commands-app-commands",
+          "markdownDescription": "The app itself (src/chat/commands/app_commands.rs)"
         },
         {
-          "description": "List ready-made agents.",
+          "description": "Canvases, mini apps, sheets, media and what chats produce. (src/chat/commands/canvases_commands.rs)",
           "type": "string",
-          "const": "allow-chat-agent-templates",
-          "markdownDescription": "List ready-made agents."
+          "const": "allow-chat-commands-canvases-commands",
+          "markdownDescription": "Canvases, mini apps, sheets, media and what chats produce. (src/chat/commands/canvases_commands.rs)"
         },
         {
-          "description": "Answer a question the assistant asked.",
+          "description": "Code sessions (src/chat/commands/code_commands.rs)",
           "type": "string",
-          "const": "allow-chat-answer",
-          "markdownDescription": "Answer a question the assistant asked."
+          "const": "allow-chat-commands-code-commands",
+          "markdownDescription": "Code sessions (src/chat/commands/code_commands.rs)"
         },
         {
-          "description": "Turn the local OpenAI-compatible API on or off and show its token.",
+          "description": "Conversations (src/chat/commands/conversations_commands.rs)",
           "type": "string",
-          "const": "allow-chat-api-server",
-          "markdownDescription": "Turn the local OpenAI-compatible API on or off and show its token."
+          "const": "allow-chat-commands-conversations-commands",
+          "markdownDescription": "Conversations (src/chat/commands/conversations_commands.rs)"
         },
         {
-          "description": "Record comparison results and show the model leaderboard.",
+          "description": "Exports and imports (src/chat/commands/exports_commands.rs)",
           "type": "string",
-          "const": "allow-chat-arena",
-          "markdownDescription": "Record comparison results and show the model leaderboard."
+          "const": "allow-chat-commands-exports-commands",
+          "markdownDescription": "Exports and imports (src/chat/commands/exports_commands.rs)"
         },
         {
-          "description": "List what the assistant made for itself (skills, script tools) and how it is used.",
+          "description": "What the assistant knows and how it works (src/chat/commands/knowledge_commands.rs)",
           "type": "string",
-          "const": "allow-chat-artifacts",
-          "markdownDescription": "List what the assistant made for itself (skills, script tools) and how it is used."
+          "const": "allow-chat-commands-knowledge-commands",
+          "markdownDescription": "What the assistant knows and how it works (src/chat/commands/knowledge_commands.rs)"
         },
         {
-          "description": "Read the audio settings.",
+          "description": "Libraries (src/chat/commands/libraries_commands.rs)",
           "type": "string",
-          "const": "allow-chat-audio-settings",
-          "markdownDescription": "Read the audio settings."
+          "const": "allow-chat-commands-libraries-commands",
+          "markdownDescription": "Libraries (src/chat/commands/libraries_commands.rs)"
         },
         {
-          "description": "List text-to-speech voices.",
+          "description": "Model providers, models, local models and usage. (src/chat/commands/providers_commands.rs)",
           "type": "string",
-          "const": "allow-chat-audio-voices",
-          "markdownDescription": "List text-to-speech voices."
+          "const": "allow-chat-commands-providers-commands",
+          "markdownDescription": "Model providers, models, local models and usage. (src/chat/commands/providers_commands.rs)"
         },
         {
-          "description": "Stop a reply in progress.",
+          "description": "Recording a task to teach (src/chat/commands/recording_commands.rs)",
           "type": "string",
-          "const": "allow-chat-cancel",
-          "markdownDescription": "Stop a reply in progress."
+          "const": "allow-chat-commands-recording-commands",
+          "markdownDescription": "Recording a task to teach (src/chat/commands/recording_commands.rs)"
         },
         {
-          "description": "Show the working tree changes of a coding session.",
+          "description": "Search (src/chat/commands/search_commands.rs)",
           "type": "string",
-          "const": "allow-chat-code-changes",
-          "markdownDescription": "Show the working tree changes of a coding session."
+          "const": "allow-chat-commands-search-commands",
+          "markdownDescription": "Search (src/chat/commands/search_commands.rs)"
         },
         {
-          "description": "Commit a coding session's changes.",
+          "description": "App-wide settings (src/chat/commands/settings_commands.rs)",
           "type": "string",
-          "const": "allow-chat-code-commit",
-          "markdownDescription": "Commit a coding session's changes."
+          "const": "allow-chat-commands-settings-commands",
+          "markdownDescription": "App-wide settings (src/chat/commands/settings_commands.rs)"
         },
         {
-          "description": "List the files of a coding session's folder.",
+          "description": "Share links (src/chat/commands/sharing_commands.rs)",
           "type": "string",
-          "const": "allow-chat-code-files",
-          "markdownDescription": "List the files of a coding session's folder."
+          "const": "allow-chat-commands-sharing-commands",
+          "markdownDescription": "Share links (src/chat/commands/sharing_commands.rs)"
         },
         {
-          "description": "Push a coding session's branch and open a pull request.",
+          "description": "Scheduled tasks and the calendar of their runs. (src/chat/commands/tasks_commands.rs)",
           "type": "string",
-          "const": "allow-chat-code-pull-request",
-          "markdownDescription": "Push a coding session's branch and open a pull request."
+          "const": "allow-chat-commands-tasks-commands",
+          "markdownDescription": "Scheduled tasks and the calendar of their runs. (src/chat/commands/tasks_commands.rs)"
         },
         {
-          "description": "Read a file of a coding session's folder.",
+          "description": "Tools (src/chat/commands/tools_commands.rs)",
           "type": "string",
-          "const": "allow-chat-code-read-file",
-          "markdownDescription": "Read a file of a coding session's folder."
+          "const": "allow-chat-commands-tools-commands",
+          "markdownDescription": "Tools (src/chat/commands/tools_commands.rs)"
         },
         {
-          "description": "Read whether code runs without asking.",
+          "description": "Voice (src/chat/commands/voice_commands.rs)",
           "type": "string",
-          "const": "allow-chat-code-runs-allowed",
-          "markdownDescription": "Read whether code runs without asking."
+          "const": "allow-chat-commands-voice-commands",
+          "markdownDescription": "Voice (src/chat/commands/voice_commands.rs)"
         },
         {
-          "description": "Turn computer use on or off.",
+          "description": "Writing help (src/chat/commands/writing_commands.rs)",
           "type": "string",
-          "const": "allow-chat-computer",
-          "markdownDescription": "Turn computer use on or off."
+          "const": "allow-chat-commands-writing-commands",
+          "markdownDescription": "Writing help (src/chat/commands/writing_commands.rs)"
         },
         {
-          "description": "Read a conversation as text for context, and keep why a reply was rated down.",
+          "description": "System-wide dictation (Osaurus's dictation hotkey) (src/dictation.rs)",
           "type": "string",
-          "const": "allow-chat-context-and-feedback",
-          "markdownDescription": "Read a conversation as text for context, and keep why a reply was rated down."
-        },
-        {
-          "description": "Read what fills a conversation's context window.",
-          "type": "string",
-          "const": "allow-chat-context-breakdown",
-          "markdownDescription": "Read what fills a conversation's context window."
-        },
-        {
-          "description": "Create a document library.",
-          "type": "string",
-          "const": "allow-chat-create-library",
-          "markdownDescription": "Create a document library."
-        },
-        {
-          "description": "Write, test and remove your own sandboxed tools.",
-          "type": "string",
-          "const": "allow-chat-custom-tools",
-          "markdownDescription": "Write, test and remove your own sandboxed tools."
-        },
-        {
-          "description": "Read a session's raw history for the Debug panel.",
-          "type": "string",
-          "const": "allow-chat-debug",
-          "markdownDescription": "Read a session's raw history for the Debug panel."
-        },
-        {
-          "description": "Delete an agent.",
-          "type": "string",
-          "const": "allow-chat-delete-agent",
-          "markdownDescription": "Delete an agent."
-        },
-        {
-          "description": "Delete a conversation.",
-          "type": "string",
-          "const": "allow-chat-delete-conversation",
-          "markdownDescription": "Delete a conversation."
-        },
-        {
-          "description": "Delete conversations from the trash for good.",
-          "type": "string",
-          "const": "allow-chat-delete-forever",
-          "markdownDescription": "Delete conversations from the trash for good."
-        },
-        {
-          "description": "Delete a knowledge page.",
-          "type": "string",
-          "const": "allow-chat-delete-knowledge-page",
-          "markdownDescription": "Delete a knowledge page."
-        },
-        {
-          "description": "Delete a document library and its documents.",
-          "type": "string",
-          "const": "allow-chat-delete-library",
-          "markdownDescription": "Delete a document library and its documents."
-        },
-        {
-          "description": "Delete one memory, or all of them.",
-          "type": "string",
-          "const": "allow-chat-delete-memory",
-          "markdownDescription": "Delete one memory, or all of them."
-        },
-        {
-          "description": "Delete a project, keeping its conversations.",
-          "type": "string",
-          "const": "allow-chat-delete-project",
-          "markdownDescription": "Delete a project, keeping its conversations."
-        },
-        {
-          "description": "Delete a user skill.",
-          "type": "string",
-          "const": "allow-chat-delete-skill",
-          "markdownDescription": "Delete a user skill."
-        },
-        {
-          "description": "Delete a scheduled task.",
-          "type": "string",
-          "const": "allow-chat-delete-task",
-          "markdownDescription": "Delete a scheduled task."
-        },
-        {
-          "description": "Delete a workflow.",
-          "type": "string",
-          "const": "allow-chat-delete-workflow",
-          "markdownDescription": "Delete a workflow."
-        },
-        {
-          "description": "Draft an agent from a description.",
-          "type": "string",
-          "const": "allow-chat-draft-agent",
-          "markdownDescription": "Draft an agent from a description."
-        },
-        {
-          "description": "Set up semantic search for libraries and embed their documents.",
-          "type": "string",
-          "const": "allow-chat-embeddings",
-          "markdownDescription": "Set up semantic search for libraries and embed their documents."
-        },
-        {
-          "description": "List, write and delete the cases of the user's eval suites.",
-          "type": "string",
-          "const": "allow-chat-eval-cases",
-          "markdownDescription": "List, write and delete the cases of the user's eval suites."
-        },
-        {
-          "description": "Delete a message and its reply, export and import agents, export a conversation as JSON.",
-          "type": "string",
-          "const": "allow-chat-exchange-and-bundles",
-          "markdownDescription": "Delete a message and its reply, export and import agents, export a conversation as JSON."
-        },
-        {
-          "description": "Export all conversations and data to a folder the user picks.",
-          "type": "string",
-          "const": "allow-chat-export-all",
-          "markdownDescription": "Export all conversations and data to a folder the user picks."
-        },
-        {
-          "description": "Save a canvas as Markdown to a file the user picks.",
-          "type": "string",
-          "const": "allow-chat-export-canvas",
-          "markdownDescription": "Save a canvas as Markdown to a file the user picks."
-        },
-        {
-          "description": "Save a conversation as Markdown to a file the user picks.",
-          "type": "string",
-          "const": "allow-chat-export-conversation",
-          "markdownDescription": "Save a conversation as Markdown to a file the user picks."
-        },
-        {
-          "description": "Read a site's icon for sources.",
-          "type": "string",
-          "const": "allow-chat-favicon",
-          "markdownDescription": "Read a site's icon for sources."
-        },
-        {
-          "description": "Suggest follow-up messages after a reply.",
-          "type": "string",
-          "const": "allow-chat-follow-ups",
-          "markdownDescription": "Suggest follow-up messages after a reply."
-        },
-        {
-          "description": "Branch a conversation into a new one.",
-          "type": "string",
-          "const": "allow-chat-fork-conversation",
-          "markdownDescription": "Branch a conversation into a new one."
-        },
-        {
-          "description": "Read a canvas.",
-          "type": "string",
-          "const": "allow-chat-get-canvas",
-          "markdownDescription": "Read a canvas."
-        },
-        {
-          "description": "Read one conversation.",
-          "type": "string",
-          "const": "allow-chat-get-conversation",
-          "markdownDescription": "Read one conversation."
-        },
-        {
-          "description": "Read the user's standing instructions.",
-          "type": "string",
-          "const": "allow-chat-get-instructions",
-          "markdownDescription": "Read the user's standing instructions."
-        },
-        {
-          "description": "Read what the assistant remembers about the user.",
-          "type": "string",
-          "const": "allow-chat-get-memories",
-          "markdownDescription": "Read what the assistant remembers about the user."
-        },
-        {
-          "description": "Read the privacy filter setting.",
-          "type": "string",
-          "const": "allow-chat-get-privacy",
-          "markdownDescription": "Read the privacy filter setting."
-        },
-        {
-          "description": "See whether the Hex dictation app is running and which speech models it has.",
-          "type": "string",
-          "const": "allow-chat-hex-status",
-          "markdownDescription": "See whether the Hex dictation app is running and which speech models it has."
-        },
-        {
-          "description": "Import a ChatGPT or Claude export.",
-          "type": "string",
-          "const": "allow-chat-import-conversations",
-          "markdownDescription": "Import a ChatGPT or Claude export."
-        },
-        {
-          "description": "Import a SKILL.md the user picks.",
-          "type": "string",
-          "const": "allow-chat-import-skill",
-          "markdownDescription": "Import a SKILL.md the user picks."
-        },
-        {
-          "description": "Keep a temporary conversation, such as a chosen comparison answer.",
-          "type": "string",
-          "const": "allow-chat-keep-conversation",
-          "markdownDescription": "Keep a temporary conversation, such as a chosen comparison answer."
-        },
-        {
-          "description": "List knowledge pages.",
-          "type": "string",
-          "const": "allow-chat-knowledge-pages",
-          "markdownDescription": "List knowledge pages."
-        },
-        {
-          "description": "Mirror folders into libraries and sync them.",
-          "type": "string",
-          "const": "allow-chat-library-folders",
-          "markdownDescription": "Mirror folders into libraries and sync them."
-        },
-        {
-          "description": "Read a web page's preview for a citation.",
-          "type": "string",
-          "const": "allow-chat-link-preview",
-          "markdownDescription": "Read a web page's preview for a citation."
-        },
-        {
-          "description": "List agents.",
-          "type": "string",
-          "const": "allow-chat-list-agents",
-          "markdownDescription": "List agents."
-        },
-        {
-          "description": "List the mini apps the assistant built.",
-          "type": "string",
-          "const": "allow-chat-list-apps",
-          "markdownDescription": "List the mini apps the assistant built."
-        },
-        {
-          "description": "List saved conversations.",
-          "type": "string",
-          "const": "allow-chat-list-conversations",
-          "markdownDescription": "List saved conversations."
-        },
-        {
-          "description": "List document libraries.",
-          "type": "string",
-          "const": "allow-chat-list-libraries",
-          "markdownDescription": "List document libraries."
-        },
-        {
-          "description": "List the models of every configured provider.",
-          "type": "string",
-          "const": "allow-chat-list-models",
-          "markdownDescription": "List the models of every configured provider."
-        },
-        {
-          "description": "List projects.",
-          "type": "string",
-          "const": "allow-chat-list-projects",
-          "markdownDescription": "List projects."
-        },
-        {
-          "description": "List model providers and whether each is configured.",
-          "type": "string",
-          "const": "allow-chat-list-providers",
-          "markdownDescription": "List model providers and whether each is configured."
-        },
-        {
-          "description": "List skills.",
-          "type": "string",
-          "const": "allow-chat-list-skills",
-          "markdownDescription": "List skills."
-        },
-        {
-          "description": "List scheduled tasks.",
-          "type": "string",
-          "const": "allow-chat-list-tasks",
-          "markdownDescription": "List scheduled tasks."
-        },
-        {
-          "description": "Read the image and speech models.",
-          "type": "string",
-          "const": "allow-chat-media-models",
-          "markdownDescription": "Read the image and speech models."
-        },
-        {
-          "description": "Add, refresh, switch and remove OpenAPI tool servers.",
-          "type": "string",
-          "const": "allow-chat-openapi",
-          "markdownDescription": "Add, refresh, switch and remove OpenAPI tool servers."
-        },
-        {
-          "description": "Generate a sample reply under draft instructions.",
-          "type": "string",
-          "const": "allow-chat-preview-instructions",
-          "markdownDescription": "Generate a sample reply under draft instructions."
-        },
-        {
-          "description": "Get or create a project's file library.",
-          "type": "string",
-          "const": "allow-chat-project-library",
-          "markdownDescription": "Get or create a project's file library."
-        },
-        {
-          "description": "Read an uploaded workbook.",
-          "type": "string",
-          "const": "allow-chat-read-spreadsheet",
-          "markdownDescription": "Read an uploaded workbook."
-        },
-        {
-          "description": "Replace a damaged conversation with its backup.",
-          "type": "string",
-          "const": "allow-chat-recover-conversation",
-          "markdownDescription": "Replace a damaged conversation with its backup."
-        },
-        {
-          "description": "Remove a document from a library.",
-          "type": "string",
-          "const": "allow-chat-remove-document",
-          "markdownDescription": "Remove a document from a library."
-        },
-        {
-          "description": "Restore a deleted conversation.",
-          "type": "string",
-          "const": "allow-chat-restore-conversation",
-          "markdownDescription": "Restore a deleted conversation."
-        },
-        {
-          "description": "Bring back an earlier version of a memory list, knowledge pages, instructions, a notebook, an agent, a workflow or a tool.",
-          "type": "string",
-          "const": "allow-chat-restore-version",
-          "markdownDescription": "Bring back an earlier version of a memory list, knowledge pages, instructions, a notebook, an agent, a workflow or a tool."
-        },
-        {
-          "description": "Take back the network and file access of a tool the assistant wrote.",
-          "type": "string",
-          "const": "allow-chat-revoke-tool",
-          "markdownDescription": "Take back the network and file access of a tool the assistant wrote."
-        },
-        {
-          "description": "Run a scheduled task now.",
-          "type": "string",
-          "const": "allow-chat-run-task",
-          "markdownDescription": "Run a scheduled task now."
-        },
-        {
-          "description": "Create or update an agent.",
-          "type": "string",
-          "const": "allow-chat-save-agent",
-          "markdownDescription": "Create or update an agent."
-        },
-        {
-          "description": "Save an agent's notebook.",
-          "type": "string",
-          "const": "allow-chat-save-agent-notebook",
-          "markdownDescription": "Save an agent's notebook."
-        },
-        {
-          "description": "Save the audio settings and keys.",
-          "type": "string",
-          "const": "allow-chat-save-audio-settings",
-          "markdownDescription": "Save the audio settings and keys."
-        },
-        {
-          "description": "Save the user's edit to a canvas as a new version.",
-          "type": "string",
-          "const": "allow-chat-save-canvas",
-          "markdownDescription": "Save the user's edit to a canvas as a new version."
-        },
-        {
-          "description": "Save the user's standing instructions.",
-          "type": "string",
-          "const": "allow-chat-save-instructions",
-          "markdownDescription": "Save the user's standing instructions."
-        },
-        {
-          "description": "Save a knowledge page.",
-          "type": "string",
-          "const": "allow-chat-save-knowledge-page",
-          "markdownDescription": "Save a knowledge page."
-        },
-        {
-          "description": "Create or update a project.",
-          "type": "string",
-          "const": "allow-chat-save-project",
-          "markdownDescription": "Create or update a project."
-        },
-        {
-          "description": "Save a provider's settings and store its API key in the OS keychain.",
-          "type": "string",
-          "const": "allow-chat-save-provider",
-          "markdownDescription": "Save a provider's settings and store its API key in the OS keychain."
-        },
-        {
-          "description": "Save a conversation as a web page to share.",
-          "type": "string",
-          "const": "allow-chat-save-shared-page",
-          "markdownDescription": "Save a conversation as a web page to share."
-        },
-        {
-          "description": "Create or update a skill.",
-          "type": "string",
-          "const": "allow-chat-save-skill",
-          "markdownDescription": "Create or update a skill."
-        },
-        {
-          "description": "Create or update a scheduled task.",
-          "type": "string",
-          "const": "allow-chat-save-task",
-          "markdownDescription": "Create or update a scheduled task."
-        },
-        {
-          "description": "Save a workflow.",
-          "type": "string",
-          "const": "allow-chat-save-workflow",
-          "markdownDescription": "Save a workflow."
-        },
-        {
-          "description": "Search conversations by title and content.",
-          "type": "string",
-          "const": "allow-chat-search",
-          "markdownDescription": "Search conversations by title and content."
-        },
-        {
-          "description": "Search document libraries.",
-          "type": "string",
-          "const": "allow-chat-search-libraries",
-          "markdownDescription": "Search document libraries."
-        },
-        {
-          "description": "Choose the web search engine.",
-          "type": "string",
-          "const": "allow-chat-search-settings",
-          "markdownDescription": "Choose the web search engine."
-        },
-        {
-          "description": "Switch between answers to the last prompt.",
-          "type": "string",
-          "const": "allow-chat-select-version",
-          "markdownDescription": "Switch between answers to the last prompt."
-        },
-        {
-          "description": "Send a message and stream the reply.",
-          "type": "string",
-          "const": "allow-chat-send",
-          "markdownDescription": "Send a message and stream the reply."
-        },
-        {
-          "description": "Mark an artifact critical, so it is never retired for disuse.",
-          "type": "string",
-          "const": "allow-chat-set-artifact-critical",
-          "markdownDescription": "Mark an artifact critical, so it is never retired for disuse."
-        },
-        {
-          "description": "Set whether code runs without asking.",
-          "type": "string",
-          "const": "allow-chat-set-code-runs-allowed",
-          "markdownDescription": "Set whether code runs without asking."
-        },
-        {
-          "description": "Remember the model new conversations start with.",
-          "type": "string",
-          "const": "allow-chat-set-default-model",
-          "markdownDescription": "Remember the model new conversations start with."
-        },
-        {
-          "description": "Choose the image and speech models.",
-          "type": "string",
-          "const": "allow-chat-set-media-models",
-          "markdownDescription": "Choose the image and speech models."
-        },
-        {
-          "description": "Turn memory on or off.",
-          "type": "string",
-          "const": "allow-chat-set-memory-enabled",
-          "markdownDescription": "Turn memory on or off."
-        },
-        {
-          "description": "Save a conversation's own model settings.",
-          "type": "string",
-          "const": "allow-chat-set-params",
-          "markdownDescription": "Save a conversation's own model settings."
-        },
-        {
-          "description": "Turn the privacy filter on or off.",
-          "type": "string",
-          "const": "allow-chat-set-privacy",
-          "markdownDescription": "Turn the privacy filter on or off."
-        },
-        {
-          "description": "Turn a skill on or off.",
-          "type": "string",
-          "const": "allow-chat-set-skill-enabled",
-          "markdownDescription": "Turn a skill on or off."
-        },
-        {
-          "description": "Record what the user did with an answer (copied it), as a signal in the run trace.",
-          "type": "string",
-          "const": "allow-chat-signal",
-          "markdownDescription": "Record what the user did with an answer (copied it), as a signal in the run trace."
-        },
-        {
-          "description": "List and restore earlier versions of a skill.",
-          "type": "string",
-          "const": "allow-chat-skill-history",
-          "markdownDescription": "List and restore earlier versions of a skill."
-        },
-        {
-          "description": "Read an answer aloud.",
-          "type": "string",
-          "const": "allow-chat-speak",
-          "markdownDescription": "Read an answer aloud."
-        },
-        {
-          "description": "Add guidance to a running turn.",
-          "type": "string",
-          "const": "allow-chat-steer",
-          "markdownDescription": "Add guidance to a running turn."
-        },
-        {
-          "description": "Read how the stored data is doing.",
-          "type": "string",
-          "const": "allow-chat-storage-health",
-          "markdownDescription": "Read how the stored data is doing."
-        },
-        {
-          "description": "Read what a sub-agent did.",
-          "type": "string",
-          "const": "allow-chat-subagent-transcript",
-          "markdownDescription": "Read what a sub-agent did."
-        },
-        {
-          "description": "List planned task runs for the calendar.",
-          "type": "string",
-          "const": "allow-chat-task-calendar",
-          "markdownDescription": "List planned task runs for the calendar."
-        },
-        {
-          "description": "Forget finished background commands.",
-          "type": "string",
-          "const": "allow-chat-terminal-clear",
-          "markdownDescription": "Forget finished background commands."
-        },
-        {
-          "description": "List background commands.",
-          "type": "string",
-          "const": "allow-chat-terminal-list",
-          "markdownDescription": "List background commands."
-        },
-        {
-          "description": "Start a background command.",
-          "type": "string",
-          "const": "allow-chat-terminal-start",
-          "markdownDescription": "Start a background command."
-        },
-        {
-          "description": "Stop a background command.",
-          "type": "string",
-          "const": "allow-chat-terminal-stop",
-          "markdownDescription": "Stop a background command."
-        },
-        {
-          "description": "Send a one-word request to check a provider's key and address.",
-          "type": "string",
-          "const": "allow-chat-test-model",
-          "markdownDescription": "Send a one-word request to check a provider's key and address."
-        },
-        {
-          "description": "Transcribe voice input.",
-          "type": "string",
-          "const": "allow-chat-transcribe",
-          "markdownDescription": "Transcribe voice input."
-        },
-        {
-          "description": "List deleted conversations.",
-          "type": "string",
-          "const": "allow-chat-trash",
-          "markdownDescription": "List deleted conversations."
-        },
-        {
-          "description": "Rename, pin, rate or move a conversation.",
-          "type": "string",
-          "const": "allow-chat-update-conversation",
-          "markdownDescription": "Rename, pin, rate or move a conversation."
-        },
-        {
-          "description": "Edit a memory.",
-          "type": "string",
-          "const": "allow-chat-update-memory",
-          "markdownDescription": "Edit a memory."
-        },
-        {
-          "description": "Read this month's usage.",
-          "type": "string",
-          "const": "allow-chat-usage-month",
-          "markdownDescription": "Read this month's usage."
-        },
-        {
-          "description": "Show what changed between two saved versions of an item.",
-          "type": "string",
-          "const": "allow-chat-version-diff",
-          "markdownDescription": "Show what changed between two saved versions of an item."
-        },
-        {
-          "description": "Build the agent workbench image.",
-          "type": "string",
-          "const": "allow-chat-workbench-build",
-          "markdownDescription": "Build the agent workbench image."
-        },
-        {
-          "description": "Turn the agent workbench on or off.",
-          "type": "string",
-          "const": "allow-chat-workbench-set-enabled",
-          "markdownDescription": "Turn the agent workbench on or off."
-        },
-        {
-          "description": "Read the agent workbench's state.",
-          "type": "string",
-          "const": "allow-chat-workbench-status",
-          "markdownDescription": "Read the agent workbench's state."
-        },
-        {
-          "description": "List workflows.",
-          "type": "string",
-          "const": "allow-chat-workflows",
-          "markdownDescription": "List workflows."
-        },
-        {
-          "description": "Report that the web app is signed out.",
-          "type": "string",
-          "const": "allow-clear-active-account",
-          "markdownDescription": "Report that the web app is signed out."
-        },
-        {
-          "description": "Return to the main app from settings.",
-          "type": "string",
-          "const": "allow-close-settings-window",
-          "markdownDescription": "Return to the main app from settings."
-        },
-        {
-          "description": "Obtains credentials, opens a session, or cancels a pending connection.",
-          "type": "string",
-          "const": "allow-connect-connector",
-          "markdownDescription": "Obtains credentials, opens a session, or cancels a pending connection."
-        },
-        {
-          "description": "Read desktop feature flags and report them from the main webview.",
-          "type": "string",
-          "const": "allow-desktop-feature-flags",
-          "markdownDescription": "Read desktop feature flags and report them from the main webview."
-        },
-        {
-          "description": "Opens the operating system notification settings from the main webview.",
-          "type": "string",
-          "const": "allow-desktop-notification-open-settings",
-          "markdownDescription": "Opens the operating system notification settings from the main webview."
-        },
-        {
-          "description": "Checks or requests permission for native desktop notifications.",
-          "type": "string",
-          "const": "allow-desktop-notification-permission",
-          "markdownDescription": "Checks or requests permission for native desktop notifications."
-        },
-        {
-          "description": "Shows a native notification for the active account from the main webview.",
-          "type": "string",
-          "const": "allow-desktop-notification-show",
-          "markdownDescription": "Shows a native notification for the active account from the main webview."
+          "const": "allow-dictation",
+          "markdownDescription": "System-wide dictation (Osaurus's dictation hotkey) (src/dictation.rs)"
         },
         {
           "description": "The dictation pill: transcribe what was said and type it into the app that had focus.",
@@ -969,88 +315,46 @@
           "markdownDescription": "The dictation pill: transcribe what was said and type it into the app that had focus."
         },
         {
-          "description": "Removes stored connector credentials.",
+          "description": "Download identifiers restrict file-reveal requests to paths recorded by the native webview. (src/downloads.rs)",
           "type": "string",
-          "const": "allow-disconnect-connector",
-          "markdownDescription": "Removes stored connector credentials."
+          "const": "allow-downloads",
+          "markdownDescription": "Download identifiers restrict file-reveal requests to paths recorded by the native webview. (src/downloads.rs)"
         },
         {
-          "description": "Renders a document's HTML to a PDF file the user picks, with the OS print engine.",
+          "description": "Frontend-evaluated flags, kept in memory for this app session. (src/feature_flags.rs)",
           "type": "string",
-          "const": "allow-export-pdf",
-          "markdownDescription": "Renders a document's HTML to a PDF file the user picks, with the OS print engine."
+          "const": "allow-feature-flags",
+          "markdownDescription": "Frontend-evaluated flags, kept in memory for this app session. (src/feature_flags.rs)"
         },
         {
-          "description": "Read desktop app settings.",
+          "description": "Cortex's own browser window (Vibe's integrated browser) (src/inapp_browser.rs)",
           "type": "string",
-          "const": "allow-get-app-settings",
-          "markdownDescription": "Read desktop app settings."
+          "const": "allow-inapp-browser",
+          "markdownDescription": "Cortex's own browser window (Vibe's integrated browser) (src/inapp_browser.rs)"
         },
         {
-          "description": "Returns internal model-visible harness tools, separate from connector UI.",
+          "description": "Native desktop notifications exposed to the authenticated main webview. (src/notifications.rs)",
           "type": "string",
-          "const": "allow-get-builtin-tools",
-          "markdownDescription": "Returns internal model-visible harness tools, separate from connector UI."
+          "const": "allow-notifications",
+          "markdownDescription": "Native desktop notifications exposed to the authenticated main webview. (src/notifications.rs)"
         },
         {
-          "description": "Returns the native tool registry manifests.",
+          "description": "Native 'Download → PDF' for documents. (src/pdf_export.rs)",
           "type": "string",
-          "const": "allow-get-tool-registry",
-          "markdownDescription": "Returns the native tool registry manifests."
+          "const": "allow-pdf-export",
+          "markdownDescription": "Native 'Download → PDF' for documents. (src/pdf_export.rs)"
         },
         {
-          "description": "Read the web app's light or dark mode so bundled pages can match it.",
+          "description": "Quick-ask handoff from the search window to the web app. (src/quick_ask.rs)",
           "type": "string",
-          "const": "allow-get-web-theme",
-          "markdownDescription": "Read the web app's light or dark mode so bundled pages can match it."
+          "const": "allow-quick-ask",
+          "markdownDescription": "Quick-ask handoff from the search window to the web app. (src/quick_ask.rs)"
         },
         {
-          "description": "Hide the global search overlay.",
+          "description": "The quick-ask window (src/quick_ask/window.rs)",
           "type": "string",
-          "const": "allow-hide-search",
-          "markdownDescription": "Hide the global search overlay."
-        },
-        {
-          "description": "Inject text into the main Cortex search editor.",
-          "type": "string",
-          "const": "allow-inject-search",
-          "markdownDescription": "Inject text into the main Cortex search editor."
-        },
-        {
-          "description": "Executes a native connector tool.",
-          "type": "string",
-          "const": "allow-invoke-tool",
-          "markdownDescription": "Executes a native connector tool."
-        },
-        {
-          "description": "Check whether a Proton account is signed in.",
-          "type": "string",
-          "const": "allow-is-account-signed-in",
-          "markdownDescription": "Check whether a Proton account is signed in."
-        },
-        {
-          "description": "Reports whether the OS credential store is reachable on this machine.",
-          "type": "string",
-          "const": "allow-is-secure-storage-available",
-          "markdownDescription": "Reports whether the OS credential store is reachable on this machine."
-        },
-        {
-          "description": "Lists configured MCP servers.",
-          "type": "string",
-          "const": "allow-list-mcp-servers",
-          "markdownDescription": "Lists configured MCP servers."
-        },
-        {
-          "description": "Open the settings page from the main app.",
-          "type": "string",
-          "const": "allow-open-settings-window",
-          "markdownDescription": "Open the settings page from the main app."
-        },
-        {
-          "description": "Opens a folder picker dialog.",
-          "type": "string",
-          "const": "allow-pick-directory",
-          "markdownDescription": "Opens a folder picker dialog."
+          "const": "allow-quick-ask-window",
+          "markdownDescription": "The quick-ask window (src/quick_ask/window.rs)"
         },
         {
           "description": "The Recording pill shown while a task is recorded: its time, and Stop or Cancel.",
@@ -1059,142 +363,52 @@
           "markdownDescription": "The Recording pill shown while a task is recorded: its time, and Stop or Cancel."
         },
         {
-          "description": "Registers run-scoped connector permissions for an accepted schedule run.",
-          "type": "string",
-          "const": "allow-register-schedule-execution-context",
-          "markdownDescription": "Registers run-scoped connector permissions for an accepted schedule run."
-        },
-        {
-          "description": "Removes an MCP server configuration.",
-          "type": "string",
-          "const": "allow-remove-mcp-server",
-          "markdownDescription": "Removes an MCP server configuration."
-        },
-        {
-          "description": "Report whether the web app is rendering in light or dark mode.",
-          "type": "string",
-          "const": "allow-report-web-theme",
-          "markdownDescription": "Report whether the web app is rendering in light or dark mode."
-        },
-        {
           "description": "Reset the active account's file-based configuration and secrets, then restart.",
           "type": "string",
           "const": "allow-reset-local-configuration",
           "markdownDescription": "Reset the active account's file-based configuration and secrets, then restart."
         },
         {
-          "description": "Responds to a pending tool-call approval request (approve or deny).",
+          "description": "Exposes Tauri commands for the main webview to connect to the local scheduler, synchronize schedule timings, retrieve queued runs, and report execution statuses. (src/schedules/bridge.rs)",
           "type": "string",
-          "const": "allow-respond-tool-approval",
-          "markdownDescription": "Responds to a pending tool-call approval request (approve or deny)."
+          "const": "allow-schedules-bridge",
+          "markdownDescription": "Exposes Tauri commands for the main webview to connect to the local scheduler, synchronize schedule timings, retrieve queued runs, and report execution statuses. (src/schedules/bridge.rs)"
         },
         {
-          "description": "Reveals a completed download tracked by the desktop app.",
+          "description": "Commands of this file. (src/settings/commands.rs)",
           "type": "string",
-          "const": "allow-reveal-download",
-          "markdownDescription": "Reveals a completed download tracked by the desktop app."
+          "const": "allow-settings-commands",
+          "markdownDescription": "Commands of this file. (src/settings/commands.rs)"
         },
         {
-          "description": "Save desktop app settings.",
+          "description": "The settings page, a child webview stacked over the web app inside the main window. (src/settings/window.rs)",
           "type": "string",
-          "const": "allow-save-app-settings",
-          "markdownDescription": "Save desktop app settings."
+          "const": "allow-settings-window",
+          "markdownDescription": "The settings page, a child webview stacked over the web app inside the main window. (src/settings/window.rs)"
         },
         {
-          "description": "Registers or updates an MCP server configuration.",
+          "description": "Disposable plaintext runtime copies of encrypted skills. (src/skills.rs)",
           "type": "string",
-          "const": "allow-save-mcp-server",
-          "markdownDescription": "Registers or updates an MCP server configuration."
+          "const": "allow-skills",
+          "markdownDescription": "Disposable plaintext runtime copies of encrypted skills. (src/skills.rs)"
         },
         {
-          "description": "Connects the authenticated main webview to the local schedule coordinator.",
+          "description": "Commands of this file. (src/theme.rs)",
           "type": "string",
-          "const": "allow-schedule-connect",
-          "markdownDescription": "Connects the authenticated main webview to the local schedule coordinator."
+          "const": "allow-theme",
+          "markdownDescription": "Commands of this file. (src/theme.rs)"
         },
         {
-          "description": "Reads durable pending schedule runs without acknowledging them.",
+          "description": "Commands of this file. (src/tools/commands.rs)",
           "type": "string",
-          "const": "allow-schedule-pending",
-          "markdownDescription": "Reads durable pending schedule runs without acknowledging them."
+          "const": "allow-tools-commands",
+          "markdownDescription": "Commands of this file. (src/tools/commands.rs)"
         },
         {
-          "description": "Replaces the active account's complete schedule timing snapshot.",
+          "description": "The app menu, the tray icon and its menu. (src/tray.rs)",
           "type": "string",
-          "const": "allow-schedule-replace",
-          "markdownDescription": "Replaces the active account's complete schedule timing snapshot."
-        },
-        {
-          "description": "Reports a schedule run's delivery or execution status.",
-          "type": "string",
-          "const": "allow-schedule-report-status",
-          "markdownDescription": "Reports a schedule run's delivery or execution status."
-        },
-        {
-          "description": "Queues an immediate run of an active schedule without changing its timing.",
-          "type": "string",
-          "const": "allow-schedule-run-now",
-          "markdownDescription": "Queues an immediate run of an active schedule without changing its timing."
-        },
-        {
-          "description": "Reads accepted and running schedule runs for reconciliation.",
-          "type": "string",
-          "const": "allow-schedule-unsettled",
-          "markdownDescription": "Reads accepted and running schedule runs for reconciliation."
-        },
-        {
-          "description": "Report which Proton account the web app is signed in as.",
-          "type": "string",
-          "const": "allow-set-active-account",
-          "markdownDescription": "Report which Proton account the web app is signed in as."
-        },
-        {
-          "description": "Enables or disables a connector globally.",
-          "type": "string",
-          "const": "allow-set-connector-enabled",
-          "markdownDescription": "Enables or disables a connector globally."
-        },
-        {
-          "description": "Sets the approval policy (auto-approve/ask/disable) for a connector tool.",
-          "type": "string",
-          "const": "allow-set-tool-policy",
-          "markdownDescription": "Sets the approval policy (auto-approve/ask/disable) for a connector tool."
-        },
-        {
-          "description": "Allow the authenticated main webview to discard stale cached skills.",
-          "type": "string",
-          "const": "allow-skill-cache-retain",
-          "markdownDescription": "Allow the authenticated main webview to discard stale cached skills."
-        },
-        {
-          "description": "Execute a synced skill script through the existing shell permission gate.",
-          "type": "string",
-          "const": "allow-skill-execute-script",
-          "markdownDescription": "Execute a synced skill script through the existing shell permission gate."
-        },
-        {
-          "description": "Allow the authenticated main webview to materialize a skill bundle.",
-          "type": "string",
-          "const": "allow-skill-sync-bundle",
-          "markdownDescription": "Allow the authenticated main webview to materialize a skill bundle."
-        },
-        {
-          "description": "Start browser-based sign-in from the bundled sign-in page.",
-          "type": "string",
-          "const": "allow-start-browser-login",
-          "markdownDescription": "Start browser-based sign-in from the bundled sign-in page."
-        },
-        {
-          "description": "Read and clear the tab the settings page was asked to open on.",
-          "type": "string",
-          "const": "allow-take-pending-settings-tab",
-          "markdownDescription": "Read and clear the tab the settings page was asked to open on."
-        },
-        {
-          "description": "Redeem the quick-ask nonce for the question it stands for, from the main webview.",
-          "type": "string",
-          "const": "allow-take-quick-ask",
-          "markdownDescription": "Redeem the quick-ask nonce for the question it stands for, from the main webview."
+          "const": "allow-tray",
+          "markdownDescription": "The app menu, the tray icon and its menu. (src/tray.rs)"
         },
         {
           "description": "This permission set configures if your\napplication can enable or disable auto\nstarting the application on boot.\n\n#### Granted Permissions\n\nIt allows all to check, enable and\ndisable the automatic start on boot.\n\n\n#### This default permission set includes:\n\n- `allow-enable`\n- `allow-disable`\n- `allow-is-enabled`",

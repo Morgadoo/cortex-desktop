@@ -1,0 +1,24 @@
+/* Print or save as PDF (conversation menu): the transcript alone, on white, page by page. */
+@media print {
+  html, body { background: var(--print-paper) !important; color: var(--print-ink) !important; height: auto !important; overflow: visible !important; }
+  .app { display: block !important; height: auto !important; }
+  .sidebar, .composer, .composer-wrap, .turn-actions, .header-actions, .follow-ups, .sticky-prompt, .toast, .toasts, .jump-bottom, .plan-panel, .side-panel, .modal-backdrop, .temp-toggle, .error-actions button { display: none !important; }
+  .main, .chat, .chat-scroll { display: block !important; height: auto !important; overflow: visible !important; position: static !important; }
+  .chat-scroll { padding: 0 !important; }
+  .print-title { display: block !important; font-size: 20px; font-weight: 600; margin: 0 0 4px; }
+  .print-meta { display: block !important; color: var(--print-muted); font-size: 12px; margin: 0 0 18px; }
+  .turn { break-inside: avoid-page; }
+  pre, .bubble { white-space: pre-wrap !important; overflow: visible !important; }
+  details:not([open]) > *:not(summary) { display: none; }
+  .chat-header, .popover { display: none !important; }
+  /* The theme's colours are inline on <html>; paper gets its own. */
+  .bubble, .bubble-file, .bubble-quote { background: var(--print-surface) !important; color: var(--print-ink) !important; border-color: var(--print-border) !important; }
+  .markdown, .markdown * { color: var(--print-ink) !important; }
+  .markdown pre, .markdown code, .code-block { background: var(--print-code) !important; color: var(--print-ink) !important; }
+  .muted, .turn-time, .step-label, .thought-toggle { color: var(--print-muted) !important; }
+}
+.print-title, .print-meta { display: none; }
+.source-site { display: flex; align-items: center; gap: 6px; }
+.source-site .grow { flex: 1; }
+.source-save { opacity: .6; }
+.source-entry:hover .source-save { opacity: 1; }

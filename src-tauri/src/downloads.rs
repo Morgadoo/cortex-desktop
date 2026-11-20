@@ -104,9 +104,7 @@ pub async fn reveal_download(
     downloads: State<'_, Downloads>,
     id: String,
 ) -> Result<(), String> {
-    if webview.label() != crate::main_window::LABEL {
-        return Err("Downloads require the main webview".into());
-    }
+    crate::main_window::require(webview.label(), "Downloads require the main webview")?;
     let path = downloads
         .0
         .lock()

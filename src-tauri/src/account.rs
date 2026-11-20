@@ -52,6 +52,7 @@ impl ActiveAccount {
         self.0.borrow().clone()
     }
 
+    #[cfg(any(feature = "hosted", test))]
     pub fn subscribe(&self) -> watch::Receiver<Option<AccountId>> {
         self.0.subscribe()
     }
@@ -144,6 +145,7 @@ async fn become_account(app_handle: &AppHandle, next: Option<AccountId>) {
     if !active.set(next.clone()) {
         return;
     }
+    #[cfg(feature = "hosted")]
     if let Some(cache) = app_handle.try_state::<super::skills::SkillCache>() {
         cache.activate(next.clone());
     }

@@ -6,7 +6,6 @@ build/
 dmg/
 !src-tauri/dmg/
 
-docs/
 
 # Build output: webview/ and the per-run E2E stub, built by scripts/build-webview.mjs and
 # e2e/build-stub.sh
@@ -29,3 +28,12 @@ fastlane/test_output
 
 # The script-tool interpreter's build folder (scripts/build-js-runtime.sh)
 src-tauri/crates/cortex-sandbox/wasm/js-runtime/target/
+
+# Screenshots from scripts/screenshot-pages.mjs
+shots/
+
+# Written by the release workflow from tauri.github.conf.json
+src-tauri/tauri.release.conf.json
+
+# Screenshots and results of e2e/user-journeys
+e2e/user-journeys/out/

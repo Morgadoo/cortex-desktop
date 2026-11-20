@@ -9,7 +9,7 @@
 //   node scripts/ui-strings.mjs --check   fails when the catalog is out of date
 
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -17,19 +17,149 @@ const srcDir = join(root, 'webview', 'pages', 'app')
 const out = join(root, 'src-tauri', 'i18n', 'catalog.json')
 
 // Property names whose values are never shown as text.
-const CODE_PROPS = new Set(['class', 'id', 'type', 'href', 'src', 'role', 'key', 'kind', 'icon', 'variant', 'size', 'mode', 'page', 'style', 'value', 'autocomplete', 'name', 'for', 'rel', 'target', 'accept', 'inputmode', 'lang', 'dir', 'method', 'tag', 'language', 'mime', 'format', 'engine', 'transport', 'vendor', 'reference', 'theme', 'accent', 'color', 'fill', 'stroke', 'd', 'viewBox', 'width', 'height', 'min', 'max', 'step', 'rows', 'cols', 'pattern', 'sandbox', 'allow', 'loading', 'decoding', 'draggable', 'spellcheck', 'wrap'])
+const CODE_PROPS = new Set([
+  'class',
+  'id',
+  'type',
+  'href',
+  'src',
+  'role',
+  'key',
+  'kind',
+  'icon',
+  'variant',
+  'size',
+  'mode',
+  'page',
+  'style',
+  'value',
+  'autocomplete',
+  'name',
+  'for',
+  'rel',
+  'target',
+  'accept',
+  'inputmode',
+  'lang',
+  'dir',
+  'method',
+  'tag',
+  'language',
+  'mime',
+  'format',
+  'engine',
+  'transport',
+  'vendor',
+  'reference',
+  'theme',
+  'accent',
+  'color',
+  'fill',
+  'stroke',
+  'd',
+  'viewBox',
+  'width',
+  'height',
+  'min',
+  'max',
+  'step',
+  'rows',
+  'cols',
+  'pattern',
+  'sandbox',
+  'allow',
+  'loading',
+  'decoding',
+  'draggable',
+  'spellcheck',
+  'wrap',
+])
 // Calls whose string arguments are never shown as text.
-const CODE_CALLS = new Set(['tauriInvoke', 'call', 'icon', 'querySelector', 'querySelectorAll', 'getElementById', 'closest', 'matches', 'addEventListener', 'removeEventListener', 'getItem', 'setItem', 'removeItem', 'listen', 'emit', 'createElement', 'setAttribute', 'getAttribute', 'removeAttribute', 'hasAttribute', 'toggleAttribute', 'add', 'remove', 'toggle', 'contains', 'startsWith', 'endsWith', 'includes', 'split', 'join', 'replace', 'replaceAll', 'match', 'test', 'indexOf', 'lastIndexOf', 'padStart', 'padEnd', 'require', 'import', 'fetch', 'postMessage', 'execCommand', 'getPropertyValue', 'setProperty', 'navigate', 'localeCompare', 'toLocaleString', 'toLocaleDateString', 'toLocaleTimeString', 'RegExp', 'Intl', 'DateTimeFormat', 'NumberFormat', 'Blob', 'File', 'Event', 'CustomEvent', 'dispatchEvent', 'insertAdjacentHTML', 'animate', 'scrollIntoView', 'focus', 'h', 'svgEl', 'logError', 'console'])
+const CODE_CALLS = new Set([
+  'tauriInvoke',
+  'call',
+  'callQuiet',
+  'icon',
+  'querySelector',
+  'querySelectorAll',
+  'getElementById',
+  'closest',
+  'matches',
+  'addEventListener',
+  'removeEventListener',
+  'getItem',
+  'setItem',
+  'removeItem',
+  'listen',
+  'emit',
+  'createElement',
+  'setAttribute',
+  'getAttribute',
+  'removeAttribute',
+  'hasAttribute',
+  'toggleAttribute',
+  'add',
+  'remove',
+  'toggle',
+  'contains',
+  'startsWith',
+  'endsWith',
+  'includes',
+  'split',
+  'join',
+  'replace',
+  'replaceAll',
+  'match',
+  'test',
+  'indexOf',
+  'lastIndexOf',
+  'padStart',
+  'padEnd',
+  'require',
+  'import',
+  'fetch',
+  'postMessage',
+  'execCommand',
+  'getPropertyValue',
+  'setProperty',
+  'navigate',
+  'localeCompare',
+  'toLocaleString',
+  'toLocaleDateString',
+  'toLocaleTimeString',
+  'RegExp',
+  'Intl',
+  'DateTimeFormat',
+  'NumberFormat',
+  'Blob',
+  'File',
+  'Event',
+  'CustomEvent',
+  'dispatchEvent',
+  'insertAdjacentHTML',
+  'animate',
+  'scrollIntoView',
+  'focus',
+  'h',
+  'svgEl',
+  'logError',
+  'console',
+  'flag',
+  'choice',
+  'textPref',
+  'number',
+  'json',
+])
 
 function looksLikeText(s) {
   const t = s.trim()
   if (t.length < 2 || t.length > 600) return false
   if (!/[A-Za-z]{2}/.test(t)) return false
   if (/^(oklch|rgba?|hsla?|color-mix|calc|var|url)\(/.test(t)) return false
-  if (/^[a-z0-9_.:\/#-]+$/.test(t)) return false // identifiers, classes, paths, events
+  if (/^[a-z0-9_.:/#-]+$/.test(t)) return false // identifiers, classes, paths, events
   if (/^[A-Z0-9_]+$/.test(t) && t.length > 3 && !t.includes(' ')) return false // CONSTANTS
   if (/^(https?|cortex|data|blob|tauri|file):/.test(t)) return false
-  if (/[{};]\s*$|=>|^\s*[.#\[]|^<\w|\bvar\(--|^\d+(px|em|rem|%)/.test(t)) return false // code, CSS, HTML
+  if (/[{};]\s*$|=>|^\s*[.#[]|^<\w|\bvar\(--|^\d+(px|em|rem|%)/.test(t)) return false // code, CSS, HTML
   if (/^[a-z]+(-[a-z]+)+( [a-z]+(-[a-z]+)*)*$/.test(t)) return false // "btn btn-primary"
   if (!/[A-Z]/.test(t) && !t.includes(' ')) return false // single lowercase words are usually keys
   return true
@@ -44,7 +174,7 @@ function literals(src) {
   const found = []
   let code = '' // the code so far, with literals blanked, for looking back
   let i = 0
-  const regexAllowed = () => /(^|[(,=:\[!&|?{};+\-*%<>~^]|\breturn|\btypeof|\bcase|\bdo|\belse|=>)\s*$/.test(code)
+  const regexAllowed = () => /(^|[(,=:[!&|?{};+\-*%<>~^]|\breturn|\btypeof|\bcase|\bdo|\belse|=>)\s*$/.test(code)
   const readString = (q) => {
     let s = ''
     i++
@@ -108,7 +238,7 @@ function literals(src) {
         const text = c === '`' ? readTemplate() : readString(c)
         const entry = { text, before: before.slice(-80), after: '' }
         found.push(entry)
-        code = before + ' "" '
+        code = `${before} "" `
         entry.afterAt = i
       } else {
         if (c === '{' || c === '(' || c === '[') depth++
@@ -140,7 +270,18 @@ function isCode({ before, after }) {
 }
 
 const strings = new Set()
-for (const file of readdirSync(srcDir).filter((f) => f.endsWith('.ts')).sort()) {
+// WebGL backdrops: their strings are shader source, never shown.
+const SHADERS = new Set(['orbgl.ts', 'backdropgl.ts'])
+
+// Every source file under the page's folder, sub-folders included. Tests are not the interface,
+// and core/generated/ holds only type declarations made from the Rust types.
+const GENERATED = join(srcDir, 'core', 'generated')
+const sources = readdirSync(srcDir, { recursive: true, withFileTypes: true })
+  .filter((e) => e.isFile() && e.name.endsWith('.ts') && !e.name.endsWith('.test.ts') && !SHADERS.has(e.name))
+  .filter((e) => e.parentPath !== GENERATED)
+  .map((e) => relative(srcDir, join(e.parentPath, e.name)))
+  .sort()
+for (const file of sources) {
   for (const lit of literals(readFileSync(join(srcDir, file), 'utf8'))) {
     if (isCode(lit)) continue
     // Whole lines of text; whitespace at the ends is layout.
@@ -152,7 +293,7 @@ for (const file of readdirSync(srcDir).filter((f) => f.endsWith('.ts')).sort()) 
 }
 
 const list = [...strings].sort((a, b) => a.localeCompare(b))
-const json = JSON.stringify(list, null, 1) + '\n'
+const json = `${JSON.stringify(list, null, 1)}\n`
 if (process.argv.includes('--check')) {
   if (readFileSync(out, 'utf8') !== json) {
     console.error('ui-strings: src-tauri/i18n/catalog.json is out of date; run node scripts/ui-strings.mjs')

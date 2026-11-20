@@ -26,9 +26,7 @@ import { tauriInvoke } from '../shared/tauri';
       if (!primary) return;
 
       e.preventDefault();
-      tauriInvoke('open_settings_window', { source: 'hotkey' }).catch((err) =>
-        logError('open_settings_window failed', err)
-      );
+      tauriInvoke('open_settings_window', { source: 'hotkey' }).catch((err) => logError('open_settings_window failed', err));
     },
     true
   );

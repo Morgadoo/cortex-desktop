@@ -102,7 +102,7 @@ pub(super) fn describe_error_status(status: StatusCode, body: &str) -> String {
     if status == StatusCode::TOO_MANY_REQUESTS {
         return "Luminance's rate limit was reached (100 requests every 10 minutes). Try again in a few minutes.".into();
     }
-    let detail: String = body.trim().chars().take(MAX_ERROR_BODY_CHARS).collect();
+    let detail: String = crate::support::text::clip(body.trim(), MAX_ERROR_BODY_CHARS);
     if detail.is_empty() {
         format!("Luminance answered {status}")
     } else {

@@ -1,0 +1,31 @@
+/* ------------------------------------------------------------------ app side panel (Vibe) */
+
+.chat { --panel-w: 54%; }
+.chat.with-panel { padding-right: var(--panel-w); }
+.chat.with-panel .chat-bottom, .chat.with-panel .chat-column { max-width: 640px; }
+.side-panel { display: none; position: absolute; top: 0; right: 0; bottom: 0; width: var(--panel-w); padding: 10px 10px 10px 0; }
+.chat.with-panel .side-panel { display: flex; }
+.chat.with-panel .side-panel::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; border-left: 1px solid var(--border); }
+.panel-inner { flex: 1; display: flex; flex-direction: column; min-width: 0; margin-left: 10px; gap: 10px; }
+.panel-head { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.panel-tools { display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: var(--radius-md); background: var(--bg-elevated); border: 1px solid var(--border); }
+.panel-title { font-size: var(--fs-md); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.panel-body { flex: 1; min-height: 0; border: 1px solid var(--border); border-radius: var(--radius-xl); overflow: hidden; display: flex; flex-direction: column; background: var(--bg-elevated); }
+.panel-body .app-frame { flex: 1; height: auto; }
+.panel-body .app-code { flex: 1; max-height: none; overflow: auto; }
+.view-switch { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--radius-sm); background: var(--bg-hover); }
+.view-switch .icon-btn.active { background: var(--bg-elevated); color: var(--text); box-shadow: var(--shadow-sm); }
+.app-card .app-body { height: 480px; overflow: hidden; }
+.app-card .app-body .app-frame { height: 480px; }
+.app-chip { display: none; align-items: center; gap: 12px; padding: 12px 14px; text-align: left; width: 100%; }
+.app-chip strong { display: block; font-size: var(--fs-md); }
+.app-chip small { color: var(--text-muted); }
+.app-chip-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: var(--radius-md); background: var(--bg-hover); }
+.app-card.compact { max-width: 420px; border-color: var(--accent); }
+.app-card.compact .app-chip { display: flex; }
+.app-card.compact > :not(.app-chip) { display: none; }
+.crumbs { min-width: 0; }
+.crumb-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.chat.with-panel .usage-meter > span:last-child { display: none; }
+.app-frame { background: transparent; }
+

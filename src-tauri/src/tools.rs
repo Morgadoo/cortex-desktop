@@ -1,19 +1,15 @@
+// The tool contract lives in the cortex-tools crate, re-exported here where the app's code
+// expects it; the concrete connectors, the keychain and the window side stay in this module.
+pub use cortex_tools::{command_path, error, oauth, registry};
+pub mod icons;
+use cortex_tools::{child_process, exposure, hidden_text};
+
 pub mod approvals;
 pub mod auth;
-mod child_process;
-pub mod command_path;
 pub mod commands;
 pub mod connector_state;
 pub mod connectors;
-pub mod error;
-mod exposure;
-mod hidden_text;
-pub mod icons;
 mod keychain;
-pub mod oauth;
-pub mod registry;
-pub mod result_reader;
-pub mod result_store;
 
 use crate::account::{AccountId, ActiveAccount};
 use connector_state::{save_connector_state, ConnectorState};
@@ -25,12 +21,15 @@ use error::{AuthError, ConnectError};
 use log::{error, info, warn};
 use registry::{Connector, RegistryHost, ToolRegistry};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 
 const CONNECTORS_CHANGED_DEBOUNCE: Duration = Duration::from_millis(300);
 
-static CONNECTORS_CHANGED_TOKEN: AtomicU64 = AtomicU64::new(0);
+/// The latest `connectors:changed` announcement asked for, so a burst of changes sends one.
+#[derive(Default)]
+pub struct ConnectorsChanged(Arc<AtomicU64>);
 
 /// The sole place connectors are registered.
 ///
@@ -49,7 +48,9 @@ pub async fn swap_account(app_handle: &AppHandle, account: Option<AccountId>) {
     let outgoing = {
         let registry = app_handle.state::<ToolRegistry>();
         let outgoing = registry.take_connectors();
-        approvals::cancel_all();
+        if let Some(approvals) = app_handle.try_state::<approvals::PendingApprovals>() {
+            approvals.cancel_all();
+        }
         registry.reset_exposure();
         // A question typed under one account must never be sent under another.
         if let Some(quick_ask) = app_handle.try_state::<super::quick_ask::PendingQuickAsk>() {
@@ -182,12 +183,19 @@ pub fn emit_connector_changed(app_handle: &AppHandle, connector_id: &str) {
 }
 
 pub fn emit_connectors_changed(app_handle: &AppHandle) {
-    let token = CONNECTORS_CHANGED_TOKEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let Some(latest) = app_handle.try_state::<ConnectorsChanged>() else {
+        return;
+    };
+    let latest = latest.0.clone();
+    let token = latest.fetch_add(1, Ordering::SeqCst) + 1;
     let app_handle = app_handle.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(CONNECTORS_CHANGED_DEBOUNCE).await;
-        if CONNECTORS_CHANGED_TOKEN.load(Ordering::SeqCst) == token {
+        if latest.load(Ordering::SeqCst) == token {
             let _ = app_handle.emit("connectors:changed", ());
         }
     });
 }
+
+#[cfg(test)]
+mod registry_tests;

@@ -1,0 +1,61 @@
+/* A branch's pull request and CI checks, in the Changes view. */
+.pr-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:6px 18px 10px;font-size:13px}
+.pr-bar:empty{display:none}
+.pr-link{display:inline-flex;align-items:center;gap:6px;font-weight:600;color:var(--text)}
+.pr-state,.pr-review{padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600;background:var(--bg-hover);text-transform:capitalize}
+.pr-state.open{background:color-mix(in srgb,var(--status-ok) 20%,transparent);color:var(--status-ok)}.pr-state.merged{background:color-mix(in srgb,var(--status-merged) 22%,transparent);color:var(--status-merged)}.pr-state.closed{color:var(--status-failed)}
+.pr-review.changes-requested{color:var(--status-pending)}.pr-review.approved{color:var(--status-ok)}
+.pr-checks summary{cursor:pointer;font-weight:600}.pr-checks summary.failed{color:var(--status-failed)}.pr-checks summary.passed{color:var(--status-ok)}.pr-checks summary.running{color:var(--status-pending)}
+.pr-checks[open]{flex-basis:100%}
+.pr-check{display:flex;align-items:center;gap:8px;padding:3px 0 3px 4px;color:var(--text)}
+.pr-check .dot{width:8px;height:8px;border-radius:50%;background:var(--text-muted)}
+.pr-check.passed .dot{background:var(--status-ok)}.pr-check.failed .dot{background:var(--status-failed)}.pr-check.running .dot,.pr-check.pending .dot{background:var(--status-pending)}
+.generated-video { display: block; width: 100%; max-height: 520px; background: var(--media-bg); border-radius: 8px 8px 0 0; }
+.generated-video.portrait { width: auto; max-width: 100%; margin: 0 auto; }
+video.output-thumb { object-fit: cover; background: var(--media-bg); }
+.panel-tabs .spacer { flex: 1; }
+.panel-tab.beside { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.panel-split-btn { flex: none; padding: 4px 8px; }
+.panel-split { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-height: 0; }
+.panel-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.panel-pane > .panel-inner { flex: 1; min-height: 0; }
+.chat.panel-split-wide { --panel-w: 66%; }
+.chat-beside { display: flex; flex-direction: column; gap: 14px; padding: 4px 14px 14px; overflow-y: auto; }
+.chat-beside .beside-user { align-self: flex-end; max-width: 85%; background: var(--bubble, var(--surface-2)); border-radius: 14px; padding: 8px 12px; white-space: pre-wrap; }
+.chat-beside .beside-assistant { min-width: 0; }
+.file-tab-body { overflow: auto; padding: 4px 14px 14px; }
+.file-tab-body pre { white-space: pre-wrap; word-break: break-word; font-size: 12.5px; }
+.file-tab-body img { max-width: 100%; border-radius: 8px; }
+/* A narrow chat (a split side panel, a small window): the composer's controls wrap inside it. */
+.composer-bar { flex-wrap: wrap; row-gap: 4px; }
+.bar-right { flex-wrap: wrap; justify-content: flex-end; margin-left: auto; min-width: 0; }
+.chat.panel-split-wide .model-btn { max-width: 150px; }
+.chat-beside { overflow-x: hidden; }
+.chat-beside .beside-user, .chat-beside .beside-assistant { overflow-wrap: anywhere; }
+.chat-beside pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.local-models h4 { margin: 14px 0 6px; font-size: var(--fs-sm); color: var(--text-secondary); font-weight: 600; }
+.local-model { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); }
+.local-model-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.local-progress { display: flex; align-items: center; gap: 8px; margin-top: 6px; position: relative; }
+.local-progress::before { content: ""; }
+.local-progress-bar { height: 6px; border-radius: 3px; background: var(--accent); min-width: 2px; flex: none; max-width: 85%; }
+.chip-ok { display: inline-flex; align-items: center; gap: 4px; color: var(--success); font-size: var(--fs-sm); }
+.share-body { display: flex; gap: 16px; align-items: flex-start; margin: 4px 0 8px; }
+.share-qr { flex: none; border-radius: 8px; background: var(--paper); padding: 4px; }
+.share-fields { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+@media (max-width: 520px) { .share-body { flex-direction: column; align-items: center; } }
+.market-dialog { width: min(980px, 94vw); }
+.market-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; max-height: 60vh; overflow-y: auto; margin-top: 8px; padding-right: 4px; }
+.market-card { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-elevated, transparent); }
+.market-head { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.market-head strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.market-desc { margin: 0; font-size: var(--fs-sm); color: var(--text-secondary); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; flex: 1; }
+.market-foot { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+.market-tags { display: flex; gap: 4px; flex-wrap: wrap; min-width: 0; overflow: hidden; max-height: 26px; }
+.market-category { width: auto; }
+.video-fallback-box { position: relative; display: flex; flex-direction: column; background: var(--media-bg); border-radius: 8px 8px 0 0; overflow: hidden; }
+.video-fallback { min-height: 120px; display: flex; align-items: center; justify-content: center; }
+.video-fallback img { display: block; width: 100%; height: auto; opacity: 0.85; }
+.video-fallback-actions { position: absolute; inset: auto 0 12px 0; display: flex; justify-content: center; }
+.video-fallback-box.output-thumb .video-fallback { min-height: 0; height: 100%; }
+.video-fallback-box.output-thumb img { height: 100%; object-fit: cover; }

@@ -5,6 +5,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=CORTEX_SENTRY_DSN_KEY_WINDOWS");
     println!("cargo:rerun-if-env-changed=CORTEX_SENTRY_DSN_KEY_LINUX");
     println!("cargo:rerun-if-env-changed=CORTEX_UPDATE_MANIFEST_URL");
+    println!("cargo:rerun-if-env-changed=CORTEX_RELEASES_REPO");
 
     let dist = std::path::Path::new("dist");
     if dist.exists() {

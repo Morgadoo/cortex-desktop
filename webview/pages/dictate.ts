@@ -7,9 +7,10 @@
  * takes focus itself. With an engine on this computer, the words appear as they are spoken.
  */
 import { logError } from '../shared/logger';
-import { tauriInvoke } from '../shared/tauri';
-import { startRecording, toBase64, type Recording } from './app/dictation';
-import { liveTranscript, renderLive } from './app/live';
+import { listen, tauriInvoke } from '../shared/tauri';
+import { startRecording, type Recording } from './app/voice/dictation';
+import { blobToBase64 } from './app/core/format';
+import { liveTranscript, renderLive } from './app/voice/live';
 
 interface Prefs {
   shortcut: string;
@@ -111,7 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
     show('Transcribing…', heard ? null : 'Turning your speech into text', 'busy');
     try {
       const audio = await rec.stop();
-      const text = await tauriInvoke<string>('chat_transcribe', { audio: await toBase64(audio), mime: audio.type });
+      const text = await tauriInvoke<string>('chat_transcribe', { audio: await blobToBase64(audio), mime: audio.type });
       if (!text.trim()) {
         finishing = false;
         return fail('No speech was heard.');
@@ -135,9 +136,8 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('done')?.addEventListener('click', () => void finish());
   document.getElementById('cancel')?.addEventListener('click', cancel);
 
-  const listen = window.__TAURI__?.event?.listen;
-  void listen?.('dictation://start', () => void start());
-  void listen?.('dictation://stop', () => void finish());
+  void listen('dictation://start', () => void start());
+  void listen('dictation://stop', () => void finish());
   // The window is created on the first press, already meant to listen.
   void start();
 });

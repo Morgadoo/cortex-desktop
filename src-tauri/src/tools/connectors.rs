@@ -1,6 +1,6 @@
 pub mod bash;
 pub mod browser;
-pub mod echo;
+pub use cortex_tools::echo;
 pub mod filesystem;
 pub mod luminance;
 pub mod mcp;

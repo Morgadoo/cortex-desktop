@@ -26,7 +26,7 @@ import { tauriInvoke } from '../shared/tauri';
   function readItem(key: string): string | null {
     try {
       return localStorage.getItem(key);
-    } catch (e) {
+    } catch (_e) {
       return null;
     }
   }
@@ -37,7 +37,7 @@ import { tauriInvoke } from '../shared/tauri';
     try {
       const userId = (JSON.parse(raw) as { UserID?: unknown }).UserID;
       return typeof userId === 'string' && userId ? userId : null;
-    } catch (e) {
+    } catch (_e) {
       return null;
     }
   }
@@ -57,7 +57,7 @@ import { tauriInvoke } from '../shared/tauri';
     let keys: string[];
     try {
       keys = Object.keys(localStorage);
-    } catch (e) {
+    } catch (_e) {
       return null;
     }
     const slots = keys.map((key) => SESSION_KEY.exec(key)).filter(Boolean);
@@ -86,13 +86,9 @@ import { tauriInvoke } from '../shared/tauri';
 
   function report(userId: string | null): Promise<void> {
     if (userId) {
-      return tauriInvoke<void>('set_active_account', { userId }).catch((err) =>
-        logError('[Cortex account] set_active_account failed', err)
-      );
+      return tauriInvoke<void>('set_active_account', { userId }).catch((err) => logError('[Cortex account] set_active_account failed', err));
     }
-    return tauriInvoke<void>('clear_active_account').catch((err) =>
-      logError('[Cortex account] clear_active_account failed', err)
-    );
+    return tauriInvoke<void>('clear_active_account').catch((err) => logError('[Cortex account] clear_active_account failed', err));
   }
 
   function couldHoldSession(): boolean {
@@ -128,10 +124,7 @@ import { tauriInvoke } from '../shared/tauri';
       const found: AccountResolution | { userId: null } = changed ? resolve() : { userId: null };
       if (found.userId && found.userId !== reported) {
         clearInterval(timer);
-        logInfo(
-          `[Cortex account] resolved ${found.userId} from ${found.signal} (slot ${found.slot}) ` +
-            `${attempt * WATCH_INTERVAL_MS}ms after load`
-        );
+        logInfo(`[Cortex account] resolved ${found.userId} from ${found.signal} (slot ${found.slot}) ` + `${attempt * WATCH_INTERVAL_MS}ms after load`);
         report(found.userId);
         return;
       }

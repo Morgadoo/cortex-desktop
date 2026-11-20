@@ -2,6 +2,10 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "always-allow",
   "description": "Allow the bundled Settings webview, and not the hosted web app, to let a tool run after untrusted content has been read.",
-  "webviews": ["settings-overlay"],
-  "permissions": ["allow-always-allow-tool"]
+  "webviews": [
+    "settings-overlay"
+  ],
+  "permissions": [
+    "allow-always-allow-tool"
+  ]
 }

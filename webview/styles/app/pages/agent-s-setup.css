@@ -1,0 +1,30 @@
+/* An agent's setup at a glance: Instructions, Context, Memory, Scheduled. */
+.agent-panel{display:flex;flex-direction:column;margin:18px 0 6px;max-width:520px;width:100%}
+.agent-panel:empty{display:none}
+.agent-panel-row{display:flex;align-items:center;gap:12px;padding:14px 4px;border:0;border-bottom:1px solid var(--border);background:none;color:var(--text);font:inherit;text-align:left;cursor:pointer}
+.agent-panel-row:last-child{border-bottom:0}
+.agent-panel-row svg{color:var(--text-muted,var(--muted))}
+.agent-panel-label{font-size:15px}
+.agent-panel-detail{font-size:13px;color:var(--text-muted,var(--muted))}
+.agent-panel-action{font-weight:600}
+.agent-panel-row:hover .agent-panel-action{color:var(--accent-strong,var(--accent))}
+.home-inner .agent-panel{margin:22px auto 0}
+
+/* All chats: status tabs and a card view. */
+.tab-count{margin-left:6px;font-size:11px;color:var(--text-muted,var(--muted))}
+.view-switch{display:flex;gap:2px;margin-left:auto}
+.view-switch .icon-btn.active{background:var(--bg-hover);color:var(--text)}
+.chat-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.chat-card{display:flex;flex-direction:column;gap:6px;min-height:120px;padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--text);font:inherit;text-align:left;cursor:pointer}
+.chat-card:hover{border-color:var(--border-strong)}
+.chat-card-head{display:flex;align-items:center;gap:6px}
+.chat-card-preview{margin:0;font-size:12.5px;color:var(--text-muted,var(--muted));display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;flex:1}
+.chat-card-foot{display:flex;align-items:center;gap:6px;font-size:12px;flex-wrap:wrap}
+.section-actions{display:inline-flex;gap:2px}
+.chats-page .run-row .icon-btn{margin-left:4px}
+/* Workflow steps as a flow, approvals marked. */
+.workflow-flow{display:flex;flex-direction:column;align-items:flex-start;gap:0;margin:8px 0 2px}
+.flow-node{display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border);border-radius:10px;background:var(--card);font-size:13px;max-width:100%}
+.flow-node.approval{border-color:color-mix(in srgb,var(--status-pending) 60%,transparent);background:color-mix(in srgb,var(--status-pending) 12%,transparent)}
+.flow-index{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;border-radius:10px;background:var(--bg-hover);font-size:11px;font-weight:700}
+.flow-arrow{margin-left:14px;height:14px;color:var(--text-muted,var(--muted));display:flex}

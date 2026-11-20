@@ -1,0 +1,12 @@
+/* Frosted panels: see-through enough for the blur behind them to show. */
+.menu{background:color-mix(in srgb,var(--bg-elevated) 80%,transparent)}
+.flyout{background:color-mix(in srgb,var(--bg-elevated) 78%,transparent)}
+.sticky-prompt{background:color-mix(in srgb,var(--bg-elevated) 72%,transparent);-webkit-backdrop-filter:blur(14px) saturate(1.3);backdrop-filter:blur(14px) saturate(1.3)}
+.popover{-webkit-backdrop-filter:blur(16px) saturate(1.2);backdrop-filter:blur(16px) saturate(1.2)}
+/* WebKitGTK draws no blur at all when one backdrop-filter sits inside another, so a popover
+   holding a menu or flyout (which blur themselves) leaves the blur to them. */
+.popover:has(.menu, .flyout){-webkit-backdrop-filter:none;backdrop-filter:none}
+.modal-backdrop{-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.material-swatch{display:block;width:100%;height:46px;border-radius:12px;margin-bottom:8px}
+.material-swatch.solid{background:var(--bg-elevated);border:1px solid var(--border-strong)}
+.material-swatch.glass{background:var(--glass-sample-bg);border:1px solid var(--glass-sample-border);box-shadow:var(--glass-sample-highlight)}

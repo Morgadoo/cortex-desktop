@@ -1,0 +1,2 @@
+# Known upward dependencies in the chat engine; see scripts/check-layers.py.
+# Remove a line when its dependency is gone. Never add one.

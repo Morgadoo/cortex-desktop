@@ -17,3 +17,13 @@ export function tauriInvoke<T = unknown>(command: string, args?: TauriInvokeArgs
   }
   return Promise.reject(new Error('Tauri invoke API not available'));
 }
+
+/**
+ * Subscribes to a Rust event; resolves to the unsubscribe function. Outside a Tauri webview it
+ * resolves to a function that does nothing.
+ */
+export function listen<T>(event: string, handler: (payload: T) => void): Promise<() => void> {
+  const listener = window.__TAURI__?.event?.listen ?? window.__TAURI_INTERNALS__?.event?.listen;
+  if (!listener) return Promise.resolve(() => {});
+  return listener(event, (e) => handler(e.payload as T));
+}

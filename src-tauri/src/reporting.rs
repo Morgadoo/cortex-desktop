@@ -1,3 +1,4 @@
+use crate::support::settings_file::SettingsFile;
 use sentry::protocol::{DebugImage, Event, Exception, Frame, Mechanism};
 use sentry::{ClientInitGuard, ClientOptions};
 use std::borrow::Cow;
@@ -34,7 +35,7 @@ pub(super) fn credential_failure(message: &'static str) {
     capture_failure("cortex.credentials", message);
 }
 
-pub(super) fn approval_failure(message: &'static str) {
+pub(crate) fn approval_failure(message: &'static str) {
     capture_failure("cortex.approvals", message);
 }
 
@@ -61,6 +62,8 @@ pub struct DiagnosticsPrefs {
     pub error_reports: bool,
     /// Look for a newer version when the app starts. Checking from the menu always works.
     pub update_checks: bool,
+    /// Stable releases only, or previews too.
+    pub update_channel: crate::updater::UpdateChannel,
 }
 
 impl Default for DiagnosticsPrefs {
@@ -68,6 +71,7 @@ impl Default for DiagnosticsPrefs {
         Self {
             error_reports: false,
             update_checks: true,
+            update_channel: Default::default(),
         }
     }
 }
@@ -86,20 +90,15 @@ pub fn early_config_dir() -> Option<std::path::PathBuf> {
     }
 }
 
+/// Plain, because it is read before the app starts and before encryption at rest is unlocked.
+const PREFS_FILE: SettingsFile<DiagnosticsPrefs> = SettingsFile::plain("diagnostics.json");
+
 pub fn load_prefs(config_dir: &std::path::Path) -> DiagnosticsPrefs {
-    std::fs::read_to_string(config_dir.join("diagnostics.json"))
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default()
+    PREFS_FILE.load(config_dir)
 }
 
 pub fn save_prefs(config_dir: &std::path::Path, prefs: &DiagnosticsPrefs) -> Result<(), String> {
-    std::fs::create_dir_all(config_dir).map_err(|e| e.to_string())?;
-    std::fs::write(
-        config_dir.join("diagnostics.json"),
-        serde_json::to_string_pretty(prefs).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())
+    PREFS_FILE.save(config_dir, prefs).map_err(String::from)
 }
 
 /// Whether this build was made with error reporting in it at all.

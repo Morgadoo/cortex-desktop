@@ -419,6 +419,7 @@ pub fn set_dictation_prefs(
 }
 
 /// From the pill: the transcript, to put where the user was.
+// IPC: own permission (see permissions/windows.toml)
 #[tauri::command]
 pub async fn dictation_insert(
     app: AppHandle,
@@ -452,6 +453,7 @@ pub async fn dictation_insert(
 }
 
 /// From the pill: listening ended without text (cancelled, or an error shown).
+// IPC: own permission (see permissions/windows.toml)
 #[tauri::command]
 pub fn dictation_cancel(app: AppHandle, window: Window) {
     if window.label() == LABEL {

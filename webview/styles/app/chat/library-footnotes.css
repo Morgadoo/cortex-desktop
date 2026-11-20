@@ -1,0 +1,23 @@
+/* ------------------------------------------------------------------ library footnotes */
+
+.footnote-ref { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 4px; margin: 0 1px; border-radius: 9px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 700; vertical-align: 2px; cursor: pointer; }
+.footnote-ref:hover { background: color-mix(in srgb, var(--accent) 24%, transparent); }
+.footnotes-wrap { border-top: 1px solid var(--border); padding-top: 10px; }
+.footnotes { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.footnote { padding: 8px 10px; border-radius: var(--radius-md); transition: background 0.6s; }
+.footnote.flash { background: var(--accent-soft); }
+.footnote-head { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); }
+.footnote-n { color: var(--accent); font-weight: 700; min-width: 16px; }
+.footnote-text { margin: 4px 0 0 22px; color: var(--text-muted); font-size: var(--fs-sm); line-height: 1.5; }
+
+.sheet-tabs:not(:empty) { display: flex; gap: 2px; padding: 4px 8px; border-top: 1px solid var(--border); background: var(--bg-hover); overflow-x: auto; }
+.sheet-tab { padding: 4px 12px; border-radius: var(--radius-sm); font-size: var(--fs-sm); color: var(--text-secondary); white-space: nowrap; }
+.sheet-tab:hover { background: var(--bg-active); }
+.sheet-tab.active { background: var(--bg-elevated); color: var(--text); font-weight: 600; box-shadow: var(--shadow-raised); }
+.sheet-tab.add { display: inline-flex; align-items: center; padding: 4px 8px; }
+
+.tool-group { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+.tool-group-head { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: var(--fs-sm); }
+.tool-group-all { display: inline-flex; align-items: center; gap: 8px; color: var(--text-secondary); }
+.tool-list-foot { display: flex; justify-content: flex-end; margin-top: 10px; }
+

@@ -1,0 +1,71 @@
+/* ------------------------------------------------------------------ sources, citations, skills, knowledge */
+
+.markdown a.cite { display: inline-flex; align-items: center; padding: 0 7px; margin: 0 1px; border-radius: var(--radius-sm); background: var(--accent-soft); font-size: var(--fs-sm); font-weight: 600; line-height: 1.6; vertical-align: 1px; }
+.markdown a.cite:hover { text-decoration: none; background: color-mix(in srgb, var(--accent) 24%, transparent); }
+.sources-row { display: flex; }
+.sources-chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-md); font-weight: 600; font-size: var(--fs-md); }
+.sources-chip:hover { background: var(--bg-hover); }
+.source-dots { display: inline-flex; }
+.source-dot { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--bg-active); border: 2px solid var(--bg); font-size: var(--fs-2xs); font-weight: 700; color: var(--text-secondary); flex-shrink: 0; }
+.source-dots .source-dot + .source-dot { margin-left: -6px; }
+.sources-menu { width: 380px; max-height: 60vh; overflow-y: auto; }
+.source-item { text-decoration: none; color: var(--text); }
+.source-item > span:last-child { display: flex; flex-direction: column; min-width: 0; }
+.source-item strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.slash-menu { width: 460px; max-height: 50vh; overflow-y: auto; }
+.skill-list, .memory-list { display: flex; flex-direction: column; }
+.skill-row { display: flex; align-items: center; gap: 12px; padding: 14px 6px; border-bottom: 1px solid var(--border); cursor: pointer; border-radius: var(--radius-sm); }
+.skill-row:hover { background: var(--bg-hover); }
+.skill-name { white-space: nowrap; }
+.skill-desc { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.skill-editor { width: min(720px, 92vw); }
+.modal-head.flush { padding: 0 0 4px; }
+.textarea.short { min-height: 64px; }
+.textarea.mono { font: 13px/1.55 ui-monospace, "SF Mono", monospace; min-height: 260px; }
+.knowledge { display: flex; flex-direction: column; gap: 16px; }
+.memory-add { display: flex; gap: 8px; }
+.memory-row { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
+.memory-row .memory-text { flex: 1; color: var(--text); }
+.memory-row .input { flex: 1; }
+.memory-date { font-size: var(--fs-xs); white-space: nowrap; }
+.step-icon.inline { margin-left: 0; padding: 0; background: none; }
+.results-card > .results-head:not(:first-child) { border-top: 1px solid var(--border-strong); }
+.markdown a.cite { margin: 0; }
+
+/* ------------------------------------------------------------------ orchestration: plans, sub-agents, usage */
+
+.checklist { display: flex; flex-direction: column; gap: 6px; }
+.check-item { display: flex; align-items: flex-start; gap: 10px; font-size: var(--fs-md); color: var(--text-secondary); }
+.check-item.done { color: var(--text-muted); text-decoration: line-through; }
+.check-item.in_progress { color: var(--text); font-weight: 500; }
+.check-box { width: 16px; height: 16px; border-radius: var(--radius-xs); border: 1.5px solid var(--border-strong); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
+.check-item.done .check-box { background: var(--success); border-color: var(--success); color: var(--on-solid); }
+.check-item.in_progress .check-box { border-color: var(--accent); }
+.check-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: blink 1.2s infinite; }
+.workers { border: 1px solid var(--border-strong); border-radius: var(--radius-lg); overflow: hidden; background: var(--bg-elevated); max-width: 720px; }
+.worker + .worker { border-top: 1px solid var(--border); }
+.worker > summary { display: flex; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; list-style: none; font-size: var(--fs-md); }
+.worker > summary::-webkit-details-marker { display: none; }
+.worker > summary:hover { background: var(--bg-hover); }
+.worker-status { display: inline-flex; color: var(--text-muted); }
+.worker-done .worker-status { color: var(--success); }
+.worker-failed .worker-status { color: var(--danger); }
+.worker-title { font-weight: 600; white-space: nowrap; }
+.worker-activity { flex: 1; min-width: 0; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-sm); }
+.worker-body { padding: 0 14px 12px 40px; }
+.worker-body p { margin: 0; font-size: var(--fs-sm); }
+.markdown.small { font-size: var(--fs-md); }
+.chat { position: relative; }
+.plan-panel { display: none; position: absolute; top: 64px; right: 20px; width: 260px; max-height: 50vh; overflow-y: auto; background: var(--bg-elevated); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); padding: 14px; box-shadow: var(--shadow); z-index: 5; }
+.plan-panel.visible { display: block; }
+.plan-head { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: var(--fs-md); margin-bottom: 10px; }
+@media (max-width: 1300px) { .plan-panel { width: 220px; } }
+.usage-meter { display: inline-flex; align-items: center; gap: 8px; font-size: var(--fs-xs); color: var(--text-muted); padding: 0 8px; cursor: default; white-space: nowrap; }
+.ring { width: 16px; height: 16px; border-radius: 50%; background: conic-gradient(var(--accent) calc(var(--pct) * 1%), var(--border-strong) 0); -webkit-mask: radial-gradient(circle, transparent 4px, var(--mask-opaque) 5px); mask: radial-gradient(circle, transparent 4px, var(--mask-opaque) 5px); }
+.compaction-divider { display: flex; align-items: center; gap: 12px; color: var(--text-muted); font-size: var(--fs-xs); }
+.compaction-divider::before, .compaction-divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.compaction-divider span { display: inline-flex; align-items: center; gap: 6px; }
+.shimmer { background: linear-gradient(90deg, var(--text-muted) 0%, var(--text) 45%, var(--text-muted) 90%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: shimmer 1.6s linear infinite; }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+.skill-chip { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; margin-right: 8px; vertical-align: -1px; }
+

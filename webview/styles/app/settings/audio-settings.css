@@ -1,0 +1,8 @@
+/* ------------------------------------------------------------------ audio settings */
+
+.audio-fields { display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-3); }
+.key-row { display: flex; gap: 8px; align-items: center; }
+.key-row .input { flex: 1; }
+.speed-row { display: flex; align-items: center; gap: 12px; }
+.speed-range { flex: 1; accent-color: var(--accent); }
+

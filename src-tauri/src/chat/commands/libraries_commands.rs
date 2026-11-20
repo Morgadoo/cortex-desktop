@@ -73,38 +73,34 @@ pub fn chat_create_library(
     name: String,
     description: String,
 ) -> Result<crate::chat::libraries::Library, String> {
-    crate::chat::libraries::create(&config_dir(&app)?, &name, &description)
+    crate::chat::libraries::create(&config_dir(&app)?, &name, &description).map_err(String::from)
 }
 
 #[tauri::command]
 pub fn chat_delete_library(app: AppHandle, id: String) -> Result<(), String> {
-    crate::chat::libraries::delete(&config_dir(&app)?, &id)
+    crate::chat::libraries::delete(&config_dir(&app)?, &id).map_err(String::from)
 }
 
 /// Asks for files and adds each to the library, reporting the ones that could not be read.
 #[tauri::command]
 pub async fn chat_add_documents(app: AppHandle, id: String) -> Result<Option<AddResult>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog()
-        .file()
-        .set_title("Add documents")
-        .add_filter(
+    let Some(paths) = crate::support::dialogs::pick_files(
+        app.dialog().file().set_title("Add documents").add_filter(
             "Documents",
             &[
                 "pdf", "docx", "pptx", "odt", "odp", "md", "txt", "html", "htm", "csv", "json",
                 "yaml", "yml", "xml", "rs", "py", "js", "ts", "go", "java", "c", "cpp", "h", "sql",
                 "log", "png", "jpg", "jpeg", "webp", "gif",
             ],
-        )
-        .pick_files(move |paths| {
-            let _ = tx.send(paths);
-        });
-    let Some(paths) = rx.await.map_err(|e| e.to_string())? else {
+        ),
+    )
+    .await?
+    else {
         return Ok(None);
     };
     let dir = config_dir(&app)?;
-    let mut errors = Vec::new();
+    let mut errors: Vec<String> = Vec::new();
     for path in paths {
         let Ok(path) = path.into_path() else { continue };
         // Photos and scans of documents: the default model reads their text.
@@ -115,7 +111,7 @@ pub async fn chat_add_documents(app: AppHandle, id: String) -> Result<Option<Add
             match ocr(&dir, &path, media_type).await {
                 Ok(text) => {
                     if let Err(e) = crate::chat::libraries::add_text(&dir, &id, &name, &text) {
-                        errors.push(e);
+                        errors.push(e.to_string());
                     }
                 }
                 Err(e) => errors.push(format!("{name}: {e}")),
@@ -132,7 +128,7 @@ pub async fn chat_add_documents(app: AppHandle, id: String) -> Result<Option<Add
                 match crate::chat::extraction::convert(&engine, &name, bytes).await {
                     Ok(text) => {
                         if let Err(e) = crate::chat::libraries::add_text(&dir, &id, &name, &text) {
-                            errors.push(e);
+                            errors.push(e.to_string());
                         }
                         continue;
                     }
@@ -148,7 +144,7 @@ pub async fn chat_add_documents(app: AppHandle, id: String) -> Result<Option<Add
         .await
         .map_err(|e| e.to_string())?
         {
-            errors.push(e);
+            errors.push(e.to_string());
         }
     }
     Ok(Some(AddResult {
@@ -158,7 +154,7 @@ pub async fn chat_add_documents(app: AppHandle, id: String) -> Result<Option<Add
 }
 
 #[tauri::command]
-pub async fn chat_remove_library_folder(
+pub async fn chat_delete_library_folder(
     app: AppHandle,
     id: String,
     folder: String,
@@ -167,6 +163,7 @@ pub async fn chat_remove_library_folder(
     tokio::task::spawn_blocking(move || crate::chat::libraries::remove_folder(&dir, &id, &folder))
         .await
         .map_err(|e| e.to_string())?
+        .map_err(String::from)
 }
 
 #[tauri::command]
@@ -183,8 +180,12 @@ pub async fn chat_sync_library(
         .connectors
         .is_empty()
     {
-        let more =
-            crate::chat::libraries::sync_connectors(&dir, &id, &registry_connectors(&app)).await?;
+        let more = crate::chat::libraries::sync_connectors(
+            &dir,
+            &id,
+            &crate::chat::tools::registry_connectors(&app),
+        )
+        .await?;
         report.added += more.added;
         report.updated += more.updated;
         report.removed += more.removed;
@@ -225,8 +226,12 @@ pub async fn chat_set_library_connector(
 ) -> Result<crate::chat::libraries::SyncReport, String> {
     let dir = config_dir(&app)?;
     crate::chat::libraries::set_connector(&dir, &id, &connector_id, on)?;
-    let report =
-        crate::chat::libraries::sync_connectors(&dir, &id, &registry_connectors(&app)).await?;
+    let report = crate::chat::libraries::sync_connectors(
+        &dir,
+        &id,
+        &crate::chat::tools::registry_connectors(&app),
+    )
+    .await?;
     if on
         && report.added == 0
         && report.errors.is_empty()
@@ -247,12 +252,13 @@ pub async fn chat_set_library_connector(
 }
 
 #[tauri::command]
-pub fn chat_remove_document(
+pub fn chat_delete_document(
     app: AppHandle,
     library_id: String,
     document_id: String,
 ) -> Result<crate::chat::libraries::Library, String> {
     crate::chat::libraries::remove(&config_dir(&app)?, &library_id, &document_id)
+        .map_err(String::from)
 }
 
 /// Moves a document to another library.
@@ -264,6 +270,7 @@ pub fn chat_move_document(
     to: String,
 ) -> Result<(), String> {
     crate::chat::libraries::move_document(&config_dir(&app)?, &library_id, &document_id, &to)
+        .map_err(String::from)
 }
 
 /// Saves a web page's text into a library.
@@ -273,7 +280,9 @@ pub async fn chat_add_web_page(
     library_id: String,
     url: String,
 ) -> Result<crate::chat::libraries::Library, String> {
-    crate::chat::libraries::add_web_page(&config_dir(&app)?, &library_id, &url).await
+    crate::chat::libraries::add_web_page(&config_dir(&app)?, &library_id, &url)
+        .await
+        .map_err(String::from)
 }
 
 /// The image names of an installed emoji pack (code points joined by hyphens).
@@ -293,7 +302,7 @@ pub async fn chat_uploads(app: AppHandle) -> Result<Vec<crate::chat::uploads::Up
 
 /// Takes a file or an image out of a chat's message.
 #[tauri::command]
-pub fn chat_remove_upload(
+pub fn chat_delete_upload(
     app: AppHandle,
     conversation_id: String,
     message_index: usize,
@@ -303,7 +312,7 @@ pub fn chat_remove_upload(
     let dir = config_dir(&app)?;
     let mut c = store::load_conversation(&dir, &conversation_id)?;
     crate::chat::uploads::remove(&mut c, message_index, &kind, &name)?;
-    store::save_conversation(&dir, &c)
+    store::save_conversation(&dir, &c).map_err(String::from)
 }
 
 /// Puts a large attachment in the "Uploads" library (made when missing), for the assistant to
@@ -338,6 +347,7 @@ pub fn chat_document_text(
     document_id: String,
 ) -> Result<String, String> {
     crate::chat::libraries::document_text(&config_dir(&app)?, &library_id, &document_id, 200_000)
+        .map_err(String::from)
 }
 
 #[tauri::command]
@@ -403,7 +413,9 @@ pub async fn chat_index_libraries(app: AppHandle) -> Result<usize, String> {
     if !crate::chat::embeddings::ready(&settings) {
         return Err("Turn on semantic search and choose its model first.".into());
     }
-    crate::chat::embeddings::index(&dir, &settings, &[]).await
+    crate::chat::embeddings::index(&dir, &settings, &[])
+        .await
+        .map_err(String::from)
 }
 
 /// The project's file library, created on first use.

@@ -1,0 +1,961 @@
+use super::*;
+use serde_json::json;
+
+#[tokio::test]
+async fn unused_assistant_tools_retire_and_the_user_s_and_critical_ones_stay() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    let script = "function main() { return 1; }";
+    for (name, description) in [
+        ("old_tool", "Converts temperatures between scales."),
+        ("kept_tool", "Formats invoice numbers."),
+    ] {
+        crate::chat::script_tools::create(
+            d,
+            "chat-1",
+            &json!({ "name": name, "description": description, "script": script }),
+        )
+        .await
+        .unwrap();
+        crate::chat::script_tools::promote(d, name, None)
+            .await
+            .unwrap();
+    }
+    traces::set_critical(d, "script_tool", "kept_tool", true);
+    // Something the user made, used once: never touched.
+    traces::used(d, "skill", "my-own-skill");
+
+    let soon = maintain(d, Utc::now() + Duration::days(1)).await;
+    assert!(soon.is_empty(), "{soon:?}");
+
+    let later = maintain(d, Utc::now() + Duration::days(UNUSED_DAYS + 1)).await;
+    assert_eq!(later.deprecated, vec!["script_tool:old_tool".to_string()]);
+    assert!(crate::chat::script_tools::definitions(d)
+        .iter()
+        .all(|t| t.tool_name != "old_tool"));
+    assert_eq!(
+        traces::artifact(d, "skill", "my-own-skill").unwrap().status,
+        "active"
+    );
+
+    let much_later = maintain(d, Utc::now() + Duration::days(ARCHIVE_DAYS + 1)).await;
+    assert_eq!(
+        much_later.archived,
+        vec!["script_tool:old_tool".to_string()]
+    );
+}
+
+#[tokio::test]
+async fn a_failing_tool_is_demoted() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    crate::chat::script_tools::create(
+        d,
+        "",
+        &json!({ "name": "flaky", "description": "x", "script": "function main() { return 1; }" }),
+    )
+    .await
+    .unwrap();
+    crate::chat::script_tools::promote(d, "flaky", None)
+        .await
+        .unwrap();
+    traces::start_run(d, "r", "c", None, "m");
+    for ok in [false, false, false, false, true] {
+        traces::tool_call(d, "r", "script__flaky", 5, ok);
+    }
+    let report = maintain(d, Utc::now()).await;
+    assert_eq!(report.demoted, vec!["script_tool:flaky".to_string()]);
+    assert!(crate::chat::script_tools::definitions(d).is_empty());
+}
+
+/// A tool the user just approved again is judged on its own calls: the failures of the version
+/// it replaced do not demote it.
+#[tokio::test]
+async fn a_fresh_approval_is_judged_on_its_own_calls() {
+    use crate::chat::script_tools as st;
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    st::create(d, "chat-1", &json!({ "name": "fixed_tool", "description": "Fixed.", "script": "function main() { return 1; }" }))
+        .await
+        .unwrap();
+    traces::start_run(d, "r", "c", None, "m");
+    // The broken version failed five of six calls yesterday...
+    for ok in [false, false, false, false, false, true] {
+        traces::tool_call_at(
+            d,
+            "r",
+            "script__fixed_tool",
+            Utc::now() - Duration::days(1),
+            5,
+            ok,
+        );
+    }
+    // ...and the user approves the fixed one today.
+    st::promote(d, "fixed_tool", None).await.unwrap();
+    let report = maintain(d, Utc::now()).await;
+    assert!(
+        report.demoted.is_empty() && report.reverted.is_empty(),
+        "{report:?}"
+    );
+    assert_eq!(
+        st::load(d, "fixed_tool").unwrap().status,
+        st::Status::Active
+    );
+}
+
+/// A version brought back from History is judged on its own calls from then on: the failures
+/// of the version it replaced do not demote it the next day.
+#[tokio::test]
+async fn a_version_restored_from_history_is_judged_on_its_own_calls() {
+    use crate::chat::script_tools as st;
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    for script in [
+        "function main() { return 1; }",
+        "function main() { return 2; }",
+    ] {
+        st::create(
+            d,
+            "chat-1",
+            &json!({ "name": "rates_h", "description": "Rates.", "script": script }),
+        )
+        .await
+        .unwrap();
+        st::promote(d, "rates_h", None).await.unwrap();
+        let mut tool = st::load(d, "rates_h").unwrap();
+        tool.checks.clear();
+        tool.approved_at = Some(Utc::now() - Duration::days(10));
+        st::save(d, &tool).unwrap();
+    }
+    traces::start_run(d, "r", "c", None, "m");
+    // The second version failed five of six calls over the last two days...
+    for ok in [false, false, false, false, false, true] {
+        traces::tool_call_at(
+            d,
+            "r",
+            "script__rates_h",
+            Utc::now() - Duration::days(1),
+            5,
+            ok,
+        );
+    }
+    // ...and the user brings the first back from History.
+    let first = crate::chat::versions::list(d, "tools", "script-rates_h")
+        .unwrap()
+        .into_iter()
+        .find(|v| {
+            v.value["script"] == "function main() { return 1; }" && v.value["status"] == "active"
+        })
+        .unwrap();
+    crate::chat::history::restore(d, "tools", "script-rates_h", &first.id).unwrap();
+    assert!(st::load(d, "rates_h").unwrap().script.contains("return 1"));
+    let report = maintain(d, Utc::now() + Duration::hours(1)).await;
+    assert!(
+        report.demoted.is_empty() && report.reverted.is_empty(),
+        "{report:?}"
+    );
+    assert_eq!(st::load(d, "rates_h").unwrap().status, st::Status::Active);
+}
+
+/// Until a restored version has a week of its own calls, it is not compared with the weeks of
+/// the versions the user set aside: a clean week of theirs is no baseline for it.
+#[tokio::test]
+async fn a_restored_version_is_not_judged_against_the_weeks_it_set_aside() {
+    use crate::chat::script_tools as st;
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    let now = Utc::now();
+    for (script, approved) in [
+        ("function main() { return 1; }", now - Duration::days(30)),
+        ("function main() { return 2; }", now - Duration::days(20)),
+    ] {
+        st::create(
+            d,
+            "chat-1",
+            &json!({ "name": "rates_b", "description": "Rates.", "script": script }),
+        )
+        .await
+        .unwrap();
+        st::promote(d, "rates_b", None).await.unwrap();
+        let mut tool = st::load(d, "rates_b").unwrap();
+        tool.checks.clear();
+        tool.approved_at = Some(approved);
+        st::save(d, &tool).unwrap();
+    }
+    // The second version ran clean all week...
+    traces::start_run(d, "r", "c", None, "m");
+    for _ in 0..10 {
+        traces::tool_call_at(d, "r", "script__rates_b", now - Duration::days(4), 5, true);
+    }
+    // ...and the user still brings the first back from History.
+    let first = crate::chat::versions::list(d, "tools", "script-rates_b")
+        .unwrap()
+        .into_iter()
+        .find(|v| {
+            v.value["script"] == "function main() { return 1; }" && v.value["status"] == "active"
+        })
+        .unwrap();
+    crate::chat::history::restore(d, "tools", "script-rates_b", &first.id).unwrap();
+    // Two of its first six calls fail: worse than the set-aside version's week, but that is
+    // the user's choice, not a regression.
+    for ok in [false, false, true, true, true, true] {
+        traces::tool_call_at(
+            d,
+            "r",
+            "script__rates_b",
+            Utc::now() + Duration::minutes(30),
+            5,
+            ok,
+        );
+    }
+    let report = maintain(d, Utc::now() + Duration::hours(2)).await;
+    assert!(
+        report.reverted.is_empty() && report.demoted.is_empty(),
+        "{report:?}"
+    );
+    let tool = st::load(d, "rates_b").unwrap();
+    assert!(tool.script.contains("return 1"));
+    assert_eq!(tool.status, st::Status::Active);
+}
+
+/// Restoring a version from History sets aside every version approved after it, not only the
+/// current one: the monitor never rolls forward to any of them. A rewrite keeps that list, and
+/// bringing back a set-aside version takes it off.
+#[tokio::test]
+async fn restoring_sets_aside_every_later_version() {
+    use crate::chat::script_tools as st;
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    let now = Utc::now();
+    for (script, approved) in [
+        ("function main() { return 1; }", now - Duration::days(60)),
+        ("function main() { return 2; }", now - Duration::days(50)),
+        ("function main() { return 3; }", now - Duration::days(40)),
+    ] {
+        st::create(
+            d,
+            "chat-1",
+            &json!({ "name": "rates_i", "description": "Rates.", "script": script }),
+        )
+        .await
+        .unwrap();
+        st::promote(d, "rates_i", None).await.unwrap();
+        let mut tool = st::load(d, "rates_i").unwrap();
+        tool.checks.clear();
+        tool.approved_at = Some(approved);
+        st::save(d, &tool).unwrap();
+    }
+    let active = |script: &str| {
+        crate::chat::versions::list(d, "tools", "script-rates_i")
+            .unwrap()
+            .into_iter()
+            .find(|v| v.value["script"] == script && v.value["status"] == "active")
+            .unwrap()
+    };
+    let first = active("function main() { return 1; }");
+    crate::chat::history::restore(d, "tools", "script-rates_i", &first.id).unwrap();
+    assert_eq!(st::load(d, "rates_i").unwrap().set_aside.len(), 2);
+    // Weeks later the first version has a bad week against its own earlier one: it is not
+    // rolled forward to the second version, the one before the current at the time.
+    let mut tool = st::load(d, "rates_i").unwrap();
+    tool.approved_at = Some(now - Duration::days(30));
+    tool.restored_at = Some(now - Duration::days(30));
+    st::save(d, &tool).unwrap();
+    traces::start_run(d, "r", "c", None, "m");
+    for i in 0..10 {
+        traces::tool_call_at(d, "r", "script__rates_i", now - Duration::days(10), 5, true);
+        traces::tool_call_at(
+            d,
+            "r",
+            "script__rates_i",
+            now - Duration::days(1),
+            5,
+            i >= 6,
+        );
+    }
+    let report = maintain(d, now).await;
+    assert!(report.reverted.is_empty(), "{report:?}");
+    assert!(st::load(d, "rates_i").unwrap().script.contains("return 1"));
+
+    // A rewrite keeps the list.
+    let mut tool = st::load(d, "rates_i").unwrap();
+    tool.status = st::Status::Active;
+    st::save(d, &tool).unwrap();
+    let before = st::load(d, "rates_i").unwrap().set_aside;
+    st::create(
+        d,
+        "chat-1",
+        &json!({ "name": "rates_i", "description": "Rates.", "script": "function main() { return 4; }" }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(st::load(d, "rates_i").unwrap().set_aside, before);
+
+    // Bringing back the third version takes it off the list.
+    let third = active("function main() { return 3; }");
+    let third_hash = st::approval_hash(&serde_json::from_value(third.value.clone()).unwrap());
+    crate::chat::history::restore(d, "tools", "script-rates_i", &third.id).unwrap();
+    let back = st::load(d, "rates_i").unwrap();
+    assert!(back.script.contains("return 3"));
+    assert!(
+        !back.set_aside.contains(&third_hash),
+        "{:?}",
+        back.set_aside
+    );
+}
+
+/// The same holds for a draft brought back from History and then approved: its first calls
+/// are not compared with the clean week of the version it set aside.
+#[tokio::test]
+async fn a_restored_draft_once_approved_is_not_judged_against_the_weeks_it_set_aside() {
+    use crate::chat::script_tools as st;
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    let now = Utc::now();
+    let w = |s: &str| json!({ "name": "rates_d", "description": "Rates.", "script": s });
+    st::create(d, "chat-1", &w("function main() { return 1; }"))
+        .await
+        .unwrap();
+    st::promote(d, "rates_d", None).await.unwrap();
+    let mut t = st::load(d, "rates_d").unwrap();
+    t.checks.clear();
+    t.approved_at = Some(now - Duration::days(30));
+    st::save(d, &t).unwrap();
+    st::create(d, "chat-1", &w("function main() { return 2; }"))
+        .await
+        .unwrap();
+    st::create(d, "chat-1", &w("function main() { return 3; }"))
+        .await
+        .unwrap();
+    st::promote(d, "rates_d", None).await.unwrap();
+    let mut t = st::load(d, "rates_d").unwrap();
+    t.checks.clear();
+    st::save(d, &t).unwrap();
+    // The third version ran clean all week...
+    traces::start_run(d, "r", "c", None, "m");
+    for _ in 0..10 {
+        traces::tool_call_at(d, "r", "script__rates_d", now - Duration::days(4), 5, true);
+    }
+    // ...and the user brings back the draft (version 2) from History and approves it.
+    let draft = crate::chat::versions::list(d, "tools", "script-rates_d")
+        .unwrap()
+        .into_iter()
+        .find(|v| v.value["script"] == "function main() { return 2; }")
+        .unwrap();
+    crate::chat::history::restore(d, "tools", "script-rates_d", &draft.id).unwrap();
+    st::promote(d, "rates_d", None).await.unwrap();
+    for ok in [false, false, true, true, true, true] {
+        traces::tool_call_at(
+            d,
+            "r",
+            "script__rates_d",
+            Utc::now() + Duration::minutes(30),
+            5,
+            ok,
+        );
+    }
+    let report = maintain(d, Utc::now() + Duration::hours(2)).await;
+    let tool = st::load(d, "rates_d").unwrap();
+    assert!(
+        report.reverted.is_empty() && report.demoted.is_empty(),
+        "{report:?}"
+    );
+    assert!(tool.script.contains("return 2"));
+    assert_eq!(tool.status, st::Status::Active);
+}
+
+/// A freshly promoted version that does worse than the one it replaced goes back to it.
+#[tokio::test]
+async fn a_fresh_promotion_that_does_worse_goes_back() {
+    use crate::chat::script_tools as st;
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    let now = Utc::now();
+    for (script, approved) in [
+        ("function main() { return 1; }", now - Duration::days(30)),
+        ("function main() { return 2; }", now - Duration::days(6)),
+    ] {
+        st::create(
+            d,
+            "chat-1",
+            &json!({ "name": "rates_p", "description": "Rates.", "script": script }),
+        )
+        .await
+        .unwrap();
+        st::promote(d, "rates_p", None).await.unwrap();
+        let mut tool = st::load(d, "rates_p").unwrap();
+        tool.checks.clear();
+        tool.approved_at = Some(approved);
+        st::save(d, &tool).unwrap();
+    }
+    traces::start_run(d, "r", "c", None, "m");
+    // The first version ran clean the week before; the new one fails nine of twenty.
+    for i in 0..20 {
+        traces::tool_call_at(d, "r", "script__rates_p", now - Duration::days(10), 5, true);
+        traces::tool_call_at(
+            d,
+            "r",
+            "script__rates_p",
+            now - Duration::days(2),
+            5,
+            i >= 9,
+        );
+    }
+    let report = maintain(d, now).await;
+    assert_eq!(
+        report.reverted,
+        vec!["script_tool:rates_p".to_string()],
+        "{report:?}"
+    );
+    assert!(st::load(d, "rates_p").unwrap().script.contains("return 1"));
+}
+
+/// A version the user set aside by restoring an earlier one from History is never rolled
+/// forward to, however long after.
+#[tokio::test]
+async fn the_monitor_never_rolls_forward_to_a_version_the_user_set_aside() {
+    use crate::chat::script_tools as st;
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    for script in [
+        "function main() { return 1; }",
+        "function main() { return 2; }",
+    ] {
+        st::create(
+            d,
+            "chat-1",
+            &json!({ "name": "rates_f", "description": "Rates.", "script": script }),
+        )
+        .await
+        .unwrap();
+        st::promote(d, "rates_f", None).await.unwrap();
+        let mut tool = st::load(d, "rates_f").unwrap();
+        tool.checks.clear();
+        st::save(d, &tool).unwrap();
+    }
+    // The user brings back the first version from History, setting the second aside.
+    let first = crate::chat::versions::list(d, "tools", "script-rates_f")
+        .unwrap()
+        .into_iter()
+        .find(|v| {
+            v.value["script"] == "function main() { return 1; }" && v.value["status"] == "active"
+        })
+        .unwrap();
+    crate::chat::history::restore(d, "tools", "script-rates_f", &first.id).unwrap();
+    assert_eq!(st::load(d, "rates_f").unwrap().set_aside.len(), 1);
+    // Weeks later the first version has a bad week against its own earlier one.
+    let mut tool = st::load(d, "rates_f").unwrap();
+    tool.approved_at = Some(Utc::now() - Duration::days(30));
+    st::save(d, &tool).unwrap();
+    let now = Utc::now();
+    traces::start_run(d, "r", "c", None, "m");
+    for i in 0..10 {
+        traces::tool_call_at(d, "r", "script__rates_f", now - Duration::days(10), 5, true);
+        traces::tool_call_at(
+            d,
+            "r",
+            "script__rates_f",
+            now - Duration::days(1),
+            5,
+            i >= 6,
+        );
+    }
+    let report = maintain(d, now).await;
+    assert!(report.reverted.is_empty(), "{report:?}");
+    assert!(
+        st::load(d, "rates_f").unwrap().script.contains("return 1"),
+        "not the set-aside one"
+    );
+}
+
+/// A tool the assistant wrote and keeps calling is used, so it is not retired.
+#[tokio::test]
+async fn a_tool_in_use_is_kept() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    crate::chat::script_tools::create(
+        d,
+        "chat-1",
+        &json!({ "name": "daily_tool", "description": "Formats dates.", "script": "function main() { return 1; }" }),
+    )
+    .await
+    .unwrap();
+    crate::chat::script_tools::promote(d, "daily_tool", None)
+        .await
+        .unwrap();
+    let later = Utc::now() + Duration::days(UNUSED_DAYS + 10);
+    traces::start_run(d, "r", "c", None, "m");
+    traces::tool_call_at(
+        d,
+        "r",
+        "script__daily_tool",
+        later - Duration::days(2),
+        5,
+        true,
+    );
+    let report = maintain(d, later).await;
+    assert!(report.deprecated.is_empty(), "{report:?}");
+    assert_eq!(
+        traces::artifact(d, "script_tool", "daily_tool")
+            .unwrap()
+            .used,
+        1
+    );
+    assert_eq!(crate::chat::script_tools::definitions(d).len(), 1);
+}
+
+/// Monitor: failing more this week than last sends a tool back to its previous approved
+/// version; with none, back to candidate.
+#[tokio::test]
+async fn a_tool_that_got_worse_goes_back_a_version_or_out() {
+    use crate::chat::script_tools as st;
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    let write = |name: &'static str, script: &'static str| async move {
+        st::create(
+            d,
+            "chat-1",
+            &json!({ "name": name, "description": format!("{name} helper."), "script": script }),
+        )
+        .await
+        .unwrap();
+        st::promote(d, name, None).await.unwrap();
+        let mut tool = st::load(d, name).unwrap();
+        tool.checks.clear();
+        // Approved a while ago: the weeks below are its own.
+        tool.approved_at = Some(Utc::now() - Duration::days(20));
+        st::save(d, &tool).unwrap();
+    };
+    write("rates_v", "function main() { return 1; }").await;
+    write("rates_v", "function main() { return 2; }").await;
+    write("lonely", "function main() { return 3; }").await;
+    let now = Utc::now();
+    traces::start_run(d, "r", "c", None, "m");
+    for tool in ["script__rates_v", "script__lonely"] {
+        // Last week: ten calls, none failed; this week: ten calls, six failed: past the demotion
+        // threshold too, so the next day's pass must not demote the version rolled back to.
+        for i in 0..10 {
+            traces::tool_call_at(d, "r", tool, now - Duration::days(10), 5, true);
+            traces::tool_call_at(d, "r", tool, now - Duration::days(1), 5, i >= 6);
+        }
+    }
+    let report = maintain(d, now).await;
+    assert_eq!(report.reverted, vec!["script_tool:rates_v".to_string()]);
+    assert_eq!(report.demoted, vec!["script_tool:lonely".to_string()]);
+    assert!(st::load(d, "rates_v").unwrap().script.contains("return 1"));
+    assert_eq!(st::load(d, "lonely").unwrap().status, st::Status::Candidate);
+    // The next day the same week's failures do not flip it back to the broken version.
+    let next = maintain(d, now + Duration::days(1)).await;
+    assert!(next.reverted.is_empty(), "{next:?}");
+    // Nor demote the version it went back to, for the failures of the one it replaced.
+    assert!(
+        !next.demoted.contains(&"script_tool:rates_v".to_string()),
+        "{next:?}"
+    );
+    let back = st::load(d, "rates_v").unwrap();
+    assert!(back.script.contains("return 1"));
+    assert_eq!(back.status, st::Status::Active);
+}
+
+/// A retired tool is not brought back by the monitor, however its last week went.
+#[tokio::test]
+async fn the_monitor_leaves_a_retired_tool_retired() {
+    use crate::chat::script_tools as st;
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    for script in [
+        "function main() { return 1; }",
+        "function main() { return 2; }",
+    ] {
+        st::create(
+            d,
+            "chat-1",
+            &json!({ "name": "old_rates", "description": "Rates.", "script": script }),
+        )
+        .await
+        .unwrap();
+        st::promote(d, "old_rates", None).await.unwrap();
+        let mut tool = st::load(d, "old_rates").unwrap();
+        tool.checks.clear();
+        st::save(d, &tool).unwrap();
+    }
+    st::retire(d, "old_rates").unwrap();
+    let now = Utc::now();
+    traces::start_run(d, "r", "c", None, "m");
+    for i in 0..10 {
+        traces::tool_call_at(
+            d,
+            "r",
+            "script__old_rates",
+            now - Duration::days(10),
+            5,
+            true,
+        );
+        traces::tool_call_at(
+            d,
+            "r",
+            "script__old_rates",
+            now - Duration::days(1),
+            5,
+            i >= 4,
+        );
+    }
+    let report = maintain(d, now).await;
+    assert!(report.reverted.is_empty(), "{report:?}");
+    assert_eq!(
+        st::load(d, "old_rates").unwrap().status,
+        st::Status::Deprecated
+    );
+}
+
+#[tokio::test]
+async fn it_runs_once_a_day() {
+    let dir = tempfile::tempdir().unwrap();
+    let now = Utc::now();
+    assert!(daily(dir.path(), now).await.is_some());
+    assert!(daily(dir.path(), now + Duration::hours(2)).await.is_none());
+    assert!(daily(dir.path(), now + Duration::hours(25)).await.is_some());
+}
+
+/// Three approved versions, the second brought back from History two months ago.
+async fn restored_two_months_ago(d: &std::path::Path, name: &str) {
+    use crate::chat::script_tools as st;
+    st::set_signing_key(d, [9; 32]);
+    let now = Utc::now();
+    for script in [
+        "function main() { return 1; }",
+        "function main() { return 2; }",
+        "function main() { return 3; }",
+    ] {
+        st::create(
+            d,
+            "chat-1",
+            &json!({ "name": name, "description": "Rates.", "script": script }),
+        )
+        .await
+        .unwrap();
+        st::promote(d, name, None).await.unwrap();
+        let mut tool = st::load(d, name).unwrap();
+        tool.checks.clear();
+        st::save(d, &tool).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let second = crate::chat::versions::list(d, "tools", &format!("script-{name}"))
+        .unwrap()
+        .into_iter()
+        .find(|v| {
+            v.value["script"] == "function main() { return 2; }" && v.value["status"] == "active"
+        })
+        .unwrap();
+    crate::chat::history::restore(d, "tools", &format!("script-{name}"), &second.id).unwrap();
+    // As the app would have stamped it, two months ago.
+    let mut t = st::load(d, name).unwrap();
+    t.approved_at = Some(now - Duration::days(60));
+    t.restored_at = Some(now - Duration::days(60));
+    st::save(d, &t).unwrap();
+}
+
+async fn reapproved_after_a_clean_week(d: &std::path::Path, name: &str) -> Report {
+    use crate::chat::script_tools as st;
+    let now = Utc::now();
+    // The user approves the same, long-restored version again (to renew its access, say).
+    st::promote(d, name, None).await.unwrap();
+    assert!(st::load(d, name).unwrap().script.contains("return 2"));
+    traces::start_run(d, "r", "c", None, "m");
+    let tool = format!("script__{name}");
+    for _ in 0..10 {
+        traces::tool_call_at(d, "r", &tool, now - Duration::days(4), 5, true);
+    }
+    for ok in [false, false, true, true, true, true] {
+        traces::tool_call_at(d, "r", &tool, Utc::now() + Duration::minutes(30), 5, ok);
+    }
+    maintain(d, Utc::now() + Duration::hours(2)).await
+}
+
+/// Approving again a version restored long ago (to renew its access, say) does not restart
+/// its restore mark: a regression after the approval goes back a version as any would.
+#[tokio::test]
+async fn a_reapproval_long_after_a_restore_is_monitored() {
+    use crate::chat::script_tools as st;
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    restored_two_months_ago(d, "rates_y").await;
+    let report = reapproved_after_a_clean_week(d, "rates_y").await;
+    let t = st::load(d, "rates_y").unwrap();
+    assert_eq!(
+        report.reverted,
+        vec!["script_tool:rates_y".to_string()],
+        "{report:?} restored_at={:?}",
+        t.restored_at
+    );
+}
+
+/// A far-off rollback date written into the file outside the app is not signed by the next
+/// promotion: the monitor still compares the tool week over week.
+#[tokio::test]
+async fn a_promotion_does_not_sign_a_rollback_date_written_outside_the_app() {
+    use crate::chat::script_tools as st;
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    st::set_signing_key(d, [8; 32]);
+    let now = Utc::now();
+    for (script, approved) in [
+        ("function main() { return 1; }", now - Duration::days(30)),
+        ("function main() { return 2; }", now - Duration::days(20)),
+    ] {
+        st::create(
+            d,
+            "chat-1",
+            &json!({ "name": "rates_z", "description": "Rates.", "script": script }),
+        )
+        .await
+        .unwrap();
+        st::promote(d, "rates_z", None).await.unwrap();
+        let mut tool = st::load(d, "rates_z").unwrap();
+        tool.checks.clear();
+        tool.approved_at = Some(approved);
+        st::save(d, &tool).unwrap();
+    }
+    // Outside the app: a rollback date far ahead.
+    let mut forged = st::load(d, "rates_z").unwrap();
+    forged.monitor_reverted_at = Some(now + Duration::days(30_000));
+    std::fs::write(
+        d.join("chat").join("script-tools").join("rates_z.json"),
+        serde_json::to_string(&forged).unwrap(),
+    )
+    .unwrap();
+    assert!(st::definitions(d).iter().all(|t| t.tool_name != "rates_z"));
+    // The model asks to promote it again; the card shows the same script and no access.
+    st::promote(d, "rates_z", None).await.unwrap();
+    let after = st::load(d, "rates_z").unwrap();
+    assert!(st::definitions(d).iter().any(|t| t.tool_name == "rates_z"));
+    traces::start_run(d, "r", "c", None, "m");
+    for _ in 0..10 {
+        traces::tool_call_at(d, "r", "script__rates_z", now - Duration::days(4), 5, true);
+    }
+    for ok in [false, false, true, true, true, true] {
+        traces::tool_call_at(
+            d,
+            "r",
+            "script__rates_z",
+            Utc::now() + Duration::minutes(30),
+            5,
+            ok,
+        );
+    }
+    assert_eq!(after.monitor_reverted_at, None);
+    let report = maintain(d, Utc::now() + Duration::hours(2)).await;
+    // The regression is rolled back, as for a file never changed.
+    assert_eq!(
+        report.reverted,
+        vec!["script_tool:rates_z".to_string()],
+        "{report:?}"
+    );
+}
+
+/// Regression checks emptied outside the app come back from the last signed version when the
+/// tool is promoted again.
+#[tokio::test]
+async fn a_promotion_does_not_sign_checks_emptied_outside_the_app() {
+    use crate::chat::script_tools as st;
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    st::set_signing_key(d, [8; 32]);
+    st::create(d, "chat-1", &json!({ "name": "checked_v", "description": "Checked.", "script": "function main() { return 1; }" }))
+        .await
+        .unwrap();
+    st::promote(d, "checked_v", None).await.unwrap();
+    assert_eq!(st::load(d, "checked_v").unwrap().checks.len(), 1);
+    let mut forged = st::load(d, "checked_v").unwrap();
+    forged.checks.clear();
+    std::fs::write(
+        d.join("chat").join("script-tools").join("checked_v.json"),
+        serde_json::to_string(&forged).unwrap(),
+    )
+    .unwrap();
+    st::promote(d, "checked_v", None).await.unwrap();
+    assert!(st::definitions(d)
+        .iter()
+        .any(|t| t.tool_name == "checked_v"));
+    assert_eq!(
+        st::load(d, "checked_v").unwrap().checks.len(),
+        1,
+        "checks laundered away"
+    );
+}
+
+/// A restored version whose file is touched outside the app (a harmless field) and promoted
+/// again keeps its set-aside list and restore mark, as the last state the app signed had: the
+/// monitor does not roll forward to the version the user set aside.
+#[tokio::test]
+async fn a_touched_restored_file_promoted_again_keeps_what_the_user_set_aside() {
+    use crate::chat::script_tools as st;
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    st::set_signing_key(d, [7; 32]);
+    let now = Utc::now();
+    for (script, approved) in [
+        ("function main() { return 1; }", now - Duration::days(30)),
+        ("function main() { return 2; }", now - Duration::days(20)),
+    ] {
+        st::create(
+            d,
+            "chat-1",
+            &json!({ "name": "rates_p", "description": "Rates.", "script": script }),
+        )
+        .await
+        .unwrap();
+        st::promote(d, "rates_p", None).await.unwrap();
+        let mut tool = st::load(d, "rates_p").unwrap();
+        tool.checks.clear();
+        tool.approved_at = Some(approved);
+        st::save(d, &tool).unwrap();
+    }
+    let v2 = st::approval_hash(&st::load(d, "rates_p").unwrap());
+    traces::start_run(d, "r", "c", None, "m");
+    for _ in 0..10 {
+        traces::tool_call_at(d, "r", "script__rates_p", now - Duration::days(4), 5, true);
+    }
+    let first = crate::chat::versions::list(d, "tools", "script-rates_p")
+        .unwrap()
+        .into_iter()
+        .find(|v| {
+            v.value["script"] == "function main() { return 1; }" && v.value["status"] == "active"
+        })
+        .unwrap();
+    crate::chat::history::restore(d, "tools", "script-rates_p", &first.id).unwrap();
+    let restored = st::load(d, "rates_p").unwrap();
+    assert!(restored.set_aside.contains(&v2));
+    assert!(restored.restored_at.is_some());
+    // Outside the app: one harmless field touched; script, description, access unchanged.
+    let mut touched = restored.clone();
+    touched.created_at -= Duration::seconds(1);
+    std::fs::write(
+        d.join("chat").join("script-tools").join("rates_p.json"),
+        serde_json::to_string(&touched).unwrap(),
+    )
+    .unwrap();
+    st::promote(d, "rates_p", None).await.unwrap();
+    let after = st::load(d, "rates_p").unwrap();
+    let set_aside_kept = after.set_aside.contains(&v2);
+    let restored_kept = after.restored_at.is_some();
+    for ok in [false, false, true, true, true, true] {
+        traces::tool_call_at(
+            d,
+            "r",
+            "script__rates_p",
+            Utc::now() + Duration::minutes(30),
+            5,
+            ok,
+        );
+    }
+    let report = maintain(d, Utc::now() + Duration::hours(2)).await;
+    let script = st::load(d, "rates_p").unwrap().script;
+    assert!(
+        set_aside_kept && restored_kept && script.contains("return 1"),
+        "set_aside_kept={set_aside_kept} restored_kept={restored_kept} report={report:?} script={script}"
+    );
+}
+
+/// With the History gone, a file whose checks were emptied outside the app gets them back from
+/// the last state the app signed when promoted.
+#[tokio::test]
+async fn checks_emptied_outside_the_app_come_back_without_history() {
+    use crate::chat::script_tools as st;
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    st::set_signing_key(d, [8; 32]);
+    st::create(d, "chat-1", &json!({ "name": "checked_w", "description": "Checked.", "script": "function main() { return 1; }" }))
+        .await
+        .unwrap();
+    st::promote(d, "checked_w", None).await.unwrap();
+    let mut forged = st::load(d, "checked_w").unwrap();
+    forged.checks.clear();
+    std::fs::write(
+        d.join("chat").join("script-tools").join("checked_w.json"),
+        serde_json::to_string(&forged).unwrap(),
+    )
+    .unwrap();
+    std::fs::remove_dir_all(d.join("chat").join("versions")).unwrap();
+    st::promote(d, "checked_w", None).await.unwrap();
+    assert_eq!(
+        st::load(d, "checked_w").unwrap().checks.len(),
+        1,
+        "checks laundered away"
+    );
+}
+/// A far-off rollback date written outside the app, then the tool retired (the model's
+/// retire_tool, or the lifecycle) or its access revoked, then promoted again.
+async fn forged_date_then(via: &str) -> (Option<DateTime<Utc>>, Report) {
+    use crate::chat::script_tools as st;
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    st::set_signing_key(d, [8; 32]);
+    let now = Utc::now();
+    for (script, approved) in [
+        ("function main() { return 1; }", now - Duration::days(30)),
+        ("function main() { return 2; }", now - Duration::days(20)),
+    ] {
+        st::create(
+            d,
+            "chat-1",
+            &json!({ "name": "rates_q", "description": "Rates.", "script": script }),
+        )
+        .await
+        .unwrap();
+        st::promote(d, "rates_q", None).await.unwrap();
+        let mut tool = st::load(d, "rates_q").unwrap();
+        tool.checks.clear();
+        tool.approved_at = Some(approved);
+        st::save(d, &tool).unwrap();
+    }
+    let mut forged = st::load(d, "rates_q").unwrap();
+    forged.monitor_reverted_at = Some(now + Duration::days(30_000));
+    std::fs::write(
+        d.join("chat").join("script-tools").join("rates_q.json"),
+        serde_json::to_string(&forged).unwrap(),
+    )
+    .unwrap();
+    match via {
+        "retire" => st::retire(d, "rates_q").unwrap(),
+        "revoke" => st::revoke(d, "rates_q").unwrap(),
+        _ => {}
+    }
+    st::promote(d, "rates_q", None).await.unwrap();
+    let after = st::load(d, "rates_q").unwrap();
+    assert!(st::definitions(d).iter().any(|t| t.tool_name == "rates_q"));
+    traces::start_run(d, "r", "c", None, "m");
+    for _ in 0..10 {
+        traces::tool_call_at(d, "r", "script__rates_q", now - Duration::days(4), 5, true);
+    }
+    for ok in [false, false, true, true, true, true] {
+        traces::tool_call_at(
+            d,
+            "r",
+            "script__rates_q",
+            Utc::now() + Duration::minutes(30),
+            5,
+            ok,
+        );
+    }
+    let report = maintain(d, Utc::now() + Duration::hours(2)).await;
+    (after.monitor_reverted_at, report)
+}
+
+#[tokio::test]
+async fn retiring_a_changed_file_does_not_sign_its_rollback_date() {
+    let (at, report) = forged_date_then("retire").await;
+    assert!(
+        at.is_none() && !report.is_empty(),
+        "monitor_reverted_at={at:?} report={report:?}"
+    );
+}
+
+#[tokio::test]
+async fn revoking_a_changed_file_does_not_sign_its_rollback_date() {
+    let (at, report) = forged_date_then("revoke").await;
+    assert!(
+        at.is_none() && !report.is_empty(),
+        "monitor_reverted_at={at:?} report={report:?}"
+    );
+}

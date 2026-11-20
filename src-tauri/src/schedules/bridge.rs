@@ -78,11 +78,7 @@ impl From<QueuedRun> for BridgeRun {
 }
 
 fn require_main(label: &str) -> Result<(), String> {
-    if label == crate::main_window::LABEL {
-        Ok(())
-    } else {
-        Err("schedule commands require the main webview".into())
-    }
+    crate::main_window::require(label, "schedule commands require the main webview")
 }
 
 #[tauri::command]

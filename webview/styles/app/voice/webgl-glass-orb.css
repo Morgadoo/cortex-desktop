@@ -1,0 +1,26 @@
+/* The WebGL glass orb: the button keeps its place and its clicks; the canvas, larger for the glow
+   around it, draws the orb. */
+.voice-orb.gl { position: relative; background: none; box-shadow: none; transform: none; animation: none !important; filter: none !important; overflow: visible; }
+.voice-orb-gl { position: absolute; left: 50%; top: 50%; width: 400px; height: 400px; transform: translate(-50%, -50%); pointer-events: none; }
+/* The light the orb casts into the room (voice.ts): its own colour, wide and soft, behind it. It
+   swells with the voice, breathes while it listens and faster while it thinks, and dims when paused. */
+.voice-atmosphere { position: absolute; left: 50%; top: 50%; z-index: -1; width: 640px; height: 640px; border-radius: 50%; pointer-events: none; background: radial-gradient(closest-side, color-mix(in srgb, var(--orb-color, var(--accent)) 30%, transparent), color-mix(in srgb, var(--orb-color, var(--accent)) 11%, transparent) 46%, transparent 100%); transform: translate(-50%, -50%) scale(calc(0.85 + var(--level, 0) * 0.3)); opacity: calc(0.6 + var(--level, 0) * 0.4); transition: transform 140ms linear, opacity 300ms ease; }
+.voice-atmosphere::after { content: ""; position: absolute; inset: 24%; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in srgb, var(--orb-color, var(--accent)) 24%, transparent), transparent); animation: voice-atmosphere 5s ease-in-out infinite; }
+@keyframes voice-atmosphere { 50% { transform: scale(1.2); opacity: 0.5; } }
+.voice-overlay:is([data-phase="thinking"], [data-phase="transcribing"]) .voice-atmosphere::after { animation-duration: 1.6s; }
+.voice-overlay[data-phase="paused"] .voice-atmosphere { opacity: 0.18; }
+.voice-orb:not(.gl) .voice-atmosphere { display: none; }
+html[data-motion="reduced"] :is(.voice-atmosphere, .voice-atmosphere::after) { animation: none; transition: none; }
+@media (prefers-reduced-motion: reduce) { :is(.voice-atmosphere, .voice-atmosphere::after) { animation: none; transition: none; } }
+.catalog-sources { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; }
+.publish-row .grow { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+.qdrant-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.qdrant-fields[hidden] {
+  display: none;
+}
+

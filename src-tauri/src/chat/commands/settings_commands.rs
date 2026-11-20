@@ -1,4 +1,4 @@
-//! App-wide settings: sync, backups, encryption, the local API, chat apps and the interface.
+//! App-wide settings: sync, backups, encryption, storage health, the activity log, document extraction, the vector store, the local API, chat apps and the interface.
 
 use super::*;
 
@@ -32,7 +32,7 @@ pub async fn chat_set_telegram_token(
 
 /// Changes the Telegram settings: on/off, agent, changes allowed; opens pairing or unpairs.
 #[tauri::command]
-pub async fn chat_update_telegram(
+pub async fn chat_save_telegram(
     app: AppHandle,
     enabled: bool,
     agent_id: Option<String>,
@@ -93,7 +93,7 @@ pub async fn chat_set_discord_token(
 }
 
 #[tauri::command]
-pub async fn chat_update_discord(
+pub async fn chat_save_discord(
     app: AppHandle,
     enabled: bool,
     agent_id: Option<String>,
@@ -150,7 +150,7 @@ pub async fn chat_set_slack_tokens(
 }
 
 #[tauri::command]
-pub async fn chat_update_slack(
+pub async fn chat_save_slack(
     app: AppHandle,
     enabled: bool,
     agent_id: Option<String>,
@@ -189,7 +189,7 @@ pub fn chat_ui_languages() -> Vec<(String, String)> {
 
 #[tauri::command]
 pub fn chat_reset_ui_translations(app: AppHandle, code: String) -> Result<(), String> {
-    crate::chat::ui_language::reset(&config_dir(&app)?, &code)
+    crate::chat::ui_language::reset(&config_dir(&app)?, &code).map_err(String::from)
 }
 
 /// Encryption at rest: whether it is on, and how many files are sealed.
@@ -208,9 +208,13 @@ pub async fn chat_encryption_status(
 pub async fn chat_set_encryption(app: AppHandle, on: bool) -> Result<usize, String> {
     let dir = config_dir(&app)?;
     if on {
-        crate::chat::at_rest::enable(&dir).await
+        crate::chat::at_rest::enable(&dir)
+            .await
+            .map_err(String::from)
     } else {
-        crate::chat::at_rest::disable(&dir).await
+        crate::chat::at_rest::disable(&dir)
+            .await
+            .map_err(String::from)
     }
 }
 
@@ -265,7 +269,12 @@ pub async fn chat_save_sync_settings(
 /// Syncs now; returns what happened, in words.
 #[tauri::command]
 pub async fn chat_sync_now(app: AppHandle) -> Result<String, String> {
-    let report = crate::chat::sync::run(&config_dir(&app)?).await?;
+    let report = crate::chat::sync::run(
+        &app.state::<ChatState>()
+            .part::<crate::chat::sync::Syncing>(),
+        &config_dir(&app)?,
+    )
+    .await?;
     Ok(report.summary())
 }
 
@@ -288,8 +297,10 @@ pub fn chat_set_diagnostics_prefs(
 
 /// The local API's latest requests, newest first.
 #[tauri::command]
-pub fn chat_api_server_log() -> Vec<crate::chat::api_server::LogEntry> {
-    crate::chat::api_server::recent()
+pub fn chat_api_server_log(
+    server: State<'_, crate::chat::api_server::ApiServer>,
+) -> Vec<crate::chat::api_server::LogEntry> {
+    crate::chat::api_server::recent(&server)
 }
 
 #[tauri::command]
@@ -326,4 +337,56 @@ pub fn chat_snippet_languages() -> Vec<&'static str> {
 #[tauri::command]
 pub fn chat_trash(app: AppHandle) -> Result<Vec<crate::chat::backup::TrashItem>, String> {
     Ok(crate::chat::backup::list_trash(&config_dir(&app)?))
+}
+
+/// The activity log: how many entries, and since when.
+#[tauri::command]
+pub fn chat_audit_summary(app: AppHandle) -> Result<serde_json::Value, String> {
+    let all = crate::chat::audit::entries(&config_dir(&app)?, None);
+    Ok(serde_json::json!({
+        "count": all.len(),
+        "since": all.first().map(|e| e.at),
+        "approvals": all.iter().filter(|e| e.kind == "approval").count(),
+        "denied": all.iter().filter(|e| e.outcome == "denied").count(),
+        "errors": all.iter().filter(|e| e.outcome == "error").count(),
+    }))
+}
+
+#[tauri::command]
+pub fn chat_clear_audit(app: AppHandle) -> Result<(), String> {
+    crate::chat::audit::clear(&config_dir(&app)?).map_err(String::from)
+}
+
+/// The document extraction engine (built-in, Tika or Docling); `change` sets it.
+#[tauri::command]
+pub fn chat_extraction(
+    app: AppHandle,
+    change: Option<crate::chat::extraction::Extraction>,
+) -> Result<crate::chat::extraction::Extraction, String> {
+    let dir = config_dir(&app)?;
+    if let Some(e) = change {
+        crate::chat::extraction::save(&dir, &e)?;
+    }
+    Ok(crate::chat::extraction::load(&dir))
+}
+
+/// Checks the Qdrant server in the saved settings; returns its version.
+#[tauri::command]
+pub async fn chat_check_vector_store(app: AppHandle) -> Result<String, String> {
+    let settings = crate::chat::embeddings::load(&config_dir(&app)?);
+    if settings.qdrant_url.is_empty() {
+        return Err("Enter the Qdrant server's address first.".into());
+    }
+    crate::chat::embeddings::qdrant::check(&settings)
+        .await
+        .map_err(String::from)
+}
+
+/// How the stored data is doing: counts, size, backups, and files that cannot be read.
+#[tauri::command]
+pub async fn chat_storage_health(app: AppHandle) -> Result<crate::chat::backup::Health, String> {
+    let dir = config_dir(&app)?;
+    tokio::task::spawn_blocking(move || crate::chat::backup::health(&dir))
+        .await
+        .map_err(|e| e.to_string())
 }

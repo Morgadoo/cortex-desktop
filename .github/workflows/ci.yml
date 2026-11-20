@@ -26,7 +26,7 @@ env:
 
 jobs:
   webview:
-    name: Webview (types, build, translations)
+    name: Webview (types, format, lints, build, translations, tests)
     runs-on: cortex-desktop-ci
     timeout-minutes: 15
     steps:
@@ -38,12 +38,14 @@ jobs:
       - run: npm ci
       - name: Type check
         run: npm run typecheck
+      - name: Format and lints
+        run: npm run lint
       - name: Build
         run: npm run build:webview
-      - name: Every interface string is translated
+      - name: Every interface string is in the catalog
         run: npm run check:i18n
-      - name: Voice (turn ends, live transcripts)
-        run: npm run check:voice
+      - name: Unit tests
+        run: npm test
 
   rust:
     name: Rust (format, lints, tests)
@@ -86,9 +88,54 @@ jobs:
       - name: Unit and integration tests
         working-directory: src-tauri
         run: cargo test --workspace --features cortex/test-utils
+      # The hosted web app's code (the `hosted` feature, through `e2e`) is not in the native
+      # build above, so it is linted and tested on its own.
+      - name: Lints and tests with the hosted web app's code
+        working-directory: src-tauri
+        run: |
+          cargo clippy --workspace --features cortex/test-utils,cortex/e2e --all-targets -- -D warnings
+          cargo test --workspace --features cortex/test-utils,cortex/e2e
+      - name: The interface's generated types match the Rust types
+        run: bash scripts/generate-types.sh --check
+      - name: The command list and permissions match the code
+        run: python3 scripts/generate-commands.py --check
+      - name: Dependencies point down the chat engine's layers
+        run: python3 scripts/check-layers.py
+      - name: State lives in the app, not in process-wide statics
+        run: python3 scripts/check-statics.py
+      - name: The plan's measures meet their targets
+        run: python3 scripts/measure-plan.py --check
       # Every test docs/agent-kernel-plan.md cites as evidence must exist and pass.
       - name: The kernel plan's evidence
         run: python3 scripts/check-kernel-plan.py
+
+  platforms:
+    # The Windows- and macOS-only code (#[cfg(windows)], #[cfg(target_os = "macos")]) is never
+    # compiled by the Linux jobs. This compiles and lints it; no tests, no bundles.
+    name: Compile (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          shared-key: cortex-${{ matrix.os }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci && npm run build:webview
+      - name: Lints
+        working-directory: src-tauri
+        run: cargo clippy --workspace -- -D warnings
 
   live:
     name: Live (Qdrant, Tika, built-in models)

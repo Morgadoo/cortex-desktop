@@ -7,3 +7,6 @@ publish = false
 description = "One tokenizer and one BM25 ranking for everything Cortex looks things up in."
 
 [dependencies]
+
+[lints]
+workspace = true

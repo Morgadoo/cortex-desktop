@@ -5,7 +5,7 @@ import { tauriInvoke } from '../shared/tauri';
   let host: HTMLDivElement | undefined;
   const queue: Parameters<NonNullable<Window['__lumoDownloadFeedback']>>[0][] = [];
 
-  function show(result: typeof queue[number]) {
+  function show(result: (typeof queue)[number]) {
     if (!document.body) {
       queue.push(result);
       return;
@@ -40,9 +40,7 @@ import { tauriInvoke } from '../shared/tauri';
     toast.setAttribute('role', result.success ? 'status' : 'alert');
     toast.setAttribute('aria-live', result.success ? 'polite' : 'assertive');
     const message = document.createElement('p');
-    message.textContent = result.success
-      ? (result.name ? `Downloaded ${result.name}` : 'File downloaded')
-      : 'Couldn’t download the file. Please try again.';
+    message.textContent = result.success ? (result.name ? `Downloaded ${result.name}` : 'File downloaded') : 'Couldn’t download the file. Please try again.';
     const actions = document.createElement('nav');
     if (result.success && result.id) {
       const reveal = document.createElement('button');
@@ -66,14 +64,24 @@ import { tauriInvoke } from '../shared/tauri';
     toast.append(message, actions);
     let timer: ReturnType<typeof setTimeout>;
     const pause = () => clearTimeout(timer);
-    const resume = () => { pause(); timer = setTimeout(dismiss, 8000); };
-    function dismiss() { pause(); toast.remove(); }
+    const resume = () => {
+      pause();
+      timer = setTimeout(dismiss, 8000);
+    };
+    function dismiss() {
+      pause();
+      toast.remove();
+    }
     close.onclick = dismiss;
     toast.addEventListener('dismiss', dismiss);
     toast.onmouseenter = pause;
-    toast.onmouseleave = () => { if (!toast.matches(':focus-within')) resume(); };
+    toast.onmouseleave = () => {
+      if (!toast.matches(':focus-within')) resume();
+    };
     toast.addEventListener('focusin', pause);
-    toast.addEventListener('focusout', () => { if (!toast.matches(':hover')) resume(); });
+    toast.addEventListener('focusout', () => {
+      if (!toast.matches(':hover')) resume();
+    });
     append(toast);
     resume();
   }

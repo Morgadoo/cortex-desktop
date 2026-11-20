@@ -1,0 +1,9 @@
+/* Reduce motion (Settings → Appearance), on top of the system's own setting. */
+:root[data-motion="reduced"] *, :root[data-motion="reduced"] *::before, :root[data-motion="reduced"] *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+/* High contrast: focus is always visible. */
+:root[data-contrast="high"] :focus-visible { outline: 2px solid var(--accent) !important; outline-offset: 2px; }
+:root[data-contrast="high"] .markdown a { text-decoration: underline; }
+.settings-search { margin: 4px 0 8px; height: 32px; font-size: var(--fs-sm); }
+.settings-hit small { display: inline; }
+.card.flash, .setting-row.flash { animation: turn-flash 1.6s ease-out; }
+

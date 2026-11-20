@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Type-check before pushing. CI runs the same check; this only shortens the feedback loop.
+# Type-check and run the interface's unit tests before pushing. CI runs the same check; this only shortens the feedback loop.
 #
 # Not installed by cloning. Enable with:
 #   git config core.hooksPath .githooks
@@ -13,3 +13,4 @@ repo_root=$(git rev-parse --show-toplevel)
 [ -x "$repo_root/node_modules/.bin/tsc" ] || exit 0
 
 npm --prefix "$repo_root" run --silent typecheck
+npm --prefix "$repo_root" run --silent test

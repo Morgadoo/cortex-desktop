@@ -1,0 +1,31 @@
+/* Supporting files in the skill editor. */
+.skill-files{display:flex;flex-direction:column;gap:2px;margin-bottom:6px}
+.skill-file{display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:6px;background:var(--card)}
+.skill-file-actions{display:flex;gap:6px;margin-bottom:8px}
+.skill-file .btn-link{text-align:left;font-family:var(--font-mono,monospace);font-size:12px}
+
+/* The workflow designer and production mark. */
+.designer{margin:4px 0 10px}
+.designer-ask{display:flex;gap:6px}.designer-ask .input{flex:1}
+.designer-log{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.designer-turn{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);background:var(--card);border-radius:10px;padding:2px 8px}
+.production-row{display:flex;align-items:center;gap:8px;margin:0 0 8px;flex-wrap:wrap}
+.production-row:empty{display:none}
+.tag-production{background:color-mix(in srgb,var(--status-ok) 18%,transparent);color:var(--status-ok-text)}
+/* The agent builder as a conversation. */
+.builder{display:grid;grid-template-columns:1fr;gap:10px}
+.builder-preview:not(:empty){grid-template-columns:1fr}
+.builder:has(.builder-preview:not(:empty)){grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.builder-chat{display:flex;flex-direction:column;gap:8px;min-width:0}
+.builder-log{display:flex;flex-direction:column;gap:6px;max-height:260px;overflow:auto}
+.builder-log:empty{display:none}
+.builder-msg{padding:6px 10px;border-radius:10px;background:var(--card);font-size:13px;align-self:flex-start;max-width:90%}
+.builder-msg.user{align-self:flex-end;background:color-mix(in srgb,var(--accent) 18%,transparent)}
+.builder-preview:not(:empty){border:1px solid var(--border);border-radius:10px;padding:10px;max-height:340px;overflow:auto}
+.builder-head{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+.builder-instructions{font-size:12.5px;white-space:pre-wrap;color:var(--muted);margin:0 0 6px}
+.builder-tags{display:flex;flex-wrap:wrap;gap:4px}
+@media (max-width:700px){.builder:has(.builder-preview:not(:empty)){grid-template-columns:1fr}}
+.designer-log:empty{display:none}
+.hook-text .badge{margin-left:6px}
+

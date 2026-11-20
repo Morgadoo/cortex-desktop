@@ -1,0 +1,15 @@
+/* Fluent emoji: the character stays (copy, search, read aloud) and is drawn transparent over its image. */
+.fluent-emoji{display:inline-block;width:1.3em;height:1.3em;line-height:1.3em;vertical-align:-0.3em;overflow:hidden;color:transparent;background:center/contain no-repeat;text-align:center;white-space:nowrap;text-indent:0;font-style:normal}
+.fluent-emoji::selection{color:transparent;background:color-mix(in srgb,var(--accent) 35%,transparent)}
+.agent-avatar .fluent-emoji{width:1.15em;height:1.15em;vertical-align:middle}
+.emoji-jumbo .fluent-emoji{width:2.6em;height:2.6em;vertical-align:middle}
+.emoji-sample{font-size:22px;letter-spacing:4px}
+.member-order{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;border-radius:8px;background:var(--accent);color:var(--on-solid);font-size:10px;font-weight:700}
+.routing-row{margin:0 0 14px;padding:10px 14px;border:1px solid var(--border);border-radius:10px}
+.upload-list{display:flex;flex-direction:column;gap:2px;max-height:340px;overflow:auto;margin-top:8px;overflow-x:hidden}
+.upload-row{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:8px}
+.upload-row:hover{background:var(--bg-hover)}
+.upload-name{font-weight:600;font-size:13px;word-break:break-all}
+.bubble-file.searched{display:flex;align-items:center;gap:6px;padding:6px 10px}
+.setting-row select.select-sm{max-width:300px}
+

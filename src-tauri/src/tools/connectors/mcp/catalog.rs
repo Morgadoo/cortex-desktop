@@ -5,16 +5,34 @@
 //! instructions for the model in its descriptions.
 
 use super::config::{McpServerConfig, McpTransport};
+use serde::Deserialize;
 use std::sync::LazyLock;
+
+/// The shared catalog's entries; only their URLs matter here.
+#[derive(Deserialize)]
+struct Catalog {
+    builtin: Vec<Entry>,
+    featured: Vec<Entry>,
+}
+
+#[derive(Deserialize)]
+struct Entry {
+    url: Option<String>,
+}
 
 /// Read from the catalog the settings page and the web app are built from, so the two can't
 /// drift apart.
 static CATALOG_URLS: LazyLock<Vec<String>> = LazyLock::new(|| {
-    include_str!("../../../../../webview/shared/connector-catalog.ts")
-        .lines()
-        .filter_map(|line| line.trim().strip_prefix("url: '"))
-        .filter_map(|rest| rest.split('\'').next())
-        .map(normalize)
+    let catalog: Catalog = serde_json::from_str(include_str!(
+        "../../../../../webview/shared/connector-catalog.json"
+    ))
+    .expect("webview/shared/connector-catalog.json is valid");
+    catalog
+        .builtin
+        .into_iter()
+        .chain(catalog.featured)
+        .filter_map(|entry| entry.url)
+        .map(|url| normalize(&url))
         .collect()
 });
 

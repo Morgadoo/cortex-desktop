@@ -6,11 +6,13 @@ mod dialog;
 mod dictation;
 mod downloads;
 mod feature_flags;
+mod handlers;
 pub mod inapp_browser;
 mod main_window;
 #[cfg(any(target_os = "macos", target_os = "linux", test))]
 mod microphone;
 mod notifications;
+#[cfg(feature = "hosted")]
 mod pdf_export;
 mod quick_ask;
 mod rename_migration;
@@ -18,9 +20,11 @@ mod reporting;
 mod reset;
 mod schedules;
 mod settings;
+#[cfg(feature = "hosted")]
 mod skills;
 #[cfg(target_os = "macos")]
 mod subframe_navigation;
+mod support;
 mod theme;
 mod tools;
 mod tray;
@@ -52,10 +56,13 @@ pub const LUMO_URL: &str = match option_env!("LUMO_URL") {
     None => "https://lumo.proton.dev",
 };
 
-/// Whether the main window loads the hosted Lumo web app instead of the native chat page. Set
-/// `LUMO_HOSTED=1` at build time to get the old behaviour.
-pub const HOSTED_WEB_APP: bool = option_env!("LUMO_HOSTED").is_some();
+/// Whether the main window loads the hosted Lumo web app instead of the native chat page: builds
+/// with the `hosted` feature. An `e2e` build compiles the hosted code to test its bridges, but its
+/// window is the stub page, not the web app.
+pub const HOSTED_WEB_APP: bool = cfg!(feature = "hosted") && !cfg!(feature = "e2e");
 
+/// Whether this run is under the E2E suite: `CORTEX_E2E_TESTING` set, in a build with the `e2e`
+/// feature. A release build ignores the variable, so test hooks cannot be switched on in it.
 pub fn e2e_testing_enabled() -> bool {
-    std::env::var_os("CORTEX_E2E_TESTING").is_some_and(|v| !v.is_empty())
+    cfg!(feature = "e2e") && std::env::var_os("CORTEX_E2E_TESTING").is_some_and(|v| !v.is_empty())
 }

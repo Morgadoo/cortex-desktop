@@ -8,12 +8,11 @@
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
 
 const FILE_NAME: &str = "pending_secret_deletes.json";
 
 static ROOT: OnceLock<PathBuf> = OnceLock::new();
-static LOCK: Mutex<()> = Mutex::new(());
 
 /// Called once at startup with the app config directory. Until then nothing can be recorded or
 /// checked, so a failed delete and every load are reported as errors.
@@ -111,12 +110,8 @@ fn write(path: &Path, keys: &BTreeSet<String>) -> Result<(), String> {
         .map_err(|e| format!("could not record pending secret delete: {e}"))
 }
 
-fn locked() -> std::sync::MutexGuard<'static, ()> {
-    LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
-}
-
 fn record_in(path: &Path, key: &str) -> Result<(), String> {
-    let _guard = locked();
+    let _guard = cortex_store::file_lock::hold(path);
     let mut keys = read(path)?;
     if keys.insert(key.to_string()) {
         write(path, &keys)?;
@@ -126,12 +121,12 @@ fn record_in(path: &Path, key: &str) -> Result<(), String> {
 
 /// An unreadable file counts as an error rather than "not pending": the caller must not load.
 fn is_pending_in(path: &Path, key: &str) -> Result<bool, String> {
-    let _guard = locked();
+    let _guard = cortex_store::file_lock::hold(path);
     Ok(read(path)?.contains(key))
 }
 
 fn clear_in(path: &Path, key: &str) -> Result<(), String> {
-    let _guard = locked();
+    let _guard = cortex_store::file_lock::hold(path);
     let mut keys = read(path)?;
     if keys.remove(key) {
         write(path, &keys)?;

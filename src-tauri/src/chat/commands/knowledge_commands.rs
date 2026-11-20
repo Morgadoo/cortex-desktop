@@ -18,7 +18,7 @@ pub fn chat_artifacts(app: AppHandle) -> Result<Vec<ScoredArtifact>, String> {
 /// Takes back the network and file access of a tool the assistant wrote.
 #[tauri::command]
 pub fn chat_revoke_tool(app: AppHandle, name: String) -> Result<(), String> {
-    crate::chat::script_tools::revoke(&config_dir(&app)?, &name)
+    crate::chat::script_tools::revoke(&config_dir(&app)?, &name).map_err(String::from)
 }
 
 /// What changed from one saved version of an item to the next (or to `current`).
@@ -30,7 +30,8 @@ pub fn chat_version_diff(
     version: String,
     current: Option<serde_json::Value>,
 ) -> Result<String, String> {
-    crate::chat::versions::diff(&config_dir(&app)?, &kind, &id, &version, current.as_ref())
+    crate::chat::history::diff(&config_dir(&app)?, &kind, &id, &version, current.as_ref())
+        .map_err(String::from)
 }
 
 /// Brings back an earlier version of a memory list, knowledge pages, instructions, a notebook,
@@ -42,7 +43,7 @@ pub fn chat_restore_version(
     id: String,
     version: String,
 ) -> Result<(), String> {
-    crate::chat::versions::restore(&config_dir(&app)?, &kind, &id, &version)
+    crate::chat::history::restore(&config_dir(&app)?, &kind, &id, &version).map_err(String::from)
 }
 
 /// The user's eval suites and their cases: the user owns them; no tool writes them.
@@ -111,7 +112,7 @@ pub fn chat_delete_knowledge_page(
     app: AppHandle,
     id: String,
 ) -> Result<Vec<crate::chat::knowledge::Page>, String> {
-    crate::chat::knowledge::delete(&config_dir(&app)?, &id)
+    crate::chat::knowledge::delete(&config_dir(&app)?, &id).map_err(String::from)
 }
 
 /// The skill catalogues' skills (Anthropic's, and any added).
@@ -127,12 +128,14 @@ pub async fn chat_skill_catalog(
 
 #[tauri::command]
 pub async fn chat_add_skill_catalog(app: AppHandle, repo: String) -> Result<(), String> {
-    crate::chat::skill_catalog::add_catalog(&config_dir(&app)?, &repo).await
+    crate::chat::skill_catalog::add_catalog(&config_dir(&app)?, &repo)
+        .await
+        .map_err(String::from)
 }
 
 #[tauri::command]
-pub fn chat_remove_skill_catalog(app: AppHandle, repo: String) -> Result<(), String> {
-    crate::chat::skill_catalog::remove_catalog(&config_dir(&app)?, &repo)
+pub fn chat_delete_skill_catalog(app: AppHandle, repo: String) -> Result<(), String> {
+    crate::chat::skill_catalog::remove_catalog(&config_dir(&app)?, &repo).map_err(String::from)
 }
 
 /// Adds a catalogue skill; says how many of its files came along.
@@ -163,7 +166,7 @@ pub fn chat_select_version(
     let dir = config_dir(&app)?;
     let mut conversation = store::load_conversation(&dir, &id)?;
     store::select_version(&mut conversation, from, index)?;
-    store::save_conversation(&dir, &conversation)
+    store::save_conversation(&dir, &conversation).map_err(String::from)
 }
 
 #[tauri::command]
@@ -211,13 +214,14 @@ pub fn chat_get_instructions(app: AppHandle) -> Result<Instructions, String> {
 
 #[tauri::command]
 pub fn chat_save_instructions(app: AppHandle, instructions: Instructions) -> Result<(), String> {
-    store::save_instructions(&config_dir(&app)?, &instructions)
+    store::save_instructions(&config_dir(&app)?, &instructions).map_err(String::from)
 }
 
 /// Every version's answer at a branch point, to compare them.
 #[tauri::command]
 pub fn chat_version_texts(app: AppHandle, id: String, from: usize) -> Result<Vec<String>, String> {
     store::version_texts(&store::load_conversation(&config_dir(&app)?, &id)?, from)
+        .map_err(String::from)
 }
 
 /// A sample reply under unsaved instructions, for the instructions dialog's preview.
@@ -265,7 +269,7 @@ pub fn chat_add_memory(
 }
 
 #[tauri::command]
-pub fn chat_update_memory(
+pub fn chat_set_memory(
     app: AppHandle,
     id: String,
     text: String,
@@ -403,19 +407,20 @@ pub fn chat_set_skill_enabled(
 #[tauri::command]
 pub async fn chat_import_skill(app: AppHandle) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog()
-        .file()
-        .set_title("Import a skill (SKILL.md)")
-        .add_filter("Skill", &["md"])
-        .pick_file(move |path| {
-            let _ = tx.send(path);
-        });
-    let Some(path) = rx.await.map_err(|e| e.to_string())? else {
+    let Some(path) = crate::support::dialogs::pick_file(
+        app.dialog()
+            .file()
+            .set_title("Import a skill (SKILL.md)")
+            .add_filter("Skill", &["md"]),
+    )
+    .await?
+    else {
         return Ok(None);
     };
     let path = path.into_path().map_err(|e| e.to_string())?;
-    crate::chat::skills::import(&config_dir(&app)?, &path).map(Some)
+    crate::chat::skills::import(&config_dir(&app)?, &path)
+        .map(Some)
+        .map_err(String::from)
 }
 
 /// Adds files the user picks to a skill's folder (under `folder`, when given); returns the skills.
@@ -455,7 +460,7 @@ pub async fn chat_skill_add_files(
 /// A skill's supporting file, as text.
 #[tauri::command]
 pub fn chat_skill_read_file(app: AppHandle, name: String, path: String) -> Result<String, String> {
-    crate::chat::skills::read_file(&config_dir(&app)?, &name, &path)
+    crate::chat::skills::read_file(&config_dir(&app)?, &name, &path).map_err(String::from)
 }
 
 /// Writes a text file into a skill's folder (a new file, or an edit).
@@ -485,7 +490,9 @@ pub fn chat_skill_remove_file(
 /// Imports a skill from a link (a GitHub folder or a SKILL.md); returns its name.
 #[tauri::command]
 pub async fn chat_import_skill_url(app: AppHandle, url: String) -> Result<String, String> {
-    crate::chat::skills::import_from_link(&config_dir(&app)?, &url).await
+    crate::chat::skills::import_from_link(&config_dir(&app)?, &url)
+        .await
+        .map_err(String::from)
 }
 
 /// The learning switches (weekly knowledge review, skills from work); `change` sets them.
@@ -509,7 +516,7 @@ pub fn chat_versions(
     kind: String,
     id: String,
 ) -> Result<Vec<crate::chat::versions::Version>, String> {
-    crate::chat::versions::list(&config_dir(&app)?, &kind, &id)
+    crate::chat::versions::list(&config_dir(&app)?, &kind, &id).map_err(String::from)
 }
 
 /// The plugins of a Claude plugin marketplace on GitHub, to choose from; `None` when the link is
@@ -518,7 +525,9 @@ pub fn chat_versions(
 pub async fn chat_plugin_marketplace(
     link: String,
 ) -> Result<Option<Vec<crate::chat::plugins::MarketEntry>>, String> {
-    crate::chat::plugins::read_market(&link).await
+    crate::chat::plugins::read_market(&link)
+        .await
+        .map_err(String::from)
 }
 
 /// Imports Claude plugins (or a marketplace of them) from a GitHub link, or from a folder the
@@ -533,10 +542,7 @@ pub async fn chat_import_plugin(
     let files = match link.map(|l| l.trim().to_string()).filter(|l| !l.is_empty()) {
         Some(link) => {
             let (urls, folder) = plugins::github_sources(&link)?;
-            let client = reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(120))
-                .build()
-                .map_err(|e| e.to_string())?;
+            let client = crate::support::http::client(std::time::Duration::from_secs(120))?;
             let mut last = "The repository could not be downloaded.".to_string();
             let mut found = None;
             for url in urls {
@@ -554,14 +560,13 @@ pub async fn chat_import_plugin(
         }
         None => {
             use tauri_plugin_dialog::DialogExt;
-            let (tx, rx) = tokio::sync::oneshot::channel();
-            app.dialog()
-                .file()
-                .set_title("Choose a Claude plugin or marketplace folder")
-                .pick_folder(move |path| {
-                    let _ = tx.send(path);
-                });
-            let Some(path) = rx.await.map_err(|e| e.to_string())? else {
+            let Some(path) = crate::support::dialogs::pick_folder(
+                app.dialog()
+                    .file()
+                    .set_title("Choose a Claude plugin or marketplace folder"),
+            )
+            .await?
+            else {
                 return Ok(None);
             };
             let path = path.into_path().map_err(|e| e.to_string())?;
@@ -623,7 +628,7 @@ pub fn chat_skill_history(
     app: AppHandle,
     name: String,
 ) -> Result<Vec<crate::chat::skills::Version>, String> {
-    crate::chat::skills::history(&config_dir(&app)?, &name)
+    crate::chat::skills::history(&config_dir(&app)?, &name).map_err(String::from)
 }
 
 #[tauri::command]
@@ -635,4 +640,31 @@ pub fn chat_restore_skill(
     let dir = config_dir(&app)?;
     crate::chat::skills::restore(&dir, &name, &version)?;
     Ok(crate::chat::skills::list(&dir))
+}
+
+/// Vibe's "Sensitive data" switch for knowledge.
+#[tauri::command]
+pub fn chat_set_keep_sensitive_out(
+    app: AppHandle,
+    on: bool,
+) -> Result<crate::chat::memory::Memories, String> {
+    let dir = config_dir(&app)?;
+    let mut memories = crate::chat::memory::load(&dir);
+    memories.keep_sensitive_out = on;
+    crate::chat::memory::save(&dir, &memories)?;
+    Ok(memories)
+}
+
+/// Turns the finished recording into a skill draft for review; the screenshots are dropped then.
+#[tauri::command]
+pub async fn chat_record_draft(
+    app: AppHandle,
+    recorder: tauri::State<'_, crate::chat::recorder::Recorder>,
+    model: String,
+    note: String,
+) -> Result<crate::chat::recorder::Draft, String> {
+    let frames = recorder.frames();
+    let draft = crate::chat::recorder::draft(&config_dir(&app)?, &model, &frames, &note).await?;
+    recorder.discard();
+    Ok(draft)
 }

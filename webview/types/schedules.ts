@@ -13,8 +13,7 @@ export type ScheduleDefinition = {
   missedRunPolicy: 'catch_up' | 'run_once';
 };
 
-export type ScheduleRunStatus =
-  | 'pending' | 'accepted' | 'running' | 'succeeded' | 'failed' | 'interrupted' | 'skipped';
+export type ScheduleRunStatus = 'pending' | 'accepted' | 'running' | 'succeeded' | 'failed' | 'interrupted' | 'skipped';
 
 export type ScheduleRun = {
   runId: string;
@@ -43,9 +42,7 @@ export interface LumoSchedulesApi {
   getPendingRuns(input: { connectionId: string }): Promise<ScheduleRun[]>;
   getUnsettledRuns(input: { connectionId: string }): Promise<ScheduleRun[]>;
   /** Await durable acceptance before starting execution. Terminal results may be reconciled after reload. */
-  reportRunStatus(input: {
-    connectionId: string; runId: string; status: Exclude<ScheduleRunStatus, 'pending'>;
-  }): Promise<void>;
+  reportRunStatus(input: { connectionId: string; runId: string; status: Exclude<ScheduleRunStatus, 'pending'> }): Promise<void>;
   /** Doorbell only. Check connectionId and fetch pending work on reconnect even if no event arrived. */
   onWorkAvailable(callback: (event: ScheduleWorkAvailable) => void): () => void;
 }

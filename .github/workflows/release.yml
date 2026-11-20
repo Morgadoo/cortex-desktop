@@ -1,0 +1,176 @@
+name: Release
+
+# Builds Cortex for macOS, Windows and Linux when a version tag is pushed, and publishes it as a
+# GitHub release with signed update packages and the updater's latest.json. See docs/releasing.md.
+#
+#   v0.6.0          a stable release: GitHub's "latest", which the Stable channel follows
+#   v0.6.0-beta.1   a preview: a pre-release, which only the Preview channel follows
+#
+# Every release, stable or preview, also replaces preview.json on the rolling "updater" release,
+# so the Preview channel always offers the newest version published.
+
+on:
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  prepare:
+    name: Check the version and open a draft release
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.release.outputs.id }}
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: The tag matches the version in every file
+        id: version
+        run: |
+          node -e '
+            const fs = require("fs");
+            const tag = process.env.GITHUB_REF_NAME.replace(/^v/, "");
+            const conf = JSON.parse(fs.readFileSync("src-tauri/tauri.conf.json", "utf8")).version;
+            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8")).version;
+            const cargo = /\[package\][^[]*?\nversion\s*=\s*"([^"]+)"/.exec(fs.readFileSync("src-tauri/Cargo.toml", "utf8"))[1];
+            const all = { tag, "tauri.conf.json": conf, "package.json": pkg, "Cargo.toml": cargo };
+            if (new Set(Object.values(all)).size !== 1) {
+              console.error("Versions differ: " + JSON.stringify(all) + ". Run node scripts/set-version.mjs " + tag + ", commit and tag again.");
+              process.exit(1);
+            }
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${tag}\nprerelease=${tag.includes("-")}\n`);
+          '
+      - name: The signing key is set up
+        env:
+          PUBKEY: ${{ vars.UPDATER_PUBKEY }}
+          PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$PUBKEY" ] || [ -z "$PRIVATE_KEY" ]; then
+            echo "::error::Set the UPDATER_PUBKEY variable and the TAURI_SIGNING_PRIVATE_KEY secret first (docs/releasing.md)."
+            exit 1
+          fi
+      - name: Draft release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
+            -f tag_name="$GITHUB_REF_NAME" \
+            -f name="Cortex $VERSION" \
+            -F draft=true \
+            -F prerelease="$PRERELEASE" \
+            -F generate_release_notes=true \
+            --jq .id)
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build (${{ matrix.name }})
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS Apple silicon
+            os: macos-latest
+            target: aarch64-apple-darwin
+          - name: macOS Intel
+            os: macos-latest
+            target: x86_64-apple-darwin
+          - name: Windows
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - name: Linux
+            # The oldest supported Ubuntu, so the AppImage and packages run on older systems too.
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free disk space
+        if: runner.os == 'Linux'
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+      - name: System libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config cmake libssl-dev \
+            libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
+            libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev libxdo-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.target }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # The repository's release settings on top of tauri.conf.json: update packages on, its own
+      # update signing key, and no code-signing identity of the original project's.
+      - name: Release configuration
+        shell: bash
+        env:
+          PUBKEY: ${{ vars.UPDATER_PUBKEY }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const conf = JSON.parse(fs.readFileSync("src-tauri/tauri.github.conf.json", "utf8"));
+            conf.plugins = { updater: { pubkey: process.env.PUBKEY } };
+            fs.writeFileSync("src-tauri/tauri.release.conf.json", JSON.stringify(conf, null, 2));
+          '
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # The updater reads releases from this repository, so a fork's builds follow the fork.
+          CORTEX_RELEASES_REPO: ${{ github.repository }}
+        with:
+          releaseId: ${{ needs.prepare.outputs.release_id }}
+          args: --target ${{ matrix.target }} --config src-tauri/tauri.release.conf.json
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
+
+  publish:
+    name: Publish and update the channels
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ID: ${{ needs.prepare.outputs.release_id }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        run: |
+          # A stable release becomes GitHub's "latest", which is the Stable channel.
+          if [ "$PRERELEASE" = true ]; then latest=false; else latest=true; fi
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$ID" -F draft=false -f make_latest="$latest" > /dev/null
+      - name: Point the Preview channel at this release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern latest.json --dir channel
+          mv channel/latest.json channel/preview.json
+          if ! gh release view updater --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release create updater --repo "$GITHUB_REPOSITORY" --prerelease --latest=false \
+              --target "$GITHUB_SHA" --title "Update channels" \
+              --notes "Not a release. Holds preview.json, which the Preview update channel reads; every release replaces it."
+          fi
+          gh release upload updater channel/preview.json --repo "$GITHUB_REPOSITORY" --clobber

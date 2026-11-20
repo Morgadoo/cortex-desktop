@@ -41,10 +41,7 @@ pub async fn chat_set_image_server(
             return Err("Give the server's address, like http://127.0.0.1:7860.".into());
         }
         // A quick check that something answers there.
-        let ok = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(8))
-            .build()
-            .map_err(|e| e.to_string())?
+        let ok = crate::support::http::client(std::time::Duration::from_secs(8))?
             .get(format!("{u}/sdapi/v1/sd-models"))
             .send()
             .await;
@@ -87,12 +84,12 @@ pub fn chat_read_spreadsheet(data: String) -> Result<Vec<(String, String)>, Stri
     if bytes.len() > 30 * 1024 * 1024 {
         return Err("That workbook is too large.".into());
     }
-    crate::chat::sheets::read_workbook(&bytes)
+    crate::chat::sheets::read_workbook(&bytes).map_err(String::from)
 }
 
 #[tauri::command]
 pub fn chat_get_canvas(app: AppHandle, id: String) -> Result<crate::chat::canvas::Canvas, String> {
-    crate::chat::canvas::load(&config_dir(&app)?, &id)
+    crate::chat::canvas::load(&config_dir(&app)?, &id).map_err(String::from)
 }
 
 /// Saves the user's edit as a new version.
@@ -113,6 +110,7 @@ pub fn chat_save_canvas(
         &content,
         "user",
     )
+    .map_err(String::from)
 }
 
 /// Opens an app canvas in a window of its own (LibreChat's artifact in a new window), or brings
@@ -162,7 +160,17 @@ pub fn chat_emoji_status(
     app: AppHandle,
     style: String,
 ) -> Result<crate::chat::emoji_pack::Status, String> {
-    Ok(crate::chat::emoji_pack::status(&emoji_root(&app)?, &style))
+    Ok(crate::chat::emoji_pack::status(
+        &installs(&app),
+        &emoji_root(&app)?,
+        &style,
+    ))
+}
+
+/// The emoji packs being downloaded, in the app's state.
+fn installs(app: &AppHandle) -> std::sync::Arc<crate::chat::emoji_pack::Installs> {
+    app.state::<ChatState>()
+        .part::<crate::chat::emoji_pack::Installs>()
 }
 
 /// Downloads an emoji pack in the background; `chat://emoji` reports when it is ready or failed.
@@ -174,20 +182,21 @@ pub fn chat_emoji_install(
     use tauri::Emitter as _;
     let root = emoji_root(&app)?;
     crate::chat::emoji_pack::pack(&style).ok_or("Unknown emoji style.")?;
-    let now = crate::chat::emoji_pack::status(&root, &style);
+    let installs = installs(&app);
+    let now = crate::chat::emoji_pack::status(&installs, &root, &style);
     if now.state == "ready" || now.state == "downloading" {
         return Ok(now);
     }
     let style2 = style.clone();
     let root2 = root.clone();
     tauri::async_runtime::spawn(async move {
-        let result = crate::chat::emoji_pack::install(&root2, &style2).await;
+        let result = crate::chat::emoji_pack::install(&installs, &root2, &style2).await;
         if let Err(e) = &result {
             log::warn!("the {style2} emoji could not be installed: {e}");
         }
         let _ = app.emit(
             "chat://emoji",
-            crate::chat::emoji_pack::status(&root2, &style2),
+            crate::chat::emoji_pack::status(&installs, &root2, &style2),
         );
     });
     Ok(crate::chat::emoji_pack::Status {
@@ -233,14 +242,9 @@ pub async fn chat_save_output(
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog()
-        .file()
-        .set_file_name(&name)
-        .save_file(move |p| {
-            let _ = tx.send(p);
-        });
-    let Some(target) = rx.await.map_err(|e| e.to_string())? else {
+    let Some(target) =
+        crate::support::dialogs::save_file(app.dialog().file().set_file_name(&name)).await?
+    else {
         return Ok(false);
     };
     std::fs::write(target.into_path().map_err(|e| e.to_string())?, bytes)
@@ -415,7 +419,7 @@ pub async fn chat_read_video(
     crate::chat::at_rest::write(&path, bytes).map_err(|e| e.to_string())?;
     let digest = crate::chat::video::digest(&config_dir(&app)?, &path).await;
     let _ = std::fs::remove_file(&path);
-    digest
+    digest.map_err(String::from)
 }
 
 /// A web page's title, description and preview image, for the hover card on a citation.
@@ -424,5 +428,7 @@ pub async fn chat_link_preview(
     app: AppHandle,
     url: String,
 ) -> Result<crate::chat::preview::Preview, String> {
-    crate::chat::preview::get(&config_dir(&app)?, &url).await
+    crate::chat::preview::get(&config_dir(&app)?, &url)
+        .await
+        .map_err(String::from)
 }

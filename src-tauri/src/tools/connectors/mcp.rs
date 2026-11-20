@@ -1,8 +1,11 @@
 mod catalog;
 mod config;
 mod credentials;
+mod environment;
 mod migrations;
+mod sign_in;
 mod tool_cache;
+mod vetting;
 
 pub use config::{
     load_mcp_servers, save_mcp_servers, validate_server_id, CustomHeader, HttpAuth,
@@ -37,6 +40,7 @@ use credentials::{
     client_secret_key, credential_state, env_secret_key, header_secret_key, token_key,
     BoundSecrets, KeychainCredentialStore, McpCredentialInput, UserAgentOAuthHttpClient,
 };
+use environment::{child_env, inherited_env};
 use log::{debug, info, warn};
 use reqwest::header::{HeaderName, HeaderValue, AUTHORIZATION};
 use rmcp::model::{CallToolRequestParams, ClientConfig, ProtocolVersion};
@@ -56,144 +60,11 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::Mutex;
 use tool_cache::AccountToolCache;
-
-/// Servers are third-party: only a catalog server's tool that declares itself read-only runs
-/// unprompted. A server added by hand can label anything read-only.
-fn default_policy(read_only: Option<bool>, catalog: bool) -> ToolPolicy {
-    if catalog && read_only == Some(true) {
-        ToolPolicy::AutoApprove
-    } else {
-        ToolPolicy::Ask
-    }
-}
-
-/// Applied to discovered and cached tools alike: caches written by older builds recorded
-/// AutoApprove for every tool, and could hold hidden characters.
-fn vet(mut tool: ToolDefinition, catalog: bool) -> ToolDefinition {
-    tool.policy = default_policy(tool.read_only, catalog);
-    tool.description = hidden_text::strip(&tool.description);
-    tool.title = tool.title.as_deref().map(hidden_text::strip);
-    hidden_text::strip_value(&mut tool.input_schema);
-    tool
-}
-
-fn tool_definition(tool: rmcp::model::Tool, catalog: bool) -> ToolDefinition {
-    let read_only = tool.annotations.as_ref().and_then(|a| a.read_only_hint);
-    let definition = ToolDefinition {
-        policy: ToolPolicy::Ask,
-        input_schema: tool.schema_as_json_value(),
-        title: tool
-            .title
-            .clone()
-            .or_else(|| tool.annotations.as_ref().and_then(|a| a.title.clone())),
-        read_only,
-        open_world: tool.annotations.as_ref().and_then(|a| a.open_world_hint),
-        name: tool.name.to_string(),
-        description: tool.description.map(|d| d.to_string()).unwrap_or_default(),
-    };
-    vet(definition, catalog)
-}
+use vetting::{tool_definition, vet};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 const DEFAULT_CALL_TIMEOUT: Duration = Duration::from_secs(60);
 const MCP_OAUTH_REDIRECT_PORTS: [u16; 3] = [9876, 9877, 9878];
-
-/// Variables a stdio server inherits from Cortex. Everything else is withheld, so a token exported
-/// in the user's shell profile doesn't reach every local server; a server that needs one gets it
-/// through its config's `env` or `secret_env`.
-const INHERITED_ENV: &[&str] = &[
-    // Identity, locale and scratch space.
-    "HOME",
-    "USER",
-    "LOGNAME",
-    "SHELL",
-    "TERM",
-    "LANG",
-    "LANGUAGE",
-    "TZ",
-    "TMPDIR",
-    "__CF_USER_TEXT_ENCODING",
-    // Corporate networks.
-    "HTTP_PROXY",
-    "HTTPS_PROXY",
-    "NO_PROXY",
-    "ALL_PROXY",
-    "SSL_CERT_FILE",
-    "SSL_CERT_DIR",
-    "NODE_EXTRA_CA_CERTS",
-    "REQUESTS_CA_BUNDLE",
-    "CURL_CA_BUNDLE",
-    // Servers that open a browser or use the keyring on Linux.
-    "DISPLAY",
-    "WAYLAND_DISPLAY",
-    "XAUTHORITY",
-    "DBUS_SESSION_BUS_ADDRESS",
-    "XDG_RUNTIME_DIR",
-    "XDG_SESSION_TYPE",
-    "XDG_CURRENT_DESKTOP",
-    "XDG_DATA_DIRS",
-    "XDG_CONFIG_DIRS",
-    "XDG_CONFIG_HOME",
-    "XDG_DATA_HOME",
-    "XDG_CACHE_HOME",
-    "XDG_STATE_HOME",
-    // Version managers whose shims the resolved PATH can point at.
-    "NVM_DIR",
-    "VOLTA_HOME",
-    "PYENV_ROOT",
-    "ASDF_DIR",
-    "ASDF_DATA_DIR",
-    // Windows programs fail to start, or fail oddly, without these.
-    "SYSTEMROOT",
-    "SYSTEMDRIVE",
-    "WINDIR",
-    "COMSPEC",
-    "PATHEXT",
-    "APPDATA",
-    "LOCALAPPDATA",
-    "USERPROFILE",
-    "USERNAME",
-    "USERDOMAIN",
-    "HOMEDRIVE",
-    "HOMEPATH",
-    "TEMP",
-    "TMP",
-    "PROGRAMDATA",
-    "ALLUSERSPROFILE",
-    "PUBLIC",
-    "PROGRAMFILES",
-    "PROGRAMFILES(X86)",
-    "PROGRAMW6432",
-    "COMMONPROGRAMFILES",
-    "COMMONPROGRAMFILES(X86)",
-    "COMMONPROGRAMW6432",
-    "COMPUTERNAME",
-    "OS",
-    "PROCESSOR_ARCHITECTURE",
-    "NUMBER_OF_PROCESSORS",
-];
-
-/// Windows variable names are case-insensitive, and proxy variables are often lowercase.
-fn is_inherited(name: &str) -> bool {
-    let upper = name.to_ascii_uppercase();
-    INHERITED_ENV.contains(&upper.as_str()) || upper.starts_with("LC_")
-}
-
-fn inherited_env(
-    vars: impl IntoIterator<Item = (std::ffi::OsString, std::ffi::OsString)>,
-) -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
-    vars.into_iter()
-        .filter(|(name, _)| name.to_str().is_some_and(is_inherited))
-        .collect()
-}
-
-/// The variables set on top of the inherited ones: the resolved search path, then the config's
-/// `env` laid over it.
-fn child_env(env: &HashMap<String, String>, search_path: &str) -> HashMap<String, String> {
-    let mut resolved = HashMap::from([("PATH".to_string(), search_path.to_string())]);
-    resolved.extend(env.clone());
-    resolved
-}
 
 pub struct McpConnector {
     id: String,
@@ -449,50 +320,7 @@ impl McpConnector {
                 args,
                 env,
                 secret_env,
-            } => {
-                let env = self.resolved_env(env, secret_env).await?;
-
-                let resolved = command_path::resolve(command)
-                    .await
-                    .map_err(|e| ToolError::Unreachable(format!("{}: {e}", self.id)))?;
-
-                let command =
-                    background_command(Command::new(&resolved.program).configure(|cmd| {
-                        cmd.args(args);
-                        cmd.env_clear();
-                        cmd.envs(inherited_env(std::env::vars_os()));
-                        cmd.envs(child_env(&env, &resolved.search_path));
-                    }));
-
-                let (transport, stderr) = TokioChildProcess::builder(command)
-                    .stderr(std::process::Stdio::piped())
-                    .spawn()
-                    .map_err(|e| {
-                        ToolError::Unreachable(format!("{}: failed to start server: {e}", self.id))
-                    })?;
-
-                if let Some(stderr) = stderr {
-                    let connector_id = self.connector_id();
-                    tokio::spawn(async move {
-                        let mut lines = BufReader::new(stderr).lines();
-                        while let Ok(Some(line)) = lines.next_line().await {
-                            debug!("[{connector_id}] {line}");
-                        }
-                    });
-                }
-
-                tokio::time::timeout(CONNECT_TIMEOUT, Self::mcp_client().serve(transport))
-                    .await
-                    .map_err(|_| {
-                        ToolError::Unreachable(format!(
-                            "{}: no response within {CONNECT_TIMEOUT:?}",
-                            self.id
-                        ))
-                    })?
-                    .map_err(|e| {
-                        ToolError::Unreachable(format!("{}: initialize failed: {e}", self.id))
-                    })?
-            }
+            } => self.connect_stdio(command, args, env, secret_env).await?,
             McpTransport::Http {
                 url,
                 request_headers,
@@ -500,154 +328,42 @@ impl McpConnector {
                     scopes, client_id, ..
                 },
             } => {
-                let mut manager = self
-                    .new_oauth_manager(url)
-                    .await
-                    .map_err(ToolError::ExecutionFailed)?;
-
-                let has_creds = manager.initialize_from_store().await.map_err(|e| {
-                    ToolError::ExecutionFailed(format!("OAuth credential load failed: {e}"))
-                })?;
-                if !has_creds {
-                    return Err(ToolError::NotAuthenticated);
-                }
-
-                // Confidential clients: re-supply the client_secret so rmcp's
-                // implicit token refresh can authenticate. initialize_from_store
-                // only restores a secret-less client from the stored client_id.
-                if let Some(client_id) = client_id {
-                    self.configure_confidential_client(
-                        &mut manager,
-                        client_id,
-                        scopes,
-                        &self.oauth_redirect_uri(MCP_OAUTH_REDIRECT_PORTS[0]),
-                    )
-                    .await
-                    .map_err(ToolError::ExecutionFailed)?;
-                }
-
-                let auth_client = AuthClient::new(reqwest::Client::new(), manager);
-                let transport = StreamableHttpClientTransport::with_client(
-                    auth_client,
-                    Self::http_transport_config(url, request_headers)?,
-                );
-
-                tokio::time::timeout(CONNECT_TIMEOUT, Self::mcp_client().serve(transport))
-                    .await
-                    .map_err(|_| {
-                        ToolError::Unreachable(format!(
-                            "{}: no response within {CONNECT_TIMEOUT:?}",
-                            self.id
-                        ))
-                    })?
-                    .map_err(|e| {
-                        ToolError::Unreachable(format!("{}: initialize failed: {e}", self.id))
-                    })?
+                self.connect_oauth(url, request_headers, scopes, client_id.as_deref())
+                    .await?
             }
             McpTransport::Http {
                 url,
                 request_headers,
                 auth: HttpAuth::Token { scheme },
             } => {
-                let token = self
-                    .secrets
-                    .load(&self.token_key())
-                    .await
-                    .map_err(ToolError::ExecutionFailed)?
-                    .filter(|v| !v.is_empty())
-                    .ok_or(ToolError::NotAuthenticated)?;
-
-                let header = HeaderValue::from_str(&format!("{scheme} {token}")).map_err(|e| {
-                    ToolError::ExecutionFailed(format!("invalid Authorization header: {e}"))
-                })?;
-                let mut headers = Self::parse_request_headers(request_headers)?;
-                headers.insert(AUTHORIZATION, header);
-
-                let transport = StreamableHttpClientTransport::from_config(
+                let headers = self.token_headers(request_headers, scheme).await?;
+                self.serve(StreamableHttpClientTransport::from_config(
                     StreamableHttpClientTransportConfig::with_uri(url.clone())
                         .custom_headers(headers),
-                );
-
-                tokio::time::timeout(CONNECT_TIMEOUT, Self::mcp_client().serve(transport))
-                    .await
-                    .map_err(|_| {
-                        ToolError::Unreachable(format!(
-                            "{}: no response within {CONNECT_TIMEOUT:?}",
-                            self.id
-                        ))
-                    })?
-                    .map_err(|e| {
-                        ToolError::Unreachable(format!("{}: initialize failed: {e}", self.id))
-                    })?
+                ))
+                .await?
             }
             McpTransport::Http {
                 url,
                 request_headers,
                 auth: HttpAuth::Headers { headers },
             } => {
-                let mut header_map = Self::parse_request_headers(request_headers)?;
-                for spec in headers {
-                    let secret = self
-                        .secrets
-                        .load(&self.header_secret_key(&spec.name))
-                        .await
-                        .map_err(ToolError::ExecutionFailed)?
-                        .filter(|v| !v.is_empty())
-                        .ok_or(ToolError::NotAuthenticated)?;
-
-                    let name = HeaderName::from_bytes(spec.name.as_bytes()).map_err(|e| {
-                        ToolError::ExecutionFailed(format!(
-                            "invalid header name '{}': {e}",
-                            spec.name
-                        ))
-                    })?;
-                    let value = HeaderValue::from_str(&format!("{}{}", spec.prefix, secret))
-                        .map_err(|e| {
-                            ToolError::ExecutionFailed(format!(
-                                "invalid value for header '{}': {e}",
-                                spec.name
-                            ))
-                        })?;
-                    header_map.insert(name, value);
-                }
-
-                let transport = StreamableHttpClientTransport::from_config(
+                let headers = self.secret_headers(request_headers, headers).await?;
+                self.serve(StreamableHttpClientTransport::from_config(
                     StreamableHttpClientTransportConfig::with_uri(url.clone())
-                        .custom_headers(header_map),
-                );
-
-                tokio::time::timeout(CONNECT_TIMEOUT, Self::mcp_client().serve(transport))
-                    .await
-                    .map_err(|_| {
-                        ToolError::Unreachable(format!(
-                            "{}: no response within {CONNECT_TIMEOUT:?}",
-                            self.id
-                        ))
-                    })?
-                    .map_err(|e| {
-                        ToolError::Unreachable(format!("{}: initialize failed: {e}", self.id))
-                    })?
+                        .custom_headers(headers),
+                ))
+                .await?
             }
             McpTransport::Http {
                 url,
                 request_headers,
                 auth: HttpAuth::None,
             } => {
-                let transport = StreamableHttpClientTransport::from_config(
+                self.serve(StreamableHttpClientTransport::from_config(
                     Self::http_transport_config(url, request_headers)?,
-                );
-
-                tokio::time::timeout(CONNECT_TIMEOUT, Self::mcp_client().serve(transport))
-                    .await
-                    .map_err(|_| {
-                        ToolError::Unreachable(format!(
-                            "{}: no response within {CONNECT_TIMEOUT:?}",
-                            self.id
-                        ))
-                    })?
-                    .map_err(|e| {
-                        ToolError::Unreachable(format!("{}: initialize failed: {e}", self.id))
-                    })?
+                ))
+                .await?
             }
         };
 
@@ -668,164 +384,162 @@ impl McpConnector {
         Ok(())
     }
 
-    fn oauth_redirect_uri(&self, port: u16) -> String {
-        if self.uses_slack_callback() {
-            SLACK_CALLBACK_URI.to_string()
-        } else {
-            format!("http://127.0.0.1:{port}/callback")
-        }
-    }
-
-    fn uses_slack_callback(&self) -> bool {
-        matches!(&self.config.transport, McpTransport::Http { url, .. }
-            if url::Url::parse(url).is_ok_and(|url|
-                url.scheme() == "https" && url.host_str() == Some("mcp.slack.com")
-                && url.path().trim_end_matches('/') == "/mcp"))
-    }
-
-    /// Builds an `AuthorizationManager` with the keychain credential store and
-    /// server metadata already discovered, so callers never depend on another
-    /// method's discovery side effects.
-    async fn new_oauth_manager(&self, oauth_base: &str) -> Result<AuthorizationManager, String> {
-        let http_client =
-            default_oauth_http_client().map_err(|e| format!("OAuth init failed: {e}"))?;
-        let mut manager = AuthorizationManager::new_with_oauth_http_client(
-            oauth_base.to_string(),
-            std::sync::Arc::new(UserAgentOAuthHttpClient(http_client)),
-        )
-        .await
-        .map_err(|e| format!("OAuth init failed: {e}"))?;
-        manager.set_credential_store(KeychainCredentialStore::new(
-            self.secrets.clone(),
-            self.connector_id(),
-        ));
-
-        let resolution = manager
-            .resolve_metadata()
+    /// Opens the MCP session over `transport`, giving up after [`CONNECT_TIMEOUT`].
+    async fn serve<T, E, A>(
+        &self,
+        transport: T,
+    ) -> Result<RunningService<RoleClient, ClientConfig>, ToolError>
+    where
+        T: rmcp::transport::IntoTransport<RoleClient, E, A>,
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        tokio::time::timeout(CONNECT_TIMEOUT, Self::mcp_client().serve(transport))
             .await
-            .map_err(|e| format!("OAuth metadata discovery failed: {e}"))?;
-        manager.set_metadata(resolution.metadata);
-
-        Ok(manager)
+            .map_err(|_| {
+                ToolError::Unreachable(format!(
+                    "{}: no response within {CONNECT_TIMEOUT:?}",
+                    self.id
+                ))
+            })?
+            .map_err(|e| ToolError::Unreachable(format!("{}: initialize failed: {e}", self.id)))
     }
 
-    /// Configures an explicit-`client_id` (confidential) OAuth client, attaching
-    /// the stored `client_secret` when one is present.
-    ///
-    /// Must be called after server metadata is set and, on the reconnect path,
-    /// after `initialize_from_store`, which would otherwise install a secret-less
-    /// client that clobbers this configuration.
-    async fn configure_confidential_client(
+    /// Starts a local server with a cleared environment (what it is given, the few variables it
+    /// inherits, and the login shell's PATH), logging what it writes to stderr.
+    async fn connect_stdio(
         &self,
-        manager: &mut AuthorizationManager,
-        client_id: &str,
-        scopes: &[String],
-        redirect_uri: &str,
-    ) -> Result<(), String> {
-        let mut config = OAuthClientConfig::new(client_id.to_string(), redirect_uri.to_string())
-            .with_scopes(scopes.to_vec());
-        if let Some(secret) = self
-            .secrets
-            .load(&self.client_secret_key())
-            .await?
-            .filter(|v| !v.is_empty())
-        {
-            config = config.with_client_secret(secret);
+        command: &str,
+        args: &[String],
+        env: &HashMap<String, String>,
+        secret_env: &[String],
+    ) -> Result<RunningService<RoleClient, ClientConfig>, ToolError> {
+        let env = self.resolved_env(env, secret_env).await?;
+
+        let resolved = command_path::resolve(command)
+            .await
+            .map_err(|e| ToolError::Unreachable(format!("{}: {e}", self.id)))?;
+
+        let command = background_command(Command::new(&resolved.program).configure(|cmd| {
+            cmd.args(args);
+            cmd.env_clear();
+            cmd.envs(inherited_env(std::env::vars_os()));
+            cmd.envs(child_env(&env, &resolved.search_path));
+        }));
+
+        let (transport, stderr) = TokioChildProcess::builder(command)
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| {
+                ToolError::Unreachable(format!("{}: failed to start server: {e}", self.id))
+            })?;
+
+        if let Some(stderr) = stderr {
+            let connector_id = self.connector_id();
+            tokio::spawn(async move {
+                let mut lines = BufReader::new(stderr).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    debug!("[{connector_id}] {line}");
+                }
+            });
         }
-        manager
-            .configure_client(config)
-            .map_err(|e| format!("client configuration failed: {e}"))
+
+        self.serve(transport).await
     }
 
-    fn append_authorize_params(
-        auth_url: &str,
-        params: &HashMap<String, String>,
-    ) -> Result<String, String> {
-        if params.is_empty() {
-            return Ok(auth_url.to_string());
-        }
-        let mut parsed =
-            url::Url::parse(auth_url).map_err(|e| format!("invalid authorization URL: {e}"))?;
-        {
-            let mut pairs = parsed.query_pairs_mut();
-            for (key, value) in params {
-                pairs.append_pair(key, value);
-            }
-        }
-        Ok(parsed.to_string())
-    }
-
-    async fn authenticate_http(
+    /// Connects with the OAuth tokens kept for this server, refreshed by rmcp as they expire.
+    async fn connect_oauth(
         &self,
-        oauth_base: &str,
+        url: &str,
+        request_headers: &HashMap<String, String>,
         scopes: &[String],
         client_id: Option<&str>,
-        authorize_params: &HashMap<String, String>,
-    ) -> Result<(), AuthError> {
-        let listener = if self.uses_slack_callback() {
-            None
-        } else {
-            Some(bind_oauth_callback(&MCP_OAUTH_REDIRECT_PORTS).await?)
-        };
-        let redirect_uri = match &listener {
-            Some(listener) => self.oauth_redirect_uri(
-                listener
-                    .local_addr()
-                    .map_err(|e| AuthError::Failed(e.to_string()))?
-                    .port(),
-            ),
-            None => SLACK_CALLBACK_URI.to_string(),
-        };
-
+    ) -> Result<RunningService<RoleClient, ClientConfig>, ToolError> {
         let mut manager = self
-            .new_oauth_manager(oauth_base)
+            .new_oauth_manager(url)
             .await
-            .map_err(AuthError::Failed)?;
+            .map_err(ToolError::ExecutionFailed)?;
 
-        let scope_refs: Vec<&str> = scopes.iter().map(String::as_str).collect();
-
-        match client_id {
-            Some(client_id) => {
-                self.configure_confidential_client(&mut manager, client_id, scopes, &redirect_uri)
-                    .await
-                    .map_err(AuthError::Failed)?;
-            }
-            None => {
-                manager
-                    .register_client("Cortex Desktop", &redirect_uri, &scope_refs)
-                    .await
-                    .map_err(|e| AuthError::Failed(format!("client registration failed: {e}")))?;
-            }
+        let has_creds = manager.initialize_from_store().await.map_err(|e| {
+            ToolError::ExecutionFailed(format!("OAuth credential load failed: {e}"))
+        })?;
+        if !has_creds {
+            return Err(ToolError::NotAuthenticated);
         }
 
-        let auth_url = manager
-            .get_authorization_url(&scope_refs)
+        // Confidential clients: re-supply the client_secret so rmcp's
+        // implicit token refresh can authenticate. initialize_from_store
+        // only restores a secret-less client from the stored client_id.
+        if let Some(client_id) = client_id {
+            self.configure_confidential_client(
+                &mut manager,
+                client_id,
+                scopes,
+                &self.oauth_redirect_uri(MCP_OAUTH_REDIRECT_PORTS[0]),
+            )
             .await
-            .map_err(|e| AuthError::Failed(format!("authorization URL failed: {e}")))?;
-        let auth_url = Self::append_authorize_params(&auth_url, authorize_params)
-            .map_err(AuthError::Failed)?;
-        let auth_url = browser_url(&auth_url)?.to_string();
-        let (code, state, issuer) = match listener {
-            Some(listener) => {
-                open::that(&auth_url).map_err(|e| {
-                    AuthError::Failed(format!("failed to open browser: {:?}", e.kind()))
-                })?;
-                wait_for_oauth_callback(listener).await?
-            }
-            None => {
-                let callback = DeepLinkCallback::register(&auth_url)?;
-                open::that(&auth_url).map_err(|e| {
-                    AuthError::Failed(format!("failed to open browser: {:?}", e.kind()))
-                })?;
-                callback.wait().await?
-            }
-        };
-        manager
-            .exchange_code_for_token_with_issuer(&code, &state, issuer.as_deref())
-            .await
-            .map_err(|e| AuthError::Failed(format!("token exchange failed: {e}")))?;
+            .map_err(ToolError::ExecutionFailed)?;
+        }
 
-        Ok(())
+        let auth_client = AuthClient::new(reqwest::Client::new(), manager);
+        self.serve(StreamableHttpClientTransport::with_client(
+            auth_client,
+            Self::http_transport_config(url, request_headers)?,
+        ))
+        .await
+    }
+
+    /// The request headers with `Authorization: <scheme> <token>`, from the token kept for this
+    /// server.
+    async fn token_headers(
+        &self,
+        request_headers: &HashMap<String, String>,
+        scheme: &str,
+    ) -> Result<HashMap<HeaderName, HeaderValue>, ToolError> {
+        let token = self
+            .secrets
+            .load(&self.token_key())
+            .await
+            .map_err(ToolError::ExecutionFailed)?
+            .filter(|v| !v.is_empty())
+            .ok_or(ToolError::NotAuthenticated)?;
+
+        let header = HeaderValue::from_str(&format!("{scheme} {token}")).map_err(|e| {
+            ToolError::ExecutionFailed(format!("invalid Authorization header: {e}"))
+        })?;
+        let mut headers = Self::parse_request_headers(request_headers)?;
+        headers.insert(AUTHORIZATION, header);
+        Ok(headers)
+    }
+
+    /// The request headers with each secret header the server needs, from the values kept for it.
+    async fn secret_headers(
+        &self,
+        request_headers: &HashMap<String, String>,
+        headers: &[CustomHeader],
+    ) -> Result<HashMap<HeaderName, HeaderValue>, ToolError> {
+        let mut header_map = Self::parse_request_headers(request_headers)?;
+        for spec in headers {
+            let secret = self
+                .secrets
+                .load(&self.header_secret_key(&spec.name))
+                .await
+                .map_err(ToolError::ExecutionFailed)?
+                .filter(|v| !v.is_empty())
+                .ok_or(ToolError::NotAuthenticated)?;
+
+            let name = HeaderName::from_bytes(spec.name.as_bytes()).map_err(|e| {
+                ToolError::ExecutionFailed(format!("invalid header name '{}': {e}", spec.name))
+            })?;
+            let value =
+                HeaderValue::from_str(&format!("{}{}", spec.prefix, secret)).map_err(|e| {
+                    ToolError::ExecutionFailed(format!(
+                        "invalid value for header '{}': {e}",
+                        spec.name
+                    ))
+                })?;
+            header_map.insert(name, value);
+        }
+        Ok(header_map)
     }
 
     /// Ends the session and falls back to the cached tool list.
@@ -1022,78 +736,6 @@ pub fn resource_text(result: &Value) -> String {
                 .join("\n\n")
         })
         .unwrap_or_default()
-}
-
-#[async_trait]
-impl Credentialed for McpConnector {
-    async fn authenticate(
-        &self,
-        input: Option<Value>,
-        mode: Interactive,
-    ) -> Result<Stored, AuthError> {
-        let supplied = McpCredentialInput::parse(input)?;
-
-        let wrote = self.store_supplied(&supplied).await?;
-        let state = credential_state(&self.config, self.secrets.as_ref()).await;
-        self.set_credentials(state);
-        match state {
-            CredentialState::Present => return Ok(wrote),
-            CredentialState::Unreadable => {
-                return Err(AuthError::Failed(
-                    "secure storage is unavailable, so stored credentials could not be read".into(),
-                ))
-            }
-            CredentialState::Absent => {}
-        }
-
-        // Only an HTTP transport has a flow to start: a secret environment variable is supplied
-        // through the form or not at all.
-        let McpTransport::Http { url, auth, .. } = &self.config.transport else {
-            return Err(AuthError::RequiresSetup);
-        };
-
-        match auth {
-            HttpAuth::Oauth {
-                scopes,
-                client_id,
-                resource: _,
-                authorize_params,
-            } => {
-                if mode == Interactive::No {
-                    return Err(AuthError::RequiresSetup);
-                }
-                self.authenticate_http(url, scopes, client_id.as_deref(), authorize_params)
-                    .await?;
-                self.set_credentials(CredentialState::Present);
-                Ok(Stored::Something)
-            }
-            HttpAuth::Token { .. } | HttpAuth::Headers { .. } => Err(AuthError::RequiresSetup),
-            HttpAuth::None => Ok(wrote),
-        }
-    }
-
-    async fn forget(&self) -> Result<(), String> {
-        match &self.config.transport {
-            McpTransport::Stdio { secret_env, .. } => {
-                for name in secret_env {
-                    self.secrets.delete(&self.env_secret_key(name)).await?;
-                }
-            }
-            McpTransport::Http { auth, .. } => {
-                self.secrets.delete(&self.id).await?;
-                self.secrets.delete(&self.token_key()).await?;
-                if let HttpAuth::Headers { headers } = auth {
-                    for header in headers {
-                        self.secrets
-                            .delete(&self.header_secret_key(&header.name))
-                            .await?;
-                    }
-                }
-            }
-        }
-        self.set_credentials(CredentialState::Absent);
-        Ok(())
-    }
 }
 
 #[async_trait]

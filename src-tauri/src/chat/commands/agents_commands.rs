@@ -1,4 +1,4 @@
-//! Agents: the team, its organization, templates, notebooks and the arena.
+//! Agents and workflows: the team, its organization, templates, notebooks, the arena, saved and drafted workflows, and which version of each is in production.
 
 use super::*;
 
@@ -19,7 +19,7 @@ pub fn chat_set_router_models(
     let mut file = crate::chat::providers::load(&dir);
     file.router_fast = fast.filter(|m| !m.trim().is_empty() && m != crate::chat::router::AUTO);
     file.router_strong = strong.filter(|m| !m.trim().is_empty() && m != crate::chat::router::AUTO);
-    crate::chat::providers::save(&dir, &file)
+    crate::chat::providers::save(&dir, &file).map_err(String::from)
 }
 
 /// The community agent catalog (LobeHub's open index, or another with its layout).
@@ -40,6 +40,7 @@ pub async fn chat_agent_market(
         refresh.unwrap_or(false),
     )
     .await
+    .map_err(String::from)
 }
 
 /// Adds a catalog agent as one of the user's agents.
@@ -60,6 +61,7 @@ pub async fn chat_install_market_agent(
         &identifier,
     )
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -77,7 +79,7 @@ pub fn chat_save_agent(
     app: AppHandle,
     agent: crate::chat::agents::Agent,
 ) -> Result<Vec<crate::chat::agents::Agent>, String> {
-    crate::chat::agents::save(&config_dir(&app)?, agent)
+    crate::chat::agents::save(&config_dir(&app)?, agent).map_err(String::from)
 }
 
 #[tauri::command]
@@ -85,7 +87,7 @@ pub fn chat_delete_agent(
     app: AppHandle,
     id: String,
 ) -> Result<Vec<crate::chat::agents::Agent>, String> {
-    crate::chat::agents::delete(&config_dir(&app)?, &id)
+    crate::chat::agents::delete(&config_dir(&app)?, &id).map_err(String::from)
 }
 
 /// Whether new chats go to the best-suited agent by themselves.
@@ -104,7 +106,7 @@ pub fn chat_agent_files(
     app: AppHandle,
     id: String,
 ) -> Result<crate::chat::libraries::Library, String> {
-    crate::chat::agents::files_library(&config_dir(&app)?, &id)
+    crate::chat::agents::files_library(&config_dir(&app)?, &id).map_err(String::from)
 }
 
 /// Opens an agent's browser profile in a window, to sign in to sites for it; `clear` forgets it.
@@ -117,19 +119,21 @@ pub fn chat_agent_browser(
 ) -> Result<(), String> {
     let dir = config_dir(&app)?;
     if clear {
-        return crate::chat::webpage::clear_profile(&dir, agent_id.as_deref());
+        return crate::chat::webpage::clear_profile(&dir, agent_id.as_deref())
+            .map_err(String::from);
     }
     crate::chat::webpage::open_profile(
         &dir,
         agent_id.as_deref(),
         url.as_deref().unwrap_or_default(),
     )
+    .map_err(String::from)
 }
 
 /// Forgets an agent's code environment (its files and installed packages).
 #[tauri::command]
 pub fn chat_reset_agent_env(app: AppHandle, id: String) -> Result<(), String> {
-    crate::chat::sandbox::reset_agent_env(&config_dir(&app)?, &id)
+    crate::chat::sandbox::reset_agent_env(&config_dir(&app)?, &id).map_err(String::from)
 }
 
 /// The user's ACP agents; `agents` replaces them. Returns every one that can start.
@@ -149,15 +153,14 @@ pub fn chat_acp_agents(
 #[tauri::command]
 pub async fn chat_import_agent(app: AppHandle) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog()
-        .file()
-        .set_title("Import an agent")
-        .add_filter("Agent", &["json"])
-        .pick_file(move |path| {
-            let _ = tx.send(path);
-        });
-    let Some(path) = rx.await.map_err(|e| e.to_string())? else {
+    let Some(path) = crate::support::dialogs::pick_file(
+        app.dialog()
+            .file()
+            .set_title("Import an agent")
+            .add_filter("Agent", &["json"]),
+    )
+    .await?
+    else {
         return Ok(None);
     };
     let path = path.into_path().map_err(|e| e.to_string())?;
@@ -204,7 +207,7 @@ pub fn chat_forget_recent_file(
     app: AppHandle,
     index: Option<usize>,
 ) -> Result<Vec<crate::chat::recent_files::RecentFile>, String> {
-    crate::chat::recent_files::forget(&config_dir(&app)?, index)
+    crate::chat::recent_files::forget(&config_dir(&app)?, index).map_err(String::from)
 }
 
 /// Records which model's answer was kept in a comparison.
@@ -214,7 +217,7 @@ pub fn chat_arena_record(
     winner: String,
     losers: Vec<String>,
 ) -> Result<(), String> {
-    crate::chat::arena::record(&config_dir(&app)?, &winner, &losers)
+    crate::chat::arena::record(&config_dir(&app)?, &winner, &losers).map_err(String::from)
 }
 
 #[tauri::command]
@@ -226,7 +229,7 @@ pub fn chat_arena_board(app: AppHandle) -> Result<Vec<crate::chat::arena::Standi
 
 #[tauri::command]
 pub fn chat_arena_reset(app: AppHandle) -> Result<(), String> {
-    crate::chat::arena::reset(&config_dir(&app)?)
+    crate::chat::arena::reset(&config_dir(&app)?).map_err(String::from)
 }
 
 /// An agent's notebook.
@@ -237,7 +240,7 @@ pub fn chat_agent_notebook(app: AppHandle, id: String) -> Result<String, String>
 
 #[tauri::command]
 pub fn chat_save_agent_notebook(app: AppHandle, id: String, text: String) -> Result<(), String> {
-    crate::chat::agents::save_notebook(&config_dir(&app)?, &id, &text)
+    crate::chat::agents::save_notebook(&config_dir(&app)?, &id, &text).map_err(String::from)
 }
 
 /// What each agent's conversations cost this month, by agent id.
@@ -260,4 +263,119 @@ pub fn chat_subagent_transcript(
         &call_id,
         index,
     ))
+}
+
+/// Drafts an agent from a description, with the default model.
+#[tauri::command]
+pub async fn chat_draft_agent(
+    app: AppHandle,
+    description: String,
+    current: Option<crate::chat::agents::Agent>,
+) -> Result<crate::chat::agents::Agent, String> {
+    use rig_core::completion::CompletionRequest;
+    let dir = config_dir(&app)?;
+    if description.trim().len() < 8 {
+        return Err("Describe the agent in a sentence or two.".into());
+    }
+    let reference = providers::load(&dir)
+        .default_model
+        .ok_or("Choose a default model under Providers & models first.")?;
+    let tools: Vec<&str> = TOOL_CHOICES.to_vec();
+    let skills: Vec<String> = crate::chat::skills::list(&dir)
+        .into_iter()
+        .filter(|s| s.enabled)
+        .map(|s| s.name)
+        .collect();
+    // With a draft already made, the description is a change to it (the builder is a conversation).
+    let prompt = match &current {
+        Some(agent) => {
+            crate::chat::agents::refine_prompt(agent, description.trim(), &tools, &skills)
+        }
+        None => crate::chat::agents::draft_prompt(description.trim(), &tools, &skills),
+    };
+    let request = CompletionRequest::new(rig_core::completion::Message::user(prompt));
+    let text = engine::ask_text(&dir, &reference, request, 120).await?;
+    let mut agent = crate::chat::agents::parse_draft(&text, &tools, &skills)?;
+    if let Some(c) = current {
+        agent.id = c.id;
+    }
+    Ok(agent)
+}
+
+#[tauri::command]
+pub fn chat_workflows(app: AppHandle) -> Result<Vec<crate::chat::workflows::WorkflowView>, String> {
+    let dir = config_dir(&app)?;
+    Ok(crate::chat::workflows::views(
+        &dir,
+        crate::chat::workflows::load(&dir),
+    ))
+}
+
+#[tauri::command]
+pub fn chat_save_workflow(
+    app: AppHandle,
+    workflow: crate::chat::workflows::Workflow,
+) -> Result<Vec<crate::chat::workflows::WorkflowView>, String> {
+    let dir = config_dir(&app)?;
+    let all = crate::chat::workflows::save(&dir, workflow)?;
+    Ok(crate::chat::workflows::views(&dir, all))
+}
+
+#[tauri::command]
+pub fn chat_delete_workflow(
+    app: AppHandle,
+    id: String,
+) -> Result<Vec<crate::chat::workflows::WorkflowView>, String> {
+    let dir = config_dir(&app)?;
+    let all = crate::chat::workflows::delete(&dir, &id)?;
+    let _ = crate::chat::versions::set_production(&dir, "workflows", &id, None);
+    Ok(crate::chat::workflows::views(&dir, all))
+}
+
+/// Marks a version of an agent, workflow or tool as production (`value`), or clears the mark.
+#[tauri::command]
+pub fn chat_set_production(
+    app: AppHandle,
+    kind: String,
+    id: String,
+    value: Option<serde_json::Value>,
+) -> Result<Option<crate::chat::versions::Production>, String> {
+    crate::chat::versions::set_production(&config_dir(&app)?, &kind, &id, value)
+        .map_err(String::from)
+}
+
+/// Drafts a workflow from a description, or revises `current` as `request` asks.
+#[tauri::command]
+pub async fn chat_draft_workflow(
+    app: AppHandle,
+    request: String,
+    current: Option<crate::chat::workflows::Workflow>,
+) -> Result<crate::chat::workflows::Workflow, String> {
+    use rig_core::completion::CompletionRequest;
+    let dir = config_dir(&app)?;
+    if request.trim().len() < 4 {
+        return Err("Say what the workflow is for, or what to change.".into());
+    }
+    let reference = providers::load(&dir)
+        .default_model
+        .ok_or("Choose a default model under Providers & models first.")?;
+    let prompt = crate::chat::workflows::draft_prompt(
+        request.trim(),
+        current
+            .as_ref()
+            .filter(|w| !w.steps.is_empty() || !w.name.is_empty()),
+    );
+    let text = engine::ask_text(
+        &dir,
+        &reference,
+        CompletionRequest::new(rig_core::completion::Message::user(prompt)),
+        120,
+    )
+    .await?;
+    let mut draft = crate::chat::workflows::parse_draft(&text)?;
+    if let Some(c) = current {
+        draft.id = c.id;
+        draft.builtin = c.builtin;
+    }
+    Ok(draft)
 }

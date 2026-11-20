@@ -24,7 +24,8 @@ echo "=== bundling the webview scripts"
 node scripts/build-webview.mjs
 
 echo "=== building the app for linux"
-(cd src-tauri && cargo build)
+# The suite drives the hosted web app's bridges, which only an `e2e` build contains.
+(cd src-tauri && cargo build --features e2e)
 
 echo "=== seeding app fixtures"
 ./e2e/seed-fixtures.sh

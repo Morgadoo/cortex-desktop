@@ -54,9 +54,10 @@ pub async fn set_desktop_feature_flags(
     app_handle: AppHandle,
     state: State<'_, DesktopFeatureFlags>,
 ) -> Result<(), String> {
-    if webview.label() != crate::main_window::LABEL {
-        return Err("only the main webview may report feature flags".into());
-    }
+    crate::main_window::require(
+        webview.label(),
+        "only the main webview may report feature flags",
+    )?;
     if state.get() == flags {
         return Ok(());
     }

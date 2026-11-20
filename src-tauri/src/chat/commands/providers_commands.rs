@@ -79,7 +79,7 @@ pub fn chat_set_default_model(app: AppHandle, reference: String) -> Result<(), S
     let dir = config_dir(&app)?;
     let mut file = providers::load(&dir);
     file.default_model = Some(reference);
-    providers::save(&dir, &file)
+    providers::save(&dir, &file).map_err(String::from)
 }
 
 /// Sends one tiny request, so the settings page can confirm a key and base URL work.
@@ -108,7 +108,7 @@ pub fn chat_set_backup_model(app: AppHandle, reference: Option<String>) -> Resul
     let dir = config_dir(&app)?;
     let mut file = crate::chat::providers::load(&dir);
     file.backup_model = reference.filter(|m| !m.trim().is_empty());
-    crate::chat::providers::save(&dir, &file)
+    crate::chat::providers::save(&dir, &file).map_err(String::from)
 }
 
 /// The model that reviews what the assistant writes for itself.
@@ -122,7 +122,7 @@ pub fn chat_set_review_model(app: AppHandle, reference: Option<String>) -> Resul
     let dir = config_dir(&app)?;
     let mut file = crate::chat::providers::load(&dir);
     file.review_model = reference.filter(|m| !m.trim().is_empty());
-    crate::chat::providers::save(&dir, &file)
+    crate::chat::providers::save(&dir, &file).map_err(String::from)
 }
 
 /// The built-in models: which can be downloaded, and which are.
@@ -147,11 +147,13 @@ pub async fn chat_download_local_model(app: AppHandle, id: String) -> Result<(),
         );
     })
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
-pub fn chat_remove_local_model(id: String) -> Result<(), String> {
+pub fn chat_delete_local_model(id: String) -> Result<(), String> {
     crate::chat::local_models::remove(&crate::chat::local_models::root()?, &id)
+        .map_err(String::from)
 }
 
 /// The model settings every chat starts from.
@@ -165,7 +167,7 @@ pub fn chat_set_defaults(
     app: AppHandle,
     params: store::ChatParams,
 ) -> Result<store::ChatParams, String> {
-    store::save_chat_defaults(&config_dir(&app)?, params)
+    store::save_chat_defaults(&config_dir(&app)?, params).map_err(String::from)
 }
 
 #[tauri::command]
@@ -207,4 +209,9 @@ pub fn chat_usage_breakdown(app: AppHandle) -> Result<(Vec<UsageLine>, Vec<Usage
         v
     };
     Ok((sorted(by_model), sorted(by_agent)))
+}
+
+#[tauri::command]
+pub fn chat_cancel_local_model(id: String) {
+    crate::chat::local_models::cancel(&id);
 }

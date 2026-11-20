@@ -1,0 +1,94 @@
+/* The design system's components (buttons, chips, fields, tabs, dialogs, cards) and the appearance settings. */
+
+/* ================================================================== design system components
+   Built by ui.ts. Every interactive control shares the same hover, pressed, focus and disabled
+   behaviour, on the scale tokens above. */
+
+/* Buttons: primary (the one main action), secondary (outlined), subtle (toolbar), danger, link. */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-height: 36px; padding: 0 var(--space-4); border: 1px solid transparent; border-radius: var(--radius-md); font-size: var(--fs-md); font-weight: 600; line-height: 1; white-space: nowrap; user-select: none; }
+.btn-sm { min-height: 30px; padding: 0 var(--space-3); font-size: var(--fs-sm); gap: 6px; border-radius: var(--radius-sm); }
+.btn-primary { background: var(--primary-btn); color: var(--primary-btn-text); box-shadow: var(--shadow-sm); }
+.btn-primary:hover:not(:disabled) { filter: brightness(0.93); box-shadow: var(--shadow-lift); }
+.btn-secondary, .btn-ghost { border-color: var(--border-strong); color: var(--text); background: transparent; }
+.btn-secondary:hover:not(:disabled), .btn-ghost:hover:not(:disabled) { background: var(--bg-hover); border-color: color-mix(in srgb, var(--text) 28%, transparent); }
+.btn-subtle { color: var(--text-secondary); background: transparent; }
+.btn-subtle:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
+.btn-danger { border-color: color-mix(in srgb, var(--danger) 45%, transparent); color: var(--danger); background: transparent; }
+.btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 12%, transparent); border-color: var(--danger); }
+.btn-link { min-height: 0; padding: 2px 4px; color: var(--text-secondary); font-weight: 600; background: transparent; }
+.btn-link:hover:not(:disabled) { color: var(--accent-strong); }
+.btn-link.strong { color: var(--text); font-weight: 700; }
+.btn:disabled, .icon-btn:disabled, .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Icon buttons: md 34, sm 30, xs 24. */
+.icon-btn { border-radius: var(--radius-sm); }
+.icon-btn.active { color: var(--accent-strong); background: var(--accent-soft); }
+.icon-btn.active:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent-strong); }
+.icon-btn.tiny { border-radius: var(--radius-xs); }
+
+/* Trigger: a quiet button that opens a menu (model, response mode, changes). */
+.pill-btn { gap: 6px; min-height: 32px; border-radius: var(--radius-sm); font-size: var(--fs-md); }
+.pill-btn[aria-expanded="true"] { background: var(--bg-active); color: var(--text); }
+
+/* Send / mic / stop. */
+.send-btn { transition: transform var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease); }
+.send-btn:hover:not(:disabled) { filter: brightness(0.92); }
+
+/* Chips: tokens in the composer. Accent chips are things that change how the message runs. */
+.chip { display: inline-flex; align-items: center; gap: 6px; max-width: 320px; padding: 3px 4px 3px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-active); font-size: var(--fs-sm); font-weight: 500; }
+.chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip-accent { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 30%, transparent); color: var(--text); }
+.chip-accent > .icon { color: var(--accent-strong); }
+.chip .chip-x { width: 22px; height: 22px; color: var(--text-muted); }
+.chip .chip-x:hover { color: var(--text); background: var(--bg-hover); }
+.quote-chip .chip-x { width: 22px; height: 22px; }
+
+/* Status badges by tone. */
+.status-badge.tone-accent { color: var(--accent-strong); background: var(--accent-soft); }
+.status-badge.tone-success { color: var(--success); background: color-mix(in srgb, var(--success) 14%, transparent); }
+.status-badge.tone-warning { color: var(--warning); background: color-mix(in srgb, var(--warning) 14%, transparent); }
+.status-badge.tone-danger { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+
+/* Fields. */
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field-hint { color: var(--text-muted); font-size: var(--fs-xs); }
+.input:hover:not(:focus) { border-color: color-mix(in srgb, var(--text) 24%, transparent); }
+.input:focus, .input:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); outline: none; }
+.input::placeholder, textarea::placeholder { color: var(--text-muted); }
+
+/* Tabs and segmented controls. */
+.tab:hover:not(.active) { background: var(--bg-hover); color: var(--text); }
+.tab-count { margin-left: 6px; font-size: var(--fs-2xs); color: var(--text-muted); font-weight: 600; }
+.seg:hover:not(.active) { color: var(--text); }
+.mini-tab:hover:not(.active) { color: var(--text); background: var(--bg-hover); }
+
+/* Dialogs. */
+.modal-title { display: flex; align-items: baseline; gap: var(--space-3); min-width: 0; }
+.modal-head .modal-close { margin-left: auto; }
+.modal { animation: modal-in var(--dur) var(--ease); }
+@keyframes modal-in { from { opacity: 0; transform: translateY(6px) scale(0.985); } }
+.popover { animation: pop-in var(--dur-fast) var(--ease); }
+@keyframes pop-in { from { opacity: 0; transform: translateY(-3px); } }
+
+/* Lists and cards that open something lift on hover. */
+.suggestion:hover { background: var(--bg-hover); }
+.skill-row, .app-tile, .agent-card, .task-row, .doc-row { transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), box-shadow var(--dur) var(--ease); }
+.skill-row:hover, .task-row:hover { background: var(--bg-hover); }
+.app-tile:hover, .agent-card:hover { border-color: color-mix(in srgb, var(--text) 24%, transparent); box-shadow: var(--hover-lift); }
+.menu-item:active, .nav-link:active, .conv-link:active { background: var(--bg-active); }
+.menu-item.danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
+
+/* One interaction model for every control. */
+:where(button, a, summary, .menu-item, .nav-link, .conv-link, .suggestion, .chip, .tab, .seg, .mini-tab, .icon-btn, .pill-btn, .btn) {
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease), opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease);
+}
+:where(.btn, .icon-btn, .send-btn, .pill-btn):active:not(:disabled) { transform: translateY(1px); }
+:where(button, a, summary, [role="tab"], [tabindex]):focus { outline: none; }
+:where(button, a, summary, [role="tab"], [tabindex], .switch):focus-visible { box-shadow: var(--focus-ring); border-radius: var(--radius-sm); }
+.switch:hover { filter: brightness(1.08); }
+::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+
