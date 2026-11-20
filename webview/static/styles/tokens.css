@@ -3,7 +3,7 @@
  * aside, whose colours live in their shaders). Every page imports it first. Components use these
  * names, never a colour of their own, so a palette or theme is a change here alone.
  *
- * 1. The app (index.html, app.css): colours per theme on <html data-theme>, and the scales.
+ * 1. The app (index.html, webview/styles/app/): colours per theme on <html data-theme>, and the scales.
  *    Settings → Appearance swaps palettes and the accent at runtime (appearance.ts).
  * 2. The Liquid Glass material (glass.css), under html[data-material="glass"].
  * 3. The other pages (settings, search overlay, dictation, login): the --cortex-* tokens.

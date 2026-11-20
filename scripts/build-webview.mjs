@@ -3,6 +3,7 @@
 // Build webview/ into src-tauri/dist/, where Tauri embeds the frontend:
 //
 //   webview/static/            →  dist/            pages, styles/ and images/, copied as they are
+//   webview/styles/app/        →  dist/styles/app.css   the app's stylesheet, joined in order
 //   webview/{bridges,pages}/   →  dist/scripts/    one bundle per entry below
 //
 // dist/ is gitignored and rebuilt every run, so it cannot drift from its sources. Some
@@ -15,7 +16,7 @@
 // Node rather than shell so the Windows CI runner can execute it: npm runs scripts
 // through cmd.exe there, which cannot invoke a .sh file.
 
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
@@ -25,6 +26,23 @@ const srcDir = join(repoRoot, 'webview')
 const staticDir = join(srcDir, 'static')
 const outDir = join(repoRoot, 'src-tauri', 'dist')
 const scriptsDir = join(outDir, 'scripts')
+
+// The app's stylesheet, by topic, joined in this order into dist/styles/app.css. The order is the
+// cascade's: of two rules as specific as each other, the later file's wins. A file in the folder
+// that is not listed is a build failure, so none is left out by accident.
+const appStyles = [
+  'base.css',
+  'shell.css',
+  'composer.css',
+  'transcript.css',
+  'dialogs.css',
+  'pages.css',
+  'components.css',
+  'controls.css',
+  'features.css',
+  'details.css',
+  'org.css',
+]
 
 // "<source relative to webview/>": "<output name in dist/scripts/>", one bundle each.
 // A listed source that is missing is a build failure.
@@ -89,6 +107,20 @@ for (const name of staticEntries) {
     filter: (path) => !path.endsWith('.DS_Store'),
   })
 }
+
+const appStylesDir = join(srcDir, 'styles', 'app')
+const unlisted = readdirSync(appStylesDir).filter((file) => file.endsWith('.css') && !appStyles.includes(file))
+if (unlisted.length) fail(`${unlisted.join(', ')} in webview/styles/app/ is not listed in appStyles`)
+writeFileSync(
+  join(outDir, 'styles', 'app.css'),
+  appStyles
+    .map((file) => {
+      const path = join(appStylesDir, file)
+      if (!isFile(path)) fail(`app stylesheet not found at ${path}`)
+      return readFileSync(path, 'utf8')
+    })
+    .join('\n')
+)
 
 try {
   await Promise.all(

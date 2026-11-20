@@ -1,0 +1,40 @@
+/* The native chat app's stylesheet, in parts (see appStyles in scripts/build-webview.mjs), joined
+   into styles/app.css. Colours are tokens (tokens.css); dark and light swap them on
+   <html data-theme>. */
+@import url("tokens.css");
+
+/* Which form controls and scrollbars the browser draws; the colours are in tokens.css. */
+:root,
+:root[data-theme="dark"] { color-scheme: dark; }
+:root[data-theme="light"] { color-scheme: light; }
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.55 var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+button:disabled { cursor: default; opacity: 0.4; }
+input, textarea, select { font: inherit; color: inherit; }
+a { color: var(--accent-strong); }
+kbd { font: 12px ui-monospace, monospace; color: var(--text-muted); margin-left: auto; }
+.icon { flex-shrink: 0; display: block; }
+.muted { color: var(--text-muted); }
+.spacer { flex: 1; }
+.hidden { display: none !important; }
+.grow { flex: 1; }
+hr { border: 0; border-top: 1px solid var(--border); margin: 18px 0; width: 100%; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: var(--radius-pill); border: 3px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background-color: var(--scrollbar-hover); }
+::-webkit-scrollbar-track { background: transparent; }
+
+.app { display: flex; height: 100vh; }

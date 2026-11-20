@@ -1,7 +1,7 @@
 /**
  * The design system's components. Every screen builds its controls from these, so a button, a
  * chip or a dialog header looks and behaves the same everywhere, with the same hover, focus and
- * pressed states. The look lives in app.css under the matching class names, built on the tokens
+ * pressed states. The look lives in webview/styles/app/ under the matching class names, built on the tokens
  * at its top (colours, radii, type scale, spacing and motion).
  */
 import { h } from './h';
