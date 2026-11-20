@@ -100,8 +100,11 @@ pub fn restore(config_dir: &Path, kind: &str, id: &str, version: &str) -> Result
             // The version keeps the hash the user approved for its own script, so an approved
             // version comes back approved and an unapproved one stays a candidate.
             crate::chat::script_tools::restore_version(config_dir, parse(value)?)
+                .map_err(String::from)
         }
-        ("tools", _) => crate::chat::custom_tools::save(config_dir, &parse(value)?).map(drop),
+        ("tools", _) => crate::chat::custom_tools::save(config_dir, &parse(value)?)
+            .map(drop)
+            .map_err(String::from),
         ("tasks", _) => crate::chat::tasks::save(config_dir, parse(value)?).map(drop),
         _ => Err(format!("{kind} cannot be restored.")),
     }

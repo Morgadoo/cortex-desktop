@@ -3,6 +3,7 @@
 //! `.xls` and `.ods` files are read into CSV so the model can analyse them (with `run_code` for
 //! anything heavy).
 
+use crate::chat::error::ChatError;
 use std::path::Path;
 
 /// Rows read from an uploaded workbook, per sheet.
@@ -95,7 +96,7 @@ pub fn split_sheets(content: &str, fallback_name: &str) -> Vec<(String, String)>
 }
 
 /// Writes sheets into one workbook, in order: numbers stay numbers, each first row is a bold header.
-pub fn write_workbook(path: &Path, sheets: &[(String, Vec<Vec<String>>)]) -> Result<(), String> {
+pub fn write_workbook(path: &Path, sheets: &[(String, Vec<Vec<String>>)]) -> Result<(), ChatError> {
     use rust_xlsxwriter::{Format, Workbook};
     let mut workbook = Workbook::new();
     let mut used: Vec<String> = Vec::new();
@@ -112,7 +113,7 @@ pub fn write_workbook(path: &Path, sheets: &[(String, Vec<Vec<String>>)]) -> Res
             name = format!("Sheet{}", i + 1);
         }
         used.push(name.clone());
-        sheet.set_name(&name).map_err(|e| e.to_string())?;
+        sheet.set_name(&name).map_err(ChatError::internal)?;
         let bold = Format::new().set_bold();
         for (r, row) in rows.iter().enumerate() {
             for (c, value) in row.iter().enumerate() {
@@ -130,7 +131,7 @@ pub fn write_workbook(path: &Path, sheets: &[(String, Vec<Vec<String>>)]) -> Res
                     (_, Some(n)) => sheet.write_number(r, c, n).map(|_| ()),
                     _ => sheet.write_string(r, c, value).map(|_| ()),
                 }
-                .map_err(|e| e.to_string())?;
+                .map_err(ChatError::internal)?;
             }
         }
         if let Some(width) = rows.first().map(Vec::len) {
@@ -143,18 +144,18 @@ pub fn write_workbook(path: &Path, sheets: &[(String, Vec<Vec<String>>)]) -> Res
                     .unwrap_or(8);
                 sheet
                     .set_column_width(c as u16, (longest.clamp(6, 50) + 2) as f64)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(ChatError::internal)?;
             }
         }
     }
-    workbook.save(path).map_err(|e| e.to_string())
+    workbook.save(path).map_err(ChatError::internal)
 }
 
 /// Reads a workbook (`.xlsx`, `.xls`, `.ods`) into CSV text per sheet, for the model.
-pub fn read_workbook(bytes: &[u8]) -> Result<Vec<(String, String)>, String> {
+pub fn read_workbook(bytes: &[u8]) -> Result<Vec<(String, String)>, ChatError> {
     use calamine::{open_workbook_auto_from_rs, Data, Reader};
     let mut workbook = open_workbook_auto_from_rs(std::io::Cursor::new(bytes.to_vec()))
-        .map_err(|e| format!("Not a readable spreadsheet: {e}"))?;
+        .map_err(|e| ChatError::Invalid(format!("Not a readable spreadsheet: {e}")))?;
     let mut out = Vec::new();
     for name in workbook.sheet_names().to_vec() {
         let Ok(range) = workbook.worksheet_range(&name) else {
@@ -180,7 +181,7 @@ pub fn read_workbook(bytes: &[u8]) -> Result<Vec<(String, String)>, String> {
         }
     }
     if out.is_empty() {
-        return Err("The spreadsheet is empty.".into());
+        return Err(ChatError::Invalid("The spreadsheet is empty.".into()));
     }
     Ok(out)
 }

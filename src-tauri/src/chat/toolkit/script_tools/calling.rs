@@ -1,6 +1,7 @@
 //! Running a tool: its rate limit, retiring it, and the call itself within a run.
 
 use super::*;
+use crate::chat::error::ChatError;
 
 /// Calls per tool per minute; past it, calls are refused until the minute passes.
 pub(super) const CALLS_PER_MINUTE: usize = 30;
@@ -43,8 +44,9 @@ pub(super) fn within_rate(name: &str) -> bool {
 }
 
 /// Hides a tool; promoting it again brings it back.
-pub fn retire(config_dir: &Path, name: &str) -> Result<(), String> {
-    let mut tool = load(config_dir, name).ok_or("There is no tool by that name.")?;
+pub fn retire(config_dir: &Path, name: &str) -> Result<(), ChatError> {
+    let mut tool = load(config_dir, name)
+        .ok_or_else(|| ChatError::Invalid("There is no tool by that name.".into()))?;
     tool.status = Status::Deprecated;
     // A file changed outside the app is retired with no access and no approval, and left
     // unsigned.
@@ -81,7 +83,7 @@ pub async fn call(
     name: &str,
     args: &Value,
     workspace: Option<&Path>,
-) -> Result<String, String> {
+) -> Result<String, ChatError> {
     call_at(
         config_dir.to_path_buf(),
         name.to_string(),
@@ -98,32 +100,31 @@ pub(super) fn call_at(
     args: Value,
     workspace: Option<PathBuf>,
     depth: usize,
-) -> futures::future::BoxFuture<'static, Result<String, String>> {
+) -> futures::future::BoxFuture<'static, Result<String, ChatError>> {
     Box::pin(async move {
         sandbox::cache_in(&config_dir);
         if depth >= MAX_DEPTH {
-            return Err(format!(
+            return Err(ChatError::Invalid(format!(
                 "`{name}` is called too deep; tools call tools {MAX_DEPTH} levels at most."
-            ));
+            )));
         }
-        let tool = load(&config_dir, &name).ok_or("That tool was removed.")?;
+        let tool = load(&config_dir, &name)
+            .ok_or_else(|| ChatError::Invalid("That tool was removed.".into()))?;
         if tool.status != Status::Active {
-            return Err("That tool is not active; promote it first.".into());
+            return Err(ChatError::Invalid(
+                "That tool is not active; promote it first.".into(),
+            ));
         }
         if tool.approved_hash.as_deref() != Some(approval_hash(&tool).as_str()) {
-            return Err(
-                "This tool's script, description or parameters changed since it was approved; promote it again.".into(),
-            );
+            return Err(ChatError::Invalid("This tool's script, description or parameters changed since it was approved; promote it again.".into()));
         }
         if !verifies(&config_dir, &tool) {
-            return Err(
-                "This tool's file was changed outside the app, so its approval no longer holds; promote it again.".into(),
-            );
+            return Err(ChatError::Invalid("This tool's file was changed outside the app, so its approval no longer holds; promote it again.".into()));
         }
         if !within_rate(&format!("{}:{name}", config_dir.display())) {
-            return Err(format!(
+            return Err(ChatError::Invalid(format!(
                 "`{name}` was called {CALLS_PER_MINUTE} times in the last minute; wait before calling it again."
-            ));
+            )));
         }
         // Each capability granted for a time lapses on its own; the tool can still compute.
         let granted = active_grants(&tool, Utc::now());
@@ -133,7 +134,10 @@ pub(super) fn call_at(
                 let (config_dir, workspace) = (config_dir.clone(), workspace.clone());
                 Box::pin(async move {
                     let input: Value = serde_json::from_str(&input).unwrap_or(Value::Null);
-                    call_at(config_dir, callee, input, workspace, depth + 1).await
+                    // The sandbox takes a nested call's error as text.
+                    call_at(config_dir, callee, input, workspace, depth + 1)
+                        .await
+                        .map_err(String::from)
                 })
             })
         };
@@ -218,6 +222,6 @@ pub(super) fn call_at(
                 },
             );
         }
-        result
+        result.map_err(ChatError::Invalid)
     })
 }

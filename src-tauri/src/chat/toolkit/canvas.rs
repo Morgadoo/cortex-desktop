@@ -5,6 +5,7 @@
 //! `canvas` tool; the current text of each rides in the system prompt, so it sees the user's
 //! own edits on the next turn.
 
+use crate::chat::error::ChatError;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
@@ -131,9 +132,9 @@ pub fn app_files(content: &str) -> Option<Vec<AppFile>> {
 }
 
 /// Stores files as an app's content, checking their paths: relative, no `..`, at most 40 files.
-pub fn bundle(files: &[AppFile]) -> Result<String, String> {
+pub fn bundle(files: &[AppFile]) -> Result<String, ChatError> {
     if files.is_empty() || files.len() > 40 {
-        return Err("An app has 1 to 40 files.".into());
+        return Err(ChatError::Invalid("An app has 1 to 40 files.".into()));
     }
     for f in files {
         let p = f.path.trim();
@@ -143,19 +144,21 @@ pub fn bundle(files: &[AppFile]) -> Result<String, String> {
             || p.split('/')
                 .any(|s| s == ".." || s.is_empty() || s.starts_with('.'))
         {
-            return Err(format!(
+            return Err(ChatError::Invalid(format!(
                 "`{}` is not a usable file path; use relative paths like css/app.css.",
                 f.path
-            ));
+            )));
         }
     }
     if !files.iter().any(|f| f.path.ends_with(".html")) {
-        return Err("An app needs an HTML file, usually index.html.".into());
+        return Err(ChatError::Invalid(
+            "An app needs an HTML file, usually index.html.".into(),
+        ));
     }
     serde_json::to_string(&Bundle {
         files: files.to_vec(),
     })
-    .map_err(|e| e.to_string())
+    .map_err(ChatError::internal)
 }
 
 /// The page an app opens on: `index.html`, else its first HTML file.
@@ -186,7 +189,7 @@ fn mime(path: &str) -> &'static str {
 }
 
 /// An app's files as a ZIP archive, to download.
-pub fn app_zip(content: &str) -> Result<Vec<u8>, String> {
+pub fn app_zip(content: &str) -> Result<Vec<u8>, ChatError> {
     let files = app_files(content).unwrap_or_else(|| {
         vec![AppFile {
             path: "index.html".into(),
@@ -198,10 +201,11 @@ pub fn app_zip(content: &str) -> Result<Vec<u8>, String> {
         let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut out));
         for f in &files {
             zip.start_file(f.path.as_str(), zip::write::SimpleFileOptions::default())
-                .map_err(|e| e.to_string())?;
-            std::io::Write::write_all(&mut zip, f.content.as_bytes()).map_err(|e| e.to_string())?;
+                .map_err(ChatError::internal)?;
+            std::io::Write::write_all(&mut zip, f.content.as_bytes())
+                .map_err(ChatError::internal)?;
         }
-        zip.finish().map_err(|e| e.to_string())?;
+        zip.finish().map_err(ChatError::internal)?;
     }
     Ok(out)
 }
@@ -365,17 +369,17 @@ fn dir(config_dir: &Path) -> PathBuf {
     chat_dir(config_dir).join("canvases")
 }
 
-fn path(config_dir: &Path, id: &str) -> Result<PathBuf, String> {
+fn path(config_dir: &Path, id: &str) -> Result<PathBuf, ChatError> {
     if !valid_id(id) {
-        return Err(format!("invalid canvas id `{id}`"));
+        return Err(ChatError::Invalid(format!("invalid canvas id `{id}`")));
     }
     Ok(dir(config_dir).join(format!("{id}.json")))
 }
 
-pub fn load(config_dir: &Path, id: &str) -> Result<Canvas, String> {
+pub fn load(config_dir: &Path, id: &str) -> Result<Canvas, ChatError> {
     let text = crate::chat::at_rest::read_to_string(path(config_dir, id)?)
-        .map_err(|_| format!("no canvas `{id}`"))?;
-    serde_json::from_str(&text).map_err(|e| e.to_string())
+        .map_err(|_| ChatError::Invalid(format!("no canvas `{id}`")))?;
+    serde_json::from_str(&text).map_err(ChatError::internal)
 }
 
 pub fn list_for(config_dir: &Path, conversation_id: &str) -> Vec<Canvas> {
@@ -400,7 +404,7 @@ pub fn write(
     title: Option<&str>,
     content: &str,
     author: &str,
-) -> Result<Canvas, String> {
+) -> Result<Canvas, ChatError> {
     write_kind(
         config_dir,
         conversation_id,
@@ -421,7 +425,7 @@ pub fn write_kind(
     content: &str,
     author: &str,
     kind: Option<&str>,
-) -> Result<Canvas, String> {
+) -> Result<Canvas, ChatError> {
     let mut canvas = match id {
         Some(id) => load(config_dir, id)?,
         None => Canvas {
@@ -437,7 +441,9 @@ pub fn write_kind(
         },
     };
     if canvas.conversation_id != conversation_id {
-        return Err("That canvas belongs to another conversation.".into());
+        return Err(ChatError::Invalid(
+            "That canvas belongs to another conversation.".into(),
+        ));
     }
     if let Some(title) = title.map(str::trim).filter(|t| !t.is_empty()) {
         canvas.title = crate::support::text::clip(title, 120);

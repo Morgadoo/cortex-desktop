@@ -18,6 +18,7 @@
 //! a large download. Until then, and wherever Podman is missing, `run_code` uses bubblewrap as
 //! before.
 
+use crate::chat::error::ChatError;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -82,12 +83,13 @@ pub fn enabled(config_dir: &Path) -> bool {
         .unwrap_or(true)
 }
 
-pub fn set_enabled(config_dir: &Path, on: bool) -> Result<(), String> {
+pub fn set_enabled(config_dir: &Path, on: bool) -> Result<(), ChatError> {
     write_json(
         &settings_path(config_dir),
         &serde_json::json!({ "enabled": on }),
     )
     .map_err(String::from)
+    .map_err(ChatError::Invalid)
 }
 
 /// How to start Podman: itself, or on the host from inside a toolbox or distrobox container.
@@ -215,14 +217,15 @@ pub async fn build(config_dir: &Path) -> Status {
     remember(&Status::Building);
     let result = async {
         let dir = chat_dir(config_dir).join("workbench");
-        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(&dir).map_err(ChatError::internal)?;
         let file = dir.join("Containerfile");
-        std::fs::write(&file, CONTAINERFILE).map_err(|e| e.to_string())?;
+        std::fs::write(&file, CONTAINERFILE).map_err(ChatError::internal)?;
         let log_path = dir.join("build.log");
-        let log = std::fs::File::create(&log_path).map_err(|e| e.to_string())?;
-        let err_log = log.try_clone().map_err(|e| e.to_string())?;
+        let log = std::fs::File::create(&log_path).map_err(ChatError::internal)?;
+        let err_log = log.try_clone().map_err(ChatError::internal)?;
         let tag = image_tag();
-        let mut c = podman().ok_or("Podman cannot be reached.")?;
+        let mut c =
+            podman().ok_or_else(|| ChatError::Invalid("Podman cannot be reached.".into()))?;
         c.arg("build")
             .arg("--pull=missing")
             .arg("--tag")
@@ -349,7 +352,7 @@ pub(in crate::chat::toolkit) async fn remove(name: &str) {
 pub(in crate::chat::toolkit) fn write_env_file(
     path: &Path,
     vars: &[(String, String)],
-) -> Result<(), String> {
+) -> Result<(), ChatError> {
     let text: String = vars
         .iter()
         .filter(|(k, v)| {
@@ -369,7 +372,7 @@ pub(in crate::chat::toolkit) fn write_env_file(
     options
         .open(path)
         .and_then(|mut f| f.write_all(text.as_bytes()))
-        .map_err(|e| e.to_string())
+        .map_err(ChatError::internal)
 }
 
 /// What the `run_code` description says about the workbench.

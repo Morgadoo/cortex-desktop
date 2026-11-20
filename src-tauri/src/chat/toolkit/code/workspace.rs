@@ -1,6 +1,7 @@
 //! A coding session's folder: its files, the uncommitted changes, commits and new worktrees.
 
 use super::*;
+use crate::chat::error::ChatError;
 
 #[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -77,23 +78,27 @@ pub fn files(dir: &str) -> (Vec<String>, bool) {
 }
 
 /// One file of the folder as text; refuses paths that leave it.
-pub fn read_file(dir: &str, path: &str) -> Result<String, String> {
-    let root = std::fs::canonicalize(dir).map_err(|e| e.to_string())?;
-    let full = std::fs::canonicalize(root.join(path)).map_err(|_| "No such file.".to_string())?;
+pub fn read_file(dir: &str, path: &str) -> Result<String, ChatError> {
+    let root = std::fs::canonicalize(dir).map_err(ChatError::internal)?;
+    let full = std::fs::canonicalize(root.join(path))
+        .map_err(|_| "No such file.".to_string())
+        .map_err(ChatError::Invalid)?;
     if !full.starts_with(&root) {
-        return Err("That file is outside the session's folder.".into());
+        return Err(ChatError::Invalid(
+            "That file is outside the session's folder.".into(),
+        ));
     }
-    let meta = std::fs::metadata(&full).map_err(|e| e.to_string())?;
+    let meta = std::fs::metadata(&full).map_err(ChatError::internal)?;
     if meta.len() > MAX_FILE_BYTES {
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "The file is {} KB; only files up to {} KB are shown here.",
             meta.len() / 1024,
             MAX_FILE_BYTES / 1024
-        ));
+        )));
     }
-    let bytes = crate::chat::at_rest::read(&full).map_err(|e| e.to_string())?;
+    let bytes = crate::chat::at_rest::read(&full).map_err(ChatError::internal)?;
     if bytes.iter().take(8000).any(|b| *b == 0) {
-        return Err("Binary file.".into());
+        return Err(ChatError::Invalid("Binary file.".into()));
     }
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
@@ -162,27 +167,31 @@ pub fn changes(dir: &str) -> Changes {
 
 /// Commits every change in `dir` (untracked files included) with `message`; returns the commit
 /// summary line.
-pub fn commit(dir: &str, message: &str) -> Result<String, String> {
+pub fn commit(dir: &str, message: &str) -> Result<String, ChatError> {
     let message = message.trim();
     if message.is_empty() {
-        return Err("Write a commit message.".into());
+        return Err(ChatError::Invalid("Write a commit message.".into()));
     }
     let path = Path::new(dir);
     if git(path, &["rev-parse", "--is-inside-work-tree"]).is_none() {
-        return Err("This folder is not a git repository.".into());
+        return Err(ChatError::Invalid(
+            "This folder is not a git repository.".into(),
+        ));
     }
-    let run = |args: &[&str]| -> Result<String, String> {
+    let run = |args: &[&str]| -> Result<String, ChatError> {
         let out = Command::new("git")
             .arg("-C")
             .arg(path)
             .args(args)
             .env("LC_ALL", "C")
             .output()
-            .map_err(|e| e.to_string())?;
+            .map_err(ChatError::internal)?;
         if out.status.success() {
             Ok(String::from_utf8_lossy(&out.stdout).into_owned())
         } else {
-            Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+            Err(ChatError::Invalid(
+                String::from_utf8_lossy(&out.stderr).trim().to_string(),
+            ))
         }
     };
     run(&["add", "-A"])?;
@@ -195,11 +204,11 @@ pub fn commit(dir: &str, message: &str) -> Result<String, String> {
 /// A session's own copy of a repository (Vibe's worktrees): a git worktree beside it, on a new
 /// branch from the current commit, so the session's changes stay apart from the main checkout.
 /// Returns the worktree's folder and branch.
-pub fn create_worktree(dir: &str, name: &str) -> Result<(String, String), String> {
+pub fn create_worktree(dir: &str, name: &str) -> Result<(String, String), ChatError> {
     let path = Path::new(dir);
     let top = git(path, &["rev-parse", "--show-toplevel"])
         .map(|t| t.trim().to_string())
-        .ok_or("This folder is not a git repository.")?;
+        .ok_or_else(|| ChatError::Invalid("This folder is not a git repository.".into()))?;
     let top = Path::new(&top);
     let repo = top
         .file_name()
@@ -217,9 +226,9 @@ pub fn create_worktree(dir: &str, name: &str) -> Result<(String, String), String
     if slug.is_empty() {
         slug = chrono::Local::now().format("%Y%m%d-%H%M").to_string();
     }
-    let parent = top
-        .parent()
-        .ok_or("The repository has no parent folder for a worktree.")?;
+    let parent = top.parent().ok_or_else(|| {
+        ChatError::Invalid("The repository has no parent folder for a worktree.".into())
+    })?;
     let (mut folder, mut branch) = (
         parent.join(format!("{repo}-{slug}")),
         format!("cortex/{slug}"),
@@ -248,12 +257,12 @@ pub fn create_worktree(dir: &str, name: &str) -> Result<(String, String), String
         .arg(&folder)
         .env("LC_ALL", "C")
         .output()
-        .map_err(|e| e.to_string())?;
+        .map_err(ChatError::internal)?;
     if !out.status.success() {
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "The worktree could not be made: {}",
             String::from_utf8_lossy(&out.stderr).trim()
-        ));
+        )));
     }
     Ok((folder.to_string_lossy().into_owned(), branch))
 }

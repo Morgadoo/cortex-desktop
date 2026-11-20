@@ -113,7 +113,10 @@ pub(in crate::chat::automation) async fn maintain(config_dir: &Path, now: DateTi
         {
             continue;
         }
-        if crate::chat::script_tools::revert(config_dir, &name, &tool.checks).await == Ok(true) {
+        if matches!(
+            crate::chat::script_tools::revert(config_dir, &name, &tool.checks).await,
+            Ok(true)
+        ) {
             if let Some(mut back) = crate::chat::script_tools::load(config_dir, &name) {
                 back.monitor_reverted_at = Some(now);
                 if let Err(e) = crate::chat::script_tools::save(config_dir, &back) {

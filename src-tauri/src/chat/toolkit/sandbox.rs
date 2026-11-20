@@ -6,6 +6,7 @@
 //! run still gets a cleared environment (no API keys) and a time limit, and the user approves
 //! each run unless they allowed them all.
 
+use crate::chat::error::ChatError;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -50,7 +51,7 @@ pub fn always_allowed(config_dir: &Path) -> bool {
     })
 }
 
-pub fn set_always_allowed(config_dir: &Path, allowed: bool) -> Result<(), String> {
+pub fn set_always_allowed(config_dir: &Path, allowed: bool) -> Result<(), ChatError> {
     crate::chat::store::write_json(
         &settings_path(config_dir),
         &json!({ "alwaysAllow": allowed }),
@@ -276,9 +277,9 @@ pub fn definition(config_dir: &Path) -> Option<ChatTool> {
 }
 
 /// A conversation's workspace folder.
-pub fn workspace(config_dir: &Path, conversation_id: &str) -> Result<PathBuf, String> {
+pub fn workspace(config_dir: &Path, conversation_id: &str) -> Result<PathBuf, ChatError> {
     if !valid_id(conversation_id) {
-        return Err("invalid conversation id".into());
+        return Err(ChatError::Invalid("invalid conversation id".into()));
     }
     Ok(chat_dir(config_dir).join("sandbox").join(conversation_id))
 }
@@ -337,24 +338,24 @@ pub struct AgentEnv {
 }
 
 /// The environment of agent `id`, made on first use.
-pub fn agent_env(config_dir: &Path, id: &str, network: bool) -> Result<AgentEnv, String> {
+pub fn agent_env(config_dir: &Path, id: &str, network: bool) -> Result<AgentEnv, ChatError> {
     if !valid_id(id) {
-        return Err("invalid agent id".into());
+        return Err(ChatError::Invalid("invalid agent id".into()));
     }
     let home = chat_dir(config_dir).join("agent-envs").join(id);
-    std::fs::create_dir_all(home.join(".local").join("bin")).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(home.join(".local").join("bin")).map_err(ChatError::internal)?;
     Ok(AgentEnv { home, network })
 }
 
 /// Forgets an agent's environment: its files and packages.
-pub fn reset_agent_env(config_dir: &Path, id: &str) -> Result<(), String> {
+pub fn reset_agent_env(config_dir: &Path, id: &str) -> Result<(), ChatError> {
     if !valid_id(id) {
-        return Err("invalid agent id".into());
+        return Err(ChatError::Invalid("invalid agent id".into()));
     }
     match std::fs::remove_dir_all(chat_dir(config_dir).join("agent-envs").join(id)) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(e.to_string()),
+        Err(e) => Err(ChatError::Invalid(e.to_string())),
     }
 }
 
@@ -410,7 +411,7 @@ pub async fn run_in(
         .clamp(1, MAX_TIMEOUT);
     let dir = match workspace(config_dir, conversation_id) {
         Ok(d) => d,
-        Err(e) => return err(e),
+        Err(e) => return err(e.to_string()),
     };
     if let Err(e) = std::fs::create_dir_all(&dir) {
         return err(format!("Could not create the workspace: {e}"));

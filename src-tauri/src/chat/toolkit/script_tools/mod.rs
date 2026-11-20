@@ -12,6 +12,7 @@
 
 pub mod sandbox;
 
+use crate::chat::error::ChatError;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
@@ -168,12 +169,12 @@ pub(in crate::chat::toolkit) fn valid_name(name: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
 }
 
-fn path(config_dir: &Path, name: &str) -> Result<PathBuf, String> {
+fn path(config_dir: &Path, name: &str) -> Result<PathBuf, ChatError> {
     if !valid_name(name) {
-        return Err(
+        return Err(ChatError::Invalid(
             "A tool name uses lowercase letters, digits and underscores, like `count_words`."
                 .into(),
-        );
+        ));
     }
     Ok(dir(config_dir).join(format!("{name}.json")))
 }
@@ -219,19 +220,19 @@ pub fn list(config_dir: &Path) -> Vec<ScriptTool> {
 /// Saves a change to a tool, re-signed. A tool whose file was changed outside the app is not
 /// changed further this way: its grants would be signed as if the app had made them. Only paths
 /// that show the user the tool again (promotion) or take its access away use [`save_resigned`].
-pub(crate) fn save(config_dir: &Path, tool: &ScriptTool) -> Result<(), String> {
+pub(crate) fn save(config_dir: &Path, tool: &ScriptTool) -> Result<(), ChatError> {
     if let Some(on_disk) = load(config_dir, &tool.name) {
         if !verifies(config_dir, &on_disk) {
-            return Err(format!(
+            return Err(ChatError::Invalid(format!(
                 "`{}`'s file was changed outside the app, so it was not changed further; promote it again so the user sees what it is now.",
                 tool.name
-            ));
+            )));
         }
     }
     save_resigned(config_dir, tool)
 }
 
-fn save_resigned(config_dir: &Path, tool: &ScriptTool) -> Result<(), String> {
+fn save_resigned(config_dir: &Path, tool: &ScriptTool) -> Result<(), ChatError> {
     let path = path(config_dir, &tool.name)?;
     // Signed as saved by the app: what the user approved, and what it may reach, numbered above
     // every save before it.
@@ -248,7 +249,7 @@ fn save_resigned(config_dir: &Path, tool: &ScriptTool) -> Result<(), String> {
         .saturating_add(1);
     tool.signature = sign(config_dir, &tool);
     let tool = &tool;
-    std::fs::create_dir_all(dir(config_dir)).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(dir(config_dir)).map_err(ChatError::internal)?;
     if let Some(previous) = previous {
         crate::chat::versions::keep(
             config_dir,
@@ -258,17 +259,17 @@ fn save_resigned(config_dir: &Path, tool: &ScriptTool) -> Result<(), String> {
             tool,
         )?;
     }
-    let text = serde_json::to_string_pretty(tool).map_err(|e| e.to_string())?;
-    crate::chat::at_rest::write(path, &text).map_err(|e| e.to_string())?;
+    let text = serde_json::to_string_pretty(tool).map_err(ChatError::internal)?;
+    crate::chat::at_rest::write(path, &text).map_err(ChatError::internal)?;
     // The last state the app signed, kept apart from the file the tool runs from, and its
     // signature recorded as the latest.
     if let Some(signature) = &tool.signature {
         record_latest(config_dir, &tool.name, signature, tool.seq);
         let copy = signed_copy(config_dir, &tool.name)?;
         if let Some(parent) = copy.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            std::fs::create_dir_all(parent).map_err(ChatError::internal)?;
         }
-        crate::chat::at_rest::write(copy, &text).map_err(|e| e.to_string())?;
+        crate::chat::at_rest::write(copy, &text).map_err(ChatError::internal)?;
     }
     Ok(())
 }

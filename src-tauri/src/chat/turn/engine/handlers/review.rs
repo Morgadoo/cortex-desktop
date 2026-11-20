@@ -158,7 +158,7 @@ pub(super) fn on_request_capability<'a>(
                     ),
                     is_error: false,
                 },
-                Err(e) => refuse(&e),
+                Err(e) => refuse(&e.to_string()),
             },
         }
     })

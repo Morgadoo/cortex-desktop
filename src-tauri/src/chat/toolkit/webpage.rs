@@ -5,6 +5,7 @@
 //! in `chat/browser-profiles/<agent>`; the user signs an agent in to sites by opening that
 //! profile in a visible window from the agent's page.
 
+use crate::chat::error::ChatError;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
@@ -145,7 +146,7 @@ unsafe fn libc_geteuid() -> u32 {
     unsafe { geteuid() }
 }
 
-async fn run(browser: &Path, args: Vec<String>) -> Result<Vec<u8>, String> {
+async fn run(browser: &Path, args: Vec<String>) -> Result<Vec<u8>, ChatError> {
     let mut cmd = tokio::process::Command::new(browser);
     cmd.args(&args)
         .stdin(Stdio::null())
@@ -154,7 +155,7 @@ async fn run(browser: &Path, args: Vec<String>) -> Result<Vec<u8>, String> {
         .kill_on_drop(true);
     let child = cmd
         .spawn()
-        .map_err(|e| format!("The browser could not start: {e}"))?;
+        .map_err(|e| ChatError::Invalid(format!("The browser could not start: {e}")))?;
     match tokio::time::timeout(
         std::time::Duration::from_secs(TIMEOUT_SECS),
         child.wait_with_output(),
@@ -162,8 +163,10 @@ async fn run(browser: &Path, args: Vec<String>) -> Result<Vec<u8>, String> {
     .await
     {
         Ok(Ok(out)) => Ok(out.stdout),
-        Ok(Err(e)) => Err(e.to_string()),
-        Err(_) => Err(format!("The page took more than {TIMEOUT_SECS} seconds.")),
+        Ok(Err(e)) => Err(ChatError::Invalid(e.to_string())),
+        Err(_) => Err(ChatError::Invalid(format!(
+            "The page took more than {TIMEOUT_SECS} seconds."
+        ))),
     }
 }
 
@@ -307,7 +310,7 @@ pub async fn view(
     if capture != "text" {
         let dir = match crate::chat::sandbox::workspace(config_dir, conversation_id) {
             Ok(d) => d.join("images"),
-            Err(e) => return err(e),
+            Err(e) => return err(e.to_string()),
         };
         let _ = std::fs::create_dir_all(&dir);
         let name = format!(
@@ -321,7 +324,7 @@ pub async fn view(
         )
         .await
         {
-            return err(e);
+            return err(e.to_string());
         }
         if !path.is_file() {
             return err(
@@ -337,17 +340,19 @@ pub async fn view(
                 out["title"] = json!(title);
                 out["text"] = json!(crate::support::text::clip(&text, MAX_TEXT));
             }
-            Err(e) => return err(e),
+            Err(e) => return err(e.to_string()),
         }
     }
     Outcome::ok(out.to_string())
 }
 
 /// Opens an agent's profile in a visible browser window, to sign in to sites for it.
-pub fn open_profile(config_dir: &Path, agent: Option<&str>, url: &str) -> Result<(), String> {
-    let browser = find_browser().ok_or("No Chrome, Chromium, Edge or Brave is installed.")?;
+pub fn open_profile(config_dir: &Path, agent: Option<&str>, url: &str) -> Result<(), ChatError> {
+    let browser = find_browser().ok_or_else(|| {
+        ChatError::Invalid("No Chrome, Chromium, Edge or Brave is installed.".into())
+    })?;
     let profile = profile_dir(config_dir, agent);
-    std::fs::create_dir_all(&profile).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&profile).map_err(ChatError::internal)?;
     let mut cmd = std::process::Command::new(browser);
     cmd.arg(format!("--user-data-dir={}", profile.display()))
         .arg("--no-first-run")
@@ -366,15 +371,15 @@ pub fn open_profile(config_dir: &Path, agent: Option<&str>, url: &str) -> Result
         .stderr(Stdio::null())
         .spawn()
         .map(|_| ())
-        .map_err(|e| e.to_string())
+        .map_err(ChatError::internal)
 }
 
 /// Forgets an agent's browser session (its cookies and logins).
-pub fn clear_profile(config_dir: &Path, agent: Option<&str>) -> Result<(), String> {
+pub fn clear_profile(config_dir: &Path, agent: Option<&str>) -> Result<(), ChatError> {
     match std::fs::remove_dir_all(profile_dir(config_dir, agent)) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(e.to_string()),
+        Err(e) => Err(ChatError::Invalid(e.to_string())),
     }
 }
 
@@ -493,7 +498,7 @@ const CONTROLS_JS: &str = "JSON.stringify([...document.querySelectorAll('input:n
   return e.tagName.toLowerCase() + (e.type && e.tagName === 'INPUT' ? '[' + e.type + ']' : '') + ' \"' + label + '\" → ' + target; }))";
 
 /// The script for one step; it returns a short report, or throws when the target is missing.
-pub(in crate::chat::toolkit) fn step_js(step: &Value) -> Result<String, String> {
+pub(in crate::chat::toolkit) fn step_js(step: &Value) -> Result<String, ChatError> {
     let s = |k: &str| step.get(k).and_then(Value::as_str).map(str::to_string);
     if let Some(target) = s("click") {
         return Ok(format!("(() => {{ const el = {}; if (!el) throw new Error('nothing matches {}'); el.scrollIntoView({{block:'center'}}); el.click(); return 'clicked'; }})()", find_js(&target), target.replace('\'', "")));
@@ -512,9 +517,9 @@ pub(in crate::chat::toolkit) fn step_js(step: &Value) -> Result<String, String> 
     }
     if let Some(key) = s("press") {
         if !matches!(key.as_str(), "Enter" | "Tab" | "Escape") {
-            return Err(format!(
+            return Err(ChatError::Invalid(format!(
                 "Only Enter, Tab and Escape can be pressed, not {key}."
-            ));
+            )));
         }
         // Enter on a field submits its form, as a person's would.
         return Ok(format!(
@@ -523,7 +528,7 @@ pub(in crate::chat::toolkit) fn step_js(step: &Value) -> Result<String, String> 
              if (k === 'Enter' && el.form) {{ el.form.requestSubmit ? el.form.requestSubmit() : el.form.submit(); }} return 'pressed ' + k; }})()"
         ));
     }
-    Err(format!("Unknown step {step}."))
+    Err(ChatError::Invalid(format!("Unknown step {step}.")))
 }
 
 struct Cdp {
@@ -535,7 +540,7 @@ struct Cdp {
 }
 
 impl Cdp {
-    async fn call(&mut self, method: &str, params: Value) -> Result<Value, String> {
+    async fn call(&mut self, method: &str, params: Value) -> Result<Value, ChatError> {
         use futures::{SinkExt as _, StreamExt as _};
         self.next += 1;
         let id = self.next;
@@ -548,40 +553,43 @@ impl Cdp {
                 msg.to_string().into(),
             ))
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(ChatError::internal)?;
         loop {
             let frame = tokio::time::timeout(std::time::Duration::from_secs(30), self.ws.next())
                 .await
-                .map_err(|_| format!("The browser did not answer {method}."))?;
+                .map_err(|_| ChatError::Invalid(format!("The browser did not answer {method}.")))?;
             let Some(Ok(tokio_tungstenite::tungstenite::Message::Text(text))) = frame else {
                 if frame.is_none() {
-                    return Err("The browser closed.".into());
+                    return Err(ChatError::Invalid("The browser closed.".into()));
                 }
                 continue;
             };
             let v: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
             if v["id"].as_u64() == Some(id) {
                 if let Some(e) = v.get("error") {
-                    return Err(e["message"].as_str().unwrap_or("browser error").to_string());
+                    return Err(ChatError::Invalid(
+                        e["message"].as_str().unwrap_or("browser error").to_string(),
+                    ));
                 }
                 return Ok(v["result"].clone());
             }
         }
     }
 
-    async fn eval(&mut self, script: &str) -> Result<Value, String> {
+    async fn eval(&mut self, script: &str) -> Result<Value, ChatError> {
         let r = self.call("Runtime.evaluate", json!({ "expression": script, "returnByValue": true, "awaitPromise": true, "userGesture": true })).await?;
         if let Some(ex) = r.get("exceptionDetails") {
             let text = ex["exception"]["description"]
                 .as_str()
                 .or(ex["text"].as_str())
                 .unwrap_or("the step failed");
-            return Err(text
-                .lines()
-                .next()
-                .unwrap_or(text)
-                .trim_start_matches("Error: ")
-                .to_string());
+            return Err(ChatError::Invalid(
+                text.lines()
+                    .next()
+                    .unwrap_or(text)
+                    .trim_start_matches("Error: ")
+                    .to_string(),
+            ));
         }
         Ok(r["result"]["value"].clone())
     }
@@ -606,7 +614,10 @@ impl Cdp {
 }
 
 /// Starts the browser with a DevTools port and returns it with its WebSocket address.
-async fn launch(browser: &Path, profile: &Path) -> Result<(tokio::process::Child, String), String> {
+async fn launch(
+    browser: &Path,
+    profile: &Path,
+) -> Result<(tokio::process::Child, String), ChatError> {
     use tokio::io::AsyncBufReadExt as _;
     let mut args = headless_args(profile, "about:blank", 1280, 900, None);
     args.retain(|a| {
@@ -621,8 +632,11 @@ async fn launch(browser: &Path, profile: &Path) -> Result<(tokio::process::Child
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn()
-        .map_err(|e| format!("The browser could not start: {e}"))?;
-    let stderr = child.stderr.take().ok_or("no browser output")?;
+        .map_err(|e| ChatError::Invalid(format!("The browser could not start: {e}")))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| ChatError::Invalid("no browser output".into()))?;
     let mut lines = tokio::io::BufReader::new(stderr).lines();
     // What the browser said, to explain a start that fails.
     let mut said: Vec<String> = Vec::new();
@@ -650,14 +664,14 @@ async fn launch(browser: &Path, profile: &Path) -> Result<(tokio::process::Child
                 "before it exited"
             };
             let tail = said.join(" | ");
-            return Err(format!(
+            return Err(ChatError::Invalid(format!(
                 "The browser did not open its DevTools port {why}.{}",
                 if tail.is_empty() {
                     String::new()
                 } else {
                     format!(" It said: {tail}")
                 }
-            ));
+            )));
         }
     };
     // Keep reading its output so it never blocks on a full pipe.
@@ -700,13 +714,13 @@ pub async fn act(
     let _ = std::fs::create_dir_all(&profile);
     let (mut child, ws_url) = match launch(&browser, &profile).await {
         Ok(x) => x,
-        Err(e) => return err(e),
+        Err(e) => return err(e.to_string()),
     };
     let result = async {
-        let (ws, _) = tokio_tungstenite::connect_async(ws_url.as_str()).await.map_err(|e| e.to_string())?;
+        let (ws, _) = tokio_tungstenite::connect_async(ws_url.as_str()).await.map_err(ChatError::internal)?;
         let mut cdp = Cdp { ws, next: 0, session: None };
         let target = cdp.call("Target.createTarget", json!({ "url": "about:blank" })).await?;
-        let target_id = target["targetId"].as_str().ok_or("no page")?.to_string();
+        let target_id = target["targetId"].as_str().ok_or_else(|| ChatError::Invalid("no page".into()))?.to_string();
         let attached = cdp.call("Target.attachToTarget", json!({ "targetId": target_id, "flatten": true })).await?;
         cdp.session = attached["sessionId"].as_str().map(str::to_string);
         cdp.call("Page.enable", json!({})).await?;
@@ -736,7 +750,7 @@ pub async fn act(
             cdp.settle().await;
         }
         let shot = cdp.call("Page.captureScreenshot", json!({ "format": "png" })).await?;
-        let png = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, shot["data"].as_str().unwrap_or_default()).map_err(|e| e.to_string())?;
+        let png = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, shot["data"].as_str().unwrap_or_default()).map_err(ChatError::internal)?;
         let page = cdp.eval("JSON.stringify({ url: location.href, title: document.title, text: document.body ? document.body.innerText : '' })").await?;
         let mut page: Value = serde_json::from_str(page.as_str().unwrap_or("{}")).unwrap_or(Value::Null);
         if let Ok(controls) = cdp.eval(CONTROLS_JS).await {
@@ -749,11 +763,11 @@ pub async fn act(
     let _ = child.kill().await;
     let (log, png, page) = match result {
         Ok(r) => r,
-        Err(e) => return err(e),
+        Err(e) => return err(e.to_string()),
     };
     let dir = match crate::chat::sandbox::workspace(config_dir, conversation_id) {
         Ok(d) => d.join("images"),
-        Err(e) => return err(e),
+        Err(e) => return err(e.to_string()),
     };
     let _ = std::fs::create_dir_all(&dir);
     let name = format!(
@@ -810,7 +824,8 @@ mod act_tests {
             .unwrap();
         let err = launch(&fake, dir.path()).await.unwrap_err();
         assert!(
-            err.contains("before it exited") && err.contains("Missing X server"),
+            err.to_string().contains("before it exited")
+                && err.to_string().contains("Missing X server"),
             "{err}"
         );
     }

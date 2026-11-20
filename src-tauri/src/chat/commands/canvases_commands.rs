@@ -84,12 +84,12 @@ pub fn chat_read_spreadsheet(data: String) -> Result<Vec<(String, String)>, Stri
     if bytes.len() > 30 * 1024 * 1024 {
         return Err("That workbook is too large.".into());
     }
-    crate::chat::sheets::read_workbook(&bytes)
+    crate::chat::sheets::read_workbook(&bytes).map_err(String::from)
 }
 
 #[tauri::command]
 pub fn chat_get_canvas(app: AppHandle, id: String) -> Result<crate::chat::canvas::Canvas, String> {
-    crate::chat::canvas::load(&config_dir(&app)?, &id)
+    crate::chat::canvas::load(&config_dir(&app)?, &id).map_err(String::from)
 }
 
 /// Saves the user's edit as a new version.
@@ -110,6 +110,7 @@ pub fn chat_save_canvas(
         &content,
         "user",
     )
+    .map_err(String::from)
 }
 
 /// Opens an app canvas in a window of its own (LibreChat's artifact in a new window), or brings

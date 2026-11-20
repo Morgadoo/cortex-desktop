@@ -1,6 +1,7 @@
 //! Pull and merge requests: their status from gh or glab, compare pages, and opening one.
 
 use super::*;
+use crate::chat::error::ChatError;
 
 #[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -314,24 +315,27 @@ pub(super) fn branch_name(title: &str) -> String {
 /// otherwise by handing back the host's new-pull-request page, where the user finishes it. The
 /// page comes from the remote for GitHub, GitLab, Bitbucket, Codeberg, Gitea and Forgejo, or from
 /// the link the host printed during the push.
-pub fn open_pull_request(dir: &str, title: &str) -> Result<PullRequest, String> {
+pub fn open_pull_request(dir: &str, title: &str) -> Result<PullRequest, ChatError> {
     let path = Path::new(dir);
-    let run = |args: &[&str]| -> Result<String, String> {
+    let run = |args: &[&str]| -> Result<String, ChatError> {
         let out = Command::new("git")
             .arg("-C")
             .arg(path)
             .args(args)
             .env("LC_ALL", "C")
             .output()
-            .map_err(|e| e.to_string())?;
+            .map_err(ChatError::internal)?;
         if out.status.success() {
             Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
         } else {
-            Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+            Err(ChatError::Invalid(
+                String::from_utf8_lossy(&out.stderr).trim().to_string(),
+            ))
         }
     };
     let remote = run(&["remote", "get-url", "origin"])
-        .map_err(|_| "This repository has no `origin` remote to push to.".to_string())?;
+        .map_err(|_| "This repository has no `origin` remote to push to.".to_string())
+        .map_err(ChatError::Invalid)?;
     let default = run(&["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])
         .ok()
         .and_then(|r| r.strip_prefix("origin/").map(str::to_string))
@@ -347,17 +351,17 @@ pub fn open_pull_request(dir: &str, title: &str) -> Result<PullRequest, String> 
         .args(["push", "-u", "origin", &branch])
         .env("LC_ALL", "C")
         .output()
-        .map_err(|e| e.to_string())?;
+        .map_err(ChatError::internal)?;
     let push_output = format!(
         "{}\n{}",
         String::from_utf8_lossy(&push.stdout),
         String::from_utf8_lossy(&push.stderr)
     );
     if !push.status.success() {
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "Pushing {branch} failed: {}",
             String::from_utf8_lossy(&push.stderr).trim()
-        ));
+        )));
     }
 
     let repo = github_repo(&remote);

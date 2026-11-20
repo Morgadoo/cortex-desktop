@@ -69,7 +69,7 @@ pub(super) fn on_create_tool<'a>(
                 is_error: false,
             },
             Err(text) => tools::Outcome {
-                text,
+                text: text.to_string(),
                 is_error: true,
             },
         }
@@ -91,7 +91,7 @@ pub(super) fn on_run_script<'a>(
                 is_error: false,
             },
             Err(text) => tools::Outcome {
-                text,
+                text: text.to_string(),
                 is_error: true,
             },
         }
@@ -151,13 +151,11 @@ pub(super) fn on_promote_tool<'a>(
         let days = arguments.get("days").and_then(Value::as_i64);
         // Tried first, in a copy of the data, with nothing granted: it is not approved yet.
         let scores = match trial(r, |dir| async move {
-            script_tools::promote(&dir, name, None)
-                .await
-                .map_err(ChatError::Invalid)?;
+            script_tools::promote(&dir, name, None).await?;
             let mut tried =
                 script_tools::load(&dir, name).ok_or_else(|| ChatError::Invalid("gone".into()))?;
             tried.granted = script_tools::Capabilities::default();
-            script_tools::save(&dir, &tried).map_err(ChatError::Invalid)
+            script_tools::save(&dir, &tried)
         })
         .await
         {
@@ -178,7 +176,7 @@ pub(super) fn on_promote_tool<'a>(
             ),
             _ => match script_tools::promote_as_shown(r.config_dir, &tool, days).await {
                 Ok(text) => tools::Outcome::ok(format!("{text}{}", scores_note(&scores))),
-                Err(e) => refuse(&e),
+                Err(e) => refuse(&e.to_string()),
             },
         }
     })
@@ -288,7 +286,7 @@ pub(super) fn on_propose_change<'a>(
         let refuse = |text: &str| tools::Outcome::err(text);
         let proposal = match proposals::parse(&arguments) {
             Ok(p) => p,
-            Err(e) => return refuse(&e),
+            Err(e) => return refuse(&e.to_string()),
         };
         match r.request.approval {
             ApprovalMode::Plan => {
@@ -313,9 +311,7 @@ pub(super) fn on_propose_change<'a>(
         };
         let change = &proposal.change;
         let scores = match trial(r, |dir| async move {
-            proposals::apply(&dir, r.id, change)
-                .map(drop)
-                .map_err(ChatError::Invalid)
+            proposals::apply(&dir, r.id, change).map(drop)
         })
         .await
         {
@@ -338,7 +334,7 @@ pub(super) fn on_propose_change<'a>(
                     "{text} (Reviewer: {verdict}){}",
                     scores_note(&scores)
                 )),
-                Err(e) => refuse(&e),
+                Err(e) => refuse(&e.to_string()),
             },
         }
     })

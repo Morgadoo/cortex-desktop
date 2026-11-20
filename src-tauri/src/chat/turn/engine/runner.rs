@@ -334,7 +334,7 @@ impl Runner<'_> {
             terminal::STOP => match terminal::get(&arg("id")) {
                 Some(view) if view.conversation_id == self.id => match terminal::stop(&view.id) {
                     Ok(()) => tools::Outcome::ok("Stopped."),
-                    Err(e) => fail(&e),
+                    Err(e) => fail(&e.to_string()),
                 },
                 _ => fail("There is no background command with that id here."),
             },
@@ -393,7 +393,7 @@ impl Runner<'_> {
                             is_error: false,
                         }
                     }
-                    Err(e) => fail(&e),
+                    Err(e) => fail(&e.to_string()),
                 }
             }
         }

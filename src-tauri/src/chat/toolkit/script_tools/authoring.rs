@@ -1,6 +1,7 @@
 //! Writing a tool: the draft, its checks, near-duplicates and taken names, and creating it as a candidate.
 
 use super::*;
+use crate::chat::error::ChatError;
 
 /// What `create_tool` asks for.
 #[derive(Debug, Deserialize)]
@@ -116,13 +117,13 @@ pub const RUN_SCRIPT: &str = "run_script";
 
 /// The kernel's `run(code, limits)`: a one-off JavaScript program in the sandbox, with no access
 /// to anything, within the limits asked for (capped at the defaults). Nothing is saved.
-pub async fn run_once(config_dir: &Path, args: &Value) -> Result<String, String> {
+pub async fn run_once(config_dir: &Path, args: &Value) -> Result<String, ChatError> {
     sandbox::cache_in(config_dir);
     let code = args
         .get("code")
         .and_then(Value::as_str)
         .filter(|c| !c.trim().is_empty())
-        .ok_or("Give the program as `code`.")?;
+        .ok_or_else(|| ChatError::Invalid("Give the program as `code`.".into()))?;
     let input = args.get("args").cloned().unwrap_or_else(|| json!({}));
     let defaults = Limits::default();
     let limits = Limits {
@@ -150,45 +151,55 @@ pub async fn run_once(config_dir: &Path, args: &Value) -> Result<String, String>
     .await;
     result
         .map(|out| cortex_kernel::privacy::mask_secrets(&out).0)
-        .map_err(|e| e.to_string())
+        .map_err(ChatError::internal)
 }
 
 /// `create_tool`: saves (or replaces) a candidate and runs it once on its test arguments, with no
 /// capabilities. A promoted tool that is rewritten goes back to being a candidate.
-pub async fn create(config_dir: &Path, conversation: &str, args: &Value) -> Result<String, String> {
+pub async fn create(
+    config_dir: &Path,
+    conversation: &str,
+    args: &Value,
+) -> Result<String, ChatError> {
     sandbox::cache_in(config_dir);
     // Signed from its first save: a tool written before the key was loaded would otherwise look,
     // once it is, like a file changed outside the app.
     #[cfg(not(test))]
     ensure_signing_key(config_dir).await;
     let draft: Draft = serde_json::from_value(args.clone())
-        .map_err(|e| format!("The tool is not described right: {e}"))?;
+        .map_err(|e| ChatError::Invalid(format!("The tool is not described right: {e}")))?;
     let name = draft.name.trim().to_string();
     if taken(&name) {
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "`{name}` is one of the app's own tools; choose another name."
-        ));
+        )));
     }
     if draft.description.trim().is_empty() {
-        return Err("Describe what the tool does and when to use it.".into());
+        return Err(ChatError::Invalid(
+            "Describe what the tool does and when to use it.".into(),
+        ));
     }
     if !draft.script.contains("function main") {
-        return Err("The script must define `function main(args)` and return the result.".into());
+        return Err(ChatError::Invalid(
+            "The script must define `function main(args)` and return the result.".into(),
+        ));
     }
     let parameters = draft
         .parameters
         .unwrap_or_else(|| json!({ "type": "object", "properties": {} }));
     if !parameters.is_object() {
-        return Err("`parameters` must be a JSON schema object.".into());
+        return Err(ChatError::Invalid(
+            "`parameters` must be a JSON schema object.".into(),
+        ));
     }
     let existing = list(config_dir);
     if !draft.new_anyway && !existing.iter().any(|t| t.name == name) {
         if let Some(similar) = near_duplicate(&existing, &name, &draft.description) {
-            return Err(format!(
+            return Err(ChatError::Invalid(format!(
                 "`{}` already looks like this tool ({}). Update it by calling create_tool with name \
                  `{}`, or, if this is really a different tool, call again with new_anyway: true.",
                 similar.name, similar.description, similar.name
-            ));
+            )));
         }
     }
     let previous = existing.into_iter().find(|t| t.name == name);

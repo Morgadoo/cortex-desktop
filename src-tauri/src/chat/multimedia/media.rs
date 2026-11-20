@@ -380,8 +380,7 @@ pub(crate) fn reference_image(
             })?
     } else {
         // Only files inside this conversation's workspace.
-        let root = crate::chat::sandbox::workspace(config_dir, conversation_id)
-            .map_err(ChatError::Invalid)?;
+        let root = crate::chat::sandbox::workspace(config_dir, conversation_id)?;
         let canonical = root
             .join(reference)
             .canonicalize()
@@ -728,9 +727,7 @@ pub(in crate::chat::multimedia) async fn make_images(
         None => None,
     };
     let count = request.count.clamp(1, 4);
-    let dir = crate::chat::sandbox::workspace(config_dir, workspace)
-        .map_err(ChatError::Invalid)?
-        .join("images");
+    let dir = crate::chat::sandbox::workspace(config_dir, workspace)?.join("images");
     std::fs::create_dir_all(&dir).map_err(ChatError::internal)?;
     if reference.starts_with(SDWEBUI_PREFIX) {
         let server = image_server(config_dir).ok_or_else(|| {

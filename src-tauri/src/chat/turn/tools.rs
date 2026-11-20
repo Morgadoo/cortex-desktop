@@ -139,28 +139,39 @@ async fn execute_external(
         ..ToolDefinition::default()
     };
     let config_dir = host.config_dir().ok();
+    // The registry takes the connector's errors as text; the work inside is typed.
     let run = |input: Value| async move {
-        if connector_id == crate::chat::computer::CONNECTOR {
-            return crate::chat::computer::run(conversation_id, &input).await;
-        }
-        let config_dir = config_dir
-            .ok_or_else(|| ChatError::Invalid("The app's data folder is not available.".into()))?;
-        if connector_id == crate::chat::script_tools::CONNECTOR {
-            let workspace = crate::chat::sandbox::workspace(&config_dir, conversation_id).ok();
-            return crate::chat::script_tools::call(
-                &config_dir,
-                &tool.tool_name,
-                &input,
-                workspace.as_deref(),
-            )
-            .await;
-        }
-        if connector_id == crate::chat::custom_tools::CONNECTOR {
-            crate::chat::custom_tools::run(&config_dir, conversation_id, &tool.tool_name, &input)
+        let result: Result<String, ChatError> = async move {
+            if connector_id == crate::chat::computer::CONNECTOR {
+                return crate::chat::computer::run(conversation_id, &input).await;
+            }
+            let config_dir = config_dir.ok_or_else(|| {
+                ChatError::Invalid("The app's data folder is not available.".into())
+            })?;
+            if connector_id == crate::chat::script_tools::CONNECTOR {
+                let workspace = crate::chat::sandbox::workspace(&config_dir, conversation_id).ok();
+                return crate::chat::script_tools::call(
+                    &config_dir,
+                    &tool.tool_name,
+                    &input,
+                    workspace.as_deref(),
+                )
+                .await;
+            }
+            if connector_id == crate::chat::custom_tools::CONNECTOR {
+                crate::chat::custom_tools::run(
+                    &config_dir,
+                    conversation_id,
+                    &tool.tool_name,
+                    &input,
+                )
                 .await
-        } else {
-            crate::chat::openapi::call(&config_dir, tool, &input).await
+            } else {
+                crate::chat::openapi::call(&config_dir, tool, &input).await
+            }
         }
+        .await;
+        result.map_err(String::from)
     };
     match host
         .registry()

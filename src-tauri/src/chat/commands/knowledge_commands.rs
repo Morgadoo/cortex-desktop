@@ -18,7 +18,7 @@ pub fn chat_artifacts(app: AppHandle) -> Result<Vec<ScoredArtifact>, String> {
 /// Takes back the network and file access of a tool the assistant wrote.
 #[tauri::command]
 pub fn chat_revoke_tool(app: AppHandle, name: String) -> Result<(), String> {
-    crate::chat::script_tools::revoke(&config_dir(&app)?, &name)
+    crate::chat::script_tools::revoke(&config_dir(&app)?, &name).map_err(String::from)
 }
 
 /// What changed from one saved version of an item to the next (or to `current`).

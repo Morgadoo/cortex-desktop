@@ -5,6 +5,7 @@
 //! kept in a ring buffer; the user follows it in the Terminal panel and the model reads it with
 //! `terminal_read`. Commands stop when asked, and all of them when the app quits.
 
+use crate::chat::error::ChatError;
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::{Mutex, OnceLock};
@@ -125,10 +126,10 @@ pub fn definitions() -> Vec<ChatTool> {
 }
 
 /// Starts `command` in `dir` for `conversation_id`; returns its id.
-pub fn start(conversation_id: &str, dir: &str, command: &str) -> Result<String, String> {
+pub fn start(conversation_id: &str, dir: &str, command: &str) -> Result<String, ChatError> {
     let command = command.trim();
     if command.is_empty() {
-        return Err("Give the command to run.".into());
+        return Err(ChatError::Invalid("Give the command to run.".into()));
     }
     if lock()
         .values()
@@ -136,9 +137,9 @@ pub fn start(conversation_id: &str, dir: &str, command: &str) -> Result<String, 
         .count()
         >= MAX_RUNNING
     {
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "{MAX_RUNNING} commands are already running; stop one first."
-        ));
+        )));
     }
     #[cfg(windows)]
     let mut child = tokio::process::Command::new("cmd");
@@ -161,7 +162,7 @@ pub fn start(conversation_id: &str, dir: &str, command: &str) -> Result<String, 
     let child = child.process_group(0);
     let mut child = child
         .spawn()
-        .map_err(|e| format!("Could not start the command: {e}"))?;
+        .map_err(|e| ChatError::Invalid(format!("Could not start the command: {e}")))?;
     let pid = child.id();
     let id = uuid::Uuid::new_v4().to_string()[..8].to_string();
     let (kill_tx, mut kill_rx) = tokio::sync::oneshot::channel();
@@ -261,14 +262,14 @@ pub fn stop_all() {
 }
 
 /// Stops a running command.
-pub fn stop(id: &str) -> Result<(), String> {
+pub fn stop(id: &str) -> Result<(), ChatError> {
     let kill = lock().get_mut(id).and_then(|r| r.kill.take());
     match kill {
         Some(tx) => {
             let _ = tx.send(());
             Ok(())
         }
-        None => Err("That command is not running.".into()),
+        None => Err(ChatError::Invalid("That command is not running.".into())),
     }
 }
 

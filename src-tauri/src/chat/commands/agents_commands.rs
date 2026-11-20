@@ -117,19 +117,21 @@ pub fn chat_agent_browser(
 ) -> Result<(), String> {
     let dir = config_dir(&app)?;
     if clear {
-        return crate::chat::webpage::clear_profile(&dir, agent_id.as_deref());
+        return crate::chat::webpage::clear_profile(&dir, agent_id.as_deref())
+            .map_err(String::from);
     }
     crate::chat::webpage::open_profile(
         &dir,
         agent_id.as_deref(),
         url.as_deref().unwrap_or_default(),
     )
+    .map_err(String::from)
 }
 
 /// Forgets an agent's code environment (its files and installed packages).
 #[tauri::command]
 pub fn chat_reset_agent_env(app: AppHandle, id: String) -> Result<(), String> {
-    crate::chat::sandbox::reset_agent_env(&config_dir(&app)?, &id)
+    crate::chat::sandbox::reset_agent_env(&config_dir(&app)?, &id).map_err(String::from)
 }
 
 /// The user's ACP agents; `agents` replaces them. Returns every one that can start.

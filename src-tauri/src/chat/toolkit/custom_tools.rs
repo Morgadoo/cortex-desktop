@@ -5,6 +5,7 @@
 //! the variable `args`, and returns what it prints. Every call passes the approval gate like a
 //! connector tool. Tools live in `chat/tools/<name>/tool.json`.
 
+use crate::chat::error::ChatError;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -63,23 +64,25 @@ pub fn list(config_dir: &Path) -> Vec<CustomTool> {
     out
 }
 
-pub fn save(config_dir: &Path, tool: &CustomTool) -> Result<Vec<CustomTool>, String> {
+pub fn save(config_dir: &Path, tool: &CustomTool) -> Result<Vec<CustomTool>, ChatError> {
     if !valid_name(&tool.name) {
-        return Err(
+        return Err(ChatError::Invalid(
             "A tool name uses lowercase letters, digits and underscores, like `convert_units`."
                 .into(),
-        );
+        ));
     }
     if tool.description.trim().is_empty() {
-        return Err(
+        return Err(ChatError::Invalid(
             "Describe what the tool does; the model reads it to decide when to call it.".into(),
-        );
+        ));
     }
     if !["python", "javascript", "bash"].contains(&tool.language.as_str()) {
-        return Err("Choose Python, JavaScript or Bash.".into());
+        return Err(ChatError::Invalid(
+            "Choose Python, JavaScript or Bash.".into(),
+        ));
     }
     if tool.parameters.get("type").and_then(Value::as_str) != Some("object") {
-        return Err("The input schema must be a JSON object schema, like {\"type\": \"object\", \"properties\": {…}}.".into());
+        return Err(ChatError::Invalid("The input schema must be a JSON object schema, like {\"type\": \"object\", \"properties\": {…}}.".into()));
     }
     if let Some(previous) = list(config_dir).into_iter().find(|t| t.name == tool.name) {
         crate::chat::versions::keep(config_dir, "tools", &tool.name, &previous, tool)?;
@@ -88,9 +91,9 @@ pub fn save(config_dir: &Path, tool: &CustomTool) -> Result<Vec<CustomTool>, Str
     Ok(list(config_dir))
 }
 
-pub fn delete(config_dir: &Path, name: &str) -> Result<Vec<CustomTool>, String> {
+pub fn delete(config_dir: &Path, name: &str) -> Result<Vec<CustomTool>, ChatError> {
     if !valid_name(name) {
-        return Err("invalid tool name".into());
+        return Err(ChatError::Invalid("invalid tool name".into()));
     }
     let _ = std::fs::remove_dir_all(dir(config_dir).join(name));
     Ok(list(config_dir))
@@ -155,11 +158,11 @@ pub async fn run(
     conversation_id: &str,
     name: &str,
     args: &Value,
-) -> Result<String, String> {
+) -> Result<String, ChatError> {
     let tool = list(config_dir)
         .into_iter()
         .find(|t| t.name == name)
-        .ok_or("That tool was removed.")?;
+        .ok_or_else(|| ChatError::Invalid("That tool was removed.".into()))?;
     // JavaScript that needs nothing from Node runs in the WebAssembly sandbox, which works the same
     // on every system; what it prints is its result. Anything else keeps the process sandbox.
     if runs_in_wasm(&tool) {
@@ -174,7 +177,7 @@ pub async fn run(
         .await;
         return result
             .map(|out| out.trim().to_string())
-            .map_err(|e| format!("The tool failed: {e}"));
+            .map_err(|e| ChatError::Invalid(format!("The tool failed: {e}")));
     }
     let outcome = crate::chat::sandbox::run(
         config_dir,
@@ -203,9 +206,9 @@ pub async fn run(
             .is_some_and(|c| c != 0);
     if failed {
         Err(if stderr.is_empty() {
-            format!("The tool failed. {stdout}")
+            ChatError::Invalid(format!("The tool failed. {stdout}"))
         } else {
-            format!("The tool failed: {stderr}")
+            ChatError::Invalid(format!("The tool failed: {stderr}"))
         })
     } else {
         Ok(if stdout.is_empty() {
@@ -306,6 +309,7 @@ mod tests {
         assert!(run(dir.path(), "c1", "convert_units", &json!({}))
             .await
             .unwrap_err()
+            .to_string()
             .contains("bad input"));
     }
 }

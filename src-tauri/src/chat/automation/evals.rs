@@ -921,7 +921,7 @@ mod tests {
         let err = st::call(&folder.dir, "counter", &serde_json::json!({}), None)
             .await
             .unwrap_err();
-        assert!(err.contains("changed outside the app"), "{err}");
+        assert!(err.to_string().contains("changed outside the app"), "{err}");
     }
 
     #[test]

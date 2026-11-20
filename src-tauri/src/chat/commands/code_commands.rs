@@ -10,7 +10,7 @@ pub fn chat_code_runs_allowed(app: AppHandle) -> Result<bool, String> {
 
 #[tauri::command]
 pub fn chat_set_code_runs_allowed(app: AppHandle, allowed: bool) -> Result<(), String> {
-    crate::chat::sandbox::set_always_allowed(&config_dir(&app)?, allowed)
+    crate::chat::sandbox::set_always_allowed(&config_dir(&app)?, allowed).map_err(String::from)
 }
 
 /// The working tree's changes in a coding session's folder.
@@ -44,12 +44,12 @@ pub async fn chat_terminal_start(
     let dir = conversation
         .workdir
         .ok_or("This conversation has no folder.")?;
-    crate::chat::terminal::start(&conversation_id, &dir, &command)
+    crate::chat::terminal::start(&conversation_id, &dir, &command).map_err(String::from)
 }
 
 #[tauri::command]
 pub fn chat_terminal_stop(id: String) -> Result<(), String> {
-    crate::chat::terminal::stop(&id)
+    crate::chat::terminal::stop(&id).map_err(String::from)
 }
 
 #[tauri::command]
@@ -71,6 +71,7 @@ pub async fn chat_code_commit(
     tokio::task::spawn_blocking(move || crate::chat::code::commit(&dir, &message))
         .await
         .map_err(|e| e.to_string())?
+        .map_err(String::from)
 }
 
 #[tauri::command]
@@ -103,6 +104,7 @@ pub async fn chat_code_pull_request(
     tokio::task::spawn_blocking(move || crate::chat::code::open_pull_request(&dir, &title))
         .await
         .map_err(|e| e.to_string())?
+        .map_err(String::from)
 }
 
 /// Opens a workspace file (a video, a document) in the system's app for it. A file kept
@@ -132,7 +134,7 @@ pub fn chat_open_workspace_file(
 /// and branch.
 #[tauri::command]
 pub fn chat_create_worktree(dir: String, name: String) -> Result<(String, String), String> {
-    crate::chat::code::create_worktree(&dir, &name)
+    crate::chat::code::create_worktree(&dir, &name).map_err(String::from)
 }
 
 /// Saves bytes the page made (a code block, a diagram) to a file the user picks.
@@ -212,7 +214,7 @@ pub async fn chat_folder_files(dir: String) -> Result<(Vec<String>, bool), Strin
 /// One file of a folder, as text, for an `@` mention; paths that leave the folder are refused.
 #[tauri::command]
 pub fn chat_folder_read(dir: String, path: String) -> Result<String, String> {
-    crate::chat::code::read_file(&dir, &path)
+    crate::chat::code::read_file(&dir, &path).map_err(String::from)
 }
 
 /// One file of a coding session's folder, as text.
@@ -226,7 +228,7 @@ pub fn chat_code_read_file(
     let dir = conversation
         .workdir
         .ok_or("This conversation has no folder.")?;
-    crate::chat::code::read_file(&dir, &path)
+    crate::chat::code::read_file(&dir, &path).map_err(String::from)
 }
 
 /// What a session holds, for the Debug panel: model, folder, usage, summary and the raw history.

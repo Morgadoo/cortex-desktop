@@ -6,6 +6,7 @@
 //! The layers, cheapest first, as the kernel orders them: a memory, a skill, a standing
 //! instruction. A new tool has its own path (`create_tool`, `promote_tool`).
 
+use crate::chat::error::ChatError;
 use std::path::Path;
 
 use serde::Deserialize;
@@ -37,11 +38,13 @@ pub struct Proposal {
     pub change: Change,
 }
 
-pub fn parse(args: &Value) -> Result<Proposal, String> {
+pub fn parse(args: &Value) -> Result<Proposal, ChatError> {
     let proposal: Proposal = serde_json::from_value(args.clone())
-        .map_err(|e| format!("The proposal is not described right: {e}"))?;
+        .map_err(|e| ChatError::Invalid(format!("The proposal is not described right: {e}")))?;
     if proposal.summary.trim().is_empty() || proposal.evidence.trim().is_empty() {
-        return Err("Say what the change is and what evidence calls for it.".into());
+        return Err(ChatError::Invalid(
+            "Say what the change is and what evidence calls for it.".into(),
+        ));
     }
     Ok(proposal)
 }
@@ -62,13 +65,13 @@ pub fn review_prompt(p: &Proposal, original: &Value) -> String {
 }
 
 /// Applies an approved change.
-pub fn apply(config_dir: &Path, conversation: &str, change: &Change) -> Result<String, String> {
+pub fn apply(config_dir: &Path, conversation: &str, change: &Change) -> Result<String, ChatError> {
     match change {
         Change::Memory { fact } => {
             let mut memories = crate::chat::memory::load(config_dir);
             // The same write-time filter as `remember`: sensitive data stays out.
             if let Some(reason) = crate::chat::memory::refuse_sensitive(&memories, fact) {
-                return Err(reason);
+                return Err(ChatError::Invalid(reason));
             }
             let saved = crate::chat::memory::add_filed(
                 &mut memories,
@@ -89,7 +92,8 @@ pub fn apply(config_dir: &Path, conversation: &str, change: &Change) -> Result<S
         } => {
             let provenance =
                 crate::chat::builtins::skill_provenance(config_dir, name, conversation);
-            crate::chat::skills::save(config_dir, name, description, instructions)?;
+            crate::chat::skills::save(config_dir, name, description, instructions)
+                .map_err(ChatError::Invalid)?;
             crate::chat::traces::register(
                 config_dir,
                 "skill",
@@ -104,7 +108,7 @@ pub fn apply(config_dir: &Path, conversation: &str, change: &Change) -> Result<S
             let mut instructions = crate::chat::store::load_instructions(config_dir);
             let line = text.trim();
             if line.is_empty() {
-                return Err("The instruction is empty.".into());
+                return Err(ChatError::Invalid("The instruction is empty.".into()));
             }
             if !instructions.custom.trim().is_empty() {
                 instructions.custom.push('\n');
@@ -177,6 +181,7 @@ mod tests {
         };
         assert!(apply(d, "chat-1", &secret)
             .unwrap_err()
+            .to_string()
             .contains("a password, key or token"));
 
         // An update to a skill the user wrote keeps it the user's, so the lifecycle never

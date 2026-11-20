@@ -7,6 +7,7 @@
 //! HEAD operations count as reads; the rest follow the approval mode like any connector tool.
 //! A key, when given, is kept in the keychain and sent as a bearer token.
 
+use crate::chat::error::ChatError;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -53,13 +54,15 @@ pub fn list(config_dir: &Path) -> Vec<Server> {
         .unwrap_or_default()
 }
 
-fn store(config_dir: &Path, servers: &[Server]) -> Result<(), String> {
-    write_json(&dir(config_dir).join("servers.json"), &servers).map_err(String::from)
+fn store(config_dir: &Path, servers: &[Server]) -> Result<(), ChatError> {
+    write_json(&dir(config_dir).join("servers.json"), &servers)
+        .map_err(String::from)
+        .map_err(ChatError::Invalid)
 }
 
-fn spec_path(config_dir: &Path, id: &str) -> Result<PathBuf, String> {
+fn spec_path(config_dir: &Path, id: &str) -> Result<PathBuf, ChatError> {
     if !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') || id.is_empty() {
-        return Err("invalid server id".into());
+        return Err(ChatError::Invalid("invalid server id".into()));
     }
     Ok(dir(config_dir).join(format!("{id}.json")))
 }
@@ -74,13 +77,17 @@ fn slug(name: &str) -> String {
 }
 
 /// The spec's base URL: its first `servers` entry, resolved against where the spec came from.
-pub(in crate::chat::toolkit) fn base_url(spec: &Value, spec_url: &str) -> Result<String, String> {
+pub(in crate::chat::toolkit) fn base_url(
+    spec: &Value,
+    spec_url: &str,
+) -> Result<String, ChatError> {
     let declared = spec
         .pointer("/servers/0/url")
         .and_then(Value::as_str)
         .unwrap_or("/");
-    let base = reqwest::Url::parse(spec_url).map_err(|e| format!("{spec_url}: {e}"))?;
-    let joined = base.join(declared).map_err(|e| e.to_string())?;
+    let base = reqwest::Url::parse(spec_url)
+        .map_err(|e| ChatError::Invalid(format!("{spec_url}: {e}")))?;
+    let joined = base.join(declared).map_err(ChatError::internal)?;
     Ok(joined.as_str().trim_end_matches('/').to_string())
 }
 
@@ -247,30 +254,37 @@ pub fn tools(config_dir: &Path) -> Vec<ChatTool> {
     out
 }
 
-async fn fetch_spec(spec_url: &str) -> Result<Value, String> {
-    let client = crate::support::http::client(std::time::Duration::from_secs(30))?;
+async fn fetch_spec(spec_url: &str) -> Result<Value, ChatError> {
+    let client = crate::support::http::client(std::time::Duration::from_secs(30))
+        .map_err(ChatError::Invalid)?;
     let response = client
         .get(spec_url)
         .send()
         .await
-        .map_err(|e| format!("Could not fetch the spec: {e}"))?;
+        .map_err(|e| ChatError::Invalid(format!("Could not fetch the spec: {e}")))?;
     if !response.status().is_success() {
-        return Err(format!("The spec address answered {}.", response.status()));
+        return Err(ChatError::Invalid(format!(
+            "The spec address answered {}.",
+            response.status()
+        )));
     }
-    let text = response.text().await.map_err(|e| e.to_string())?;
+    let text = response.text().await.map_err(ChatError::internal)?;
     let spec: Value = serde_json::from_str(&text)
-        .map_err(|_| "The address does not return an OpenAPI document in JSON.".to_string())?;
+        .map_err(|_| "The address does not return an OpenAPI document in JSON.".to_string())
+        .map_err(ChatError::Invalid)?;
     if spec.get("openapi").is_none() && spec.get("swagger").is_none() {
-        return Err("The document is not an OpenAPI spec (no `openapi` field).".into());
+        return Err(ChatError::Invalid(
+            "The document is not an OpenAPI spec (no `openapi` field).".into(),
+        ));
     }
     if operations(&spec).is_empty() {
-        return Err("The spec has no operations.".into());
+        return Err(ChatError::Invalid("The spec has no operations.".into()));
     }
     Ok(spec)
 }
 
 /// Adds a server from its spec address; returns the list.
-pub async fn add(config_dir: &Path, name: &str, spec_url: &str) -> Result<Vec<Server>, String> {
+pub async fn add(config_dir: &Path, name: &str, spec_url: &str) -> Result<Vec<Server>, ChatError> {
     let spec_url = spec_url.trim();
     let spec = fetch_spec(spec_url).await?;
     let title = spec
@@ -293,7 +307,7 @@ pub async fn add(config_dir: &Path, name: &str, spec_url: &str) -> Result<Vec<Se
         id = format!("{base}-{n}");
         n += 1;
     }
-    std::fs::create_dir_all(dir(config_dir)).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(dir(config_dir)).map_err(ChatError::internal)?;
     write_json(&spec_path(config_dir, &id)?, &spec)?;
     servers.push(Server {
         base_url: base_url(&spec, spec_url)?,
@@ -308,12 +322,12 @@ pub async fn add(config_dir: &Path, name: &str, spec_url: &str) -> Result<Vec<Se
     Ok(servers)
 }
 
-pub async fn refresh(config_dir: &Path, id: &str) -> Result<Vec<Server>, String> {
+pub async fn refresh(config_dir: &Path, id: &str) -> Result<Vec<Server>, ChatError> {
     let mut servers = list(config_dir);
     let server = servers
         .iter_mut()
         .find(|s| s.id == id)
-        .ok_or("No such server.")?;
+        .ok_or_else(|| ChatError::Invalid("No such server.".into()))?;
     let spec = fetch_spec(&server.spec_url).await?;
     server.base_url = base_url(&spec, &server.spec_url)?;
     server.operations = operations(&spec).len();
@@ -327,12 +341,12 @@ pub fn update(
     id: &str,
     enabled: Option<bool>,
     has_key: Option<bool>,
-) -> Result<Vec<Server>, String> {
+) -> Result<Vec<Server>, ChatError> {
     let mut servers = list(config_dir);
     let server = servers
         .iter_mut()
         .find(|s| s.id == id)
-        .ok_or("No such server.")?;
+        .ok_or_else(|| ChatError::Invalid("No such server.".into()))?;
     if let Some(e) = enabled {
         server.enabled = e;
     }
@@ -343,7 +357,7 @@ pub fn update(
     Ok(servers)
 }
 
-pub fn remove(config_dir: &Path, id: &str) -> Result<Vec<Server>, String> {
+pub fn remove(config_dir: &Path, id: &str) -> Result<Vec<Server>, ChatError> {
     let mut servers = list(config_dir);
     servers.retain(|s| s.id != id);
     let _ = std::fs::remove_file(spec_path(config_dir, id)?);
@@ -356,7 +370,7 @@ pub(in crate::chat::toolkit) fn request_for(
     base_url: &str,
     op: &Operation,
     input: &Value,
-) -> Result<(String, String, Option<Value>), String> {
+) -> Result<(String, String, Option<Value>), ChatError> {
     let args = input.as_object().cloned().unwrap_or_default();
     let mut path = op.path.clone();
     let mut query: Vec<(String, String)> = Vec::new();
@@ -383,9 +397,11 @@ pub(in crate::chat::toolkit) fn request_for(
         }
     }
     if path.contains('{') {
-        return Err(format!("Missing a path value for {path}."));
+        return Err(ChatError::Invalid(format!(
+            "Missing a path value for {path}."
+        )));
     }
-    let mut url = reqwest::Url::parse(&format!("{base_url}{path}")).map_err(|e| e.to_string())?;
+    let mut url = reqwest::Url::parse(&format!("{base_url}{path}")).map_err(ChatError::internal)?;
     if !query.is_empty() {
         url.query_pairs_mut().extend_pairs(query.iter());
     }
@@ -409,35 +425,40 @@ fn url_escape(s: &str) -> String {
 }
 
 /// Calls an operation of a server.
-pub async fn call(config_dir: &Path, tool: &ChatTool, input: &Value) -> Result<String, String> {
+pub async fn call(config_dir: &Path, tool: &ChatTool, input: &Value) -> Result<String, ChatError> {
     let id = tool
         .connector_id
         .as_deref()
         .and_then(|c| c.strip_prefix(PREFIX))
-        .ok_or("not an OpenAPI tool")?;
+        .ok_or_else(|| ChatError::Invalid("not an OpenAPI tool".into()))?;
     let server = list(config_dir)
         .into_iter()
         .find(|s| s.id == id)
-        .ok_or("That API server was removed.")?;
+        .ok_or_else(|| ChatError::Invalid("That API server was removed.".into()))?;
     let spec: Value = crate::chat::at_rest::read_to_string(spec_path(config_dir, id)?)
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok())
-        .ok_or("The API's spec is missing; refresh it in Settings.")?;
+        .ok_or_else(|| {
+            ChatError::Invalid("The API's spec is missing; refresh it in Settings.".into())
+        })?;
     let op = operations(&spec)
         .into_iter()
         .find(|o| o.id == tool.tool_name)
-        .ok_or("That operation is no longer in the spec.")?;
+        .ok_or_else(|| ChatError::Invalid("That operation is no longer in the spec.".into()))?;
     let (method, url, body) = request_for(&server.base_url, &op, input)?;
-    let client = crate::support::http::client(std::time::Duration::from_secs(60))?;
+    let client = crate::support::http::client(std::time::Duration::from_secs(60))
+        .map_err(ChatError::Invalid)?;
     let mut request = client.request(
-        reqwest::Method::from_bytes(method.as_bytes()).map_err(|e| e.to_string())?,
+        reqwest::Method::from_bytes(method.as_bytes()).map_err(ChatError::internal)?,
         &url,
     );
     if server.has_key {
-        let account = crate::account::AccountId::parse(crate::chat::LOCAL_ACCOUNT)?;
+        let account = crate::account::AccountId::parse(crate::chat::LOCAL_ACCOUNT)
+            .map_err(ChatError::Invalid)?;
         if let Some(key) = crate::tools::auth::keychain_secrets(account)
             .load(&secret_name(id))
-            .await?
+            .await
+            .map_err(ChatError::Invalid)?
         {
             request = request.bearer_auth(key);
         }
@@ -445,7 +466,7 @@ pub async fn call(config_dir: &Path, tool: &ChatTool, input: &Value) -> Result<S
     if let Some(body) = body {
         request = request.json(&body);
     }
-    let response = request.send().await.map_err(|e| e.to_string())?;
+    let response = request.send().await.map_err(ChatError::internal)?;
     let status = response.status();
     let text = response.text().await.unwrap_or_default();
     let text: String = crate::support::text::clip(&text, MAX_RESPONSE);
@@ -456,7 +477,9 @@ pub async fn call(config_dir: &Path, tool: &ChatTool, input: &Value) -> Result<S
             text
         })
     } else {
-        Err(format!("{method} {url} answered {status}: {text}"))
+        Err(ChatError::Invalid(format!(
+            "{method} {url} answered {status}: {text}"
+        )))
     }
 }
 

@@ -301,9 +301,7 @@ async fn run(config_dir: &Path, conversation_id: &str, args: &Value) -> Result<S
         Duration::from_secs(5),
     )
     .await?;
-    let dir = crate::chat::sandbox::workspace(config_dir, conversation_id)
-        .map_err(ChatError::Invalid)?
-        .join("videos");
+    let dir = crate::chat::sandbox::workspace(config_dir, conversation_id)?.join("videos");
     std::fs::create_dir_all(&dir).map_err(ChatError::internal)?;
     let name = format!(
         "{}.{}",

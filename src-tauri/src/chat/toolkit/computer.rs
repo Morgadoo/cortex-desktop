@@ -11,6 +11,7 @@
 //! with `ydotool` (and `wtype` for typing when ydotool is missing) on Wayland; on macOS
 //! `screencapture` and `cliclick`. When one is missing the tool says what to install.
 
+use crate::chat::error::ChatError;
 use crate::support::settings_file::SettingsFile;
 use std::collections::HashMap;
 use std::io::Cursor;
@@ -44,11 +45,11 @@ pub struct ComputerSettings {
 pub(in crate::chat::toolkit) fn app_allowed(
     settings: &ComputerSettings,
     window: &str,
-) -> Result<(), String> {
+) -> Result<(), ChatError> {
     let w = window.to_lowercase();
     let has = |rule: &String| !rule.trim().is_empty() && w.contains(&rule.trim().to_lowercase());
     if let Some(rule) = settings.blocked_apps.iter().find(|r| has(r)) {
-        return Err(format!("Computer use is not allowed in “{window}” (it matches “{}” in Settings → Permissions → Computer use). Ask the user to do this step.", rule.trim()));
+        return Err(ChatError::Invalid(format!("Computer use is not allowed in “{window}” (it matches “{}” in Settings → Permissions → Computer use). Ask the user to do this step.", rule.trim())));
     }
     let only: Vec<&String> = settings
         .only_apps
@@ -56,7 +57,7 @@ pub(in crate::chat::toolkit) fn app_allowed(
         .filter(|r| !r.trim().is_empty())
         .collect();
     if !only.is_empty() && !only.iter().any(|r| has(r)) {
-        return Err(format!("Computer use is only allowed in {} (Settings → Permissions → Computer use), and “{window}” is in front. Ask the user to bring the right window forward.", only.iter().map(|r| format!("“{}”", r.trim())).collect::<Vec<_>>().join(", ")));
+        return Err(ChatError::Invalid(format!("Computer use is only allowed in {} (Settings → Permissions → Computer use), and “{window}” is in front. Ask the user to bring the right window forward.", only.iter().map(|r| format!("“{}”", r.trim())).collect::<Vec<_>>().join(", "))));
     }
     Ok(())
 }
@@ -67,10 +68,11 @@ pub fn load(config_dir: &Path) -> ComputerSettings {
     COMPUTER_FILE.load(config_dir)
 }
 
-pub fn save(config_dir: &Path, settings: &ComputerSettings) -> Result<(), String> {
+pub fn save(config_dir: &Path, settings: &ComputerSettings) -> Result<(), ChatError> {
     COMPUTER_FILE
         .save(config_dir, settings)
         .map_err(String::from)
+        .map_err(ChatError::Invalid)
 }
 
 pub fn definition() -> ChatTool {
@@ -118,7 +120,7 @@ pub fn take_image(conversation_id: &str) -> Option<String> {
     shots().lock().ok()?.remove(conversation_id)
 }
 
-async fn output(program: &str, args: &[&str]) -> Result<Vec<u8>, String> {
+async fn output(program: &str, args: &[&str]) -> Result<Vec<u8>, ChatError> {
     let out = Command::new(program)
         .args(args)
         .output()
@@ -128,12 +130,13 @@ async fn output(program: &str, args: &[&str]) -> Result<Vec<u8>, String> {
                 format!("`{program}` is not installed. {}", install_hint())
             }
             _ => format!("{program}: {e}"),
-        })?;
+        })
+        .map_err(ChatError::Invalid)?;
     if !out.status.success() {
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "{program} failed: {}",
             String::from_utf8_lossy(&out.stderr).trim()
-        ));
+        )));
     }
     Ok(out.stdout)
 }
@@ -212,7 +215,7 @@ fn key_code(name: &str) -> Option<u16> {
 }
 
 /// ydotool's `key` arguments for a chord like `ctrl+shift+t`: every key down in order, then up in reverse.
-fn ydotool_keys(keys: &str) -> Result<Vec<String>, String> {
+fn ydotool_keys(keys: &str) -> Result<Vec<String>, ChatError> {
     let codes = keys
         .split('+')
         .map(|k| {
@@ -223,7 +226,8 @@ fn ydotool_keys(keys: &str) -> Result<Vec<String>, String> {
                 )
             })
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(ChatError::Invalid)?;
     let mut out: Vec<String> = codes.iter().map(|c| format!("{c}:1")).collect();
     out.extend(codes.iter().rev().map(|c| format!("{c}:0")));
     Ok(out)
@@ -261,7 +265,7 @@ fn wayland_plan(
     action: &str,
     at: Option<(i64, i64)>,
     input: &Value,
-) -> Result<Vec<Vec<String>>, String> {
+) -> Result<Vec<Vec<String>>, ChatError> {
     let owned = |v: &[&str]| v.iter().map(|s| (*s).to_string()).collect::<Vec<String>>();
     let mut plan = Vec::new();
     if let Some((x, y)) = at {
@@ -316,19 +320,19 @@ fn wayland_plan(
                 &(if down { -amount } else { amount }).to_string(),
             ]));
         }
-        other => return Err(format!("Unknown action {other}.")),
+        other => return Err(ChatError::Invalid(format!("Unknown action {other}."))),
     }
     Ok(plan)
 }
 
 /// Runs a Wayland action; typing and keys fall back to wtype when ydotool is missing.
-async fn wayland_act(action: &str, at: Option<(i64, i64)>, input: &Value) -> Result<(), String> {
+async fn wayland_act(action: &str, at: Option<(i64, i64)>, input: &Value) -> Result<(), ChatError> {
     for cmd in wayland_plan(action, at, input)? {
         let args: Vec<&str> = cmd[1..].iter().map(String::as_str).collect();
         match output(&cmd[0], &args).await {
             Ok(_) => {}
             Err(e)
-                if e.contains("is not installed")
+                if e.to_string().contains("is not installed")
                     && matches!(action, "type" | "key")
                     && at.is_none() =>
             {
@@ -362,7 +366,7 @@ async fn wayland_act(action: &str, at: Option<(i64, i64)>, input: &Value) -> Res
 }
 
 /// The screen as PNG bytes.
-pub(crate) async fn capture() -> Result<Vec<u8>, String> {
+pub(crate) async fn capture() -> Result<Vec<u8>, ChatError> {
     if cfg!(target_os = "macos") {
         let path = std::env::temp_dir().join(format!(
             "cortex-screen-{}.png",
@@ -370,7 +374,7 @@ pub(crate) async fn capture() -> Result<Vec<u8>, String> {
         ));
         let p = path.to_string_lossy().into_owned();
         output("screencapture", &["-x", "-t", "png", &p]).await?;
-        let bytes = crate::chat::at_rest::read(&path).map_err(|e| e.to_string());
+        let bytes = crate::chat::at_rest::read(&path).map_err(ChatError::internal);
         let _ = std::fs::remove_file(&path);
         return bytes;
     }
@@ -380,13 +384,13 @@ pub(crate) async fn capture() -> Result<Vec<u8>, String> {
         }
         return output("import", &["-window", "root", "png:-"]).await;
     }
-    Err(install_hint().into())
+    Err(ChatError::Invalid(install_hint().into()))
 }
 
 /// Scales a PNG to at most `max_width` wide as JPEG; returns base64 and the scale back to screen.
-pub fn shrink(png: &[u8], max_width: u32) -> Result<(String, f64, u32, u32), String> {
+pub fn shrink(png: &[u8], max_width: u32) -> Result<(String, f64, u32, u32), ChatError> {
     let image = image::load_from_memory(png)
-        .map_err(|e| format!("The screenshot could not be read: {e}"))?;
+        .map_err(|e| ChatError::Invalid(format!("The screenshot could not be read: {e}")))?;
     let (w, h) = (image.width(), image.height());
     let scale = if w > max_width {
         f64::from(w) / f64::from(max_width)
@@ -406,7 +410,7 @@ pub fn shrink(png: &[u8], max_width: u32) -> Result<(String, f64, u32, u32), Str
     small
         .to_rgb8()
         .write_to(&mut Cursor::new(&mut jpeg), image::ImageFormat::Jpeg)
-        .map_err(|e| e.to_string())?;
+        .map_err(ChatError::internal)?;
     Ok((
         base64::engine::general_purpose::STANDARD.encode(jpeg),
         scale,
@@ -415,7 +419,7 @@ pub fn shrink(png: &[u8], max_width: u32) -> Result<(String, f64, u32, u32), Str
     ))
 }
 
-async fn screenshot(conversation_id: &str) -> Result<String, String> {
+async fn screenshot(conversation_id: &str) -> Result<String, ChatError> {
     let png = capture().await?;
     let (data, scale, w, h) = shrink(&png, MAX_WIDTH)?;
     if let Ok(mut s) = shots().lock() {
@@ -430,15 +434,15 @@ async fn screenshot(conversation_id: &str) -> Result<String, String> {
 }
 
 /// Screen coordinates for a point in the latest screenshot.
-fn point(conversation_id: &str, input: &Value) -> Result<(i64, i64), String> {
+fn point(conversation_id: &str, input: &Value) -> Result<(i64, i64), ChatError> {
     let x = input
         .get("x")
         .and_then(Value::as_i64)
-        .ok_or("Give x and y from the latest screenshot.")?;
+        .ok_or_else(|| ChatError::Invalid("Give x and y from the latest screenshot.".into()))?;
     let y = input
         .get("y")
         .and_then(Value::as_i64)
-        .ok_or("Give x and y from the latest screenshot.")?;
+        .ok_or_else(|| ChatError::Invalid("Give x and y from the latest screenshot.".into()))?;
     let scale = scales()
         .lock()
         .ok()
@@ -450,7 +454,7 @@ fn point(conversation_id: &str, input: &Value) -> Result<(i64, i64), String> {
     ))
 }
 
-async fn act(conversation_id: &str, action: &str, input: &Value) -> Result<String, String> {
+async fn act(conversation_id: &str, action: &str, input: &Value) -> Result<String, ChatError> {
     let mac = cfg!(target_os = "macos");
     let text = |k: &str| {
         input
@@ -468,10 +472,10 @@ async fn act(conversation_id: &str, action: &str, input: &Value) -> Result<Strin
             None
         };
         if action == "type" && text("text").is_empty() {
-            return Err("Give the text to type.".into());
+            return Err(ChatError::Invalid("Give the text to type.".into()));
         }
         if action == "key" && text("keys").is_empty() {
-            return Err("Give the keys, like ctrl+s.".into());
+            return Err(ChatError::Invalid("Give the keys, like ctrl+s.".into()));
         }
         wayland_act(action, at, input).await?;
         return Ok(match at {
@@ -506,7 +510,7 @@ async fn act(conversation_id: &str, action: &str, input: &Value) -> Result<Strin
         "type" => {
             let t = text("text");
             if t.is_empty() {
-                return Err("Give the text to type.".into());
+                return Err(ChatError::Invalid("Give the text to type.".into()));
             }
             if mac {
                 output("cliclick", &[&format!("t:{t}")]).await?;
@@ -518,7 +522,7 @@ async fn act(conversation_id: &str, action: &str, input: &Value) -> Result<Strin
         "key" => {
             let keys = text("keys");
             if keys.is_empty() {
-                return Err("Give the keys, like ctrl+s.".into());
+                return Err(ChatError::Invalid("Give the keys, like ctrl+s.".into()));
             }
             if mac {
                 output("cliclick", &[&format!("kp:{}", keys.to_lowercase())]).await?;
@@ -546,9 +550,9 @@ async fn act(conversation_id: &str, action: &str, input: &Value) -> Result<Strin
                 }
             }
             if mac {
-                return Err(
+                return Err(ChatError::Invalid(
                     "Scrolling is not available on macOS yet; use the arrow or Page keys.".into(),
-                );
+                ));
             }
             output(
                 "xdotool",
@@ -560,12 +564,12 @@ async fn act(conversation_id: &str, action: &str, input: &Value) -> Result<Strin
                 if down { "down" } else { "up" }
             ))
         }
-        other => Err(format!("Unknown action {other}.")),
+        other => Err(ChatError::Invalid(format!("Unknown action {other}."))),
     }
 }
 
 /// Runs one computer action; every action but a screenshot is followed by a fresh screenshot.
-pub async fn run(conversation_id: &str, input: &Value) -> Result<String, String> {
+pub async fn run(conversation_id: &str, input: &Value) -> Result<String, ChatError> {
     let action = input
         .get("action")
         .and_then(Value::as_str)
@@ -604,6 +608,7 @@ mod tests {
         };
         assert!(app_allowed(&blocked, "My Bank - Firefox")
             .unwrap_err()
+            .to_string()
             .contains("“Bank”"));
         assert!(app_allowed(&blocked, "Terminal").is_ok());
         let only = ComputerSettings {
@@ -614,6 +619,7 @@ mod tests {
         assert!(app_allowed(&only, "image.png - GIMP").is_ok());
         assert!(app_allowed(&only, "Inbox - Mail")
             .unwrap_err()
+            .to_string()
             .contains("only allowed"));
         assert!(app_allowed(&ComputerSettings::default(), "anything").is_ok());
     }

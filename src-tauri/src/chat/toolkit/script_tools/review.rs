@@ -1,6 +1,7 @@
 //! A tool's life after it is written: review, promotion with the access the user saw, demotion, revoking, extending, restoring a version, re-checking and reverting.
 
 use super::*;
+use crate::chat::error::ChatError;
 
 /// What the approval card shows for a promotion: the script, the description the model will read
 /// and the capabilities asked for.
@@ -33,22 +34,27 @@ pub async fn promote_as_shown(
     config_dir: &Path,
     shown: &ScriptTool,
     days: Option<i64>,
-) -> Result<String, String> {
+) -> Result<String, ChatError> {
     promote_with(config_dir, &shown.name, days, Some(shown)).await
 }
 
-pub async fn promote(config_dir: &Path, name: &str, days: Option<i64>) -> Result<String, String> {
+pub async fn promote(
+    config_dir: &Path,
+    name: &str,
+    days: Option<i64>,
+) -> Result<String, ChatError> {
     promote_with(config_dir, name, days, None).await
 }
 
 /// Where the last state the app signed for each tool is kept: History keeps only the states a
 /// save replaced, so once a tool's own file is changed outside the app, this copy is the one
 /// that still says what the app last signed.
-pub(super) fn signed_copy(config_dir: &Path, name: &str) -> Result<PathBuf, String> {
+pub(super) fn signed_copy(config_dir: &Path, name: &str) -> Result<PathBuf, ChatError> {
     let file = path(config_dir, name)?;
-    Ok(chat_dir(config_dir)
-        .join("script-tools-signed")
-        .join(file.file_name().ok_or("bad tool name")?))
+    Ok(chat_dir(config_dir).join("script-tools-signed").join(
+        file.file_name()
+            .ok_or_else(|| ChatError::Invalid("bad tool name".into()))?,
+    ))
 }
 
 /// The last state of a tool the app signed: its signed copy, else the newest History entry that
@@ -84,7 +90,7 @@ pub(super) fn signed_checks(last: &ScriptTool) -> Vec<Check> {
 /// taken from the last state the app signed, so a promotion never signs what was written around
 /// it. With no signed state left, the promotion is refused: the tool is written again instead,
 /// and tested afresh.
-pub(super) fn take_vouched(config_dir: &Path, tool: &mut ScriptTool) -> Result<(), String> {
+pub(super) fn take_vouched(config_dir: &Path, tool: &mut ScriptTool) -> Result<(), ChatError> {
     if verifies(config_dir, tool) {
         return Ok(());
     }
@@ -97,10 +103,10 @@ pub(super) fn take_vouched(config_dir: &Path, tool: &mut ScriptTool) -> Result<(
             tool.restored_at = None;
             return Ok(());
         }
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "`{}`'s file was changed outside the app and no state the app signed remains to take its regression checks from, so it was not promoted; write it again with create_tool so it is tested afresh.",
             tool.name
-        ));
+        )));
     };
     tool.checks = signed_checks(&last);
     tool.pending_check = None;
@@ -116,7 +122,7 @@ pub(super) fn take_vouched(config_dir: &Path, tool: &mut ScriptTool) -> Result<(
 /// outside the app is saved as it is, unsigned: signing it would vouch for what was written
 /// around it, and it stays unoffered until promoted, which takes those fields from the last state
 /// the app signed.
-pub(super) fn save_taking_away(config_dir: &Path, tool: &ScriptTool) -> Result<(), String> {
+pub(super) fn save_taking_away(config_dir: &Path, tool: &ScriptTool) -> Result<(), ChatError> {
     let on_disk = load(config_dir, &tool.name);
     if on_disk.as_ref().is_none_or(|t| verifies(config_dir, t)) {
         return save_resigned(config_dir, tool);
@@ -135,9 +141,9 @@ pub(super) fn save_taking_away(config_dir: &Path, tool: &ScriptTool) -> Result<(
     }
     crate::chat::at_rest::write(
         path,
-        serde_json::to_string_pretty(&tool).map_err(|e| e.to_string())?,
+        serde_json::to_string_pretty(&tool).map_err(ChatError::internal)?,
     )
-    .map_err(|e| e.to_string())
+    .map_err(ChatError::internal)
 }
 
 pub(super) async fn promote_with(
@@ -145,31 +151,33 @@ pub(super) async fn promote_with(
     name: &str,
     days: Option<i64>,
     shown: Option<&ScriptTool>,
-) -> Result<String, String> {
+) -> Result<String, ChatError> {
     sandbox::cache_in(config_dir);
     #[cfg(not(test))]
     ensure_signing_key(config_dir).await;
-    let mut first = load(config_dir, name).ok_or("There is no tool by that name.")?;
+    let mut first = load(config_dir, name)
+        .ok_or_else(|| ChatError::Invalid("There is no tool by that name.".into()))?;
     take_vouched(config_dir, &mut first)?;
     let failing = failing_checks(&first.script, &first.checks).await;
     if !failing.is_empty() {
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "`{name}` fails its regression checks, so it was not promoted: {}",
             failing.join("; ")
-        ));
+        )));
     }
     // Loaded again after the waits above, and promoted only if it is still what was checked and,
     // for a card, what the user was shown: nothing written in between is approved unseen.
-    let mut tool = load(config_dir, name).ok_or("There is no tool by that name.")?;
+    let mut tool = load(config_dir, name)
+        .ok_or_else(|| ChatError::Invalid("There is no tool by that name.".into()))?;
     take_vouched(config_dir, &mut tool)?;
     let expected = shown.unwrap_or(&first);
     if approval_hash(&tool) != approval_hash(expected)
         || tool.requested != expected.requested
         || approval_hash(&tool) != approval_hash(&first)
     {
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "`{name}` changed after the user was shown it, so it was not promoted; promote it again so they see what it is now."
-        ));
+        )));
     }
     if let Some(check) = tool.pending_check.take() {
         if !tool.checks.iter().any(|c| c.args == check.args) {
@@ -216,8 +224,9 @@ pub(super) async fn promote_with(
 
 /// Takes a tool off offer until it is promoted again: the lifecycle does this to one that keeps
 /// failing.
-pub fn demote(config_dir: &Path, name: &str) -> Result<(), String> {
-    let mut tool = load(config_dir, name).ok_or("There is no tool by that name.")?;
+pub fn demote(config_dir: &Path, name: &str) -> Result<(), ChatError> {
+    let mut tool = load(config_dir, name)
+        .ok_or_else(|| ChatError::Invalid("There is no tool by that name.".into()))?;
     // Judged on the file as it is, before this change.
     forget_approval_if_tampered(config_dir, &mut tool);
     tool.status = Status::Candidate;
@@ -229,8 +238,9 @@ pub fn demote(config_dir: &Path, name: &str) -> Result<(), String> {
 }
 
 /// Takes back a tool's capabilities; it stays on offer, able only to compute.
-pub fn revoke(config_dir: &Path, name: &str) -> Result<(), String> {
-    let mut tool = load(config_dir, name).ok_or("There is no tool by that name.")?;
+pub fn revoke(config_dir: &Path, name: &str) -> Result<(), ChatError> {
+    let mut tool = load(config_dir, name)
+        .ok_or_else(|| ChatError::Invalid("There is no tool by that name.".into()))?;
     // Judged on the file as it is, before this change: a tool the app saved stays on offer.
     forget_approval_if_tampered(config_dir, &mut tool);
     tool.granted = Capabilities::default();
@@ -273,18 +283,19 @@ pub fn extend(
     shown: &ScriptTool,
     wanted: &Capabilities,
     days: Option<i64>,
-) -> Result<(), String> {
-    let mut tool = load(config_dir, &shown.name).ok_or("There is no tool by that name.")?;
+) -> Result<(), ChatError> {
+    let mut tool = load(config_dir, &shown.name)
+        .ok_or_else(|| ChatError::Invalid("There is no tool by that name.".into()))?;
     let unchanged = approval_hash(&tool) == approval_hash(shown)
         && tool.granted == shown.granted
         && tool.requested == shown.requested
         && tool.expires == shown.expires
         && tool.granted_until == shown.granted_until;
     if !unchanged {
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "`{}` changed after the user was shown the request, so nothing was granted; ask again.",
             shown.name
-        ));
+        )));
     }
     let now = Utc::now();
     let active = active_grants(&tool, now);
@@ -323,7 +334,7 @@ pub fn extend(
 /// Brings back an earlier version from History. Its script comes back; its access does not grow
 /// past what the tool may reach now, and a version that does not verify (written into the history
 /// from outside) comes back only as a candidate, to be promoted again.
-pub fn restore_version(config_dir: &Path, mut old: ScriptTool) -> Result<(), String> {
+pub fn restore_version(config_dir: &Path, mut old: ScriptTool) -> Result<(), ChatError> {
     let now = Utc::now();
     let current = load(config_dir, &old.name);
     let limit = current
@@ -444,7 +455,7 @@ pub async fn check_all(config_dir: &Path) -> Checked {
         if failing_checks(&tool.script, &tool.checks).await.is_empty() {
             continue;
         }
-        if revert(config_dir, &tool.name, &tool.checks).await == Ok(true) {
+        if matches!(revert(config_dir, &tool.name, &tool.checks).await, Ok(true)) {
             done.reverted.push(tool.name);
         } else if demote(config_dir, &tool.name).is_ok() {
             done.demoted.push(tool.name);
@@ -456,8 +467,9 @@ pub async fn check_all(config_dir: &Path) -> Checked {
 /// Brings a tool back to its newest earlier version that the user approved, runs a different
 /// script, and passes `checks`. The version it replaces is kept, so this too can be undone.
 /// `Ok(false)` when there is no such version.
-pub async fn revert(config_dir: &Path, name: &str, checks: &[Check]) -> Result<bool, String> {
-    let current = load(config_dir, name).ok_or("There is no tool by that name.")?;
+pub async fn revert(config_dir: &Path, name: &str, checks: &[Check]) -> Result<bool, ChatError> {
+    let current = load(config_dir, name)
+        .ok_or_else(|| ChatError::Invalid("There is no tool by that name.".into()))?;
     for version in crate::chat::versions::list(config_dir, "tools", &format!("script-{name}"))? {
         let Ok(old) = serde_json::from_value::<ScriptTool>(version.value) else {
             continue;
@@ -477,7 +489,8 @@ pub async fn revert(config_dir: &Path, name: &str, checks: &[Check]) -> Result<b
         if failing_checks(&old.script, checks).await.is_empty() {
             // Checking took a while: a revoke or any other change meanwhile wins, and the
             // rollback waits for the next pass.
-            let latest = load(config_dir, name).ok_or("There is no tool by that name.")?;
+            let latest = load(config_dir, name)
+                .ok_or_else(|| ChatError::Invalid("There is no tool by that name.".into()))?;
             if latest.granted != current.granted
                 || latest.requested != current.requested
                 || latest.expires != current.expires

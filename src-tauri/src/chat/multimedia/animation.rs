@@ -202,8 +202,7 @@ async fn run(config_dir: &Path, conversation_id: &str, args: &Value) -> Result<S
         "mp4"
     };
     let name = slug(&s("name"));
-    let workspace =
-        crate::chat::sandbox::workspace(config_dir, conversation_id).map_err(ChatError::Invalid)?;
+    let workspace = crate::chat::sandbox::workspace(config_dir, conversation_id)?;
     let dir = workspace.join("animations").join(&name);
     std::fs::create_dir_all(&dir).map_err(ChatError::internal)?;
     match engine.as_str() {
