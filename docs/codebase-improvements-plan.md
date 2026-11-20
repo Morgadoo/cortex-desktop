@@ -173,7 +173,7 @@ real gateway.
 | Decision | Blocks | Default this plan assumes |
 |---|---|---|
 | **D1. Hosted mode**: keep it, or remove it | 0.4, 3.8 | Keep it, behind a build feature (package 3.8). Isolating it first makes a later removal a single deletion, so this default closes no door |
-| **D2. Updater and publisher**: `tauri.conf.json` points updates at `lumo.protondownload.com` and names "Proton AG" as publisher | Nothing here; it is a release matter | No change in this plan. Until decided, a build of this fork asks Proton's server for updates |
+| **D2. Updater and publisher**: `tauri.conf.json` points updates at `lumo.protondownload.com` and names "Proton AG" as publisher | Nothing here; it is a release matter | Decided: updates come from this repository's GitHub releases (`docs/releasing.md`), and the publisher is novo3d.pt. The updater's public key is still Proton's until the owner generates their own |
 | **D3. Hosted CI runners for Windows and macOS** | 0.7 | Use GitHub-hosted runners for one compile-only job |
 
 ### 3.2 Technical choices made here
