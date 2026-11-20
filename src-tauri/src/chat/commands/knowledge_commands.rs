@@ -218,6 +218,7 @@ pub fn chat_save_instructions(app: AppHandle, instructions: Instructions) -> Res
 #[tauri::command]
 pub fn chat_version_texts(app: AppHandle, id: String, from: usize) -> Result<Vec<String>, String> {
     store::version_texts(&store::load_conversation(&config_dir(&app)?, &id)?, from)
+        .map_err(String::from)
 }
 
 /// A sample reply under unsaved instructions, for the instructions dialog's preview.

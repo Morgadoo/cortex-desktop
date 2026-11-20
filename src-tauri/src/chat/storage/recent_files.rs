@@ -2,6 +2,7 @@
 //! files"). What is kept is what the message carried: the text read from a document, or an image,
 //! in `chat/recent-files.json`, newest first.
 
+use crate::support::error::StoreError;
 use crate::support::settings_file::SettingsFile;
 use std::path::{Path, PathBuf};
 
@@ -74,20 +75,20 @@ pub(in crate::chat::storage) fn remember(list: &mut Vec<RecentFile>, files: Vec<
     });
 }
 
-pub fn add(config_dir: &Path, files: Vec<RecentFile>) -> Result<(), String> {
+pub fn add(config_dir: &Path, files: Vec<RecentFile>) -> Result<(), StoreError> {
     let mut list = load(config_dir);
     remember(&mut list, files);
-    write_json(&path(config_dir), &list).map_err(String::from)
+    write_json(&path(config_dir), &list)
 }
 
 /// Takes one file off the list, or every file when `index` is `None`.
-pub fn forget(config_dir: &Path, index: Option<usize>) -> Result<Vec<RecentFile>, String> {
+pub fn forget(config_dir: &Path, index: Option<usize>) -> Result<Vec<RecentFile>, StoreError> {
     let mut list = load(config_dir);
     match index {
         Some(i) if i < list.len() => {
             list.remove(i);
         }
-        Some(_) => return Err("There is no such file.".into()),
+        Some(_) => return Err(StoreError::Invalid("There is no such file.".into())),
         None => list.clear(),
     }
     write_json(&path(config_dir), &list)?;

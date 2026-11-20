@@ -12,6 +12,7 @@
 //! and the conflict is reported. Deleting leaves a tombstone, so a deletion reaches the other
 //! devices instead of the file coming back; a deleted conversation goes to their trash.
 
+use crate::support::error::StoreError;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -130,7 +131,7 @@ pub fn settings(config_dir: &Path) -> Settings {
     read(&settings_path(config_dir)).unwrap_or_default()
 }
 
-pub fn save_settings(config_dir: &Path, s: &Settings) -> Result<(), String> {
+pub fn save_settings(config_dir: &Path, s: &Settings) -> Result<(), StoreError> {
     write(&settings_path(config_dir), s)
 }
 
@@ -138,17 +139,17 @@ fn read<T: for<'de> Deserialize<'de>>(path: &Path) -> Option<T> {
     serde_json::from_str(&crate::chat::at_rest::read_to_string(path).ok()?).ok()
 }
 
-fn write<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
+fn write<T: Serialize>(path: &Path, value: &T) -> Result<(), StoreError> {
     if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(dir).map_err(|e| StoreError::write(dir, e))?;
     }
     let tmp = path.with_extension("tmp");
-    crate::chat::at_rest::write(
-        &tmp,
-        serde_json::to_vec_pretty(value).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, path).map_err(|e| e.to_string())
+    let bytes = serde_json::to_vec_pretty(value).map_err(|source| StoreError::Encode {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    crate::chat::at_rest::write(&tmp, bytes).map_err(|e| StoreError::write(&tmp, e))?;
+    std::fs::rename(&tmp, path).map_err(|e| StoreError::write(path, e))
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -425,19 +426,23 @@ pub(in crate::chat::storage) fn sync_once(
                         None
                     })
                 } else {
-                    download(item).map(|_| {
-                        report.received += 1;
-                        Some(item.hash.clone())
-                    })
+                    download(item)
+                        .map(|_| {
+                            report.received += 1;
+                            Some(item.hash.clone())
+                        })
+                        .map_err(String::from)
                 }
             }
             (None, Some(_)) => Ok(None),
             (Some((lh, bytes)), Some(item)) if item.deleted => {
                 if s.as_deref() == Some(lh.as_str()) {
-                    remove_local(&path).map(|_| {
-                        report.deleted += 1;
-                        None
-                    })
+                    remove_local(&path)
+                        .map(|_| {
+                            report.deleted += 1;
+                            None
+                        })
+                        .map_err(String::from)
                 } else {
                     // Changed here after it was deleted elsewhere: it comes back.
                     upload(&path, lh, bytes).map(|_| {
@@ -450,10 +455,12 @@ pub(in crate::chat::storage) fn sync_once(
                 if *lh == item.hash {
                     Ok(Some(lh.clone()))
                 } else if s.as_deref() == Some(lh.as_str()) {
-                    download(item).map(|_| {
-                        report.received += 1;
-                        Some(item.hash.clone())
-                    })
+                    download(item)
+                        .map(|_| {
+                            report.received += 1;
+                            Some(item.hash.clone())
+                        })
+                        .map_err(String::from)
                 } else if s.as_deref() == Some(item.hash.as_str()) {
                     upload(&path, lh, bytes).map(|_| {
                         report.sent += 1;
@@ -462,10 +469,12 @@ pub(in crate::chat::storage) fn sync_once(
                 } else {
                     report.conflicts.push(path.clone());
                     if item.modified > modified_ms(&local[&path]) {
-                        download(item).map(|_| {
-                            report.received += 1;
-                            Some(item.hash.clone())
-                        })
+                        download(item)
+                            .map(|_| {
+                                report.received += 1;
+                                Some(item.hash.clone())
+                            })
+                            .map_err(String::from)
                     } else {
                         upload(&path, lh, bytes).map(|_| {
                             report.sent += 1;
@@ -549,34 +558,39 @@ fn read_local(
 
 /// Writes an item from the sync folder into the config folder, after checking its hash; an
 /// overwritten conversation keeps a backup.
-fn write_item(config_dir: &Path, item: &Item) -> Result<(), String> {
+fn write_item(config_dir: &Path, item: &Item) -> Result<(), StoreError> {
     let b64 = base64::engine::general_purpose::STANDARD;
-    let bytes = b64.decode(&item.content).map_err(|e| e.to_string())?;
+    let bytes = b64
+        .decode(&item.content)
+        .map_err(|e| StoreError::Invalid(format!("its contents are not base64: {e}")))?;
     if sha256(&bytes) != item.hash {
-        return Err("its contents do not match its hash".into());
+        return Err(StoreError::Invalid(
+            "its contents do not match its hash".into(),
+        ));
     }
     let target = config_dir.join(&item.path);
     if let Some(dir) = target.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(dir).map_err(|e| StoreError::write(dir, e))?;
     }
     // An overwritten conversation keeps a backup, as any other change does.
     if item.path.starts_with("chat/conversations/") {
         crate::chat::backup::before_overwrite(config_dir, &target);
     }
     let tmp = target.with_extension("sync-tmp");
-    crate::chat::at_rest::write(&tmp, &bytes).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, &target).map_err(|e| e.to_string())
+    crate::chat::at_rest::write(&tmp, &bytes).map_err(|e| StoreError::write(&tmp, e))?;
+    std::fs::rename(&tmp, &target).map_err(|e| StoreError::write(&target, e))
 }
 
 /// Removes a file deleted on another device; a conversation goes to the trash.
-fn remove_local_file(config_dir: &Path, rel: &str) -> Result<(), String> {
+fn remove_local_file(config_dir: &Path, rel: &str) -> Result<(), StoreError> {
     if let Some(id) = rel
         .strip_prefix("chat/conversations/")
         .and_then(|n| n.strip_suffix(".json"))
     {
-        return crate::chat::store::delete_conversation(config_dir, id).map_err(String::from);
+        return crate::chat::store::delete_conversation(config_dir, id);
     }
-    std::fs::remove_file(config_dir.join(rel)).map_err(|e| e.to_string())
+    let path = config_dir.join(rel);
+    std::fs::remove_file(&path).map_err(|e| StoreError::write(&path, e))
 }
 
 // ---- passphrase and running ----------------------------------------------------------------

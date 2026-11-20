@@ -115,11 +115,14 @@ pub fn entries(config_dir: &Path, since: Option<DateTime<Utc>>) -> Vec<Entry> {
         .collect()
 }
 
-pub fn clear(config_dir: &Path) -> Result<(), String> {
+pub fn clear(config_dir: &Path) -> Result<(), crate::support::error::StoreError> {
     match std::fs::remove_dir_all(dir(config_dir)) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(e.to_string()),
+        Err(e) => Err(crate::support::error::StoreError::write(
+            &dir(config_dir),
+            e,
+        )),
     }
 }
 

@@ -180,7 +180,7 @@ pub fn chat_remember_files(
     app: AppHandle,
     files: Vec<crate::chat::recent_files::RecentFile>,
 ) -> Result<(), String> {
-    crate::chat::recent_files::add(&config_dir(&app)?, files)
+    crate::chat::recent_files::add(&config_dir(&app)?, files).map_err(String::from)
 }
 
 /// The files of a coding session's folder.

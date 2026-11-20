@@ -203,7 +203,7 @@ pub fn chat_forget_recent_file(
     app: AppHandle,
     index: Option<usize>,
 ) -> Result<Vec<crate::chat::recent_files::RecentFile>, String> {
-    crate::chat::recent_files::forget(&config_dir(&app)?, index)
+    crate::chat::recent_files::forget(&config_dir(&app)?, index).map_err(String::from)
 }
 
 /// Records which model's answer was kept in a comparison.

@@ -1,6 +1,7 @@
 //! Changing a conversation: deleting and rewriting messages, bookmarks, branches and versions of an answer.
 
 use super::*;
+use crate::support::error::StoreError;
 
 /// Tags as stored: trimmed, lowercase, without a leading `#`, deduplicated, at most 12.
 pub fn clean_tags(tags: &[String]) -> Vec<String> {
@@ -28,9 +29,11 @@ pub(super) fn is_prompt(message: &Message) -> bool {
 
 /// Removes the message the user typed at `prompt` and the reply to it (everything up to the
 /// next typed message), with any other versions of it. Refused inside the summarized part.
-pub fn delete_exchange(conversation: &mut Conversation, prompt: usize) -> Result<(), String> {
+pub fn delete_exchange(conversation: &mut Conversation, prompt: usize) -> Result<(), StoreError> {
     if !conversation.messages.get(prompt).is_some_and(is_prompt) {
-        return Err("That is not a message you sent.".into());
+        return Err(StoreError::Invalid(
+            "That is not a message you sent.".into(),
+        ));
     }
     delete_exchanges(conversation, &[prompt]).map(|_| ())
 }
@@ -42,20 +45,20 @@ pub fn rewrite_message(
     conversation: &mut Conversation,
     index: usize,
     text: &str,
-) -> Result<(), String> {
+) -> Result<(), StoreError> {
     migrate(conversation);
     if text.trim().is_empty() {
-        return Err("The message cannot be empty.".into());
+        return Err(StoreError::Invalid("The message cannot be empty.".into()));
     }
     if conversation
         .summary
         .as_ref()
         .is_some_and(|s| s.upto > index)
     {
-        return Err(
+        return Err(StoreError::Invalid(
             "This part of the conversation is summarized for the model and cannot be changed."
                 .into(),
-        );
+        ));
     }
     match conversation.messages.get(index) {
         Some(m) if is_prompt(m) => {
@@ -85,7 +88,7 @@ pub fn rewrite_message(
             let at = (start..=index)
                 .rev()
                 .find(|i| matches!(&conversation.messages[*i], Message::Assistant(a) if a.content.iter().any(|c| matches!(c, AssistantContent::Text(t) if !t.text.trim().is_empty()))))
-                .ok_or("This answer has no text to edit.")?;
+                .ok_or_else(|| StoreError::Invalid("This answer has no text to edit.".into()))?;
             if let Message::Assistant(assistant) = &mut conversation.messages[at] {
                 let mut replaced = false;
                 let items: Vec<AssistantContent> = std::mem::take(&mut assistant.content);
@@ -103,20 +106,24 @@ pub fn rewrite_message(
                 assistant.content = kept;
             }
         }
-        None => return Err("That message no longer exists.".into()),
+        None => return Err(StoreError::Invalid("That message no longer exists.".into())),
     }
     conversation.updated_at = Utc::now();
     Ok(())
 }
 
 /// Bookmarks or un-bookmarks the turn ending at message `index`; the snippet is the turn's text.
-pub fn set_bookmark(conversation: &mut Conversation, index: usize, on: bool) -> Result<(), String> {
+pub fn set_bookmark(
+    conversation: &mut Conversation,
+    index: usize,
+    on: bool,
+) -> Result<(), StoreError> {
     conversation.bookmarks.retain(|(i, _)| *i != index);
     if on {
         let turn = turns(conversation)
             .into_iter()
             .find(|t| t.index == index)
-            .ok_or("That message no longer exists.")?;
+            .ok_or_else(|| StoreError::Invalid("That message no longer exists.".into()))?;
         let text: String = turn
             .parts
             .iter()
@@ -163,11 +170,11 @@ pub fn branch_copy(
     conversation: &mut Conversation,
     upto: Option<usize>,
     without_files: bool,
-) -> Result<(), String> {
+) -> Result<(), StoreError> {
     migrate(conversation);
     if let Some(upto) = upto {
         if upto >= conversation.messages.len() {
-            return Err("That message no longer exists.".into());
+            return Err(StoreError::Invalid("That message no longer exists.".into()));
         }
         // The turn's tool results follow its last assistant message; keep them with it.
         let mut end = upto + 1;
@@ -263,14 +270,16 @@ pub(super) fn shift_branch(point: &mut Versions, by: usize) {
 pub fn delete_exchanges(
     conversation: &mut Conversation,
     indices: &[usize],
-) -> Result<usize, String> {
+) -> Result<usize, StoreError> {
     migrate(conversation);
     let mut ranges: Vec<std::ops::Range<usize>> = indices
         .iter()
         .filter_map(|&i| exchange_range(conversation, i))
         .collect();
     if ranges.is_empty() {
-        return Err("Those messages no longer exist.".into());
+        return Err(StoreError::Invalid(
+            "Those messages no longer exist.".into(),
+        ));
     }
     ranges.sort_by_key(|r| r.start);
     ranges.dedup();
@@ -281,10 +290,10 @@ pub fn delete_exchanges(
         .as_ref()
         .is_some_and(|s| s.upto > first)
     {
-        return Err(
+        return Err(StoreError::Invalid(
             "This part of the conversation is summarized for the model and cannot be removed."
                 .into(),
-        );
+        ));
     }
     for range in ranges.into_iter().rev() {
         let (start, end) = (range.start, range.end);
@@ -386,14 +395,14 @@ pub fn keep_branch(conversation: &mut Conversation, from: usize, kind: &str) {
 /// Shows branch `target` (0-based) at the branch point that starts at message `from`.
 /// The answer text of every version at a branch point, in switcher order, to compare them
 /// (Open WebUI's Compare Text).
-pub fn version_texts(conversation: &Conversation, from: usize) -> Result<Vec<String>, String> {
+pub fn version_texts(conversation: &Conversation, from: usize) -> Result<Vec<String>, StoreError> {
     let mut conversation = conversation.clone();
     migrate(&mut conversation);
     let point = conversation
         .branches
         .iter()
         .find(|v| v.start() == from)
-        .ok_or("There are no other versions here.")?;
+        .ok_or_else(|| StoreError::Invalid("There are no other versions here.".into()))?;
     let start = point.start();
     let live: Vec<Message> = conversation
         .messages
@@ -438,16 +447,16 @@ pub fn select_version(
     conversation: &mut Conversation,
     from: usize,
     target: usize,
-) -> Result<(), String> {
+) -> Result<(), StoreError> {
     migrate(conversation);
     let index = conversation
         .branches
         .iter()
         .position(|v| v.start() == from)
-        .ok_or("There are no other versions here.")?;
+        .ok_or_else(|| StoreError::Invalid("There are no other versions here.".into()))?;
     let start = conversation.branches[index].start();
     if start > conversation.messages.len() || target > conversation.branches[index].others.len() {
-        return Err("There is no such version.".into());
+        return Err(StoreError::Invalid("There is no such version.".into()));
     }
     let mut point = conversation.branches.remove(index);
     point.nested.resize(point.others.len(), Vec::new());

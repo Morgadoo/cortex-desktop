@@ -343,7 +343,7 @@ pub fn chat_audit_summary(app: AppHandle) -> Result<serde_json::Value, String> {
 
 #[tauri::command]
 pub fn chat_clear_audit(app: AppHandle) -> Result<(), String> {
-    crate::chat::audit::clear(&config_dir(&app)?)
+    crate::chat::audit::clear(&config_dir(&app)?).map_err(String::from)
 }
 
 /// The document extraction engine (built-in, Tika or Docling); `change` sets it.
