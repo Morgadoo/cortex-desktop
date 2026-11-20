@@ -12,6 +12,7 @@ import { navigate, state } from '../../core/state';
 import { button } from '../../ui/ui';
 import { grantFolder } from './pickers';
 import { Composer } from './composer';
+import { call } from '../../core/call';
 
 const methods = {
   /** Vibe's + menu: upload, then a flyout for each kind of context. */
@@ -209,12 +210,12 @@ const methods = {
             ? shown.map((c) =>
                 entry('chat', c.title || 'Untitled', null, async () => {
                   try {
-                    const text = await tauriInvoke<string>('chat_conversation_text', { id: c.id });
+                    const text = await call<string>('chat_conversation_text', { id: c.id });
                     this.attachments.push({ name: `Chat: ${c.title || 'Untitled'}`, text });
                     this.renderChips();
                     this.renderBar();
-                  } catch (e) {
-                    toast(String(e), 'error');
+                  } catch {
+                    // Already shown.
                   }
                 })
               )

@@ -9,6 +9,7 @@ import { setWakePrefs, wakePrefs } from '../voice/wakeword';
 import { setOrbColor, storedOrbColor, type OrbColor } from '../theme/orbgl';
 import { row } from './row';
 import { type LocalModel } from './models';
+import { call, reported } from '../core/call';
 
 /** The Whisper models downloaded, to choose one for voice input. */
 function builtinSpeechSelect(current: string, onChange: (v: string) => void): HTMLSelectElement {
@@ -267,10 +268,10 @@ export async function renderAudio(content: HTMLElement) {
     label: 'Save',
     onClick: async () => {
       try {
-        await persist();
+        await reported(persist());
         toast('Audio settings saved.');
-      } catch (e) {
-        toast(String(e), 'error');
+      } catch {
+        // Already shown.
       }
     },
   });
@@ -280,10 +281,10 @@ export async function renderAudio(content: HTMLElement) {
     label: 'Save and test voice',
     onClick: async () => {
       try {
-        await persist();
-        await speakText('Hello! This is how answers will sound.');
-      } catch (e) {
-        toast(String(e), 'error');
+        await reported(persist());
+        await reported(speakText('Hello! This is how answers will sound.'));
+      } catch {
+        // Already shown.
       }
     },
   });
@@ -380,11 +381,10 @@ async function dictationCard(): Promise<HTMLElement> {
     const before = prefs;
     prefs = { ...prefs, ...next };
     try {
-      await tauriInvoke('set_dictation_prefs', { prefs });
+      await call('set_dictation_prefs', { prefs });
       toast(prefs.enabled ? `Dictation anywhere is on: press ${prefs.shortcut} in any app.` : 'Saved.');
-    } catch (e) {
+    } catch {
       prefs = before;
-      toast(String(e), 'error');
     }
   };
   const shortcut = h('input', { class: 'input', value: prefs.shortcut, placeholder: 'Ctrl+Alt+D', 'aria-label': 'Dictation shortcut' });

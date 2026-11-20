@@ -2,9 +2,10 @@
 import { tauriInvoke } from '../../../shared/tauri';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
-import { modal, toast } from '../ui/overlay';
+import { modal } from '../ui/overlay';
 import { button, emptyState, iconButton, modalHeader } from '../ui/ui';
 import { localSite } from './devsite';
+import { call, reported, shown } from '../core/call';
 
 interface CommandView {
   id: string;
@@ -49,7 +50,7 @@ export function openTerminal(conversationId: string, folder: string) {
                   size: 'sm',
                   onClick: async (e) => {
                     e.stopPropagation();
-                    await terminalApi.stop(c.id).catch((err) => toast(String(err), 'error'));
+                    await reported(terminalApi.stop(c.id)).catch(shown);
                     void render();
                   },
                 })
@@ -69,7 +70,7 @@ export function openTerminal(conversationId: string, folder: string) {
                 size: 'sm',
                 onClick: (e) => {
                   e.stopPropagation();
-                  void tauriInvoke('chat_open_preview', { url: site }).catch((err) => toast(String(err), 'error'));
+                  void call('chat_open_preview', { url: site }).catch(shown);
                 },
               })
             : null;
@@ -103,11 +104,11 @@ export function openTerminal(conversationId: string, folder: string) {
       const command = input.value.trim();
       if (!command) return;
       try {
-        selected = await terminalApi.start(conversationId, command);
+        selected = await reported(terminalApi.start(conversationId, command));
         input.value = '';
         void render();
-      } catch (e) {
-        toast(String(e), 'error');
+      } catch {
+        // Already shown.
       }
     };
     input.addEventListener('keydown', (e) => {

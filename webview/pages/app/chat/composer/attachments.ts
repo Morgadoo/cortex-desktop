@@ -11,6 +11,7 @@ import { h } from '../../ui/h';
 import { icon } from '../../ui/icons';
 import { IMAGE_TEMPLATES } from '../send';
 import { Composer, IMAGE_TYPES, readImage } from './composer';
+import { call, reported } from '../../core/call';
 
 const methods = {
   /** Turns image mode on (with the image tool) or off. */
@@ -358,12 +359,12 @@ const methods = {
       // Workbooks are read into CSV, one block per sheet.
       if (/\.(xlsx|xlsm|xls|ods)$/i.test(file.name)) {
         try {
-          const data = await blobToBase64(file);
-          const sheets = await tauriInvoke<[string, string][]>('chat_read_spreadsheet', { data });
+          const data = await reported(blobToBase64(file));
+          const sheets = await call<[string, string][]>('chat_read_spreadsheet', { data });
           const text = sheets.map(([name, csv]) => `Sheet "${name}" (CSV):\n${csv}`).join('\n\n');
           this.attachments.push({ name: file.name, text: text.length > 400_000 ? `${text.slice(0, 400_000)}\n… (cut; analyse the full file with run_code)` : text, file: true });
-        } catch (e) {
-          toast(String(e), 'error');
+        } catch {
+          // Already shown.
         }
         continue;
       }

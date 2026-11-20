@@ -14,9 +14,9 @@ import { refreshConversations } from '../chat/send';
 import { composer } from '../chat/composer/index';
 import { HomeView } from '../chat/home-view';
 import { CompareView } from '../chat/compare-view';
-import { viewCache } from '../chat/chat-view';
+import { viewCache } from '../chat/views';
 import { ChatView } from '../chat/chat-view';
-import { turnEnded } from '../chat/queue';
+import { turnEnded } from '../chat/turn-end';
 import { clear, h } from '../ui/h';
 import { toast } from '../ui/overlay';
 import { startUiLanguage } from '../core/i18n';
@@ -40,7 +40,7 @@ import { applyEvent, changed, finishNotificationsOn, finishSoundOn, navigate, pl
 import { startFluentEmoji } from '../ui/emoji-fluent';
 import { refreshAudioSettings } from '../voice/audio';
 import { workdir } from '../core/prefs';
-import { callQuiet } from '../core/call';
+import { callQuiet, reported, shown } from '../core/call';
 import { openSearch } from './search';
 import { renderSidebar } from './sidebar';
 import { switchMode } from './nav';
@@ -324,7 +324,7 @@ async function start() {
   await reloadAgents().catch(() => undefined);
   // A manager agent changed its organization (manage_agents): the lists follow.
   void listen<null>('chat://agents-changed', () => void reloadAgents().catch(() => undefined));
-  await reloadModels().catch((e) => toast(String(e), 'error'));
+  await reported(reloadModels()).catch(shown);
   if (SOLO_CHAT) {
     state.sidebarCollapsed = true;
     document.body.classList.add('solo-window');

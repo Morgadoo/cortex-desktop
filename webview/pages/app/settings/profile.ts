@@ -1,7 +1,7 @@
 /** Settings → Profile: the user's name and picture, sync, encryption, imports and the activity log. */
 import { row } from './row';
 import { switchInput } from '../ui/ui';
-import { call, shown } from '../core/call';
+import { call, reported, shown } from '../core/call';
 import { tauriInvoke } from '../../../shared/tauri';
 import { api } from '../core/api';
 import { clear, h } from '../ui/h';
@@ -24,10 +24,10 @@ export function encryptionCard(): HTMLElement {
       if (!v && !(await confirmDialog('Decrypt your data?', 'Every conversation, knowledge page and the rest are written back in the clear on this computer, and the key is removed from the keychain.', 'Decrypt'))) return void render(s);
       clear(busy, h('span', { class: 'dots' }), v ? ' Encrypting…' : ' Decrypting…');
       try {
-        const n = await tauriInvoke<number>('chat_set_encryption', { on: v });
+        const n = await call<number>('chat_set_encryption', { on: v });
         toast(v ? `Encrypted ${n} files. New ones are encrypted as they are saved.` : `Decrypted ${n} files.`);
-      } catch (e) {
-        toast(String(e), 'error');
+      } catch {
+        // Already shown.
       }
       render(await tauriInvoke<Status>('chat_encryption_status').catch(() => null));
     });
@@ -78,12 +78,12 @@ export function importCodingSessions() {
       onClick: async () => {
         if (!picked.size) return toast('Pick the sessions to import.', 'error');
         try {
-          const ids = await tauriInvoke<string[]>('chat_import_coding_sessions', { paths: [...picked] });
+          const ids = await call<string[]>('chat_import_coding_sessions', { paths: [...picked] });
           toast(`Imported ${ids.length} session${ids.length === 1 ? '' : 's'} as Code chats.`);
           window.dispatchEvent(new Event('chat:conversations-changed'));
           close();
-        } catch (e) {
-          toast(String(e), 'error');
+        } catch {
+          // Already shown.
         }
       },
     });
@@ -208,11 +208,11 @@ export function renderProfile(content: HTMLElement) {
                       label: `Restore the ${d.backup} backup`,
                       onClick: async () => {
                         try {
-                          await api.recoverConversation(d.id);
+                          await reported(api.recoverConversation(d.id));
                           toast('Restored from the backup.');
                           refresh();
-                        } catch (e) {
-                          toast(String(e), 'error');
+                        } catch {
+                          // Already shown.
                         }
                       },
                     })
@@ -238,11 +238,11 @@ export function renderProfile(content: HTMLElement) {
                   label: 'Restore',
                   onClick: async () => {
                     try {
-                      await api.restoreConversation(t.id);
+                      await reported(api.restoreConversation(t.id));
                       toast('Conversation restored.');
                       refresh();
-                    } catch (e) {
-                      toast(String(e), 'error');
+                    } catch {
+                      // Already shown.
                     }
                   },
                 }),
@@ -305,10 +305,10 @@ export function renderProfile(content: HTMLElement) {
             on: {
               click: async () => {
                 try {
-                  const done = await tauriInvoke<string | null>('chat_export_all');
+                  const done = await call<string | null>('chat_export_all');
                   if (done) toast(done);
-                } catch (e) {
-                  toast(String(e), 'error');
+                } catch {
+                  // Already shown.
                 }
               },
             },
@@ -323,12 +323,12 @@ export function renderProfile(content: HTMLElement) {
           title: 'Choose the data export zip, or its conversations.json',
           onClick: async () => {
             try {
-              const report = await tauriInvoke<{ imported: number; skipped: number; source: string } | null>('chat_import_conversations');
+              const report = await call<{ imported: number; skipped: number; source: string } | null>('chat_import_conversations');
               if (!report) return;
               toast(`Imported ${report.imported} ${report.source} conversation${report.imported === 1 ? '' : 's'}${report.skipped ? ` (${report.skipped} empty skipped)` : ''}.`);
               window.dispatchEvent(new Event('chat:conversations-changed'));
-            } catch (e) {
-              toast(String(e), 'error');
+            } catch {
+              // Already shown.
             }
           },
         }),
@@ -390,22 +390,22 @@ function syncCard(onSynced: () => void): HTMLElement {
     const save = async () => {
       if (!folder) return toast('Choose the folder your sync service mirrors.', 'error');
       try {
-        view = await tauriInvoke<View>('chat_save_sync_settings', { folder, everyMinutes: Number(every.value), passphrase: passphrase.value || null });
+        view = await call<View>('chat_save_sync_settings', { folder, everyMinutes: Number(every.value), passphrase: passphrase.value || null });
         toast('Sync is set up.');
-        await syncNow();
-      } catch (e) {
-        toast(String(e), 'error');
+        await reported(syncNow());
+      } catch {
+        // Already shown.
       }
     };
     const syncNow = async () => {
       clear(status, h('span', { class: 'dots' }), ' Syncing…');
       try {
-        const summary = await tauriInvoke<string>('chat_sync_now');
+        const summary = await call<string>('chat_sync_now');
         toast(summary);
         window.dispatchEvent(new Event('chat:conversations-changed'));
         onSynced();
-      } catch (e) {
-        toast(String(e), 'error');
+      } catch {
+        // Already shown.
       }
       view = await tauriInvoke<View>('chat_sync_settings').catch(() => view);
       render();

@@ -11,7 +11,7 @@ import { button, iconButton, modalHeader } from '../ui/ui';
 import { improveButton } from '../chat/improve';
 import { renderSheetCard } from './sheet';
 import { diagramFrame, isMarp } from './diagrams';
-import { call, shown } from '../core/call';
+import { call, reported, shown } from '../core/call';
 import { appFiles, appUrl } from './app-files';
 import { appPage, shareLink } from './share';
 
@@ -213,10 +213,9 @@ function viewSwitch(app: AppInfo, body: HTMLElement, frameClass = '') {
 }
 
 function download(id: string) {
-  void api
-    .export(id)
+  void reported(api.export(id))
     .then((saved) => saved && toast('App saved.'))
-    .catch((e) => toast(String(e), 'error'));
+    .catch(shown);
 }
 
 export function openAppPanel(app: AppInfo) {
@@ -316,10 +315,9 @@ export function renderCanvasCard(part: Extract<Part, { kind: 'tool' }>, live: bo
   download.addEventListener('click', () => {
     const id = idOf(part);
     if (id)
-      void api
-        .export(id)
+      void reported(api.export(id))
         .then((saved) => saved && toast('Canvas saved.'))
-        .catch((e) => toast(String(e), 'error'));
+        .catch(shown);
   });
   const edit = button({ variant: 'subtle', size: 'sm', icon: 'edit', label: 'Edit', title: 'Edit' });
   edit.addEventListener('click', async () => {
@@ -460,10 +458,10 @@ function openEditor(title: string, content: string, onSave: (title: string, cont
     renderPreview();
     const save = async () => {
       try {
-        await onSave(titleInput.value, area.value);
+        await reported(onSave(titleInput.value, area.value));
         close();
-      } catch (e) {
-        toast(String(e), 'error');
+      } catch {
+        // Already shown.
       }
     };
     area.addEventListener('keydown', (e) => {

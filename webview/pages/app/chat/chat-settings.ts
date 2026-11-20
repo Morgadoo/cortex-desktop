@@ -3,12 +3,13 @@ import { api, type ChatParams } from '../core/api';
 import { h } from '../ui/h';
 import { modal, toast } from '../ui/overlay';
 import { modalHeader } from '../ui/ui';
+import { reported } from '../core/call';
 
 const SLICE_COLORS = ['var(--accent)', '#4fa3d1', '#5fb98a', '#d9a441', '#c96f9b', '#8c8fd6', '#9aa0a6', '#d97a5b'];
 
 /** The context view: what the next request carries, and how full the model's window is. */
 export async function showContext(id: string) {
-  const view = await api.contextBreakdown(id).catch((e) => (toast(String(e), 'error'), null));
+  const view = await reported(api.contextBreakdown(id)).catch(() => null);
   if (!view) return;
   const used = view.measured || view.slices.reduce((n, s) => n + s.tokens, 0);
   const pct = Math.min(100, Math.round((used / view.window) * 100));
@@ -60,11 +61,11 @@ export async function openChatSettings(id: string) {
     const number = (el: HTMLInputElement) => (el.value.trim() === '' || Number.isNaN(Number(el.value)) ? null : Number(el.value));
     const save = async () => {
       try {
-        await api.setParams(id, { temperature: number(temperature), maxTokens: number(maxTokens), topP: number(topP), instructions: instructions.value });
+        await reported(api.setParams(id, { temperature: number(temperature), maxTokens: number(maxTokens), topP: number(topP), instructions: instructions.value }));
         close();
         toast('Saved. The next reply uses these settings.');
-      } catch (e) {
-        toast(String(e), 'error');
+      } catch {
+        // Already shown.
       }
     };
     return h(

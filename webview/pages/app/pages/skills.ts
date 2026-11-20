@@ -7,7 +7,7 @@ import { confirmDialog, modal, popover, promptText, toast } from '../ui/overlay'
 import { clockHour12 } from '../core/clock';
 import { state } from '../core/state';
 import { button, emptyState, modalHeader, pageHeader, switchInput, tabs } from '../ui/ui';
-import { callQuiet } from '../core/call';
+import { call, callQuiet, reported, shown } from '../core/call';
 import { openSkillCatalog } from './skill-catalog';
 
 // ---------------------------------------------------------------------------------------------
@@ -132,12 +132,12 @@ export function editSkill(skill: Skill | null, onSaved: (skills: Skill[]) => voi
                     on: {
                       click: async () => {
                         try {
-                          const all = await tauriInvoke<Skill[]>('chat_skill_remove_file', { name: current!.name, path: f });
+                          const all = await call<Skill[]>('chat_skill_remove_file', { name: current!.name, path: f });
                           current = all.find((s) => s.name === current!.name) ?? current;
                           onSaved(all);
                           renderFiles();
-                        } catch (e) {
-                          toast(String(e), 'error');
+                        } catch {
+                          // Already shown.
                         }
                       },
                     },
@@ -162,12 +162,12 @@ export function editSkill(skill: Skill | null, onSaved: (skills: Skill[]) => voi
             label: 'Add files…',
             onClick: async () => {
               try {
-                const all = await tauriInvoke<Skill[]>('chat_skill_add_files', { name: skill!.name, folder: null });
+                const all = await call<Skill[]>('chat_skill_add_files', { name: skill!.name, folder: null });
                 current = all.find((s) => s.name === skill!.name) ?? current;
                 onSaved(all);
                 renderFiles();
-              } catch (e) {
-                toast(String(e), 'error');
+              } catch {
+                // Already shown.
               }
             },
           }),
@@ -180,13 +180,13 @@ export function editSkill(skill: Skill | null, onSaved: (skills: Skill[]) => voi
               const path = await promptText('New file', '', 'Path inside the skill, e.g. templates/report.md');
               if (!path) return;
               try {
-                const all = await tauriInvoke<Skill[]>('chat_skill_write_file', { name: skill!.name, path, text: '' });
+                const all = await call<Skill[]>('chat_skill_write_file', { name: skill!.name, path, text: '' });
                 current = all.find((s) => s.name === skill!.name) ?? current;
                 onSaved(all);
                 renderFiles();
                 void viewSkillFile(skill!.name, path.trim());
-              } catch (e) {
-                toast(String(e), 'error');
+              } catch {
+                // Already shown.
               }
             },
           })
@@ -224,9 +224,9 @@ export function editSkill(skill: Skill | null, onSaved: (skills: Skill[]) => voi
 async function viewSkillFile(name: string, path: string): Promise<void> {
   let text: string;
   try {
-    text = await tauriInvoke<string>('chat_skill_read_file', { name, path });
-  } catch (e) {
-    return void toast(String(e), 'error');
+    text = await call<string>('chat_skill_read_file', { name, path });
+  } catch {
+    return;
   }
   const binary = /^\S.* is a binary file \(\d+ bytes\) at /.test(text);
   return modal((close) => {
@@ -237,11 +237,11 @@ async function viewSkillFile(name: string, path: string): Promise<void> {
       label: 'Save',
       onClick: async () => {
         try {
-          await tauriInvoke('chat_skill_write_file', { name, path, text: area.value });
+          await call('chat_skill_write_file', { name, path, text: area.value });
           toast('File saved.');
           close();
-        } catch (e) {
-          toast(String(e), 'error');
+        } catch {
+          // Already shown.
         }
       },
     });
@@ -266,9 +266,9 @@ export class SkillsPage {
     type Imported = { plugins: string[]; skills: string[]; agents: string[]; servers: string[]; hooks: number; skipped: string[] };
     if (link) toast('Downloading…');
     try {
-      const out = await tauriInvoke<Imported | null>('chat_import_plugin', { link });
+      const out = await call<Imported | null>('chat_import_plugin', { link });
       if (!out) return;
-      await this.load();
+      await reported(this.load());
       const parts = [
         out.skills.length
           ? `${out.skills.length} skill${out.skills.length === 1 ? '' : 's'} (${out.skills
@@ -290,8 +290,8 @@ export class SkillsPage {
           h('div', { class: 'dialog-actions' }, h('span', { class: 'spacer' }), button({ variant: 'primary', label: 'Done', onClick: close }))
         )
       );
-    } catch (e) {
-      toast(String(e), 'error');
+    } catch {
+      // Already shown.
     }
   }
 
@@ -303,9 +303,9 @@ export class SkillsPage {
     type Entry = { name: string; description: string; category: string; link: string | null };
     let entries: Entry[] | null;
     try {
-      entries = await tauriInvoke<Entry[] | null>('chat_plugin_marketplace', { link });
-    } catch (e) {
-      return toast(String(e), 'error');
+      entries = await call<Entry[] | null>('chat_plugin_marketplace', { link });
+    } catch {
+      return;
     }
     if (!entries) return void this.importPlugin(link);
     if (!entries.length) return toast('That marketplace lists no plugins.', 'error');
@@ -399,10 +399,9 @@ export class SkillsPage {
               on: {
                 click: () => {
                   close();
-                  void api
-                    .importSkill()
-                    .then(done)
-                    .catch((e) => toast(String(e), 'error'));
+                  void reported(api.importSkill())
+                    .then((name) => reported(done(name)))
+                    .catch(shown);
                 },
               },
             },
@@ -419,9 +418,9 @@ export class SkillsPage {
                   const url = await promptText('Import a skill from a link', '', 'https://github.com/owner/repo/tree/main/skills/name');
                   if (!url) return;
                   toast('Downloading the skill…');
-                  await tauriInvoke<string>('chat_import_skill_url', { url })
-                    .then(done)
-                    .catch((e) => toast(String(e), 'error'));
+                  await call<string>('chat_import_skill_url', { url })
+                    .then((name) => reported(done(name)))
+                    .catch(shown);
                 },
               },
             },
@@ -557,9 +556,9 @@ export async function recordTask() {
   );
   if (!ok) return;
   try {
-    await tauriInvoke('chat_record_start');
-  } catch (e) {
-    toast(String(e), 'error');
+    await call('chat_record_start');
+  } catch {
+    // Already shown.
   }
 }
 

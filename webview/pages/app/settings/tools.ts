@@ -6,6 +6,7 @@ import { confirmDialog, modal, toast } from '../ui/overlay';
 import { historyButton } from '../canvas/versions';
 import { button, card, modalHeader, switchInput } from '../ui/ui';
 import { reloadModels } from '../core/models';
+import { call } from '../core/call';
 
 interface HookDef {
   event: 'before_tool' | 'after_tool' | 'turn_end';
@@ -31,9 +32,9 @@ export async function hooksCard(): Promise<HTMLElement> {
   const list = h('div', { class: 'hook-list' });
   const save = async () => {
     try {
-      await tauriInvoke('chat_save_hooks', { hooks });
-    } catch (e) {
-      toast(String(e), 'error');
+      await call('chat_save_hooks', { hooks });
+    } catch {
+      // Already shown.
     }
   };
   const render = () => {

@@ -7,6 +7,7 @@ import { button, modalHeader } from '../ui/ui';
 import { storedLanguage } from '../core/i18n';
 import { textPref } from '../core/prefs';
 import { reloadAgents } from './agent-list';
+import { call, reported } from '../core/call';
 
 interface MarketListing {
   identifier: string;
@@ -50,13 +51,12 @@ export async function openAgentMarket() {
                 onClick: async () => {
                   add.setAttribute('disabled', '');
                   try {
-                    const agent = await tauriInvoke<Agent>('chat_install_market_agent', { identifier: a.identifier, source: marketSource(), language });
-                    await reloadAgents();
+                    const agent = await call<Agent>('chat_install_market_agent', { identifier: a.identifier, source: marketSource(), language });
+                    await reported(reloadAgents());
                     toast(`${agent.name} is now one of your agents.`);
                     add.textContent = 'Added';
-                  } catch (e) {
+                  } catch {
                     add.removeAttribute('disabled');
-                    toast(String(e), 'error');
                   }
                 },
               });

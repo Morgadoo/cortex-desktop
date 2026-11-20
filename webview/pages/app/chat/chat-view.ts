@@ -7,15 +7,16 @@ import { escapeHtml } from '../core/format';
 import { loadChanges, openChanges, openFiles, openDebug } from './changes';
 import { openTerminal } from './terminal';
 import { call, shown } from '../core/call';
-import { followUpRow } from './queue';
+import { followUpRow } from './turn-end';
 import { conversationMenu } from './conversation-menu';
-import { planOf, renderChecklist, renderUserTurn, textOf } from './transcript';
+import { planOf, renderChecklist, textOf } from './transcript';
+import { renderUserTurn } from './user-turn';
 import { bookmarked, renderAssistantTurn, scrollToTurn, sourcesOf, versionSwitcher } from './turn-actions';
 import { autoPlay } from './speech';
 import { renderLiveTurn } from './live-turn';
 import { pendingUser, refreshConversations, temporaryChats } from './send';
 import { userParts } from './composer/composer';
-import { composer } from './composer/index';
+import { composer } from './composer/current';
 import { renderApprovals, renderQuestion } from './approvals';
 import { avatarHue } from './home-view';
 import { tauriInvoke } from '../../../shared/tauri';
@@ -29,7 +30,6 @@ import { changed, navigate, state } from '../core/state';
 import { hostOf } from '../ui/favicon';
 import { trigger } from '../ui/ui';
 import { showContext } from './chat-settings';
-import type { HomeView } from './home-view';
 
 export class ChatView {
   readonly el = h('div', { class: 'chat' });
@@ -498,6 +498,3 @@ function usageMeter(id: string, live: { usage: UsageTotals; window: number } | u
     h('span', {}, `${total}k tokens${usage.cost > 0 ? ` · ${money(usage.cost)}` : ''}`)
   );
 }
-
-/** The views on screen, so streamed events update them in place. */
-export const viewCache: { chat: ChatView | null; home: HomeView | null } = { chat: null, home: null };

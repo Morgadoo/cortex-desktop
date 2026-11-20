@@ -7,7 +7,7 @@ import { openCompareDialog, refreshConversations } from '../send';
 import { h } from '../../ui/h';
 import { icon } from '../../ui/icons';
 import { state } from '../../core/state';
-import { composer } from './index';
+import { composer } from './current';
 
 export async function grantFolder() {
   const dir = await api.pickDirectory();

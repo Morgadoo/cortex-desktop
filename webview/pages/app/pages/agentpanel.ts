@@ -12,7 +12,7 @@ import { timeLabel } from '../core/clock';
 import { changed, state } from '../core/state';
 import { editTask } from './tasks';
 import { button, modalHeader } from '../ui/ui';
-import { call, shown } from '../core/call';
+import { call, reported, shown } from '../core/call';
 
 interface Doc {
   id: string;
@@ -39,12 +39,12 @@ function editInstructions(agent: Agent, done: () => void) {
       label: 'Save',
       onClick: async () => {
         try {
-          await saveAgent({ ...agent, instructions: area.value.trim() });
+          await reported(saveAgent({ ...agent, instructions: area.value.trim() }));
           toast('Instructions saved.');
           close();
           done();
-        } catch (e) {
-          toast(String(e), 'error');
+        } catch {
+          // Already shown.
         }
       },
     });
@@ -109,16 +109,16 @@ function viewFiles(agent: Agent, done: () => void) {
       label: 'Add files',
       onClick: async () => {
         try {
-          const lib = library ?? (await filesLibrary(agent));
+          const lib = library ?? (await reported(filesLibrary(agent)));
           add.disabled = true;
-          await tauriInvoke('chat_add_documents', { id: lib.id }).finally(() => {
+          await call('chat_add_documents', { id: lib.id }).finally(() => {
             add.disabled = false;
           });
-          library = await filesLibrary(agent);
+          library = await reported(filesLibrary(agent));
           render();
           done();
-        } catch (e) {
-          toast(String(e), 'error');
+        } catch {
+          // Already shown.
         }
       },
     });
@@ -140,11 +140,11 @@ function viewMemory(agent: Agent) {
       label: 'Save',
       onClick: async () => {
         try {
-          await api.saveAgentNotebook(agent.id, area.value);
+          await reported(api.saveAgentNotebook(agent.id, area.value));
           toast('Memory saved.');
           close();
-        } catch (e) {
-          toast(String(e), 'error');
+        } catch {
+          // Already shown.
         }
       },
     });
@@ -175,11 +175,11 @@ function browserSession(agent: Agent) {
       label: 'Open the browser',
       onClick: async () => {
         try {
-          await tauriInvoke('chat_agent_browser', { agentId: agent.id, url: url.value.trim() || null, clear: false });
+          await call('chat_agent_browser', { agentId: agent.id, url: url.value.trim() || null, clear: false });
           toast(`Sign in there, then close the window. ${agent.name} uses those logins when it opens pages.`);
           close();
-        } catch (e) {
-          toast(String(e), 'error');
+        } catch {
+          // Already shown.
         }
       },
     });
@@ -188,11 +188,11 @@ function browserSession(agent: Agent) {
       label: 'Forget its logins',
       onClick: async () => {
         try {
-          await tauriInvoke('chat_agent_browser', { agentId: agent.id, url: null, clear: true });
+          await call('chat_agent_browser', { agentId: agent.id, url: null, clear: true });
           toast(`${agent.name}'s browser session is cleared.`);
           close();
-        } catch (e) {
-          toast(String(e), 'error');
+        } catch {
+          // Already shown.
         }
       },
     });

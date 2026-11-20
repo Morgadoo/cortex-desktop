@@ -11,6 +11,7 @@ import { toast } from '../ui/overlay';
 import { state } from '../core/state';
 import { card } from '../ui/ui';
 import { acpCard, embeddingCard, extractionCard, localModelsCard, mediaCard, searchCard } from './models';
+import { call, reported, shown } from '../core/call';
 
 /** The model a reply switches to, once, when its own fails before answering. */
 export async function backupModelCard(): Promise<HTMLElement> {
@@ -24,9 +25,9 @@ export async function backupModelCard(): Promise<HTMLElement> {
   select.addEventListener(
     'change',
     () =>
-      void tauriInvoke('chat_set_backup_model', { reference: select.value || null })
+      void call('chat_set_backup_model', { reference: select.value || null })
         .then(() => toast('Saved.'))
-        .catch((e) => toast(String(e), 'error'))
+        .catch(shown)
   );
   return card(
     h('h3', {}, 'Backup model'),
@@ -47,9 +48,9 @@ export async function reviewModelCard(): Promise<HTMLElement> {
   select.addEventListener(
     'change',
     () =>
-      void tauriInvoke('chat_set_review_model', { reference: select.value || null })
+      void call('chat_set_review_model', { reference: select.value || null })
         .then(() => toast('Saved.'))
-        .catch((e) => toast(String(e), 'error'))
+        .catch(shown)
   );
   return card(
     h('h3', {}, 'Reviewer model'),
@@ -72,12 +73,12 @@ export async function autoModelCard(): Promise<HTMLElement> {
   const fastSel = pick(fast);
   const strongSel = pick(strong);
   const save = () =>
-    void tauriInvoke('chat_set_router_models', { fast: fastSel.value || null, strong: strongSel.value || null })
+    void call('chat_set_router_models', { fast: fastSel.value || null, strong: strongSel.value || null })
       .then(async () => {
-        await reloadModels();
+        await reported(reloadModels());
         toast(fastSel.value && strongSel.value ? 'Auto is in the model picker.' : 'Saved. Choose both for Auto to appear.');
       })
-      .catch((e) => toast(String(e), 'error'));
+      .catch(shown);
   fastSel.addEventListener('change', save);
   strongSel.addEventListener('change', save);
   return card(

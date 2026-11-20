@@ -7,6 +7,7 @@ import { clockHour12 } from '../core/clock';
 import { state } from '../core/state';
 import { button, card, modalHeader, switchInput } from '../ui/ui';
 import { row } from './row';
+import { call } from '../core/call';
 
 interface WidgetSettings {
   enabled: boolean;
@@ -39,7 +40,7 @@ export async function telegramCard(): Promise<HTMLElement> {
   let s = await tauriInvoke<TelegramSettings>('chat_telegram');
   const update = async (patch: Partial<{ enabled: boolean; agentId: string | null; allowChanges: boolean; openPairing: boolean; unpair: number }>) => {
     try {
-      s = await tauriInvoke<TelegramSettings>('chat_update_telegram', {
+      s = await call<TelegramSettings>('chat_update_telegram', {
         enabled: patch.enabled ?? s.enabled,
         agentId: patch.agentId !== undefined ? patch.agentId : s.agentId,
         allowChanges: patch.allowChanges ?? s.allowChanges,
@@ -47,8 +48,8 @@ export async function telegramCard(): Promise<HTMLElement> {
         unpair: patch.unpair ?? null,
       });
       draw();
-    } catch (e) {
-      toast(String(e), 'error');
+    } catch {
+      // Already shown.
     }
   };
   const draw = () => {
@@ -58,11 +59,11 @@ export async function telegramCard(): Promise<HTMLElement> {
       label: s.hasToken ? 'Replace' : 'Connect',
       onClick: async () => {
         try {
-          s = await tauriInvoke<TelegramSettings>('chat_set_telegram_token', { token: token.value });
+          s = await call<TelegramSettings>('chat_set_telegram_token', { token: token.value });
           toast(s.botName ? `Connected to @${s.botName}.` : 'Token removed.');
           draw();
-        } catch (e) {
-          toast(String(e), 'error');
+        } catch {
+          // Already shown.
         }
       },
     });
@@ -140,7 +141,7 @@ export async function slackCard(): Promise<HTMLElement> {
   let s = await tauriInvoke<SlackSettings>('chat_slack');
   const update = async (patch: Partial<{ enabled: boolean; agentId: string | null; allowChanges: boolean; openPairing: boolean; unpair: string }>) => {
     try {
-      s = await tauriInvoke<SlackSettings>('chat_update_slack', {
+      s = await call<SlackSettings>('chat_update_slack', {
         enabled: patch.enabled ?? s.enabled,
         agentId: patch.agentId !== undefined ? patch.agentId : s.agentId,
         allowChanges: patch.allowChanges ?? s.allowChanges,
@@ -148,8 +149,8 @@ export async function slackCard(): Promise<HTMLElement> {
         unpair: patch.unpair ?? null,
       });
       draw();
-    } catch (e) {
-      toast(String(e), 'error');
+    } catch {
+      // Already shown.
     }
   };
   const draw = () => {
@@ -160,11 +161,11 @@ export async function slackCard(): Promise<HTMLElement> {
       label: s.hasTokens ? 'Replace' : 'Connect',
       onClick: async () => {
         try {
-          s = await tauriInvoke<SlackSettings>('chat_set_slack_tokens', { appToken: appToken.value, botToken: botToken.value });
+          s = await call<SlackSettings>('chat_set_slack_tokens', { appToken: appToken.value, botToken: botToken.value });
           toast(s.team ? `Connected to ${s.team}.` : 'Tokens removed.');
           draw();
-        } catch (e) {
-          toast(String(e), 'error');
+        } catch {
+          // Already shown.
         }
       },
     });
@@ -243,7 +244,7 @@ export async function discordCard(): Promise<HTMLElement> {
   let s = await tauriInvoke<DiscordSettings>('chat_discord');
   const update = async (patch: Partial<{ enabled: boolean; agentId: string | null; allowChanges: boolean; openPairing: boolean; unpair: string }>) => {
     try {
-      s = await tauriInvoke<DiscordSettings>('chat_update_discord', {
+      s = await call<DiscordSettings>('chat_update_discord', {
         enabled: patch.enabled ?? s.enabled,
         agentId: patch.agentId !== undefined ? patch.agentId : s.agentId,
         allowChanges: patch.allowChanges ?? s.allowChanges,
@@ -251,8 +252,8 @@ export async function discordCard(): Promise<HTMLElement> {
         unpair: patch.unpair ?? null,
       });
       draw();
-    } catch (e) {
-      toast(String(e), 'error');
+    } catch {
+      // Already shown.
     }
   };
   const draw = () => {
@@ -262,11 +263,11 @@ export async function discordCard(): Promise<HTMLElement> {
       label: s.hasToken ? 'Replace' : 'Connect',
       onClick: async () => {
         try {
-          s = await tauriInvoke<DiscordSettings>('chat_set_discord_token', { token: token.value });
+          s = await call<DiscordSettings>('chat_set_discord_token', { token: token.value });
           toast(s.botName ? `Connected as ${s.botName}.` : 'Token removed.');
           draw();
-        } catch (e) {
-          toast(String(e), 'error');
+        } catch {
+          // Already shown.
         }
       },
     });
@@ -327,9 +328,9 @@ export async function apiServerCard(): Promise<HTMLElement> {
     const port = h('input', { class: 'input small', type: 'number', min: '1024', max: '65535', value: String(view.settings.port), style: { width: '110px' } });
     const save = async (enabled: boolean, regenerateToken = false, widget: WidgetSettings = view.settings.widget, regenerateWidgetToken = false) => {
       try {
-        render(await tauriInvoke<ApiServerView>('chat_save_api_server', { settings: { enabled, port: Number(port.value) || 8484, widget }, regenerateToken, regenerateWidgetToken }));
-      } catch (e) {
-        toast(String(e), 'error');
+        render(await call<ApiServerView>('chat_save_api_server', { settings: { enabled, port: Number(port.value) || 8484, widget }, regenerateToken, regenerateWidgetToken }));
+      } catch {
+        // Already shown.
       }
     };
     port.addEventListener('change', () => void save(view.settings.enabled));

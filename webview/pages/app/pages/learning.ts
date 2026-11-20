@@ -14,9 +14,9 @@ export function learningRows(): HTMLElement {
     .then((l) => {
       const change = async (next: Partial<Learning>) => {
         try {
-          l = await tauriInvoke<Learning>('chat_learning', { change: { ...l, ...next } });
-        } catch (e) {
-          toast(String(e), 'error');
+          l = await call<Learning>('chat_learning', { change: { ...l, ...next } });
+        } catch {
+          // Already shown.
         }
       };
       clear(
@@ -96,7 +96,7 @@ function editEvalCases(): void {
       const save = async () => {
         try {
           render(
-            await tauriInvoke<EvalSuite[]>('chat_save_eval_case', {
+            await call<EvalSuite[]>('chat_save_eval_case', {
               suite,
               case: {
                 id: id.value.trim(),
@@ -113,8 +113,8 @@ function editEvalCases(): void {
             })
           );
           toast('Saved.');
-        } catch (e) {
-          toast(String(e), 'error');
+        } catch {
+          // Already shown.
         }
       };
       const remove = c
@@ -222,10 +222,10 @@ function artifactRows(): HTMLElement {
                           click: async () => {
                             if (!(await confirmDialog(`Revoke ${a.id}'s access?`, 'It keeps working but can no longer reach the network, read or write files, or call other tools, until you approve more.', 'Revoke'))) return;
                             try {
-                              await tauriInvoke('chat_revoke_tool', { name: a.id });
+                              await call('chat_revoke_tool', { name: a.id });
                               toast('Access revoked.');
-                            } catch (e) {
-                              toast(String(e), 'error');
+                            } catch {
+                              // Already shown.
                             }
                           },
                         },

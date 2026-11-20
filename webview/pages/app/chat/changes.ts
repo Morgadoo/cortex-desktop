@@ -5,6 +5,7 @@ import { icon } from '../ui/icons';
 import { modal, promptText, toast } from '../ui/overlay';
 import { iconButton, modalHeader } from '../ui/ui';
 import { choice } from '../core/prefs';
+import { call } from '../core/call';
 
 /** Unified or Split, remembered for next time. */
 const diffLayout = choice('cortex.diffLayout', ['unified', 'split'] as const, 'unified');
@@ -153,12 +154,12 @@ export function openChanges(conversationId: string, folder: string) {
       const commit = h('button', { class: 'btn btn-primary btn-sm' }, 'Commit all');
       commit.addEventListener('click', async () => {
         try {
-          const line = await tauriInvoke<string>('chat_code_commit', { conversationId, message: message.value });
+          const line = await call<string>('chat_code_commit', { conversationId, message: message.value });
           toast(`Committed ${line}`);
           message.value = '';
           void load();
-        } catch (e) {
-          toast(String(e), 'error');
+        } catch {
+          // Already shown.
         }
       });
       const all = h(
@@ -191,7 +192,7 @@ export function openChanges(conversationId: string, folder: string) {
       if (!title) return;
       pullRequest.setAttribute('disabled', '');
       try {
-        const pr = await tauriInvoke<{ branch: string; url: string | null; via: string }>('chat_code_pull_request', { conversationId, title });
+        const pr = await call<{ branch: string; url: string | null; via: string }>('chat_code_pull_request', { conversationId, title });
         if (pr.url) window.open(pr.url, '_blank', 'noopener');
         toast(
           pr.via === 'gh' || pr.via === 'cli'
@@ -202,8 +203,8 @@ export function openChanges(conversationId: string, folder: string) {
         );
         void load();
         setTimeout(() => void loadPr(), 1500);
-      } catch (e) {
-        toast(String(e), 'error');
+      } catch {
+        // Already shown.
       } finally {
         pullRequest.removeAttribute('disabled');
       }

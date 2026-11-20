@@ -3,16 +3,15 @@ import { openChatBeside } from './side-panels';
 import { exportImage, printConversation } from './turn-actions';
 import { refreshConversations } from './send';
 import { moveToProject } from './composer/pickers';
-import { tauriInvoke } from '../../../shared/tauri';
 import { api } from '../core/api';
 import { h } from '../ui/h';
 import { icon } from '../ui/icons';
 import { confirmDialog, popover, promptText, toast } from '../ui/overlay';
 import { navigate, state } from '../core/state';
-import { call, shown } from '../core/call';
+import { call, reported, shown } from '../core/call';
 import { openChatSettings } from './chat-settings';
-import { composer } from './composer/index';
-import { viewCache } from './chat-view';
+import { composer } from './composer/current';
+import { viewCache } from './views';
 
 export function conversationMenu(anchor: HTMLElement, id: string, title: string, pinned: boolean) {
   const item = (ic: string, label: string, action: () => void, danger = false) =>
@@ -72,13 +71,13 @@ export function conversationMenu(anchor: HTMLElement, id: string, title: string,
                           click: async () => {
                             close();
                             try {
-                              const next = await api.forkConversation(id, null, false, a.id);
-                              await refreshConversations();
+                              const next = await reported(api.forkConversation(id, null, false, a.id));
+                              await reported(refreshConversations());
                               state.mode = 'agents';
                               navigate({ kind: 'chat', id: next });
                               toast(`${a.name} has the conversation now.`);
-                            } catch (e) {
-                              toast(String(e), 'error');
+                            } catch {
+                              // Already shown.
                             }
                           },
                         },
@@ -106,9 +105,9 @@ export function conversationMenu(anchor: HTMLElement, id: string, title: string,
         'code',
         'Export as JSON',
         () =>
-          void tauriInvoke<boolean>('chat_export_conversation_json', { id })
+          void call<boolean>('chat_export_conversation_json', { id })
             .then((saved) => saved && toast('Conversation exported.'))
-            .catch((e) => toast(String(e), 'error'))
+            .catch(shown)
       ),
       item('settings', 'Chat settings…', () => void openChatSettings(id)),
       item('dot', 'Mark as unread', async () => {
@@ -288,12 +287,12 @@ export function selectMessages(conversationId: string) {
         const indices = chosen().map((t) => Number(t.dataset.index));
         if (!(await confirmDialog(`Delete ${indices.length === 1 ? 'this message' : `${indices.length} messages`}?`, 'Each message goes with the question or answer it belongs to, and any other versions of them.', 'Delete'))) return;
         try {
-          const n = await tauriInvoke<number>('chat_delete_exchanges', { id: conversationId, indices });
+          const n = await call<number>('chat_delete_exchanges', { id: conversationId, indices });
           exit();
-          await viewCache.chat?.refresh(false);
+          await reported(viewCache.chat?.refresh(false));
           toast(`Deleted ${n} ${n === 1 ? 'exchange' : 'exchanges'}.`);
-        } catch (e) {
-          toast(String(e), 'error');
+        } catch {
+          // Already shown.
         }
       },
       true

@@ -1,10 +1,10 @@
 /** Sheet canvases: a table the model wrote as CSV, edited as a grid and downloaded as Excel. */
-import { tauriInvoke } from '../../../shared/tauri';
 import type { Part } from '../core/api';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
 import { toast } from '../ui/overlay';
 import { button, iconButton } from '../ui/ui';
+import { call } from '../core/call';
 
 /** CSV with quoted fields, embedded commas, quotes and newlines. */
 export function parseCsv(text: string): string[][] {
@@ -189,12 +189,12 @@ export function renderSheetCard(part: Extract<Part, { kind: 'tool' }>, live: boo
     const id = idOf(part);
     if (!id || !dirty) return;
     try {
-      await tauriInvoke('chat_save_canvas', { id, title, content: contentOf() });
+      await call('chat_save_canvas', { id, title, content: contentOf() });
       dirty = false;
       save.disabled = true;
       toast('Saved. The assistant sees your edits on its next reply.');
-    } catch (e) {
-      toast(String(e), 'error');
+    } catch {
+      // Already shown.
     }
   });
   const copy = iconButton({
@@ -214,7 +214,7 @@ export function renderSheetCard(part: Extract<Part, { kind: 'tool' }>, live: boo
       const id = idOf(part);
       if (!id) return;
       if (dirty) save.click();
-      const saved = await tauriInvoke<boolean>('chat_export_canvas', { id }).catch((e) => (toast(String(e), 'error'), false));
+      const saved = await call<boolean>('chat_export_canvas', { id }).catch(() => false);
       if (saved) toast('Sheet saved.');
     },
   });

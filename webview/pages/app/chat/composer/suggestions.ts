@@ -8,6 +8,7 @@ import { h } from '../../ui/h';
 import { icon } from '../../ui/icons';
 import { state } from '../../core/state';
 import { Composer } from './composer';
+import { call } from '../../core/call';
 
 const methods = {
   /** Steps through earlier prompts while the caret is on the first (Up) or last (Down) line. */
@@ -39,7 +40,7 @@ const methods = {
     this.el.classList.add('extending');
     toast('Improving the prompt…');
     try {
-      const after = await tauriInvoke<string>('chat_improve_text', {
+      const after = await call<string>('chat_improve_text', {
         model: state.model,
         text: before,
         instruction:
@@ -54,8 +55,8 @@ const methods = {
       this.beforeExtend = { before, after };
       this.focus();
       toast('Prompt improved. Ctrl+Z puts yours back.');
-    } catch (e) {
-      toast(String(e), 'error');
+    } catch {
+      // Already shown.
     } finally {
       this.extending = false;
       this.el.classList.remove('extending');

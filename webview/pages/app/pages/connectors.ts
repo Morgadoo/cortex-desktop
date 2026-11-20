@@ -5,10 +5,11 @@ import { icon } from '../ui/icons';
 import { toast } from '../ui/overlay';
 import { type Page } from '../core/state';
 import { openSettings } from '../settings/index';
-import { listen, tauriInvoke } from '../../../shared/tauri';
+import { listen } from '../../../shared/tauri';
 import { CONNECTOR_CATEGORIES, FEATURED_MCP_SERVERS, type ConnectorCatalogEntry } from '../../../shared/connector-catalog';
 import { emptyState } from '../ui/ui';
 import { openInstructions } from './instructions';
+import { call, reported, shown } from '../core/call';
 
 // ---------------------------------------------------------------------------------------------
 
@@ -132,7 +133,7 @@ export class ConnectorsPage {
       action.addEventListener('click', async () => {
         action.disabled = true;
         try {
-          await tauriInvoke('save_mcp_server', {
+          await call('save_mcp_server', {
             server: {
               id: entry.server_id ?? entry.id.replace(/^mcp-/, ''),
               display_name: entry.name,
@@ -146,10 +147,9 @@ export class ConnectorsPage {
           toast(`${entry.name} added. Connect it to sign in.`);
           this.tab = 'all';
           this.renderTabs();
-          await this.load();
-        } catch (e) {
+          await reported(this.load());
+        } catch {
           action.disabled = false;
-          toast(String(e), 'error');
         }
       });
     }
@@ -160,12 +160,11 @@ export class ConnectorsPage {
     const toggle = h('input', { type: 'checkbox', class: 'switch', checked: c.enabled, title: c.enabled ? 'Disable' : 'Enable' });
     toggle.addEventListener('change', async () => {
       try {
-        await api.setConnectorEnabled(c.id, toggle.checked);
+        await reported(api.setConnectorEnabled(c.id, toggle.checked));
         c.enabled = toggle.checked;
         this.renderTabs();
-      } catch (e) {
+      } catch {
         toggle.checked = !toggle.checked;
-        toast(String(e), 'error');
       }
     });
     const ready = c.readiness.state === 'ready';
@@ -209,7 +208,7 @@ export class ConnectorsPage {
               );
               selects.push(select);
               select.addEventListener('change', () => {
-                void api.setToolPolicy(c.id, t.name, select.value).catch((e) => toast(String(e), 'error'));
+                void reported(api.setToolPolicy(c.id, t.name, select.value)).catch(shown);
                 all.checked = selects.every((x) => x.value === 'auto_approve');
               });
               return h('div', { class: 'tool-row' }, h('div', {}, h('strong', {}, t.title ?? t.name), h('small', { class: 'muted' }, t.description)), select);
@@ -218,10 +217,10 @@ export class ConnectorsPage {
             all.addEventListener('change', async () => {
               const value = all.checked ? 'auto_approve' : 'ask';
               try {
-                await Promise.all(tools.map((t) => api.setToolPolicy(c.id, t.name, value)));
+                await reported(Promise.all(tools.map((t) => api.setToolPolicy(c.id, t.name, value))));
                 selects.forEach((x) => (x.value = value));
-              } catch (e) {
-                toast(String(e), 'error');
+              } catch {
+                // Already shown.
               }
             });
             return h(
@@ -252,10 +251,10 @@ export class ConnectorsPage {
       e.stopPropagation();
       button.textContent = 'Connecting…';
       try {
-        await tauriInvoke('connect_connector', { connectorId: c.id });
+        await call('connect_connector', { connectorId: c.id });
         toast(`${c.display_name} connected.`);
-      } catch (err) {
-        toast(String(err), 'error');
+      } catch {
+        // Already shown.
       }
       await this.load();
     });

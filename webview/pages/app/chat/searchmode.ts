@@ -10,7 +10,7 @@ import { markdown } from '../ui/markdown';
 import { modal, toast } from '../ui/overlay';
 import { navigate, state } from '../core/state';
 import { button, modalHeader, switchInput } from '../ui/ui';
-import { composer } from './composer/index';
+import { composer } from './composer/current';
 import { flag } from '../core/prefs';
 
 interface Card {
