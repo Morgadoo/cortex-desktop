@@ -578,8 +578,14 @@ mod tests {
         let out = request_messages(&messages, None);
         assert_eq!(out.len(), 3);
         assert!(is_user(&out[0]) && matches!(out[1], Message::Assistant(_)) && is_user(&out[2]));
-        let Message::User { content } = &out[2] else { panic!() };
-        assert_eq!(content.len(), 1, "the result alone, so the assistant is next");
+        let Message::User { content } = &out[2] else {
+            panic!()
+        };
+        assert_eq!(
+            content.len(),
+            1,
+            "the result alone, so the assistant is next"
+        );
         let text = result_text(&out[2]);
         assert!(text.starts_with("pnpm: not found"));
         assert!(text.contains("[Message from the user] (Sent while you were working) yes"));
@@ -597,9 +603,13 @@ mod tests {
         ];
         let out = alternate_roles(messages);
         assert_eq!(out.len(), 3);
-        let Message::User { content } = &out[0] else { panic!() };
+        let Message::User { content } = &out[0] else {
+            panic!()
+        };
         assert_eq!(content.len(), 2);
-        let Message::Assistant(a) = &out[1] else { panic!() };
+        let Message::Assistant(a) = &out[1] else {
+            panic!()
+        };
         assert_eq!(a.content.len(), 2);
         // An already alternating history is left as it is.
         let fine = vec![Message::user("q"), call("c"), result("c", "r")];
