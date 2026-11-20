@@ -595,16 +595,20 @@ fn remove_local_file(config_dir: &Path, rel: &str) -> Result<(), StoreError> {
 
 // ---- passphrase and running ----------------------------------------------------------------
 
-pub async fn passphrase() -> Result<Option<String>, String> {
-    crate::chat::secrets::local()?.load(PASSPHRASE).await
+pub async fn passphrase() -> Result<Option<String>, StoreError> {
+    crate::chat::secrets::local()?
+        .load(PASSPHRASE)
+        .await
+        .map_err(StoreError::Keychain)
 }
 
-pub async fn set_passphrase(value: Option<&str>) -> Result<(), String> {
+pub async fn set_passphrase(value: Option<&str>) -> Result<(), StoreError> {
     let store = crate::chat::secrets::local()?;
     match value {
         Some(v) => store.store(PASSPHRASE, v).await,
         None => store.delete(PASSPHRASE).await,
     }
+    .map_err(StoreError::Keychain)
 }
 
 /// Where Cortex works for a chosen folder: the folder's own `Cortex Sync`, or, when the choice is
@@ -620,21 +624,25 @@ pub fn remote_dir(folder: &str) -> PathBuf {
 }
 
 /// One sync with the saved settings and passphrase; the report is also saved.
-pub async fn run(config_dir: &Path) -> Result<Report, String> {
+pub async fn run(config_dir: &Path) -> Result<Report, StoreError> {
     static RUNNING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
     let _one_at_a_time = RUNNING.lock().await;
     let mut s = settings(config_dir);
-    let folder = s.folder.clone().ok_or("Choose a sync folder first.")?;
+    let folder = s
+        .folder
+        .clone()
+        .ok_or_else(|| StoreError::Invalid("Choose a sync folder first.".into()))?;
     let phrase = passphrase()
         .await?
-        .ok_or("Set the sync passphrase first.")?;
+        .ok_or_else(|| StoreError::Invalid("Set the sync passphrase first.".into()))?;
     let dir = config_dir.to_path_buf();
     let report = tokio::task::spawn_blocking(move || {
         let remote = remote_dir(&folder);
         unlock(&remote, &phrase).map(|key| sync_once(&dir, &remote, &key))
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| StoreError::Invalid(e.to_string()))?
+    .map_err(StoreError::Invalid)?;
     s.last_sync = Some(chrono::Utc::now());
     s.last_report = report.summary();
     save_settings(config_dir, &s)?;

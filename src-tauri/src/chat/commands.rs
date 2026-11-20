@@ -49,7 +49,7 @@ fn config_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
 }
 
 fn secrets() -> Result<crate::tools::auth::Secrets, String> {
-    crate::chat::secrets::local()
+    crate::chat::secrets::local().map_err(String::from)
 }
 
 #[derive(Debug, Deserialize)]

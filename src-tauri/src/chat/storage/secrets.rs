@@ -5,11 +5,11 @@
 //! Provider keys are looked up by `providers::api_key`.
 
 use crate::account::AccountId;
+use crate::support::error::StoreError;
 use crate::tools::auth::{keychain_secrets, Secrets};
 
 /// The keychain store of the local profile.
-pub fn local() -> Result<Secrets, String> {
-    Ok(keychain_secrets(AccountId::parse(
-        crate::chat::LOCAL_ACCOUNT,
-    )?))
+pub fn local() -> Result<Secrets, StoreError> {
+    let account = AccountId::parse(crate::chat::LOCAL_ACCOUNT).map_err(StoreError::Keychain)?;
+    Ok(keychain_secrets(account))
 }

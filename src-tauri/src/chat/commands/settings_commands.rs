@@ -208,9 +208,13 @@ pub async fn chat_encryption_status(
 pub async fn chat_set_encryption(app: AppHandle, on: bool) -> Result<usize, String> {
     let dir = config_dir(&app)?;
     if on {
-        crate::chat::at_rest::enable(&dir).await
+        crate::chat::at_rest::enable(&dir)
+            .await
+            .map_err(String::from)
     } else {
-        crate::chat::at_rest::disable(&dir).await
+        crate::chat::at_rest::disable(&dir)
+            .await
+            .map_err(String::from)
     }
 }
 

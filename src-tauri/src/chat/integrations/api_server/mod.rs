@@ -134,7 +134,7 @@ pub fn save(config_dir: &Path, settings: &ApiServerSettings) -> Result<(), Strin
 }
 
 fn secrets() -> Result<crate::tools::auth::Secrets, String> {
-    crate::chat::secrets::local()
+    crate::chat::secrets::local().map_err(String::from)
 }
 
 /// The token requests must carry, created on first use.

@@ -9,6 +9,7 @@
 //! "everywhere". The list (names, notes, who may use them) is `chat/vault.json`; values live in
 //! the keychain only.
 
+use crate::support::error::StoreError;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -67,20 +68,12 @@ pub fn list(config_dir: &Path) -> Vec<Secret> {
         .unwrap_or_default()
 }
 
-fn write(config_dir: &Path, secrets: &[Secret]) -> Result<(), String> {
-    let p = path(config_dir);
-    if let Some(dir) = p.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    }
-    crate::chat::at_rest::write(
-        p,
-        serde_json::to_string_pretty(secrets).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())
+fn write(config_dir: &Path, secrets: &[Secret]) -> Result<(), StoreError> {
+    crate::chat::store::write_json(&path(config_dir), &secrets)
 }
 
 /// `GITHUB_TOKEN`-style: capitals, digits and underscores, not starting with a digit.
-pub(in crate::chat::storage) fn valid_name(name: &str) -> Result<(), String> {
+pub(in crate::chat::storage) fn valid_name(name: &str) -> Result<(), StoreError> {
     let ok = !name.is_empty()
         && name.len() <= 64
         && name
@@ -88,12 +81,14 @@ pub(in crate::chat::storage) fn valid_name(name: &str) -> Result<(), String> {
             .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
         && !name.starts_with(|c: char| c.is_ascii_digit());
     if !ok {
-        return Err("Use capitals, digits and underscores for the name, like GITHUB_TOKEN.".into());
+        return Err(StoreError::Invalid(
+            "Use capitals, digits and underscores for the name, like GITHUB_TOKEN.".into(),
+        ));
     }
     if RESERVED.contains(&name) || name.starts_with("CORTEX_") {
-        return Err(format!(
+        return Err(StoreError::Invalid(format!(
             "{name} is used by the system; choose another name."
-        ));
+        )));
     }
     Ok(())
 }
@@ -103,18 +98,19 @@ pub async fn save(
     config_dir: &Path,
     secret: Secret,
     value: Option<String>,
-) -> Result<Vec<Secret>, String> {
+) -> Result<Vec<Secret>, StoreError> {
     valid_name(&secret.name)?;
     let mut all = list(config_dir);
     let exists = all.iter().any(|s| s.name == secret.name);
     let value = value.filter(|v| !v.is_empty());
     if !exists && value.is_none() {
-        return Err("Give the secret's value.".into());
+        return Err(StoreError::Invalid("Give the secret's value.".into()));
     }
     if let Some(value) = value {
         crate::chat::secrets::local()?
             .store(&keychain_name(&secret.name), &value)
-            .await?;
+            .await
+            .map_err(StoreError::Keychain)?;
     }
     match all.iter_mut().find(|s| s.name == secret.name) {
         Some(s) => *s = secret,
@@ -125,13 +121,14 @@ pub async fn save(
     Ok(all)
 }
 
-pub async fn delete(config_dir: &Path, name: &str) -> Result<Vec<Secret>, String> {
+pub async fn delete(config_dir: &Path, name: &str) -> Result<Vec<Secret>, StoreError> {
     let mut all = list(config_dir);
     all.retain(|s| s.name != name);
     write(config_dir, &all)?;
     crate::chat::secrets::local()?
         .delete(&keychain_name(name))
-        .await?;
+        .await
+        .map_err(StoreError::Keychain)?;
     Ok(all)
 }
 

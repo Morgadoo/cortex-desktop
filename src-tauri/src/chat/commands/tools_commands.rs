@@ -89,7 +89,9 @@ pub async fn chat_vault_save(
     secret: crate::chat::vault::Secret,
     value: Option<String>,
 ) -> Result<Vec<crate::chat::vault::Secret>, String> {
-    crate::chat::vault::save(&config_dir(&app)?, secret, value).await
+    crate::chat::vault::save(&config_dir(&app)?, secret, value)
+        .await
+        .map_err(String::from)
 }
 
 /// Removes a vault secret, its stored value, and every agent's access to it.
@@ -106,7 +108,9 @@ pub async fn chat_vault_delete(
         agent.secrets.retain(|s| s != &name);
         crate::chat::agents::save(&dir, agent)?;
     }
-    crate::chat::vault::delete(&dir, &name).await
+    crate::chat::vault::delete(&dir, &name)
+        .await
+        .map_err(String::from)
 }
 
 /// The user's hooks.

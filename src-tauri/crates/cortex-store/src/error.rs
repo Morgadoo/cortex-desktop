@@ -36,6 +36,9 @@ pub enum StoreError {
     /// Something is already saved under this id.
     #[error("a {kind} `{id}` already exists")]
     Exists { kind: &'static str, id: String },
+    /// The OS keychain refused or failed (it holds keys and secrets the files do not).
+    #[error("the keychain: {0}")]
+    Keychain(String),
     /// A request the stored data cannot answer, said for the user.
     #[error("{0}")]
     Invalid(String),
