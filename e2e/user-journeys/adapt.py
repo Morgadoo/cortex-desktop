@@ -110,8 +110,8 @@ try:
     note("a new chat follows it without being told: dinner is vegetarian", bool(dinner) and not meat, f"{dinner[:160]!r}; meat words: {meat}")
 
     new_chat()
-    place = ask("Name one market near where I live that I could visit this weekend. One sentence.")
-    note("and knows where the user lives", "porto" in place.lower() or "bolhão" in place.lower() or "bolhao" in place.lower(), f"{place[:160]!r}")
+    place = ask("Name one market near where I live that I could visit this weekend, and the city it is in. One sentence.")
+    note("and knows where the user lives", "porto" in place.lower(), f"{place[:160]!r}")
 
     # It grows with the user: the three learning switches, turned on where the user would, on the
     # Knowledge page. They are off until then, since each costs model calls.
@@ -144,8 +144,16 @@ try:
     # Skills from work: the agent does a procedure of several steps; a reflection after the turn may
     # keep it as a skill, turned off until the user reviews it.
     before = {s["name"] for s in invoke("chat_list_skills") or []}
-    agent_row = js("""const r=[...document.querySelectorAll('.conv-link.project')].find(e=>e.textContent.includes('Price Scout')); if(!r) return false; r.click(); return true;""")
+    # Context → Agents → the agent → "Chat with Price Scout", as a user starts a chat with an agent.
+    click("Context")
+    time.sleep(1)
+    js("""const items=[...document.querySelectorAll('.sidebar *')].filter(e=>e.offsetParent && e.children.length<=2 && e.textContent.trim()==='Agents');
+          const sub=items.pop(); if(sub) (sub.closest('button,a,.nav-item,[role=button],.sidebar-item')||sub).click();""")
     time.sleep(1.5)
+    click("Price Scout", "main.main")
+    time.sleep(1.5)
+    agent_row = js("""const b=[...document.querySelectorAll('main.main button')].find(b=>b.textContent.trim()==='Chat with Price Scout'); if(!b) return false; b.click(); return true;""")
+    wait_for(lambda: qs("textarea.composer-input"), 15)
     work = ask("Every Monday I check the price of a 1 kg bag of basmati rice at Continente, Pingo Doce and Lidl in Portugal. Do this week's check: search each shop, then tell me the cheapest in two sentences.")
     steps = js("return document.querySelectorAll('.turn-assistant .tool-call, .turn-assistant .tool, .turn-assistant [data-tool]').length")
     learnt = wait_for(lambda: [s for s in invoke("chat_list_skills") or [] if s["name"] not in before], 120) or []
