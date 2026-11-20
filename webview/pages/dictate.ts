@@ -8,9 +8,9 @@
  */
 import { logError } from '../shared/logger';
 import { listen, tauriInvoke } from '../shared/tauri';
-import { startRecording, type Recording } from './app/dictation';
+import { startRecording, type Recording } from './app/voice/dictation';
 import { blobToBase64 } from './app/core/format';
-import { liveTranscript, renderLive } from './app/live';
+import { liveTranscript, renderLive } from './app/voice/live';
 
 interface Prefs {
   shortcut: string;

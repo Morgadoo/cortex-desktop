@@ -7,7 +7,7 @@
  */
 
 import { createVad } from './vad';
-import { number } from './core/prefs';
+import { number } from '../core/prefs';
 
 export interface Recording {
   /** Stops recording and returns the audio. */

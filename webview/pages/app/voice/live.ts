@@ -10,9 +10,9 @@
  * as Whisper invents words ("you", "Thank you.") for silence.
  */
 
-import { tauriInvoke } from '../../shared/tauri';
+import { tauriInvoke } from '../../../shared/tauri';
 import type { Recording } from './dictation';
-import { blobToBase64 } from './core/format';
+import { blobToBase64 } from '../core/format';
 
 /** How often the audio so far is transcribed again, at most. */
 const EVERY_MS = 900;

@@ -5,12 +5,12 @@
  * again. Clicking the orb while it speaks interrupts it and listens; End closes the call. Uses
  * the speech-to-text and read-aloud engines chosen in Settings → Audio.
  */
-import { tauriInvoke } from '../../shared/tauri';
+import { tauriInvoke } from '../../../shared/tauri';
 import { speakText, type Playback } from './audio';
 import { openMicrophone, type Microphone } from './dictation';
-import { blobToBase64 } from './core/format';
-import { h, icon, toast } from './ui/dom';
-import { createGlowOrb, orbCssColor } from './theme/orbgl';
+import { blobToBase64 } from '../core/format';
+import { h, icon, toast } from '../ui/dom';
+import { createGlowOrb, orbCssColor } from '../theme/orbgl';
 
 export interface VoiceHooks {
   /** Sends what was said; false when it could not be sent. */

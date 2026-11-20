@@ -11,7 +11,7 @@ import { listen, tauriInvoke } from '../../shared/tauri';
 import { ChatView, CompareView, HomeView, composer, conversationMenu, recordStepTimes, refreshConversations, scrollToTurn, turnEnded, viewCache } from './chat';
 import { clear, h, icon, modal, popover, promptText, confirmDialog, toast } from './ui/dom';
 import { startUiLanguage } from './core/i18n';
-import { startWakeWord, stopWakeWord, wakePrefs } from './wakeword';
+import { startWakeWord, stopWakeWord, wakePrefs } from './voice/wakeword';
 import { ConnectorsPage, PlaceholderPage, openInstructions } from './pages';
 import { KnowledgePage, SkillsPage, reviewRecording } from './context';
 import { AgentPage, AgentsPage, agentName, avatar, newAgent, orgOrder, pinnedAgents, reloadAgents } from './agents';
@@ -26,7 +26,7 @@ import { stepZoom, applyBackdrop, backdropLayer } from './theme/appearance';
 import { applyEvent, back, changed, finishNotificationsOn, finishSoundOn, forward, navigate, playChime, state, subscribe, type Page } from './core/state';
 import { button, emptyState, iconButton, modalHeader } from './ui/ui';
 import { startFluentEmoji } from './ui/emoji-fluent';
-import { refreshAudioSettings } from './audio';
+import { refreshAudioSettings } from './voice/audio';
 import { choice, json, workdir } from './core/prefs';
 import { call, callQuiet, shown } from './core/call';
 

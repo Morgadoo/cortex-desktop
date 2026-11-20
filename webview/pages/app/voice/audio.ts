@@ -1,5 +1,5 @@
 /** Audio: speech-to-text for voice input and text-to-speech for reading answers aloud. */
-import { tauriInvoke } from '../../shared/tauri';
+import { tauriInvoke } from '../../../shared/tauri';
 
 export interface SttSettings {
   engine: 'provider' | 'builtin' | 'hex' | 'openai' | 'elevenlabs' | 'off';
@@ -115,7 +115,7 @@ export async function speakText(text: string): Promise<Playback> {
     // Keep talking: the system voice stands in, and the reason is shown once.
     if (!fallbackNoticeShown) {
       fallbackNoticeShown = true;
-      const { toast } = await import('./ui/dom');
+      const { toast } = await import('../ui/dom');
       toast(`The voice service failed (${shortError(e)}); using the system voice. Settings → Audio changes it.`, 'error');
     }
     out = { kind: 'browser', text, rate: audioSettings?.tts.speed ?? 1, voice: '' };

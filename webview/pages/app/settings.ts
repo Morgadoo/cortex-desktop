@@ -21,7 +21,7 @@ import {
   temporaryByDefault,
 } from './core/state';
 import { button, card, modalHeader, switchInput } from './ui/ui';
-import { audioApi, audioSettings, refreshAudioSettings, speakText, type AudioView } from './audio';
+import { audioApi, audioSettings, refreshAudioSettings, speakText, type AudioView } from './voice/audio';
 import { SHORTCUTS, bindingFor, comboOf, display, setBinding } from './core/shortcuts';
 import { EMOJI_STYLES, emojiStatus, emojiStyle, onEmojiStatus, setEmojiStyle, type EmojiStatus, type EmojiStyle } from './ui/emoji-fluent';
 import { uploadsCard } from './uploads';
@@ -48,8 +48,8 @@ import {
   storedBackground,
   type TextSize,
 } from './theme/appearance';
-import { setVoicePauseMs, voicePauseMs } from './dictation';
-import { setWakePrefs, wakePrefs } from './wakeword';
+import { setVoicePauseMs, voicePauseMs } from './voice/dictation';
+import { setWakePrefs, wakePrefs } from './voice/wakeword';
 import { setVimEnabled, vimEnabled } from './ui/vim';
 import { sharedLinksCard } from './share';
 import { effectiveLanguage, setStoredLanguage, storedLanguage } from './core/i18n';
