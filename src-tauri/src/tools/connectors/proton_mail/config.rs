@@ -2,6 +2,8 @@
 
 use crate::account::AccountId;
 use crate::reporting::config_failure;
+use crate::support::error::StoreError;
+use crate::support::settings_file::{self, Storage};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::AppHandle;
@@ -83,13 +85,15 @@ pub(super) fn load_config(
     account: &AccountId,
 ) -> Result<Option<ProtonMailConfig>, String> {
     let path = config_path(app_handle, account)?;
-    if !path.exists() {
+    let Some(config): Option<ProtonMailConfig> = settings_file::read_json(&path, Storage::Plain)
+        .inspect_err(|e| {
+            if matches!(e, StoreError::Parse { .. }) {
+                config_failure("Mail configuration load failed");
+            }
+        })?
+    else {
         return Ok(None);
-    }
-    let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let config: ProtonMailConfig = serde_json::from_str(&content)
-        .inspect_err(|_| config_failure("Mail configuration load failed"))
-        .map_err(|e| e.to_string())?;
+    };
     validate_config(&config).inspect_err(|_| config_failure("Mail configuration load failed"))?;
     Ok(Some(config))
 }
@@ -100,11 +104,11 @@ pub(super) fn save_config(
     config: &ProtonMailConfig,
 ) -> Result<(), String> {
     let path = config_path(app_handle, account)?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    let content = serde_json::to_string_pretty(config)
-        .inspect_err(|_| config_failure("Mail configuration save failed"))
-        .map_err(|e| e.to_string())?;
-    std::fs::write(path, content).map_err(|e| e.to_string())
+    settings_file::write_json(&path, Storage::Plain, config)
+        .inspect_err(|e| {
+            if matches!(e, StoreError::Encode { .. }) {
+                config_failure("Mail configuration save failed");
+            }
+        })
+        .map_err(String::from)
 }

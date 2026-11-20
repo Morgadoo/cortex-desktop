@@ -2,6 +2,8 @@
 
 use crate::account::AccountId;
 use crate::reporting::config_failure;
+use crate::support::error::StoreError;
+use crate::support::settings_file::{self, Storage};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tauri::AppHandle;
@@ -113,14 +115,13 @@ pub fn load_mcp_servers(
     account: &AccountId,
 ) -> Result<Vec<McpServerConfig>, String> {
     let path = mcp_servers_path(app_handle, account)?;
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-    let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let file: McpServersFile = serde_json::from_str(&content)
-        .inspect_err(|_| config_failure("MCP configuration load failed"))
-        .map_err(|e| e.to_string())?;
-    Ok(file.servers)
+    let file: Option<McpServersFile> = settings_file::read_json(&path, Storage::Plain)
+        .inspect_err(|e| {
+            if matches!(e, StoreError::Parse { .. }) {
+                config_failure("MCP configuration load failed");
+            }
+        })?;
+    Ok(file.map(|f| f.servers).unwrap_or_default())
 }
 
 pub fn save_mcp_servers(
@@ -129,14 +130,14 @@ pub fn save_mcp_servers(
     servers: &[McpServerConfig],
 ) -> Result<(), String> {
     let path = mcp_servers_path(app_handle, account)?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
     let file = McpServersFile {
         servers: servers.to_vec(),
     };
-    let content = serde_json::to_string_pretty(&file)
-        .inspect_err(|_| config_failure("MCP configuration save failed"))
-        .map_err(|e| e.to_string())?;
-    std::fs::write(path, content).map_err(|e| e.to_string())
+    settings_file::write_json(&path, Storage::Plain, &file)
+        .inspect_err(|e| {
+            if matches!(e, StoreError::Encode { .. }) {
+                config_failure("MCP configuration save failed");
+            }
+        })
+        .map_err(String::from)
 }

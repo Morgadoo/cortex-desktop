@@ -1,5 +1,7 @@
 use crate::account::AccountId;
 use crate::reporting::config_failure;
+use crate::support::error::StoreError;
+use crate::support::settings_file::{self, Storage};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use tauri::AppHandle;
@@ -55,13 +57,14 @@ pub fn load_connector_state(
     account: &AccountId,
 ) -> Result<ConnectorState, String> {
     let path = connector_state_path(app_handle, account)?;
-    if !path.exists() {
-        return Ok(ConnectorState::default());
-    }
-    let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-    serde_json::from_str(&content)
-        .inspect_err(|_| config_failure("Connector state load failed"))
-        .map_err(|e| e.to_string())
+    settings_file::read_json(&path, Storage::Plain)
+        .inspect_err(|e| {
+            if matches!(e, StoreError::Parse { .. }) {
+                config_failure("Connector state load failed");
+            }
+        })
+        .map(Option::unwrap_or_default)
+        .map_err(String::from)
 }
 
 pub fn save_connector_state(
@@ -70,11 +73,11 @@ pub fn save_connector_state(
     state: &ConnectorState,
 ) -> Result<(), String> {
     let path = connector_state_path(app_handle, account)?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    let content = serde_json::to_string_pretty(state)
-        .inspect_err(|_| config_failure("Connector state save failed"))
-        .map_err(|e| e.to_string())?;
-    std::fs::write(path, content).map_err(|e| e.to_string())
+    settings_file::write_json(&path, Storage::Plain, state)
+        .inspect_err(|e| {
+            if matches!(e, StoreError::Encode { .. }) {
+                config_failure("Connector state save failed");
+            }
+        })
+        .map_err(String::from)
 }
