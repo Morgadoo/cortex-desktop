@@ -1270,6 +1270,7 @@ dependencies = [
  "cortex-kernel",
  "cortex-retrieval",
  "cortex-sandbox",
+ "cortex-store",
  "cortex-traces",
  "croner",
  "dbus-secret-service",
@@ -1367,6 +1368,20 @@ dependencies = [
  "url",
  "wasmtime",
  "wasmtime-wasi",
+]
+
+[[package]]
+name = "cortex-store"
+version = "0.1.0"
+dependencies = [
+ "chacha20poly1305",
+ "log",
+ "rand 0.9.5",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "walkdir",
 ]
 
 [[package]]

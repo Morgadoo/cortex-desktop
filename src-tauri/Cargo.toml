@@ -5,6 +5,7 @@ members = [
     "crates/cortex-kernel",
     "crates/cortex-retrieval",
     "crates/cortex-sandbox",
+    "crates/cortex-store",
     "crates/cortex-traces",
 ]
 
@@ -25,6 +26,7 @@ url = "2.5.4"
 cortex-kernel = { path = "crates/cortex-kernel" }
 cortex-retrieval = { path = "crates/cortex-retrieval" }
 cortex-sandbox = { path = "crates/cortex-sandbox" }
+cortex-store = { path = "crates/cortex-store" }
 cortex-traces = { path = "crates/cortex-traces" }
 
 [workspace.lints.rust]
@@ -122,6 +124,7 @@ calamine = "0.38.0"
 cortex-kernel = { workspace = true }
 cortex-retrieval = { workspace = true }
 cortex-sandbox = { workspace = true }
+cortex-store = { workspace = true }
 cortex-traces = { workspace = true }
 # TypeScript declarations of the types the window sees (scripts/generate-types.sh).
 ts-rs = { version = "12.0.1", optional = true, features = ["chrono-impl"] }

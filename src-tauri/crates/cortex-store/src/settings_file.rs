@@ -12,7 +12,7 @@
 //! why: a damaged settings file must not stop the app, but it must not pass silently either.
 //!
 //! Whether a file is sealed is part of its format. `sealed` files go through encryption at rest
-//! (`chat::at_rest`), which seals any file under the config folder when it is turned on;
+//! ([`crate::at_rest`]), which seals any file under the config folder when it is turned on;
 //! `plain` files are read and written as they are, because code outside the chat engine, or
 //! another program, reads them with plain file I/O. Moving a file from one kind to the other
 //! is a data migration, not a refactor.
@@ -25,7 +25,7 @@ use std::path::{Path, PathBuf};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-use super::error::StoreError;
+use crate::error::StoreError;
 
 /// How a settings file is stored on disk.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,7 +97,7 @@ pub fn read_json<T: DeserializeOwned>(
     storage: Storage,
 ) -> Result<Option<T>, StoreError> {
     let text = match storage {
-        Storage::Sealed => crate::chat::at_rest::read_to_string(path),
+        Storage::Sealed => crate::at_rest::read_to_string(path),
         Storage::Plain => std::fs::read_to_string(path),
     };
     let text = match text {
@@ -128,7 +128,7 @@ pub fn write_json<T: Serialize + ?Sized>(
     })?;
     let tmp = path.with_extension("json.tmp");
     match storage {
-        Storage::Sealed => crate::chat::at_rest::write(&tmp, text),
+        Storage::Sealed => crate::at_rest::write(&tmp, text),
         Storage::Plain => std::fs::write(&tmp, text),
     }
     .map_err(|e| StoreError::write(&tmp, e))?;
