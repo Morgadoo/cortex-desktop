@@ -394,3 +394,43 @@ fn deleting_exchanges_keeps_the_rest_in_place() {
     assert_eq!(c.messages.len(), 2);
     assert!(delete_exchanges(&mut c, &[9]).is_err());
 }
+
+/// A note made after the last answer (a skill an agent learned from it) is shown at the end of
+/// that answer, not lost because no message comes after it.
+#[test]
+fn a_notice_after_the_last_answer_closes_it() {
+    let mut c = Conversation::new("c".into(), None, None);
+    c.messages = vec![Message::user("compare prices"), Message::assistant("Lidl")];
+    c.notices = vec![
+        (1, "Routed to Researcher.".into()),
+        (
+            2,
+            "Researcher learned a skill from this work: /price-check.".into(),
+        ),
+    ];
+    let shown = turns(&c);
+    assert_eq!(shown.len(), 2);
+    let notices: Vec<&str> = shown[1]
+        .parts
+        .iter()
+        .filter_map(|p| match p {
+            Part::Notice { text } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        notices,
+        [
+            "Routed to Researcher.",
+            "Researcher learned a skill from this work: /price-check."
+        ]
+    );
+    assert!(matches!(shown[1].parts.last(), Some(Part::Notice { .. })));
+    // While a turn runs (the last message is the user's), its note is left to the live turn.
+    let mut running = Conversation::new("r".into(), None, None);
+    running.messages = vec![Message::user("compare prices")];
+    running.notices = vec![(1, "Routed to Researcher.".into())];
+    assert!(turns(&running)
+        .iter()
+        .all(|t| t.parts.iter().all(|p| !matches!(p, Part::Notice { .. }))));
+}

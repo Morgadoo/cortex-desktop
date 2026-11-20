@@ -135,6 +135,18 @@ pub fn turns(conversation: &Conversation) -> Vec<Turn> {
             }
         }
     }
+    // A note made after the last answer (a skill learned from it) belongs to no message: it
+    // closes the last answer. While a turn runs, the last message is the user's, and the live
+    // turn shows its notes itself.
+    if let Some(turn) = out.last_mut().filter(|t| t.role == "assistant") {
+        turn.parts.extend(
+            conversation
+                .notices
+                .iter()
+                .filter(|(k, _)| *k >= conversation.messages.len())
+                .map(|(_, text)| Part::Notice { text: text.clone() }),
+        );
+    }
     for turn in out.iter_mut().filter(|t| t.role == "assistant") {
         turn.time = time_of(turn.index);
         turn.rating = rating_of(turn.index);
