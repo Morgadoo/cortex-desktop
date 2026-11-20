@@ -329,13 +329,13 @@ pub fn models(root: &Path) -> Vec<super::providers::ModelView> {
 // Downloads
 
 fn downloads() -> &'static Mutex<Vec<String>> {
-    static D: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
-    D.get_or_init(|| Mutex::new(Vec::new()))
+    static DOWNLOADS: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+    DOWNLOADS.get_or_init(|| Mutex::new(Vec::new()))
 }
 
 fn cancelled() -> &'static Mutex<Vec<String>> {
-    static C: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
-    C.get_or_init(|| Mutex::new(Vec::new()))
+    static CANCELLED: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+    CANCELLED.get_or_init(|| Mutex::new(Vec::new()))
 }
 
 pub fn cancel(id: &str) {
@@ -509,8 +509,8 @@ struct Loaded {
 
 /// The model in memory. A fair lock: waiting requests run in the order they came.
 fn loaded() -> &'static parking_lot::FairMutex<Option<Loaded>> {
-    static L: OnceLock<parking_lot::FairMutex<Option<Loaded>>> = OnceLock::new();
-    L.get_or_init(|| parking_lot::FairMutex::new(None))
+    static LOADED: OnceLock<parking_lot::FairMutex<Option<Loaded>>> = OnceLock::new();
+    LOADED.get_or_init(|| parking_lot::FairMutex::new(None))
 }
 
 /// Frees a model's memory (when it is deleted).
@@ -670,9 +670,9 @@ struct Job {
 
 /// Requests waiting for the runtime, in arrival order.
 fn pending() -> &'static (Mutex<std::collections::VecDeque<Job>>, std::sync::Condvar) {
-    static P: OnceLock<(Mutex<std::collections::VecDeque<Job>>, std::sync::Condvar)> =
+    static PENDING: OnceLock<(Mutex<std::collections::VecDeque<Job>>, std::sync::Condvar)> =
         OnceLock::new();
-    P.get_or_init(|| {
+    PENDING.get_or_init(|| {
         (
             Mutex::new(std::collections::VecDeque::new()),
             std::sync::Condvar::new(),
@@ -1411,8 +1411,8 @@ struct Speech {
 }
 
 fn speech() -> &'static Mutex<Option<Speech>> {
-    static S: OnceLock<Mutex<Option<Speech>>> = OnceLock::new();
-    S.get_or_init(|| Mutex::new(None))
+    static SPEECH: OnceLock<Mutex<Option<Speech>>> = OnceLock::new();
+    SPEECH.get_or_init(|| Mutex::new(None))
 }
 
 /// Audio past the end of the speech that a live guess still reads: a second (100 frames make a
@@ -1644,8 +1644,8 @@ struct Embedder {
 }
 
 fn embedder() -> &'static Mutex<Option<Embedder>> {
-    static E: OnceLock<Mutex<Option<Embedder>>> = OnceLock::new();
-    E.get_or_init(|| Mutex::new(None))
+    static EMBEDDER: OnceLock<Mutex<Option<Embedder>>> = OnceLock::new();
+    EMBEDDER.get_or_init(|| Mutex::new(None))
 }
 
 /// Passages embedded per forward pass.

@@ -9,8 +9,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::OnceLock;
+use std::sync::{LazyLock, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime};
 
 use serde::Serialize;
@@ -32,33 +31,34 @@ const OUTPUT_CHARS: usize = 300_000;
 const MAX_FILES: usize = 40;
 
 /// Whether code runs without asking: "Always allow" on a run, or the switch in Settings.
-/// Saved in `chat/sandbox.json`, and cached once read.
-static ALWAYS: AtomicBool = AtomicBool::new(false);
-static LOADED: AtomicBool = AtomicBool::new(false);
+/// Saved in `chat/sandbox.json`, and cached once read, per config folder.
+static ALWAYS: LazyLock<Mutex<HashMap<PathBuf, bool>>> = LazyLock::new(Default::default);
 
 fn settings_path(config_dir: &Path) -> PathBuf {
     chat_dir(config_dir).join("sandbox.json")
 }
 
 pub fn always_allowed(config_dir: &Path) -> bool {
-    if !LOADED.swap(true, Ordering::Relaxed) {
-        let saved = crate::chat::at_rest::read_to_string(settings_path(config_dir))
+    let mut cache = ALWAYS.lock().unwrap_or_else(|p| p.into_inner());
+    *cache.entry(config_dir.to_path_buf()).or_insert_with(|| {
+        crate::chat::at_rest::read_to_string(settings_path(config_dir))
             .ok()
             .and_then(|t| serde_json::from_str::<Value>(&t).ok())
             .and_then(|v| v.get("alwaysAllow").and_then(Value::as_bool))
-            .unwrap_or(false);
-        ALWAYS.store(saved, Ordering::Relaxed);
-    }
-    ALWAYS.load(Ordering::Relaxed)
+            .unwrap_or(false)
+    })
 }
 
 pub fn set_always_allowed(config_dir: &Path, allowed: bool) -> Result<(), String> {
-    LOADED.store(true, Ordering::Relaxed);
-    ALWAYS.store(allowed, Ordering::Relaxed);
     super::store::write_json(
         &settings_path(config_dir),
         &json!({ "alwaysAllow": allowed }),
-    )
+    )?;
+    ALWAYS
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .insert(config_dir.to_path_buf(), allowed);
+    Ok(())
 }
 
 struct Language {
@@ -1110,5 +1110,17 @@ mod permission_tests {
         assert!(always_allowed(dir.path()));
         set_always_allowed(dir.path(), false).unwrap();
         assert!(!always_allowed(dir.path()));
+    }
+
+    #[test]
+    fn always_allow_is_per_config_folder() {
+        let (a, b) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        assert!(!always_allowed(b.path()), "asked first, and nothing saved");
+        set_always_allowed(a.path(), true).unwrap();
+        assert!(always_allowed(a.path()));
+        assert!(
+            !always_allowed(b.path()),
+            "another folder keeps its own answer"
+        );
     }
 }

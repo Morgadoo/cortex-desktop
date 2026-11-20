@@ -988,7 +988,9 @@ async fn learn_from_turn(host: &dyn Host, id: &str) {
     );
     if let Ok(mut c) = store::load_conversation(&dir, id) {
         c.notices.push((c.messages.len(), note.clone()));
-        let _ = store::save_conversation(&dir, &c);
+        if let Err(e) = store::save_conversation(&dir, &c) {
+            log::warn!("could not save a notice to conversation {id}: {e}");
+        }
     }
     host.emit(ChatEvent::Notice {
         conversation_id: id.into(),
@@ -1207,14 +1209,18 @@ async fn filter_answer(config_dir: &std::path::Path, id: &str) {
             if let Some(last) = c.messages.last_mut() {
                 *last = Message::assistant(changed);
             }
-            let _ = store::save_conversation(config_dir, &c);
+            if let Err(e) = store::save_conversation(config_dir, &c) {
+                log::warn!("could not save the filtered answer: {e}");
+            }
         }
         Ok(_) => {}
         Err(reason) => {
             if let Some(last) = c.messages.last_mut() {
                 *last = Message::assistant(format!("_The answer was withheld. {reason}_"));
             }
-            let _ = store::save_conversation(config_dir, &c);
+            if let Err(e) = store::save_conversation(config_dir, &c) {
+                log::warn!("could not save the filtered answer: {e}");
+            }
         }
     }
 }

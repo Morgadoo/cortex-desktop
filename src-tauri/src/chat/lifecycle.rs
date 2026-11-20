@@ -116,7 +116,9 @@ pub async fn maintain(config_dir: &Path, now: DateTime<Utc>) -> Report {
         if super::script_tools::revert(config_dir, &name, &tool.checks).await == Ok(true) {
             if let Some(mut back) = super::script_tools::load(config_dir, &name) {
                 back.monitor_reverted_at = Some(now);
-                let _ = super::script_tools::save(config_dir, &back);
+                if let Err(e) = super::script_tools::save(config_dir, &back) {
+                    log::warn!("could not record that {name} was reverted: {e}");
+                }
             }
             report.reverted.push(format!("script_tool:{name}"));
         } else if super::script_tools::demote(config_dir, &name).is_ok() {
@@ -163,12 +165,14 @@ pub async fn daily(config_dir: &Path, now: DateTime<Utc>) -> Option<Report> {
         return None;
     }
     let report = maintain(config_dir, now).await;
-    let _ = super::store::write_json(
+    if let Err(e) = super::store::write_json(
         &path,
         &State {
             last_run: Some(now),
         },
-    );
+    ) {
+        log::warn!("could not record the maintenance run: {e}");
+    }
     Some(report)
 }
 
