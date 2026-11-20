@@ -1,5 +1,5 @@
-/* The native chat app's stylesheet, in parts (see appStyles in scripts/build-webview.mjs), joined
-   into styles/app.css. Colours are tokens (tokens.css); dark and light swap them on
+/* The native chat app's stylesheet, in parts by interface folder (order.txt), joined into
+   styles/app.css. Colours are tokens (tokens.css); dark and light swap them on
    <html data-theme>. */
 @import url("tokens.css");
 
@@ -38,3 +38,4 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 18px 0; width: 100%
 ::-webkit-scrollbar-track { background: transparent; }
 
 .app { display: flex; height: 100vh; }
+

@@ -1,0 +1,24 @@
+/* Features added later, one section each: versions, steering, knowledge pages, sheets, terminal, side panels, search, canvas history, sources, modes, footnotes, diagrams, follow-ups, voice, the local API and the calendar. */
+
+/* ------------------------------------------------------------------ versions, read aloud, archive */
+
+.versions { display: inline-flex; align-items: center; gap: 2px; margin-right: 6px; color: var(--text-muted); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.versions-label { min-width: 34px; text-align: center; }
+.turn-actions .icon-btn.active { color: var(--accent-strong); background: var(--accent-soft); }
+.archived-link { margin-top: var(--space-2); color: var(--text-muted); gap: var(--space-2); }
+.archived-list { display: flex; flex-direction: column; gap: 2px; max-height: 60vh; overflow-y: auto; }
+.archived-row { display: flex; align-items: center; gap: var(--space-2); padding: 4px 6px; border-radius: var(--radius-md); }
+.archived-row:hover { background: var(--bg-hover); }
+.archived-title { text-align: left; padding: 6px 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ------------------------------------------------------------------ steering, modes, commit */
+
+.steer-note { display: flex; align-items: flex-start; gap: var(--space-2); margin: var(--space-2) 0; padding: 8px 12px; border-left: 2px solid var(--accent); background: var(--accent-soft); border-radius: 0 var(--radius-md) var(--radius-md) 0; font-size: var(--fs-sm); color: var(--text-secondary); }
+.steer-note strong { color: var(--text); font-weight: 600; }
+.icon-btn.tinted.warn { color: var(--warning); }
+.commit-box { display: flex; gap: 6px; padding: 4px 2px 10px; margin-bottom: 6px; border-bottom: 1px solid var(--border); }
+.commit-box .input { flex: 1; min-width: 0; }
+
+.user-actions.pinned { opacity: 1; }
+.tag-list { display: inline-flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; max-width: 50%; }
+

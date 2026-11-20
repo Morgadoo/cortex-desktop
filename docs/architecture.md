@@ -213,8 +213,11 @@ goes in `core/prefs.ts`.
 
 ### A style
 
-Rules go in the page's stylesheet under `static/styles/`; colours, shadows and gradients go in
-`tokens.css` as named tokens (a value for each theme where they differ), and the rule uses
+Rules for the app window go under `webview/styles/app/`, in the folder of the interface area
+they style (`chat/`, `settings/`, `pages/`, ...); a new file is added to `order.txt` there, which
+is the order the build joins them into `dist/styles/app.css` (a file it leaves out fails the
+build). The other pages' stylesheets are under `static/styles/`. Colours, shadows and gradients go in
+`static/styles/tokens.css` as named tokens (a value for each theme where they differ), and the rule uses
 `var(--name)`. Rule order decides which rule wins, so moving or merging rules is checked with
 screenshots of every page in both themes:
 

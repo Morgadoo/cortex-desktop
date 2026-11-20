@@ -1,0 +1,12 @@
+/* Documents with a favourite star: checkbox, star, icon, name, size, date, move, remove. */
+.doc-list .doc-row:not(.doc-head):not(.doc-tools) { grid-template-columns: 18px 22px 18px 1fr auto auto 30px 30px; }
+.doc-list .doc-row.doc-tools { display: flex; align-items: center; }
+.doc-list .doc-row.doc-tools .input { width: auto; }
+
+.usage-gauge{background:none;border:0;color:inherit;font:inherit;cursor:pointer;width:100%;text-align:left}
+.usage-table{margin-top:14px}
+.usage-row{display:grid;gap:12px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;grid-template-columns:minmax(120px,1.3fr) 1fr 104px 56px 64px}
+.usage-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.usage-bar{height:6px;border-radius:3px;background:var(--border);overflow:hidden}
+.usage-bar span{display:block;height:100%;background:var(--accent)}
+

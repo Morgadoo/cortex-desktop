@@ -1,0 +1,8 @@
+/* ------------------------------------------------------------------ local API */
+
+.copy-row { display: flex; align-items: center; gap: 10px; margin: 6px 0; min-width: 0; }
+.copy-row code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: var(--bg-hover); padding: 4px 8px; border-radius: var(--radius-sm); font-size: var(--fs-sm); }
+.api-example { background: var(--bg-hover); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px 12px; font-size: var(--fs-xs); white-space: pre-wrap; word-break: break-all; margin: 8px 0 0; }
+.task-editor .folder-choice { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; }
+.task-editor .folder-choice + small { display: block; margin-top: 6px; }
+

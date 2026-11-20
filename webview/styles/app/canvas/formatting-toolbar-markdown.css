@@ -1,0 +1,10 @@
+/* Formatting toolbar for Markdown editors. */
+.md-toolbar{display:flex;flex-wrap:wrap;gap:2px;padding:4px 0 8px}
+.md-btn{min-width:30px;height:28px;padding:0 7px;border:1px solid transparent;border-radius:6px;background:none;color:var(--muted);font:600 12px/1 var(--cortex-font-sans,inherit);cursor:pointer}
+.md-btn:hover{background:var(--card);color:var(--text);border-color:var(--border)}
+.md-italic{font-style:italic}.md-strike{text-decoration:line-through}.md-code,.md-codeblock{font-family:var(--font-mono,monospace)}
+.usage-row>span:nth-child(n+3){text-align:right}
+
+.sources-heading{margin:10px 0 4px}
+.source-entry.found{opacity:.85}
+

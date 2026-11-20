@@ -1,0 +1,6 @@
+/* ------------------------------------------------------------------ semantic search presets */
+
+.preset-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chip-btn { padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px; font-size: var(--fs-sm); color: var(--text-secondary); }
+.chip-btn:hover { background: var(--bg-hover); color: var(--text); }
+

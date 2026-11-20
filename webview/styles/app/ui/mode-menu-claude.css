@@ -1,0 +1,15 @@
+/* ------------------------------------------------------------------ mode menu (Claude-style) */
+
+.mode-pill { padding: 3px 10px; border-radius: var(--radius-sm); font-size: var(--fs-sm); font-weight: 600; background: var(--bg-active); color: var(--text-secondary); }
+.mode-pill:hover { background: var(--bg-hover); color: var(--text); }
+.mode-pill.mode-plan { color: var(--accent); }
+.mode-pill.mode-ask { color: var(--text-muted); }
+.mode-menu { min-width: 330px; }
+.mode-item { display: grid; grid-template-columns: 1fr 22px 14px; align-items: start; gap: 8px; }
+.mode-text { display: flex; flex-direction: column; gap: 2px; }
+.mode-check { color: var(--accent); display: flex; justify-content: flex-end; }
+.mode-key { color: var(--text-muted); font-size: var(--fs-sm); text-align: right; }
+.approval-risk.auto { color: var(--accent); }
+
+.notice-line { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--radius-md); background: color-mix(in srgb, var(--warning) 10%, transparent); color: var(--warning); font-size: var(--fs-sm); }
+

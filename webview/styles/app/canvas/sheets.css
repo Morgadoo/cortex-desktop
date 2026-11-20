@@ -1,0 +1,28 @@
+/* ------------------------------------------------------------------ sheets */
+
+.sheet-card .canvas-head { flex-wrap: wrap; }
+.sheet-size { font-size: var(--fs-xs); }
+.sheet-grid { overflow: auto; max-height: 460px; border-top: 1px solid var(--border); }
+.sheet { border-collapse: collapse; font-size: var(--fs-sm); min-width: 100%; }
+.sheet th, .sheet td { border: 1px solid var(--border); padding: 5px 9px; text-align: left; white-space: nowrap; }
+.sheet thead th { position: sticky; top: 0; background: var(--bg-hover); color: var(--text-muted); font-weight: 600; font-size: var(--fs-xs); text-align: center; z-index: 1; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.sheet .row-head, .sheet .corner { background: var(--bg-hover); color: var(--text-muted); font-size: var(--fs-xs); text-align: center; width: 36px; position: sticky; left: 0; }
+.sheet .header-row td { font-weight: 700; background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.sheet td.sheet-num { text-align: right; font-variant-numeric: tabular-nums; }
+.sheet td:focus { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--accent-soft); }
+
+/* ------------------------------------------------------------------ terminal */
+
+.term-modal { display: flex; flex-direction: column; height: 100%; }
+.term-run { display: flex; align-items: center; gap: 8px; padding: 0 24px 12px; }
+.term-run .input { flex: 1; }
+.term-prompt { font: 600 var(--fs-md) var(--font-mono); color: var(--accent-strong); }
+.term-list { flex: 1; overflow-y: auto; padding: 0 24px 20px; display: flex; flex-direction: column; gap: 8px; }
+.term-item { border: 1px solid var(--border-strong); border-radius: var(--radius-md); overflow: hidden; background: var(--bg-elevated); }
+.term-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; text-align: left; }
+.term-head:hover { background: var(--bg-hover); }
+.term-head code { font: var(--fs-sm) var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.term-status { font-size: var(--fs-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 8px; border-radius: var(--radius-pill); background: var(--bg-active); color: var(--text-muted); }
+.term-status.running { color: var(--success); background: color-mix(in srgb, var(--success) 14%, transparent); }
+.term-output { margin: 0; padding: 10px 12px; max-height: 360px; overflow: auto; background: var(--bg-code); border-top: 1px solid var(--border); font: 12px/1.5 var(--font-mono); white-space: pre-wrap; word-break: break-word; }
+

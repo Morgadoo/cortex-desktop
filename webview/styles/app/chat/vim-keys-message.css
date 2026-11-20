@@ -1,0 +1,8 @@
+/* Vim keys in the message box: Normal mode shows a badge and an accent caret. */
+.composer[data-vim="normal"] .composer-box { position: relative; }
+.composer[data-vim="normal"] .composer-box::after { content: "NORMAL"; position: absolute; top: 8px; right: 12px; font: 600 10px/1 var(--font-mono, monospace); letter-spacing: .08em; padding: 3px 6px; border-radius: 5px; background: var(--accent); color: var(--accent-contrast); pointer-events: none; }
+.composer[data-vim="normal"] .composer-input { caret-color: var(--accent); }
+
+.share-row{min-width:0}
+.share-row .share-url{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+

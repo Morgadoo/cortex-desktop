@@ -3,7 +3,7 @@
 // Build webview/ into src-tauri/dist/, where Tauri embeds the frontend:
 //
 //   webview/static/            →  dist/            pages, styles/ and images/, copied as they are
-//   webview/styles/app/        →  dist/styles/app.css   the app's stylesheet, joined in order
+//   webview/styles/app/        →  dist/styles/app.css   the app's stylesheet, by interface folder, joined in order.txt's order
 //   webview/{bridges,pages}/   →  dist/scripts/    one bundle per entry below
 //
 // dist/ is gitignored and rebuilt every run, so it cannot drift from its sources. Some
@@ -26,11 +26,6 @@ const srcDir = join(repoRoot, 'webview')
 const staticDir = join(srcDir, 'static')
 const outDir = join(repoRoot, 'src-tauri', 'dist')
 const scriptsDir = join(outDir, 'scripts')
-
-// The app's stylesheet, by topic, joined in this order into dist/styles/app.css. The order is the
-// cascade's: of two rules as specific as each other, the later file's wins. A file in the folder
-// that is not listed is a build failure, so none is left out by accident.
-const appStyles = ['base.css', 'shell.css', 'composer.css', 'transcript.css', 'dialogs.css', 'pages.css', 'components.css', 'controls.css', 'features.css', 'details.css', 'org.css']
 
 // "<source relative to webview/>": "<output name in dist/scripts/>", one bundle each.
 // A listed source that is missing is a build failure.
@@ -96,9 +91,19 @@ for (const name of staticEntries) {
   })
 }
 
+// The app's stylesheet: one folder per interface area under webview/styles/app/, joined in the
+// order order.txt lists into dist/styles/app.css. The order is the cascade's: of two equally
+// specific rules the later one wins. A stylesheet the list leaves out is a build failure.
 const appStylesDir = join(srcDir, 'styles', 'app')
-const unlisted = readdirSync(appStylesDir).filter((file) => file.endsWith('.css') && !appStyles.includes(file))
-if (unlisted.length) fail(`${unlisted.join(', ')} in webview/styles/app/ is not listed in appStyles`)
+const appStyles = readFileSync(join(appStylesDir, 'order.txt'), 'utf8')
+  .split('\n')
+  .map((line) => line.trim())
+  .filter((line) => line && !line.startsWith('#'))
+const present = readdirSync(appStylesDir, { recursive: true })
+  .map((file) => String(file).split('\\').join('/'))
+  .filter((file) => file.endsWith('.css'))
+const unlisted = present.filter((file) => !appStyles.includes(file))
+if (unlisted.length) fail(`${unlisted.join(', ')} in webview/styles/app/ is not listed in order.txt`)
 writeFileSync(
   join(outDir, 'styles', 'app.css'),
   appStyles
@@ -107,7 +112,7 @@ writeFileSync(
       if (!isFile(path)) fail(`app stylesheet not found at ${path}`)
       return readFileSync(path, 'utf8')
     })
-    .join('\n')
+    .join('')
 )
 
 try {

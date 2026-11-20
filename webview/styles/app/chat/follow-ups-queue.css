@@ -1,0 +1,13 @@
+/* ------------------------------------------------------------------ follow-ups, queue */
+
+.follow-ups { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin: 4px 0 24px; }
+.follow-ups-label { font-size: var(--fs-xs); font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
+.follow-up { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text-secondary); text-align: left; }
+.follow-up:hover { background: var(--bg-hover); color: var(--text); border-color: var(--border-strong); }
+.follow-up svg { color: var(--accent); flex: none; }
+.queued-row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 4px 8px; border-radius: var(--radius-sm); background: var(--bg-hover); font-size: var(--fs-sm); }
+.queued-label { font-weight: 600; color: var(--accent); }
+.queued-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.link-btn { color: var(--text-secondary); font-size: var(--fs-sm); padding: 2px 6px; border-radius: var(--radius-sm); }
+.link-btn:hover { color: var(--text); background: var(--bg-active); }
+

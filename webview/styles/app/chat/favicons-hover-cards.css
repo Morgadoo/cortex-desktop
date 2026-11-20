@@ -1,0 +1,24 @@
+/* ------------------------------------------------------------------ favicons, hover cards, sources panel */
+
+.site-icon, .cite-icon, .source-dot { display: inline-flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; font-weight: 700; }
+.site-icon { width: 18px; height: 18px; border-radius: 4px; background: var(--bg-active); font-size: 10px; color: var(--text-secondary); }
+.site-icon img, .cite-icon img, .source-dot img { width: 100%; height: 100%; object-fit: contain; }
+.markdown a.cite { gap: 5px; }
+.cite-icon { width: 14px; height: 14px; border-radius: 3px; font-size: 9px; background: var(--bg-active); color: var(--text-secondary); }
+.source-dot { background: var(--paper); }
+.cite-card { position: fixed; z-index: 60; width: 360px; padding: 12px; border-radius: var(--radius-lg); background: var(--bg-elevated); border: 1px solid var(--border-strong); box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 10px; }
+.cite-card-head { display: flex; align-items: center; gap: 8px; }
+.cite-card-site { color: var(--accent); font-size: var(--fs-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cite-card-body { display: flex; flex-direction: column; gap: 8px; }
+.cite-card-image { width: 100%; max-height: 190px; object-fit: cover; border-radius: var(--radius-md); }
+.cite-card-title { font-size: var(--fs-md); line-height: 1.35; }
+.cite-card-text, .source-snippet { color: var(--text-muted); font-size: var(--fs-sm); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin: 0; }
+.cite-card-text { -webkit-line-clamp: 2; }
+.sources-panel { overflow: hidden; }
+.sources-title { font-size: var(--fs-lg); }
+.sources-list { overflow-y: auto; display: flex; flex-direction: column; gap: 4px; padding-right: 6px; }
+.source-entry { display: flex; flex-direction: column; gap: 6px; padding: 12px 10px; border-radius: var(--radius-md); color: inherit; text-decoration: none; }
+.source-entry:hover { background: var(--bg-hover); text-decoration: none; }
+.source-site { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: var(--fs-sm); }
+.source-title { line-height: 1.35; }
+

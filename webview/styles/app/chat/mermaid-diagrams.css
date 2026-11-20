@@ -1,0 +1,11 @@
+/* ------------------------------------------------------------------ Mermaid diagrams */
+
+.diagram { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-elevated); overflow: hidden; margin: 8px 0; }
+.diagram-frame { display: block; width: 100%; height: 160px; border: 0; background: transparent; }
+.diagram-source summary { padding: 6px 12px; font-size: var(--fs-sm); color: var(--text-muted); cursor: pointer; border-top: 1px solid var(--border); }
+.diagram-source .code-block, .diagram-source pre { margin: 0; border-radius: 0; }
+
+.diagram-frame.marp { height: 360px; }
+.canvas-body .diagram-frame.marp { width: 100%; border: 0; }
+.canvas-card:not(.expanded) .canvas-body:has(.diagram-frame.marp) { max-height: 420px; }
+

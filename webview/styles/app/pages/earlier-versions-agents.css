@@ -1,0 +1,22 @@
+/* Earlier versions of agents, workflows and tools. */
+.version-list { display: flex; flex-direction: column; gap: 6px; max-height: 60vh; overflow-y: auto; }
+.version { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 6px 10px; }
+.version summary { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: var(--fs-sm); }
+.version-body { white-space: pre-wrap; font-size: var(--fs-sm); color: var(--text-secondary); max-height: 260px; overflow-y: auto; margin: 8px 0; }
+.doc-preview { white-space: pre-wrap; max-height: 62vh; overflow-y: auto; font-size: var(--fs-sm); line-height: 1.55; background: var(--bg-code); border-radius: var(--radius-md); padding: 12px 14px; margin-top: 10px; }
+.doc-row .link-like { background: none; border: 0; padding: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.doc-row .link-like:hover { color: var(--accent); text-decoration: underline; }
+.doc-head { border-bottom: 1px solid var(--border); }
+/* Library documents with a selection box. */
+.doc-list .doc-row:not(.doc-head) { grid-template-columns: 18px 18px 1fr auto auto 30px 30px; }
+.doc-list .doc-row.doc-head { display: flex; gap: 12px; }
+.doc-list .doc-row.doc-head .spacer { flex: 1; }
+.subhead { margin: 16px 0 4px; font-size: var(--fs-md); font-weight: 600; }
+.api-log { max-height: 60vh; overflow: auto; }
+.data-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.data-table th { text-align: left; color: var(--text-muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.data-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.data-table .mono { font-family: ui-monospace, monospace; }
+.queued-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 2px 8px; font-size: var(--fs-sm); }
+.queued-head .spacer { flex: 1; }
+

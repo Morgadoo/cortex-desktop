@@ -1,0 +1,10 @@
+/* ------------------------------------------------------------------ preview / code blocks */
+
+.preview-block { border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; margin: 8px 0; background: var(--bg-elevated); }
+.preview-head { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border-bottom: 1px solid var(--border); font-size: var(--fs-sm); }
+.preview-head .segmented { margin-left: 0; }
+.preview-head .seg { display: inline-flex; align-items: center; gap: 5px; }
+.preview-body > .code-block, .preview-body > pre { margin: 0; border: 0; border-radius: 0; }
+.preview-markdown { padding: 10px 16px; }
+.canvas-source { margin: 0; white-space: pre-wrap; border: 0; border-radius: 0; max-height: none; }
+

@@ -1,0 +1,8 @@
+/* A translucent top bar: the conversation scrolls under it, blurred. */
+.chat > .chat-header{position:absolute;top:0;left:0;right:0;z-index:5;background:color-mix(in srgb,var(--bg) 62%,transparent);-webkit-backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter: blur(18px) saturate(1.4); backdrop-filter: blur(18px) saturate(1.4);border-bottom:1px solid color-mix(in srgb,var(--border) 70%,transparent)}
+.chat.with-panel > .chat-header{right:var(--panel-w)}
+/* Room for the translucent header above the conversation. */
+.chat{--chat-scroll-top:72px}
+.chat > .chat-scroll{padding-top:var(--chat-scroll-top)}
+.chat .outline-panel,.chat .marks-panel{top:64px}
+.question-foot{display:flex;align-items:center;gap:8px;padding:6px 6px 0}

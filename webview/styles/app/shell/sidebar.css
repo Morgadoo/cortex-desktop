@@ -101,3 +101,4 @@
 .suggestions { display: flex; flex-direction: column; gap: 4px; padding: 0 6px; }
 .suggestion { display: flex; align-items: center; gap: 12px; padding: 8px 4px; color: var(--text-secondary); text-align: left; border-radius: var(--radius-sm); }
 .suggestion:hover { color: var(--text); }
+

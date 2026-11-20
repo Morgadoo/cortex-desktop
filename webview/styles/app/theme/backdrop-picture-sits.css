@@ -1,0 +1,56 @@
+/* Backdrop: the picture sits under the page, the veil over it, the content above both. */
+.main.has-backdrop::before{content:"";position:absolute;inset:0;background:var(--backdrop);z-index:0;pointer-events:none}
+.main.has-backdrop::after{content:"";position:absolute;inset:0;background:var(--bg);opacity:var(--backdrop-veil,0);z-index:0;pointer-events:none}
+.main.has-backdrop > *{position:relative;z-index:1}
+.main.has-backdrop .chat, .main.has-backdrop .home, .main.has-backdrop .chat-scroll{background:transparent}
+/* A live shader backdrop (backdropgl.ts): drawn at half size and stretched, under the content. */
+.main.has-backdrop > canvas.backdrop-canvas{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;display:block}
+.backdrop-thumb{display:flex;align-items:center;justify-content:center;color:var(--text-muted);height:76px}
+.backdrop-thumb-main{position:absolute;inset:0 0 0 28%}
+/* The message box in a backdrop tile's sketch: tinted glass, so the backdrop shows through it. */
+.backdrop-thumb-glass{top:auto;bottom:24px;height:16px;background:color-mix(in srgb,var(--bg-elevated) 70%,transparent);border-color:color-mix(in srgb,var(--border-strong) 80%,transparent)}
+.backdrop-thumb .bg-thumb-bubble{left:36%;right:auto;top:12px;bottom:auto;width:30%;height:8px;opacity:.9}
+/* "Your picture" with a picture chosen: a small badge says a click changes it. */
+.backdrop-thumb-change{position:absolute;right:5px;top:5px;display:grid;place-items:center;width:22px;height:22px;border-radius:6px;background:color-mix(in srgb,var(--bg-elevated) 80%,transparent);color:var(--text)}
+/* An agent's chat in its avatar's colour (OpenBot): the bubbles and the answer edge. */
+.chat.agent-tinted .turn-user .bubble{background:hsl(var(--agent-hue) 55% 50% / .22);border:1px solid hsl(var(--agent-hue) 60% 55% / .35)}
+.chat.agent-tinted .turn-assistant{border-left:2px solid hsl(var(--agent-hue) 60% 55% / .45);padding-left:14px}
+.agent-avatar{background:hsl(var(--agent-hue, 260) 55% 50% / .2)}
+.memory-category{background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text-secondary);font:inherit;font-size:12px;padding:2px 4px}
+.memory-weight{background:none;border:0;color:var(--accent);font-size:11px;letter-spacing:1px;cursor:pointer;padding:2px 4px}
+.memory-weight.w1{color:var(--text-muted)}
+.memory-inferred{background:var(--accent-soft);color:var(--accent-strong);border:0;border-radius:999px;font-size:11px;padding:1px 8px;cursor:pointer}
+.autocomplete-hint{display:flex;align-items:center;gap:6px;margin:8px 16px 0;padding:4px 10px;border:1px dashed var(--border-strong);border-radius:8px;background:transparent;color:var(--text-secondary);font:inherit;font-size:13px;text-align:left;cursor:pointer;align-self:flex-start;max-width:calc(100% - 32px)}
+.autocomplete-hint[hidden]{display:none}
+.autocomplete-hint strong{color:var(--text);font-weight:500}
+.autocomplete-hint kbd{margin-left:6px;font-size:11px;padding:0 5px;border:1px solid var(--border-strong);border-radius:4px;color:var(--text-muted)}
+.search-mode{width:min(920px,92vw)}
+.search-mode-bar{display:flex;gap:12px;align-items:center}
+.search-mode-input{flex:1;font-size:15px}
+.search-mode-web{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text-secondary);white-space:nowrap}
+.search-mode-status{margin:10px 2px}
+.search-mode-actions{display:flex;gap:8px;margin-bottom:10px}
+.search-mode-actions[hidden],.search-answer[hidden]{display:none}
+.search-answer{border:1px solid var(--accent-soft);background:var(--bg-elevated);border-radius:12px;padding:12px 16px;margin-bottom:12px}
+.search-ref{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:var(--accent-soft);color:var(--accent-strong);font-size:11px;cursor:pointer;text-decoration:none}
+.search-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;max-height:56vh;overflow:auto;padding:2px}
+.search-card{display:flex;flex-direction:column;gap:6px;text-align:left;border:1px solid var(--border);border-radius:12px;background:var(--bg-elevated);padding:12px;color:inherit;font:inherit;cursor:pointer}
+.search-card:hover{border-color:var(--border-strong);background:var(--bg-hover)}
+.search-card-head{display:flex;gap:6px;align-items:center;font-size:12px}
+.search-card-n{min-width:18px;height:18px;border-radius:9px;background:var(--bg-active);font-size:11px;display:inline-flex;align-items:center;justify-content:center}
+.search-card strong{font-size:14px;line-height:1.3}
+.search-card p{margin:0;font-size:13px;color:var(--text-secondary);display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.search-card.kind-web .search-card-head svg{color:var(--accent)}
+.calendar-add{display:grid;grid-template-columns:120px 160px 1fr auto auto;gap:8px;align-items:center}
+.knowledge-pill{align-self:flex-start;width:fit-content;display:inline-flex;align-items:center;gap:6px;margin:4px 6px 4px 0;padding:3px 10px;border-radius:999px;border:1px solid var(--accent-soft);background:var(--accent-soft);color:var(--accent-strong);font:inherit;font-size:12.5px;cursor:pointer;max-width:100%;text-align:left}
+.knowledge-pill span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.knowledge-pill.pending{opacity:.7}
+.knowledge-pill.error{background:transparent;border-color:var(--border-strong);color:var(--text-muted)}
+.app-code-files{display:flex;height:100%;min-height:0}
+.app-file-list{flex:none;width:170px;border-right:1px solid var(--border);padding:6px;display:flex;flex-direction:column;gap:2px;overflow:auto}
+.app-file{display:flex;gap:6px;align-items:center;padding:5px 8px;border:0;border-radius:6px;background:none;color:var(--text-secondary);font:inherit;font-size:12.5px;text-align:left;cursor:pointer}
+.app-file span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.app-file:hover{background:var(--bg-hover)}
+.app-file.active{background:var(--bg-active);color:var(--text)}
+.app-code-files .app-code{flex:1;margin:0;overflow:auto}
+
