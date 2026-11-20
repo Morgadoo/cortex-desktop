@@ -23,7 +23,7 @@ import { AppsPage } from './pages/apps';
 import { ResourcesPage } from './canvas/outputs';
 import { ChatsPage } from './pages/chatspage';
 import { WorkflowsPage } from './pages/workflows';
-import { applyTheme, openSettings, reloadModels, setTheme, storedTheme } from './settings';
+import { applyTheme, openSettings, reloadModels, setTheme, storedTheme } from './settings/index';
 import { stepZoom, applyBackdrop, backdropLayer } from './theme/appearance';
 import { applyEvent, back, changed, finishNotificationsOn, finishSoundOn, forward, navigate, playChime, state, subscribe, type Page } from './core/state';
 import { button, emptyState, iconButton, modalHeader } from './ui/ui';

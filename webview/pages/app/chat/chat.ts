@@ -14,7 +14,7 @@ import { attachVim } from '../ui/vim';
 import { actionFor } from '../core/shortcuts';
 import { clear, confirmDialog, greeting, h, icon, markdown, modal, popover, promptText, timeLabel, toast, clockHour12 } from '../ui/dom';
 import { applyEvent, changed, currentModel, followUpsOn, navigate, setMode, state, temporaryByDefault, type LiveTurn, followStreamOn } from '../core/state';
-import { openSettings } from '../settings';
+import { openSettings } from '../settings/index';
 import { closePanel, enableAskAboutSelection, hasPanel, openSidePanel, renderCanvasCard, setPanelHost, lineDiff } from '../canvas/canvas';
 import { hostOf, previewFor, siteIcon } from '../ui/favicon';
 import '../canvas/diagrams';

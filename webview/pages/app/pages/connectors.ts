@@ -2,7 +2,7 @@
 import { api, type ConnectorManifest } from '../core/api';
 import { clear, h, icon, toast } from '../ui/dom';
 import { type Page } from '../core/state';
-import { openSettings } from '../settings';
+import { openSettings } from '../settings/index';
 import { listen, tauriInvoke } from '../../../shared/tauri';
 import { CONNECTOR_CATEGORIES, FEATURED_MCP_SERVERS, type ConnectorCatalogEntry } from '../../../shared/connector-catalog';
 import { emptyState } from '../ui/ui';
