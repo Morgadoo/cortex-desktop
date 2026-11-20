@@ -115,7 +115,7 @@ export async function speakText(text: string): Promise<Playback> {
     // Keep talking: the system voice stands in, and the reason is shown once.
     if (!fallbackNoticeShown) {
       fallbackNoticeShown = true;
-      const { toast } = await import('./dom');
+      const { toast } = await import('./ui/dom');
       toast(`The voice service failed (${shortError(e)}); using the system voice. Settings → Audio changes it.`, 'error');
     }
     out = { kind: 'browser', text, rate: audioSettings?.tts.speed ?? 1, voice: '' };

@@ -15,7 +15,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const webview = join(root, 'webview');
 
 // The sanitising module, the only file allowed to write HTML. Paths relative to webview/.
-const ALLOWED = new Set(['pages/app/dom.ts']);
+const ALLOWED = new Set(['pages/app/ui/dom.ts']);
 // Frozen JavaScript kept as a reference (see scripts/build-webview.mjs); not interface code.
 const SKIPPED = new Set(['pages/settings/index.js']);
 

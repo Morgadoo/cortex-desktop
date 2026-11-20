@@ -3,7 +3,7 @@
  * load images from itself, so the app fetches each icon and preview once and hands it over as a
  * `data:` URL; until it arrives, the site's first letter stands in.
  */
-import { tauriInvoke } from '../../shared/tauri';
+import { tauriInvoke } from '../../../shared/tauri';
 import { h, icon, markdownHooks, toast } from './dom';
 
 export interface LinkPreview {

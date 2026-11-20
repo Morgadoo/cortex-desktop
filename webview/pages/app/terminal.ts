@@ -1,7 +1,7 @@
 /** The Terminal panel of a coding session: background commands with live output. */
 import { tauriInvoke } from '../../shared/tauri';
-import { clear, h, icon, modal, toast } from './dom';
-import { button, emptyState, iconButton, modalHeader } from './ui';
+import { clear, h, icon, modal, toast } from './ui/dom';
+import { button, emptyState, iconButton, modalHeader } from './ui/ui';
 import { localSite } from './devsite';
 
 interface CommandView {

@@ -4,8 +4,8 @@
  */
 
 import { tauriInvoke } from '../../shared/tauri';
-import { clear, h, icon, modal, toast, clockHour12 } from './dom';
-import { modalHeader } from './ui';
+import { clear, h, icon, modal, toast, clockHour12 } from './ui/dom';
+import { modalHeader } from './ui/ui';
 
 type Kind = 'agents' | 'workflows' | 'tools';
 interface Version {

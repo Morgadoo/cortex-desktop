@@ -1,9 +1,9 @@
 /** Workflows: reusable step-by-step recipes, run from the composer's + menu. */
 import { tauriInvoke } from '../../shared/tauri';
 import type { Workflow } from './core/api';
-import { clear, confirmDialog, h, icon, modal, toast, clockHour12 } from './dom';
+import { clear, confirmDialog, h, icon, modal, toast, clockHour12 } from './ui/dom';
 import { historyButton } from './versions';
-import { button, modalHeader, pageHeader } from './ui';
+import { button, modalHeader, pageHeader } from './ui/ui';
 
 export const workflowsApi = {
   list: () => tauriInvoke<Workflow[]>('chat_workflows'),

@@ -1,5 +1,5 @@
 /** The home screen, a conversation, and the composer they share. */
-import { emojiFor, findEmoji } from './emoji';
+import { emojiFor, findEmoji } from './ui/emoji';
 import { autocompleteOn } from './core/state';
 import { tauriInvoke } from '../../shared/tauri';
 import { api, newId, type ApprovalMode, type ChatEvent, type ChatParams, type Conversation, type Part, type Turn, type UsageTotals } from './core/api';
@@ -10,13 +10,13 @@ import { renderPageView } from './coderun';
 import { agentPanel } from './agentpanel';
 import { fillVariables } from './variables';
 import { startVoiceConversation, voiceActive, voiceTurnEnded } from './voice';
-import { attachVim } from './vim';
+import { attachVim } from './ui/vim';
 import { actionFor } from './core/shortcuts';
-import { clear, confirmDialog, greeting, h, icon, markdown, modal, popover, promptText, timeLabel, toast, clockHour12 } from './dom';
+import { clear, confirmDialog, greeting, h, icon, markdown, modal, popover, promptText, timeLabel, toast, clockHour12 } from './ui/dom';
 import { applyEvent, changed, currentModel, followUpsOn, navigate, setMode, state, temporaryByDefault, type LiveTurn, followStreamOn } from './core/state';
 import { openSettings } from './settings';
 import { closePanel, enableAskAboutSelection, hasPanel, openSidePanel, renderCanvasCard, setPanelHost, lineDiff } from './canvas';
-import { hostOf, previewFor, siteIcon } from './favicon';
+import { hostOf, previewFor, siteIcon } from './ui/favicon';
 import './diagrams';
 import { renderCodeRun, renderImage, renderVideo } from './coderun';
 import { startRecording, type Recording } from './dictation';
@@ -27,7 +27,7 @@ import { editWorkflow, liveWorkflow, workflowPrompt, workflowsApi } from './work
 import type { Speed, Workflow } from './core/api';
 import { diffLines, loadChanges, openChanges, openFiles, openDebug } from './changes';
 import { openTerminal } from './terminal';
-import { button, chip, iconButton, modalHeader, trigger } from './ui';
+import { button, chip, iconButton, modalHeader, trigger } from './ui/ui';
 import { flag, json, textPref, workdir } from './core/prefs';
 import { call, callQuiet, shown } from './core/call';
 

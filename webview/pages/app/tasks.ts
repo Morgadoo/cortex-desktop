@@ -1,9 +1,9 @@
 /** Scheduled tasks: the list, its tabs and the task editor. */
 import { api, newId, type Frequency, type Task } from './core/api';
 import { tauriInvoke } from '../../shared/tauri';
-import { clear, confirmDialog, h, icon, modal, toast, clockHour12 } from './dom';
+import { clear, confirmDialog, h, icon, modal, toast, clockHour12 } from './ui/dom';
 import { navigate, state } from './core/state';
-import { button, modalHeader } from './ui';
+import { button, modalHeader } from './ui/ui';
 import { choice } from './core/prefs';
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];

@@ -1,12 +1,12 @@
 /** Agents mode: the workforce overview, an agent's page, and the agent editor. */
 import { tauriInvoke } from '../../shared/tauri';
 import { api, newId, type Agent, type AgentSpend } from './core/api';
-import { clear, confirmDialog, h, icon, modal, timeLabel, toast } from './dom';
+import { clear, confirmDialog, h, icon, modal, timeLabel, toast } from './ui/dom';
 import { historyButton } from './versions';
 import { changed, navigate, state } from './core/state';
 import { TasksPage } from './tasks';
 import { agentPanel } from './agentpanel';
-import { button, modalHeader, switchInput } from './ui';
+import { button, modalHeader, switchInput } from './ui/ui';
 import { storedLanguage } from './core/i18n';
 import { json, textPref } from './core/prefs';
 

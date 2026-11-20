@@ -4,8 +4,8 @@
  * link can open it while Cortex runs; Stop sharing takes it down.
  */
 import { tauriInvoke } from '../../shared/tauri';
-import { clear, h, icon, modal, toast } from './dom';
-import { button, card, modalHeader } from './ui';
+import { clear, h, icon, modal, toast } from './ui/dom';
+import { button, card, modalHeader } from './ui/ui';
 import { appFiles } from './canvas';
 import { escapeHtml } from './core/format';
 import { call, shown } from './core/call';

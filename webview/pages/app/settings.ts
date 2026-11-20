@@ -1,7 +1,7 @@
 /** The settings dialog: profile, providers, permissions, general and appearance. */
 import { listen, tauriInvoke } from '../../shared/tauri';
 import { api, type AppSettings, type Provider } from './core/api';
-import { clear, confirmDialog, h, icon, modal, toast, clockHour12, setClock } from './dom';
+import { clear, confirmDialog, h, icon, modal, toast, clockHour12, setClock } from './ui/dom';
 import { fileSize } from './core/format';
 import { historyButton } from './versions';
 import {
@@ -20,10 +20,10 @@ import {
   state,
   temporaryByDefault,
 } from './core/state';
-import { button, card, modalHeader, switchInput } from './ui';
+import { button, card, modalHeader, switchInput } from './ui/ui';
 import { audioApi, audioSettings, refreshAudioSettings, speakText, type AudioView } from './audio';
 import { SHORTCUTS, bindingFor, comboOf, display, setBinding } from './core/shortcuts';
-import { EMOJI_STYLES, emojiStatus, emojiStyle, onEmojiStatus, setEmojiStyle, type EmojiStatus, type EmojiStyle } from './fluent';
+import { EMOJI_STYLES, emojiStatus, emojiStyle, onEmojiStatus, setEmojiStyle, type EmojiStatus, type EmojiStyle } from './ui/emoji-fluent';
 import { uploadsCard } from './uploads';
 import { setMaterial, storedMaterial, type Material } from './appearance';
 import {
@@ -50,7 +50,7 @@ import {
 } from './appearance';
 import { setVoicePauseMs, voicePauseMs } from './dictation';
 import { setWakePrefs, wakePrefs } from './wakeword';
-import { setVimEnabled, vimEnabled } from './vim';
+import { setVimEnabled, vimEnabled } from './ui/vim';
 import { sharedLinksCard } from './share';
 import { effectiveLanguage, setStoredLanguage, storedLanguage } from './core/i18n';
 import { setOrbColor, storedOrbColor, type OrbColor } from './orbgl';

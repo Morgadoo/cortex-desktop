@@ -1,8 +1,8 @@
 /** Sheet canvases: a table the model wrote as CSV, edited as a grid and downloaded as Excel. */
 import { tauriInvoke } from '../../shared/tauri';
 import type { Part } from './core/api';
-import { clear, h, icon, toast } from './dom';
-import { button, iconButton } from './ui';
+import { clear, h, icon, toast } from './ui/dom';
+import { button, iconButton } from './ui/ui';
 
 /** CSV with quoted fields, embedded commas, quotes and newlines. */
 export function parseCsv(text: string): string[][] {

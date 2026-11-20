@@ -7,10 +7,10 @@ import { tauriInvoke } from '../../shared/tauri';
 import { workspaceVideo } from './coderun';
 import { appFrame, closePanel, openAppPanel, openSidePanel } from './canvas';
 import { splitSheets } from './sheet';
-import { clear, h, icon, markdown, modal, toast, timeLabel } from './dom';
+import { clear, h, icon, markdown, modal, toast, timeLabel } from './ui/dom';
 import { fileSize } from './core/format';
 import { navigate, state } from './core/state';
-import { iconButton, modalHeader, pageHeader } from './ui';
+import { iconButton, modalHeader, pageHeader } from './ui/ui';
 
 export interface Output {
   conversationId: string;

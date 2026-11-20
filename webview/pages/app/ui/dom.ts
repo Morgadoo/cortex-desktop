@@ -1,10 +1,10 @@
 /** A small element builder, an icon set, and safe Markdown rendering for the chat page. */
 import DOMPurify from 'dompurify';
 import katex from 'katex';
-import { tauriInvoke } from '../../shared/tauri';
-import { blobToBase64 } from './core/format';
+import { tauriInvoke } from '../../../shared/tauri';
+import { blobToBase64 } from '../core/format';
 import { marked } from 'marked';
-import { textPref } from './core/prefs';
+import { textPref } from '../core/prefs';
 
 type Child = Node | string | null | undefined | false;
 type Attrs = Record<string, unknown> & {
