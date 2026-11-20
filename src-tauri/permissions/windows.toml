@@ -1,0 +1,23 @@
+# Permissions for windows other than the main ones: each grants a separate window (a pill or
+# the settings overlay) only what it needs. Hand-written; the main windows' permissions are
+# generated into commands.toml.
+
+[[permission]]
+identifier = "allow-dictation-pill"
+description = "The dictation pill: transcribe what was said and type it into the app that had focus."
+commands.allow = ["chat_transcribe", "chat_stt_live", "dictation_prefs", "dictation_insert", "dictation_cancel"]
+
+[[permission]]
+identifier = "allow-recorder-pill"
+description = "The Recording pill shown while a task is recorded: its time, and Stop or Cancel."
+commands.allow = ["chat_record_status", "chat_record_stop"]
+
+[[permission]]
+identifier = "allow-reset-local-configuration"
+description = "Reset the active account's file-based configuration and secrets, then restart."
+commands.allow = ["reset_local_configuration"]
+
+[[permission]]
+identifier = "allow-always-allow-tool"
+description = "Lets a connector tool run without asking even after untrusted content has been read."
+commands.allow = ["always_allow_tool"]

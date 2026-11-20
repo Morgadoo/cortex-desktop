@@ -250,6 +250,7 @@ pub async fn set_tool_policy(
 
 /// Settings' "Always allow": the tool runs without asking, even after the conversation, or a
 /// scheduled run, has read untrusted content.
+// IPC: own permission (see permissions/windows.toml)
 #[tauri::command]
 pub async fn always_allow_tool(
     connector_id: String,

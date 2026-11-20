@@ -13,6 +13,7 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 const RESET_MARKER: &str = "reset-pending";
 
+// IPC: own permission (see permissions/windows.toml)
 #[tauri::command]
 pub async fn reset_local_configuration(
     app_handle: AppHandle,

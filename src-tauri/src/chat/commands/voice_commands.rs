@@ -36,6 +36,7 @@ pub async fn chat_hex_status() -> crate::chat::hex::Status {
 
 /// Whether dictation shows the words as they are spoken: only with an engine on this computer
 /// (the dictation pill may ask this, though not read the audio settings themselves).
+// IPC: own permission (see permissions/windows.toml)
 #[tauri::command]
 pub fn chat_stt_live(app: AppHandle) -> Result<bool, String> {
     Ok(crate::chat::audio::live_capable(

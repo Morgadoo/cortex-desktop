@@ -6,6 +6,7 @@ mod dialog;
 mod dictation;
 mod downloads;
 mod feature_flags;
+mod handlers;
 pub mod inapp_browser;
 mod main_window;
 #[cfg(any(target_os = "macos", target_os = "linux", test))]

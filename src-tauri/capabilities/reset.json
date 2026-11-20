@@ -2,6 +2,10 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "reset",
   "description": "Allow the bundled Settings webview to reset local configuration.",
-  "webviews": ["settings-overlay"],
-  "permissions": ["allow-reset-local-configuration"]
+  "webviews": [
+    "settings-overlay"
+  ],
+  "permissions": [
+    "allow-reset-local-configuration"
+  ]
 }

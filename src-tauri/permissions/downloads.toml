@@ -1,4 +1,0 @@
-[[permission]]
-identifier = "allow-reveal-download"
-description = "Reveals a completed download tracked by the desktop app."
-commands.allow = ["reveal_download"]

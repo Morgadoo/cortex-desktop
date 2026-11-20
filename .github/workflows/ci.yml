@@ -88,6 +88,8 @@ jobs:
       - name: Unit and integration tests
         working-directory: src-tauri
         run: cargo test --workspace --features cortex/test-utils
+      - name: The command list and permissions match the code
+        run: python3 scripts/generate-commands.py --check
       - name: Dependencies point down the chat engine's layers
         run: python3 scripts/check-layers.py
       # Every test docs/agent-kernel-plan.md cites as evidence must exist and pass.

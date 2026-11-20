@@ -1,4 +1,0 @@
-[[permission]]
-identifier = "allow-export-pdf"
-description = "Renders a document's HTML to a PDF file the user picks, with the OS print engine."
-commands.allow = ["export_pdf"]
