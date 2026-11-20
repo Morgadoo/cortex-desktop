@@ -15,7 +15,18 @@ pub(super) fn tool(name: &str, description: &str, parameters: Value) -> ChatTool
 
 /// The built-in tools on offer: memory only while it is on, `use_skill` only with skills enabled.
 pub(in crate::chat::turn) fn definitions(config_dir: &Path) -> Vec<ChatTool> {
-    let mut out = vec![tool(
+    let mut out = Vec::new();
+    work_tools(&mut out);
+    source_tools(config_dir, &mut out);
+    memory_tools(config_dir, &mut out);
+    other_tools(config_dir, &mut out);
+    review_tools(&mut out);
+    out
+}
+
+/// Working on the request: web search, the plan, sub-agents, canvases and scheduled tasks.
+fn work_tools(out: &mut Vec<ChatTool>) {
+    out.push(tool(
         WEB_SEARCH,
         "Search the web. Use it for current events, prices, versions, people, places and any fact \
          you are not sure of. Returns titles, URLs and snippets; open a result with the browser \
@@ -30,7 +41,7 @@ pub(in crate::chat::turn) fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             },
             "required": ["query"]
         }),
-    )];
+    ));
     out.push(tool(
         UPDATE_PLAN,
         "Show the user your plan for a multi-step task as a checklist, and update it as steps \
@@ -137,6 +148,10 @@ pub(in crate::chat::turn) fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             "required": ["title", "prompt", "frequency", "time"]
         }),
     ));
+}
+
+/// The user's own material, offered when there is some: libraries, calendars and contacts.
+fn source_tools(config_dir: &Path, out: &mut Vec<ChatTool>) {
     let libraries = crate::chat::libraries::list(config_dir);
     if libraries.iter().any(|l| !l.documents.is_empty()) {
         out.push(tool(
@@ -205,6 +220,10 @@ pub(in crate::chat::turn) fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             }),
         ));
     }
+}
+
+/// Memory and knowledge pages while memory is on, and skills while any is enabled.
+fn memory_tools(config_dir: &Path, out: &mut Vec<ChatTool>) {
     let memories = memory::load(config_dir);
     if memories.enabled {
         // "Save new facts" off: knowledge is used but not changed.
@@ -305,6 +324,10 @@ pub(in crate::chat::turn) fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             }),
         ));
     }
+}
+
+/// Saving skills, notifications, other agents, code, web pages, media and animation.
+fn other_tools(config_dir: &Path, out: &mut Vec<ChatTool>) {
     out.push(tool(
         SAVE_SKILL,
         "Save a reusable skill the user asked for and approved: instructions you will follow \
@@ -357,6 +380,10 @@ pub(in crate::chat::turn) fn definitions(config_dir: &Path) -> Vec<ChatTool> {
     out.extend(crate::chat::media::definition(config_dir));
     out.extend(crate::chat::videogen::definition(config_dir));
     out.push(crate::chat::animation::definition());
+}
+
+/// Looking back at its own runs: traces, a run, usage and failures.
+fn review_tools(out: &mut Vec<ChatTool>) {
     let days = json!({
         "type": "object",
         "properties": {
@@ -404,5 +431,4 @@ pub(in crate::chat::turn) fn definitions(config_dir: &Path) -> Vec<ChatTool> {
         "What failed in your recent runs, most often first: tools that returned errors and models          that failed. Use it to find out why things went wrong before proposing a fix.",
         days,
     ));
-    out
 }
