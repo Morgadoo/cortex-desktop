@@ -45,6 +45,7 @@ pub fn web_app_capability(lumo_url: &str) -> Result<String, String> {
 
 pub fn build(app: &App) -> tauri::Result<WebviewWindow> {
     let e2e = crate::e2e_testing_enabled();
+    #[cfg_attr(not(feature = "hosted"), allow(unused_mut))]
     let mut builder = tauri::WebviewWindowBuilder::new(app, LABEL, webview::main_window_url())
         .title("Cortex")
         // The bundled chat page shows itself; only the hosted web app used to reveal the window.
@@ -60,6 +61,7 @@ pub fn build(app: &App) -> tauri::Result<WebviewWindow> {
     // The bridges were written for the hosted web app. The native chat page talks to Rust
     // directly, and the account bridge would sign its local profile out, so only the e2e stub,
     // which still exercises the bridge contract, gets them.
+    #[cfg(feature = "hosted")]
     if e2e || crate::HOSTED_WEB_APP {
         for script in [
             include_str!("../dist/scripts/connectors.js"),

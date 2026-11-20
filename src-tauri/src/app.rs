@@ -7,8 +7,8 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 use crate::settings::{self, load_device_settings};
 use crate::tools::{self, registry::ToolRegistry};
 use crate::{
-    account, browser_login, chat, downloads, main_window, quick_ask, reporting, reset, schedules,
-    skills, theme, tray, updater, webview,
+    account, browser_login, chat, downloads, main_window, quick_ask, reporting, reset, theme, tray,
+    updater, webview,
 };
 
 pub fn run() {
@@ -165,9 +165,16 @@ pub fn run() {
                 Err(e) => error!("connector secrets will not load: {e}"),
             }
             chat::commands::setup(app);
-            app.manage(skills::SkillCache::new(app.path().app_cache_dir()?.join("skill-runtime"),
-                app.state::<account::ActiveAccount>().get()));
-            app.manage(schedules::coordinator::ScheduleCoordinator::start(app.handle()));
+            #[cfg(feature = "hosted")]
+            {
+                app.manage(crate::skills::SkillCache::new(
+                    app.path().app_cache_dir()?.join("skill-runtime"),
+                    app.state::<account::ActiveAccount>().get(),
+                ));
+                app.manage(crate::schedules::coordinator::ScheduleCoordinator::start(
+                    app.handle(),
+                ));
+            }
 
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
@@ -289,6 +296,8 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
+            // Used on macOS and in hosted builds.
+            let _ = &app;
             #[cfg(target_os = "macos")]
             if matches!(event, tauri::RunEvent::Reopen { .. }) {
                 if let Err(e) = main_window::show(app) {
@@ -299,13 +308,16 @@ pub fn run() {
             if matches!(event, tauri::RunEvent::Exit) {
                 // Background commands from coding sessions end with the app.
                 chat::terminal::stop_all();
-                if let Some(cache) = app.try_state::<skills::SkillCache>() {
-                    cache.activate(None);
-                }
-                if let Some(coordinator) =
-                    app.try_state::<schedules::coordinator::ScheduleCoordinator>()
+                #[cfg(feature = "hosted")]
                 {
-                    coordinator.shutdown();
+                    if let Some(cache) = app.try_state::<crate::skills::SkillCache>() {
+                        cache.activate(None);
+                    }
+                    if let Some(coordinator) =
+                        app.try_state::<crate::schedules::coordinator::ScheduleCoordinator>()
+                    {
+                        coordinator.shutdown();
+                    }
                 }
             }
         });

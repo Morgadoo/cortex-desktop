@@ -32,20 +32,29 @@ fn read(path: &Path) -> String {
     fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
 }
 
-/// The command names in `generate_handler![…]`: the last segment of each path.
+/// The command names in every `generate_handler![…]` list (the native build's and the hosted
+/// build's): the last segment of each path.
 fn handlers() -> BTreeSet<String> {
-    let app = read(&root().join("src/handlers.rs"));
-    let start = app
-        .find("generate_handler![")
-        .expect("handlers.rs has a generate_handler! list")
-        + "generate_handler![".len();
-    let end = start + app[start..].find("];").expect("the handler list ends");
-    app[start..end]
-        .split(',')
-        .map(str::trim)
-        .filter(|path| !path.is_empty())
-        .map(|path| path.rsplit("::").next().unwrap_or(path).to_string())
-        .collect()
+    let text = read(&root().join("src/handlers.rs"));
+    let mut names = BTreeSet::new();
+    let mut rest = text.as_str();
+    while let Some(start) = rest.find("generate_handler![") {
+        let body = &rest[start + "generate_handler![".len()..];
+        let end = body.find("];").expect("the handler list ends");
+        names.extend(
+            body[..end]
+                .split(',')
+                .map(str::trim)
+                .filter(|path| !path.is_empty())
+                .map(|path| path.rsplit("::").next().unwrap_or(path).to_string()),
+        );
+        rest = &body[end..];
+    }
+    assert!(
+        !names.is_empty(),
+        "handlers.rs has no generate_handler! list"
+    );
+    names
 }
 
 /// Each permission identifier and the commands it allows, from `permissions/*.toml`.

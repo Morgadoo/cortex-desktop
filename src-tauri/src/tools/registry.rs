@@ -597,6 +597,7 @@ impl ToolRegistry {
             .map(|connector| self.manifest_of(&connector))
     }
 
+    #[cfg(any(feature = "hosted", test))]
     pub async fn dispatch(
         &self,
         connector_id: &str,
@@ -608,6 +609,7 @@ impl ToolRegistry {
     }
 
     /// The override is resolved from a registered schedule run, never a global policy mutation.
+    #[cfg(any(feature = "hosted", test))]
     pub(crate) async fn dispatch_with_approval(
         &self,
         connector_id: &str,
@@ -620,6 +622,7 @@ impl ToolRegistry {
     }
 
     /// Schedule access is enforced independently of global approval preferences.
+    #[cfg(any(feature = "hosted", test))]
     pub(crate) async fn dispatch_with_access(
         &self,
         connector_id: &str,

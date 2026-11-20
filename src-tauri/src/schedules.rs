@@ -1,15 +1,23 @@
 //! Defines schedule timing and calculates due and upcoming occurrences, including timezone
 //! handling and missed-run policies for one-off, daily, weekly, and monthly schedules.
 
-use chrono::{DateTime, Datelike, Duration, NaiveTime, Offset, TimeZone, Timelike, Utc};
+#[cfg(any(feature = "hosted", test))]
+use chrono::Duration;
+use chrono::{DateTime, Datelike, NaiveTime, Offset, TimeZone, Timelike, Utc};
 use chrono_tz::Tz;
 use croner::{errors::CronError, Cron};
 use serde::{Deserialize, Serialize};
 
+// The hosted web app's run queue. The timing engine above is also the native scheduler's
+// (`chat::tasks`), so it is always built.
+#[cfg(feature = "hosted")]
 pub mod bridge;
+#[cfg(feature = "hosted")]
 pub mod coordinator;
+#[cfg(feature = "hosted")]
 pub mod store;
 
+#[cfg(any(feature = "hosted", test))]
 const CATCH_UP_DAYS: i64 = 7;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,6 +55,7 @@ pub enum Timing {
 
 impl Timing {
     /// Whether a recurring rule keeps its wall-clock cadence when its timezone changes.
+    #[cfg(feature = "hosted")]
     fn same_local_cadence(&self, other: &Self) -> bool {
         let mut left = self.clone();
         let mut right = other.clone();
@@ -71,6 +80,7 @@ pub enum MissedRunPolicy {
 
 /// These three fields identify an occurrence across retries and redelivery.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg(any(feature = "hosted", test))]
 pub struct Occurrence {
     pub schedule_id: String,
     pub timing_revision: u64,
@@ -78,6 +88,7 @@ pub struct Occurrence {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+#[cfg(any(feature = "hosted", test))]
 pub struct Plan {
     pub occurrences: Vec<Occurrence>,
     pub checked_through: DateTime<Utc>,
@@ -185,6 +196,7 @@ impl Schedule {
     /// Run-once selects the latest missed occurrence and accounts for the entire window.
     /// Catch-up returns oldest first, limited to seven days. Supported recurrences have at
     /// most one occurrence per local date, so there is no need for batch pagination yet.
+    #[cfg(any(feature = "hosted", test))]
     pub fn plan(
         &self,
         checked_through: DateTime<Utc>,
@@ -250,6 +262,7 @@ impl Schedule {
 }
 
 impl Rule {
+    #[cfg(any(feature = "hosted", test))]
     fn latest_between(
         &self,
         start: DateTime<Utc>,
@@ -277,6 +290,7 @@ impl Rule {
             .map_err(recurrence_error)
     }
 
+    #[cfg(any(feature = "hosted", test))]
     fn between(
         &self,
         start: DateTime<Utc>,

@@ -240,6 +240,7 @@ impl ResultStore {
         );
         Ok(Value::String(preview))
     }
+    #[cfg(any(feature = "hosted", test))]
     pub fn source_connector(&self, scope: u64, input: &Value) -> Result<String, ToolError> {
         let state = self.lock_state();
         check_scope(&state, scope)?;

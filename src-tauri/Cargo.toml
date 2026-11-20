@@ -126,6 +126,13 @@ cortex-traces = { workspace = true }
 
 [features]
 test-utils = []
+# The original Lumo Desktop: the main window loads the hosted Lumo web app, which talks to Rust
+# through the bridges in webview/bridges/ (connectors, schedules, skills, PDF export). Off in
+# the native Cortex app, which then compiles none of it.
+hosted = []
+# The WebDriver suite in e2e/: the bridges and their Rust side, driven through a stub page.
+# CORTEX_E2E_TESTING is honoured only in builds with this feature.
+e2e = ["hosted"]
 
 [lints]
 workspace = true

@@ -88,6 +88,13 @@ jobs:
       - name: Unit and integration tests
         working-directory: src-tauri
         run: cargo test --workspace --features cortex/test-utils
+      # The hosted web app's code (the `hosted` feature, through `e2e`) is not in the native
+      # build above, so it is linted and tested on its own.
+      - name: Lints and tests with the hosted web app's code
+        working-directory: src-tauri
+        run: |
+          cargo clippy --workspace --features cortex/test-utils,cortex/e2e --all-targets -- -D warnings
+          cargo test --workspace --features cortex/test-utils,cortex/e2e
       - name: The command list and permissions match the code
         run: python3 scripts/generate-commands.py --check
       - name: Dependencies point down the chat engine's layers

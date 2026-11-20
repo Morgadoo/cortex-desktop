@@ -2,17 +2,21 @@ use super::auth::{active_secret_store, Interactive, SecretStore, SecureStorageSt
 use super::connector_state::{save_connector_state, ToolPolicy};
 use super::connectors::mcp::{destination_fingerprint, validate_server_id};
 use super::connectors::{load_mcp_servers, save_mcp_servers, McpConnector, McpServerConfig};
-use super::registry::{
-    ApprovalDecision, CallContext, ConnectorManifest, ToolDefinition, ToolRegistry,
-};
+#[cfg(feature = "hosted")]
+use super::registry::CallContext;
+use super::registry::{ApprovalDecision, ConnectorManifest, ToolDefinition, ToolRegistry};
 use super::{emit_connector_changed, emit_connectors_changed};
 use crate::account::{record_request_account, AccountId, ActiveAccount};
+#[cfg(feature = "hosted")]
 use crate::schedules::{bridge::ScheduleToolContext, coordinator::ScheduleCoordinator};
-use log::{debug, info, warn};
+#[cfg(feature = "hosted")]
+use log::debug;
+use log::{info, warn};
 use serde_json::Value;
 use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
 
+#[cfg(feature = "hosted")]
 const TOOL_RESULT_LOG_LIMIT: usize = 4_000;
 
 /// Whether two saved configurations point at the same server in the same way.
@@ -58,6 +62,7 @@ fn require_account(active: &ActiveAccount) -> Result<AccountId, String> {
         .ok_or_else(|| "no account is signed in".to_string())
 }
 
+#[cfg(any(feature = "hosted", test))]
 fn truncate_for_log(text: &str, max_len: usize) -> String {
     if text.len() <= max_len {
         return text.to_string();
@@ -69,6 +74,7 @@ fn truncate_for_log(text: &str, max_len: usize) -> String {
     )
 }
 
+#[cfg(feature = "hosted")]
 fn log_tool_result(connector_id: &str, tool_name: &str, result: &Value) {
     if matches!(
         result.get("type").and_then(Value::as_str),
@@ -276,6 +282,8 @@ pub async fn always_allow_tool(
 }
 
 /// Register permissions supplied by the signed-in schedule executor for one unsettled run.
+/// The hosted web app's; the native chat page runs tools through the chat engine.
+#[cfg(feature = "hosted")]
 #[tauri::command]
 #[allow(clippy::too_many_arguments)] // Parameter names are the IPC contract with the web app.
 pub async fn register_schedule_execution_context(
@@ -303,6 +311,8 @@ pub async fn register_schedule_execution_context(
         .await
 }
 
+/// The hosted web app's; the native chat page runs tools through the chat engine.
+#[cfg(feature = "hosted")]
 #[tauri::command]
 #[allow(clippy::too_many_arguments)] // Parameter names are the IPC contract with the web app.
 pub async fn invoke_tool(

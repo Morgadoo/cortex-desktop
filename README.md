@@ -131,7 +131,8 @@ src-tauri/src/tools/ connector registry: files, shell, browser, MCP; approvals; 
 ## Hosted mode (the original Lumo Desktop)
 
 This project began as Proton's Lumo Desktop, a native shell around the hosted Lumo web app. Build with
-`LUMO_HOSTED=1` to get that app back; the rest of this section describes it.
+the `hosted` Cargo feature (`npm run tauri build -- --features hosted`) to get that app back; the
+rest of this section describes it. The native app compiles none of it.
 
 Lumo Desktop wraps the Lumo web app in a native [Tauri](https://tauri.app) shell and gives it access to your
 computer and your tools, with your approval:
@@ -270,7 +271,7 @@ npm run dev
 The native app does not sign in or contact Proton. On first start, add a provider in **Settings → Providers &
 models**.
 
-For the hosted mode, build with `LUMO_HOSTED=1`; it loads the web app from `LUMO_URL` (by default
+For the hosted mode, build with the `hosted` feature (`npm run dev -- --features hosted`); it loads the web app from `LUMO_URL` (by default
 `https://lumo.proton.dev`, a local checkout of Proton's web clients) and requires a Proton sign-in.
 
 ### Dev loop
