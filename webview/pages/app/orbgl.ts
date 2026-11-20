@@ -1,4 +1,4 @@
-import { choice } from './prefs';
+import { choice } from './core/prefs';
 /**
  * The voice orb as a glowing glass sphere, drawn with a WebGL fragment shader. It follows the
  * shading of DGriffin91's "glowy orb" (bevy_glowy_orb_tutorial): a hot core that glows where the

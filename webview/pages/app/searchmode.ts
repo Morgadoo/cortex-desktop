@@ -5,10 +5,10 @@
  */
 import { tauriInvoke } from '../../shared/tauri';
 import { clear, h, icon, markdown, modal, toast } from './dom';
-import { navigate, state } from './state';
+import { navigate, state } from './core/state';
 import { button, modalHeader, switchInput } from './ui';
 import { composer } from './chat';
-import { flag } from './prefs';
+import { flag } from './core/prefs';
 
 interface Card {
   kind: 'library' | 'knowledge' | 'chat' | 'web';

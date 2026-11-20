@@ -1,13 +1,13 @@
 /** Canvas cards in the conversation, their editor, and quoting a selection into the composer. */
 import { markdownToolbar } from './mdformat';
 import { tauriInvoke } from '../../shared/tauri';
-import type { Part } from './api';
+import type { Part } from './core/api';
 import { clear, h, icon, markdown, modal, toast, clockHour12 } from './dom';
 import { button, iconButton, modalHeader } from './ui';
 import { improveButton } from './improve';
 import { renderSheetCard } from './sheet';
 import { diagramFrame, isMarp } from './diagrams';
-import { call, shown } from './call';
+import { call, shown } from './core/call';
 
 interface Canvas {
   id: string;

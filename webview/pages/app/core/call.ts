@@ -3,8 +3,8 @@
  * rejects, so the caller stops where it would have; `callQuiet` is for the calls whose failure
  * is deliberately not shown (a signal, a best-effort refresh), so that silence is a visible choice.
  */
-import { tauriInvoke } from '../../shared/tauri';
-import { toast } from './dom';
+import { tauriInvoke } from '../../../shared/tauri';
+import { toast } from '../dom';
 
 /** Invokes `command`; on failure shows the error and rejects with it. */
 export async function call<T = unknown>(command: string, args?: TauriInvokeArgs): Promise<T> {

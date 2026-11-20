@@ -1,6 +1,6 @@
 /** Sheet canvases: a table the model wrote as CSV, edited as a grid and downloaded as Excel. */
 import { tauriInvoke } from '../../shared/tauri';
-import type { Part } from './api';
+import type { Part } from './core/api';
 import { clear, h, icon, toast } from './dom';
 import { button, iconButton } from './ui';
 

@@ -10,10 +10,10 @@
  */
 import { tauriInvoke } from '../../shared/tauri';
 import { openMicrophone, type Microphone } from './dictation';
-import { blobToBase64 } from './format';
+import { blobToBase64 } from './core/format';
 import { voiceActive } from './voice';
 import { matchWake } from './wakematch';
-import { json } from './prefs';
+import { json } from './core/prefs';
 
 const KEY = 'cortex.wakeWord';
 /** A pause this long ends a phrase. */

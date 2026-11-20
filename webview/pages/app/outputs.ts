@@ -8,8 +8,8 @@ import { workspaceVideo } from './coderun';
 import { appFrame, closePanel, openAppPanel, openSidePanel } from './canvas';
 import { splitSheets } from './sheet';
 import { clear, h, icon, markdown, modal, toast, timeLabel } from './dom';
-import { fileSize } from './format';
-import { navigate, state } from './state';
+import { fileSize } from './core/format';
+import { navigate, state } from './core/state';
 import { iconButton, modalHeader, pageHeader } from './ui';
 
 export interface Output {

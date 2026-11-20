@@ -1,10 +1,10 @@
 /** A code run in the conversation: the program, what it printed, and the charts it saved. */
-import type { Part } from './api';
+import type { Part } from './core/api';
 import { clear, h, icon, modal, toast } from './dom';
-import { fileSize } from './format';
+import { fileSize } from './core/format';
 import { tauriInvoke } from '../../shared/tauri';
 import { button, iconButton } from './ui';
-import { call, shown } from './call';
+import { call, shown } from './core/call';
 
 interface RunReport {
   language: string;

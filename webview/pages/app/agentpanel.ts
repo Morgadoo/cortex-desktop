@@ -4,12 +4,12 @@
  * on its new-chat page.
  */
 import { tauriInvoke } from '../../shared/tauri';
-import { api, type Agent } from './api';
+import { api, type Agent } from './core/api';
 import { clear, confirmDialog, h, icon, modal, toast, timeLabel } from './dom';
-import { changed, state } from './state';
+import { changed, state } from './core/state';
 import { editTask } from './tasks';
 import { button, modalHeader } from './ui';
-import { call, shown } from './call';
+import { call, shown } from './core/call';
 
 interface Doc {
   id: string;

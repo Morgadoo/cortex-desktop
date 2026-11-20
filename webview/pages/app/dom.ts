@@ -2,9 +2,9 @@
 import DOMPurify from 'dompurify';
 import katex from 'katex';
 import { tauriInvoke } from '../../shared/tauri';
-import { blobToBase64 } from './format';
+import { blobToBase64 } from './core/format';
 import { marked } from 'marked';
-import { textPref } from './prefs';
+import { textPref } from './core/prefs';
 
 type Child = Node | string | null | undefined | false;
 type Attrs = Record<string, unknown> & {

@@ -1,8 +1,8 @@
 /** The settings dialog: profile, providers, permissions, general and appearance. */
 import { listen, tauriInvoke } from '../../shared/tauri';
-import { api, type AppSettings, type Provider } from './api';
+import { api, type AppSettings, type Provider } from './core/api';
 import { clear, confirmDialog, h, icon, modal, toast, clockHour12, setClock } from './dom';
-import { fileSize } from './format';
+import { fileSize } from './core/format';
 import { historyButton } from './versions';
 import {
   autocompleteOn,
@@ -19,10 +19,10 @@ import {
   setTemporaryByDefault,
   state,
   temporaryByDefault,
-} from './state';
+} from './core/state';
 import { button, card, modalHeader, switchInput } from './ui';
 import { audioApi, audioSettings, refreshAudioSettings, speakText, type AudioView } from './audio';
-import { SHORTCUTS, bindingFor, comboOf, display, setBinding } from './shortcuts';
+import { SHORTCUTS, bindingFor, comboOf, display, setBinding } from './core/shortcuts';
 import { EMOJI_STYLES, emojiStatus, emojiStyle, onEmojiStatus, setEmojiStyle, type EmojiStatus, type EmojiStyle } from './fluent';
 import { uploadsCard } from './uploads';
 import { setMaterial, storedMaterial, type Material } from './appearance';
@@ -52,10 +52,10 @@ import { setVoicePauseMs, voicePauseMs } from './dictation';
 import { setWakePrefs, wakePrefs } from './wakeword';
 import { setVimEnabled, vimEnabled } from './vim';
 import { sharedLinksCard } from './share';
-import { effectiveLanguage, setStoredLanguage, storedLanguage } from './i18n';
+import { effectiveLanguage, setStoredLanguage, storedLanguage } from './core/i18n';
 import { setOrbColor, storedOrbColor, type OrbColor } from './orbgl';
-import { choice } from './prefs';
-import { call, shown } from './call';
+import { choice } from './core/prefs';
+import { call, shown } from './core/call';
 
 export type Section = 'profile' | 'providers' | 'audio' | 'permissions' | 'general' | 'appearance';
 

@@ -1,6 +1,6 @@
 import { tauriInvoke } from '../../shared/tauri';
 import { h, icon, popover, toast } from './dom';
-import { state } from './state';
+import { state } from './core/state';
 
 const IMPROVE_PRESETS: [string, string][] = [
   ['Improve writing', 'Improve the writing: clearer and tighter, same meaning.'],

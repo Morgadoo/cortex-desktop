@@ -1,10 +1,10 @@
 /** Libraries: document collections the assistant searches, with a search box to test them. */
 import { tauriInvoke } from '../../shared/tauri';
 import { clear, confirmDialog, h, icon, modal, popover, promptText, toast, clockHour12 } from './dom';
-import { characterCount } from './format';
+import { characterCount } from './core/format';
 import { modalHeader } from './ui';
-import { choice, json } from './prefs';
-import { call, shown } from './call';
+import { choice, json } from './core/prefs';
+import { call, shown } from './core/call';
 
 interface Doc {
   id: string;

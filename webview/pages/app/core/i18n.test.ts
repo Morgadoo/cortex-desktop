@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import pt from '../../../src-tauri/i18n/pt.json';
+import pt from '../../../../src-tauri/i18n/pt.json';
 import { load, translate } from './i18n';
 
 const ptText = pt as Record<string, string>;

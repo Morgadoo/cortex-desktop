@@ -2,7 +2,7 @@
 import { tauriInvoke } from '../../shared/tauri';
 import { appFrame, openAppWindow } from './canvas';
 import { clear, h, icon, modal } from './dom';
-import { navigate } from './state';
+import { navigate } from './core/state';
 import { button, emptyState, modalHeader, pageHeader } from './ui';
 
 interface AppCanvas {

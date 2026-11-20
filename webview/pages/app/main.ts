@@ -3,14 +3,14 @@
  * screen, a conversation or a context page. Model calls happen in Rust (`src-tauri/src/chat`);
  * this page renders what it streams back.
  */
-import './storage-migration';
+import './core/storage-migration';
 import { openSearchMode } from './searchmode';
-import { actionFor } from './shortcuts';
-import { api, type ApprovalRequest, type ChatEvent } from './api';
+import { actionFor } from './core/shortcuts';
+import { api, type ApprovalRequest, type ChatEvent } from './core/api';
 import { listen, tauriInvoke } from '../../shared/tauri';
 import { ChatView, CompareView, HomeView, composer, conversationMenu, recordStepTimes, refreshConversations, scrollToTurn, turnEnded, viewCache } from './chat';
 import { clear, h, icon, modal, popover, promptText, confirmDialog, toast } from './dom';
-import { startUiLanguage } from './i18n';
+import { startUiLanguage } from './core/i18n';
 import { startWakeWord, stopWakeWord, wakePrefs } from './wakeword';
 import { ConnectorsPage, PlaceholderPage, openInstructions } from './pages';
 import { KnowledgePage, SkillsPage, reviewRecording } from './context';
@@ -23,12 +23,12 @@ import { ChatsPage } from './chatspage';
 import { WorkflowsPage } from './workflows';
 import { applyTheme, openSettings, reloadModels, setTheme, storedTheme } from './settings';
 import { stepZoom, applyBackdrop, backdropLayer } from './appearance';
-import { applyEvent, back, changed, finishNotificationsOn, finishSoundOn, forward, navigate, playChime, state, subscribe, type Page } from './state';
+import { applyEvent, back, changed, finishNotificationsOn, finishSoundOn, forward, navigate, playChime, state, subscribe, type Page } from './core/state';
 import { button, emptyState, iconButton, modalHeader } from './ui';
 import { startFluentEmoji } from './fluent';
 import { refreshAudioSettings } from './audio';
-import { choice, json, workdir } from './prefs';
-import { call, callQuiet, shown } from './call';
+import { choice, json, workdir } from './core/prefs';
+import { call, callQuiet, shown } from './core/call';
 
 interface View {
   readonly el: HTMLElement;

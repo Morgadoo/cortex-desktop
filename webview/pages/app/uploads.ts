@@ -4,10 +4,10 @@
  */
 import { tauriInvoke } from '../../shared/tauri';
 import { clear, h, icon, toast, timeLabel } from './dom';
-import { characterCount } from './format';
-import { navigate } from './state';
+import { characterCount } from './core/format';
+import { navigate } from './core/state';
 import { card } from './ui';
-import { choice } from './prefs';
+import { choice } from './core/prefs';
 
 export type UploadMode = 'full' | 'auto' | 'search';
 const KEY = 'cortex.uploadMode';

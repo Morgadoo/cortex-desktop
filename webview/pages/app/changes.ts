@@ -2,7 +2,7 @@
 import { tauriInvoke } from '../../shared/tauri';
 import { clear, h, icon, modal, promptText, toast } from './dom';
 import { iconButton, modalHeader } from './ui';
-import { choice } from './prefs';
+import { choice } from './core/prefs';
 
 /** Unified or Split, remembered for next time. */
 const diffLayout = choice('cortex.diffLayout', ['unified', 'split'] as const, 'unified');

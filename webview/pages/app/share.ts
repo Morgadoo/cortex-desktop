@@ -7,8 +7,8 @@ import { tauriInvoke } from '../../shared/tauri';
 import { clear, h, icon, modal, toast } from './dom';
 import { button, card, modalHeader } from './ui';
 import { appFiles } from './canvas';
-import { escapeHtml } from './format';
-import { call, shown } from './call';
+import { escapeHtml } from './core/format';
+import { call, shown } from './core/call';
 
 export interface SharedLink {
   token: string;

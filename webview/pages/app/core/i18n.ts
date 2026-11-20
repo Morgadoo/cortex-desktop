@@ -7,7 +7,7 @@
  * built from this folder's source), exactly or as a template with `{0}`-style slots, so what
  * users wrote is never changed, and it stays out of answers, messages, titles and code.
  */
-import { tauriInvoke } from '../../shared/tauri';
+import { tauriInvoke } from '../../../shared/tauri';
 import { textPref } from './prefs';
 
 const KEY = 'cortex.uiLanguage';

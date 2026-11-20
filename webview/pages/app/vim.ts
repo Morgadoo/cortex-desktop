@@ -1,4 +1,4 @@
-import { flag } from './prefs';
+import { flag } from './core/prefs';
 /**
  * Vim keys in the message box (Vibe's Vim keybindings, 3.0.2), off unless chosen in
  * Settings → General. The box starts in Insert mode, so typing works as usual; Esc goes to Normal

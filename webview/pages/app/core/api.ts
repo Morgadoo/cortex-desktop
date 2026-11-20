@@ -2,7 +2,7 @@
  * Typed wrappers over the chat commands in `src-tauri/src/chat/commands.rs`, and the events Rust
  * pushes back. The shapes mirror the Rust structs' camelCase serialization.
  */
-import { tauriInvoke } from '../../shared/tauri';
+import { tauriInvoke } from '../../../shared/tauri';
 
 export interface ProviderSettings {
   enabled: boolean;

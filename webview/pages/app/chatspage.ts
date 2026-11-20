@@ -2,11 +2,11 @@
  * All chats in one place (LobeHub's topic panel): status tabs (all, unread, pinned, scheduled
  * runs, archived), a search, and a list or a card view, with the actions each chat needs.
  */
-import { api, type ConversationSummary } from './api';
+import { api, type ConversationSummary } from './core/api';
 import { clear, h, icon, timeLabel } from './dom';
-import { navigate, state, changed } from './state';
+import { navigate, state, changed } from './core/state';
 import { pageHeader } from './ui';
-import { choice, textPref } from './prefs';
+import { choice, textPref } from './core/prefs';
 
 type Status = 'all' | 'unread' | 'pinned' | 'runs' | 'archived';
 type Layout = 'list' | 'cards';

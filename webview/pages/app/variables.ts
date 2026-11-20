@@ -3,7 +3,7 @@
  * send; any other `{{name}}` asks for a value first, and `{{name|a|b}}` offers a choice. Works for
  * typed prompts and workflows, so a saved prompt becomes a small form.
  */
-import { api } from './api';
+import { api } from './core/api';
 import { h, modal, clockHour12 } from './dom';
 import { invalid, substitute, variablesIn, type Variable } from './promptvars';
 

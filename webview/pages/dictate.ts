@@ -9,7 +9,7 @@
 import { logError } from '../shared/logger';
 import { listen, tauriInvoke } from '../shared/tauri';
 import { startRecording, type Recording } from './app/dictation';
-import { blobToBase64 } from './app/format';
+import { blobToBase64 } from './app/core/format';
 import { liveTranscript, renderLive } from './app/live';
 
 interface Prefs {

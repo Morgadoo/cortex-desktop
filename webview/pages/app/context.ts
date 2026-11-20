@@ -1,12 +1,12 @@
 /** Context pages: Skills and Knowledge. */
 import { tauriInvoke } from '../../shared/tauri';
-import { api, type Memories, type Skill } from './api';
+import { api, type Memories, type Skill } from './core/api';
 import { clear, confirmDialog, h, icon, markdown, modal, popover, promptText, toast, clockHour12 } from './dom';
 import { improveButton } from './improve';
 import { restoreButton } from './versions';
-import { navigate, state } from './state';
+import { navigate, state } from './core/state';
 import { button, emptyState, iconButton, modalHeader, pageHeader, switchInput, tabs } from './ui';
-import { call, callQuiet, shown } from './call';
+import { call, callQuiet, shown } from './core/call';
 
 // ---------------------------------------------------------------------------------------------
 // Skills

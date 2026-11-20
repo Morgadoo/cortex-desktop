@@ -1,8 +1,8 @@
 /** The home screen, a conversation, and the composer they share. */
 import { emojiFor, findEmoji } from './emoji';
-import { autocompleteOn } from './state';
+import { autocompleteOn } from './core/state';
 import { tauriInvoke } from '../../shared/tauri';
-import { api, newId, type ApprovalMode, type ChatEvent, type ChatParams, type Conversation, type Part, type Turn, type UsageTotals } from './api';
+import { api, newId, type ApprovalMode, type ChatEvent, type ChatParams, type Conversation, type Part, type Turn, type UsageTotals } from './core/api';
 import { openOutputsPanel } from './outputs';
 import { conversationPng } from './chatimage';
 import { searchInstead } from './uploads';
@@ -11,25 +11,25 @@ import { agentPanel } from './agentpanel';
 import { fillVariables } from './variables';
 import { startVoiceConversation, voiceActive, voiceTurnEnded } from './voice';
 import { attachVim } from './vim';
-import { actionFor } from './shortcuts';
+import { actionFor } from './core/shortcuts';
 import { clear, confirmDialog, greeting, h, icon, markdown, modal, popover, promptText, timeLabel, toast, clockHour12 } from './dom';
-import { applyEvent, changed, currentModel, followUpsOn, navigate, setMode, state, temporaryByDefault, type LiveTurn, followStreamOn } from './state';
+import { applyEvent, changed, currentModel, followUpsOn, navigate, setMode, state, temporaryByDefault, type LiveTurn, followStreamOn } from './core/state';
 import { openSettings } from './settings';
 import { closePanel, enableAskAboutSelection, hasPanel, openSidePanel, renderCanvasCard, setPanelHost, lineDiff } from './canvas';
 import { hostOf, previewFor, siteIcon } from './favicon';
 import './diagrams';
 import { renderCodeRun, renderImage, renderVideo } from './coderun';
 import { startRecording, type Recording } from './dictation';
-import { blobToBase64, bytesToBase64, escapeHtml } from './format';
+import { blobToBase64, bytesToBase64, escapeHtml } from './core/format';
 import { liveCapable, liveTranscript, renderLive } from './live';
 import { audioSettings, speakText, type Playback } from './audio';
 import { editWorkflow, liveWorkflow, workflowPrompt, workflowsApi } from './workflows';
-import type { Speed, Workflow } from './api';
+import type { Speed, Workflow } from './core/api';
 import { diffLines, loadChanges, openChanges, openFiles, openDebug } from './changes';
 import { openTerminal } from './terminal';
 import { button, chip, iconButton, modalHeader, trigger } from './ui';
-import { flag, json, textPref, workdir } from './prefs';
-import { call, callQuiet, shown } from './call';
+import { flag, json, textPref, workdir } from './core/prefs';
+import { call, callQuiet, shown } from './core/call';
 
 // ---------------------------------------------------------------------------------------------
 // Tool labels

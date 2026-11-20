@@ -8,7 +8,7 @@
 import { tauriInvoke } from '../../shared/tauri';
 import { listen } from '../../shared/tauri';
 import { buildIndex, MAYBE, onlyEmoji, split } from './emojiscan';
-import { choice } from './prefs';
+import { choice } from './core/prefs';
 
 export type EmojiStyle = '3d' | 'flat' | 'system';
 export const EMOJI_STYLES: { id: EmojiStyle; label: string }[] = [
