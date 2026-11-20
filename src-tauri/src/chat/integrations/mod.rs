@@ -5,6 +5,7 @@
 pub mod api_server;
 pub mod discord;
 pub mod links;
+pub mod platform;
 pub mod share;
 pub mod slack;
 pub mod telegram;

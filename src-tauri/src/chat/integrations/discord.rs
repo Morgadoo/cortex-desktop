@@ -8,6 +8,7 @@
 //! answered there. Discord shows the text of those to a bot without the privileged Message
 //! Content intent, so none is needed. Only Discord users paired with a one-time code are answered.
 
+use crate::chat::platform;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -174,43 +175,44 @@ pub fn decide(settings: &Settings, message: &Value, bot_id: &str) -> Action {
     if text.is_empty() {
         return Action::Ignore;
     }
-    if let Some(code) = text.strip_prefix("pair").map(str::trim) {
-        return match &settings.pairing_code {
-            Some(expected) if expected == code => Action::Pair(user),
-            _ => Action::Reply("That code is not right, or pairing is closed. Open Cortex → Settings → General → Discord to get a code.".into()),
-        };
-    }
-    if !settings.paired.contains(&user) {
-        return Action::Reply("I answer only my owner. If that is you, send `pair` followed by the code shown in Cortex (Settings → General → Discord).".into());
-    }
-    match text.as_str() {
-        "new" | "/new" => Action::Reset,
-        _ => Action::Ask(text),
+    match platform::gate(&text, "pair", settings.pairing_code.as_deref(), &settings.paired, &user) {
+        platform::Gate::Pair => Action::Pair(user),
+        platform::Gate::WrongCode => Action::Reply("That code is not right, or pairing is closed. Open Cortex → Settings → General → Discord to get a code.".into()),
+        platform::Gate::Stranger => Action::Reply("I answer only my owner. If that is you, send `pair` followed by the code shown in Cortex (Settings → General → Discord).".into()),
+        platform::Gate::Owner("new" | "/new") => Action::Reset,
+        platform::Gate::Owner(text) => Action::Ask(text.to_string()),
     }
 }
 
-static RUNNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static RUNNING: platform::OneAtATime = platform::OneAtATime::new();
 
 /// Connects to Discord when set up (at start, and after the settings change).
 pub fn start(app: &AppHandle) {
-    if RUNNING.swap(true, std::sync::atomic::Ordering::SeqCst) {
-        return;
+    platform::keep_connected::<Discord>(app, &RUNNING);
+}
+
+struct Discord;
+
+#[async_trait::async_trait]
+impl platform::Connection for Discord {
+    const NAME: &'static str = "discord";
+    type Credentials = String;
+
+    fn enabled(config_dir: &Path) -> bool {
+        load(config_dir).enabled
     }
-    let app = app.clone();
-    tauri::async_runtime::spawn(async move {
-        while let Ok(config_dir) = crate::settings::get_config_dir(&app) {
-            if !load(&config_dir).enabled {
-                break;
-            }
-            let Some(token) = token().await else { break };
-            if let Err(e) = session(&app, &config_dir, &token).await {
-                log::warn!("discord: {e}");
-            }
-            // Discord asks bots to reconnect from time to time; a failure waits a little first.
-            tokio::time::sleep(Duration::from_secs(5)).await;
-        }
-        RUNNING.store(false, std::sync::atomic::Ordering::SeqCst);
-    });
+
+    async fn credentials() -> Option<Self::Credentials> {
+        token().await
+    }
+
+    async fn session(
+        app: &AppHandle,
+        config_dir: &Path,
+        token: &Self::Credentials,
+    ) -> Result<(), String> {
+        session(app, config_dir, token).await
+    }
 }
 
 /// One Gateway connection, until Discord closes it or the bot is turned off.

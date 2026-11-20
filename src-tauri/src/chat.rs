@@ -53,7 +53,7 @@ pub use automation::{
     tasks, workflows,
 };
 pub mod integrations;
-pub use integrations::{api_server, discord, links, share, slack, telegram};
+pub use integrations::{api_server, discord, links, platform, share, slack, telegram};
 pub mod cli;
 pub use cli::{config_cli, headless, terminal_chat};
 pub mod ui;

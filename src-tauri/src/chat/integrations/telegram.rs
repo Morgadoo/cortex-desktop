@@ -8,6 +8,7 @@
 //! else gets "not paired". Runs are unattended: the assistant reads and searches, but anything
 //! that would change something is refused, as in a scheduled task (unless allowed in settings).
 
+use crate::chat::platform;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -159,19 +160,13 @@ pub fn decide(settings: &Settings, user_id: i64, user_name: &str, text: &str) ->
     if text.is_empty() {
         return Action::Ignore;
     }
-    if let Some(code) = text.strip_prefix("/pair").map(str::trim) {
-        return match &settings.pairing_code {
-            Some(expected) if expected == code => Action::Pair(user_id, user_name.to_string()),
-            _ => Action::Reply("That code is not right, or pairing is closed. Open Cortex → Settings → General → Telegram to get a code.".into()),
-        };
-    }
-    if !settings.paired.contains(&user_id) {
-        return Action::Reply("This bot answers only its owner. If that is you, send /pair followed by the code shown in Cortex (Settings → General → Telegram).".into());
-    }
-    match text {
-        "/start" | "/help" => Action::Reply("Ask me anything; I answer from Cortex on your computer. /new starts a fresh conversation.".into()),
-        "/new" => Action::Reset,
-        _ => Action::Ask(text.to_string()),
+    match platform::gate(text, "/pair", settings.pairing_code.as_deref(), &settings.paired, &user_id) {
+        platform::Gate::Pair => Action::Pair(user_id, user_name.to_string()),
+        platform::Gate::WrongCode => Action::Reply("That code is not right, or pairing is closed. Open Cortex → Settings → General → Telegram to get a code.".into()),
+        platform::Gate::Stranger => Action::Reply("This bot answers only its owner. If that is you, send /pair followed by the code shown in Cortex (Settings → General → Telegram).".into()),
+        platform::Gate::Owner("/start" | "/help") => Action::Reply("Ask me anything; I answer from Cortex on your computer. /new starts a fresh conversation.".into()),
+        platform::Gate::Owner("/new") => Action::Reset,
+        platform::Gate::Owner(text) => Action::Ask(text.to_string()),
     }
 }
 
@@ -301,15 +296,16 @@ pub async fn run_message(
     (Some(id), answer)
 }
 
-static RUNNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static RUNNING: platform::OneAtATime = platform::OneAtATime::new();
 
 /// Starts listening when Telegram is set up (at start, and after the settings change).
 pub fn start(app: &AppHandle) {
-    if RUNNING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+    let Some(claim) = RUNNING.claim() else {
         return;
-    }
+    };
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
+        let _claim = claim;
         let mut offset: i64 = 0;
         while let Ok(config_dir) = crate::settings::get_config_dir(&app) {
             let settings = load(&config_dir);
@@ -407,7 +403,6 @@ pub fn start(app: &AppHandle) {
                 }
             }
         }
-        RUNNING.store(false, std::sync::atomic::Ordering::SeqCst);
     });
 }
 
