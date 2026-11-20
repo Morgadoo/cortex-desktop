@@ -197,30 +197,7 @@ pub fn transcribe(
     let mut guard = speech().lock().map_err(|e| e.to_string())?;
     if guard.as_ref().is_none_or(|s| s.id != id) {
         *guard = None;
-        let dir = model_dir(root, id)?;
-        let config: w::Config = serde_json::from_str(
-            &std::fs::read_to_string(dir.join("config.json")).map_err(|e| e.to_string())?,
-        )
-        .map_err(|e| e.to_string())?;
-        // SAFETY: the file is ours, downloaded and not changed while it is mapped.
-        let vb = unsafe {
-            candle_nn::VarBuilder::from_mmaped_safetensors(
-                &[dir.join("model.safetensors")],
-                w::DTYPE,
-                &Device::Cpu,
-            )
-        }
-        .map_err(|e| e.to_string())?;
-        let filters = mel_filters(config.num_mel_bins);
-        let model = w::model::Whisper::load(&vb, config).map_err(|e| e.to_string())?;
-        let tokenizer = tokenizers::Tokenizer::from_file(dir.join("tokenizer.json"))
-            .map_err(|e| e.to_string())?;
-        *guard = Some(Speech {
-            id: id.to_string(),
-            model,
-            tokenizer,
-            filters,
-        });
+        *guard = Some(load_speech(root, id)?);
     }
     let s = guard.as_mut().ok_or("The speech model is not loaded.")?;
     let token = |t: &str| {
@@ -273,36 +250,7 @@ pub fn transcribe(
         // The language: the one asked for, else the one the model finds likeliest.
         let lang = match language.trim() {
             l if !l.is_empty() => s.tokenizer.token_to_id(&format!("<|{l}|>")),
-            _ => {
-                let ids: Vec<(u32, &str)> = LANGUAGES
-                    .iter()
-                    .filter_map(|l| {
-                        s.tokenizer
-                            .token_to_id(&format!("<|{l}|>"))
-                            .map(|t| (t, *l))
-                    })
-                    .collect();
-                if ids.is_empty() {
-                    None
-                } else {
-                    let input = Tensor::new(&[[sot]], &Device::Cpu).map_err(|e| e.to_string())?;
-                    let ys = s
-                        .model
-                        .decoder
-                        .forward(&input, &features, true)
-                        .map_err(|e| e.to_string())?;
-                    let logits = s
-                        .model
-                        .decoder
-                        .final_linear(&ys.i((..1, 0..1)).map_err(|e| e.to_string())?)
-                        .and_then(|l| l.i(0)?.i(0))
-                        .map_err(|e| e.to_string())?;
-                    let logits: Vec<f32> = logits.to_vec1().map_err(|e| e.to_string())?;
-                    ids.iter()
-                        .max_by(|a, b| logits[a.0 as usize].total_cmp(&logits[b.0 as usize]))
-                        .map(|(t, _)| *t)
-                }
-            }
+            _ => likeliest_language(s, &features, sot)?,
         };
         let mut tokens = vec![sot];
         tokens.extend(lang);
@@ -335,13 +283,7 @@ pub fn transcribe(
             }
             tokens.push(next);
             // A small model can loop on a phrase: stop when the last stretch repeats the one before.
-            let said = &tokens[start..];
-            if (4..=24).any(|n| {
-                said.len() >= 3 * n
-                    && said[said.len() - n..] == said[said.len() - 2 * n..said.len() - n]
-                    && said[said.len() - 2 * n..said.len() - n]
-                        == said[said.len() - 3 * n..said.len() - 2 * n]
-            }) {
+            if is_looping(&tokens[start..]) {
                 break;
             }
         }
@@ -359,6 +301,79 @@ pub fn transcribe(
     }
     s.model.reset_kv_cache();
     Ok(if live { collapse_repeats(&text) } else { text })
+}
+
+/// Loads a downloaded Whisper model, its tokenizer and mel filters.
+fn load_speech(root: &Path, id: &str) -> Result<Speech, String> {
+    use candle_transformers::models::whisper as w;
+    let dir = model_dir(root, id)?;
+    let config: w::Config = serde_json::from_str(
+        &std::fs::read_to_string(dir.join("config.json")).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    // SAFETY: the file is ours, downloaded and not changed while it is mapped.
+    let vb = unsafe {
+        candle_nn::VarBuilder::from_mmaped_safetensors(
+            &[dir.join("model.safetensors")],
+            w::DTYPE,
+            &Device::Cpu,
+        )
+    }
+    .map_err(|e| e.to_string())?;
+    let filters = mel_filters(config.num_mel_bins);
+    let model = w::model::Whisper::load(&vb, config).map_err(|e| e.to_string())?;
+    let tokenizer =
+        tokenizers::Tokenizer::from_file(dir.join("tokenizer.json")).map_err(|e| e.to_string())?;
+    Ok(Speech {
+        id: id.to_string(),
+        model,
+        tokenizer,
+        filters,
+    })
+}
+
+/// The language the model finds likeliest for a window of audio, from those it knows.
+fn likeliest_language(s: &mut Speech, features: &Tensor, sot: u32) -> Result<Option<u32>, String> {
+    use candle_core::IndexOp as _;
+    let ids: Vec<(u32, &str)> = LANGUAGES
+        .iter()
+        .filter_map(|l| {
+            s.tokenizer
+                .token_to_id(&format!("<|{l}|>"))
+                .map(|t| (t, *l))
+        })
+        .collect();
+    if ids.is_empty() {
+        return Ok(None);
+    }
+    let input = Tensor::new(&[[sot]], &Device::Cpu).map_err(|e| e.to_string())?;
+    let ys = s
+        .model
+        .decoder
+        .forward(&input, features, true)
+        .map_err(|e| e.to_string())?;
+    let logits = s
+        .model
+        .decoder
+        .final_linear(&ys.i((..1, 0..1)).map_err(|e| e.to_string())?)
+        .and_then(|l| l.i(0)?.i(0))
+        .map_err(|e| e.to_string())?;
+    let logits: Vec<f32> = logits.to_vec1().map_err(|e| e.to_string())?;
+    Ok(ids
+        .iter()
+        .max_by(|a, b| logits[a.0 as usize].total_cmp(&logits[b.0 as usize]))
+        .map(|(t, _)| *t))
+}
+
+/// Whether the last stretch of tokens repeats the two before it, as a small model looping on a
+/// phrase does.
+fn is_looping(said: &[u32]) -> bool {
+    (4..=24).any(|n| {
+        said.len() >= 3 * n
+            && said[said.len() - n..] == said[said.len() - 2 * n..said.len() - n]
+            && said[said.len() - 2 * n..said.len() - n]
+                == said[said.len() - 3 * n..said.len() - 2 * n]
+    })
 }
 
 /// A live guess with a phrase said again and again ("Remind me Remind me Remind me"), which
