@@ -33,7 +33,8 @@ src-tauri/crates/         the AI core that needs no window
    cortex-retrieval       tokenizer and BM25
    cortex-traces          run traces, feedback and the artifact registry (SQLite)
    cortex-sandbox         the WebAssembly sandbox for tools the assistant writes
-   cortex-store           settings files written atomically, encryption at rest, storage errors
+   cortex-store           conversations, their index, backups and trash, version history,
+                          partial answers, settings files, encryption at rest, storage errors
 ```
 
 ### The chat engine: `src-tauri/src/chat/`

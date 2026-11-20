@@ -7,8 +7,8 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::chat::store::{chat_dir, valid_id};
-use crate::support::error::StoreError;
+use crate::error::StoreError;
+use crate::store::{chat_dir, valid_id};
 
 fn path(config_dir: &Path, id: &str) -> Option<PathBuf> {
     valid_id(id).then(|| {
@@ -30,13 +30,13 @@ pub fn save(config_dir: &Path, id: &str, text: &str) -> Result<(), StoreError> {
         std::fs::create_dir_all(dir).map_err(|e| StoreError::write(dir, e))?;
     }
     let tmp = path.with_extension("tmp");
-    crate::chat::at_rest::write(&tmp, text).map_err(|e| StoreError::write(&tmp, e))?;
+    crate::at_rest::write(&tmp, text).map_err(|e| StoreError::write(&tmp, e))?;
     std::fs::rename(&tmp, &path).map_err(|e| StoreError::write(&path, e))
 }
 
 /// What an answer that never finished had streamed, if one did.
 pub fn get(config_dir: &Path, id: &str) -> Option<String> {
-    crate::chat::at_rest::read_to_string(path(config_dir, id)?)
+    crate::at_rest::read_to_string(path(config_dir, id)?)
         .ok()
         .filter(|t| !t.trim().is_empty())
 }

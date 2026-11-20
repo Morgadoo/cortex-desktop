@@ -43,9 +43,20 @@ package is one or more commits there. Measured as section 7 describes:
   sections arrived in; regrouping them by interface folder is a reorder, to be checked with
   `scripts/screenshot-pages.mjs`. The `--cortex-*` names stay until the old settings page is
   rewritten.
-- 4.1: `cortex-store` holds settings files, encryption at rest and the storage errors. The
-  conversation store and `cortex-tools` follow once they stop reaching into the app: sync uses
-  Tauri, the vault uses the keychain, and the loaders take an `AppHandle`.
+- 4.1: `cortex-store` holds the conversation store (conversations, their index, backups and
+  the trash, version history, the checkpoints of answers in progress), settings files,
+  encryption at rest and the storage errors, with no window, keychain or network in it; the app
+  re-exports its modules under `chat::`. Sync, the vault and the importers stay in the app, as
+  they use Tauri, the keychain or the network. `cortex-tools` is not extracted: its loaders take
+  an `AppHandle`.
+
+**Checked in the real app**: section 8's checklist runs as `e2e/user-journeys/` (the real app
+under a virtual display, through tauri-driver, against a real model), in the light and dark themes,
+and passes; a second journey covers switching chats while answers run, unread marks, two answers at
+once and recovering an answer the app was killed in the middle of. Running them found and fixed:
+background answers not marked unread, an answer lost when the app closed mid-way, no way to retry a
+message stopped before any text, new chats indistinguishable while answering, and titles written
+from a clipped first line.
 
 **Deliberate departures**:
 

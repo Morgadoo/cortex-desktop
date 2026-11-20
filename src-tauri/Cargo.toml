@@ -139,7 +139,7 @@ hosted = []
 # CORTEX_E2E_TESTING is honoured only in builds with this feature.
 e2e = ["hosted"]
 # Derives TypeScript declarations for IPC types; only scripts/generate-types.sh builds it.
-typescript = ["dep:ts-rs", "cortex-kernel/typescript"]
+typescript = ["dep:ts-rs", "cortex-kernel/typescript", "cortex-store/typescript"]
 
 [lints]
 workspace = true

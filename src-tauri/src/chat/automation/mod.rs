@@ -14,3 +14,7 @@ pub mod skill_catalog;
 pub mod skills;
 pub mod tasks;
 pub mod workflows;
+
+// Version history with the stores that keep versions (cortex_store::versions, history).
+#[cfg(test)]
+mod versions_tests;

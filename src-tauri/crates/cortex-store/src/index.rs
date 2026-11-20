@@ -15,7 +15,7 @@ use std::time::UNIX_EPOCH;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::chat::store::{chat_dir, write_json, Conversation, ConversationSummary};
+use crate::store::{chat_dir, write_json, Conversation, ConversationSummary};
 
 /// Bumped when the index's own shape changes; an older index is rebuilt.
 const INDEX_VERSION: u32 = 6;
@@ -99,7 +99,7 @@ fn preview(c: &Conversation) -> String {
         .collect();
     let flat: String = plain.split_whitespace().collect::<Vec<_>>().join(" ");
     if flat.chars().count() > 160 {
-        format!("{}…", crate::support::text::clip(&flat, 160))
+        format!("{}…", crate::text::clip(&flat, 160))
     } else {
         flat
     }
@@ -132,7 +132,7 @@ fn searchable(c: &Conversation) -> String {
 fn synced<R>(config_dir: &Path, read: impl FnOnce(&IndexFile) -> R) -> R {
     let mut cache = cache();
     let index = cache.entry(config_dir.to_path_buf()).or_insert_with(|| {
-        crate::chat::at_rest::read_to_string(index_dir(config_dir).join("conversations.json"))
+        crate::at_rest::read_to_string(index_dir(config_dir).join("conversations.json"))
             .ok()
             .and_then(|t| serde_json::from_str::<IndexFile>(&t).ok())
             .filter(|i| i.version == INDEX_VERSION)
@@ -173,7 +173,7 @@ fn synced<R>(config_dir: &Path, read: impl FnOnce(&IndexFile) -> R) -> R {
             continue;
         }
         dirty = true;
-        let parsed = crate::chat::at_rest::read_to_string(&path)
+        let parsed = crate::at_rest::read_to_string(&path)
             .ok()
             .and_then(|t| serde_json::from_str::<Conversation>(&t).ok());
         let text = text_path(config_dir, &id);
@@ -191,7 +191,7 @@ fn synced<R>(config_dir: &Path, read: impl FnOnce(&IndexFile) -> R) -> R {
                 if let Some(parent) = text.parent() {
                     let _ = std::fs::create_dir_all(parent);
                 }
-                let _ = crate::chat::at_rest::write(&text, searchable(&c));
+                let _ = crate::at_rest::write(&text, searchable(&c));
                 Entry {
                     modified,
                     size: meta.len(),
@@ -235,7 +235,7 @@ fn synced<R>(config_dir: &Path, read: impl FnOnce(&IndexFile) -> R) -> R {
 }
 
 /// The sidebar rows: pinned first, then newest.
-pub(in crate::chat::storage) fn list(config_dir: &Path) -> Vec<ConversationSummary> {
+pub fn list(config_dir: &Path) -> Vec<ConversationSummary> {
     let mut out: Vec<ConversationSummary> = synced(config_dir, |index| {
         index
             .entries
@@ -252,7 +252,7 @@ pub(in crate::chat::storage) fn list(config_dir: &Path) -> Vec<ConversationSumma
 }
 
 /// Conversation files that exist but cannot be read.
-pub(in crate::chat::storage) fn damaged(config_dir: &Path) -> Vec<String> {
+pub fn damaged(config_dir: &Path) -> Vec<String> {
     synced(config_dir, |index| {
         index
             .entries
@@ -314,7 +314,7 @@ fn snippet(text: &str, lower: &str, term: &str) -> String {
 
 /// Full-text search over titles and what was said: every word must appear. Title matches come
 /// first, then the newest.
-pub(crate) fn search(config_dir: &Path, query: &str, limit: usize) -> Vec<Hit> {
+pub fn search(config_dir: &Path, query: &str, limit: usize) -> Vec<Hit> {
     let terms: Vec<String> = query
         .to_lowercase()
         .split_whitespace()
@@ -328,8 +328,8 @@ pub(crate) fn search(config_dir: &Path, query: &str, limit: usize) -> Vec<Hit> {
         .filter_map(|c| {
             let title = c.title.to_lowercase();
             let in_title = terms.iter().all(|t| title.contains(t));
-            let text = crate::chat::at_rest::read_to_string(text_path(config_dir, &c.id))
-                .unwrap_or_default();
+            let text =
+                crate::at_rest::read_to_string(text_path(config_dir, &c.id)).unwrap_or_default();
             // The first line repeats the title; snippets come from what was said.
             let said = text.split_once('\n').map_or("", |(_, rest)| rest);
             let lower = said.to_lowercase();
@@ -360,7 +360,7 @@ pub(crate) fn search(config_dir: &Path, query: &str, limit: usize) -> Vec<Hit> {
 }
 
 /// Earlier conversations matching `query`: every word first; failing that, the most words.
-pub(crate) fn search_chats(config_dir: &Path, query: &str) -> Vec<Hit> {
+pub fn search_chats(config_dir: &Path, query: &str) -> Vec<Hit> {
     let all = search(config_dir, query, 8);
     let words: Vec<&str> = query
         .split_whitespace()
@@ -369,7 +369,7 @@ pub(crate) fn search_chats(config_dir: &Path, query: &str) -> Vec<Hit> {
     if !all.is_empty() || words.len() < 2 {
         return all;
     }
-    let mut found: Vec<(usize, crate::chat::index::Hit)> = Vec::new();
+    let mut found: Vec<(usize, crate::index::Hit)> = Vec::new();
     for word in words {
         for hit in search(config_dir, word, 20) {
             match found.iter_mut().find(|(_, h)| h.id == hit.id) {
@@ -385,13 +385,12 @@ pub(crate) fn search_chats(config_dir: &Path, query: &str) -> Vec<Hit> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chat::engine::user_message;
-    use crate::chat::store::{delete_conversation, save_conversation};
+    use crate::store::{delete_conversation, save_conversation};
 
     fn conversation(id: &str, title: &str, said: &str) -> Conversation {
         let mut c = Conversation::new(id.into(), None, None);
         c.title = title.into();
-        c.messages.push(user_message(said, &[]).unwrap());
+        c.messages.push(rig_core::completion::Message::user(said));
         c
     }
 
@@ -433,7 +432,7 @@ mod tests {
         // A file that cannot be read is reported, and the rest still list.
         let bad =
             chat_dir(dir.path()).join("conversations/33333333-3333-4333-8333-333333333333.json");
-        crate::chat::at_rest::write(&bad, "{ not json").unwrap();
+        crate::at_rest::write(&bad, "{ not json").unwrap();
         assert_eq!(list(dir.path()).len(), 1);
         assert_eq!(
             damaged(dir.path()),

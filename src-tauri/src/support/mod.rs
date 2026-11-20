@@ -6,7 +6,6 @@
 //! crate, re-exported here.
 
 pub mod dialogs;
-pub use cortex_store::{error, settings_file};
+pub use cortex_store::{error, settings_file, text};
 pub mod http;
 pub mod names;
-pub mod text;

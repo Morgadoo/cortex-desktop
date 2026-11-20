@@ -1,10 +1,10 @@
 //! Changing a conversation: deleting and rewriting messages, bookmarks, branches and versions of an answer.
 
 use super::*;
-use crate::support::error::StoreError;
+use crate::error::StoreError;
 
 /// Tags as stored: trimmed, lowercase, without a leading `#`, deduplicated, at most 12.
-pub(in crate::chat) fn clean_tags(tags: &[String]) -> Vec<String> {
+pub fn clean_tags(tags: &[String]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for tag in tags {
         let tag: String = tag
@@ -29,10 +29,7 @@ pub(super) fn is_prompt(message: &Message) -> bool {
 
 /// Removes the message the user typed at `prompt` and the reply to it (everything up to the
 /// next typed message), with any other versions of it. Refused inside the summarized part.
-pub(in crate::chat) fn delete_exchange(
-    conversation: &mut Conversation,
-    prompt: usize,
-) -> Result<(), StoreError> {
+pub fn delete_exchange(conversation: &mut Conversation, prompt: usize) -> Result<(), StoreError> {
     if !conversation.messages.get(prompt).is_some_and(is_prompt) {
         return Err(StoreError::Invalid(
             "That is not a message you sent.".into(),
@@ -44,7 +41,7 @@ pub(in crate::chat) fn delete_exchange(
 /// Rewrites a message in place, without asking for a new reply: the text of a message the user
 /// sent (its images kept), or the final text of an answer (the turn's tool steps kept). The
 /// model reads the rewritten version from then on.
-pub(in crate::chat) fn rewrite_message(
+pub fn rewrite_message(
     conversation: &mut Conversation,
     index: usize,
     text: &str,
@@ -116,7 +113,7 @@ pub(in crate::chat) fn rewrite_message(
 }
 
 /// Bookmarks or un-bookmarks the turn ending at message `index`; the snippet is the turn's text.
-pub(in crate::chat) fn set_bookmark(
+pub fn set_bookmark(
     conversation: &mut Conversation,
     index: usize,
     on: bool,
@@ -149,7 +146,7 @@ pub(in crate::chat) fn set_bookmark(
             .collect::<Vec<_>>()
             .join(" ");
         let snippet = if flat.chars().count() > 140 {
-            format!("{}…", crate::support::text::clip(&flat, 140))
+            format!("{}…", crate::text::clip(&flat, 140))
         } else {
             flat
         };
@@ -169,7 +166,7 @@ pub(in crate::chat) fn set_bookmark(
 /// Keeps a branch of the conversation: the messages up to and including the turn ending at `upto`
 /// (all when `None`), optionally without attached files and images. Notes keyed to dropped
 /// messages go with them; other versions past the cut are not carried over.
-pub(in crate::chat) fn branch_copy(
+pub fn branch_copy(
     conversation: &mut Conversation,
     upto: Option<usize>,
     without_files: bool,
@@ -270,7 +267,7 @@ pub(super) fn shift_branch(point: &mut Versions, by: usize) {
 /// ratings, bookmarks and branch points after them move back; branch points inside them, and
 /// the other versions they hold, go. Exchanges already summarized for the model stay.
 /// Returns how many exchanges went.
-pub(in crate::chat) fn delete_exchanges(
+pub fn delete_exchanges(
     conversation: &mut Conversation,
     indices: &[usize],
 ) -> Result<usize, StoreError> {
@@ -333,7 +330,7 @@ pub(super) fn shift_all<T>(entries: &mut Vec<(usize, T)>, start: usize, end: usi
 }
 
 /// Index of the last message the user typed.
-pub(in crate::chat) fn last_prompt(conversation: &Conversation) -> Option<usize> {
+pub fn last_prompt(conversation: &Conversation) -> Option<usize> {
     conversation.messages.iter().rposition(|m| match m {
         Message::User { content } => content.iter().any(|c| matches!(c, UserContent::Text(_))),
         _ => false,
@@ -362,7 +359,7 @@ pub(super) fn take_inner(conversation: &mut Conversation, start: usize) -> Vec<V
 
 /// Keeps everything from message `from` on as a branch before it is replaced; the new
 /// continuation shows last. Branch points further along go with the stored branch.
-pub(in crate::chat) fn keep_branch(conversation: &mut Conversation, from: usize, kind: &str) {
+pub fn keep_branch(conversation: &mut Conversation, from: usize, kind: &str) {
     migrate(conversation);
     let tail: Vec<Message> = conversation
         .messages
@@ -398,10 +395,7 @@ pub(in crate::chat) fn keep_branch(conversation: &mut Conversation, from: usize,
 /// Shows branch `target` (0-based) at the branch point that starts at message `from`.
 /// The answer text of every version at a branch point, in switcher order, to compare them
 /// (Open WebUI's Compare Text).
-pub(in crate::chat) fn version_texts(
-    conversation: &Conversation,
-    from: usize,
-) -> Result<Vec<String>, StoreError> {
+pub fn version_texts(conversation: &Conversation, from: usize) -> Result<Vec<String>, StoreError> {
     let mut conversation = conversation.clone();
     migrate(&mut conversation);
     let point = conversation
@@ -449,7 +443,7 @@ pub(in crate::chat) fn version_texts(
         .collect())
 }
 
-pub(in crate::chat) fn select_version(
+pub fn select_version(
     conversation: &mut Conversation,
     from: usize,
     target: usize,

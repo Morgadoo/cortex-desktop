@@ -14,8 +14,8 @@ use std::time::{Duration, SystemTime};
 use chrono::{DateTime, Local, NaiveDate, Utc};
 use serde::Serialize;
 
-use crate::chat::store::{chat_dir, valid_id, Conversation};
-use crate::support::error::StoreError;
+use crate::error::StoreError;
+use crate::store::{chat_dir, valid_id, Conversation};
 
 /// Days a backup or a deleted conversation is kept.
 pub const KEEP_DAYS: i64 = 30;
@@ -45,11 +45,11 @@ fn conversation_file(config_dir: &Path, id: &str) -> Result<PathBuf, StoreError>
 }
 
 fn readable(path: &Path) -> Option<Conversation> {
-    serde_json::from_str(&crate::chat::at_rest::read_to_string(path).ok()?).ok()
+    serde_json::from_str(&crate::at_rest::read_to_string(path).ok()?).ok()
 }
 
 /// Called before a conversation file is replaced: keeps today's first copy of it.
-pub(in crate::chat::storage) fn before_overwrite(config_dir: &Path, path: &Path) {
+pub fn before_overwrite(config_dir: &Path, path: &Path) {
     let Some(name) = path.file_name() else { return };
     if !path.exists() {
         return;
@@ -70,7 +70,7 @@ pub(in crate::chat::storage) fn before_overwrite(config_dir: &Path, path: &Path)
 }
 
 /// Once a day: copies the state files and removes backups and trash past [`KEEP_DAYS`].
-pub(crate) fn daily(config_dir: &Path) {
+pub fn daily(config_dir: &Path) {
     let chat = chat_dir(config_dir);
     let state = backups_dir(config_dir).join(today()).join("state");
     if !state.exists() && std::fs::create_dir_all(&state).is_ok() {
@@ -117,7 +117,7 @@ pub(crate) fn daily(config_dir: &Path) {
 }
 
 /// Moves a conversation to the trash. A temporary one is deleted outright.
-pub(in crate::chat::storage) fn trash(config_dir: &Path, id: &str) -> Result<(), StoreError> {
+pub fn trash(config_dir: &Path, id: &str) -> Result<(), StoreError> {
     let path = conversation_file(config_dir, id)?;
     if !path.exists() {
         return Ok(());
@@ -148,7 +148,7 @@ pub struct TrashItem {
 }
 
 /// Deleted conversations, newest first.
-pub(in crate::chat) fn list_trash(config_dir: &Path) -> Vec<TrashItem> {
+pub fn list_trash(config_dir: &Path) -> Vec<TrashItem> {
     let mut out: Vec<TrashItem> = std::fs::read_dir(trash_dir(config_dir))
         .into_iter()
         .flatten()
@@ -174,7 +174,7 @@ pub(in crate::chat) fn list_trash(config_dir: &Path) -> Vec<TrashItem> {
 }
 
 /// Puts a deleted conversation back.
-pub(crate) fn restore(config_dir: &Path, id: &str) -> Result<(), StoreError> {
+pub fn restore(config_dir: &Path, id: &str) -> Result<(), StoreError> {
     let dest = conversation_file(config_dir, id)?;
     let from = trash_dir(config_dir).join(format!("{id}.json"));
     if dest.exists() {
@@ -190,10 +190,7 @@ pub(crate) fn restore(config_dir: &Path, id: &str) -> Result<(), StoreError> {
 }
 
 /// Deletes one conversation from the trash for good, or all of them.
-pub(in crate::chat) fn delete_forever(
-    config_dir: &Path,
-    id: Option<&str>,
-) -> Result<(), StoreError> {
+pub fn delete_forever(config_dir: &Path, id: Option<&str>) -> Result<(), StoreError> {
     match id {
         Some(id) => {
             conversation_file(config_dir, id)?;
@@ -209,10 +206,7 @@ pub(in crate::chat) fn delete_forever(
 }
 
 /// The newest readable backup of a conversation: its date and file.
-pub(in crate::chat::storage) fn latest_backup(
-    config_dir: &Path,
-    id: &str,
-) -> Option<(String, PathBuf)> {
+pub fn latest_backup(config_dir: &Path, id: &str) -> Option<(String, PathBuf)> {
     let mut days: Vec<String> = std::fs::read_dir(backups_dir(config_dir))
         .ok()?
         .filter_map(Result::ok)
@@ -229,7 +223,7 @@ pub(in crate::chat::storage) fn latest_backup(
 }
 
 /// Replaces a damaged conversation with its newest backup; returns the backup's date.
-pub(crate) fn recover(config_dir: &Path, id: &str) -> Result<String, StoreError> {
+pub fn recover(config_dir: &Path, id: &str) -> Result<String, StoreError> {
     let path = conversation_file(config_dir, id)?;
     let (day, backup) = latest_backup(config_dir, id).ok_or_else(|| StoreError::NotFound {
         kind: "backup of conversation",
@@ -276,7 +270,7 @@ pub struct Health {
     pub keep_days: i64,
 }
 
-pub(crate) fn health(config_dir: &Path) -> Health {
+pub fn health(config_dir: &Path) -> Health {
     let mut days: Vec<String> = std::fs::read_dir(backups_dir(config_dir))
         .into_iter()
         .flatten()
@@ -292,8 +286,8 @@ pub(crate) fn health(config_dir: &Path) -> Health {
         .map(|m| m.len())
         .sum();
     Health {
-        conversations: crate::chat::index::list(config_dir).len(),
-        damaged: crate::chat::index::damaged(config_dir)
+        conversations: crate::index::list(config_dir).len(),
+        damaged: crate::index::damaged(config_dir)
             .into_iter()
             .map(|id| Damaged {
                 backup: latest_backup(config_dir, &id).map(|(day, _)| day),
@@ -311,7 +305,7 @@ pub(crate) fn health(config_dir: &Path) -> Health {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chat::store::{delete_conversation, load_conversation, save_conversation};
+    use crate::store::{delete_conversation, load_conversation, save_conversation};
 
     const ID: &str = "11111111-1111-4111-8111-111111111111";
 
@@ -344,8 +338,7 @@ mod tests {
         assert!(list_trash(dir.path()).is_empty() && restore(dir.path(), ID).is_err());
 
         // A damaged file is replaced by the backup and kept in quarantine.
-        crate::chat::at_rest::write(conversation_file(dir.path(), ID).unwrap(), "{ broken")
-            .unwrap();
+        crate::at_rest::write(conversation_file(dir.path(), ID).unwrap(), "{ broken").unwrap();
         let health = health(dir.path());
         assert_eq!(health.damaged.len(), 1);
         assert_eq!(health.damaged[0].backup.as_deref(), Some(today().as_str()));
@@ -366,7 +359,7 @@ mod tests {
         assert!(list_trash(dir.path()).is_empty());
 
         // State files are copied once a day; old backups and trash go.
-        crate::chat::at_rest::write(chat_dir(dir.path()).join("projects.json"), "[]").unwrap();
+        crate::at_rest::write(chat_dir(dir.path()).join("projects.json"), "[]").unwrap();
         std::fs::create_dir_all(backups_dir(dir.path()).join("2020-01-01/conversations")).unwrap();
         daily(dir.path());
         assert!(backups_dir(dir.path())

@@ -7,5 +7,11 @@
 //! (`chat::at_rest`, `support::settings_file`, `support::error`).
 
 pub mod at_rest;
+pub mod backup;
 pub mod error;
+pub mod index;
+pub mod partials;
 pub mod settings_file;
+pub mod store;
+pub mod text;
+pub mod versions;

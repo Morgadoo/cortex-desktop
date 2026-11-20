@@ -9,14 +9,14 @@
 //! runs, and saved edits stay a draft until they are marked in turn. It is kept apart, in
 //! `chat/versions/<kind>/<id>.production.json`, so pruning never takes it.
 
-use crate::support::error::StoreError;
+use crate::error::StoreError;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::chat::store::chat_dir;
+use crate::store::chat_dir;
 
 /// Versions kept per item.
 const KEEP: usize = 30;
@@ -53,7 +53,7 @@ fn dir(config_dir: &Path, kind: &str, id: &str) -> Result<PathBuf, StoreError> {
 }
 
 /// Keeps `previous` as a version of the item, when it differs from what is about to be saved.
-pub(crate) fn keep<T: Serialize>(
+pub fn keep<T: Serialize>(
     config_dir: &Path,
     kind: &str,
     id: &str,
@@ -83,7 +83,7 @@ pub(crate) fn keep<T: Serialize>(
         path: file.clone(),
         source,
     })?;
-    crate::chat::at_rest::write(&file, text).map_err(|e| StoreError::write(&file, e))?;
+    crate::at_rest::write(&file, text).map_err(|e| StoreError::write(&file, e))?;
     let mut files: Vec<_> = std::fs::read_dir(&dir)
         .into_iter()
         .flatten()
@@ -115,7 +115,7 @@ pub fn list(config_dir: &Path, kind: &str, id: &str) -> Result<Vec<Version>, Sto
         .filter_map(|e| {
             let id = e.path().file_stem()?.to_string_lossy().into_owned();
             let value =
-                serde_json::from_str(&crate::chat::at_rest::read_to_string(e.path()).ok()?).ok()?;
+                serde_json::from_str(&crate::at_rest::read_to_string(e.path()).ok()?).ok()?;
             Some(Version { id, value })
         })
         .collect();
@@ -125,7 +125,7 @@ pub fn list(config_dir: &Path, kind: &str, id: &str) -> Result<Vec<Version>, Sto
 
 /// What changed from version `id` of an item to the version after it (or to `current()`, the
 /// item as it is now, when `id` is the newest), as a line diff.
-pub(crate) fn diff(
+pub fn diff(
     config_dir: &Path,
     kind: &str,
     id: &str,
@@ -165,15 +165,14 @@ fn production_path(config_dir: &Path, kind: &str, id: &str) -> Result<PathBuf, S
     Ok(dir.with_file_name(format!("{id}.production.json")))
 }
 
-pub(crate) fn production(config_dir: &Path, kind: &str, id: &str) -> Option<Production> {
-    let text =
-        crate::chat::at_rest::read_to_string(production_path(config_dir, kind, id).ok()?).ok()?;
+pub fn production(config_dir: &Path, kind: &str, id: &str) -> Option<Production> {
+    let text = crate::at_rest::read_to_string(production_path(config_dir, kind, id).ok()?).ok()?;
     serde_json::from_str(&text).ok()
 }
 
 /// Marks `value` as the item's production version, or, with `None`, goes back to running the
 /// current one.
-pub(in crate::chat) fn set_production(
+pub fn set_production(
     config_dir: &Path,
     kind: &str,
     id: &str,
@@ -189,7 +188,7 @@ pub(in crate::chat) fn set_production(
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent).map_err(|e| StoreError::write(parent, e))?;
             }
-            crate::chat::store::write_json(&path, &marked)?;
+            crate::store::write_json(&path, &marked)?;
             Ok(Some(marked))
         }
         None => {
@@ -259,93 +258,5 @@ mod tests {
             keep(dir.path(), "tools", "t", &json!(i), &json!(i + 1)).unwrap();
         }
         assert_eq!(list(dir.path(), "tools", "t").unwrap().len(), KEEP);
-    }
-
-    #[test]
-    fn a_memory_change_can_be_reverted() {
-        let dir = tempfile::tempdir().unwrap();
-        let d = dir.path();
-        let mut memories = crate::chat::memory::load(d);
-        crate::chat::memory::add(&mut memories, "The user prefers metric units.", "chat").unwrap();
-        crate::chat::memory::save(d, &memories).unwrap();
-        let before = crate::chat::memory::load(d);
-        crate::chat::memory::add(&mut memories, "The user lives in Lisbon.", "chat").unwrap();
-        crate::chat::memory::save(d, &memories).unwrap();
-        assert_ne!(crate::chat::memory::load(d), before);
-
-        let newest = list(d, "memories", "all").unwrap().remove(0);
-        crate::chat::history::restore(d, "memories", "all", &newest.id).unwrap();
-        assert_eq!(crate::chat::memory::load(d), before);
-        // The version the revert replaced is kept, so the revert can be undone too.
-        let undo = list(d, "memories", "all").unwrap().remove(0);
-        crate::chat::history::restore(d, "memories", "all", &undo.id).unwrap();
-        assert_eq!(crate::chat::memory::load(d), memories);
-        assert!(crate::chat::history::restore(d, "memories", "all", "nope").is_err());
-    }
-
-    #[test]
-    fn pages_instructions_and_notebooks_can_be_reverted() {
-        let dir = tempfile::tempdir().unwrap();
-        let d = dir.path();
-        let mut first = crate::chat::store::load_instructions(d);
-        first.name = "Ana".into();
-        crate::chat::store::save_instructions(d, &first).unwrap();
-        let mut second = first.clone();
-        second.name = "Rui".into();
-        crate::chat::store::save_instructions(d, &second).unwrap();
-        let v = list(d, "instructions", "user").unwrap().remove(0);
-        crate::chat::history::restore(d, "instructions", "user", &v.id).unwrap();
-        assert_eq!(crate::chat::store::load_instructions(d).name, "Ana");
-
-        crate::chat::agents::save_notebook(d, "a1", "first notes").unwrap();
-        crate::chat::agents::save_notebook(d, "a1", "second notes").unwrap();
-        let v = list(d, "notebooks", "a1").unwrap().remove(0);
-        crate::chat::history::restore(d, "notebooks", "a1", &v.id).unwrap();
-        assert_eq!(crate::chat::agents::notebook(d, "a1"), "first notes");
-
-        crate::chat::knowledge::save_all(d, &[]).unwrap();
-        let page: crate::chat::knowledge::Page = serde_json::from_value(json!({
-            "id": "p1", "title": "T", "body": "B", "author": "user",
-            "updatedAt": "2026-11-01T00:00:00Z"
-        }))
-        .unwrap();
-        crate::chat::knowledge::save_all(d, std::slice::from_ref(&page)).unwrap();
-        let v = list(d, "knowledge", "pages").unwrap().remove(0);
-        crate::chat::history::restore(d, "knowledge", "pages", &v.id).unwrap();
-        assert!(crate::chat::knowledge::load(d).is_empty());
-    }
-}
-
-#[cfg(test)]
-mod diff_tests {
-    use super::*;
-
-    #[test]
-    fn a_version_diffs_against_the_one_after_it() {
-        let dir = tempfile::tempdir().unwrap();
-        let d = dir.path();
-        let one = serde_json::json!({ "text": "first", "n": 1 });
-        let two = serde_json::json!({ "text": "second", "n": 1 });
-        let three = serde_json::json!({ "text": "third", "n": 1 });
-        keep(d, "memories", "all", &one, &two).unwrap();
-        std::thread::sleep(std::time::Duration::from_millis(5));
-        keep(d, "memories", "all", &two, &three).unwrap();
-        let versions = list(d, "memories", "all").unwrap();
-        let oldest = &versions[1].id;
-        let text = crate::chat::history::diff(d, "memories", "all", oldest, None).unwrap();
-        assert!(
-            text.contains("-   \"text\": \"first\"") && text.contains("+   \"text\": \"second\""),
-            "{text}"
-        );
-        let newest = &versions[0].id;
-        assert!(
-            crate::chat::history::diff(d, "memories", "all", newest, Some(&three))
-                .unwrap()
-                .contains("third")
-        );
-        // Without `current`, the newest version is compared with the item as it is now.
-        let to_now = crate::chat::history::diff(d, "memories", "all", newest, None).unwrap();
-        assert!(to_now.contains("-   \"text\": \"second\""), "{to_now}");
-        assert!(crate::chat::history::diff(d, "secrets", "all", newest, None).is_err());
     }
 }
