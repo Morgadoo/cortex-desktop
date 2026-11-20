@@ -1,6 +1,7 @@
 //! Exports and imports: conversations, canvases, agents, the activity log, diagnostics, everything, and archives and other apps' exports brought in.
 
 use super::*;
+use crate::chat::error::ChatError;
 
 /// Saves the activity log (the last `days`, or all) as CSV or JSON where the user chooses.
 #[tauri::command]
@@ -245,12 +246,15 @@ pub async fn chat_import_archive(
     let path = path.into_path().map_err(|e| e.to_string())?;
     let dir = config_dir(&app)?;
     tokio::task::spawn_blocking(move || {
-        let bytes = crate::chat::at_rest::read(&path).map_err(|e| e.to_string())?;
+        let bytes = crate::chat::at_rest::read(&path)
+            .map_err(|e| e.to_string())
+            .map_err(ChatError::Invalid)?;
         crate::chat::libraries::import_archive(&dir, &library_id, &bytes)
     })
     .await
     .map_err(|e| e.to_string())?
     .map(Some)
+    .map_err(String::from)
 }
 
 /// Saves an agent, its notebook and the skills it uses as one file, to back up or share.

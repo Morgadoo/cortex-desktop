@@ -370,7 +370,9 @@ pub async fn chat_check_vector_store(app: AppHandle) -> Result<String, String> {
     if settings.qdrant_url.is_empty() {
         return Err("Enter the Qdrant server's address first.".into());
     }
-    crate::chat::embeddings::qdrant::check(&settings).await
+    crate::chat::embeddings::qdrant::check(&settings)
+        .await
+        .map_err(String::from)
 }
 
 /// How the stored data is doing: counts, size, backups, and files that cannot be read.

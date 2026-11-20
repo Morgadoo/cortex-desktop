@@ -1,15 +1,17 @@
 //! Reading a document's text: Office files, ZIP archives, plain text and the extraction engines.
 
 use super::*;
+use crate::chat::error::ChatError;
 
 /// Office documents (Word, PowerPoint, OpenDocument text and slides) by their zipped XML.
 pub const OFFICE_EXTENSIONS: &[&str] = &["docx", "pptx", "odt", "odp"];
 
 /// The text of an Office document: paragraphs on their own lines, slides in order.
-pub fn office_text(bytes: &[u8], ext: &str) -> Result<String, String> {
+pub fn office_text(bytes: &[u8], ext: &str) -> Result<String, ChatError> {
     use std::io::Read as _;
     let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes))
-        .map_err(|_| "The document could not be opened (not an Office file?).".to_string())?;
+        .map_err(|_| "The document could not be opened (not an Office file?).".to_string())
+        .map_err(ChatError::Invalid)?;
     let mut parts: Vec<String> = match ext {
         "docx" => {
             let mut names = vec!["word/document.xml".to_string()];
@@ -37,15 +39,15 @@ pub fn office_text(bytes: &[u8], ext: &str) -> Result<String, String> {
     };
     parts.retain(|n| zip.by_name(n).is_ok());
     if parts.is_empty() {
-        return Err("The document has no text part.".into());
+        return Err(ChatError::Invalid("The document has no text part.".into()));
     }
     let mut out = Vec::new();
     for (i, name) in parts.iter().enumerate() {
         let mut xml = String::new();
         zip.by_name(name)
-            .map_err(|e| e.to_string())?
+            .map_err(ChatError::internal)?
             .read_to_string(&mut xml)
-            .map_err(|e| e.to_string())?;
+            .map_err(ChatError::internal)?;
         let text = xml_text(&xml);
         if ext == "pptx" {
             out.push(format!("Slide {}:\n{}", i + 1, text.trim()));
@@ -146,10 +148,11 @@ pub(super) fn decode_entities(s: &str) -> String {
 
 /// The text files in a ZIP archive, each under its path, until `budget` characters (OpenBot's ZIP
 /// attachments). Office documents inside are read too; binaries are listed but skipped.
-pub fn zip_text(bytes: &[u8], budget: usize) -> Result<String, String> {
+pub fn zip_text(bytes: &[u8], budget: usize) -> Result<String, ChatError> {
     use std::io::Read as _;
     let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes))
-        .map_err(|_| "That is not a ZIP archive.".to_string())?;
+        .map_err(|_| "That is not a ZIP archive.".to_string())
+        .map_err(ChatError::Invalid)?;
     let mut out = String::new();
     let mut skipped = Vec::new();
     let names: Vec<String> = zip.file_names().map(str::to_string).collect();
@@ -201,7 +204,9 @@ pub fn zip_text(bytes: &[u8], budget: usize) -> Result<String, String> {
         }
     }
     if out.is_empty() {
-        return Err("The archive has no readable text files.".into());
+        return Err(ChatError::Invalid(
+            "The archive has no readable text files.".into(),
+        ));
     }
     if !skipped.is_empty() {
         out.push_str(&format!(
@@ -223,7 +228,7 @@ pub fn move_document(
     from: &str,
     document_id: &str,
     to: &str,
-) -> Result<(), String> {
+) -> Result<(), ChatError> {
     if from == to {
         return Ok(());
     }
@@ -232,19 +237,19 @@ pub fn move_document(
         .documents
         .iter()
         .find(|d| d.id == document_id)
-        .ok_or("That document is gone.")?
+        .ok_or_else(|| ChatError::Invalid("That document is gone.".into()))?
         .clone();
     let text = crate::chat::at_rest::read_to_string(
         docs_dir(config_dir, from)?.join(format!("{}.txt", doc.id)),
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(ChatError::internal)?;
     load(config_dir, to)?;
     add_text(config_dir, to, &doc.name, &text)?;
     remove(config_dir, from, document_id).map(|_| ())
 }
 
 /// The text of a file with its line breaks, by its kind: PDF, Office, HTML or plain text.
-pub fn read_text(path: &Path) -> Result<String, String> {
+pub fn read_text(path: &Path) -> Result<String, ChatError> {
     let ext = path
         .extension()
         .and_then(|e| e.to_str())
@@ -254,20 +259,20 @@ pub fn read_text(path: &Path) -> Result<String, String> {
         "pdf" => {
             let pattern = glob::Pattern::escape(&path.to_string_lossy());
             let first = rig_core::loaders::PdfFileLoader::with_glob(&pattern)
-                .map_err(|e| e.to_string())?
+                .map_err(ChatError::internal)?
                 .read()
                 .into_iter()
                 .next();
             first
-                .ok_or("The PDF could not be read.")?
-                .map_err(|e| format!("The PDF could not be read: {e}"))?
+                .ok_or_else(|| ChatError::Invalid("The PDF could not be read.".into()))?
+                .map_err(|e| ChatError::Invalid(format!("The PDF could not be read: {e}")))?
         }
         e if OFFICE_EXTENSIONS.contains(&e) => office_text(
-            &crate::chat::at_rest::read(path).map_err(|e| e.to_string())?,
+            &crate::chat::at_rest::read(path).map_err(ChatError::internal)?,
             e,
         )?,
         "html" | "htm" => {
-            let raw = crate::chat::at_rest::read_to_string(path).map_err(|e| e.to_string())?;
+            let raw = crate::chat::at_rest::read_to_string(path).map_err(ChatError::internal)?;
             let doc = scraper::Html::parse_document(&raw);
             let body = scraper::Selector::parse("body").expect("selector");
             doc.select(&body)
@@ -276,9 +281,9 @@ pub fn read_text(path: &Path) -> Result<String, String> {
                 .unwrap_or_default()
         }
         _ => {
-            let bytes = crate::chat::at_rest::read(path).map_err(|e| e.to_string())?;
+            let bytes = crate::chat::at_rest::read(path).map_err(ChatError::internal)?;
             if bytes.iter().take(8000).any(|b| *b == 0) {
-                return Err(format!("{} is not a text document (PDF, Word, PowerPoint, OpenDocument, HTML, Markdown, text, code and data files are supported).", path.display()));
+                return Err(ChatError::Invalid(format!("{} is not a text document (PDF, Word, PowerPoint, OpenDocument, HTML, Markdown, text, code and data files are supported).", path.display())));
             }
             String::from_utf8_lossy(&bytes).into_owned()
         }
@@ -287,7 +292,7 @@ pub fn read_text(path: &Path) -> Result<String, String> {
 }
 
 /// The text of a file, by its kind, with whitespace collapsed for indexing.
-pub(in crate::chat::grounding) fn extract(path: &Path) -> Result<String, String> {
+pub(in crate::chat::grounding) fn extract(path: &Path) -> Result<String, ChatError> {
     let ext = path
         .extension()
         .and_then(|e| e.to_str())
@@ -297,13 +302,16 @@ pub(in crate::chat::grounding) fn extract(path: &Path) -> Result<String, String>
     let text: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if text.trim().is_empty() {
         return Err(if ext == "pdf" {
-            format!("{} has no text layer (a scan?). Add its pages as images instead; they are read by your model.", path.display())
+            ChatError::Invalid(format!("{} has no text layer (a scan?). Add its pages as images instead; they are read by your model.", path.display()))
         } else {
-            format!("{} has no readable text.", path.display())
+            ChatError::Invalid(format!("{} has no readable text.", path.display()))
         });
     }
     if text.chars().count() > MAX_DOC_CHARS {
-        return Err(format!("{} is too large to index.", path.display()));
+        return Err(ChatError::Invalid(format!(
+            "{} is too large to index.",
+            path.display()
+        )));
     }
     Ok(text)
 }

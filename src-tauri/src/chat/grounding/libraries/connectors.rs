@@ -1,6 +1,7 @@
 //! Connectors indexed into a library: the documents an MCP server offers, fetched and kept current.
 
 use super::*;
+use crate::chat::error::ChatError;
 
 // Connectors indexed into a library (Onyx's connectors): the documents an MCP server offers as
 // resources (pages of a wiki, files of a drive, tickets) are read into the library and kept in
@@ -25,10 +26,10 @@ pub async fn sync_connectors(
     config_dir: &Path,
     library_id: &str,
     connectors: &[std::sync::Arc<dyn crate::tools::registry::Connector>],
-) -> Result<SyncReport, String> {
+) -> Result<SyncReport, ChatError> {
     let mut library = load(config_dir, library_id)?;
     let docs = docs_dir(config_dir, library_id)?;
-    std::fs::create_dir_all(&docs).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&docs).map_err(ChatError::internal)?;
     let mut report = SyncReport::default();
     // What each connector offers now; `None` for one that did not answer.
     let mut offered: std::collections::HashMap<String, Option<Vec<(String, String)>>> =
@@ -131,7 +132,7 @@ pub async fn sync_connectors(
                 modified: Some(fingerprint),
             };
             crate::chat::at_rest::write(docs.join(format!("{}.txt", doc.id)), &text)
-                .map_err(|e| e.to_string())?;
+                .map_err(ChatError::internal)?;
             library.documents.push(doc);
         }
     }
@@ -146,7 +147,7 @@ pub fn set_connector(
     library_id: &str,
     connector_id: &str,
     on: bool,
-) -> Result<Library, String> {
+) -> Result<Library, ChatError> {
     let mut library = load(config_dir, library_id)?;
     library.connectors.retain(|c| c != connector_id);
     if on {

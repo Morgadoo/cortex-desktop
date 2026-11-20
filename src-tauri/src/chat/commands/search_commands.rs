@@ -85,7 +85,7 @@ pub async fn chat_save_search_settings(
 /// A source read as an article, for the reader in the side panel.
 #[tauri::command]
 pub async fn chat_read_article(url: String) -> Result<crate::chat::reader::Article, String> {
-    crate::chat::reader::read(&url).await
+    crate::chat::reader::read(&url).await.map_err(String::from)
 }
 
 /// A site's icon as a `data:` URL, for sources and citations; `None` when it has none.

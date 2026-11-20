@@ -30,7 +30,7 @@ pub(in crate::chat::turn::engine) async fn rank_by_meaning<F, Fut>(
 ) -> Option<Vec<String>>
 where
     F: FnOnce(Vec<String>) -> Fut,
-    Fut: std::future::Future<Output = Result<Vec<Vec<f32>>, String>>,
+    Fut: std::future::Future<Output = Result<Vec<Vec<f32>>, crate::chat::error::ChatError>>,
 {
     use crate::chat::embeddings;
     use std::collections::HashMap;

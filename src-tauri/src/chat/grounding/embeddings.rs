@@ -23,6 +23,7 @@
 //! Qdrant Cloud, for large libraries. With Qdrant, vectors are still cached here, so changing
 //! stores never embeds again; Qdrant holds a copy of each passage and answers the searches.
 
+use crate::chat::error::ChatError;
 use crate::support::settings_file::SettingsFile;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -81,7 +82,7 @@ pub fn load(config_dir: &Path) -> EmbeddingSettings {
     EMBEDDINGS_FILE.load(config_dir)
 }
 
-pub fn save(config_dir: &Path, settings: &EmbeddingSettings) -> Result<(), String> {
+pub fn save(config_dir: &Path, settings: &EmbeddingSettings) -> Result<(), ChatError> {
     let mut s = settings.clone();
     s.base_url = s.base_url.trim().trim_end_matches('/').to_string();
     s.model = s.model.trim().to_string();
@@ -91,7 +92,9 @@ pub fn save(config_dir: &Path, settings: &EmbeddingSettings) -> Result<(), Strin
     if s.vector_store != "qdrant" {
         s.vector_store = "local".into();
     }
-    write_json(&settings_path(config_dir), &s).map_err(String::from)
+    write_json(&settings_path(config_dir), &s)
+        .map_err(String::from)
+        .map_err(ChatError::Invalid)
 }
 
 /// Whether semantic search is set up enough to try.
@@ -99,10 +102,11 @@ pub fn ready(settings: &EmbeddingSettings) -> bool {
     settings.enabled && !settings.base_url.is_empty() && !settings.model.is_empty()
 }
 
-async fn key() -> Result<String, String> {
+async fn key() -> Result<String, ChatError> {
     Ok(crate::chat::secrets::local()?
         .load(SECRET)
-        .await?
+        .await
+        .map_err(ChatError::Invalid)?
         .unwrap_or_default())
 }
 
@@ -110,7 +114,7 @@ async fn key() -> Result<String, String> {
 pub async fn embed(
     settings: &EmbeddingSettings,
     texts: Vec<String>,
-) -> Result<Vec<Vec<f32>>, String> {
+) -> Result<Vec<Vec<f32>>, ChatError> {
     if settings.base_url == BUILTIN {
         let root = crate::chat::local_models::root()?;
         let model = settings.model.clone();
@@ -118,8 +122,9 @@ pub async fn embed(
             crate::chat::local_models::embed_texts(&root, &model, &texts)
         })
         .await
-        .map_err(|e| e.to_string())?
-        .map_err(String::from);
+        .map_err(ChatError::internal)?
+        .map_err(String::from)
+        .map_err(ChatError::Invalid);
     }
     let config = OpenAIConfig::with_key(&dialects::OPENAI, key().await?)
         .with_base_url(settings.base_url.clone());
@@ -131,14 +136,16 @@ pub async fn embed(
             model.call(chunk.to_vec()),
         )
         .await
-        .map_err(|_| "The embedding server did not answer in time.".to_string())?
-        .map_err(|e| cortex_kernel::context::short_error(&e.to_string()))?;
+        .map_err(|_| "The embedding server did not answer in time.".to_string())
+        .map_err(ChatError::Invalid)?
+        .map_err(|e| cortex_kernel::context::short_error(&e.to_string()))
+        .map_err(ChatError::Invalid)?;
         if response.embeddings.len() != chunk.len() {
-            return Err(format!(
+            return Err(ChatError::Invalid(format!(
                 "The embedding server returned {} vectors for {} passages.",
                 response.embeddings.len(),
                 chunk.len()
-            ));
+            )));
         }
         out.extend(
             response
@@ -184,7 +191,7 @@ fn write_cache(
     document_id: &str,
     model: &str,
     vectors: Vec<Vec<f32>>,
-) -> Result<(), String> {
+) -> Result<(), ChatError> {
     write_json(
         &cache_path(doc_dir, document_id, model),
         &Cached {
@@ -193,6 +200,7 @@ fn write_cache(
         },
     )
     .map_err(String::from)
+    .map_err(ChatError::Invalid)
 }
 
 pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
@@ -247,7 +255,7 @@ pub async fn index(
     config_dir: &Path,
     settings: &EmbeddingSettings,
     only: &[String],
-) -> Result<usize, String> {
+) -> Result<usize, ChatError> {
     let mut done = 0;
     for library in libraries::list(config_dir)
         .into_iter()
@@ -284,7 +292,7 @@ async fn semantic(
     only: &[String],
     query: &str,
     k: usize,
-) -> Result<Vec<Passage>, String> {
+) -> Result<Vec<Passage>, ChatError> {
     index(config_dir, settings, only).await?;
     let question = embed(settings, vec![query.to_string()])
         .await?
@@ -387,10 +395,11 @@ pub async fn search(
     }
 }
 
-async fn rerank_key() -> Result<String, String> {
+async fn rerank_key() -> Result<String, ChatError> {
     Ok(crate::chat::secrets::local()?
         .load(RERANK_SECRET)
-        .await?
+        .await
+        .map_err(ChatError::Invalid)?
         .unwrap_or_default())
 }
 
@@ -401,8 +410,9 @@ pub(in crate::chat::grounding) async fn rerank(
     query: &str,
     candidates: &[Passage],
     k: usize,
-) -> Result<Vec<(usize, f64)>, String> {
-    let client = crate::support::http::client(std::time::Duration::from_secs(30))?;
+) -> Result<Vec<(usize, f64)>, ChatError> {
+    let client = crate::support::http::client(std::time::Duration::from_secs(30))
+        .map_err(ChatError::Invalid)?;
     let documents: Vec<&str> = candidates.iter().map(|p| p.text.as_str()).collect();
     let url = format!("{}/rerank", settings.rerank_url.trim_end_matches('/'));
     let mut request = client.post(&url).json(&serde_json::json!({
@@ -416,14 +426,13 @@ pub(in crate::chat::grounding) async fn rerank(
     if !key.is_empty() {
         request = request.bearer_auth(key);
     }
-    let response = request.send().await.map_err(|e| e.to_string())?;
+    let response = request.send().await.map_err(ChatError::internal)?;
     let status = response.status();
-    let body: serde_json::Value = response
-        .json()
-        .await
-        .map_err(|e| format!("the reranker answered {status} without JSON: {e}"))?;
+    let body: serde_json::Value = response.json().await.map_err(|e| {
+        ChatError::Invalid(format!("the reranker answered {status} without JSON: {e}"))
+    })?;
     if !status.is_success() {
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "the reranker answered {status}: {}",
             body.get("error")
                 .or_else(|| body.get("message"))
@@ -431,20 +440,24 @@ pub(in crate::chat::grounding) async fn rerank(
                 .chars()
                 .take(200)
                 .collect::<String>()
-        ));
+        )));
     }
     parse_rerank(&body, candidates.len(), k)
 }
 
 /// Reads `{"results": [{"index", "relevance_score"}]}` (Cohere, Jina, llama.cpp, vLLM) or
 /// `[{"index", "score"}]` (TEI).
-fn parse_rerank(body: &serde_json::Value, n: usize, k: usize) -> Result<Vec<(usize, f64)>, String> {
+fn parse_rerank(
+    body: &serde_json::Value,
+    n: usize,
+    k: usize,
+) -> Result<Vec<(usize, f64)>, ChatError> {
     let items = body
         .get("results")
         .or_else(|| body.get("data"))
         .unwrap_or(body)
         .as_array()
-        .ok_or("the reranker's answer has no results")?;
+        .ok_or_else(|| ChatError::Invalid("the reranker's answer has no results".into()))?;
     let mut out: Vec<(usize, f64)> = items
         .iter()
         .filter_map(|r| {
@@ -457,7 +470,7 @@ fn parse_rerank(body: &serde_json::Value, n: usize, k: usize) -> Result<Vec<(usi
         })
         .collect();
     if out.is_empty() {
-        return Err("the reranker returned no scores".into());
+        return Err(ChatError::Invalid("the reranker returned no scores".into()));
     }
     out.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     out.dedup_by_key(|(i, _)| *i);

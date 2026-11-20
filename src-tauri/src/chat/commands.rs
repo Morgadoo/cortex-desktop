@@ -297,6 +297,7 @@ pub async fn chat_add_library_folder(
         .await
         .map_err(|e| e.to_string())?
         .map(Some)
+        .map_err(String::from)
 }
 
 #[derive(serde::Serialize)]

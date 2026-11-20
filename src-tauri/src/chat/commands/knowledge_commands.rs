@@ -111,7 +111,7 @@ pub fn chat_delete_knowledge_page(
     app: AppHandle,
     id: String,
 ) -> Result<Vec<crate::chat::knowledge::Page>, String> {
-    crate::chat::knowledge::delete(&config_dir(&app)?, &id)
+    crate::chat::knowledge::delete(&config_dir(&app)?, &id).map_err(String::from)
 }
 
 /// The skill catalogues' skills (Anthropic's, and any added).

@@ -5,6 +5,7 @@
 //! instance (self-hosted, private), Brave Search or Tavily (API keys in the keychain). When the
 //! chosen engine fails, the keyless search answers instead.
 
+use crate::chat::error::ChatError;
 use std::path::Path;
 
 use crate::support::settings_file::SettingsFile;
@@ -105,12 +106,12 @@ pub(in crate::chat::grounding) fn parse_ddg(html: &str) -> Vec<Hit> {
         .collect()
 }
 
-fn client() -> Result<reqwest::Client, String> {
+fn client() -> Result<reqwest::Client, ChatError> {
     reqwest::Client::builder()
         .user_agent(USER_AGENT)
         .timeout(Duration::from_secs(15))
         .build()
-        .map_err(|e| e.to_string())
+        .map_err(ChatError::internal)
 }
 
 pub const SECRET: &str = "web-search";
@@ -146,17 +147,23 @@ pub fn load_settings(config_dir: &Path) -> SearchSettings {
 pub fn save_settings(
     config_dir: &std::path::Path,
     settings: &SearchSettings,
-) -> Result<(), String> {
+) -> Result<(), ChatError> {
     let mut s = settings.clone();
     if !ENGINES.contains(&s.engine.as_str()) {
         s.engine = "auto".into();
     }
     s.base_url = s.base_url.trim().trim_end_matches('/').to_string();
-    SEARCH_FILE.save(config_dir, &s).map_err(String::from)
+    SEARCH_FILE
+        .save(config_dir, &s)
+        .map_err(String::from)
+        .map_err(ChatError::Invalid)
 }
 
-async fn key() -> Result<Option<String>, String> {
-    crate::chat::secrets::local()?.load(SECRET).await
+async fn key() -> Result<Option<String>, ChatError> {
+    crate::chat::secrets::local()?
+        .load(SECRET)
+        .await
+        .map_err(ChatError::Invalid)
 }
 
 /// SearXNG's JSON results (`format=json` must be enabled on the instance).
@@ -340,7 +347,7 @@ pub async fn search_sites(
     max: usize,
     recency: Option<Recency>,
     sites: &[String],
-) -> Result<Vec<Hit>, String> {
+) -> Result<Vec<Hit>, ChatError> {
     if sites.is_empty() {
         return search_with(config_dir, query, max, recency).await;
     }
@@ -374,7 +381,7 @@ pub(in crate::chat::grounding) async fn search_with(
     query: &str,
     max: usize,
     recency: Option<Recency>,
-) -> Result<Vec<Hit>, String> {
+) -> Result<Vec<Hit>, ChatError> {
     let settings = load_settings(config_dir);
     if settings.engine == "auto" {
         return search(query, max, recency).await;
@@ -397,21 +404,21 @@ async fn engine_search(
     query: &str,
     max: usize,
     recency: Option<Recency>,
-) -> Result<Vec<Hit>, String> {
+) -> Result<Vec<Hit>, ChatError> {
     let client = client()?;
     let json = |r: reqwest::Response| async move {
         let status = r.status();
         if !status.is_success() {
-            return Err(format!("HTTP {status}"));
+            return Err(ChatError::Invalid(format!("HTTP {status}")));
         }
         r.json::<serde_json::Value>()
             .await
-            .map_err(|e| e.to_string())
+            .map_err(ChatError::internal)
     };
     match settings.engine.as_str() {
         "searxng" => {
             if settings.base_url.is_empty() {
-                return Err("no SearXNG address".into());
+                return Err(ChatError::Invalid("no SearXNG address".into()));
             }
             let mut params = vec![("q", query), ("format", "json")];
             if let Some(r) = recency {
@@ -422,11 +429,13 @@ async fn engine_search(
                 .query(&params)
                 .send()
                 .await
-                .map_err(|e| e.to_string())?;
+                .map_err(ChatError::internal)?;
             Ok(parse_searxng(&json(r).await?))
         }
         "brave" => {
-            let key = key().await?.ok_or("no Brave Search key")?;
+            let key = key()
+                .await?
+                .ok_or_else(|| ChatError::Invalid("no Brave Search key".into()))?;
             let r = client
                 .get("https://api.search.brave.com/res/v1/web/search")
                 .query(&[("q", query), ("count", &max.min(20).to_string())])
@@ -439,11 +448,11 @@ async fn engine_search(
                 .header("Accept", "application/json")
                 .send()
                 .await
-                .map_err(|e| e.to_string())?;
+                .map_err(ChatError::internal)?;
             Ok(parse_brave(&json(r).await?))
         }
         "tavily" => tavily(query, max, recency, &[]).await,
-        other => Err(format!("unknown engine {other}")),
+        other => Err(ChatError::Invalid(format!("unknown engine {other}"))),
     }
 }
 
@@ -453,8 +462,10 @@ async fn tavily(
     max: usize,
     recency: Option<Recency>,
     sites: &[String],
-) -> Result<Vec<Hit>, String> {
-    let key = key().await?.ok_or("no Tavily key")?;
+) -> Result<Vec<Hit>, ChatError> {
+    let key = key()
+        .await?
+        .ok_or_else(|| ChatError::Invalid("no Tavily key".into()))?;
     let mut body = serde_json::json!({ "query": query, "max_results": max.min(20) });
     if let Some(r) = recency {
         body["time_range"] = r.word().into();
@@ -468,15 +479,15 @@ async fn tavily(
         .json(&body)
         .send()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(ChatError::internal)?;
     let status = r.status();
     if !status.is_success() {
-        return Err(format!("HTTP {status}"));
+        return Err(ChatError::Invalid(format!("HTTP {status}")));
     }
     Ok(parse_tavily(
         &r.json::<serde_json::Value>()
             .await
-            .map_err(|e| e.to_string())?,
+            .map_err(ChatError::internal)?,
     ))
 }
 
@@ -485,7 +496,7 @@ pub(in crate::chat::grounding) async fn search(
     query: &str,
     max: usize,
     recency: Option<Recency>,
-) -> Result<Vec<Hit>, String> {
+) -> Result<Vec<Hit>, ChatError> {
     let client = client()?;
     let mut errors = Vec::new();
 
@@ -530,7 +541,10 @@ pub(in crate::chat::grounding) async fn search(
         Err(e) => errors.push(format!("DuckDuckGo: {e}")),
     }
 
-    Err(format!("Web search failed: {}", errors.join("; ")))
+    Err(ChatError::Invalid(format!(
+        "Web search failed: {}",
+        errors.join("; ")
+    )))
 }
 
 fn dedup(hits: Vec<Hit>, max: usize) -> Vec<Hit> {

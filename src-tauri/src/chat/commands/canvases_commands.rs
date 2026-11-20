@@ -416,5 +416,7 @@ pub async fn chat_link_preview(
     app: AppHandle,
     url: String,
 ) -> Result<crate::chat::preview::Preview, String> {
-    crate::chat::preview::get(&config_dir(&app)?, &url).await
+    crate::chat::preview::get(&config_dir(&app)?, &url)
+        .await
+        .map_err(String::from)
 }

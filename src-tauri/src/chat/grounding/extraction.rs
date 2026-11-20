@@ -10,6 +10,7 @@
 //! Used for documents added to libraries and files attached in chat; when the server fails, the
 //! built-in reader takes over.
 
+use crate::chat::error::ChatError;
 use crate::support::settings_file::SettingsFile;
 use std::path::Path;
 
@@ -35,17 +36,22 @@ pub fn load(config_dir: &Path) -> Extraction {
     EXTRACTION_FILE.load(config_dir)
 }
 
-pub fn save(config_dir: &Path, e: &Extraction) -> Result<(), String> {
+pub fn save(config_dir: &Path, e: &Extraction) -> Result<(), ChatError> {
     if !matches!(e.engine.as_str(), "builtin" | "tika" | "docling" | "") {
-        return Err("Unknown extraction engine.".into());
+        return Err(ChatError::Invalid("Unknown extraction engine.".into()));
     }
     if e.engine != "builtin"
         && !e.engine.is_empty()
         && !(e.url.starts_with("http://") || e.url.starts_with("https://"))
     {
-        return Err("Give the server's address, like http://localhost:9998.".into());
+        return Err(ChatError::Invalid(
+            "Give the server's address, like http://localhost:9998.".into(),
+        ));
     }
-    EXTRACTION_FILE.save(config_dir, e).map_err(String::from)
+    EXTRACTION_FILE
+        .save(config_dir, e)
+        .map_err(String::from)
+        .map_err(ChatError::Invalid)
 }
 
 /// Text from Docling's answer: Markdown, else plain text.
@@ -61,9 +67,10 @@ pub(in crate::chat::grounding) fn docling_text(body: &serde_json::Value) -> Opti
 }
 
 /// Converts a file with the configured server.
-pub async fn convert(e: &Extraction, name: &str, bytes: Vec<u8>) -> Result<String, String> {
+pub async fn convert(e: &Extraction, name: &str, bytes: Vec<u8>) -> Result<String, ChatError> {
     let base = e.url.trim().trim_end_matches('/');
-    let client = crate::support::http::client(std::time::Duration::from_secs(300))?;
+    let client = crate::support::http::client(std::time::Duration::from_secs(300))
+        .map_err(ChatError::Invalid)?;
     match e.engine.as_str() {
         "tika" => {
             let r = client
@@ -76,13 +83,15 @@ pub async fn convert(e: &Extraction, name: &str, bytes: Vec<u8>) -> Result<Strin
                 .body(bytes)
                 .send()
                 .await
-                .map_err(|err| format!("Tika did not answer at {base}: {err}"))?;
+                .map_err(|err| {
+                    ChatError::Invalid(format!("Tika did not answer at {base}: {err}"))
+                })?;
             if !r.status().is_success() {
-                return Err(format!("Tika answered {}.", r.status()));
+                return Err(ChatError::Invalid(format!("Tika answered {}.", r.status())));
             }
-            let text = r.text().await.map_err(|e| e.to_string())?;
+            let text = r.text().await.map_err(ChatError::internal)?;
             if text.trim().is_empty() {
-                Err("Tika found no text.".into())
+                Err(ChatError::Invalid("Tika found no text.".into()))
             } else {
                 Ok(text)
             }
@@ -97,14 +106,19 @@ pub async fn convert(e: &Extraction, name: &str, bytes: Vec<u8>) -> Result<Strin
                 .multipart(form)
                 .send()
                 .await
-                .map_err(|err| format!("Docling did not answer at {base}: {err}"))?;
+                .map_err(|err| {
+                    ChatError::Invalid(format!("Docling did not answer at {base}: {err}"))
+                })?;
             if !r.status().is_success() {
-                return Err(format!("Docling answered {}.", r.status()));
+                return Err(ChatError::Invalid(format!(
+                    "Docling answered {}.",
+                    r.status()
+                )));
             }
-            let body: serde_json::Value = r.json().await.map_err(|e| e.to_string())?;
-            docling_text(&body).ok_or_else(|| "Docling found no text.".into())
+            let body: serde_json::Value = r.json().await.map_err(ChatError::internal)?;
+            docling_text(&body).ok_or_else(|| ChatError::Invalid("Docling found no text.".into()))
         }
-        _ => Err("No extraction server is set.".into()),
+        _ => Err(ChatError::Invalid("No extraction server is set.".into())),
     }
 }
 
@@ -176,6 +190,7 @@ mod tests {
         assert!(convert(&gone, "x.pdf", pdf("x"))
             .await
             .unwrap_err()
+            .to_string()
             .starts_with("Tika did not answer"));
     }
 

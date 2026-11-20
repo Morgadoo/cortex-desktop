@@ -73,12 +73,12 @@ pub fn chat_create_library(
     name: String,
     description: String,
 ) -> Result<crate::chat::libraries::Library, String> {
-    crate::chat::libraries::create(&config_dir(&app)?, &name, &description)
+    crate::chat::libraries::create(&config_dir(&app)?, &name, &description).map_err(String::from)
 }
 
 #[tauri::command]
 pub fn chat_delete_library(app: AppHandle, id: String) -> Result<(), String> {
-    crate::chat::libraries::delete(&config_dir(&app)?, &id)
+    crate::chat::libraries::delete(&config_dir(&app)?, &id).map_err(String::from)
 }
 
 /// Asks for files and adds each to the library, reporting the ones that could not be read.
@@ -100,7 +100,7 @@ pub async fn chat_add_documents(app: AppHandle, id: String) -> Result<Option<Add
         return Ok(None);
     };
     let dir = config_dir(&app)?;
-    let mut errors = Vec::new();
+    let mut errors: Vec<String> = Vec::new();
     for path in paths {
         let Ok(path) = path.into_path() else { continue };
         // Photos and scans of documents: the default model reads their text.
@@ -111,7 +111,7 @@ pub async fn chat_add_documents(app: AppHandle, id: String) -> Result<Option<Add
             match ocr(&dir, &path, media_type).await {
                 Ok(text) => {
                     if let Err(e) = crate::chat::libraries::add_text(&dir, &id, &name, &text) {
-                        errors.push(e);
+                        errors.push(e.to_string());
                     }
                 }
                 Err(e) => errors.push(format!("{name}: {e}")),
@@ -128,7 +128,7 @@ pub async fn chat_add_documents(app: AppHandle, id: String) -> Result<Option<Add
                 match crate::chat::extraction::convert(&engine, &name, bytes).await {
                     Ok(text) => {
                         if let Err(e) = crate::chat::libraries::add_text(&dir, &id, &name, &text) {
-                            errors.push(e);
+                            errors.push(e.to_string());
                         }
                         continue;
                     }
@@ -144,7 +144,7 @@ pub async fn chat_add_documents(app: AppHandle, id: String) -> Result<Option<Add
         .await
         .map_err(|e| e.to_string())?
         {
-            errors.push(e);
+            errors.push(e.to_string());
         }
     }
     Ok(Some(AddResult {
@@ -163,6 +163,7 @@ pub async fn chat_remove_library_folder(
     tokio::task::spawn_blocking(move || crate::chat::libraries::remove_folder(&dir, &id, &folder))
         .await
         .map_err(|e| e.to_string())?
+        .map_err(String::from)
 }
 
 #[tauri::command]
@@ -257,6 +258,7 @@ pub fn chat_remove_document(
     document_id: String,
 ) -> Result<crate::chat::libraries::Library, String> {
     crate::chat::libraries::remove(&config_dir(&app)?, &library_id, &document_id)
+        .map_err(String::from)
 }
 
 /// Moves a document to another library.
@@ -268,6 +270,7 @@ pub fn chat_move_document(
     to: String,
 ) -> Result<(), String> {
     crate::chat::libraries::move_document(&config_dir(&app)?, &library_id, &document_id, &to)
+        .map_err(String::from)
 }
 
 /// Saves a web page's text into a library.
@@ -277,7 +280,9 @@ pub async fn chat_add_web_page(
     library_id: String,
     url: String,
 ) -> Result<crate::chat::libraries::Library, String> {
-    crate::chat::libraries::add_web_page(&config_dir(&app)?, &library_id, &url).await
+    crate::chat::libraries::add_web_page(&config_dir(&app)?, &library_id, &url)
+        .await
+        .map_err(String::from)
 }
 
 /// The image names of an installed emoji pack (code points joined by hyphens).
@@ -342,6 +347,7 @@ pub fn chat_document_text(
     document_id: String,
 ) -> Result<String, String> {
     crate::chat::libraries::document_text(&config_dir(&app)?, &library_id, &document_id, 200_000)
+        .map_err(String::from)
 }
 
 #[tauri::command]
@@ -407,7 +413,9 @@ pub async fn chat_index_libraries(app: AppHandle) -> Result<usize, String> {
     if !crate::chat::embeddings::ready(&settings) {
         return Err("Turn on semantic search and choose its model first.".into());
     }
-    crate::chat::embeddings::index(&dir, &settings, &[]).await
+    crate::chat::embeddings::index(&dir, &settings, &[])
+        .await
+        .map_err(String::from)
 }
 
 /// The project's file library, created on first use.

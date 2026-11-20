@@ -3,6 +3,7 @@
 //! iCloud, Thunderbird), and `.vcf` contact files. The assistant reads them with
 //! `calendar_events` and `find_contact`; nothing is written back.
 
+use crate::chat::error::ChatError;
 use crate::support::settings_file::SettingsFile;
 use std::path::Path;
 
@@ -30,14 +31,15 @@ pub fn load(config_dir: &Path) -> Settings {
     CALENDARS_FILE.load(config_dir)
 }
 
-pub fn save(config_dir: &Path, settings: &Settings) -> Result<(), String> {
+pub fn save(config_dir: &Path, settings: &Settings) -> Result<(), ChatError> {
     CALENDARS_FILE
         .save(config_dir, settings)
         .map_err(String::from)
+        .map_err(ChatError::Invalid)
 }
 
 /// The text of a source: fetched for a link, read for a file.
-pub async fn fetch(location: &str) -> Result<String, String> {
+pub async fn fetch(location: &str) -> Result<String, ChatError> {
     let location = location.trim();
     if let Some(rest) = location.strip_prefix("webcal://") {
         return fetch_url(&format!("https://{rest}")).await;
@@ -46,16 +48,21 @@ pub async fn fetch(location: &str) -> Result<String, String> {
         return fetch_url(location).await;
     }
     let path = location.strip_prefix("file://").unwrap_or(location);
-    crate::chat::at_rest::read_to_string(path).map_err(|e| format!("{path}: {e}"))
+    crate::chat::at_rest::read_to_string(path)
+        .map_err(|e| ChatError::Invalid(format!("{path}: {e}")))
 }
 
-async fn fetch_url(url: &str) -> Result<String, String> {
-    let client = crate::support::http::client(std::time::Duration::from_secs(30))?;
-    let response = client.get(url).send().await.map_err(|e| e.to_string())?;
+async fn fetch_url(url: &str) -> Result<String, ChatError> {
+    let client = crate::support::http::client(std::time::Duration::from_secs(30))
+        .map_err(ChatError::Invalid)?;
+    let response = client.get(url).send().await.map_err(ChatError::internal)?;
     if !response.status().is_success() {
-        return Err(format!("the calendar link answered {}", response.status()));
+        return Err(ChatError::Invalid(format!(
+            "the calendar link answered {}",
+            response.status()
+        )));
     }
-    response.text().await.map_err(|e| e.to_string())
+    response.text().await.map_err(ChatError::internal)
 }
 
 /// Lines with folded continuations joined (RFC 5545 §3.1), as `NAME;PARAMS` and value.

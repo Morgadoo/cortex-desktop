@@ -4,6 +4,7 @@
 //! is on, so recall needs no tool; the model adds and removes entries with `remember` and `forget`,
 //! and the user edits them on the Knowledge page.
 
+use crate::chat::error::ChatError;
 use crate::support::settings_file::SettingsFile;
 use std::path::Path;
 
@@ -102,16 +103,17 @@ pub fn load(config_dir: &Path) -> Memories {
     MEMORIES_FILE.load(config_dir)
 }
 
-pub fn save(config_dir: &Path, memories: &Memories) -> Result<(), String> {
+pub fn save(config_dir: &Path, memories: &Memories) -> Result<(), ChatError> {
     // The memories as they were stay restorable.
     crate::chat::versions::keep(config_dir, "memories", "all", &load(config_dir), memories)?;
     MEMORIES_FILE
         .save(config_dir, memories)
         .map_err(String::from)
+        .map_err(ChatError::Invalid)
 }
 
 /// Adds a memory, or returns the existing one when the same fact is already known.
-pub fn add(memories: &mut Memories, text: &str, source: &str) -> Result<Memory, String> {
+pub fn add(memories: &mut Memories, text: &str, source: &str) -> Result<Memory, ChatError> {
     add_filed(memories, text, source, Filing::default())
 }
 
@@ -121,15 +123,15 @@ pub fn add_filed(
     text: &str,
     source: &str,
     filing: Filing,
-) -> Result<Memory, String> {
+) -> Result<Memory, ChatError> {
     let text = text.trim();
     if text.is_empty() {
-        return Err("A memory needs some text.".into());
+        return Err(ChatError::Invalid("A memory needs some text.".into()));
     }
     if text.chars().count() > MAX_LENGTH {
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "A memory is at most {MAX_LENGTH} characters; save the key fact only."
-        ));
+        )));
     }
     if let Some(existing) = memories
         .items
@@ -347,7 +349,7 @@ fn render(memories: &Memories) -> Option<String> {
 /// The kernel's `consolidate(scope)` for facts: duplicates within a scope (`None` for all) are
 /// merged into the one kept, which keeps the highest importance. Returns how many were merged.
 /// The memories as they were stay restorable (`save` keeps a version).
-pub fn consolidate(config_dir: &std::path::Path, scope: Option<&str>) -> Result<usize, String> {
+pub fn consolidate(config_dir: &std::path::Path, scope: Option<&str>) -> Result<usize, ChatError> {
     let mut memories = load(config_dir);
     let facts: Vec<cortex_kernel::lifecycle::Fact> = memories
         .items

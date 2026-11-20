@@ -1,6 +1,7 @@
 //! Mirrored folders: walking them and keeping the library in step with what changed.
 
 use super::*;
+use crate::chat::error::ChatError;
 
 /// File types a mirrored folder indexes.
 pub(super) const SYNC_EXTENSIONS: &[&str] = &[
@@ -65,10 +66,10 @@ pub(super) fn modified_secs(path: &Path) -> Option<i64> {
 
 /// Brings a library's mirrored documents in line with its folders: new files are added, changed
 /// ones re-read, and files that are gone (or folders no longer mirrored) leave the library.
-pub fn sync(config_dir: &Path, library_id: &str) -> Result<SyncReport, String> {
+pub fn sync(config_dir: &Path, library_id: &str) -> Result<SyncReport, ChatError> {
     let mut library = load(config_dir, library_id)?;
     let docs = docs_dir(config_dir, library_id)?;
-    std::fs::create_dir_all(&docs).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&docs).map_err(ChatError::internal)?;
     let mut report = SyncReport::default();
     let mut files: Vec<PathBuf> = Vec::new();
     for folder in &library.folders {
@@ -130,13 +131,15 @@ pub fn sync(config_dir: &Path, library_id: &str) -> Result<SyncReport, String> {
                     source: Some(source),
                 };
                 crate::chat::at_rest::write(docs.join(format!("{}.txt", doc.id)), text)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(ChatError::internal)?;
                 library.documents.push(doc);
                 report.added += 1;
             }
             // Files without text (scans, empty files) are skipped quietly; others say why.
-            Err(e) if e.contains("no readable text") || e.contains("no text layer") => {}
-            Err(e) => report.errors.push(e),
+            Err(e)
+                if e.to_string().contains("no readable text")
+                    || e.to_string().contains("no text layer") => {}
+            Err(e) => report.errors.push(e.to_string()),
         }
     }
     // A document re-read after a change was counted as added too.

@@ -5,6 +5,7 @@
 //! The article is the page's `<article>` or `<main>` when it has one, else the block holding the
 //! most paragraph text. Nothing of the page runs; the text is shown as text.
 
+use crate::chat::error::ChatError;
 use scraper::{ElementRef, Html, Selector};
 use serde::Serialize;
 
@@ -253,32 +254,46 @@ pub(in crate::chat::grounding) fn extract(html: &str, url: &str) -> Article {
 }
 
 /// Fetches `url` and reads its article.
-pub async fn read(url: &str) -> Result<Article, String> {
-    let parsed = url::Url::parse(url).map_err(|_| "That is not a web address.".to_string())?;
+pub async fn read(url: &str) -> Result<Article, ChatError> {
+    let parsed = url::Url::parse(url)
+        .map_err(|_| "That is not a web address.".to_string())
+        .map_err(ChatError::Invalid)?;
     if !matches!(parsed.scheme(), "http" | "https") {
-        return Err("Only web pages can be read here.".into());
-    }
-    let client = crate::support::http::browser_client(std::time::Duration::from_secs(20))?;
-    let response = client.get(parsed.clone()).send().await.map_err(|e| {
-        format!(
-            "The page could not be loaded: {}",
-            cortex_kernel::context::short_error(&e.to_string())
-        )
-    })?;
-    if !response.status().is_success() {
-        return Err(format!(
-            "The site would not send the page here (HTTP {}); open it in the browser.",
-            response.status().as_u16()
+        return Err(ChatError::Invalid(
+            "Only web pages can be read here.".into(),
         ));
     }
+    let client = crate::support::http::browser_client(std::time::Duration::from_secs(20))
+        .map_err(ChatError::Invalid)?;
+    let response = client
+        .get(parsed.clone())
+        .send()
+        .await
+        .map_err(|e| {
+            format!(
+                "The page could not be loaded: {}",
+                cortex_kernel::context::short_error(&e.to_string())
+            )
+        })
+        .map_err(ChatError::Invalid)?;
+    if !response.status().is_success() {
+        return Err(ChatError::Invalid(format!(
+            "The site would not send the page here (HTTP {}); open it in the browser.",
+            response.status().as_u16()
+        )));
+    }
     let final_url = response.url().to_string();
-    let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+    let bytes = response.bytes().await.map_err(ChatError::internal)?;
     if bytes.len() > MAX_BYTES {
-        return Err("The page is too large to read here; open it in the browser.".into());
+        return Err(ChatError::Invalid(
+            "The page is too large to read here; open it in the browser.".into(),
+        ));
     }
     let article = extract(&String::from_utf8_lossy(&bytes), &final_url);
     if article.words < 30 {
-        return Err("No article was found on this page; open it in the browser.".into());
+        return Err(ChatError::Invalid(
+            "No article was found on this page; open it in the browser.".into(),
+        ));
     }
     Ok(article)
 }

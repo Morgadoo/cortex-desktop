@@ -5,6 +5,7 @@
 //! fetched by the app and handed to the page as a `data:` URL, since the page may only load
 //! images from itself. Kept in `chat/previews/` so a source is fetched once.
 
+use crate::chat::error::ChatError;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -157,10 +158,12 @@ async fn fetch_image(client: &reqwest::Client, url: &str) -> Option<String> {
 }
 
 /// The preview of a web page, from the cache or the page.
-pub async fn get(config_dir: &Path, url: &str) -> Result<Preview, String> {
-    let parsed = url::Url::parse(url).map_err(|_| "Not a web address.".to_string())?;
+pub async fn get(config_dir: &Path, url: &str) -> Result<Preview, ChatError> {
+    let parsed = url::Url::parse(url)
+        .map_err(|_| "Not a web address.".to_string())
+        .map_err(ChatError::Invalid)?;
     if parsed.scheme() != "https" && parsed.scheme() != "http" {
-        return Err("Not a web address.".into());
+        return Err(ChatError::Invalid("Not a web address.".into()));
     }
     let host = parsed
         .host_str()
@@ -168,7 +171,7 @@ pub async fn get(config_dir: &Path, url: &str) -> Result<Preview, String> {
         .trim_start_matches("www.")
         .to_string();
     if !crate::chat::favicon::valid_host(&host) {
-        return Err("Not a public web address.".into());
+        return Err(ChatError::Invalid("Not a public web address.".into()));
     }
     let path = cache_path(config_dir, url);
     if let Some(cached) = crate::chat::at_rest::read_to_string(&path)
@@ -177,14 +180,15 @@ pub async fn get(config_dir: &Path, url: &str) -> Result<Preview, String> {
     {
         return Ok(cached);
     }
-    let client = crate::support::http::browser_client(Duration::from_secs(8))?;
+    let client =
+        crate::support::http::browser_client(Duration::from_secs(8)).map_err(ChatError::Invalid)?;
     let response = client
         .get(parsed.clone())
         .send()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(ChatError::internal)?;
     let page_url = response.url().clone();
-    let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+    let bytes = response.bytes().await.map_err(ChatError::internal)?;
     let html = String::from_utf8_lossy(&bytes[..bytes.len().min(MAX_PAGE_BYTES)]).into_owned();
     let (title, description, image, published) = parse(&html);
     let image = match image.and_then(|i| page_url.join(&i).ok()) {

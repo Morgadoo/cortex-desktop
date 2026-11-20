@@ -6,6 +6,7 @@
 //! listed by title so the model can read or search them. The model writes and updates pages with
 //! tools, the user edits them on the Knowledge page, and answers cite the pages they used.
 
+use crate::chat::error::ChatError;
 use crate::support::settings_file::SettingsFile;
 use std::path::Path;
 
@@ -43,7 +44,7 @@ pub fn load(config_dir: &Path) -> Vec<Page> {
     KNOWLEDGE_FILE.load(config_dir)
 }
 
-pub(crate) fn save_all(config_dir: &Path, pages: &[Page]) -> Result<(), String> {
+pub(crate) fn save_all(config_dir: &Path, pages: &[Page]) -> Result<(), ChatError> {
     // The pages as they were stay restorable.
     crate::chat::versions::keep(
         config_dir,
@@ -52,7 +53,10 @@ pub(crate) fn save_all(config_dir: &Path, pages: &[Page]) -> Result<(), String> 
         &load(config_dir),
         &pages.to_vec(),
     )?;
-    KNOWLEDGE_FILE.save(config_dir, pages).map_err(String::from)
+    KNOWLEDGE_FILE
+        .save(config_dir, pages)
+        .map_err(String::from)
+        .map_err(ChatError::Invalid)
 }
 
 /// Finds a page by id, id prefix (8+ characters) or exact title (any case).
@@ -77,10 +81,10 @@ pub fn write(
     body: &str,
     author: &str,
     sources: &[String],
-) -> Result<Page, String> {
+) -> Result<Page, ChatError> {
     let title: String = crate::support::text::clip(title.trim(), 120);
     if title.is_empty() {
-        return Err("A knowledge page needs a title.".into());
+        return Err(ChatError::Invalid("A knowledge page needs a title.".into()));
     }
     let body: String = crate::support::text::clip(body.trim(), MAX_BODY);
     let mut pages = load(config_dir);
@@ -102,9 +106,9 @@ pub fn write(
         }
         None => {
             if pages.len() >= MAX_PAGES {
-                return Err(format!(
+                return Err(ChatError::Invalid(format!(
                     "The knowledge base is full ({MAX_PAGES} pages). Remove some first."
-                ));
+                )));
             }
             let page = Page {
                 id: uuid::Uuid::new_v4().to_string(),
@@ -126,7 +130,7 @@ pub fn write(
     Ok(page)
 }
 
-pub fn delete(config_dir: &Path, id: &str) -> Result<Vec<Page>, String> {
+pub fn delete(config_dir: &Path, id: &str) -> Result<Vec<Page>, ChatError> {
     let mut pages = load(config_dir);
     pages.retain(|p| p.id != id);
     save_all(config_dir, &pages)?;

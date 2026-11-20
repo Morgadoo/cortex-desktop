@@ -6,6 +6,7 @@
 //! provider; with an embedding model set up, `embeddings` adds semantic search and fuses both; the `search_library` tool hands the model the best passages with their document
 //! names, which it cites.
 
+use crate::chat::error::ChatError;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -68,9 +69,9 @@ fn root(config_dir: &Path) -> PathBuf {
     chat_dir(config_dir).join("libraries")
 }
 
-fn lib_dir(config_dir: &Path, id: &str) -> Result<PathBuf, String> {
+fn lib_dir(config_dir: &Path, id: &str) -> Result<PathBuf, ChatError> {
     if !valid_id(id) {
-        return Err("invalid library id".into());
+        return Err(ChatError::Invalid("invalid library id".into()));
     }
     Ok(root(config_dir).join(id))
 }
@@ -88,24 +89,26 @@ pub fn list(config_dir: &Path) -> Vec<Library> {
     out
 }
 
-pub fn load(config_dir: &Path, id: &str) -> Result<Library, String> {
+pub fn load(config_dir: &Path, id: &str) -> Result<Library, ChatError> {
     let text = crate::chat::at_rest::read_to_string(lib_dir(config_dir, id)?.join("library.json"))
-        .map_err(|_| "No such library.".to_string())?;
-    serde_json::from_str(&text).map_err(|e| e.to_string())
+        .map_err(|_| "No such library.".to_string())
+        .map_err(ChatError::Invalid)?;
+    serde_json::from_str(&text).map_err(ChatError::internal)
 }
 
-fn save(config_dir: &Path, library: &Library) -> Result<(), String> {
+fn save(config_dir: &Path, library: &Library) -> Result<(), ChatError> {
     write_json(
         &lib_dir(config_dir, &library.id)?.join("library.json"),
         library,
     )
     .map_err(String::from)
+    .map_err(ChatError::Invalid)
 }
 
-pub fn create(config_dir: &Path, name: &str, description: &str) -> Result<Library, String> {
+pub fn create(config_dir: &Path, name: &str, description: &str) -> Result<Library, ChatError> {
     let name = name.trim();
     if name.is_empty() {
-        return Err("A library needs a name.".into());
+        return Err(ChatError::Invalid("A library needs a name.".into()));
     }
     let library = Library {
         id: uuid::Uuid::new_v4().to_string(),
@@ -121,17 +124,17 @@ pub fn create(config_dir: &Path, name: &str, description: &str) -> Result<Librar
     Ok(library)
 }
 
-pub fn delete(config_dir: &Path, id: &str) -> Result<(), String> {
+pub fn delete(config_dir: &Path, id: &str) -> Result<(), ChatError> {
     let dir = lib_dir(config_dir, id)?;
     match std::fs::remove_dir_all(&dir) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(e.to_string()),
+        Err(e) => Err(ChatError::Invalid(e.to_string())),
     }
 }
 
 /// Adds a file's text to a library.
-pub fn add(config_dir: &Path, library_id: &str, path: &Path) -> Result<Library, String> {
+pub fn add(config_dir: &Path, library_id: &str, path: &Path) -> Result<Library, ChatError> {
     let text = extract(path)?;
     let name = path
         .file_name()
@@ -162,14 +165,14 @@ pub fn add_text(
     library_id: &str,
     name: &str,
     text: &str,
-) -> Result<Library, String> {
+) -> Result<Library, ChatError> {
     let mut library = load(config_dir, library_id)?;
     let text: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if text.trim().is_empty() {
-        return Err(format!("{name} has no readable text."));
+        return Err(ChatError::Invalid(format!("{name} has no readable text.")));
     }
     if text.chars().count() > MAX_DOC_CHARS {
-        return Err(format!("{name} is too large to index."));
+        return Err(ChatError::Invalid(format!("{name} is too large to index.")));
     }
     let doc = Document {
         id: uuid::Uuid::new_v4().to_string(),
@@ -180,9 +183,9 @@ pub fn add_text(
         modified: None,
     };
     let docs = lib_dir(config_dir, library_id)?.join("docs");
-    std::fs::create_dir_all(&docs).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&docs).map_err(ChatError::internal)?;
     crate::chat::at_rest::write(docs.join(format!("{}.txt", doc.id)), text)
-        .map_err(|e| e.to_string())?;
+        .map_err(ChatError::internal)?;
     library.documents.push(doc);
     save(config_dir, &library)?;
     Ok(library)
@@ -237,14 +240,18 @@ pub fn changed_since(
 pub(in crate::chat::grounding) fn docs_dir(
     config_dir: &Path,
     library_id: &str,
-) -> Result<PathBuf, String> {
+) -> Result<PathBuf, ChatError> {
     Ok(lib_dir(config_dir, library_id)?.join("docs"))
 }
 
-pub fn remove(config_dir: &Path, library_id: &str, document_id: &str) -> Result<Library, String> {
+pub fn remove(
+    config_dir: &Path,
+    library_id: &str,
+    document_id: &str,
+) -> Result<Library, ChatError> {
     let mut library = load(config_dir, library_id)?;
     if !valid_id(document_id) {
-        return Err("invalid document id".into());
+        return Err(ChatError::Invalid("invalid document id".into()));
     }
     library.documents.retain(|d| d.id != document_id);
     let docs = docs_dir(config_dir, library_id)?;
@@ -271,7 +278,7 @@ pub fn read_document(
     library: &str,
     name: &str,
     part: usize,
-) -> Result<String, String> {
+) -> Result<String, ChatError> {
     let wanted = name.trim().to_lowercase();
     let found = list(config_dir)
         .into_iter()
@@ -290,18 +297,21 @@ pub fn read_document(
             Some((l, doc))
         });
     let Some((library, doc)) = found else {
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "No library document is named {name}; use a name from search_library."
-        ));
+        )));
     };
     let text = crate::chat::at_rest::read_to_string(
         docs_dir(config_dir, &library.id)?.join(format!("{}.txt", doc.id)),
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(ChatError::internal)?;
     let chars: Vec<char> = text.chars().collect();
     let parts = chars.len().div_ceil(READ_PART).max(1);
     if part > parts {
-        return Err(format!("{} has {parts} part(s).", doc.name));
+        return Err(ChatError::Invalid(format!(
+            "{} has {parts} part(s).",
+            doc.name
+        )));
     }
     let slice: String = chars[(part - 1) * READ_PART..(part * READ_PART).min(chars.len())]
         .iter()
@@ -318,29 +328,38 @@ pub async fn add_web_page(
     config_dir: &Path,
     library_id: &str,
     url: &str,
-) -> Result<Library, String> {
-    let parsed =
-        url::Url::parse(url.trim()).map_err(|_| "That is not a web address.".to_string())?;
+) -> Result<Library, ChatError> {
+    let parsed = url::Url::parse(url.trim())
+        .map_err(|_| "That is not a web address.".to_string())
+        .map_err(ChatError::Invalid)?;
     if !matches!(parsed.scheme(), "http" | "https") {
-        return Err("Only http and https pages can be saved.".into());
+        return Err(ChatError::Invalid(
+            "Only http and https pages can be saved.".into(),
+        ));
     }
-    let client = crate::support::http::browser_client(std::time::Duration::from_secs(25))?;
+    let client = crate::support::http::browser_client(std::time::Duration::from_secs(25))
+        .map_err(ChatError::Invalid)?;
     let response = client
         .get(parsed.clone())
         .send()
         .await
-        .map_err(|e| format!("The page could not be fetched: {e}"))?;
+        .map_err(|e| ChatError::Invalid(format!("The page could not be fetched: {e}")))?;
     if !response.status().is_success() {
-        return Err(format!("The page answered {}.", response.status()));
+        return Err(ChatError::Invalid(format!(
+            "The page answered {}.",
+            response.status()
+        )));
     }
-    let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+    let bytes = response.bytes().await.map_err(ChatError::internal)?;
     if bytes.len() > 8 * 1024 * 1024 {
-        return Err("That page is too large to save.".into());
+        return Err(ChatError::Invalid("That page is too large to save.".into()));
     }
     let html = String::from_utf8_lossy(&bytes);
     let text = crate::tools::connectors::browser::html_to_text(&html);
     if text.trim().len() < 40 {
-        return Err("That page has no readable text (it may need JavaScript).".into());
+        return Err(ChatError::Invalid(
+            "That page has no readable text (it may need JavaScript).".into(),
+        ));
     }
     let title = crate::tools::connectors::browser::extract_title(&html);
     let host = parsed
@@ -370,17 +389,17 @@ pub fn document_text(
     library_id: &str,
     document_id: &str,
     max: usize,
-) -> Result<String, String> {
+) -> Result<String, ChatError> {
     let library = load(config_dir, library_id)?;
     let doc = library
         .documents
         .iter()
         .find(|d| d.id == document_id)
-        .ok_or("That document is gone.")?;
+        .ok_or_else(|| ChatError::Invalid("That document is gone.".into()))?;
     let text = crate::chat::at_rest::read_to_string(
         docs_dir(config_dir, &library.id)?.join(format!("{}.txt", doc.id)),
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(ChatError::internal)?;
     Ok(if text.chars().count() > max {
         format!(
             "{}\n\n… (the rest is cut here; the assistant reads it all with read_document)",
@@ -396,9 +415,9 @@ pub fn add_folder(
     config_dir: &Path,
     library_id: &str,
     folder: &Path,
-) -> Result<SyncReport, String> {
+) -> Result<SyncReport, ChatError> {
     if !folder.is_dir() {
-        return Err("Choose a folder that exists.".into());
+        return Err(ChatError::Invalid("Choose a folder that exists.".into()));
     }
     let mut library = load(config_dir, library_id)?;
     let folder = folder.to_string_lossy().into_owned();
@@ -414,7 +433,7 @@ pub fn remove_folder(
     config_dir: &Path,
     library_id: &str,
     folder: &str,
-) -> Result<SyncReport, String> {
+) -> Result<SyncReport, ChatError> {
     let mut library = load(config_dir, library_id)?;
     library.folders.retain(|f| f != folder);
     save(config_dir, &library)?;

@@ -1,5 +1,6 @@
 //! Qdrant as the vector store, over its REST API.
 
+use crate::chat::error::ChatError;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
@@ -53,8 +54,9 @@ async fn call(
     method: reqwest::Method,
     path: &str,
     body: Option<Value>,
-) -> Result<(u16, Value), String> {
-    let client = crate::support::http::client(std::time::Duration::from_secs(60))?;
+) -> Result<(u16, Value), ChatError> {
+    let client = crate::support::http::client(std::time::Duration::from_secs(60))
+        .map_err(ChatError::Invalid)?;
     let mut request = client.request(method, format!("{}{path}", settings.qdrant_url));
     let key = key().await;
     if !key.is_empty() {
@@ -63,10 +65,12 @@ async fn call(
     if let Some(body) = body {
         request = request.json(&body);
     }
-    let response = request
-        .send()
-        .await
-        .map_err(|e| format!("Qdrant did not answer at {}: {e}", settings.qdrant_url))?;
+    let response = request.send().await.map_err(|e| {
+        ChatError::Invalid(format!(
+            "Qdrant did not answer at {}: {e}",
+            settings.qdrant_url
+        ))
+    })?;
     let status = response.status().as_u16();
     let body: Value = response.json().await.unwrap_or(Value::Null);
     Ok((status, body))
@@ -85,7 +89,7 @@ fn failed(what: &str, status: u16, body: &Value) -> String {
 
 /// Creates the collection for `width`-wide vectors unless it is there; a collection made for
 /// another width is an error (the model changed under the same name).
-async fn ensure(settings: &EmbeddingSettings, name: &str, width: usize) -> Result<(), String> {
+async fn ensure(settings: &EmbeddingSettings, name: &str, width: usize) -> Result<(), ChatError> {
     let (status, body) = call(
         settings,
         reqwest::Method::GET,
@@ -99,12 +103,16 @@ async fn ensure(settings: &EmbeddingSettings, name: &str, width: usize) -> Resul
             .and_then(Value::as_u64)
             .unwrap_or(0) as usize;
         if size != 0 && size != width {
-            return Err(format!("Qdrant's collection {name} holds {size}-wide vectors, but the model makes {width}-wide ones. Delete the collection in Qdrant to start over."));
+            return Err(ChatError::Invalid(format!("Qdrant's collection {name} holds {size}-wide vectors, but the model makes {width}-wide ones. Delete the collection in Qdrant to start over.")));
         }
         return Ok(());
     }
     if status != 404 {
-        return Err(failed("read the collection", status, &body));
+        return Err(ChatError::Invalid(failed(
+            "read the collection",
+            status,
+            &body,
+        )));
     }
     let (status, body) = call(
         settings,
@@ -114,7 +122,11 @@ async fn ensure(settings: &EmbeddingSettings, name: &str, width: usize) -> Resul
     )
     .await?;
     if status != 200 {
-        return Err(failed("create the collection", status, &body));
+        return Err(ChatError::Invalid(failed(
+            "create the collection",
+            status,
+            &body,
+        )));
     }
     // Filters on library and document ids are fast with keyword indexes.
     for field in ["library_id", "document_id"] {
@@ -146,7 +158,7 @@ fn read_marker(config_dir: &Path) -> Marker {
 pub(in crate::chat::grounding) async fn sync(
     config_dir: &Path,
     settings: &EmbeddingSettings,
-) -> Result<(), String> {
+) -> Result<(), ChatError> {
     let name = collection(&settings.model);
     let mut marker = read_marker(config_dir);
     let known = marker
@@ -205,7 +217,8 @@ pub(in crate::chat::grounding) async fn sync(
         if status == 404 {
             marker.insert(format!("{}|{name}", settings.qdrant_url), now);
             return crate::chat::store::write_json(&marker_path(config_dir), &marker)
-                .map_err(String::from);
+                .map_err(String::from)
+                .map_err(ChatError::Invalid);
         }
     }
     // A changed document's old passages go first (it may now have fewer).
@@ -219,7 +232,11 @@ pub(in crate::chat::grounding) async fn sync(
         )
         .await?;
         if status != 200 {
-            return Err(failed("remove a document's old passages", status, &body));
+            return Err(ChatError::Invalid(failed(
+                "remove a document's old passages",
+                status,
+                &body,
+            )));
         }
     }
     for batch in pending.chunks(UPSERT_BATCH) {
@@ -231,7 +248,7 @@ pub(in crate::chat::grounding) async fn sync(
         )
         .await?;
         if status != 200 {
-            return Err(failed("store passages", status, &body));
+            return Err(ChatError::Invalid(failed("store passages", status, &body)));
         }
     }
     // Documents and libraries that are gone.
@@ -259,11 +276,17 @@ pub(in crate::chat::grounding) async fn sync(
         )
         .await?;
         if status != 200 {
-            return Err(failed("remove a deleted document", status, &body));
+            return Err(ChatError::Invalid(failed(
+                "remove a deleted document",
+                status,
+                &body,
+            )));
         }
     }
     marker.insert(format!("{}|{name}", settings.qdrant_url), now);
-    crate::chat::store::write_json(&marker_path(config_dir), &marker).map_err(String::from)
+    crate::chat::store::write_json(&marker_path(config_dir), &marker)
+        .map_err(String::from)
+        .map_err(ChatError::Invalid)
 }
 
 /// The `k` passages nearest to `vector`, in the given libraries (all when empty).
@@ -273,7 +296,7 @@ pub async fn search(
     only: &[String],
     vector: &[f32],
     k: usize,
-) -> Result<Vec<Passage>, String> {
+) -> Result<Vec<Passage>, ChatError> {
     let name = collection(&settings.model);
     let libraries: Vec<_> = libraries::list(config_dir)
         .into_iter()
@@ -295,7 +318,7 @@ pub async fn search(
         return Ok(Vec::new());
     }
     if status != 200 {
-        return Err(failed("search", status, &answer));
+        return Err(ChatError::Invalid(failed("search", status, &answer)));
     }
     Ok(read_hits(&answer, &libraries))
 }
@@ -334,13 +357,17 @@ pub(in crate::chat::grounding) fn read_hits(
 }
 
 /// Checks the server: its version, or why it cannot be used.
-pub async fn check(settings: &EmbeddingSettings) -> Result<String, String> {
+pub async fn check(settings: &EmbeddingSettings) -> Result<String, ChatError> {
     let (status, body) = call(settings, reqwest::Method::GET, "/collections", None).await?;
     if status == 401 || status == 403 {
-        return Err("Qdrant refused the API key.".into());
+        return Err(ChatError::Invalid("Qdrant refused the API key.".into()));
     }
     if status != 200 {
-        return Err(failed("list collections", status, &body));
+        return Err(ChatError::Invalid(failed(
+            "list collections",
+            status,
+            &body,
+        )));
     }
     let (_, root) = call(settings, reqwest::Method::GET, "/", None)
         .await

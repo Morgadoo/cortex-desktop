@@ -1068,7 +1068,10 @@ async fn tools_are_ranked_by_meaning_from_their_embeddings() {
     // An embedding server that fails leaves the word ranking alone.
     assert!(
         super::handlers::rank_by_meaning(&offered, "x", "test-embedder-failing", |_| async {
-            Err::<Vec<Vec<f32>>, String>("down".into())
+            Err::<Vec<Vec<f32>>, _>(crate::chat::error::ChatError::network(
+                "the embedder",
+                "down",
+            ))
         })
         .await
         .is_none()

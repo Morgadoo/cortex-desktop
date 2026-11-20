@@ -80,11 +80,14 @@ pub fn restore(config_dir: &Path, kind: &str, id: &str, version: &str) -> Result
             .map_err(|e| format!("That version can no longer be read: {e}"))
     }
     match (kind, id) {
-        ("memories", "all") => crate::chat::memory::save(config_dir, &parse(value)?),
+        ("memories", "all") => {
+            crate::chat::memory::save(config_dir, &parse(value)?).map_err(String::from)
+        }
         ("knowledge", "pages") => crate::chat::knowledge::save_all(
             config_dir,
             &parse::<Vec<crate::chat::knowledge::Page>>(value)?,
-        ),
+        )
+        .map_err(String::from),
         ("instructions", "user") => {
             crate::chat::store::save_instructions(config_dir, &parse(value)?).map_err(String::from)
         }
