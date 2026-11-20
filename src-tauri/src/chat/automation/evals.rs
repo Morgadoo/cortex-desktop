@@ -27,8 +27,9 @@ pub use cortex_kernel::evals::*;
 
 use crate::chat::engine::{ChatEvent, TurnRequest};
 use crate::chat::host::Host;
-use crate::chat::tools::{ApprovalMode, ChatTool};
 use crate::tools::registry::ApprovalDecision;
+use cortex_kernel::approval::ApprovalMode;
+use cortex_kernel::tool::ChatTool;
 
 pub const REGRESSIONS: &str = "regressions";
 pub const STARTER: &str = "tool-selection";
@@ -469,7 +470,7 @@ pub async fn run_case(
                         c.messages
                             .last()
                             .filter(|m| matches!(m, rig_core::completion::Message::Assistant(_)))
-                            .map(crate::chat::context::message_text)
+                            .map(cortex_kernel::context::message_text)
                     })
                     .unwrap_or_default(),
                 Err(e) => format!("(the turn failed: {e})"),
@@ -673,13 +674,13 @@ pub fn regression_from_rating(
         .iter()
         .rev()
         .find(|m| matches!(m, rig_core::completion::Message::User { .. }))
-        .map(crate::chat::context::message_text)
+        .map(cortex_kernel::context::message_text)
         .filter(|t| !t.trim().is_empty())
         .ok_or("no prompt before that answer")?;
     let wrong = conversation
         .messages
         .get(answer_index)
-        .map(crate::chat::context::message_text)
+        .map(cortex_kernel::context::message_text)
         .unwrap_or_default();
     let id = format!(
         "{}-{answer_index}",

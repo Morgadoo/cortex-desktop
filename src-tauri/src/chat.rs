@@ -23,28 +23,29 @@
 pub mod commands;
 pub mod storage;
 pub use storage::{
-    at_rest, audit, coding_import, import, outputs, recent_files, secrets, store, sync, uploads,
+    at_rest, audit, coding_import, import, recent_files, secrets, store, sync, traces, uploads,
     vault, versions,
 };
 use storage::{backup, index};
 pub mod models;
-pub use models::{acp, agent_cli, arena, batched_qwen2, local_models, providers, router};
+pub use models::{acp, agent_cli, arena, batched_qwen2, local_models, privacy, providers, router};
 pub mod grounding;
 pub use grounding::{
-    calendar, embeddings, extraction, knowledge, learning, libraries, memory, reader, retrieval,
-    search, search_all,
+    calendar, embeddings, extraction, knowledge, libraries, memory, reader, retrieval, search,
+    search_all,
 };
 use grounding::{favicon, preview};
 pub mod toolkit;
 pub use toolkit::{
-    canvas, code, computer, custom_tools, openapi, proposals, sandbox, script_tools, sheets,
-    terminal, webpage, workbench,
+    canvas, code, computer, custom_tools, openapi, outputs, proposals, sandbox, script_tools,
+    sheets, terminal, webpage, workbench,
 };
 pub mod multimedia;
 pub use multimedia::{animation, audio, hex, media, recorder, video, videogen};
 pub mod automation;
 pub use automation::{
-    agent_market, agents, evals, lifecycle, org, plugins, skill_catalog, skills, tasks, workflows,
+    agent_market, agents, evals, learning, lifecycle, org, plugins, skill_catalog, skills, tasks,
+    workflows,
 };
 pub mod integrations;
 pub use integrations::{api_server, discord, links, share, slack, telegram};
@@ -54,9 +55,7 @@ pub mod ui;
 pub use ui::{emoji_pack, ui_language};
 pub mod turn;
 use turn::deferred;
-pub use turn::{
-    builtins, context, engine, functions, hooks, host, privacy, prompt, subagents, tools, traces,
-};
+pub use turn::{builtins, context, engine, functions, hooks, host, prompt, subagents, tools};
 mod state;
 pub use state::ChatState;
 

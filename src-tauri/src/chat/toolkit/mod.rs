@@ -7,6 +7,7 @@ pub mod code;
 pub mod computer;
 pub mod custom_tools;
 pub mod openapi;
+pub mod outputs;
 pub mod proposals;
 pub mod sandbox;
 pub mod script_tools;

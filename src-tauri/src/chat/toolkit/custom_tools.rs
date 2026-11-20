@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::chat::store::{chat_dir, write_json};
-use crate::chat::tools::ChatTool;
+use cortex_kernel::tool::ChatTool;
 
 pub const CONNECTOR: &str = "custom";
 

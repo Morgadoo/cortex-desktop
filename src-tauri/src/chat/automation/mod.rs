@@ -5,6 +5,7 @@
 pub mod agent_market;
 pub mod agents;
 pub mod evals;
+pub mod learning;
 pub mod lifecycle;
 pub mod org;
 pub mod plugins;

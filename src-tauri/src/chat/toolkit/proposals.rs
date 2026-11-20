@@ -11,7 +11,7 @@ use std::path::Path;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::chat::tools::ChatTool;
+use cortex_kernel::tool::ChatTool;
 
 pub const PROPOSE_CHANGE: &str = "propose_change";
 

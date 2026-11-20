@@ -14,7 +14,7 @@ use serde::Serialize;
 use serde_json::json;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
-use crate::chat::tools::ChatTool;
+use cortex_kernel::tool::ChatTool;
 
 pub const START: &str = "terminal_start";
 pub const READ: &str = "terminal_read";

@@ -124,7 +124,7 @@ pub fn prompt(conversation: &Conversation) -> String {
     };
     let mut earlier = conversation.clone();
     earlier.messages.truncate(last);
-    let history = crate::chat::builtins::chat_transcript(&earlier, HISTORY_CHARS);
+    let history = crate::chat::store::chat_transcript(&earlier, HISTORY_CHARS);
     if earlier.messages.is_empty() || history.trim().is_empty() {
         now
     } else {

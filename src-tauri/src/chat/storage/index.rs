@@ -89,7 +89,7 @@ fn preview(c: &Conversation) -> String {
         .messages
         .iter()
         .rev()
-        .map(crate::chat::context::message_text)
+        .map(cortex_kernel::context::message_text)
         .find(|t| !t.trim().is_empty() && !t.starts_with('{'))
         .unwrap_or_default();
     // Markdown marks read as noise in a tooltip.
@@ -109,7 +109,7 @@ fn preview(c: &Conversation) -> String {
 fn searchable(c: &Conversation) -> String {
     let mut text = format!("{}\n", c.title);
     for message in &c.messages {
-        let said = crate::chat::context::message_text(message);
+        let said = cortex_kernel::context::message_text(message);
         if !said.trim().is_empty() {
             text.push_str(said.trim());
             text.push('\n');
@@ -352,6 +352,29 @@ pub fn search(config_dir: &Path, query: &str, limit: usize) -> Vec<Hit> {
     });
     hits.truncate(limit);
     hits
+}
+
+/// Earlier conversations matching `query`: every word first; failing that, the most words.
+pub(crate) fn search_chats(config_dir: &Path, query: &str) -> Vec<Hit> {
+    let all = search(config_dir, query, 8);
+    let words: Vec<&str> = query
+        .split_whitespace()
+        .filter(|w| w.chars().count() > 2)
+        .collect();
+    if !all.is_empty() || words.len() < 2 {
+        return all;
+    }
+    let mut found: Vec<(usize, crate::chat::index::Hit)> = Vec::new();
+    for word in words {
+        for hit in search(config_dir, word, 20) {
+            match found.iter_mut().find(|(_, h)| h.id == hit.id) {
+                Some((n, _)) => *n += 1,
+                None => found.push((1, hit)),
+            }
+        }
+    }
+    found.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.updated_at.cmp(&a.1.updated_at)));
+    found.into_iter().take(8).map(|(_, h)| h).collect()
 }
 
 #[cfg(test)]

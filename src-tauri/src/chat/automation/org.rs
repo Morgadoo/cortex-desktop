@@ -18,7 +18,7 @@ use chrono::Utc;
 use serde_json::{json, Value};
 
 use crate::chat::agents::{self, Agent};
-use crate::chat::tools::ChatTool;
+use cortex_kernel::tool::ChatTool;
 
 pub const MANAGE_AGENTS: &str = "manage_agents";
 /// Levels of agents under the top manager.

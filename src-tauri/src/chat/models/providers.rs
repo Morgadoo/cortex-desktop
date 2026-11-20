@@ -478,6 +478,13 @@ pub fn supports_reasoning(reference: &str) -> bool {
         .is_ok_and(|r| !matches!(r.spec.reasoning, ReasoningSupport::None))
 }
 
+/// The API key for `vendor` from the keychain, if one is saved.
+pub async fn api_key(vendor: &str) -> Result<Option<String>, String> {
+    crate::chat::secrets::local()?
+        .load(&secret_name(vendor))
+        .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

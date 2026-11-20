@@ -10,7 +10,7 @@ use std::process::Stdio;
 
 use serde_json::{json, Value};
 
-use crate::chat::tools::{ChatTool, Outcome};
+use cortex_kernel::tool::{ChatTool, Outcome};
 
 pub const BROWSER_VIEW: &str = "browser_view";
 const TIMEOUT_SECS: u64 = 45;

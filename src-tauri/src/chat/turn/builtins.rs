@@ -668,7 +668,7 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
             if query.is_empty() {
                 return err("Give a search query.");
             }
-            let hits = search_chats(config_dir, &query);
+            let hits = crate::chat::index::search_chats(config_dir, &query);
             if hits.is_empty() {
                 return ok(json!({ "query": query, "conversations": [], "note": "No earlier conversation matched; try other words." }).to_string());
             }
@@ -758,7 +758,7 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
             })
         }
         READ_CHAT => match crate::chat::store::load_conversation(config_dir, &str_arg("id")) {
-            Ok(c) if !c.temporary => ok(chat_transcript(&c, READ_CHAT_LIMIT)),
+            Ok(c) if !c.temporary => ok(crate::chat::store::chat_transcript(&c, READ_CHAT_LIMIT)),
             _ => err("There is no conversation with that id; use an id from search_chats."),
         },
         SAVE_SKILL => {
@@ -1083,69 +1083,6 @@ fn schedule(config_dir: &Path, args: &Value) -> Outcome {
 
 /// How much of an earlier conversation `read_chat` returns.
 const READ_CHAT_LIMIT: usize = 24_000;
-
-/// Earlier conversations matching `query`: every word first; failing that, the most words.
-pub(crate) fn search_chats(config_dir: &Path, query: &str) -> Vec<crate::chat::index::Hit> {
-    let all = crate::chat::index::search(config_dir, query, 8);
-    let words: Vec<&str> = query
-        .split_whitespace()
-        .filter(|w| w.chars().count() > 2)
-        .collect();
-    if !all.is_empty() || words.len() < 2 {
-        return all;
-    }
-    let mut found: Vec<(usize, crate::chat::index::Hit)> = Vec::new();
-    for word in words {
-        for hit in crate::chat::index::search(config_dir, word, 20) {
-            match found.iter_mut().find(|(_, h)| h.id == hit.id) {
-                Some((n, _)) => *n += 1,
-                None => found.push((1, hit)),
-            }
-        }
-    }
-    found.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.updated_at.cmp(&a.1.updated_at)));
-    found.into_iter().take(8).map(|(_, h)| h).collect()
-}
-
-/// What was said in a conversation, as plain text, cut at `limit` characters.
-pub(in crate::chat) fn chat_transcript(
-    conversation: &crate::chat::store::Conversation,
-    limit: usize,
-) -> String {
-    let mut text = format!(
-        "# {}
-Date: {}
-\n",
-        conversation.title,
-        conversation.created_at.format("%Y-%m-%d")
-    );
-    for turn in crate::chat::store::turns(conversation) {
-        let said: Vec<String> = turn
-            .parts
-            .iter()
-            .filter_map(|p| match p {
-                crate::chat::store::Part::Text { text } => Some(text.clone()),
-                crate::chat::store::Part::Tool { name, .. } => Some(format!("[used {name}]")),
-                _ => None,
-            })
-            .collect();
-        if said.is_empty() {
-            continue;
-        }
-        text.push_str(if turn.role == "user" {
-            "User: "
-        } else {
-            "Assistant: "
-        });
-        text.push_str(&said.join("\n"));
-        text.push_str("\n\n");
-        if text.chars().count() > limit {
-            let cut: String = text.chars().take(limit).collect();
-            return format!("{cut}\n\n[The rest of the conversation is cut off.]");
-        }
-    }
-    text
-}
 
 #[cfg(test)]
 mod tests {

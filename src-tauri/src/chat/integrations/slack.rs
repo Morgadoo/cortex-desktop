@@ -53,12 +53,12 @@ fn api_base() -> String {
 }
 
 pub async fn tokens() -> Option<(String, String)> {
-    let app = crate::chat::secrets::api_key(APP_TOKEN)
+    let app = crate::chat::providers::api_key(APP_TOKEN)
         .await
         .ok()
         .flatten()
         .filter(|t| !t.is_empty())?;
-    let bot = crate::chat::secrets::api_key(BOT_TOKEN)
+    let bot = crate::chat::providers::api_key(BOT_TOKEN)
         .await
         .ok()
         .flatten()

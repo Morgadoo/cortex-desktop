@@ -131,7 +131,7 @@ pub async fn embed(
         )
         .await
         .map_err(|_| "The embedding server did not answer in time.".to_string())?
-        .map_err(|e| crate::chat::context::short_error(&e.to_string()))?;
+        .map_err(|e| cortex_kernel::context::short_error(&e.to_string()))?;
         if response.embeddings.len() != chunk.len() {
             return Err(format!(
                 "The embedding server returned {} vectors for {} passages.",

@@ -58,7 +58,7 @@ fn api_base() -> String {
 }
 
 pub async fn token() -> Option<String> {
-    crate::chat::secrets::api_key(SECRET)
+    crate::chat::providers::api_key(SECRET)
         .await
         .ok()
         .flatten()

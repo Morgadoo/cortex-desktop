@@ -85,7 +85,7 @@ pub struct Conversation {
     pub temporary: bool,
     /// The parts of the system prompt the latest turn sent and their sizes, for the context view.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub prompt_parts: Vec<crate::chat::prompt::Part>,
+    pub prompt_parts: Vec<cortex_kernel::prompt::Part>,
     /// Hidden from the main list; still searchable and openable.
     #[serde(default)]
     pub archived: bool,
@@ -131,9 +131,9 @@ pub struct Conversation {
     pub params: ChatParams,
     /// The note standing in for compacted turns.
     #[serde(default)]
-    pub summary: Option<crate::chat::context::Summary>,
+    pub summary: Option<cortex_kernel::context::Summary>,
     #[serde(default)]
-    pub usage: crate::chat::context::UsageTotals,
+    pub usage: cortex_kernel::context::UsageTotals,
 }
 
 impl Conversation {
@@ -427,7 +427,7 @@ pub struct Turn {
 #[serde(rename_all = "camelCase")]
 pub struct ConversationView {
     pub id: String,
-    pub usage: crate::chat::context::UsageTotals,
+    pub usage: cortex_kernel::context::UsageTotals,
     /// Index of the first turn requests still carry verbatim, when earlier ones were compacted.
     pub compacted_before: Option<usize>,
     pub title: String,
@@ -1176,6 +1176,43 @@ pub fn view(conversation: &Conversation) -> ConversationView {
     }
 }
 
+/// What was said in a conversation, as plain text, cut at `limit` characters.
+pub(in crate::chat) fn chat_transcript(conversation: &Conversation, limit: usize) -> String {
+    let mut text = format!(
+        "# {}
+Date: {}
+\n",
+        conversation.title,
+        conversation.created_at.format("%Y-%m-%d")
+    );
+    for turn in turns(conversation) {
+        let said: Vec<String> = turn
+            .parts
+            .iter()
+            .filter_map(|p| match p {
+                Part::Text { text } => Some(text.clone()),
+                Part::Tool { name, .. } => Some(format!("[used {name}]")),
+                _ => None,
+            })
+            .collect();
+        if said.is_empty() {
+            continue;
+        }
+        text.push_str(if turn.role == "user" {
+            "User: "
+        } else {
+            "Assistant: "
+        });
+        text.push_str(&said.join("\n"));
+        text.push_str("\n\n");
+        if text.chars().count() > limit {
+            let cut: String = text.chars().take(limit).collect();
+            return format!("{cut}\n\n[The rest of the conversation is cut off.]");
+        }
+    }
+    text
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -1194,7 +1231,10 @@ mod tests {
         c.ratings = vec![(3, 1), (5, -1)];
         delete_exchange(&mut c, 2).unwrap();
         assert_eq!(c.messages.len(), 4);
-        assert_eq!(crate::chat::context::message_text(&c.messages[2]), "three");
+        assert_eq!(
+            cortex_kernel::context::message_text(&c.messages[2]),
+            "three"
+        );
         assert_eq!(
             c.ratings,
             vec![(3, -1)],
@@ -1233,12 +1273,15 @@ mod tests {
         ];
         rewrite_message(&mut c, 0, "what is 2+3?").unwrap();
         assert_eq!(
-            crate::chat::context::message_text(&c.messages[0]),
+            cortex_kernel::context::message_text(&c.messages[0]),
             "what is 2+3?"
         );
         // Editing an answer changes its final text and keeps the tool step before it.
         rewrite_message(&mut c, 2, "Four.").unwrap();
-        assert_eq!(crate::chat::context::message_text(&c.messages[2]), "Four.");
+        assert_eq!(
+            cortex_kernel::context::message_text(&c.messages[2]),
+            "Four."
+        );
         assert!(
             matches!(&c.messages[1], Message::Assistant(a) if matches!(a.content[0], AssistantContent::ToolCall(_)))
         );
@@ -1297,12 +1340,12 @@ mod tests {
             (vec![(1, 1)], 0),
             "notes on later messages go with them"
         );
-        assert!(crate::chat::context::message_text(&upto.messages[0]).contains("secret plans"));
+        assert!(cortex_kernel::context::message_text(&upto.messages[0]).contains("secret plans"));
         let mut bare = c.clone();
         branch_copy(&mut bare, None, true).unwrap();
         assert_eq!(bare.messages.len(), 4);
         assert_eq!(
-            crate::chat::context::message_text(&bare.messages[0]),
+            cortex_kernel::context::message_text(&bare.messages[0]),
             "Summarise this"
         );
         assert!(branch_copy(&mut c.clone(), Some(9), false).is_err());

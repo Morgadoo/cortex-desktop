@@ -7,5 +7,6 @@ pub mod agent_cli;
 pub mod arena;
 pub mod batched_qwen2;
 pub mod local_models;
+pub mod privacy;
 pub mod providers;
 pub mod router;

@@ -9,8 +9,6 @@ pub mod engine;
 pub mod functions;
 pub mod hooks;
 pub mod host;
-pub mod privacy;
 pub mod prompt;
 pub mod subagents;
 pub mod tools;
-pub mod traces;

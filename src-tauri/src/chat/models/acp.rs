@@ -376,7 +376,7 @@ pub async fn run(
                     .as_str()
                     .unwrap_or("an action")
                     .to_string();
-                let gate = crate::chat::tools::ChatTool {
+                let gate = cortex_kernel::tool::ChatTool {
                     name: title.clone(),
                     description: String::new(),
                     parameters: Value::Null,

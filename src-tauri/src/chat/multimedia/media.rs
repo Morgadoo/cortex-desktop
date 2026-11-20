@@ -16,7 +16,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 
 use crate::chat::providers::{self, ProviderSettings, ProvidersFile};
-use crate::chat::tools::{ChatTool, Outcome};
+use cortex_kernel::tool::{ChatTool, Outcome};
 
 pub const GENERATE_IMAGE: &str = "generate_image";
 
@@ -258,7 +258,7 @@ pub(crate) async fn connect(
         .cloned()
         .unwrap_or_default();
     let key = if settings.has_key {
-        crate::chat::secrets::api_key(vendor).await?
+        crate::chat::providers::api_key(vendor).await?
     } else {
         None
     };
@@ -787,7 +787,7 @@ pub async fn make_images(
             }
             Ok(Ok(_)) => errors.push("The provider sent back no image.".into()),
             Ok(Err(e)) if e.to_string().contains("takes no reference images") => errors.push(format!("{reference} cannot edit images; start from nothing, or choose a model that edits (OpenAI gpt-image, or a local image server).")),
-            Ok(Err(e)) => errors.push(crate::chat::context::short_error(&e.to_string())),
+            Ok(Err(e)) => errors.push(cortex_kernel::context::short_error(&e.to_string())),
             Err(_) => errors.push("An image took too long.".into()),
         }
     }

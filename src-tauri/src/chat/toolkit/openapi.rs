@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use crate::chat::store::{chat_dir, write_json};
-use crate::chat::tools::ChatTool;
+use cortex_kernel::tool::ChatTool;
 
 /// Operations offered per server.
 const MAX_OPERATIONS: usize = 60;
@@ -235,7 +235,7 @@ pub fn tools(config_dir: &Path) -> Vec<ChatTool> {
         for op in operations(&spec) {
             let read_only = op.method == "GET";
             out.push(ChatTool {
-                name: crate::chat::tools::safe_name(&format!("api-{}__{}", server.id, op.id)),
+                name: cortex_kernel::tool::safe_name(&format!("api-{}__{}", server.id, op.id)),
                 description: format!("{} (via {})", op.description, server.name),
                 parameters: op.parameters,
                 connector_id: Some(format!("{PREFIX}{}", server.id)),

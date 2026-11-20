@@ -517,7 +517,7 @@ pub async fn connect_model(
     let file = providers::load(config_dir);
     let settings = file.providers.get(vendor).cloned().unwrap_or_default();
     let key = if settings.has_key {
-        crate::chat::secrets::api_key(vendor).await?
+        crate::chat::providers::api_key(vendor).await?
     } else {
         None
     };
@@ -1578,7 +1578,7 @@ async fn traced_turn(
     }
     if let Some(secrets) = crate::chat::vault::prompt(&crate::chat::vault::granted(
         &crate::chat::vault::list(&config_dir),
-        agent.as_ref(),
+        agent.as_ref().map(|a| a.secrets.as_slice()),
     )) {
         prompt.push("vault", ESSENTIAL, secrets);
     }
@@ -2302,7 +2302,8 @@ where
         return tools::Outcome::err(format!("A hook blocked this call: {reason}"));
     }
     // The agent's vault secrets reach the processes this call starts, and never the model.
-    let secrets = crate::chat::vault::env_for(config_dir, agent).await;
+    let secrets =
+        crate::chat::vault::env_for(config_dir, agent.map(|a| a.secrets.as_slice())).await;
     let started = std::time::Instant::now();
     // A written tool records its runs itself, in this run's trace.
     let run = crate::chat::script_tools::in_run(trace.unwrap_or_default().to_string(), run);

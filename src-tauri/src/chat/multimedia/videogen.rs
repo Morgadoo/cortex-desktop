@@ -14,7 +14,7 @@ use rig_core::completion::message::MimeType;
 use serde_json::{json, Value};
 
 use crate::chat::providers::{self, ProvidersFile};
-use crate::chat::tools::{ChatTool, Outcome};
+use cortex_kernel::tool::{ChatTool, Outcome};
 
 pub const GENERATE_VIDEO: &str = "generate_video";
 
@@ -137,7 +137,7 @@ fn base_url(file: &ProvidersFile, vendor: &str) -> String {
 
 async fn key(file: &ProvidersFile, vendor: &str) -> Result<String, String> {
     let saved = if file.providers.get(vendor).is_some_and(|s| s.has_key) {
-        crate::chat::secrets::api_key(vendor).await?
+        crate::chat::providers::api_key(vendor).await?
     } else {
         None
     };
@@ -170,7 +170,7 @@ pub async fn make_at(
                 .map(str::to_string)
                 .or_else(|| e.get("message").and_then(Value::as_str).map(str::to_string))
         });
-        return Err(crate::chat::context::short_error(&format!(
+        return Err(cortex_kernel::context::short_error(&format!(
             "The video service answered {status}{}",
             why.map(|w| format!(": {w}")).unwrap_or_default()
         )));

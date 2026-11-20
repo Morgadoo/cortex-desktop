@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::chat::store::chat_dir;
-use crate::chat::tools::ChatTool;
+use cortex_kernel::tool::ChatTool;
 pub use sandbox::{Capabilities, Limits};
 
 /// The connector id script tools are offered under (`script__<name>`).
@@ -663,7 +663,7 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
                 && verifies(config_dir, t)
         })
         .map(|t| ChatTool {
-            name: crate::chat::tools::safe_name(&format!("{CONNECTOR}__{}", t.name)),
+            name: cortex_kernel::tool::safe_name(&format!("{CONNECTOR}__{}", t.name)),
             description: format!(
                 "{} (A tool you wrote; it runs in a sandbox.)",
                 t.description

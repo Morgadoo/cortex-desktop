@@ -92,7 +92,7 @@ pub async fn search(config_dir: &Path, query: &str, web: bool) -> Results {
             target: page.id.clone(),
         });
     }
-    for hit in crate::chat::builtins::search_chats(config_dir, query)
+    for hit in crate::chat::index::search_chats(config_dir, query)
         .into_iter()
         .take(6)
     {

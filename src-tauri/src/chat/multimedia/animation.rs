@@ -18,7 +18,7 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
-use crate::chat::tools::{ChatTool, Outcome};
+use cortex_kernel::tool::{ChatTool, Outcome};
 
 pub const MAKE_ANIMATION: &str = "make_animation";
 /// The HyperFrames release used; pinned so a render behaves the same from day to day.

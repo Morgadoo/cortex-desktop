@@ -321,8 +321,8 @@ pub fn save_notebook(config_dir: &Path, id: &str, text: &str) -> Result<(), Stri
     crate::chat::at_rest::write(path, text).map_err(|e| e.to_string())
 }
 
-pub fn notebook_tool() -> crate::chat::tools::ChatTool {
-    crate::chat::tools::ChatTool {
+pub fn notebook_tool() -> cortex_kernel::tool::ChatTool {
+    cortex_kernel::tool::ChatTool {
         name: NOTEBOOK_TOOL.into(),
         description: format!(
             "Rewrite your notebook: the working memory you keep across all your conversations and \
@@ -735,9 +735,9 @@ pub fn asks_first(agent: &Agent, tool: &str) -> bool {
 pub fn mode_for(
     agent: Option<&Agent>,
     tool: &str,
-    mode: crate::chat::tools::ApprovalMode,
-) -> crate::chat::tools::ApprovalMode {
-    use crate::chat::tools::ApprovalMode;
+    mode: cortex_kernel::approval::ApprovalMode,
+) -> cortex_kernel::approval::ApprovalMode {
+    use cortex_kernel::approval::ApprovalMode;
     let Some(agent) = agent else { return mode };
     let ask = asks_first(agent, tool);
     match mode {
@@ -1129,7 +1129,7 @@ mod tests {
 
     #[test]
     fn ask_tools_raise_the_approval_mode() {
-        use crate::chat::tools::ApprovalMode;
+        use cortex_kernel::approval::ApprovalMode;
         let mut agent = templates().remove(0);
         agent.ask_tools = vec!["bash".into()];
         assert_eq!(

@@ -780,10 +780,7 @@ pub async fn chat_answer_from_results(
 #[tauri::command]
 pub fn chat_conversation_text(app: AppHandle, id: String) -> Result<String, String> {
     let conversation = store::load_conversation(&config_dir(&app)?, &id)?;
-    Ok(crate::chat::builtins::chat_transcript(
-        &conversation,
-        60_000,
-    ))
+    Ok(crate::chat::store::chat_transcript(&conversation, 60_000))
 }
 
 /// Bookmarks a message (the turn ending at `index`) or removes its bookmark.

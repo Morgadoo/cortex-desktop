@@ -16,7 +16,8 @@ use serde::Serialize;
 use serde_json::{json, Value};
 
 use crate::chat::store::{chat_dir, valid_id};
-use crate::chat::tools::{ApprovalMode, ChatTool, Outcome};
+use cortex_kernel::approval::ApprovalMode;
+use cortex_kernel::tool::{ChatTool, Outcome};
 
 pub const RUN_CODE: &str = "run_code";
 

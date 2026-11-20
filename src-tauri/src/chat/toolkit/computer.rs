@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::process::Command;
 
-use crate::chat::tools::ChatTool;
+use cortex_kernel::tool::ChatTool;
 
 pub const CONNECTOR: &str = "computer";
 pub const TOOL: &str = "computer";
@@ -631,7 +631,7 @@ mod tests {
         );
         assert!(point("c", &json!({ "x": 1 })).is_err());
         // A screenshot only reads; a click can change things (the kernel's approval policy).
-        let tool = crate::chat::tools::ChatTool {
+        let tool = cortex_kernel::tool::ChatTool {
             name: TOOL.into(),
             description: String::new(),
             parameters: json!({}),

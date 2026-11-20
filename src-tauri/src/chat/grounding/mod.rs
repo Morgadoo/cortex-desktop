@@ -7,7 +7,6 @@ pub mod embeddings;
 pub mod extraction;
 pub(super) mod favicon;
 pub mod knowledge;
-pub mod learning;
 pub mod libraries;
 pub mod memory;
 pub(super) mod preview;

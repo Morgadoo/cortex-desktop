@@ -14,7 +14,6 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::account::AccountId;
-use crate::chat::agents::Agent;
 use crate::chat::LOCAL_ACCOUNT;
 use crate::tools::auth::keychain_secrets;
 
@@ -136,16 +135,17 @@ pub async fn delete(config_dir: &Path, name: &str) -> Result<Vec<Secret>, String
     Ok(all)
 }
 
-/// The secrets a run may use: the agent's own, and those marked everywhere.
-pub fn granted(all: &[Secret], agent: Option<&Agent>) -> Vec<Secret> {
+/// The secrets a run may use: those the agent was given (`agent`, by name), and those marked
+/// everywhere.
+pub fn granted(all: &[Secret], agent: Option<&[String]>) -> Vec<Secret> {
     all.iter()
-        .filter(|s| s.everywhere || agent.is_some_and(|a| a.secrets.contains(&s.name)))
+        .filter(|s| s.everywhere || agent.is_some_and(|names| names.contains(&s.name)))
         .cloned()
         .collect()
 }
 
 /// Names and values of the granted secrets, read from the keychain; a missing value is skipped.
-pub async fn env_for(config_dir: &Path, agent: Option<&Agent>) -> Vec<(String, String)> {
+pub async fn env_for(config_dir: &Path, agent: Option<&[String]>) -> Vec<(String, String)> {
     let granted = granted(&list(config_dir), agent);
     if granted.is_empty() {
         return Vec::new();
@@ -255,14 +255,14 @@ mod tests {
             secret("B_TOKEN", false),
             secret("SHARED", true),
         ];
-        let agent = Agent {
-            secrets: vec!["B_TOKEN".into()],
-            ..Default::default()
-        };
+        let agent = vec!["B_TOKEN".to_string()];
         let names = |v: Vec<Secret>| v.into_iter().map(|s| s.name).collect::<Vec<_>>();
-        assert_eq!(names(granted(&all, Some(&agent))), ["B_TOKEN", "SHARED"]);
+        assert_eq!(
+            names(granted(&all, Some(agent.as_slice()))),
+            ["B_TOKEN", "SHARED"]
+        );
         assert_eq!(names(granted(&all, None)), ["SHARED"]);
-        let line = prompt(&granted(&all, Some(&agent))).unwrap();
+        let line = prompt(&granted(&all, Some(agent.as_slice()))).unwrap();
         assert!(line.contains("$B_TOKEN: B_TOKEN for tests") && !line.contains("A_TOKEN"));
         assert!(prompt(&[]).is_none());
     }
