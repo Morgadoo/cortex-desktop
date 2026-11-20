@@ -6,6 +6,7 @@ members = [
     "crates/cortex-retrieval",
     "crates/cortex-sandbox",
     "crates/cortex-store",
+    "crates/cortex-tools",
     "crates/cortex-traces",
 ]
 
@@ -27,6 +28,7 @@ cortex-kernel = { path = "crates/cortex-kernel" }
 cortex-retrieval = { path = "crates/cortex-retrieval" }
 cortex-sandbox = { path = "crates/cortex-sandbox" }
 cortex-store = { path = "crates/cortex-store" }
+cortex-tools = { path = "crates/cortex-tools" }
 cortex-traces = { path = "crates/cortex-traces" }
 
 [workspace.lints.rust]
@@ -125,6 +127,7 @@ cortex-kernel = { workspace = true }
 cortex-retrieval = { workspace = true }
 cortex-sandbox = { workspace = true }
 cortex-store = { workspace = true }
+cortex-tools = { workspace = true }
 cortex-traces = { workspace = true }
 # TypeScript declarations of the types the window sees (scripts/generate-types.sh).
 ts-rs = { version = "12.0.1", optional = true, features = ["chrono-impl"] }
@@ -134,7 +137,7 @@ test-utils = []
 # The original Lumo Desktop: the main window loads the hosted Lumo web app, which talks to Rust
 # through the bridges in webview/bridges/ (connectors, schedules, skills, PDF export). Off in
 # the native Cortex app, which then compiles none of it.
-hosted = []
+hosted = ["cortex-tools/hosted"]
 # The WebDriver suite in e2e/: the bridges and their Rust side, driven through a stub page.
 # CORTEX_E2E_TESTING is honoured only in builds with this feature.
 e2e = ["hosted"]
@@ -167,6 +170,7 @@ webview2-com = "0.19"
 windows = { version = "0.62.2", features = ["UI_Notifications", "Win32_Foundation", "Win32_Security_Cryptography", "Win32_System_Threading", "Win32_UI_Controls", "Win32_UI_WindowsAndMessaging"] }
 
 [dev-dependencies]
+cortex-tools = { workspace = true, features = ["test-utils"] }
 tempfile = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 tokio = { workspace = true, features = ["test-util"] }

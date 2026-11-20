@@ -36,7 +36,7 @@ use super::registry::ToolDefinition;
 const MAX_SEEN_URLS: usize = 10_000;
 const MAX_TRACKED_RUNS: usize = 64;
 /// Persisted, so bounded; the oldest conversations are forgotten first.
-pub(crate) const MAX_TRACKED_CONVERSATIONS: usize = 5_000;
+pub const MAX_TRACKED_CONVERSATIONS: usize = 5_000;
 const MAX_UNPROMPTED_LINKS: usize = 20;
 
 const REFUSED_IN_RUN: &str = "this scheduled run has read email or other untrusted content, so \
@@ -68,7 +68,7 @@ pub struct Exposure {
 
 impl Exposure {
     /// Merges `other`'s flags, returning whether anything changed.
-    pub(crate) fn merge(&mut self, other: Exposure) -> bool {
+    pub fn merge(&mut self, other: Exposure) -> bool {
         let before = *self;
         self.private |= other.private;
         self.mail |= other.mail;
@@ -82,12 +82,12 @@ impl Exposure {
         [self.private, self.mail, self.web, self.shell, self.service]
     }
 
-    pub(crate) fn is_empty(self) -> bool {
+    pub fn is_empty(self) -> bool {
         self.flags() == [false; 5]
     }
 
     /// Adds the descriptions of hand-added servers' tools, when one is offered to the model.
-    pub(crate) fn with_unvetted_tools(self, offered: bool) -> Self {
+    pub fn with_unvetted_tools(self, offered: bool) -> Self {
         Exposure {
             tools: offered,
             ..self
@@ -248,7 +248,7 @@ fn urls_in(text: &str, out: &mut Vec<String>) {
 
 /// Which exposure a call belongs to.
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum Scope<'a> {
+pub enum Scope<'a> {
     Run(&'a str),
     Conversation(&'a str),
     Session,
@@ -257,7 +257,7 @@ pub(crate) enum Scope<'a> {
 impl<'a> Scope<'a> {
     /// A conversation id the web app supplied, if it is one; anything else falls back to the
     /// session, which every call contributes to.
-    pub(crate) fn of(run: Option<&'a str>, conversation: Option<&'a str>) -> Self {
+    pub fn of(run: Option<&'a str>, conversation: Option<&'a str>) -> Self {
         let valid = |id: &&str| {
             !id.is_empty()
                 && id.len() <= 128
@@ -297,7 +297,7 @@ pub struct ApprovalReason {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum Gate {
+pub enum Gate {
     Allow,
     Ask(ApprovalReason),
     Refuse(&'static str),
@@ -306,7 +306,7 @@ pub(crate) enum Gate {
 impl Gate {
     /// For a tool the user always allows: untrusted content no longer stops it. Hidden
     /// characters still do; nobody can have meant to approve what they couldn't see.
-    pub(crate) fn always_allowed(self) -> Gate {
+    pub fn always_allowed(self) -> Gate {
         match self {
             Gate::Ask(reason) if reason.kind != "hidden_text" => Gate::Allow,
             Gate::Refuse(REFUSED_IN_RUN) => Gate::Allow,
@@ -316,7 +316,7 @@ impl Gate {
 }
 
 #[derive(Default)]
-pub(crate) struct Tracker {
+pub struct Tracker {
     session: Exposure,
     runs: HashMap<String, Exposure>,
     run_order: VecDeque<String>,
@@ -328,7 +328,7 @@ pub(crate) struct Tracker {
 
 impl Tracker {
     /// The exposure of a run or of the session; conversations are kept by the caller.
-    pub(crate) fn exposure(&self, scope: Scope) -> Exposure {
+    pub fn exposure(&self, scope: Scope) -> Exposure {
         match scope {
             Scope::Run(run) => self.runs.get(run).copied().unwrap_or_default(),
             Scope::Session => self.session,
@@ -339,7 +339,7 @@ impl Tracker {
     /// `vetted` is [`Connector::vetted`](super::registry::Connector::vetted) for the tool's
     /// connector.
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn gate(
+    pub fn gate(
         &mut self,
         connector_id: &str,
         tool_name: &str,
@@ -393,7 +393,7 @@ impl Tracker {
 
     /// Called after every call, failed ones included: an error can carry the remote's text.
     /// Returns what the call exposed, for the caller to add to a conversation.
-    pub(crate) fn record(
+    pub fn record(
         &mut self,
         connector_id: &str,
         tool_name: &str,

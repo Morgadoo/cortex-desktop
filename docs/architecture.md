@@ -35,6 +35,8 @@ src-tauri/crates/         the AI core that needs no window
    cortex-sandbox         the WebAssembly sandbox for tools the assistant writes
    cortex-store           conversations, their index, backups and trash, version history,
                           partial answers, settings files, encryption at rest, storage errors
+   cortex-tools           the tool contract: connector trait and registry, approval and
+                          exposure rules, credentials, connector state, tool results
 ```
 
 ### The chat engine: `src-tauri/src/chat/`
@@ -197,10 +199,11 @@ Its name goes in `chat/base/tool_names.rs` and `NAMES`, its schema in `turn/buil
 
 ### A connector
 
-A type implementing `tools::registry::Connector`, registered in `tools::swap_account`
-(`tools.rs`). Its exposure class (`tools/exposure.rs`), icon (`tools/icons.rs`) and log redaction
-(`tools/commands.rs`) are still tables outside the connector; plan package 3.11 moves them onto
-the trait.
+A type implementing `cortex_tools::registry::Connector` (re-exported as `tools::registry`),
+registered in `tools::swap_account` (`tools.rs`). `crates/cortex-tools/src/echo.rs` is the
+smallest complete one, a model to start from. Its exposure class (`cortex-tools`'s `exposure`),
+icon (`tools/icons.rs`) and log redaction (`tools/commands.rs`) are tables outside the
+connector, on purpose: one table is easier to audit than a flag on each connector.
 
 ### A setting
 

@@ -1,19 +1,15 @@
+// The tool contract lives in the cortex-tools crate, re-exported here where the app's code
+// expects it; the concrete connectors, the keychain and the window side stay in this module.
+pub use cortex_tools::{command_path, error, oauth, registry};
+pub mod icons;
+use cortex_tools::{child_process, exposure, hidden_text};
+
 pub mod approvals;
 pub mod auth;
-mod child_process;
-pub mod command_path;
 pub mod commands;
 pub mod connector_state;
 pub mod connectors;
-pub mod error;
-mod exposure;
-mod hidden_text;
-pub mod icons;
 mod keychain;
-pub mod oauth;
-pub mod registry;
-pub mod result_reader;
-pub mod result_store;
 
 use crate::account::{AccountId, ActiveAccount};
 use connector_state::{save_connector_state, ConnectorState};
@@ -193,3 +189,6 @@ pub fn emit_connectors_changed(app_handle: &AppHandle) {
         }
     });
 }
+
+#[cfg(test)]
+mod registry_tests;

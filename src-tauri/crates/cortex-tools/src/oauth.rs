@@ -2,7 +2,7 @@
 //!
 //! Deep links are matched to their pending state; rmcp validates CSRF/state
 //! during token exchange for both callback transports.
-use crate::tools::error::AuthError;
+use crate::error::AuthError;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -97,8 +97,8 @@ pub fn handle_deep_link(url: &url::Url) -> bool {
 }
 
 const CALLBACK_TIMEOUT: Duration = Duration::from_secs(300);
-const CALLBACK_PAGE: &str = include_str!("../../assets/oauth-callback.html");
-const CORTEX_MARK: &str = include_str!("../../../webview/static/images/cortex-mark.svg");
+const CALLBACK_PAGE: &str = include_str!("../../../assets/oauth-callback.html");
+const CORTEX_MARK: &str = include_str!("../../../../webview/static/images/cortex-mark.svg");
 
 const SUCCESS_ICON: &str = r#"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>"#;
 const ERROR_ICON: &str = r#"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>"#;

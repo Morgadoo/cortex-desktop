@@ -282,6 +282,7 @@ fn handle_deep_links(app: &App) {
 /// The connector registry, its approval gate, and the active account's connectors.
 fn set_up_tools(app: &App) {
     let registry = ToolRegistry::new();
+    registry.report_failures_to(crate::reporting::approval_failure);
     registry.set_approval_gate(std::sync::Arc::new(
         tools::approvals::InteractiveApprovalGate::new(app.handle().clone()),
     ));

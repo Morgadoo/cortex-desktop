@@ -32,7 +32,18 @@ package is one or more commits there. Measured as section 7 describes:
 | Hand edits to add a command | 4 to 5 | 1, plus a script | 1 |
 | Backend calls by string name | 287 | 0 unchecked: every name is checked against the generated command list | 0 |
 
-**Done**: phase 0 (0.1 to 0.8), phase 1 (1.1 to 1.6), 2.1 to 2.6, 2.8, 3.1 to 3.11.
+**Done**: phase 0 (0.1 to 0.8), phase 1 (1.1 to 1.6), 2.1 to 2.6, 2.8, 3.1 to 3.11, 4.1.
+
+4.1 in detail: `cortex-store` holds the conversation store (conversations, their index, backups and
+  the trash, version history, the checkpoints of answers in progress), settings files,
+  encryption at rest and the storage errors, with no window, keychain or network in it; the app
+  re-exports its modules under `chat::`. Sync, the vault and the importers stay in the app, as
+  they use Tauri, the keychain or the network. `cortex-tools` holds the tool contract: the
+  connector trait and registry, approval and exposure rules, credentials and connector state,
+  tool results, OAuth, and the echo connector as a reference; the registry reports failures
+  through a hook the app sets. The concrete connectors that need the window or the keychain
+  (MCP, filesystem, bash, browser, mail), the keychain itself and the Tauri commands stay in
+  `tools/`, which re-exports the crate's modules.
 
 **Partly done**:
 
@@ -43,13 +54,6 @@ package is one or more commits there. Measured as section 7 describes:
   sections arrived in; regrouping them by interface folder is a reorder, to be checked with
   `scripts/screenshot-pages.mjs`. The `--cortex-*` names stay until the old settings page is
   rewritten.
-- 4.1: `cortex-store` holds the conversation store (conversations, their index, backups and
-  the trash, version history, the checkpoints of answers in progress), settings files,
-  encryption at rest and the storage errors, with no window, keychain or network in it; the app
-  re-exports its modules under `chat::`. Sync, the vault and the importers stay in the app, as
-  they use Tauri, the keychain or the network. `cortex-tools` is not extracted: its loaders take
-  an `AppHandle`.
-
 **Checked in the real app**: section 8's checklist runs as `e2e/user-journeys/` (the real app
 under a virtual display, through tauri-driver, against a real model), in the light and dark themes,
 and passes; a second journey covers switching chats while answers run, unread marks, two answers at

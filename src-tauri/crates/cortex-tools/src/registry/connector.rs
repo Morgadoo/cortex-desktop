@@ -1,13 +1,13 @@
 //! The traits a connector implements, and the shapes the registry and frontend exchange.
 
-use super::super::auth::{
-    Activity, AuthMechanism, ConnectorStatus, Interactive, Readiness, Stored,
-};
-use super::super::connector_state::{ConnectorState, ToolPolicy};
 use super::super::error::{AuthError, ToolError};
 use super::super::exposure::ApprovalReason;
 #[cfg(doc)]
 use super::ToolRegistry;
+use crate::credentials::{
+    Activity, AuthMechanism, ConnectorStatus, Interactive, Readiness, Stored,
+};
+use crate::state::{ConnectorState, ToolPolicy};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -61,7 +61,7 @@ pub struct ToolDefinition {
 
 impl ToolDefinition {
     /// Hash of what the model and the gate are told about the tool, the policy aside.
-    pub(crate) fn fingerprint(&self) -> String {
+    pub fn fingerprint(&self) -> String {
         use sha2::{Digest, Sha256};
         fn sorted(value: &Value) -> Value {
             match value {

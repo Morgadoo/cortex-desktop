@@ -17,8 +17,8 @@ pub fn definition() -> ToolDefinition {
 mod tests {
     use super::super::error::ToolError;
     use super::*;
-    use crate::tools::auth::{AuthMechanism, Readiness};
-    use crate::tools::registry::{Connector, ConnectorDescriptor, ToolRegistry};
+    use crate::credentials::{AuthMechanism, Readiness};
+    use crate::registry::{Connector, ConnectorDescriptor, ToolRegistry};
     use async_trait::async_trait;
     use serde_json::Value;
     use std::sync::atomic::{AtomicUsize, Ordering};

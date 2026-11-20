@@ -1,5 +1,5 @@
 use super::*;
-use crate::tools::auth::AuthMechanism;
+use crate::credentials::AuthMechanism;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 

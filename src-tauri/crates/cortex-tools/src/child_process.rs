@@ -11,7 +11,7 @@ use windows::Win32::System::Threading::CREATE_NO_WINDOW;
 
 /// Keep background tools out of a console window and manage their process trees together.
 /// Callers retain control of arguments, environment, working directory, and stdio.
-pub(super) fn background_command(command: Command) -> CommandWrap {
+pub fn background_command(command: Command) -> CommandWrap {
     let mut command = CommandWrap::from(command);
     #[cfg(unix)]
     command.wrap(ProcessGroup::leader());

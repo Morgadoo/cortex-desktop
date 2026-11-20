@@ -1,5 +1,5 @@
 mod connector;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-utils"))]
 pub mod testing;
 
 pub use connector::{
@@ -7,13 +7,12 @@ pub use connector::{
     ConnectorManifest, Credentialed, RegistryHost, Session, ToolDefinition,
 };
 
-use super::auth::{Activity, ConnectorStatus, Interactive, Readiness, Stored};
-use super::connector_state::{ConnectorState, ToolPolicy};
 use super::error::{AuthError, ConnectError, ToolError};
 use super::exposure::{ApprovalReason, Exposure, Gate, Scope};
 use super::hidden_text;
 use super::result_store::MAX_PREVIEW_BYTES;
-use crate::reporting::approval_failure;
+use crate::credentials::{Activity, ConnectorStatus, Interactive, Readiness, Stored};
+use crate::state::{ConnectorState, ToolPolicy};
 use async_trait::async_trait;
 use log::{error, info, warn};
 use serde_json::Value;
@@ -137,7 +136,7 @@ impl ConnectorOperation {
 
 /// Who is making a call, for [`ToolRegistry::dispatch_with_transport`].
 #[derive(Debug, Default, Clone, Copy)]
-pub(crate) struct CallContext<'a> {
+pub struct CallContext<'a> {
     /// The scheduled run making the call.
     pub run: Option<&'a str>,
     /// The conversation the call belongs to, if the web app named one.
@@ -150,7 +149,8 @@ pub(crate) struct CallContext<'a> {
 }
 
 pub struct ToolRegistry {
-    pub(super) result_store: Arc<super::result_store::ResultStore>,
+    /// Tool results too long for a reply, kept for `read_tool_result`.
+    pub result_store: Arc<super::result_store::ResultStore>,
     connectors: RwLock<HashMap<String, Arc<ConnectorHandle>>>,
     state: RwLock<ConnectorState>,
     activity: RwLock<HashMap<String, Activity>>,
@@ -158,6 +158,9 @@ pub struct ToolRegistry {
     approval_gate: RwLock<Option<Arc<dyn ApprovalGate>>>,
     host: RwLock<Option<Arc<dyn RegistryHost>>>,
     exposure: std::sync::Mutex<super::exposure::Tracker>,
+    /// Told about a failure that should never happen (no approval gate wired), for crash
+    /// reporting; the app sets it with [`ToolRegistry::report_failures_to`].
+    on_failure: RwLock<fn(&'static str)>,
 }
 
 impl ToolRegistry {
@@ -171,7 +174,16 @@ impl ToolRegistry {
             approval_gate: RwLock::new(None),
             host: RwLock::new(None),
             exposure: Default::default(),
+            on_failure: RwLock::new(|message| log::error!("{message}")),
         }
+    }
+
+    /// Where failures that should never happen are reported (the app's crash reporting).
+    pub fn report_failures_to(&self, report: fn(&'static str)) {
+        *self
+            .on_failure
+            .write()
+            .expect("failure reporter lock poisoned") = report;
     }
 
     pub fn set_approval_gate(&self, gate: Arc<dyn ApprovalGate>) {
@@ -201,7 +213,7 @@ impl ToolRegistry {
         operation.cancel.notify_waiters();
     }
 
-    pub(super) fn try_connector_operation(
+    pub fn try_connector_operation(
         &self,
         connector_id: &str,
     ) -> Result<tokio::sync::OwnedMutexGuard<()>, ConnectError> {
@@ -597,7 +609,7 @@ impl ToolRegistry {
             .map(|connector| self.manifest_of(&connector))
     }
 
-    #[cfg(any(feature = "hosted", test))]
+    #[cfg(any(feature = "hosted", feature = "test-utils", test))]
     pub async fn dispatch(
         &self,
         connector_id: &str,
@@ -609,8 +621,8 @@ impl ToolRegistry {
     }
 
     /// The override is resolved from a registered schedule run, never a global policy mutation.
-    #[cfg(any(feature = "hosted", test))]
-    pub(crate) async fn dispatch_with_approval(
+    #[cfg(any(feature = "hosted", feature = "test-utils", test))]
+    pub async fn dispatch_with_approval(
         &self,
         connector_id: &str,
         tool_name: &str,
@@ -622,8 +634,8 @@ impl ToolRegistry {
     }
 
     /// Schedule access is enforced independently of global approval preferences.
-    #[cfg(any(feature = "hosted", test))]
-    pub(crate) async fn dispatch_with_access(
+    #[cfg(any(feature = "hosted", feature = "test-utils", test))]
+    pub async fn dispatch_with_access(
         &self,
         connector_id: &str,
         tool_name: &str,
@@ -645,7 +657,7 @@ impl ToolRegistry {
 
     /// `context` decides where [`exposure`](super::exposure) is tracked and enforced.
     #[allow(clippy::too_many_arguments)]
-    pub(crate) async fn dispatch_with_transport(
+    pub async fn dispatch_with_transport(
         &self,
         connector_id: &str,
         tool_name: &str,
@@ -874,7 +886,7 @@ impl ToolRegistry {
     /// as one that sends data out. With no saved policy nothing asks for the policy's sake; the
     /// caller's approval mode has already decided that. The outer error is the gate's refusal,
     /// the inner one the tool's own failure.
-    pub(crate) async fn dispatch_external<F, Fut>(
+    pub async fn dispatch_external<F, Fut>(
         &self,
         connector_id: &str,
         tool: &ToolDefinition,
@@ -1043,7 +1055,12 @@ impl ToolRegistry {
         match gate {
             Some(gate) => gate.request(connector_id, tool_name, input, reason).await,
             None => {
-                approval_failure("Approval gate missing");
+                (self
+                    .on_failure
+                    .read()
+                    .expect("failure reporter lock poisoned"))(
+                    "Approval gate missing"
+                );
                 error!("no approval gate wired; denying 'ask' tool call");
                 ApprovalDecision::Deny
             }
@@ -1138,7 +1155,7 @@ impl ToolRegistry {
     }
 
     /// Caller holds the connector operation guard (also used by removal).
-    pub(super) async fn disconnect_locked(&self, connector_id: &str) -> Result<(), ConnectError> {
+    pub async fn disconnect_locked(&self, connector_id: &str) -> Result<(), ConnectError> {
         let connector = self
             .get(connector_id)
             .ok_or_else(|| ConnectError::UnknownConnector(connector_id.into()))?;

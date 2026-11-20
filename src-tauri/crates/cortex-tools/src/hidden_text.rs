@@ -66,7 +66,7 @@ fn has_hidden(text: &str) -> bool {
     scan(text).any(|(_, hidden)| hidden)
 }
 
-pub(crate) fn contains_hidden(value: &Value) -> bool {
+pub fn contains_hidden(value: &Value) -> bool {
     match value {
         Value::String(text) => has_hidden(text),
         Value::Array(items) => items.iter().any(contains_hidden),
@@ -78,20 +78,20 @@ pub(crate) fn contains_hidden(value: &Value) -> bool {
 }
 
 /// Removes every hidden character, for text only the model reads.
-pub(crate) fn strip(text: &str) -> String {
+pub fn strip(text: &str) -> String {
     scan(text)
         .filter_map(|(c, hidden)| (!hidden).then_some(c))
         .collect()
 }
 
-pub(crate) fn strip_value(value: &mut Value) {
+pub fn strip_value(value: &mut Value) {
     map_strings(value, &strip);
 }
 
 /// Removes only what can smuggle whole messages and has no visible use outside flag emoji and
 /// rare CJK variants: tag characters and selector runs. For results that otherwise reach the
 /// model unchanged.
-pub(crate) fn strip_smuggled(value: &mut Value) {
+pub fn strip_smuggled(value: &mut Value) {
     map_strings(value, &|text| {
         scan(text)
             .filter_map(|(c, hidden)| (!hidden || !(is_tag(c) || is_selector(c))).then_some(c))
@@ -100,7 +100,7 @@ pub(crate) fn strip_smuggled(value: &mut Value) {
 }
 
 /// Writes each hidden character as a visible `[U+XXXX]`, for text a person is asked to approve.
-pub(crate) fn reveal(value: &Value) -> Value {
+pub fn reveal(value: &Value) -> Value {
     let mut revealed = value.clone();
     map_strings(&mut revealed, &|text| {
         let mut out = String::with_capacity(text.len());

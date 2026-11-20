@@ -35,7 +35,7 @@ pub(super) fn credential_failure(message: &'static str) {
     capture_failure("cortex.credentials", message);
 }
 
-pub(super) fn approval_failure(message: &'static str) {
+pub(crate) fn approval_failure(message: &'static str) {
     capture_failure("cortex.approvals", message);
 }
 

@@ -1271,6 +1271,7 @@ dependencies = [
  "cortex-retrieval",
  "cortex-sandbox",
  "cortex-store",
+ "cortex-tools",
  "cortex-traces",
  "croner",
  "dbus-secret-service",
@@ -1387,6 +1388,26 @@ dependencies = [
  "thiserror 2.0.21",
  "ts-rs",
  "walkdir",
+]
+
+[[package]]
+name = "cortex-tools"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "cortex-store",
+ "futures",
+ "log",
+ "process-wrap",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "url",
+ "uuid",
 ]
 
 [[package]]

@@ -1,11 +1,15 @@
 use super::testing::FakeConnector;
 use super::*;
-use crate::tools::connectors::echo::EchoConnector;
+use crate::echo::EchoConnector;
 use serde_json::json;
 use std::sync::Mutex;
 
 fn block_on<F: std::future::Future>(future: F) -> F::Output {
-    tauri::async_runtime::block_on(future)
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("a test runtime")
+        .block_on(future)
 }
 
 #[test]
@@ -445,7 +449,7 @@ impl Connector for AccessProbe {
             description: None,
             version: "test".into(),
             icon: None,
-            auth: super::super::auth::AuthMechanism::None,
+            auth: crate::credentials::AuthMechanism::None,
         }
     }
     fn tools(&self) -> Vec<ToolDefinition> {
@@ -535,42 +539,6 @@ fn read_only_access_blocks_writes_unknown_and_forged_tools_before_invocation() {
         ))
         .is_err());
     }
-}
-
-#[test]
-fn read_only_filesystem_access_reads_but_cannot_create_or_edit_files() {
-    use crate::tools::connectors::filesystem::FilesystemConnector;
-    let dir = tempfile::tempdir().unwrap();
-    let existing = dir.path().join("existing.txt");
-    let created = dir.path().join("created.txt");
-    std::fs::write(&existing, "original").unwrap();
-    let registry = ToolRegistry::new();
-    registry.register(FilesystemConnector::new(
-        vec![dir.path().to_path_buf()],
-        true,
-    ));
-    assert!(block_on(registry.dispatch_with_access(
-        "filesystem",
-        "fs_read",
-        json!({"path": existing}),
-        true,
-        true,
-    ))
-    .is_ok());
-    for (name, input) in [
-        ("fs_write", json!({"path": created, "content": "new"})),
-        (
-            "fs_edit",
-            json!({"path": existing, "old_string": "original", "new_string": "changed"}),
-        ),
-    ] {
-        assert!(matches!(
-            block_on(registry.dispatch_with_access("filesystem", name, input, true, true,)),
-            Err(ToolError::AccessDenied(_))
-        ));
-    }
-    assert!(!created.exists());
-    assert_eq!(std::fs::read_to_string(existing).unwrap(), "original");
 }
 
 #[test]

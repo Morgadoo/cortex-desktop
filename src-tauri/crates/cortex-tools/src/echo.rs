@@ -1,7 +1,7 @@
-use crate::tools::auth::{AuthMechanism, Readiness};
-use crate::tools::connector_state::ToolPolicy;
-use crate::tools::error::ToolError;
-use crate::tools::registry::{Connector, ConnectorDescriptor, ToolDefinition, ToolRegistry};
+use crate::credentials::{AuthMechanism, Readiness};
+use crate::error::ToolError;
+use crate::registry::{Connector, ConnectorDescriptor, ToolDefinition, ToolRegistry};
+use crate::state::ToolPolicy;
 use async_trait::async_trait;
 use log::info;
 use serde_json::{json, Value};
@@ -84,7 +84,7 @@ pub fn register(registry: &ToolRegistry) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tools::registry::{ApprovalDecision, ApprovalGate};
+    use crate::registry::{ApprovalDecision, ApprovalGate};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
 
@@ -109,7 +109,7 @@ mod tests {
             _connector_id: &str,
             _tool_name: &str,
             _input: &Value,
-            _reason: Option<&crate::tools::exposure::ApprovalReason>,
+            _reason: Option<&crate::exposure::ApprovalReason>,
         ) -> ApprovalDecision {
             self.calls.fetch_add(1, Ordering::SeqCst);
             if self.answer {
