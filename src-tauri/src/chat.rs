@@ -5,31 +5,47 @@
 //! [`engine::ChatEvent`]s on the `chat://event` channel. Conversations are rig's own message
 //! history, saved as JSON, so a reloaded conversation is exactly what the model saw.
 //!
-//! - [`providers`]: which providers are configured, their API keys (in the OS keychain) and models
-//! - [`store`]: conversations, projects and the user's instructions, on disk
-//! - [`engine`]: one turn: stream a reply, run the tools it calls, repeat
-//! - [`tools`]: the app's connectors (filesystem, shell, MCP) and built-ins offered to the model
+//! The modules are grouped by what they are for. From the bottom up:
+//!
+//! - [`storage`]: conversations, their index, backups, versions, sync, encryption, secrets
+//! - [`models`]: providers, routing, the built-in runtime, coding-agent back ends
+//! - [`grounding`]: memories, knowledge, libraries, embeddings, search, reading the web
+//! - [`toolkit`]: the code sandbox, written and custom tools, computer use, coding, canvases
+//! - [`multimedia`]: images, speech, video, recording
+//! - [`turn`]: one turn: the engine, tool dispatch, built-ins, sub-agents, context, the prompt
+//! - [`automation`]: agents, scheduled tasks, workflows, skills and plugins, evals
+//! - [`integrations`], [`cli`], [`ui`], [`commands`]: the ways in: other apps, the terminal,
+//!   the window
+//!
+//! Every module is also re-exported here by its own name (`crate::chat::store`), which is how
+//! the code refers to it.
 
 pub mod commands;
-
-use std::collections::HashMap;
-use std::sync::Mutex;
-
-use tokio::sync::{oneshot, watch};
 pub mod storage;
-pub use storage::{at_rest, audit, coding_import, import, outputs, recent_files, secrets, store, sync, uploads, vault, versions};
+pub use storage::{
+    at_rest, audit, coding_import, import, outputs, recent_files, secrets, store, sync, uploads,
+    vault, versions,
+};
 use storage::{backup, index};
 pub mod models;
 pub use models::{acp, agent_cli, arena, batched_qwen2, local_models, providers, router};
 pub mod grounding;
-pub use grounding::{calendar, embeddings, extraction, knowledge, learning, libraries, memory, reader, retrieval, search, search_all};
+pub use grounding::{
+    calendar, embeddings, extraction, knowledge, learning, libraries, memory, reader, retrieval,
+    search, search_all,
+};
 use grounding::{favicon, preview};
 pub mod toolkit;
-pub use toolkit::{canvas, code, computer, custom_tools, openapi, proposals, sandbox, script_tools, sheets, terminal, webpage, workbench};
+pub use toolkit::{
+    canvas, code, computer, custom_tools, openapi, proposals, sandbox, script_tools, sheets,
+    terminal, webpage, workbench,
+};
 pub mod multimedia;
 pub use multimedia::{animation, audio, hex, media, recorder, video, videogen};
 pub mod automation;
-pub use automation::{agent_market, agents, evals, lifecycle, org, plugins, skill_catalog, skills, tasks, workflows};
+pub use automation::{
+    agent_market, agents, evals, lifecycle, org, plugins, skill_catalog, skills, tasks, workflows,
+};
 pub mod integrations;
 pub use integrations::{api_server, discord, links, share, slack, telegram};
 pub mod cli;
@@ -37,8 +53,12 @@ pub use cli::{config_cli, headless, terminal_chat};
 pub mod ui;
 pub use ui::{emoji_pack, ui_language};
 pub mod turn;
-pub use turn::{builtins, context, engine, functions, hooks, host, privacy, prompt, subagents, tools, traces};
 use turn::deferred;
+pub use turn::{
+    builtins, context, engine, functions, hooks, host, privacy, prompt, subagents, tools, traces,
+};
+mod state;
+pub use state::ChatState;
 
 /// The account every account-scoped subsystem (connectors, secrets, skills) runs under. Proton
 /// accounts are gone; one local profile takes their place.
@@ -46,212 +66,3 @@ pub const LOCAL_ACCOUNT: &str = "local";
 
 /// Event channel the page listens on.
 pub const EVENT: &str = "chat://event";
-
-/// Turns in flight and questions waiting for the user, shared by the commands.
-#[derive(Default)]
-pub struct ChatState {
-    /// Conversation id → the sender that stops its running turn.
-    running: Mutex<HashMap<String, watch::Sender<bool>>>,
-    /// `ask_user` call id → where the user's answer goes.
-    questions: Mutex<HashMap<String, oneshot::Sender<String>>>,
-    /// Conversation id → messages the user sent while its turn was running.
-    steering: Mutex<HashMap<String, Vec<String>>>,
-    /// Conversation id → what its running turn has streamed so far, so a window that opens (or
-    /// reloads) during the turn shows it all, not only what comes next.
-    replay: Mutex<HashMap<String, Vec<serde_json::Value>>>,
-}
-
-impl ChatState {
-    fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-        mutex
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-    }
-
-    /// Registers a turn for `conversation`; `None` when one is already running.
-    pub fn begin(&self, conversation: &str) -> Option<watch::Receiver<bool>> {
-        let mut running = Self::lock(&self.running);
-        if running.contains_key(conversation) {
-            return None;
-        }
-        let (tx, rx) = watch::channel(false);
-        running.insert(conversation.to_string(), tx);
-        Some(rx)
-    }
-
-    pub fn finish(&self, conversation: &str) {
-        Self::lock(&self.running).remove(conversation);
-    }
-
-    pub fn cancel(&self, conversation: &str) -> bool {
-        match Self::lock(&self.running).get(conversation) {
-            Some(tx) => tx.send(true).is_ok(),
-            None => false,
-        }
-    }
-
-    /// Queues guidance for a running turn; false when nothing is running.
-    pub fn steer(&self, conversation: &str, text: String) -> bool {
-        if !self.is_running(conversation) {
-            return false;
-        }
-        Self::lock(&self.steering)
-            .entry(conversation.to_string())
-            .or_default()
-            .push(text);
-        true
-    }
-
-    /// The guidance waiting for a turn, removed from the queue.
-    pub fn take_steering(&self, conversation: &str) -> Vec<String> {
-        Self::lock(&self.steering)
-            .remove(conversation)
-            .unwrap_or_default()
-    }
-
-    pub fn has_steering(&self, conversation: &str) -> bool {
-        Self::lock(&self.steering)
-            .get(conversation)
-            .is_some_and(|v| !v.is_empty())
-    }
-
-    pub fn is_running(&self, conversation: &str) -> bool {
-        Self::lock(&self.running).contains_key(conversation)
-    }
-
-    /// Keeps a streamed event for replay: a new turn starts afresh, an ended one is forgotten,
-    /// and text pieces in a row are joined so the buffer stays small.
-    pub fn record(&self, event: &serde_json::Value) {
-        let Some(id) = event
-            .get("conversationId")
-            .and_then(serde_json::Value::as_str)
-        else {
-            return;
-        };
-        let kind = event
-            .get("type")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or_default();
-        let mut replay = Self::lock(&self.replay);
-        match kind {
-            "started" => {
-                replay.insert(id.to_string(), vec![event.clone()]);
-            }
-            "done" | "error" => {
-                replay.remove(id);
-            }
-            "title" | "usage" => {}
-            _ => {
-                let events = replay.entry(id.to_string()).or_default();
-                if let (Some(last), Some(text)) = (
-                    events.last_mut(),
-                    event.get("text").and_then(serde_json::Value::as_str),
-                ) {
-                    if last.get("type").and_then(serde_json::Value::as_str) == Some(kind)
-                        && matches!(kind, "text" | "reasoning")
-                    {
-                        let joined = format!(
-                            "{}{text}",
-                            last.get("text")
-                                .and_then(serde_json::Value::as_str)
-                                .unwrap_or_default()
-                        );
-                        last["text"] = serde_json::Value::String(joined);
-                        return;
-                    }
-                }
-                if events.len() < 5_000 {
-                    events.push(event.clone());
-                }
-            }
-        }
-    }
-
-    /// What a running turn has streamed so far.
-    pub fn replay(&self, conversation: &str) -> Vec<serde_json::Value> {
-        if !self.is_running(conversation) {
-            return Vec::new();
-        }
-        Self::lock(&self.replay)
-            .get(conversation)
-            .cloned()
-            .unwrap_or_default()
-    }
-
-    pub fn ask(&self, call_id: &str) -> oneshot::Receiver<String> {
-        let (tx, rx) = oneshot::channel();
-        Self::lock(&self.questions).insert(call_id.to_string(), tx);
-        rx
-    }
-
-    pub fn answer(&self, call_id: &str, answer: String) -> bool {
-        match Self::lock(&self.questions).remove(call_id) {
-            Some(tx) => tx.send(answer).is_ok(),
-            None => false,
-        }
-    }
-
-    pub fn forget_question(&self, call_id: &str) {
-        Self::lock(&self.questions).remove(call_id);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn a_running_turn_can_be_replayed() {
-        use serde_json::json;
-        let state = ChatState::default();
-        let _rx = state.begin("c").unwrap();
-        state.record(&json!({"type": "started", "conversationId": "c"}));
-        state.record(&json!({"type": "text", "conversationId": "c", "text": "Hel"}));
-        state.record(&json!({"type": "text", "conversationId": "c", "text": "lo"}));
-        state.record(&json!({"type": "toolCall", "conversationId": "c", "name": "web_search"}));
-        state.record(&json!({"type": "text", "conversationId": "c", "text": "!"}));
-        let r = state.replay("c");
-        assert_eq!(r.len(), 4);
-        assert_eq!(r[1]["text"], "Hello");
-        state.record(&json!({"type": "done", "conversationId": "c"}));
-        assert!(state.replay("c").is_empty());
-        assert!(state.replay("other").is_empty());
-    }
-
-    #[test]
-    fn guidance_waits_for_a_running_turn() {
-        let state = ChatState::default();
-        assert!(!state.steer("c", "ignored".into()), "nothing is running");
-        let _rx = state.begin("c").unwrap();
-        assert!(state.steer("c", "focus on the EU".into()));
-        assert!(state.steer("c", "and keep it short".into()));
-        assert!(state.has_steering("c"));
-        assert_eq!(
-            state.take_steering("c"),
-            ["focus on the EU", "and keep it short"]
-        );
-        assert!(!state.has_steering("c"));
-    }
-
-    use super::*;
-
-    #[test]
-    fn one_turn_per_conversation() {
-        let state = ChatState::default();
-        let rx = state.begin("a").expect("first turn starts");
-        assert!(state.begin("a").is_none());
-        assert!(state.begin("b").is_some());
-        assert!(state.cancel("a"));
-        assert!(*rx.borrow());
-        state.finish("a");
-        assert!(!state.is_running("a"));
-        assert!(state.begin("a").is_some());
-    }
-
-    #[test]
-    fn answers_reach_the_waiting_question() {
-        let state = ChatState::default();
-        let mut rx = state.ask("call-1");
-        assert!(state.answer("call-1", "yes".into()));
-        assert_eq!(rx.try_recv().unwrap(), "yes");
-        assert!(!state.answer("call-1", "again".into()));
-    }
-}
