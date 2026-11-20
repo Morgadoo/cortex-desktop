@@ -12,8 +12,10 @@ import { ChatView, CompareView, HomeView, composer, conversationMenu, recordStep
 import { clear, h, icon, modal, popover, promptText, confirmDialog, toast } from './ui/dom';
 import { startUiLanguage } from './core/i18n';
 import { startWakeWord, stopWakeWord, wakePrefs } from './voice/wakeword';
-import { ConnectorsPage, PlaceholderPage, openInstructions } from './pages/connectors';
-import { KnowledgePage, SkillsPage, reviewRecording } from './pages/skills';
+import { ConnectorsPage, PlaceholderPage } from './pages/connectors';
+import { openInstructions } from './pages/instructions';
+import { SkillsPage, reviewRecording } from './pages/skills';
+import { KnowledgePage } from './pages/knowledge';
 import { AgentPage, AgentsPage, agentName, avatar, newAgent, orgOrder, pinnedAgents, reloadAgents } from './pages/agents';
 import { TasksPage } from './pages/tasks';
 import { LibrariesPage } from './pages/libraries';
