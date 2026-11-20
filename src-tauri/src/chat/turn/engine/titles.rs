@@ -49,7 +49,7 @@ pub fn fallback_title(conversation: &Conversation) -> String {
         .trim()
         .to_string();
     if line.chars().count() > 48 {
-        format!("{}…", line.chars().take(47).collect::<String>().trim_end())
+        format!("{}…", crate::support::text::clip(&line, 47).trim_end())
     } else if line.is_empty() {
         "New chat".into()
     } else {

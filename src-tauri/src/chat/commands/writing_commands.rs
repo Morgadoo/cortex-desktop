@@ -20,14 +20,14 @@ pub async fn chat_translate(
     text: String,
     language: String,
 ) -> Result<String, String> {
-    let language: String = language.trim().chars().take(40).collect();
+    let language: String = crate::support::text::clip(language.trim(), 40);
     if language.is_empty() || text.trim().is_empty() {
         return Err("Nothing to translate.".into());
     }
     let prompt = format!(
         "Translate the text below into {language}. Keep its Markdown, code blocks, links and numbers exactly; \
          translate only the prose. Reply with the translation alone.\n\n{}",
-        text.chars().take(30_000).collect::<String>()
+        crate::support::text::clip(&text, 30_000)
     );
     let request = rig_core::completion::CompletionRequest::new(
         rig_core::completion::message::Message::user(prompt),
@@ -46,7 +46,7 @@ pub async fn chat_improve_text(
     instruction: String,
     context: Option<String>,
 ) -> Result<String, String> {
-    let instruction: String = instruction.trim().chars().take(400).collect();
+    let instruction: String = crate::support::text::clip(instruction.trim(), 400);
     if text.trim().is_empty() {
         return Err("Nothing to improve.".into());
     }
@@ -57,13 +57,13 @@ pub async fn chat_improve_text(
     };
     let context = context
         .filter(|c| !c.trim().is_empty())
-        .map(|c| format!("\n\nThe text around it, for reference only (do not repeat it):\n<context>\n{}\n</context>", c.chars().take(12_000).collect::<String>()))
+        .map(|c| format!("\n\nThe text around it, for reference only (do not repeat it):\n<context>\n{}\n</context>", crate::support::text::clip(&c, 12_000)))
         .unwrap_or_default();
     let prompt = format!(
         "Rewrite the text below. Instruction: {instruction}\n\
          Keep its Markdown, links, code and facts; do not add facts. Reply with the rewritten text alone, \
          with no preamble or quotes.{context}\n\n<text>\n{}\n</text>",
-        text.chars().take(30_000).collect::<String>()
+        crate::support::text::clip(&text, 30_000)
     );
     let request = rig_core::completion::CompletionRequest::new(
         rig_core::completion::message::Message::user(prompt),

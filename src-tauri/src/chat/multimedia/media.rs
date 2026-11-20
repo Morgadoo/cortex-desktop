@@ -424,7 +424,7 @@ pub fn speakable(markdown: &str) -> String {
     let links = regex::Regex::new(r"\[([^\]]*)\]\([^)]*\)").expect("valid regex");
     let mut text = links.replace_all(&out, "$1").replace(['*', '_', '`'], "");
     if text.chars().count() > SPEAK_CHARS {
-        let cut: String = text.chars().take(SPEAK_CHARS).collect();
+        let cut: String = crate::support::text::clip(&text, SPEAK_CHARS);
         let end = cut.rfind(['.', '!', '?']).map_or(cut.len(), |i| i + 1);
         text = cut[..end].to_string();
     }

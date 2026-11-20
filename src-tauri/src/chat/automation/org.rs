@@ -387,7 +387,7 @@ fn update(
     let mut set = |key: &'static str, field: &mut String| {
         if let Some(v) = text(arguments, key) {
             *field = if key == "avatar" {
-                v.chars().take(4).collect()
+                crate::support::text::clip(&v, 4)
             } else {
                 v
             };

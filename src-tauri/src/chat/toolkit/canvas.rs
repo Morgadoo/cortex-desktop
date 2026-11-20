@@ -440,7 +440,7 @@ pub fn write_kind(
         return Err("That canvas belongs to another conversation.".into());
     }
     if let Some(title) = title.map(str::trim).filter(|t| !t.is_empty()) {
-        canvas.title = title.chars().take(120).collect();
+        canvas.title = crate::support::text::clip(title, 120);
     }
     if canvas.title.is_empty() {
         canvas.title = content
@@ -476,7 +476,7 @@ pub fn prompt(canvases: &[Canvas]) -> Option<String> {
          one with `canvas` and its id):",
     );
     for c in canvases {
-        let content: String = c.content().chars().take(PROMPT_CHARS).collect();
+        let content: String = crate::support::text::clip(c.content(), PROMPT_CHARS);
         out.push_str(&format!(
             "\n\n<canvas id=\"{}\" kind=\"{}\" title=\"{}\">\n{}\n</canvas>",
             c.id, c.kind, c.title, content

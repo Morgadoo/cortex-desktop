@@ -113,9 +113,9 @@ pub fn reflect_prompt(
          specific to this one case? If not, reply with exactly NONE. If so, reply with only a JSON object, no code fence: \
          {{\"name\": lowercase-hyphenated, 2 to 4 words, not one of {existing:?}; \"description\": \"Use when …\" in one \
          sentence; \"body\": the numbered steps, general enough to reuse, at most 150 words}}.",
-        request.chars().take(1_500).collect::<String>(),
+        crate::support::text::clip(request, 1_500),
         steps.iter().map(|s| format!("- {s}")).collect::<Vec<_>>().join("\n"),
-        answer.chars().take(1_500).collect::<String>()
+        crate::support::text::clip(answer, 1_500)
     )
 }
 

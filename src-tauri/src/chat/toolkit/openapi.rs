@@ -448,7 +448,7 @@ pub async fn call(config_dir: &Path, tool: &ChatTool, input: &Value) -> Result<S
     let response = request.send().await.map_err(|e| e.to_string())?;
     let status = response.status();
     let text = response.text().await.unwrap_or_default();
-    let text: String = text.chars().take(MAX_RESPONSE).collect();
+    let text: String = crate::support::text::clip(&text, MAX_RESPONSE);
     if status.is_success() {
         Ok(if text.is_empty() {
             format!("{} ({})", status, method)

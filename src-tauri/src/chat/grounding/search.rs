@@ -692,7 +692,7 @@ mod live {
                 "HIT {} | {} | {}",
                 h.title,
                 h.url,
-                h.snippet.chars().take(60).collect::<String>()
+                crate::support::text::clip(&h.snippet, 60)
             );
         }
     }

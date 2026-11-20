@@ -41,7 +41,7 @@ pub(super) const SHARED_FILE_CHARS: usize = 60_000;
 pub fn message_text(from: &str, message: &str, files: &[(String, String)]) -> String {
     let mut out = format!("Message from {from}:\n\n{}", message.trim());
     for (name, text) in files {
-        let text: String = text.chars().take(SHARED_FILE_CHARS).collect();
+        let text: String = crate::support::text::clip(text, SHARED_FILE_CHARS);
         out.push_str(&format!(
             "\n\n<attachment name=\"{name}\">\n{text}\n</attachment>"
         ));
@@ -140,7 +140,7 @@ pub fn route_prompt(agents: &[Agent], message: &str) -> String {
         "A user starts a chat with this message:\n\n{}\n\nThese agents could take it:\n{}\n\nWhich one is clearly \
          the best fit? Reply with only its name, exactly as written, or with `none` when the message \
          is general, small talk, or no agent fits better than a general assistant.",
-        message.chars().take(2_000).collect::<String>(),
+        crate::support::text::clip(message, 2_000),
         list.join("\n")
     )
 }

@@ -77,7 +77,7 @@ pub fn prompt(dir: &str) -> String {
         let Ok(text) = crate::chat::at_rest::read_to_string(path.join(name)) else {
             continue;
         };
-        let text: String = text.chars().take(INSTRUCTION_CHARS).collect();
+        let text: String = crate::support::text::clip(&text, INSTRUCTION_CHARS);
         out.push_str(&format!(
             "\n\nThe project's instructions for coding agents, from `{name}` (follow them):\n<project_instructions>\n{}\n</project_instructions>",
             text.trim()

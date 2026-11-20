@@ -152,7 +152,7 @@ pub fn comment(
     match (text.map(str::trim).filter(|t| !t.is_empty()), remove) {
         (Some(t), _) => task.comments.push(Comment {
             at: Utc::now(),
-            text: t.chars().take(2_000).collect(),
+            text: crate::support::text::clip(t, 2_000),
         }),
         (None, Some(i)) if i < task.comments.len() => {
             task.comments.remove(i);

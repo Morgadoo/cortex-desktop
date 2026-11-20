@@ -78,11 +78,11 @@ pub fn write(
     author: &str,
     sources: &[String],
 ) -> Result<Page, String> {
-    let title: String = title.trim().chars().take(120).collect();
+    let title: String = crate::support::text::clip(title.trim(), 120);
     if title.is_empty() {
         return Err("A knowledge page needs a title.".into());
     }
-    let body: String = body.trim().chars().take(MAX_BODY).collect();
+    let body: String = crate::support::text::clip(body.trim(), MAX_BODY);
     let mut pages = load(config_dir);
     let existing = id
         .and_then(|i| find(&pages, i).map(|p| p.id.clone()))
@@ -178,7 +178,7 @@ pub fn prompt(pages: &[Page], query: &str) -> Option<String> {
          inline as [Knowledge: Page title].",
     );
     for page in &recalled {
-        let body: String = page.body.chars().take(RECALL_CHARS).collect();
+        let body: String = crate::support::text::clip(&page.body, RECALL_CHARS);
         out.push_str(&format!(
             "\n\n<knowledge_page id=\"{}\" title=\"{}\">\n{}\n</knowledge_page>",
             &page.id[..8],

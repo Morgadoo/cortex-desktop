@@ -149,7 +149,7 @@ pub fn normalize(mut s: AudioSettings) -> AudioSettings {
     }
     s.stt.base_url = s.stt.base_url.trim_end_matches('/').to_string();
     s.tts.base_url = s.tts.base_url.trim_end_matches('/').to_string();
-    s.stt.language = s.stt.language.to_lowercase().chars().take(5).collect();
+    s.stt.language = crate::support::text::clip(s.stt.language.to_lowercase(), 5);
     if !(0.25..=4.0).contains(&s.tts.speed) {
         s.tts.speed = 1.0;
     }
@@ -406,7 +406,7 @@ pub async fn transcribe(
             if !status.is_success() {
                 return Err(format!(
                     "ElevenLabs: {}",
-                    body.to_string().chars().take(300).collect::<String>()
+                    crate::support::text::clip(body.to_string(), 300)
                 ));
             }
             Ok(body

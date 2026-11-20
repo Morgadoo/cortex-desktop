@@ -123,7 +123,7 @@ pub(in crate::chat::turn) fn find_with(
     }
     let matches: Vec<Value> = found
         .iter()
-        .map(|t| json!({ "name": t.name, "description": t.description.chars().take(300).collect::<String>() }))
+        .map(|t| json!({ "name": t.name, "description": crate::support::text::clip(&t.description, 300) }))
         .collect();
     let text = json!({ "query": query, "matches": matches, "note": "These tools are loaded; call them from your next step." }).to_string();
     (text, found.iter().map(|t| t.name.clone()).collect())

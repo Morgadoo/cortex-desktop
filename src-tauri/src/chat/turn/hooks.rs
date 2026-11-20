@@ -146,7 +146,7 @@ pub(in crate::chat::turn) async fn run_command(
             }
             Ran {
                 code: out.status.code(),
-                output: text.chars().take(MAX_OUTPUT).collect(),
+                output: crate::support::text::clip(&text, MAX_OUTPUT),
             }
         }
         Ok(Err(e)) => Ran {
@@ -204,7 +204,7 @@ pub(in crate::chat::turn) async fn after_tool(
     is_error: bool,
     workdir: Option<&Path>,
 ) -> Vec<String> {
-    let output: String = output.chars().take(20_000).collect();
+    let output: String = crate::support::text::clip(output, 20_000);
     let event = json!({ "event": "after_tool", "conversationId": conversation_id, "tool": tool, "arguments": arguments, "output": output, "isError": is_error, "workdir": workdir, "hook_event_name": "PostToolUse", "tool_name": tool, "tool_input": arguments, "tool_response": output, "session_id": conversation_id, "cwd": workdir });
     let mut notes = Vec::new();
     for hook in load(config_dir)
@@ -227,7 +227,7 @@ pub(in crate::chat::turn) async fn turn_end(
     cancelled: bool,
     workdir: Option<&Path>,
 ) {
-    let event = json!({ "event": "turn_end", "conversationId": conversation_id, "answer": answer.chars().take(20_000).collect::<String>(), "cancelled": cancelled, "workdir": workdir, "hook_event_name": "Stop", "session_id": conversation_id, "cwd": workdir });
+    let event = json!({ "event": "turn_end", "conversationId": conversation_id, "answer": crate::support::text::clip(answer, 20_000), "cancelled": cancelled, "workdir": workdir, "hook_event_name": "Stop", "session_id": conversation_id, "cwd": workdir });
     for hook in load(config_dir)
         .iter()
         .filter(|h| h.enabled && h.event == "turn_end")

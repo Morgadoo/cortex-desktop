@@ -479,7 +479,7 @@ fn compact_diff(before: &str, after: &str) -> String {
     if text.chars().count() <= DIFF_CHARS {
         return text;
     }
-    let mut cut: String = text.chars().take(DIFF_CHARS).collect();
+    let mut cut: String = crate::support::text::clip(&text, DIFF_CHARS);
     cut.push_str("\n… (diff cut)");
     cut
 }

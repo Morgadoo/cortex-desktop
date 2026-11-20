@@ -200,7 +200,7 @@ pub(in crate::chat::automation) fn to_agent(
                 ex.iter()
                     .filter(|e| e.get("role").and_then(Value::as_str) == Some("user"))
                     .filter_map(|e| e.get("content").and_then(Value::as_str))
-                    .map(|t| t.chars().take(200).collect())
+                    .map(|t| crate::support::text::clip(t, 200))
                     .take(3)
                     .collect()
             })
@@ -220,12 +220,12 @@ pub(in crate::chat::automation) fn to_agent(
     let avatar = s(meta.and_then(|m| m.get("avatar")));
     Ok(crate::chat::agents::Agent {
         id,
-        name: name.chars().take(80).collect(),
+        name: crate::support::text::clip(&name, 80),
         // Emoji avatars carry over; image links do not (the app shows no remote images here).
         avatar: if avatar.starts_with("http") {
             String::new()
         } else {
-            avatar.chars().take(8).collect()
+            crate::support::text::clip(&avatar, 8)
         },
         description: s(meta.and_then(|m| m.get("description")))
             .chars()

@@ -84,8 +84,8 @@ pub(super) async fn failing_checks(script: &str, checks: &[Check]) -> Vec<String
             Ok(out) => failed.push(format!(
                 "{} gave {} instead of {}",
                 check.args,
-                out.chars().take(200).collect::<String>(),
-                check.expected.chars().take(200).collect::<String>()
+                crate::support::text::clip(&out, 200),
+                crate::support::text::clip(&check.expected, 200)
             )),
             Err(e) => failed.push(format!("{} failed: {e}", check.args)),
         }
@@ -269,7 +269,7 @@ pub async fn create(config_dir: &Path, conversation: &str, args: &Value) -> Resu
                 expected: output.clone(),
             });
             save_resigned(config_dir, &tool)?;
-            json!({ "ok": true, "output": output.chars().take(4_000).collect::<String>() })
+            json!({ "ok": true, "output": crate::support::text::clip(&output, 4_000) })
         }
         Err(e) => json!({ "ok": false, "error": e.to_string() }),
     };

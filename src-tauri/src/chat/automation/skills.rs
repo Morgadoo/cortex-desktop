@@ -533,7 +533,7 @@ pub fn read_file(config_dir: &Path, name: &str, rel: &str) -> Result<String, Str
     match String::from_utf8(bytes) {
         Ok(text) if text.chars().count() > MAX_FILE_CHARS => Ok(format!(
             "{}\n\n[cut at {MAX_FILE_CHARS} characters]",
-            text.chars().take(MAX_FILE_CHARS).collect::<String>()
+            crate::support::text::clip(&text, MAX_FILE_CHARS)
         )),
         Ok(text) => Ok(text),
         Err(e) => Ok(format!(

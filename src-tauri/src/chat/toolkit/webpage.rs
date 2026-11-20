@@ -335,7 +335,7 @@ pub async fn view(
             Ok(html) => {
                 let (title, text) = page_text(&String::from_utf8_lossy(&html));
                 out["title"] = json!(title);
-                out["text"] = json!(text.chars().take(MAX_TEXT).collect::<String>());
+                out["text"] = json!(crate::support::text::clip(&text, MAX_TEXT));
             }
             Err(e) => return err(e),
         }

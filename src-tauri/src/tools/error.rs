@@ -8,7 +8,7 @@ fn bound_error_text(text: String, max_bytes: usize) -> String {
         return text;
     }
     if max_bytes <= TRUNCATED_ERROR_NOTICE.len() {
-        return TRUNCATED_ERROR_NOTICE.chars().take(max_bytes).collect();
+        return crate::support::text::clip(TRUNCATED_ERROR_NOTICE, max_bytes);
     }
     let available = max_bytes - TRUNCATED_ERROR_NOTICE.len();
     let tail_bytes = available / 4;

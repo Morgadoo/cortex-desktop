@@ -250,7 +250,7 @@ pub fn brief(
     ] {
         if !extra.is_empty() {
             out.push_str("\n\n");
-            out.push_str(&extra.chars().take(2_000).collect::<String>());
+            out.push_str(&crate::support::text::clip(extra, 2_000));
         }
     }
     out

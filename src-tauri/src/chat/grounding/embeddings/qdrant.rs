@@ -79,7 +79,7 @@ fn failed(what: &str, status: u16, body: &Value) -> String {
         .map_or_else(|| body.to_string(), str::to_string);
     format!(
         "Qdrant could not {what} ({status}): {}",
-        detail.chars().take(200).collect::<String>()
+        crate::support::text::clip(&detail, 200)
     )
 }
 

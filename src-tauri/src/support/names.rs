@@ -14,7 +14,7 @@ pub fn slug(name: &str, max: usize) -> String {
             out.push('-');
         }
     }
-    let cut: String = out.chars().take(max).collect();
+    let cut: String = crate::support::text::clip(&out, max);
     cut.trim_matches('-').to_string()
 }
 

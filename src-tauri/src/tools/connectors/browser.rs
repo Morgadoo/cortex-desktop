@@ -319,7 +319,7 @@ fn truncate_chars(s: String, max_chars: usize) -> String {
     if n <= max_chars {
         return s;
     }
-    let kept: String = s.chars().take(max_chars).collect();
+    let kept: String = crate::support::text::clip(&s, max_chars);
     format!("{kept}\n\n[truncated: {n} characters in page, showing first {max_chars}]")
 }
 

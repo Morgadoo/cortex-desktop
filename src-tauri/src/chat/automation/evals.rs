@@ -706,7 +706,7 @@ pub fn regression_from_rating(
             note: format!(
                 "Rated down on {}. The answer was: {}",
                 Utc::now().format("%Y-%m-%d"),
-                wrong.chars().take(1_000).collect::<String>()
+                crate::support::text::clip(&wrong, 1_000)
             ),
             ..Case::default()
         },

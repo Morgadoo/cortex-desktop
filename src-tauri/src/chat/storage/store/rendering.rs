@@ -247,7 +247,7 @@ Date: {}
         text.push_str(&said.join("\n"));
         text.push_str("\n\n");
         if text.chars().count() > limit {
-            let cut: String = text.chars().take(limit).collect();
+            let cut: String = crate::support::text::clip(&text, limit);
             return format!("{cut}\n\n[The rest of the conversation is cut off.]");
         }
     }

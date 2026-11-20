@@ -378,7 +378,7 @@ pub fn occurrences(
                 },
                 all_day,
                 location: event.location.clone(),
-                notes: event.description.chars().take(300).collect(),
+                notes: crate::support::text::clip(&event.description, 300),
                 at: start,
             });
         }
@@ -461,7 +461,7 @@ pub fn parse_vcards(text: &str) -> Vec<Contact> {
                             .collect::<Vec<_>>()
                             .join(", ")
                     }
-                    "NOTE" => c.note = value.chars().take(300).collect(),
+                    "NOTE" => c.note = crate::support::text::clip(&value, 300),
                     _ => {}
                 }
             }

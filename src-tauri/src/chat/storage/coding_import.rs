@@ -50,7 +50,7 @@ fn clip(s: &str) -> String {
     if s.chars().count() <= MAX_TEXT {
         return s.to_string();
     }
-    let kept: String = s.chars().take(MAX_TEXT).collect();
+    let kept: String = crate::support::text::clip(s, MAX_TEXT);
     format!("{kept}\n\n[… cut on import]")
 }
 

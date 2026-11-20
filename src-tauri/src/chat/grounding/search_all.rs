@@ -53,7 +53,7 @@ fn clip(text: &str, n: usize) -> String {
         .collect::<Vec<_>>()
         .join(" ");
     if flat.chars().count() > n {
-        format!("{}…", flat.chars().take(n).collect::<String>())
+        format!("{}…", crate::support::text::clip(&flat, n))
     } else {
         flat
     }

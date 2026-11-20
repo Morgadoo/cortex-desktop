@@ -81,7 +81,7 @@ pub async fn chat_transcribe(
 /// A desktop notification, e.g. when a reply finishes while the window is in the background.
 #[tauri::command]
 pub fn chat_notify(app: AppHandle, title: String, body: String) {
-    let body: String = body.chars().take(180).collect();
+    let body: String = crate::support::text::clip(&body, 180);
     crate::chat::engine::notify(&app, title.trim(), body.trim());
 }
 

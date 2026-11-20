@@ -106,7 +106,7 @@ pub async fn sync_connectors(
                     continue;
                 }
             };
-            let text: String = text.chars().take(MAX_DOC_CHARS).collect();
+            let text: String = crate::support::text::clip(&text, MAX_DOC_CHARS);
             let fingerprint = text_fingerprint(&text);
             if let Some(i) = library
                 .documents

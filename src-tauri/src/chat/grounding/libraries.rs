@@ -109,7 +109,7 @@ pub fn create(config_dir: &Path, name: &str, description: &str) -> Result<Librar
     }
     let library = Library {
         id: uuid::Uuid::new_v4().to_string(),
-        name: name.chars().take(80).collect(),
+        name: crate::support::text::clip(name, 80),
         description: description.trim().to_string(),
         created_at: Utc::now(),
         documents: Vec::new(),
@@ -384,7 +384,7 @@ pub fn document_text(
     Ok(if text.chars().count() > max {
         format!(
             "{}\n\n… (the rest is cut here; the assistant reads it all with read_document)",
-            text.chars().take(max).collect::<String>()
+            crate::support::text::clip(&text, max)
         )
     } else {
         text

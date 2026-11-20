@@ -227,7 +227,7 @@ fn steps_of(events: &[ChatEvent]) -> Vec<Step> {
                 ..
             } => {
                 if let Some((_, step)) = steps.iter_mut().rev().find(|(id, _)| id == call_id) {
-                    step.output = output.chars().take(4_000).collect();
+                    step.output = crate::support::text::clip(output, 4_000);
                     step.error = *is_error;
                 }
             }

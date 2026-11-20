@@ -27,7 +27,7 @@ pub(super) async fn learn_from_turn(host: &dyn Host, id: &str) {
                 name, arguments, ..
             } => Some(format!(
                 "{name}: {}",
-                arguments.to_string().chars().take(160).collect::<String>()
+                crate::support::text::clip(arguments.to_string(), 160)
             )),
             _ => None,
         })

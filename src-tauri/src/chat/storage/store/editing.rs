@@ -139,7 +139,7 @@ pub fn set_bookmark(conversation: &mut Conversation, index: usize, on: bool) -> 
             .collect::<Vec<_>>()
             .join(" ");
         let snippet = if flat.chars().count() > 140 {
-            format!("{}…", flat.chars().take(140).collect::<String>())
+            format!("{}…", crate::support::text::clip(&flat, 140))
         } else {
             flat
         };

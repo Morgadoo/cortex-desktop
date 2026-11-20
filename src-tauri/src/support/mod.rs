@@ -9,3 +9,4 @@ pub mod error;
 pub mod http;
 pub mod names;
 pub mod settings_file;
+pub mod text;

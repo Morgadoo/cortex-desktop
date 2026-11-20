@@ -190,7 +190,7 @@ fn is_report(text: &str) -> bool {
 }
 
 fn short(text: &str, max: usize) -> String {
-    let text: String = text.chars().take(max).collect();
+    let text: String = crate::support::text::clip(text, max);
     text.trim().to_string()
 }
 

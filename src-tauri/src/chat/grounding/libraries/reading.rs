@@ -194,7 +194,7 @@ pub fn zip_text(bytes: &[u8], budget: usize) -> Result<String, String> {
         match text {
             Some(t) if !t.trim().is_empty() => {
                 let room = budget.saturating_sub(out.len());
-                let t: String = t.chars().take(room).collect();
+                let t: String = crate::support::text::clip(&t, room);
                 out.push_str(&format!("--- {name} ---\n{}\n\n", t.trim_end()));
             }
             _ => skipped.push(name.clone()),

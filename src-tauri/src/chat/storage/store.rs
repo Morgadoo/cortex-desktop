@@ -217,7 +217,7 @@ impl ChatParams {
                 .top_p
                 .filter(|p| p.is_finite() && *p > 0.0)
                 .map(|p| p.min(1.0)),
-            instructions: self.instructions.trim().chars().take(8_000).collect(),
+            instructions: crate::support::text::clip(self.instructions.trim(), 8_000),
         }
     }
 

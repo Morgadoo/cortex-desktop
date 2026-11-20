@@ -115,7 +115,7 @@ pub(super) async fn knowledge_search(config_dir: &Path, args: &Value) -> Outcome
     let hits: Vec<Value> = crate::chat::knowledge::rank(&pages, &str_arg("query"))
             .into_iter()
             .take(5)
-            .map(|(p, _)| json!({ "id": &p.id[..8], "title": p.title, "excerpt": p.body.chars().take(400).collect::<String>() }))
+            .map(|(p, _)| json!({ "id": &p.id[..8], "title": p.title, "excerpt": crate::support::text::clip(&p.body, 400) }))
             .collect();
     if hits.is_empty() {
         ok("No knowledge page matches.")

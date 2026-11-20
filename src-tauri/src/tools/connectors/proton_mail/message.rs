@@ -324,5 +324,5 @@ pub(super) fn parse_full_message(
 }
 
 pub(super) fn truncate_chars(value: &str, limit: usize) -> String {
-    value.chars().take(limit).collect()
+    crate::support::text::clip(value, limit)
 }

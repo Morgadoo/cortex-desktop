@@ -99,7 +99,7 @@ fn preview(c: &Conversation) -> String {
         .collect();
     let flat: String = plain.split_whitespace().collect::<Vec<_>>().join(" ");
     if flat.chars().count() > 160 {
-        format!("{}…", flat.chars().take(160).collect::<String>())
+        format!("{}…", crate::support::text::clip(&flat, 160))
     } else {
         flat
     }

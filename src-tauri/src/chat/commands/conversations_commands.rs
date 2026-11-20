@@ -54,7 +54,7 @@ pub fn chat_update_conversation(app: AppHandle, update: UpdateConversation) -> R
     let dir = config_dir(&app)?;
     let mut conversation = store::load_conversation(&dir, &update.id)?;
     if let Some(title) = update.title {
-        conversation.title = title.trim().chars().take(120).collect();
+        conversation.title = crate::support::text::clip(title.trim(), 120);
     }
     if let Some(pinned) = update.pinned {
         conversation.pinned = pinned;
@@ -270,7 +270,7 @@ pub fn chat_rate_reason(
 ) -> Result<(), String> {
     let dir = config_dir(&app)?;
     let mut conversation = store::load_conversation(&dir, &id)?;
-    let reason: String = reason.trim().chars().take(500).collect();
+    let reason: String = crate::support::text::clip(reason.trim(), 500);
     conversation.rating_reasons.retain(|(i, _)| *i != index);
     // The reason also joins the rating in the trace, where the learning loop reads signals.
     crate::chat::traces::feedback_reason(&dir, &id, index, &reason);

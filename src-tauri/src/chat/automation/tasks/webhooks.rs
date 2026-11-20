@@ -9,7 +9,7 @@ pub(in crate::chat::automation) fn webhook_payload(
     status: TaskStatus,
     answer: &str,
 ) -> serde_json::Value {
-    let answer: String = answer.chars().take(20_000).collect();
+    let answer: String = crate::support::text::clip(answer, 20_000);
     serde_json::json!({
         "event": "task.finished",
         "task": { "id": task.id, "title": task.title },
@@ -17,8 +17,8 @@ pub(in crate::chat::automation) fn webhook_payload(
         "conversationId": conversation_id,
         "answer": answer,
         // Slack and Discord incoming webhooks read these fields.
-        "text": format!("{}: {}", task.title, answer.chars().take(3_000).collect::<String>()),
-        "content": format!("**{}**\n{}", task.title, answer.chars().take(1_900).collect::<String>()),
+        "text": format!("{}: {}", task.title, crate::support::text::clip(&answer, 3_000)),
+        "content": format!("**{}**\n{}", task.title, crate::support::text::clip(&answer, 1_900)),
         "finishedAt": chrono::Utc::now(),
     })
 }

@@ -224,7 +224,7 @@ pub async fn share(
         .map(|h| now + chrono::Duration::hours(i64::from(h)));
     let share = Share {
         token,
-        title: title.trim().chars().take(200).collect(),
+        title: crate::support::text::clip(title.trim(), 200),
         created_at: now,
         views: 0,
         app,

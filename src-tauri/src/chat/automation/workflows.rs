@@ -117,7 +117,7 @@ fn save_mine(config_dir: &Path, workflows: &[Workflow]) -> Result<(), String> {
 }
 
 pub fn save(config_dir: &Path, mut workflow: Workflow) -> Result<Vec<Workflow>, String> {
-    workflow.name = workflow.name.trim().chars().take(80).collect();
+    workflow.name = crate::support::text::clip(workflow.name.trim(), 80);
     workflow.steps.retain(|s| !s.trim().is_empty());
     if workflow.name.is_empty() || workflow.steps.is_empty() {
         return Err("A workflow needs a name and at least one step.".into());

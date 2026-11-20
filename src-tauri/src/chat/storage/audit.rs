@@ -49,7 +49,7 @@ fn month_file(config_dir: &Path, at: DateTime<Utc>) -> PathBuf {
 pub fn short(text: &str) -> String {
     let t: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if t.chars().count() > KEEP {
-        format!("{}…", t.chars().take(KEEP).collect::<String>())
+        format!("{}…", crate::support::text::clip(&t, KEEP))
     } else {
         t
     }

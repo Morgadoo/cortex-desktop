@@ -321,7 +321,7 @@ fn confirm_and_open(app_handle: &tauri::AppHandle, url: url::Url) {
     }
     let reset = Reset;
     let host = url.host_str().unwrap_or_default().to_string();
-    let mut shown: String = url.as_str().chars().take(300).collect();
+    let mut shown: String = crate::support::text::clip(url.as_str(), 300);
     if shown.len() < url.as_str().len() {
         shown.push('…');
     }

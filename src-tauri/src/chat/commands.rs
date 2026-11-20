@@ -148,7 +148,7 @@ pub struct AudioView {
 }
 
 fn follow_up_prompt(question: &str, answer: &str) -> String {
-    let cut = |t: &str, n: usize| t.chars().take(n).collect::<String>();
+    let cut = |t: &str, n: usize| crate::support::text::clip(t, n);
     format!(
         "Suggest three short follow-up messages the user might send next in this conversation, \
          written as the user, in the user's language. Each under 12 words, each a different \
@@ -194,7 +194,7 @@ fn sanitize_file_name(title: &str) -> String {
     if name.is_empty() {
         "conversation".into()
     } else {
-        name.chars().take(80).collect()
+        crate::support::text::clip(name, 80)
     }
 }
 
