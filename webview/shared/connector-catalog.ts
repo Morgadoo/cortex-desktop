@@ -10,22 +10,7 @@ import EXPERIMENTAL_CONNECTOR_PRESETS from './experimental-connector-presets.jso
  * must never be added here, because the bridge hands this catalog to the Lumo web app.
  */
 
-export type ConnectorCategoryId =
-  | 'device'
-  | 'communication'
-  | 'files'
-  | 'work'
-  | 'sales'
-  | 'finance'
-  | 'support'
-  | 'recruiting'
-  | 'observability'
-  | 'data'
-  | 'developer'
-  | 'compliance'
-  | 'research'
-  | 'home'
-  | 'custom';
+export type ConnectorCategoryId = 'device' | 'communication' | 'files' | 'work' | 'sales' | 'finance' | 'support' | 'recruiting' | 'observability' | 'data' | 'developer' | 'compliance' | 'research' | 'home' | 'custom';
 
 export interface ConnectorCategory {
   id: ConnectorCategoryId;
@@ -72,19 +57,13 @@ export const BUILTIN_CONNECTORS = CATALOG.builtin as ConnectorCatalogEntry[];
 
 export const FEATURED_MCP_SERVERS = CATALOG.featured as ConnectorCatalogEntry[];
 
-const CATALOG_BY_ID = new Map(
-  [...BUILTIN_CONNECTORS, ...FEATURED_MCP_SERVERS].map((entry) => [entry.id, entry])
-);
+const CATALOG_BY_ID = new Map([...BUILTIN_CONNECTORS, ...FEATURED_MCP_SERVERS].map((entry) => [entry.id, entry]));
 
 /** Connectors the user added themselves fall in `custom`. */
-export const categoryOf = (id: string): ConnectorCategoryId =>
-  CATALOG_BY_ID.get(id)?.category ?? 'custom';
+export const categoryOf = (id: string): ConnectorCategoryId => CATALOG_BY_ID.get(id)?.category ?? 'custom';
 
 /** Settings tab value that opens the connectors tab on one connector. */
 export const SETTINGS_CONNECTOR_TAB_PREFIX = 'connectors/';
 
 /** Experimental presets stay hidden unless the frontend flag is enabled. */
-export const getFeaturedMcpServers = (experimentalConnectors: boolean): ConnectorCatalogEntry[] =>
-  FEATURED_MCP_SERVERS.filter(
-    (entry) => experimentalConnectors || !EXPERIMENTAL_CONNECTOR_PRESETS.includes(entry.server_id ?? '')
-  );
+export const getFeaturedMcpServers = (experimentalConnectors: boolean): ConnectorCatalogEntry[] => FEATURED_MCP_SERVERS.filter((entry) => experimentalConnectors || !EXPERIMENTAL_CONNECTOR_PRESETS.includes(entry.server_id ?? ''));

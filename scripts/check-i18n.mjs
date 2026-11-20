@@ -2,7 +2,7 @@
 //
 // Checks that the interface's string catalog (src-tauri/i18n/catalog.json) is current with the
 // page's source. The matcher that applies translations is unit-tested in
-// webview/pages/app/i18n.test.ts (`npm test`).
+// webview/pages/app/core/i18n.test.ts (`npm test`).
 //
 //   node scripts/check-i18n.mjs
 

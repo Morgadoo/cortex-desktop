@@ -25,7 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
   /*
    * The window is only hidden between uses, and the OS might show the last frame it drew as soon as
    * it is shown again, resulting in a flicker. So the pill is put away (invisible, field emptied)
-   * and that state is painted *before* the window hides; the next show then starts from an empty 
+   * and that state is painted *before* the window hides; the next show then starts from an empty
    * frame and fades in, instead of flashing the old pill and restarting the animation over it.
    */
   let hiding = false;

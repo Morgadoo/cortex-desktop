@@ -24,10 +24,7 @@ function render(args: unknown[]): string {
     .join(' ');
 }
 
-function forwarding(
-  forward: (message: string) => Promise<void>,
-  toConsole: (...args: unknown[]) => void
-) {
+function forwarding(forward: (message: string) => Promise<void>, toConsole: (...args: unknown[]) => void) {
   return (...args: unknown[]): void => {
     toConsole(...args);
     try {

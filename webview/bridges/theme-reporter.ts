@@ -16,11 +16,7 @@ import { tauriInvoke } from '../shared/tauri';
 
   const check = () => {
     scheduled = false;
-    const theme = document.getElementById('lumo-dark-theme')
-      ? 'dark'
-      : document.getElementById('lumo-light-theme')
-        ? 'light'
-        : null;
+    const theme = document.getElementById('lumo-dark-theme') ? 'dark' : document.getElementById('lumo-light-theme') ? 'light' : null;
     if (!theme || theme === reported) return;
     reported = theme;
     tauriInvoke('report_web_theme', { theme }).catch((err) => logError('report_web_theme failed', err));

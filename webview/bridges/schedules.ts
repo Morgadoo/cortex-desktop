@@ -18,13 +18,19 @@ import { logWarn } from '../shared/logger';
         if (!payload || typeof payload !== 'object' || !('connectionId' in payload) || typeof payload.connectionId !== 'string') return;
         const notice = { connectionId: payload.connectionId };
         for (const callback of callbacks) {
-          try { callback(notice); }
-          catch (error) { logWarn('[LumoSchedules] work listener failed', error); }
+          try {
+            callback(notice);
+          } catch (error) {
+            logWarn('[LumoSchedules] work listener failed', error);
+          }
         }
-      }).then(() => {}, (error: unknown) => {
-        listening = undefined;
-        throw error;
-      });
+      }).then(
+        () => {},
+        (error: unknown) => {
+          listening = undefined;
+          throw error;
+        }
+      );
     }
     return listening;
   }
@@ -39,18 +45,31 @@ import { logWarn } from '../shared/logger';
       return tauriInvoke<void>('schedule_replace', {
         connectionId,
         schedules: schedules.map((schedule) => ({
-          id: schedule.id, timing_revision: schedule.timingRevision, enabled: schedule.enabled,
-          timing: schedule.timing, missed_run_policy: schedule.missedRunPolicy,
+          id: schedule.id,
+          timing_revision: schedule.timingRevision,
+          enabled: schedule.enabled,
+          timing: schedule.timing,
+          missed_run_policy: schedule.missedRunPolicy,
         })),
       });
     },
-    runNow(input) { return tauriInvoke<ScheduleRun>('schedule_run_now', input); },
-    getPendingRuns(input) { return tauriInvoke<ScheduleRun[]>('schedule_pending', input); },
-    getUnsettledRuns(input) { return tauriInvoke<ScheduleRun[]>('schedule_unsettled', input); },
-    reportRunStatus(input) { return tauriInvoke<void>('schedule_report_status', input); },
+    runNow(input) {
+      return tauriInvoke<ScheduleRun>('schedule_run_now', input);
+    },
+    getPendingRuns(input) {
+      return tauriInvoke<ScheduleRun[]>('schedule_pending', input);
+    },
+    getUnsettledRuns(input) {
+      return tauriInvoke<ScheduleRun[]>('schedule_unsettled', input);
+    },
+    reportRunStatus(input) {
+      return tauriInvoke<void>('schedule_report_status', input);
+    },
     onWorkAvailable(callback) {
       callbacks.add(callback);
-      return () => { callbacks.delete(callback); };
+      return () => {
+        callbacks.delete(callback);
+      };
     },
   };
   window.LumoSchedules = api;

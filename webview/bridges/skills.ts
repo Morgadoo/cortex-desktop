@@ -23,8 +23,12 @@ import { tauriInvoke } from '../shared/tauri';
     syncBundle(bundle) {
       return invoke('skill_sync_bundle', { ...bundle, files: bundle.files.map(({ path, data }) => ({ path, data: encode(data) })) });
     },
-    executeScript(request) { return invoke('skill_execute_script', { request }); },
-    retain(input) { return invoke('skill_cache_retain', input); },
+    executeScript(request) {
+      return invoke('skill_execute_script', { request });
+    },
+    retain(input) {
+      return invoke('skill_cache_retain', input);
+    },
   };
   window.LumoSkillRuntime = api;
 })();
