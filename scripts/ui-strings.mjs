@@ -140,9 +140,12 @@ function isCode({ before, after }) {
 }
 
 const strings = new Set()
+// WebGL backdrops: their strings are shader source, never shown.
+const SHADERS = new Set(['orbgl.ts', 'backdropgl.ts'])
+
 // Every source file under the page's folder, sub-folders included. Tests are not the interface.
 const sources = readdirSync(srcDir, { recursive: true, withFileTypes: true })
-  .filter((e) => e.isFile() && e.name.endsWith('.ts') && !e.name.endsWith('.test.ts'))
+  .filter((e) => e.isFile() && e.name.endsWith('.ts') && !e.name.endsWith('.test.ts') && !SHADERS.has(e.name))
   .map((e) => relative(srcDir, join(e.parentPath, e.name)))
   .sort()
 for (const file of sources) {
