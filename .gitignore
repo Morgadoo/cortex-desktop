@@ -34,3 +34,6 @@ shots/
 
 # Written by the release workflow from tauri.github.conf.json
 src-tauri/tauri.release.conf.json
+
+# Screenshots and results of e2e/user-journeys
+e2e/user-journeys/out/

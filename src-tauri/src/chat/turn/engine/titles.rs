@@ -29,9 +29,9 @@ pub(in crate::chat::turn) fn strip_directives(text: &str) -> String {
     rest.to_string()
 }
 
-/// The first user message, cut to a sidebar-sized title.
-pub(in crate::chat) fn fallback_title(conversation: &Conversation) -> String {
-    let first = conversation
+/// The text of the first user message.
+fn first_message(conversation: &Conversation) -> String {
+    conversation
         .messages
         .iter()
         .find_map(|m| match m {
@@ -41,7 +41,28 @@ pub(in crate::chat) fn fallback_title(conversation: &Conversation) -> String {
             }),
             _ => None,
         })
-        .unwrap_or_default();
+        .unwrap_or_default()
+}
+
+/// The start of the first answer, which often says what the conversation is about when the
+/// message itself opens with instructions.
+fn first_answer(conversation: &Conversation) -> String {
+    conversation
+        .messages
+        .iter()
+        .find_map(|m| match m {
+            Message::Assistant(a) => a.content.iter().find_map(|c| match c {
+                rig_core::completion::message::AssistantContent::Text(t) => Some(t.text.clone()),
+                _ => None,
+            }),
+            _ => None,
+        })
+        .unwrap_or_default()
+}
+
+/// The first user message, cut to a sidebar-sized title.
+pub(in crate::chat) fn fallback_title(conversation: &Conversation) -> String {
+    let first = first_message(conversation);
     let line = strip_directives(&first)
         .lines()
         .next()
@@ -67,10 +88,14 @@ pub(super) async fn name_conversation(
         return;
     };
     let mut title = fallback_title(&conversation);
+    // The whole opening, not the clipped fallback: a message that starts with instructions
+    // ("Answer briefly, without tools: …") has its subject after them.
+    let message =
+        crate::support::text::clip(strip_directives(&first_message(&conversation)).trim(), 600);
+    let answer = crate::support::text::clip(first_answer(&conversation).trim(), 300);
     let prompt = format!(
-        "Write a title of at most 6 words for a conversation that starts with the message \
-         below, in the message's language. Reply with the title only, no quotes.\n\n{}",
-        title
+        "Write a title of at most 6 words for this conversation, about its subject, in the \
+         message's language. Reply with the title only, no quotes.\n\nMessage:\n{message}\n\nStart of the answer:\n{answer}"
     );
     // Room for models that think before they answer; the title itself is a few words.
     let request = CompletionRequest::new(Message::user(prompt)).max_tokens(600u64);

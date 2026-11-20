@@ -228,6 +228,12 @@ async function start() {
       if (!SOLO_CHAT && (failed || (event.type === 'done' && !event.cancelled)) && !document.hasFocus() && finishNotificationsOn()) notifyFinished(id, failed);
       void refreshConversations();
       const chat = viewCache.chat;
+      // A chat ended while the user is looking elsewhere (another chat, a page, the new-chat
+      // page): the sidebar marks it unread. Its view may still be cached, so ask what is shown.
+      const onScreen = state.view.kind === 'chat' && state.view.id === id;
+      if (!onScreen && (failed || (event.type === 'done' && !event.cancelled))) {
+        void callQuiet('chat_set_conversation', { update: { id, unread: true } }).then(() => refreshConversations());
+      }
       if (chat && chat.key === `chat:${id}`) {
         void chat.finished().then(() => {
           if (!failed) state.live.delete(id);
@@ -239,10 +245,6 @@ async function start() {
       } else {
         if (!failed) state.live.delete(id);
         if (failed) toast(event.message, 'error');
-        // Finished (or failed) while the user was in another chat: the sidebar marks it unread.
-        if (failed || (event.type === 'done' && !event.cancelled)) {
-          void callQuiet('chat_set_conversation', { update: { id, unread: true } }).then(() => refreshConversations());
-        }
       }
     }
     changed();
