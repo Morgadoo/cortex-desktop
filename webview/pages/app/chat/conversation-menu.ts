@@ -1,3 +1,4 @@
+/** A conversation's menu, and choosing messages to act on. */
 import { openChatBeside } from './side-panels';
 import { exportImage, printConversation } from './turn-actions';
 import { refreshConversations } from './send';

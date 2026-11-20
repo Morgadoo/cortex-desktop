@@ -1,3 +1,4 @@
+/** A conversation's own model settings, and what fills its context window. */
 import { api, type ChatParams } from '../core/api';
 import { h } from '../ui/h';
 import { modal, toast } from '../ui/overlay';

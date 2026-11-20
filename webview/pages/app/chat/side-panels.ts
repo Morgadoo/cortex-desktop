@@ -1,3 +1,4 @@
+/** What opens beside a conversation or over it: sources, the reader, a worker's steps, another chat. */
 import { hasPanel, openSidePanel } from '../canvas/canvas';
 import { previewFor } from '../ui/favicon';
 import { host, renderParts } from './transcript';

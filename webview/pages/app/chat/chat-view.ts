@@ -1,3 +1,4 @@
+/** The conversation view: its transcript, live turn, usage meter and side panel. */
 import type { ChatEvent, UsageTotals } from '../core/api';
 import { openOutputsPanel } from '../canvas/outputs';
 import { applyEvent, followStreamOn } from '../core/state';

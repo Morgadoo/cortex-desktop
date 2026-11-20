@@ -1,3 +1,4 @@
+/** Comparing models side by side: the comparison view, blind comparison and the leaderboard. */
 import { tauriInvoke } from '../../../shared/tauri';
 import { api, type Turn } from '../core/api';
 import { clear, h } from '../ui/h';
