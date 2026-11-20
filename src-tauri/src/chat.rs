@@ -12,19 +12,16 @@
 
 pub mod builtins;
 pub mod commands;
-pub mod config_cli;
 pub mod context;
 mod deferred;
 pub mod emoji_pack;
 pub mod engine;
 pub mod functions;
-pub mod headless;
 pub mod hooks;
 pub mod host;
 pub mod privacy;
 pub mod prompt;
 pub mod subagents;
-pub mod terminal_chat;
 pub mod tools;
 pub mod traces;
 pub mod ui_language;
@@ -49,6 +46,8 @@ pub mod automation;
 pub use automation::{agent_market, agents, evals, lifecycle, org, plugins, skill_catalog, skills, tasks, workflows};
 pub mod integrations;
 pub use integrations::{api_server, discord, links, share, slack, telegram};
+pub mod cli;
+pub use cli::{config_cli, headless, terminal_chat};
 
 /// The account every account-scoped subsystem (connectors, secrets, skills) runs under. Proton
 /// accounts are gone; one local profile takes their place.
