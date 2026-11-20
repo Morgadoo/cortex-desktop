@@ -465,12 +465,18 @@ pub(in crate::chat) async fn nightly(host: &Arc<dyn Host>, model: &str) -> Vec<N
     let Ok(config_dir) = host.config_dir() else {
         return Vec::new();
     };
+    // Before the copy is taken, so a starter written now is in it.
+    let suites = nightly_suites(&config_dir);
     // The cases run on a copy of the data; only their scores come back, as the next baseline.
-    let Ok((_folder, copy)) = on_a_copy(host) else {
-        return Vec::new();
+    let (_folder, copy) = match on_a_copy(host) {
+        Ok(copy) => copy,
+        Err(e) => {
+            log::warn!("nightly evals: could not copy the data to run on: {e}");
+            return Vec::new();
+        }
     };
     let mut out = Vec::new();
-    for suite in nightly_suites(&config_dir) {
+    for suite in suites {
         if !cases(&config_dir, &suite)
             .iter()
             .any(|c| !c.needs_expectation)
@@ -478,8 +484,12 @@ pub(in crate::chat) async fn nightly(host: &Arc<dyn Host>, model: &str) -> Vec<N
             continue;
         }
         let previous = last_full_run(&config_dir, &suite, model);
-        let Ok(run) = run_suite(&copy, &suite, model, &Without::default()).await else {
-            continue;
+        let run = match run_suite(&copy, &suite, model, &Without::default()).await {
+            Ok(run) => run,
+            Err(e) => {
+                log::warn!("nightly evals: the {suite} suite did not run: {e}");
+                continue;
+            }
         };
         if let Err(e) = save_run(&config_dir, &run) {
             log::warn!("nightly evals: could not keep the {suite} run: {e}");
@@ -700,6 +710,9 @@ mod tests {
         case.id = "mine".into();
         add_case(other.path(), "office", &case).unwrap();
         assert_eq!(nightly_suites(other.path()), vec!["office".to_string()]);
+        // The cases run on a copy of the data taken afterwards: the starter is in it.
+        let copy = trial_folder(dir.path()).unwrap();
+        assert_eq!(cases(&copy.dir, STARTER).len(), 3);
     }
 
     /// A top-level link that leads back up to the data folder, or above it, is left out of a
