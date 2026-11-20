@@ -14,7 +14,6 @@ pub mod builtins;
 pub mod commands;
 pub mod context;
 mod deferred;
-pub mod emoji_pack;
 pub mod engine;
 pub mod functions;
 pub mod hooks;
@@ -24,7 +23,6 @@ pub mod prompt;
 pub mod subagents;
 pub mod tools;
 pub mod traces;
-pub mod ui_language;
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -48,6 +46,8 @@ pub mod integrations;
 pub use integrations::{api_server, discord, links, share, slack, telegram};
 pub mod cli;
 pub use cli::{config_cli, headless, terminal_chat};
+pub mod ui;
+pub use ui::{emoji_pack, ui_language};
 
 /// The account every account-scoped subsystem (connectors, secrets, skills) runs under. Proton
 /// accounts are gone; one local profile takes their place.

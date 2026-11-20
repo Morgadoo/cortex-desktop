@@ -32,16 +32,16 @@ pub const LANGUAGES: &[(&str, &str)] = &[
 /// Strings per request: enough to be quick, small enough for any model.
 const BATCH: usize = 120;
 
-const CATALOG: &str = include_str!("../../i18n/catalog.json");
+const CATALOG: &str = include_str!("../../../i18n/catalog.json");
 
 /// The translations that ship with the app.
 fn bundled(code: &str) -> Option<&'static str> {
     match code {
-        "pt" => Some(include_str!("../../i18n/pt.json")),
-        "es" => Some(include_str!("../../i18n/es.json")),
-        "fr" => Some(include_str!("../../i18n/fr.json")),
-        "de" => Some(include_str!("../../i18n/de.json")),
-        "ar" => Some(include_str!("../../i18n/ar.json")),
+        "pt" => Some(include_str!("../../../i18n/pt.json")),
+        "es" => Some(include_str!("../../../i18n/es.json")),
+        "fr" => Some(include_str!("../../../i18n/fr.json")),
+        "de" => Some(include_str!("../../../i18n/de.json")),
+        "ar" => Some(include_str!("../../../i18n/ar.json")),
         _ => None,
     }
 }
