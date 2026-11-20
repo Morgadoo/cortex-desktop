@@ -155,6 +155,56 @@ pub fn request_messages(messages: &[Message], summary: Option<&Summary>) -> Vec<
             }
         }
     }
+    alternate_roles(out)
+}
+
+/// The history in the shape the strictest chat templates accept (Mistral's on llama.cpp, vLLM
+/// and LM Studio refuse anything else): user and assistant turns alternate, and only the
+/// assistant follows tool results. The stored history can break that: guidance sent while a
+/// turn was running lands right after a tool result, and a message sent after a failed reply
+/// follows the unanswered one.
+/// - Back-to-back user messages become one.
+/// - Text or an image after tool results joins the last result, marked as the user's, so the
+///   next turn is still the assistant's. Every provider takes that shape.
+/// - Back-to-back assistant messages become one.
+pub fn alternate_roles(messages: Vec<Message>) -> Vec<Message> {
+    let mut out: Vec<Message> = Vec::with_capacity(messages.len());
+    for message in messages {
+        match (out.last_mut(), message) {
+            (Some(Message::User { content: previous }), Message::User { content }) => {
+                // Items are only ever pushed at the end, so this position stays right.
+                let result_at = previous
+                    .iter()
+                    .rposition(|c| matches!(c, UserContent::ToolResult(_)));
+                for item in content {
+                    let result = result_at.and_then(|i| match &mut previous[i] {
+                        UserContent::ToolResult(r) => Some(r),
+                        _ => None,
+                    });
+                    match (result, item) {
+                        (Some(result), UserContent::Text(text)) => {
+                            let note = format!("[Message from the user] {}", text.text);
+                            match result.content.iter_mut().rev().find_map(|c| match c {
+                                ToolResultContent::Text(t) => Some(t),
+                                _ => None,
+                            }) {
+                                Some(t) => t.text = format!("{}\n\n{note}", t.text),
+                                None => result.content.push(ToolResultContent::text(note)),
+                            }
+                        }
+                        (Some(result), UserContent::Image(image)) => {
+                            result.content.push(ToolResultContent::Image(image));
+                        }
+                        (_, item) => previous.push(item),
+                    }
+                }
+            }
+            (Some(Message::Assistant(previous)), Message::Assistant(next)) => {
+                previous.content.extend(next.content);
+            }
+            (_, message) => out.push(message),
+        }
+    }
     out
 }
 
@@ -507,6 +557,53 @@ mod tests {
             panic!()
         };
         &t.text
+    }
+
+    fn is_user(m: &Message) -> bool {
+        matches!(m, Message::User { .. })
+    }
+
+    #[test]
+    fn messages_after_a_tool_result_join_it_so_roles_alternate() {
+        // A turn interrupted mid-tool-loop, guidance sent while it ran, then two retries: the
+        // shape Mistral's chat template refused with "roles must alternate".
+        let messages = vec![
+            Message::user("run the tests"),
+            call("c1"),
+            result("c1", "pnpm: not found"),
+            Message::user("(Sent while you were working) yes"),
+            Message::user("continue"),
+            Message::user("continue the plan"),
+        ];
+        let out = request_messages(&messages, None);
+        assert_eq!(out.len(), 3);
+        assert!(is_user(&out[0]) && matches!(out[1], Message::Assistant(_)) && is_user(&out[2]));
+        let Message::User { content } = &out[2] else { panic!() };
+        assert_eq!(content.len(), 1, "the result alone, so the assistant is next");
+        let text = result_text(&out[2]);
+        assert!(text.starts_with("pnpm: not found"));
+        assert!(text.contains("[Message from the user] (Sent while you were working) yes"));
+        assert!(text.ends_with("[Message from the user] continue the plan"));
+    }
+
+    #[test]
+    fn back_to_back_turns_of_one_role_merge() {
+        let messages = vec![
+            Message::user("first"),
+            Message::user("second"),
+            Message::Assistant(AssistantMessage::new(vec![AssistantContent::text("a")])),
+            Message::Assistant(AssistantMessage::new(vec![AssistantContent::text("b")])),
+            Message::user("third"),
+        ];
+        let out = alternate_roles(messages);
+        assert_eq!(out.len(), 3);
+        let Message::User { content } = &out[0] else { panic!() };
+        assert_eq!(content.len(), 2);
+        let Message::Assistant(a) = &out[1] else { panic!() };
+        assert_eq!(a.content.len(), 2);
+        // An already alternating history is left as it is.
+        let fine = vec![Message::user("q"), call("c"), result("c", "r")];
+        assert_eq!(alternate_roles(fine.clone()), fine);
     }
 
     #[test]
