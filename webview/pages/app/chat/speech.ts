@@ -2,6 +2,7 @@
 import { voiceActive } from '../voice/voice';
 import { h } from '../ui/h';
 import { icon } from '../ui/icons';
+import { reportError } from '../core/call';
 import { toast } from '../ui/overlay';
 import { audioSettings, speakText, type Playback } from '../voice/audio';
 import { iconButton } from '../ui/ui';
@@ -55,7 +56,7 @@ export function readAloudButton(text: string): HTMLButtonElement {
       stopSpeaking();
       button.classList.remove('active');
       button.replaceChildren(icon('speaker', 16));
-      toast(String(e).replace(/^Error:\s*/, ''), 'error');
+      reportError(e);
     }
   });
   return button;

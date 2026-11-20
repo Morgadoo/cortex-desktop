@@ -30,19 +30,7 @@ const scriptsDir = join(outDir, 'scripts')
 // The app's stylesheet, by topic, joined in this order into dist/styles/app.css. The order is the
 // cascade's: of two rules as specific as each other, the later file's wins. A file in the folder
 // that is not listed is a build failure, so none is left out by accident.
-const appStyles = [
-  'base.css',
-  'shell.css',
-  'composer.css',
-  'transcript.css',
-  'dialogs.css',
-  'pages.css',
-  'components.css',
-  'controls.css',
-  'features.css',
-  'details.css',
-  'org.css',
-]
+const appStyles = ['base.css', 'shell.css', 'composer.css', 'transcript.css', 'dialogs.css', 'pages.css', 'components.css', 'controls.css', 'features.css', 'details.css', 'org.css']
 
 // "<source relative to webview/>": "<output name in dist/scripts/>", one bundle each.
 // A listed source that is missing is a build failure.

@@ -258,13 +258,7 @@ pub async fn read(url: &str) -> Result<Article, String> {
     if !matches!(parsed.scheme(), "http" | "https") {
         return Err("Only web pages can be read here.".into());
     }
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(20))
-        .user_agent(
-            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Cortex reader",
-        )
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = crate::support::http::browser_client(std::time::Duration::from_secs(20))?;
     let response = client.get(parsed.clone()).send().await.map_err(|e| {
         format!(
             "The page could not be loaded: {}",

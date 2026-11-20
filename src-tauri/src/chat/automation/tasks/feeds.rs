@@ -111,11 +111,7 @@ pub(in crate::chat::automation) async fn take_new_feed_items(config_dir: &Path) 
     if due.is_empty() {
         return Vec::new();
     }
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(20))
-        .user_agent("Cortex feed reader")
-        .build();
-    let Ok(client) = client else {
+    let Ok(client) = crate::support::http::client(Duration::from_secs(20)) else {
         return Vec::new();
     };
     let mut fetched = Vec::new();

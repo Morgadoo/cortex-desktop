@@ -48,7 +48,7 @@ test('reported shows the failure of any pending work, once, and passes success t
   assert.equal(await reported(undefined), undefined);
   const error = new Error('disk full');
   assert.equal(await rejection(reported(Promise.reject(error))), error);
-  assert.deepEqual(toasts, ['toast toast-error: Error: disk full']);
+  assert.deepEqual(toasts, ['toast toast-error: disk full']);
 });
 
 test('callQuiet turns a failure into undefined without a toast', async () => {

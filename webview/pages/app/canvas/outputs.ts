@@ -10,6 +10,7 @@ import { splitSheets } from './sheet';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
 import { markdown } from '../ui/markdown';
+import { reportError } from '../core/call';
 import { modal, toast } from '../ui/overlay';
 import { timeLabel } from '../core/clock';
 import { fileSize } from '../core/format';
@@ -169,7 +170,7 @@ async function openOutput(o: Output, inPanel: boolean) {
       canvas.title
     );
   } catch (e) {
-    toast(String(e), 'error');
+    reportError(e);
   }
 }
 

@@ -78,11 +78,7 @@ fn raw_base() -> String {
 }
 
 fn client() -> Result<reqwest::Client, String> {
-    reqwest::Client::builder()
-        .timeout(Duration::from_secs(20))
-        .user_agent("Cortex")
-        .build()
-        .map_err(|e| e.to_string())
+    crate::support::http::client(Duration::from_secs(20))
 }
 
 async fn get_text(client: &reqwest::Client, url: &str) -> Result<String, String> {

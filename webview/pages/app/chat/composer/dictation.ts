@@ -3,6 +3,7 @@ import { tauriInvoke } from '../../../../shared/tauri';
 import { api } from '../../core/api';
 import { startVoiceConversation } from '../../voice/voice';
 import { clear } from '../../ui/h';
+import { reportError } from '../../core/call';
 import { toast } from '../../ui/overlay';
 import { openSettings } from '../../settings/index';
 import { startRecording, type Recording } from '../../voice/dictation';
@@ -99,7 +100,7 @@ const methods = {
       // Open WebUI's "instant auto-send": dictation goes straight out.
       if (audioSettings?.stt.autoSend && text.trim()) void this.submit();
     } catch (e) {
-      toast(String(e), 'error');
+      reportError(e);
     } finally {
       this.endLive();
       this.transcribing = false;

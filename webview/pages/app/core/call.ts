@@ -29,8 +29,13 @@ export async function reported<T>(pending: T | Promise<T>): Promise<T> {
 }
 
 function showError(e: unknown): unknown {
-  toast(String(e), 'error');
+  reportError(e);
   return e;
+}
+
+/** Shows a failure caught outside `call` (a recording, a playback) the same way `call` does. */
+export function reportError(e: unknown): void {
+  toast(String(e).replace(/^Error:\s*/, ''), 'error');
 }
 
 /** Invokes `command`; a failure resolves to `undefined` and shows nothing. */
