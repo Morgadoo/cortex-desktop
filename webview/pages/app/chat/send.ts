@@ -3,11 +3,11 @@ import { api, newId } from '../core/api';
 import { clear, h } from '../ui/h';
 import { modal, toast } from '../ui/overlay';
 import { changed, navigate, state, temporaryByDefault } from '../core/state';
+import { flag } from '../core/prefs';
 import { openSettings } from '../settings/index';
 import { modalHeader } from '../ui/ui';
 import { followUps } from './queue';
-import { viewCache } from './chat-view';
-import { worktreeNext } from './home-view';
+import { viewCache } from './views';
 import { call, reported } from '../core/call';
 
 export async function regenerate(conversationId: string) {
@@ -211,6 +211,17 @@ export function setTemporaryNext(on: boolean) {
   temporaryNext = on;
 }
 export const temporaryChats = new Set<string>();
+
+/** Whether the next Code session starts in a new git worktree. */
+export const worktree = flag('cortex.worktree', false);
+
+export function worktreeNext(): boolean {
+  return worktree.get();
+}
+
+export function setWorktreeNext(on: boolean) {
+  worktree.set(on);
+}
 
 /** Messages typed on the home screen, shown before the new conversation is on disk. */
 export const pendingUser = new Map<string, { text: string; images: { mediaType: string; data: string }[] }>();

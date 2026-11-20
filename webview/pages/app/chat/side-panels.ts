@@ -1,21 +1,19 @@
-/** What opens beside a conversation or over it: sources, the reader, a worker's steps, another chat. */
+/** What opens beside a conversation or over it: sources, the reader, another chat. */
 import { hasPanel, openSidePanel } from '../canvas/canvas';
 import { previewFor } from '../ui/favicon';
 import { host, renderParts } from './transcript';
 import type { Source } from './turn-actions';
-import { composer } from './composer/index';
+import { composer } from './composer/current';
 import { tauriInvoke } from '../../../shared/tauri';
 import { api, type Part } from '../core/api';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
-import { markdown } from '../ui/markdown';
-import { modal, popover, toast } from '../ui/overlay';
+import { popover, toast } from '../ui/overlay';
 import { navigate, state } from '../core/state';
 import { closePanel } from '../canvas/canvas';
 import { siteIcon } from '../ui/favicon';
-import { button, iconButton, modalHeader } from '../ui/ui';
+import { button, iconButton } from '../ui/ui';
 import { call, shown } from '../core/call';
-import { toolLabel } from './tool-labels';
 
 /** The Sources panel beside the conversation: each page with its site, title and what it says. */
 /** Asks which library, then saves the page's text there. */
@@ -257,32 +255,4 @@ export function numberLibraryCitations(el: HTMLElement, parts: Part[]) {
   }
   const lastText = [...el.querySelectorAll('.markdown')].pop();
   (lastText ?? el).after(h('div', { class: 'footnotes-wrap' }, h('div', { class: 'step-label' }, 'Library sources'), notes));
-}
-
-/** A sub-agent's transcript: each tool it called, with what came back, then its report. */
-export async function showWorkerSteps(callId: string, index: number, title: string) {
-  const steps = await api.subagentTranscript(callId, index).catch(() => []);
-  void modal((close) =>
-    h(
-      'div',
-      { class: 'dialog-small wide worker-steps' },
-      modalHeader(title, close, { flush: true }),
-      steps.length
-        ? h(
-            'div',
-            { class: 'timeline' },
-            steps.map((s, n) =>
-              s.kind === 'call'
-                ? h(
-                    'details',
-                    { class: `worker-step${s.isError ? ' failed' : ''}` },
-                    h('summary', {}, h('span', { class: 'muted' }, `${n + 1}.`), icon(toolLabel(s.tool).icon, 15), h('strong', {}, toolLabel(s.tool).action), h('span', { class: 'muted worker-step-input' }, s.input)),
-                    h('pre', { class: 'step-pre' }, s.output)
-                  )
-                : h('div', { class: 'worker-step report' }, h('div', { class: 'step-label' }, 'Report'), markdown(s.output))
-            )
-          )
-        : h('p', { class: 'muted' }, 'The steps of this worker were not kept (it ran before this version).')
-    )
-  );
 }

@@ -7,10 +7,10 @@ import { greeting } from '../core/clock';
 import { navigate, state } from '../core/state';
 import { openSettings } from '../settings/index';
 import { button } from '../ui/ui';
-import { flag, textPref, workdir } from '../core/prefs';
-import { viewCache } from './chat-view';
-import { temporaryNext, setTemporaryNext } from './send';
-import { composer } from './composer/index';
+import { textPref, workdir } from '../core/prefs';
+import { viewCache } from './views';
+import { temporaryNext, setTemporaryNext, setWorktreeNext, worktreeNext } from './send';
+import { composer } from './composer/current';
 
 const SUGGESTIONS: { icon: string; text: string; page?: boolean; more?: boolean; image?: boolean }[] = [
   { icon: 'image', text: 'Create an image', image: true },
@@ -204,17 +204,6 @@ export function avatarHue(avatar: string): number {
   let hash = 0;
   for (const ch of avatar) hash = (hash * 31 + ch.codePointAt(0)!) >>> 0;
   return hash % 360;
-}
-
-/** Whether the next Code session starts in a new git worktree. */
-export const worktree = flag('cortex.worktree', false);
-
-export function worktreeNext(): boolean {
-  return worktree.get();
-}
-
-function setWorktreeNext(on: boolean) {
-  worktree.set(on);
 }
 
 async function pickWorkdir() {

@@ -10,8 +10,8 @@ import { confirmDialog, popover, promptText, toast } from '../ui/overlay';
 import { navigate, state } from '../core/state';
 import { call, reported, shown } from '../core/call';
 import { openChatSettings } from './chat-settings';
-import { composer } from './composer/index';
-import { viewCache } from './chat-view';
+import { composer } from './composer/current';
+import { viewCache } from './views';
 
 export function conversationMenu(anchor: HTMLElement, id: string, title: string, pinned: boolean) {
   const item = (ic: string, label: string, action: () => void, danger = false) =>

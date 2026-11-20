@@ -183,7 +183,7 @@ Put it in the folder for its role, add it to that folder's `mod.rs` and to the f
 
 | Command | What it checks |
 |---|---|
-| `npm run typecheck`, `npm run lint`, `npm test` | The interface: types, Biome and the HTML-sink rule, unit tests |
+| `npm run typecheck`, `npm run lint`, `npm test` | The interface: types, Biome, the HTML-sink rule and no import cycles, unit tests |
 | `npm run check:i18n` | The translation catalog is current |
 | `cargo fmt`, `cargo clippy -- -D warnings`, `cargo test` (in `src-tauri`, `--workspace --features cortex/test-utils`) | The Rust code, native build |
 | the same with `--features cortex/test-utils,cortex/e2e` | The Rust code with the hosted web app's |
