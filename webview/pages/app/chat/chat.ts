@@ -1,35 +1,35 @@
 /** The home screen, a conversation, and the composer they share. */
-import { emojiFor, findEmoji } from './ui/emoji';
-import { autocompleteOn } from './core/state';
-import { tauriInvoke } from '../../shared/tauri';
-import { api, newId, type ApprovalMode, type ChatEvent, type ChatParams, type Conversation, type Part, type Turn, type UsageTotals } from './core/api';
-import { openOutputsPanel } from './outputs';
+import { emojiFor, findEmoji } from '../ui/emoji';
+import { autocompleteOn } from '../core/state';
+import { tauriInvoke } from '../../../shared/tauri';
+import { api, newId, type ApprovalMode, type ChatEvent, type ChatParams, type Conversation, type Part, type Turn, type UsageTotals } from '../core/api';
+import { openOutputsPanel } from '../outputs';
 import { conversationPng } from './chatimage';
 import { searchInstead } from './uploads';
 import { renderPageView } from './coderun';
-import { agentPanel } from './agentpanel';
+import { agentPanel } from '../agentpanel';
 import { fillVariables } from './variables';
-import { startVoiceConversation, voiceActive, voiceTurnEnded } from './voice/voice';
-import { attachVim } from './ui/vim';
-import { actionFor } from './core/shortcuts';
-import { clear, confirmDialog, greeting, h, icon, markdown, modal, popover, promptText, timeLabel, toast, clockHour12 } from './ui/dom';
-import { applyEvent, changed, currentModel, followUpsOn, navigate, setMode, state, temporaryByDefault, type LiveTurn, followStreamOn } from './core/state';
-import { openSettings } from './settings';
-import { closePanel, enableAskAboutSelection, hasPanel, openSidePanel, renderCanvasCard, setPanelHost, lineDiff } from './canvas';
-import { hostOf, previewFor, siteIcon } from './ui/favicon';
-import './diagrams';
+import { startVoiceConversation, voiceActive, voiceTurnEnded } from '../voice/voice';
+import { attachVim } from '../ui/vim';
+import { actionFor } from '../core/shortcuts';
+import { clear, confirmDialog, greeting, h, icon, markdown, modal, popover, promptText, timeLabel, toast, clockHour12 } from '../ui/dom';
+import { applyEvent, changed, currentModel, followUpsOn, navigate, setMode, state, temporaryByDefault, type LiveTurn, followStreamOn } from '../core/state';
+import { openSettings } from '../settings';
+import { closePanel, enableAskAboutSelection, hasPanel, openSidePanel, renderCanvasCard, setPanelHost, lineDiff } from '../canvas';
+import { hostOf, previewFor, siteIcon } from '../ui/favicon';
+import '../diagrams';
 import { renderCodeRun, renderImage, renderVideo } from './coderun';
-import { startRecording, type Recording } from './voice/dictation';
-import { blobToBase64, bytesToBase64, escapeHtml } from './core/format';
-import { liveCapable, liveTranscript, renderLive } from './voice/live';
-import { audioSettings, speakText, type Playback } from './voice/audio';
-import { editWorkflow, liveWorkflow, workflowPrompt, workflowsApi } from './workflows';
-import type { Speed, Workflow } from './core/api';
+import { startRecording, type Recording } from '../voice/dictation';
+import { blobToBase64, bytesToBase64, escapeHtml } from '../core/format';
+import { liveCapable, liveTranscript, renderLive } from '../voice/live';
+import { audioSettings, speakText, type Playback } from '../voice/audio';
+import { editWorkflow, liveWorkflow, workflowPrompt, workflowsApi } from '../workflows';
+import type { Speed, Workflow } from '../core/api';
 import { diffLines, loadChanges, openChanges, openFiles, openDebug } from './changes';
 import { openTerminal } from './terminal';
-import { button, chip, iconButton, modalHeader, trigger } from './ui/ui';
-import { flag, json, textPref, workdir } from './core/prefs';
-import { call, callQuiet, shown } from './core/call';
+import { button, chip, iconButton, modalHeader, trigger } from '../ui/ui';
+import { flag, json, textPref, workdir } from '../core/prefs';
+import { call, callQuiet, shown } from '../core/call';
 
 // ---------------------------------------------------------------------------------------------
 // Tool labels
@@ -4567,7 +4567,7 @@ export class ChatView {
           { class: 'menu' },
           item('link', 'Share a link', 'Anyone on your network with the link can open it', () => {
             const shared = this.sharePage();
-            if (shared) void import('./share').then((s) => s.shareLink(shared.title, shared.page));
+            if (shared) void import('../share').then((s) => s.shareLink(shared.title, shared.page));
           }),
           item('globe', 'Share as web page', 'One file anyone can open in a browser', () => void this.shareAsPage()),
           item('download', 'Export as Markdown', 'The text, for notes and documents', () => void api.exportConversation(this.id).then((saved) => saved && toast('Conversation exported.')))

@@ -1,8 +1,8 @@
 /** A coding session's working-tree changes: the files touched and their diffs. */
-import { tauriInvoke } from '../../shared/tauri';
-import { clear, h, icon, modal, promptText, toast } from './ui/dom';
-import { iconButton, modalHeader } from './ui/ui';
-import { choice } from './core/prefs';
+import { tauriInvoke } from '../../../shared/tauri';
+import { clear, h, icon, modal, promptText, toast } from '../ui/dom';
+import { iconButton, modalHeader } from '../ui/ui';
+import { choice } from '../core/prefs';
 
 /** Unified or Split, remembered for next time. */
 const diffLayout = choice('cortex.diffLayout', ['unified', 'split'] as const, 'unified');

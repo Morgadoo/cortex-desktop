@@ -4,7 +4,7 @@
  * text; images show as thumbnails; files can be saved anywhere.
  */
 import { tauriInvoke } from '../../shared/tauri';
-import { workspaceVideo } from './coderun';
+import { workspaceVideo } from './chat/coderun';
 import { appFrame, closePanel, openAppPanel, openSidePanel } from './canvas';
 import { splitSheets } from './sheet';
 import { clear, h, icon, markdown, modal, toast, timeLabel } from './ui/dom';

@@ -4,11 +4,11 @@
  * this page renders what it streams back.
  */
 import './core/storage-migration';
-import { openSearchMode } from './searchmode';
+import { openSearchMode } from './chat/searchmode';
 import { actionFor } from './core/shortcuts';
 import { api, type ApprovalRequest, type ChatEvent } from './core/api';
 import { listen, tauriInvoke } from '../../shared/tauri';
-import { ChatView, CompareView, HomeView, composer, conversationMenu, recordStepTimes, refreshConversations, scrollToTurn, turnEnded, viewCache } from './chat';
+import { ChatView, CompareView, HomeView, composer, conversationMenu, recordStepTimes, refreshConversations, scrollToTurn, turnEnded, viewCache } from './chat/chat';
 import { clear, h, icon, modal, popover, promptText, confirmDialog, toast } from './ui/dom';
 import { startUiLanguage } from './core/i18n';
 import { startWakeWord, stopWakeWord, wakePrefs } from './voice/wakeword';

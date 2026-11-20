@@ -2,12 +2,12 @@
  * Uploaded files (Open WebUI's data controls): every file and image sent in a chat, to find,
  * open or remove; and how large files go with a message, in full or searched from a library.
  */
-import { tauriInvoke } from '../../shared/tauri';
-import { clear, h, icon, toast, timeLabel } from './ui/dom';
-import { characterCount } from './core/format';
-import { navigate } from './core/state';
-import { card } from './ui/ui';
-import { choice } from './core/prefs';
+import { tauriInvoke } from '../../../shared/tauri';
+import { clear, h, icon, toast, timeLabel } from '../ui/dom';
+import { characterCount } from '../core/format';
+import { navigate } from '../core/state';
+import { card } from '../ui/ui';
+import { choice } from '../core/prefs';
 
 export type UploadMode = 'full' | 'auto' | 'search';
 const KEY = 'cortex.uploadMode';

@@ -24,7 +24,7 @@ import { button, card, modalHeader, switchInput } from './ui/ui';
 import { audioApi, audioSettings, refreshAudioSettings, speakText, type AudioView } from './voice/audio';
 import { SHORTCUTS, bindingFor, comboOf, display, setBinding } from './core/shortcuts';
 import { EMOJI_STYLES, emojiStatus, emojiStyle, onEmojiStatus, setEmojiStyle, type EmojiStatus, type EmojiStyle } from './ui/emoji-fluent';
-import { uploadsCard } from './uploads';
+import { uploadsCard } from './chat/uploads';
 import { setMaterial, storedMaterial, type Material } from './theme/appearance';
 import {
   ACCENTS,

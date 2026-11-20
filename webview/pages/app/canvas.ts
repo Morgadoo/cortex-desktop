@@ -4,7 +4,7 @@ import { tauriInvoke } from '../../shared/tauri';
 import type { Part } from './core/api';
 import { clear, h, icon, markdown, modal, toast, clockHour12 } from './ui/dom';
 import { button, iconButton, modalHeader } from './ui/ui';
-import { improveButton } from './improve';
+import { improveButton } from './chat/improve';
 import { renderSheetCard } from './sheet';
 import { diagramFrame, isMarp } from './diagrams';
 import { call, shown } from './core/call';
