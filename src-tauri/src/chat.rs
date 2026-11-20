@@ -10,8 +10,6 @@
 //! - [`engine`]: one turn: stream a reply, run the tools it calls, repeat
 //! - [`tools`]: the app's connectors (filesystem, shell, MCP) and built-ins offered to the model
 
-pub mod agent_market;
-pub mod agents;
 pub mod api_server;
 pub mod builtins;
 pub mod commands;
@@ -21,29 +19,21 @@ mod deferred;
 pub mod discord;
 pub mod emoji_pack;
 pub mod engine;
-pub mod evals;
 pub mod functions;
 pub mod headless;
 pub mod hooks;
 pub mod host;
-pub mod lifecycle;
 pub mod links;
-pub mod org;
-pub mod plugins;
 pub mod privacy;
 pub mod prompt;
 pub mod share;
-pub mod skill_catalog;
-pub mod skills;
 pub mod slack;
 pub mod subagents;
-pub mod tasks;
 pub mod telegram;
 pub mod terminal_chat;
 pub mod tools;
 pub mod traces;
 pub mod ui_language;
-pub mod workflows;
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -61,6 +51,8 @@ pub mod toolkit;
 pub use toolkit::{canvas, code, computer, custom_tools, openapi, proposals, sandbox, script_tools, sheets, terminal, webpage, workbench};
 pub mod multimedia;
 pub use multimedia::{animation, audio, hex, media, recorder, video, videogen};
+pub mod automation;
+pub use automation::{agent_market, agents, evals, lifecycle, org, plugins, skill_catalog, skills, tasks, workflows};
 
 /// The account every account-scoped subsystem (connectors, secrets, skills) runs under. Proton
 /// accounts are gone; one local profile takes their place.
