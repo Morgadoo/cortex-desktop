@@ -225,6 +225,72 @@
           "markdownDescription": "Turn the local OpenAI-compatible API on or off and show its token."
         },
         {
+          "description": "The agents, agent workers and their models commands defined in chat/commands/agents_commands.rs that have no permission of their own.",
+          "type": "string",
+          "const": "allow-chat-area-agents",
+          "markdownDescription": "The agents, agent workers and their models commands defined in chat/commands/agents_commands.rs that have no permission of their own."
+        },
+        {
+          "description": "The canvases, apps, previews and media commands defined in chat/commands/canvases_commands.rs that have no permission of their own.",
+          "type": "string",
+          "const": "allow-chat-area-canvases",
+          "markdownDescription": "The canvases, apps, previews and media commands defined in chat/commands/canvases_commands.rs that have no permission of their own."
+        },
+        {
+          "description": "The coding sessions and recent files commands defined in chat/commands/code_commands.rs that have no permission of their own.",
+          "type": "string",
+          "const": "allow-chat-area-code",
+          "markdownDescription": "The coding sessions and recent files commands defined in chat/commands/code_commands.rs that have no permission of their own."
+        },
+        {
+          "description": "The conversations, search and exports commands defined in chat/commands/conversations_commands.rs that have no permission of their own.",
+          "type": "string",
+          "const": "allow-chat-area-conversations",
+          "markdownDescription": "The conversations, search and exports commands defined in chat/commands/conversations_commands.rs that have no permission of their own."
+        },
+        {
+          "description": "The knowledge, versions, skills and plugins commands defined in chat/commands/knowledge_commands.rs that have no permission of their own.",
+          "type": "string",
+          "const": "allow-chat-area-knowledge",
+          "markdownDescription": "The knowledge, versions, skills and plugins commands defined in chat/commands/knowledge_commands.rs that have no permission of their own."
+        },
+        {
+          "description": "The libraries and their documents commands defined in chat/commands/libraries_commands.rs that have no permission of their own.",
+          "type": "string",
+          "const": "allow-chat-area-libraries",
+          "markdownDescription": "The libraries and their documents commands defined in chat/commands/libraries_commands.rs that have no permission of their own."
+        },
+        {
+          "description": "The notifications, links, prompts and other chat features commands defined in chat/commands/misc_commands.rs that have no permission of their own.",
+          "type": "string",
+          "const": "allow-chat-area-misc",
+          "markdownDescription": "The notifications, links, prompts and other chat features commands defined in chat/commands/misc_commands.rs that have no permission of their own."
+        },
+        {
+          "description": "The providers and the backup, review and default models commands defined in chat/commands/providers_commands.rs that have no permission of their own.",
+          "type": "string",
+          "const": "allow-chat-area-providers",
+          "markdownDescription": "The providers and the backup, review and default models commands defined in chat/commands/providers_commands.rs that have no permission of their own."
+        },
+        {
+          "description": "The chat settings: local API, diagnostics, sync and encryption commands defined in chat/commands/settings_commands.rs that have no permission of their own.",
+          "type": "string",
+          "const": "allow-chat-area-settings",
+          "markdownDescription": "The chat settings: local API, diagnostics, sync and encryption commands defined in chat/commands/settings_commands.rs that have no permission of their own."
+        },
+        {
+          "description": "The scheduled tasks and calendars commands defined in chat/commands/tasks_commands.rs that have no permission of their own.",
+          "type": "string",
+          "const": "allow-chat-area-tasks",
+          "markdownDescription": "The scheduled tasks and calendars commands defined in chat/commands/tasks_commands.rs that have no permission of their own."
+        },
+        {
+          "description": "The hooks, the vault, functions and tools commands defined in chat/commands/tools_commands.rs that have no permission of their own.",
+          "type": "string",
+          "const": "allow-chat-area-tools",
+          "markdownDescription": "The hooks, the vault, functions and tools commands defined in chat/commands/tools_commands.rs that have no permission of their own."
+        },
+        {
           "description": "Record comparison results and show the model leaderboard.",
           "type": "string",
           "const": "allow-chat-arena",
@@ -961,6 +1027,12 @@
           "type": "string",
           "const": "allow-desktop-notification-show",
           "markdownDescription": "Shows a native notification for the active account from the main webview."
+        },
+        {
+          "description": "Read and save the dictation and in-app browser preferences, and run app menu actions, from the main window.",
+          "type": "string",
+          "const": "allow-desktop-window-preferences",
+          "markdownDescription": "Read and save the dictation and in-app browser preferences, and run app menu actions, from the main window."
         },
         {
           "description": "The dictation pill: transcribe what was said and type it into the app that had focus.",

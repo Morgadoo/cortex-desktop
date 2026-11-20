@@ -77,3 +77,8 @@ commands.allow = ["is_account_signed_in"]
 identifier = "allow-desktop-feature-flags"
 description = "Read desktop feature flags and report them from the main webview."
 commands.allow = ["get_desktop_feature_flags", "set_desktop_feature_flags"]
+
+[[permission]]
+identifier = "allow-desktop-window-preferences"
+description = "Read and save the dictation and in-app browser preferences, and run app menu actions, from the main window."
+commands.allow = ["browser_prefs", "set_browser_prefs", "app_menu_action", "dictation_prefs", "set_dictation_prefs"]
