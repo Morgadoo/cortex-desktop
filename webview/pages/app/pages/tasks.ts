@@ -1,7 +1,10 @@
 /** Scheduled tasks: the list, its tabs and the task editor. */
 import { api, newId, type Frequency, type Task } from '../core/api';
 import { tauriInvoke } from '../../../shared/tauri';
-import { clear, confirmDialog, h, icon, modal, toast, clockHour12 } from '../ui/dom';
+import { clear, h } from '../ui/h';
+import { icon } from '../ui/icons';
+import { confirmDialog, modal, toast } from '../ui/overlay';
+import { clockHour12 } from '../core/clock';
 import { navigate, state } from '../core/state';
 import { button, modalHeader } from '../ui/ui';
 import { choice } from '../core/prefs';

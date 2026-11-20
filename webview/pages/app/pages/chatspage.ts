@@ -3,7 +3,9 @@
  * runs, archived), a search, and a list or a card view, with the actions each chat needs.
  */
 import { api, type ConversationSummary } from '../core/api';
-import { clear, h, icon, timeLabel } from '../ui/dom';
+import { clear, h } from '../ui/h';
+import { icon } from '../ui/icons';
+import { timeLabel } from '../core/clock';
 import { navigate, state, changed } from '../core/state';
 import { pageHeader } from '../ui/ui';
 import { choice, textPref } from '../core/prefs';

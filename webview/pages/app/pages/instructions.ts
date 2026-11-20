@@ -1,6 +1,9 @@
 /** The Instructions dialog: how the assistant should answer, in the user's words, with a preview. */
 import { api, type Instructions } from '../core/api';
-import { clear, h, icon, markdown, modal, toast } from '../ui/dom';
+import { clear, h } from '../ui/h';
+import { icon } from '../ui/icons';
+import { markdown } from '../ui/markdown';
+import { modal, toast } from '../ui/overlay';
 import { state } from '../core/state';
 import { modalHeader } from '../ui/ui';
 

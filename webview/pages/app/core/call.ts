@@ -4,7 +4,7 @@
  * is deliberately not shown (a signal, a best-effort refresh), so that silence is a visible choice.
  */
 import { tauriInvoke } from '../../../shared/tauri';
-import { toast } from '../ui/dom';
+import { toast } from '../ui/overlay';
 
 /** Invokes `command`; on failure shows the error and rejects with it. */
 export async function call<T = unknown>(command: string, args?: TauriInvokeArgs): Promise<T> {

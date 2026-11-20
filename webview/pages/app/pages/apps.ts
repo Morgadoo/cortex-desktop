@@ -1,7 +1,9 @@
 /** Apps: every mini app the assistant built, each running live in its own sandbox. */
 import { tauriInvoke } from '../../../shared/tauri';
 import { appFrame, openAppWindow } from '../canvas/canvas';
-import { clear, h, icon, modal } from '../ui/dom';
+import { clear, h } from '../ui/h';
+import { icon } from '../ui/icons';
+import { modal } from '../ui/overlay';
 import { navigate } from '../core/state';
 import { button, emptyState, modalHeader, pageHeader } from '../ui/ui';
 

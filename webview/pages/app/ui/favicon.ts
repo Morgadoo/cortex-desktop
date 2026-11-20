@@ -4,7 +4,10 @@
  * `data:` URL; until it arrives, the site's first letter stands in.
  */
 import { tauriInvoke } from '../../../shared/tauri';
-import { h, icon, markdownHooks, toast } from './dom';
+import { h } from './h';
+import { icon } from './icons';
+import { markdownHooks } from './markdown';
+import { toast } from './overlay';
 
 export interface LinkPreview {
   url: string;

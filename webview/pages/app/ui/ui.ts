@@ -4,7 +4,8 @@
  * pressed states. The look lives in app.css under the matching class names, built on the tokens
  * at its top (colours, radii, type scale, spacing and motion).
  */
-import { h, icon } from './dom';
+import { h } from './h';
+import { icon } from './icons';
 
 type Child = HTMLElement | string | null | undefined | false;
 

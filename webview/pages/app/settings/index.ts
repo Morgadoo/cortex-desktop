@@ -1,7 +1,10 @@
 /** The settings dialog: profile, providers, permissions, general and appearance. */
 import { listen, tauriInvoke } from '../../../shared/tauri';
 import { api, type AppSettings, type Provider } from '../core/api';
-import { clear, confirmDialog, h, icon, modal, toast, clockHour12, setClock } from '../ui/dom';
+import { clear, h } from '../ui/h';
+import { icon } from '../ui/icons';
+import { confirmDialog, modal, toast } from '../ui/overlay';
+import { clockHour12, setClock } from '../core/clock';
 import { fileSize } from '../core/format';
 import { historyButton } from '../canvas/versions';
 import {

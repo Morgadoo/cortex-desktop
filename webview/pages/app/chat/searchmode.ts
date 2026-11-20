@@ -4,7 +4,10 @@
  * asked for; or they go into a new chat as context.
  */
 import { tauriInvoke } from '../../../shared/tauri';
-import { clear, h, icon, markdown, modal, toast } from '../ui/dom';
+import { clear, h } from '../ui/h';
+import { icon } from '../ui/icons';
+import { markdown } from '../ui/markdown';
+import { modal, toast } from '../ui/overlay';
 import { navigate, state } from '../core/state';
 import { button, modalHeader, switchInput } from '../ui/ui';
 import { composer } from './chat';

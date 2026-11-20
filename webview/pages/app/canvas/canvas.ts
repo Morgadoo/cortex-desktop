@@ -2,7 +2,11 @@
 import { markdownToolbar } from '../ui/mdformat';
 import { tauriInvoke } from '../../../shared/tauri';
 import type { Part } from '../core/api';
-import { clear, h, icon, markdown, modal, toast, clockHour12 } from '../ui/dom';
+import { clear, h } from '../ui/h';
+import { icon } from '../ui/icons';
+import { markdown } from '../ui/markdown';
+import { modal, toast } from '../ui/overlay';
+import { clockHour12 } from '../core/clock';
 import { button, iconButton, modalHeader } from '../ui/ui';
 import { improveButton } from '../chat/improve';
 import { renderSheetCard } from './sheet';

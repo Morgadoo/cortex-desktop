@@ -5,7 +5,10 @@
  */
 import { tauriInvoke } from '../../../shared/tauri';
 import { api, type Agent } from '../core/api';
-import { clear, confirmDialog, h, icon, modal, toast, timeLabel } from '../ui/dom';
+import { clear, h } from '../ui/h';
+import { icon } from '../ui/icons';
+import { confirmDialog, modal, toast } from '../ui/overlay';
+import { timeLabel } from '../core/clock';
 import { changed, state } from '../core/state';
 import { editTask } from './tasks';
 import { button, modalHeader } from '../ui/ui';

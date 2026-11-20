@@ -4,7 +4,9 @@
  * typed prompts and workflows, so a saved prompt becomes a small form.
  */
 import { api } from '../core/api';
-import { h, modal, clockHour12 } from '../ui/dom';
+import { h } from '../ui/h';
+import { modal } from '../ui/overlay';
+import { clockHour12 } from '../core/clock';
 import { invalid, substitute, variablesIn, type Variable } from './promptvars';
 
 /** Filled without asking. */

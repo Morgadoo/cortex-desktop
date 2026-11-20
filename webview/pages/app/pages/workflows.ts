@@ -1,7 +1,10 @@
 /** Workflows: reusable step-by-step recipes, run from the composer's + menu. */
 import { tauriInvoke } from '../../../shared/tauri';
 import type { Workflow } from '../core/api';
-import { clear, confirmDialog, h, icon, modal, toast, clockHour12 } from '../ui/dom';
+import { clear, h } from '../ui/h';
+import { icon } from '../ui/icons';
+import { confirmDialog, modal, toast } from '../ui/overlay';
+import { clockHour12 } from '../core/clock';
 import { historyButton } from '../canvas/versions';
 import { button, modalHeader, pageHeader } from '../ui/ui';
 

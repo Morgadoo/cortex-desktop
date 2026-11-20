@@ -4,7 +4,10 @@
  */
 
 import { tauriInvoke } from '../../../shared/tauri';
-import { clear, h, icon, modal, toast, clockHour12 } from '../ui/dom';
+import { clear, h } from '../ui/h';
+import { icon } from '../ui/icons';
+import { modal, toast } from '../ui/overlay';
+import { clockHour12 } from '../core/clock';
 import { modalHeader } from '../ui/ui';
 
 type Kind = 'agents' | 'workflows' | 'tools';

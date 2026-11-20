@@ -1,6 +1,8 @@
 /** A coding session's working-tree changes: the files touched and their diffs. */
 import { tauriInvoke } from '../../../shared/tauri';
-import { clear, h, icon, modal, promptText, toast } from '../ui/dom';
+import { clear, h } from '../ui/h';
+import { icon } from '../ui/icons';
+import { modal, promptText, toast } from '../ui/overlay';
 import { iconButton, modalHeader } from '../ui/ui';
 import { choice } from '../core/prefs';
 

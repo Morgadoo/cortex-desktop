@@ -1,7 +1,10 @@
 /** The Knowledge page: pages the model and the user write and keep, and the memories beside them. */
 import { tauriInvoke } from '../../../shared/tauri';
 import { api, type Memories } from '../core/api';
-import { clear, confirmDialog, h, icon, markdown, modal, toast } from '../ui/dom';
+import { clear, h } from '../ui/h';
+import { icon } from '../ui/icons';
+import { markdown } from '../ui/markdown';
+import { confirmDialog, modal, toast } from '../ui/overlay';
 import { improveButton } from '../chat/improve';
 import { restoreButton } from '../canvas/versions';
 import { navigate, state } from '../core/state';

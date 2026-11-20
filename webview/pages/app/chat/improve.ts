@@ -1,5 +1,7 @@
 import { tauriInvoke } from '../../../shared/tauri';
-import { h, icon, popover, toast } from '../ui/dom';
+import { h } from '../ui/h';
+import { icon } from '../ui/icons';
+import { popover, toast } from '../ui/overlay';
 import { state } from '../core/state';
 
 const IMPROVE_PRESETS: [string, string][] = [

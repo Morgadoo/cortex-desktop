@@ -9,7 +9,9 @@ import { tauriInvoke } from '../../../shared/tauri';
 import { speakText, type Playback } from './audio';
 import { openMicrophone, type Microphone } from './dictation';
 import { blobToBase64 } from '../core/format';
-import { h, icon, toast } from '../ui/dom';
+import { h } from '../ui/h';
+import { icon } from '../ui/icons';
+import { toast } from '../ui/overlay';
 import { createGlowOrb, orbCssColor } from '../theme/orbgl';
 
 export interface VoiceHooks {

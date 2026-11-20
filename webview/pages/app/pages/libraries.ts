@@ -1,6 +1,9 @@
 /** Libraries: document collections the assistant searches, with a search box to test them. */
 import { tauriInvoke } from '../../../shared/tauri';
-import { clear, confirmDialog, h, icon, modal, popover, promptText, toast, clockHour12 } from '../ui/dom';
+import { clear, h } from '../ui/h';
+import { icon } from '../ui/icons';
+import { confirmDialog, modal, popover, promptText, toast } from '../ui/overlay';
+import { clockHour12 } from '../core/clock';
 import { characterCount } from '../core/format';
 import { modalHeader } from '../ui/ui';
 import { choice, json } from '../core/prefs';

@@ -1,6 +1,8 @@
 /** The Connectors page, and placeholder pages for what is not built yet. */
 import { api, type ConnectorManifest } from '../core/api';
-import { clear, h, icon, toast } from '../ui/dom';
+import { clear, h } from '../ui/h';
+import { icon } from '../ui/icons';
+import { toast } from '../ui/overlay';
 import { type Page } from '../core/state';
 import { openSettings } from '../settings/index';
 import { listen, tauriInvoke } from '../../../shared/tauri';

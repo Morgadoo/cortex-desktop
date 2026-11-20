@@ -1,7 +1,10 @@
 /** The Skills page, the skill editor and catalogues, and teaching a task by recording it. */
 import { tauriInvoke } from '../../../shared/tauri';
 import { api, type Skill } from '../core/api';
-import { clear, confirmDialog, h, icon, modal, popover, promptText, toast, clockHour12 } from '../ui/dom';
+import { clear, h } from '../ui/h';
+import { icon } from '../ui/icons';
+import { confirmDialog, modal, popover, promptText, toast } from '../ui/overlay';
+import { clockHour12 } from '../core/clock';
 import { state } from '../core/state';
 import { button, emptyState, modalHeader, pageHeader, switchInput, tabs } from '../ui/ui';
 import { call, callQuiet, shown } from '../core/call';
