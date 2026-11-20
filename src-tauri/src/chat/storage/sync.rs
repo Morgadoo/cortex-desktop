@@ -369,45 +369,9 @@ pub(in crate::chat::storage) fn sync_once(
         .unwrap_or_default();
     state.store = store;
 
-    // What the folder holds, by path.
-    let mut remote_items: BTreeMap<String, Item> = BTreeMap::new();
-    if let Ok(entries) = std::fs::read_dir(&items_dir) {
-        for e in entries.filter_map(Result::ok) {
-            if !e.file_name().to_string_lossy().ends_with(".lumo") {
-                continue;
-            }
-            let item = crate::chat::at_rest::read(e.path())
-                .map_err(|e| e.to_string())
-                .and_then(|d| open(key, &d))
-                .and_then(|p| serde_json::from_slice::<Item>(&p).map_err(|e| e.to_string()));
-            match item {
-                // A name that does not match its path was not written by Cortex with this key.
-                Ok(item)
-                    if item_name(key, &item.path) == e.file_name().to_string_lossy()
-                        && allowed(&item.path) =>
-                {
-                    remote_items.insert(item.path.clone(), item);
-                }
-                Ok(item) => report
-                    .errors
-                    .push(format!("{} is not where it belongs; left alone", item.path)),
-                Err(err) => report
-                    .errors
-                    .push(format!("an item could not be read ({err})")),
-            }
-        }
-    }
+    let remote_items = read_remote(&items_dir, key, &mut report);
 
-    let local = local_files(config_dir);
-    let mut local_hashes: BTreeMap<String, (String, Vec<u8>)> = BTreeMap::new();
-    for (rel, full) in &local {
-        match crate::chat::at_rest::read(full) {
-            Ok(bytes) => {
-                local_hashes.insert(rel.clone(), (sha256(&bytes), bytes));
-            }
-            Err(e) => report.errors.push(format!("{rel}: {e}")),
-        }
-    }
+    let (local, local_hashes) = read_local(config_dir, &mut report);
 
     let device = device_name();
     let put = |item: &Item| -> Result<(), String> {
@@ -427,32 +391,8 @@ pub(in crate::chat::storage) fn sync_once(
             content: b64.encode(bytes),
         })
     };
-    let download = |item: &Item| -> Result<(), String> {
-        let bytes = b64.decode(&item.content).map_err(|e| e.to_string())?;
-        if sha256(&bytes) != item.hash {
-            return Err("its contents do not match its hash".into());
-        }
-        let target = config_dir.join(&item.path);
-        if let Some(dir) = target.parent() {
-            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-        }
-        // An overwritten conversation keeps a backup, as any other change does.
-        if item.path.starts_with("chat/conversations/") {
-            crate::chat::backup::before_overwrite(config_dir, &target);
-        }
-        let tmp = target.with_extension("sync-tmp");
-        crate::chat::at_rest::write(&tmp, &bytes).map_err(|e| e.to_string())?;
-        std::fs::rename(&tmp, &target).map_err(|e| e.to_string())
-    };
-    let remove_local = |rel: &str| -> Result<(), String> {
-        if let Some(id) = rel
-            .strip_prefix("chat/conversations/")
-            .and_then(|n| n.strip_suffix(".json"))
-        {
-            return crate::chat::store::delete_conversation(config_dir, id);
-        }
-        std::fs::remove_file(config_dir.join(rel)).map_err(|e| e.to_string())
-    };
+    let download = |item: &Item| write_item(config_dir, item);
+    let remove_local = |rel: &str| remove_local_file(config_dir, rel);
 
     let paths: BTreeSet<String> = local_hashes
         .keys()
@@ -550,6 +490,93 @@ pub(in crate::chat::storage) fn sync_once(
         report.errors.push(format!("the sync state: {e}"));
     }
     report
+}
+
+/// What the sync folder holds, by path. Items this key did not write, or that are not where
+/// their path puts them, are reported and left alone.
+fn read_remote(items_dir: &Path, key: &[u8; 32], report: &mut Report) -> BTreeMap<String, Item> {
+    let mut remote_items: BTreeMap<String, Item> = BTreeMap::new();
+    if let Ok(entries) = std::fs::read_dir(items_dir) {
+        for e in entries.filter_map(Result::ok) {
+            if !e.file_name().to_string_lossy().ends_with(".lumo") {
+                continue;
+            }
+            let item = crate::chat::at_rest::read(e.path())
+                .map_err(|e| e.to_string())
+                .and_then(|d| open(key, &d))
+                .and_then(|p| serde_json::from_slice::<Item>(&p).map_err(|e| e.to_string()));
+            match item {
+                // A name that does not match its path was not written by Cortex with this key.
+                Ok(item)
+                    if item_name(key, &item.path) == e.file_name().to_string_lossy()
+                        && allowed(&item.path) =>
+                {
+                    remote_items.insert(item.path.clone(), item);
+                }
+                Ok(item) => report
+                    .errors
+                    .push(format!("{} is not where it belongs; left alone", item.path)),
+                Err(err) => report
+                    .errors
+                    .push(format!("an item could not be read ({err})")),
+            }
+        }
+    }
+    remote_items
+}
+
+/// The files that sync on this device, and each one's hash and contents.
+#[allow(clippy::type_complexity)]
+fn read_local(
+    config_dir: &Path,
+    report: &mut Report,
+) -> (
+    BTreeMap<String, PathBuf>,
+    BTreeMap<String, (String, Vec<u8>)>,
+) {
+    let local = local_files(config_dir);
+    let mut local_hashes: BTreeMap<String, (String, Vec<u8>)> = BTreeMap::new();
+    for (rel, full) in &local {
+        match crate::chat::at_rest::read(full) {
+            Ok(bytes) => {
+                local_hashes.insert(rel.clone(), (sha256(&bytes), bytes));
+            }
+            Err(e) => report.errors.push(format!("{rel}: {e}")),
+        }
+    }
+    (local, local_hashes)
+}
+
+/// Writes an item from the sync folder into the config folder, after checking its hash; an
+/// overwritten conversation keeps a backup.
+fn write_item(config_dir: &Path, item: &Item) -> Result<(), String> {
+    let b64 = base64::engine::general_purpose::STANDARD;
+    let bytes = b64.decode(&item.content).map_err(|e| e.to_string())?;
+    if sha256(&bytes) != item.hash {
+        return Err("its contents do not match its hash".into());
+    }
+    let target = config_dir.join(&item.path);
+    if let Some(dir) = target.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    // An overwritten conversation keeps a backup, as any other change does.
+    if item.path.starts_with("chat/conversations/") {
+        crate::chat::backup::before_overwrite(config_dir, &target);
+    }
+    let tmp = target.with_extension("sync-tmp");
+    crate::chat::at_rest::write(&tmp, &bytes).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &target).map_err(|e| e.to_string())
+}
+
+/// Removes a file deleted on another device; a conversation goes to the trash.
+fn remove_local_file(config_dir: &Path, rel: &str) -> Result<(), String> {
+    if let Some(id) = rel
+        .strip_prefix("chat/conversations/")
+        .and_then(|n| n.strip_suffix(".json"))
+    {
+        return crate::chat::store::delete_conversation(config_dir, id);
+    }
+    std::fs::remove_file(config_dir.join(rel)).map_err(|e| e.to_string())
 }
 
 // ---- passphrase and running ----------------------------------------------------------------
