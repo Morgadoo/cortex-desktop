@@ -1,4 +1,4 @@
-//! Agents: the team, its organization, templates, notebooks and the arena.
+//! Agents and workflows: the team, its organization, templates, notebooks, the arena, saved and drafted workflows, and which version of each is in production.
 
 use super::*;
 
@@ -296,4 +296,81 @@ pub async fn chat_draft_agent(
         agent.id = c.id;
     }
     Ok(agent)
+}
+
+#[tauri::command]
+pub fn chat_workflows(app: AppHandle) -> Result<Vec<crate::chat::workflows::WorkflowView>, String> {
+    let dir = config_dir(&app)?;
+    Ok(crate::chat::workflows::views(
+        &dir,
+        crate::chat::workflows::load(&dir),
+    ))
+}
+
+#[tauri::command]
+pub fn chat_save_workflow(
+    app: AppHandle,
+    workflow: crate::chat::workflows::Workflow,
+) -> Result<Vec<crate::chat::workflows::WorkflowView>, String> {
+    let dir = config_dir(&app)?;
+    let all = crate::chat::workflows::save(&dir, workflow)?;
+    Ok(crate::chat::workflows::views(&dir, all))
+}
+
+#[tauri::command]
+pub fn chat_delete_workflow(
+    app: AppHandle,
+    id: String,
+) -> Result<Vec<crate::chat::workflows::WorkflowView>, String> {
+    let dir = config_dir(&app)?;
+    let all = crate::chat::workflows::delete(&dir, &id)?;
+    let _ = crate::chat::versions::set_production(&dir, "workflows", &id, None);
+    Ok(crate::chat::workflows::views(&dir, all))
+}
+
+/// Marks a version of an agent, workflow or tool as production (`value`), or clears the mark.
+#[tauri::command]
+pub fn chat_set_production(
+    app: AppHandle,
+    kind: String,
+    id: String,
+    value: Option<serde_json::Value>,
+) -> Result<Option<crate::chat::versions::Production>, String> {
+    crate::chat::versions::set_production(&config_dir(&app)?, &kind, &id, value)
+}
+
+/// Drafts a workflow from a description, or revises `current` as `request` asks.
+#[tauri::command]
+pub async fn chat_draft_workflow(
+    app: AppHandle,
+    request: String,
+    current: Option<crate::chat::workflows::Workflow>,
+) -> Result<crate::chat::workflows::Workflow, String> {
+    use rig_core::completion::CompletionRequest;
+    let dir = config_dir(&app)?;
+    if request.trim().len() < 4 {
+        return Err("Say what the workflow is for, or what to change.".into());
+    }
+    let reference = providers::load(&dir)
+        .default_model
+        .ok_or("Choose a default model under Providers & models first.")?;
+    let prompt = crate::chat::workflows::draft_prompt(
+        request.trim(),
+        current
+            .as_ref()
+            .filter(|w| !w.steps.is_empty() || !w.name.is_empty()),
+    );
+    let text = engine::ask_text(
+        &dir,
+        &reference,
+        CompletionRequest::new(rig_core::completion::Message::user(prompt)),
+        120,
+    )
+    .await?;
+    let mut draft = crate::chat::workflows::parse_draft(&text)?;
+    if let Some(c) = current {
+        draft.id = c.id;
+        draft.builtin = c.builtin;
+    }
+    Ok(draft)
 }

@@ -108,3 +108,38 @@ pub async fn chat_audio_voices(
     }
     Ok(crate::chat::audio::known_voices(&engine))
 }
+
+/// Transcribes speech recorded in the composer (base64 audio). `live` marks a guess made while
+/// the speaker is still talking (see `live.ts` in the page).
+#[tauri::command]
+pub async fn chat_transcribe(
+    app: AppHandle,
+    audio: String,
+    mime: String,
+    live: Option<bool>,
+) -> Result<String, String> {
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(audio.as_bytes())
+        .map_err(|e| e.to_string())?;
+    if bytes.len() > 25 * 1024 * 1024 {
+        return Err("That recording is too long.".into());
+    }
+    let ext = match mime.split(';').next().unwrap_or_default() {
+        "audio/ogg" => "ogg",
+        "audio/mp4" | "audio/m4a" => "m4a",
+        "audio/wav" | "audio/x-wav" => "wav",
+        "audio/mpeg" => "mp3",
+        _ => "webm",
+    };
+    let dir = config_dir(&app)?;
+    let settings = crate::chat::audio::load(&dir).stt;
+    crate::chat::audio::transcribe(
+        &dir,
+        bytes,
+        &format!("speech.{ext}"),
+        &settings,
+        live.unwrap_or(false),
+    )
+    .await
+}

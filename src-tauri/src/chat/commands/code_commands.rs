@@ -1,4 +1,4 @@
-//! Code sessions: files, changes, the terminal and pull requests.
+//! Code sessions: files, changes, the terminal, pull requests, snippets run from answers, and sessions imported from other coding agents.
 
 use super::*;
 
@@ -244,4 +244,83 @@ pub fn chat_debug(app: AppHandle, id: String) -> Result<serde_json::Value, Strin
         "summary": c.summary,
         "messages": c.messages,
     }))
+}
+
+/// A text file from a chat's workspace, to show as a side-panel tab.
+#[tauri::command]
+pub fn chat_workspace_text(
+    app: AppHandle,
+    conversation_id: String,
+    path: String,
+) -> Result<String, String> {
+    let root = crate::chat::sandbox::workspace(&config_dir(&app)?, &conversation_id)?;
+    let real = root
+        .join(&path)
+        .canonicalize()
+        .map_err(|_| format!("There is no file at {path}."))?;
+    if !real.starts_with(root.canonicalize().map_err(|e| e.to_string())?) {
+        return Err("Only files in this chat's workspace open here.".into());
+    }
+    let bytes = crate::chat::at_rest::read(&real).map_err(|e| e.to_string())?;
+    if bytes.len() > 2_000_000 {
+        return Err("The file is too large to show here; save it instead.".into());
+    }
+    if bytes.iter().take(8000).any(|b| *b == 0) {
+        return Err("This file is not text; save it to open it in another app.".into());
+    }
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+/// Runs a code block from an answer in the sandbox, at the user's click; returns its output.
+#[tauri::command]
+pub async fn chat_run_snippet(
+    app: AppHandle,
+    language: String,
+    code: String,
+) -> Result<String, String> {
+    let outcome = crate::chat::sandbox::run(
+        &config_dir(&app)?,
+        "snippets",
+        &serde_json::json!({ "language": language, "code": code }),
+    )
+    .await;
+    if outcome.is_error {
+        Err(outcome.text)
+    } else {
+        Ok(outcome.text)
+    }
+}
+
+/// Sessions of other coding agents (Claude Code, Codex) on this computer, newest first.
+#[tauri::command]
+pub async fn chat_find_coding_sessions(
+    app: AppHandle,
+) -> Result<Vec<crate::chat::coding_import::Found>, String> {
+    let dir = config_dir(&app)?;
+    tokio::task::spawn_blocking(move || crate::chat::coding_import::find(&dir, None))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Imports the chosen sessions as Code conversations; returns their ids.
+#[tauri::command]
+pub async fn chat_import_coding_sessions(
+    app: AppHandle,
+    paths: Vec<String>,
+) -> Result<Vec<String>, String> {
+    let dir = config_dir(&app)?;
+    // Only files the search found can be imported.
+    let found: Vec<String> = crate::chat::coding_import::find(&dir, None)
+        .into_iter()
+        .map(|f| f.path)
+        .collect();
+    tokio::task::spawn_blocking(move || {
+        paths
+            .iter()
+            .filter(|p| found.contains(p))
+            .map(|p| crate::chat::coding_import::import(&dir, std::path::Path::new(p)))
+            .collect::<Result<Vec<_>, _>>()
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }

@@ -21,7 +21,7 @@ commands.allow = [
 
 [[permission]]
 identifier = "allow-chat-commands-agents-commands"
-description = "Agents (src/chat/commands/agents_commands.rs)"
+description = "Agents and workflows (src/chat/commands/agents_commands.rs)"
 commands.allow = [
   "chat_acp_agents",
   "chat_agent_browser",
@@ -35,7 +35,9 @@ commands.allow = [
   "chat_arena_record",
   "chat_arena_reset",
   "chat_delete_agent",
+  "chat_delete_workflow",
   "chat_draft_agent",
+  "chat_draft_workflow",
   "chat_forget_recent_file",
   "chat_import_agent",
   "chat_install_market_agent",
@@ -44,8 +46,22 @@ commands.allow = [
   "chat_router_models",
   "chat_save_agent",
   "chat_save_agent_notebook",
+  "chat_save_workflow",
+  "chat_set_production",
   "chat_set_router_models",
   "chat_subagent_transcript",
+  "chat_workflows",
+]
+
+[[permission]]
+identifier = "allow-chat-commands-app-commands"
+description = "The app itself (src/chat/commands/app_commands.rs)"
+commands.allow = [
+  "chat_notify",
+  "chat_open_chat_window",
+  "chat_save_bytes",
+  "chat_show_window",
+  "chat_take_link",
 ]
 
 [[permission]]
@@ -86,17 +102,21 @@ commands.allow = [
   "chat_code_runs_allowed",
   "chat_create_worktree",
   "chat_debug",
+  "chat_find_coding_sessions",
   "chat_folder_files",
   "chat_folder_read",
+  "chat_import_coding_sessions",
   "chat_open_workspace_file",
   "chat_recent_files",
   "chat_remember_files",
+  "chat_run_snippet",
   "chat_save_file",
   "chat_set_code_runs_allowed",
   "chat_terminal_clear",
   "chat_terminal_list",
   "chat_terminal_start",
   "chat_terminal_stop",
+  "chat_workspace_text",
 ]
 
 [[permission]]
@@ -106,20 +126,25 @@ commands.allow = [
   "chat_answer",
   "chat_bookmark",
   "chat_cancel",
+  "chat_complete_prompt",
   "chat_context_breakdown",
   "chat_conversation_text",
   "chat_delete_conversation",
-  "chat_draft_workflow",
+  "chat_delete_exchange",
+  "chat_delete_exchanges",
+  "chat_delete_forever",
   "chat_follow_ups",
   "chat_fork_conversation",
   "chat_get_conversation",
   "chat_keep_conversation",
   "chat_list_conversations",
+  "chat_live_events",
   "chat_rate_reason",
   "chat_recover_conversation",
   "chat_restore_conversation",
   "chat_rewrite_message",
   "chat_send",
+  "chat_set_params",
   "chat_signal",
   "chat_steer",
   "chat_update_conversation",
@@ -224,45 +249,6 @@ commands.allow = [
 ]
 
 [[permission]]
-identifier = "allow-chat-commands-misc-commands"
-description = "The remaining chat commands. (src/chat/commands/misc_commands.rs)"
-commands.allow = [
-  "chat_audit_summary",
-  "chat_check_vector_store",
-  "chat_clear_audit",
-  "chat_complete_prompt",
-  "chat_delete_exchange",
-  "chat_delete_exchanges",
-  "chat_delete_forever",
-  "chat_delete_workflow",
-  "chat_extraction",
-  "chat_favicon",
-  "chat_find_coding_sessions",
-  "chat_import_coding_sessions",
-  "chat_live_events",
-  "chat_notify",
-  "chat_open_chat_window",
-  "chat_read_article",
-  "chat_record_discard",
-  "chat_record_start",
-  "chat_record_status",
-  "chat_record_stop",
-  "chat_run_snippet",
-  "chat_save_bytes",
-  "chat_save_workflow",
-  "chat_set_params",
-  "chat_set_production",
-  "chat_show_window",
-  "chat_storage_health",
-  "chat_take_link",
-  "chat_transcribe",
-  "chat_ui_coverage",
-  "chat_ui_translations",
-  "chat_workflows",
-  "chat_workspace_text",
-]
-
-[[permission]]
 identifier = "allow-chat-commands-providers-commands"
 description = "Model providers, models, local models and usage. (src/chat/commands/providers_commands.rs)"
 commands.allow = [
@@ -285,10 +271,22 @@ commands.allow = [
 ]
 
 [[permission]]
+identifier = "allow-chat-commands-recording-commands"
+description = "Recording a task to teach (src/chat/commands/recording_commands.rs)"
+commands.allow = [
+  "chat_record_discard",
+  "chat_record_start",
+  "chat_record_status",
+  "chat_record_stop",
+]
+
+[[permission]]
 identifier = "allow-chat-commands-search-commands"
 description = "Search (src/chat/commands/search_commands.rs)"
 commands.allow = [
   "chat_answer_from_results",
+  "chat_favicon",
+  "chat_read_article",
   "chat_save_search_settings",
   "chat_search",
   "chat_search_everything",
@@ -302,9 +300,13 @@ description = "App-wide settings (src/chat/commands/settings_commands.rs)"
 commands.allow = [
   "chat_api_server",
   "chat_api_server_log",
+  "chat_audit_summary",
+  "chat_check_vector_store",
+  "chat_clear_audit",
   "chat_diagnostics_prefs",
   "chat_discord",
   "chat_encryption_status",
+  "chat_extraction",
   "chat_reset_ui_translations",
   "chat_save_api_server",
   "chat_save_sync_settings",
@@ -315,6 +317,7 @@ commands.allow = [
   "chat_set_telegram_token",
   "chat_slack",
   "chat_snippet_languages",
+  "chat_storage_health",
   "chat_sync_now",
   "chat_sync_settings",
   "chat_telegram",
@@ -390,6 +393,7 @@ commands.allow = [
   "chat_hex_status",
   "chat_save_audio_settings",
   "chat_speak",
+  "chat_transcribe",
 ]
 
 [[permission]]
@@ -399,6 +403,8 @@ commands.allow = [
   "chat_improve_text",
   "chat_translate",
   "chat_translate_ui",
+  "chat_ui_coverage",
+  "chat_ui_translations",
 ]
 
 [[permission]]

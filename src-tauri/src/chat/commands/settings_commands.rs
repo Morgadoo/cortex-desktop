@@ -1,4 +1,4 @@
-//! App-wide settings: sync, backups, encryption, the local API, chat apps and the interface.
+//! App-wide settings: sync, backups, encryption, storage health, the activity log, document extraction, the vector store, the local API, chat apps and the interface.
 
 use super::*;
 
@@ -326,4 +326,54 @@ pub fn chat_snippet_languages() -> Vec<&'static str> {
 #[tauri::command]
 pub fn chat_trash(app: AppHandle) -> Result<Vec<crate::chat::backup::TrashItem>, String> {
     Ok(crate::chat::backup::list_trash(&config_dir(&app)?))
+}
+
+/// The activity log: how many entries, and since when.
+#[tauri::command]
+pub fn chat_audit_summary(app: AppHandle) -> Result<serde_json::Value, String> {
+    let all = crate::chat::audit::entries(&config_dir(&app)?, None);
+    Ok(serde_json::json!({
+        "count": all.len(),
+        "since": all.first().map(|e| e.at),
+        "approvals": all.iter().filter(|e| e.kind == "approval").count(),
+        "denied": all.iter().filter(|e| e.outcome == "denied").count(),
+        "errors": all.iter().filter(|e| e.outcome == "error").count(),
+    }))
+}
+
+#[tauri::command]
+pub fn chat_clear_audit(app: AppHandle) -> Result<(), String> {
+    crate::chat::audit::clear(&config_dir(&app)?)
+}
+
+/// The document extraction engine (built-in, Tika or Docling); `change` sets it.
+#[tauri::command]
+pub fn chat_extraction(
+    app: AppHandle,
+    change: Option<crate::chat::extraction::Extraction>,
+) -> Result<crate::chat::extraction::Extraction, String> {
+    let dir = config_dir(&app)?;
+    if let Some(e) = change {
+        crate::chat::extraction::save(&dir, &e)?;
+    }
+    Ok(crate::chat::extraction::load(&dir))
+}
+
+/// Checks the Qdrant server in the saved settings; returns its version.
+#[tauri::command]
+pub async fn chat_check_vector_store(app: AppHandle) -> Result<String, String> {
+    let settings = crate::chat::embeddings::load(&config_dir(&app)?);
+    if settings.qdrant_url.is_empty() {
+        return Err("Enter the Qdrant server's address first.".into());
+    }
+    crate::chat::embeddings::qdrant::check(&settings).await
+}
+
+/// How the stored data is doing: counts, size, backups, and files that cannot be read.
+#[tauri::command]
+pub async fn chat_storage_health(app: AppHandle) -> Result<crate::chat::backup::Health, String> {
+    let dir = config_dir(&app)?;
+    tokio::task::spawn_blocking(move || crate::chat::backup::health(&dir))
+        .await
+        .map_err(|e| e.to_string())
 }

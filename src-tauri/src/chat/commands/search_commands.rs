@@ -1,4 +1,4 @@
-//! Search: every chat, library and the web from one box, answers from the results, and the web search engine's settings.
+//! Search: every chat, library and the web from one box, answers from the results, the web search engine's settings, and web sources read as articles or shown by their icons.
 
 use super::*;
 
@@ -78,4 +78,16 @@ pub async fn chat_save_search_settings(
     }
     crate::chat::search::save_settings(&dir, &settings)?;
     Ok(crate::chat::search::load_settings(&dir))
+}
+
+/// A source read as an article, for the reader in the side panel.
+#[tauri::command]
+pub async fn chat_read_article(url: String) -> Result<crate::chat::reader::Article, String> {
+    crate::chat::reader::read(&url).await
+}
+
+/// A site's icon as a `data:` URL, for sources and citations; `None` when it has none.
+#[tauri::command]
+pub async fn chat_favicon(app: AppHandle, host: String) -> Result<Option<String>, String> {
+    Ok(crate::chat::favicon::get(&config_dir(&app)?, &host).await)
 }

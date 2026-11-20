@@ -1,4 +1,4 @@
-//! Writing help: translating answers and the interface, and rewriting text in place.
+//! Writing help: translating answers and the interface, the interface's translations and their coverage, and rewriting text in place.
 
 use super::*;
 
@@ -79,4 +79,28 @@ pub async fn chat_improve_text(
         return Err("The model gave no text back.".into());
     }
     Ok(out.to_string())
+}
+
+/// Every translation of interface text known for `code`.
+#[tauri::command]
+pub fn chat_ui_translations(
+    app: AppHandle,
+    code: String,
+) -> Result<std::collections::BTreeMap<String, String>, String> {
+    Ok(crate::chat::ui_language::translations(
+        &config_dir(&app)?,
+        &code,
+    ))
+}
+
+/// How much of the interface `code` covers.
+#[tauri::command]
+pub fn chat_ui_coverage(
+    app: AppHandle,
+    code: String,
+) -> Result<crate::chat::ui_language::Coverage, String> {
+    Ok(crate::chat::ui_language::coverage(
+        &config_dir(&app)?,
+        &code,
+    ))
 }

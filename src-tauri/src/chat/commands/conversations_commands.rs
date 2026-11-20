@@ -1,4 +1,4 @@
-//! Conversations: listing, sending, steering, editing, rating, branching and drafting workflows.
+//! Conversations: listing, sending, steering, editing, rating, branching, deleting exchanges, the trash, and completing the message being typed.
 
 use super::*;
 
@@ -117,42 +117,6 @@ pub fn chat_delete_conversation(
 ) -> Result<(), String> {
     state.cancel(&id);
     store::delete_conversation(&config_dir(&app)?, &id)
-}
-
-/// Drafts a workflow from a description, or revises `current` as `request` asks.
-#[tauri::command]
-pub async fn chat_draft_workflow(
-    app: AppHandle,
-    request: String,
-    current: Option<crate::chat::workflows::Workflow>,
-) -> Result<crate::chat::workflows::Workflow, String> {
-    use rig_core::completion::CompletionRequest;
-    let dir = config_dir(&app)?;
-    if request.trim().len() < 4 {
-        return Err("Say what the workflow is for, or what to change.".into());
-    }
-    let reference = providers::load(&dir)
-        .default_model
-        .ok_or("Choose a default model under Providers & models first.")?;
-    let prompt = crate::chat::workflows::draft_prompt(
-        request.trim(),
-        current
-            .as_ref()
-            .filter(|w| !w.steps.is_empty() || !w.name.is_empty()),
-    );
-    let text = engine::ask_text(
-        &dir,
-        &reference,
-        CompletionRequest::new(rig_core::completion::Message::user(prompt)),
-        120,
-    )
-    .await?;
-    let mut draft = crate::chat::workflows::parse_draft(&text)?;
-    if let Some(c) = current {
-        draft.id = c.id;
-        draft.builtin = c.builtin;
-    }
-    Ok(draft)
 }
 
 /// Adds guidance to a running turn; it joins the conversation at the turn's next step.
@@ -363,4 +327,127 @@ pub fn chat_fork_conversation(
     c.updated_at = c.created_at;
     store::save_conversation(&dir, &c)?;
     Ok(c.id)
+}
+
+/// What a running turn has streamed so far, for a window that opens during it.
+#[tauri::command]
+pub fn chat_live_events(
+    state: State<'_, ChatState>,
+    conversation_id: String,
+) -> Vec<serde_json::Value> {
+    state.replay(&conversation_id)
+}
+
+/// Saves a conversation's own model settings.
+#[tauri::command]
+pub fn chat_set_params(
+    app: AppHandle,
+    id: String,
+    params: store::ChatParams,
+) -> Result<store::ChatParams, String> {
+    let dir = config_dir(&app)?;
+    let mut conversation = store::load_conversation(&dir, &id)?;
+    conversation.params = params.clamped();
+    store::save_conversation(&dir, &conversation)?;
+    Ok(conversation.params)
+}
+
+/// Removes a message the user sent and the reply to it.
+#[tauri::command]
+pub fn chat_delete_exchange(
+    app: AppHandle,
+    state: State<'_, ChatState>,
+    id: String,
+    index: usize,
+) -> Result<(), String> {
+    if state.is_running(&id) {
+        return Err("Wait for the reply to finish first.".into());
+    }
+    let dir = config_dir(&app)?;
+    let mut conversation = store::load_conversation(&dir, &id)?;
+    store::delete_exchange(&mut conversation, index)?;
+    store::save_conversation(&dir, &conversation).map_err(String::from)
+}
+
+/// Deletes the exchanges (prompt and answer) holding the given messages; returns how many went.
+#[tauri::command]
+pub fn chat_delete_exchanges(
+    app: AppHandle,
+    state: State<'_, ChatState>,
+    id: String,
+    indices: Vec<usize>,
+) -> Result<usize, String> {
+    if state.is_running(&id) {
+        return Err("Wait for the reply to finish first.".into());
+    }
+    let dir = config_dir(&app)?;
+    let mut conversation = store::load_conversation(&dir, &id)?;
+    let count = store::delete_exchanges(&mut conversation, &indices)?;
+    store::save_conversation(&dir, &conversation)?;
+    Ok(count)
+}
+
+/// Deletes one conversation from the trash for good, or empties it.
+#[tauri::command]
+pub fn chat_delete_forever(app: AppHandle, id: Option<String>) -> Result<(), String> {
+    crate::chat::backup::delete_forever(&config_dir(&app)?, id.as_deref())
+}
+
+/// A continuation for the message being typed (Open WebUI's autocomplete): a few words, or
+/// nothing when the message reads as finished.
+#[tauri::command]
+pub async fn chat_complete_prompt(
+    app: AppHandle,
+    model: String,
+    text: String,
+) -> Result<String, String> {
+    let text: String = text
+        .chars()
+        .rev()
+        .take(2_000)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    if text.trim().chars().count() < 8 {
+        return Ok(String::new());
+    }
+    let prompt = format!(
+        "The user is typing a message to an AI assistant. Suggest how their sentence most likely \
+         continues: at most 12 words, in their language and voice, continuing exactly where the text \
+         stops (start with a space when the next word is new). Reply with the continuation only, no \
+         quotes. If the message already reads as complete, reply with nothing.\n\n<typed>{text}</typed>"
+    );
+    let request = rig_core::completion::CompletionRequest::new(
+        rig_core::completion::message::Message::user(prompt),
+    )
+    .max_tokens(600u64);
+    let out = match engine::ask_text(&config_dir(&app)?, &model, request, 10).await {
+        Ok(out) => out,
+        Err(e) if e.contains("no text") => return Ok(String::new()),
+        Err(e) => return Err(e),
+    };
+    let out = out
+        .trim_end()
+        .trim_start_matches(['"', '\''])
+        .trim_end_matches(['"', '\''])
+        .to_string();
+    // A continuation, not a new message: keep it short and on one line.
+    let out: String = out
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .split_whitespace()
+        .take(14)
+        .collect::<Vec<_>>()
+        .join(" ");
+    if out.is_empty() {
+        return Ok(String::new());
+    }
+    let joined = if text.ends_with(' ') || out.starts_with([',', '.', '?', '!', ';', ':']) {
+        out
+    } else {
+        format!(" {out}")
+    };
+    Ok(joined)
 }

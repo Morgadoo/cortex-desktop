@@ -1,4 +1,4 @@
-//! IPC for the chat page. Every command is allowlisted in `permissions/chat.toml`.
+//! IPC for the chat page. Every command is allowlisted in `permissions/commands.toml`, one permission per file below.
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
@@ -11,6 +11,8 @@ use crate::chat::ChatState;
 // The commands, by area; each is re-exported here, where the app's handler list names them.
 mod agents_commands;
 pub use agents_commands::*;
+mod app_commands;
+pub use app_commands::*;
 mod canvases_commands;
 pub use canvases_commands::*;
 mod code_commands;
@@ -23,10 +25,10 @@ mod knowledge_commands;
 pub use knowledge_commands::*;
 mod libraries_commands;
 pub use libraries_commands::*;
-mod misc_commands;
-pub use misc_commands::*;
 mod providers_commands;
 pub use providers_commands::*;
+mod recording_commands;
+pub use recording_commands::*;
 mod search_commands;
 pub use search_commands::*;
 mod settings_commands;

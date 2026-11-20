@@ -201,10 +201,16 @@
           "markdownDescription": "IPC for the chat page. (src/chat/commands.rs)"
         },
         {
-          "description": "Agents (src/chat/commands/agents_commands.rs)",
+          "description": "Agents and workflows (src/chat/commands/agents_commands.rs)",
           "type": "string",
           "const": "allow-chat-commands-agents-commands",
-          "markdownDescription": "Agents (src/chat/commands/agents_commands.rs)"
+          "markdownDescription": "Agents and workflows (src/chat/commands/agents_commands.rs)"
+        },
+        {
+          "description": "The app itself (src/chat/commands/app_commands.rs)",
+          "type": "string",
+          "const": "allow-chat-commands-app-commands",
+          "markdownDescription": "The app itself (src/chat/commands/app_commands.rs)"
         },
         {
           "description": "Canvases, mini apps, sheets, media and what chats produce. (src/chat/commands/canvases_commands.rs)",
@@ -243,16 +249,16 @@
           "markdownDescription": "Libraries (src/chat/commands/libraries_commands.rs)"
         },
         {
-          "description": "The remaining chat commands. (src/chat/commands/misc_commands.rs)",
-          "type": "string",
-          "const": "allow-chat-commands-misc-commands",
-          "markdownDescription": "The remaining chat commands. (src/chat/commands/misc_commands.rs)"
-        },
-        {
           "description": "Model providers, models, local models and usage. (src/chat/commands/providers_commands.rs)",
           "type": "string",
           "const": "allow-chat-commands-providers-commands",
           "markdownDescription": "Model providers, models, local models and usage. (src/chat/commands/providers_commands.rs)"
+        },
+        {
+          "description": "Recording a task to teach (src/chat/commands/recording_commands.rs)",
+          "type": "string",
+          "const": "allow-chat-commands-recording-commands",
+          "markdownDescription": "Recording a task to teach (src/chat/commands/recording_commands.rs)"
         },
         {
           "description": "Search (src/chat/commands/search_commands.rs)",
