@@ -10,15 +10,11 @@
 //! - [`engine`]: one turn: stream a reply, run the tools it calls, repeat
 //! - [`tools`]: the app's connectors (filesystem, shell, MCP) and built-ins offered to the model
 
-pub mod acp;
-pub mod agent_cli;
 pub mod agent_market;
 pub mod agents;
 pub mod animation;
 pub mod api_server;
-pub mod arena;
 pub mod audio;
-pub mod batched_qwen2;
 pub mod builtins;
 pub mod calendar;
 pub mod canvas;
@@ -46,7 +42,6 @@ pub mod learning;
 pub mod libraries;
 pub mod lifecycle;
 pub mod links;
-pub mod local_models;
 pub mod media;
 pub mod memory;
 pub mod openapi;
@@ -56,11 +51,9 @@ mod preview;
 pub mod privacy;
 pub mod prompt;
 pub mod proposals;
-pub mod providers;
 pub mod reader;
 pub mod recorder;
 pub mod retrieval;
-pub mod router;
 pub mod sandbox;
 pub mod script_tools;
 pub mod search;
@@ -91,6 +84,8 @@ use tokio::sync::{oneshot, watch};
 pub mod storage;
 pub use storage::{at_rest, audit, coding_import, import, outputs, recent_files, secrets, store, sync, uploads, vault, versions};
 use storage::{backup, index};
+pub mod models;
+pub use models::{acp, agent_cli, arena, batched_qwen2, local_models, providers, router};
 
 /// The account every account-scoped subsystem (connectors, secrets, skills) runs under. Proton
 /// accounts are gone; one local profile takes their place.
