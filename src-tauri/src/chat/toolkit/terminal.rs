@@ -25,6 +25,33 @@ const OUTPUT_CHARS: usize = 64_000;
 /// Commands running at once, across conversations.
 const MAX_RUNNING: usize = 8;
 
+/// Where a background command stands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CommandStatus {
+    Running,
+    /// It ended by itself; its exit code is kept.
+    Exited,
+    /// The user or the app stopped it.
+    Stopped,
+}
+
+impl CommandStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Running => "running",
+            Self::Exited => "exited",
+            Self::Stopped => "stopped",
+        }
+    }
+}
+
+impl std::fmt::Display for CommandStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandView {
@@ -32,8 +59,7 @@ pub struct CommandView {
     pub conversation_id: String,
     pub command: String,
     pub started_at: DateTime<Utc>,
-    /// `running`, `exited` or `stopped`.
-    pub status: String,
+    pub status: CommandStatus,
     pub exit_code: Option<i32>,
     pub output: String,
 }
@@ -106,7 +132,7 @@ pub fn start(conversation_id: &str, dir: &str, command: &str) -> Result<String, 
     }
     if lock()
         .values()
-        .filter(|r| r.view.status == "running")
+        .filter(|r| r.view.status == CommandStatus::Running)
         .count()
         >= MAX_RUNNING
     {
@@ -147,7 +173,7 @@ pub fn start(conversation_id: &str, dir: &str, command: &str) -> Result<String, 
                 conversation_id: conversation_id.to_string(),
                 command: command.to_string(),
                 started_at: Utc::now(),
-                status: "running".into(),
+                status: CommandStatus::Running,
                 exit_code: None,
                 output: String::new(),
             },
@@ -175,15 +201,15 @@ pub fn start(conversation_id: &str, dir: &str, command: &str) -> Result<String, 
     let watch_id = id.clone();
     tauri::async_runtime::spawn(async move {
         let (status, code) = tokio::select! {
-            result = child.wait() => ("exited", result.ok().and_then(|s| s.code())),
+            result = child.wait() => (CommandStatus::Exited, result.ok().and_then(|s| s.code())),
             _ = &mut kill_rx => {
                 stop_group(pid).await;
                 let _ = child.kill().await;
-                ("stopped", None)
+                (CommandStatus::Stopped, None)
             }
         };
         if let Some(r) = lock().get_mut(&watch_id) {
-            r.view.status = status.into();
+            r.view.status = status;
             r.view.exit_code = code;
             r.kill = None;
         }
@@ -219,7 +245,7 @@ async fn stop_group(pid: Option<u32>) {
 pub fn stop_all() {
     let pids: Vec<u32> = lock()
         .values()
-        .filter(|r| r.view.status == "running")
+        .filter(|r| r.view.status == CommandStatus::Running)
         .filter_map(|r| r.pid)
         .collect();
     for pid in pids {
@@ -263,7 +289,9 @@ pub fn get(id: &str) -> Option<CommandView> {
 
 /// Forgets finished commands of a conversation.
 pub fn clear_finished(conversation_id: &str) {
-    lock().retain(|_, r| r.view.conversation_id != conversation_id || r.view.status == "running");
+    lock().retain(|_, r| {
+        r.view.conversation_id != conversation_id || r.view.status == CommandStatus::Running
+    });
 }
 
 /// The tail of a command's output, for the model.
@@ -303,7 +331,7 @@ mod tests {
         )
         .unwrap();
         for _ in 0..50 {
-            if get(&quick).is_some_and(|v| v.status == "exited")
+            if get(&quick).is_some_and(|v| v.status == CommandStatus::Exited)
                 && get(&slow).is_some_and(|v| v.output.contains("tick"))
             {
                 break;
@@ -311,17 +339,17 @@ mod tests {
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
         let q = get(&quick).unwrap();
-        assert_eq!((q.status.as_str(), q.exit_code), ("exited", Some(3)));
+        assert_eq!((q.status, q.exit_code), (CommandStatus::Exited, Some(3)));
         assert!(q.output.contains("hello") && q.output.contains("oops"));
-        assert_eq!(get(&slow).unwrap().status, "running");
+        assert_eq!(get(&slow).unwrap().status, CommandStatus::Running);
         stop(&slow).unwrap();
         for _ in 0..50 {
-            if get(&slow).is_some_and(|v| v.status == "stopped") {
+            if get(&slow).is_some_and(|v| v.status == CommandStatus::Stopped) {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
-        assert_eq!(get(&slow).unwrap().status, "stopped");
+        assert_eq!(get(&slow).unwrap().status, CommandStatus::Stopped);
         // What the shell started is gone too.
         let left = std::process::Command::new("pgrep")
             .args(["-f", "sleep 98765"])

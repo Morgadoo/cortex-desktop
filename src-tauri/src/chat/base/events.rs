@@ -10,6 +10,15 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::chat::{ChatState, EVENT};
 
+/// Where a sub-agent's run stands, as the page and the delegating model see it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RunStatus {
+    Running,
+    Done,
+    Failed,
+}
+
 /// What the page sees of a turn, on [`crate::chat::EVENT`].
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -72,7 +81,7 @@ pub enum ChatEvent {
         call_id: String,
         index: usize,
         title: String,
-        status: String,
+        status: RunStatus,
         activity: String,
     },
     /// Tokens and cost so far, and how full the model's window is.
@@ -115,5 +124,21 @@ pub(in crate::chat) fn emit(app: &AppHandle, event: ChatEvent) {
     }
     if let Err(e) = app.emit(EVENT, event) {
         warn!("could not emit chat event: {e}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RunStatus;
+
+    #[test]
+    fn run_statuses_keep_their_wire_names() {
+        for (status, name) in [
+            (RunStatus::Running, "running"),
+            (RunStatus::Done, "done"),
+            (RunStatus::Failed, "failed"),
+        ] {
+            assert_eq!(serde_json::to_value(status).unwrap(), name);
+        }
     }
 }

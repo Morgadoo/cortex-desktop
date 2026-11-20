@@ -290,7 +290,7 @@ async fn a_delegate_worker_runs_through_the_same_loop() {
     assert!(host
         .events()
         .iter()
-        .any(|e| matches!(e, ChatEvent::Subagent { status, .. } if status == "done")));
+        .any(|e| matches!(e, ChatEvent::Subagent { status, .. } if *status == crate::chat::events::RunStatus::Done)));
     // The worker's conversation is not kept.
     let kept = std::fs::read_dir(store::chat_dir(host.dir.path()).join("conversations"))
         .unwrap()

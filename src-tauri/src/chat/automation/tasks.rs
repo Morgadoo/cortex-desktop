@@ -92,7 +92,7 @@ pub struct Task {
     pub last_conversation: Option<String>,
     /// `ok`, `failed` or `running`.
     #[serde(default)]
-    pub last_status: Option<String>,
+    pub last_status: Option<TaskStatus>,
     #[serde(default)]
     pub next_run: Option<DateTime<Utc>>,
     /// `NewFiles` tasks: the files already in the folder, so only newer ones start a run.
@@ -162,18 +162,41 @@ pub fn comment(
     Ok(tasks)
 }
 
+/// How a task's latest run went, as saved in `tasks.json` and shown on the Tasks page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum TaskStatus {
+    Running,
+    Ok,
+    Failed,
+    /// A value this version does not know, from an older or newer one: shown as no status.
+    #[serde(other)]
+    Unknown,
+}
+
+impl TaskStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Running => "running",
+            Self::Ok => "ok",
+            Self::Failed => "failed",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
 /// What a webhook receives when a run finishes.
 pub fn webhook_payload(
     task: &Task,
     conversation_id: &str,
-    status: &str,
+    status: TaskStatus,
     answer: &str,
 ) -> serde_json::Value {
     let answer: String = answer.chars().take(20_000).collect();
     serde_json::json!({
         "event": "task.finished",
         "task": { "id": task.id, "title": task.title },
-        "status": status,
+        "status": status.as_str(),
         "conversationId": conversation_id,
         "answer": answer,
         // Slack and Discord incoming webhooks read these fields.
@@ -184,7 +207,7 @@ pub fn webhook_payload(
 }
 
 /// Posts a finished run to the task's webhook, when it has one (http or https only).
-pub async fn notify_webhook(task: &Task, conversation_id: &str, status: &str, answer: &str) {
+pub async fn notify_webhook(task: &Task, conversation_id: &str, status: TaskStatus, answer: &str) {
     let Some(url) = task
         .webhook
         .as_deref()
@@ -589,7 +612,7 @@ pub async fn take_new_feed_items(config_dir: &Path) -> Vec<Task> {
             continue;
         }
         task.last_run = Some(Utc::now());
-        task.last_status = Some("running".into());
+        task.last_status = Some(TaskStatus::Running);
         let mut run = task.clone();
         let list: Vec<String> = fresh
             .iter()
@@ -681,7 +704,7 @@ pub fn take_new_files(config_dir: &Path, now: std::time::SystemTime) -> Vec<Task
         seen.extend(fresh.iter().cloned());
         changed = true;
         task.last_run = Some(Utc::now());
-        task.last_status = Some("running".into());
+        task.last_status = Some(TaskStatus::Running);
         let mut run = task.clone();
         let list: Vec<String> = fresh
             .iter()
@@ -811,7 +834,7 @@ pub fn take_due(config_dir: &Path, now: DateTime<Utc>) -> Vec<Task> {
             continue;
         }
         task.last_run = Some(now);
-        task.last_status = Some("running".into());
+        task.last_status = Some(TaskStatus::Running);
         task.next_run = next_run(&task.frequency, now).ok().flatten();
         if task.next_run.is_none() {
             // A one-off task is done once it ran.
@@ -827,11 +850,11 @@ pub fn take_due(config_dir: &Path, now: DateTime<Utc>) -> Vec<Task> {
     due
 }
 
-pub fn record(config_dir: &Path, id: &str, conversation_id: &str, status: &str) {
+pub fn record(config_dir: &Path, id: &str, conversation_id: &str, status: TaskStatus) {
     let mut tasks = load(config_dir);
     if let Some(task) = tasks.iter_mut().find(|t| t.id == id) {
         task.last_conversation = Some(conversation_id.to_string());
-        task.last_status = Some(status.to_string());
+        task.last_status = Some(status);
         let _ = store(config_dir, &tasks);
     }
 }
@@ -941,7 +964,7 @@ pub fn run_now(app: &AppHandle, id: &str) -> Result<(), String> {
         &config_dir,
         id,
         task.last_conversation.as_deref().unwrap_or_default(),
-        "running",
+        TaskStatus::Running,
     );
     let app = app.clone();
     tauri::async_runtime::spawn(async move { crate::chat::engine::run_task(app, task).await });
@@ -1060,6 +1083,19 @@ mod tests {
     }
 
     /// `schedule(cron, task)`: a cron expression, in local time, through the same next-run path.
+    #[test]
+    fn saved_statuses_read_back_whatever_wrote_them() {
+        for (text, status) in [
+            ("\"running\"", TaskStatus::Running),
+            ("\"ok\"", TaskStatus::Ok),
+            ("\"failed\"", TaskStatus::Failed),
+            ("\"paused\"", TaskStatus::Unknown),
+        ] {
+            assert_eq!(serde_json::from_str::<TaskStatus>(text).unwrap(), status);
+        }
+        assert_eq!(serde_json::to_string(&TaskStatus::Ok).unwrap(), "\"ok\"");
+    }
+
     #[test]
     fn cron_tasks_run_on_their_expression() {
         use chrono::Timelike;
@@ -1288,7 +1324,7 @@ mod tests {
             webhook: Some("https://example.com/hook".into()),
             comments: Vec::new(),
         };
-        let p = webhook_payload(&task, "c1", "ok", "Three items today.");
+        let p = webhook_payload(&task, "c1", TaskStatus::Ok, "Three items today.");
         assert_eq!(
             (
                 p["event"].as_str(),
@@ -1472,7 +1508,7 @@ mod tests {
         assert!(take_due(dir.path(), next).is_empty());
         let saved = &load(dir.path())[0];
         assert!(saved.next_run.unwrap() > next);
-        assert_eq!(saved.last_status.as_deref(), Some("running"));
+        assert_eq!(saved.last_status, Some(TaskStatus::Running));
     }
 
     #[test]

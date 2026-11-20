@@ -2700,7 +2700,7 @@ pub async fn run_task(app: AppHandle, task: tasks::Task) {
         .or(providers_file.default_model.clone());
     let Some(model) = model else {
         warn!("scheduled task {} has no model to run on", task.title);
-        tasks::record(&config_dir, &task.id, "", "failed");
+        tasks::record(&config_dir, &task.id, "", tasks::TaskStatus::Failed);
         return;
     };
     // A follow-up continues the chat it was asked in, while that chat still exists.
@@ -2783,14 +2783,23 @@ pub async fn run_task(app: AppHandle, task: tasks::Task) {
         &config_dir,
         &task.id,
         &id,
-        if answered { "ok" } else { "failed" },
+        if answered {
+            tasks::TaskStatus::Ok
+        } else {
+            tasks::TaskStatus::Failed
+        },
     );
     let answer = finished
         .as_ref()
         .and_then(|c| c.messages.last())
         .map(crate::chat::context::message_text)
         .unwrap_or_default();
-    tasks::notify_webhook(&task, &id, if answered { "ok" } else { "failed" }, &answer).await;
+    let status = if answered {
+        tasks::TaskStatus::Ok
+    } else {
+        tasks::TaskStatus::Failed
+    };
+    tasks::notify_webhook(&task, &id, status, &answer).await;
     notify(
         &app,
         &task.title,

@@ -505,7 +505,7 @@ async fn run_task(
         &ctx.config_dir,
         &task.id,
         task.last_conversation.as_deref().unwrap_or_default(),
-        "running",
+        crate::chat::tasks::TaskStatus::Running,
     );
     let app = ctx.app.clone();
     let title = task.title.clone();
@@ -1254,7 +1254,7 @@ async fn mcp_call(ctx: &Ctx, name: &str, args: &Value) -> Value {
                 &ctx.config_dir,
                 &task.id,
                 task.last_conversation.as_deref().unwrap_or_default(),
-                "running",
+                crate::chat::tasks::TaskStatus::Running,
             );
             let title = task.title.clone();
             let app = ctx.app.clone();

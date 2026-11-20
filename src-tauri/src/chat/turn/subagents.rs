@@ -6,6 +6,7 @@
 //! task instead of every page a worker read. Workers run concurrently, can't ask the user
 //! anything, can't change anything, and can't delegate further.
 
+use crate::chat::events::RunStatus;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -69,8 +70,8 @@ pub fn task_tools(
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct Report {
     pub title: String,
-    /// `done` or `failed`.
-    pub status: &'static str,
+    /// `Done` or `Failed`.
+    pub status: RunStatus,
     pub report: String,
     pub steps: usize,
 }
@@ -223,13 +224,13 @@ struct WorkerHost {
 }
 
 impl WorkerHost {
-    fn progress(&self, status: &str, activity: String) {
+    fn progress(&self, status: RunStatus, activity: String) {
         self.parent.emit(ChatEvent::Subagent {
             conversation_id: self.conversation_id.clone(),
             call_id: self.call_id.clone(),
             index: self.index,
             title: self.title.clone(),
-            status: status.into(),
+            status,
             activity,
         });
     }
@@ -250,7 +251,7 @@ impl Host for WorkerHost {
             ChatEvent::ToolStart {
                 name, arguments, ..
             } => {
-                self.progress("running", activity_of(&name, &arguments));
+                self.progress(RunStatus::Running, activity_of(&name, &arguments));
                 self.steps().push(Step {
                     kind: "call".into(),
                     tool: name,
@@ -330,7 +331,7 @@ async fn run_one(
         title: task.title.clone(),
         steps: Mutex::new(Vec::new()),
     });
-    worker.progress("running", "Starting".into());
+    worker.progress(RunStatus::Running, "Starting".into());
     let id = format!("{conversation_id}-worker-{}", uuid::Uuid::new_v4().simple());
     let finish = |report: Report| {
         let mut steps = worker.steps().clone();
@@ -339,7 +340,7 @@ async fn run_one(
             tool: String::new(),
             input: String::new(),
             output: report.report.clone(),
-            is_error: report.status != "done",
+            is_error: report.status != RunStatus::Done,
         });
         save_transcript(config_dir, call_id, index, &steps);
         // The worker's conversation and its saved long outputs are not kept.
@@ -347,7 +348,7 @@ async fn run_one(
         let _ = std::fs::remove_dir_all(store::chat_dir(config_dir).join("tool-outputs").join(&id));
         worker.progress(
             report.status,
-            if report.status == "done" {
+            if report.status == RunStatus::Done {
                 format!("Done after {} tool steps", report.steps)
             } else {
                 short(&report.report, 120)
@@ -362,7 +363,7 @@ async fn run_one(
     if let Err(e) = store::save_conversation(config_dir, &c) {
         return finish(Report {
             title: task.title,
-            status: "failed",
+            status: RunStatus::Failed,
             report: e,
             steps: 0,
         });
@@ -415,7 +416,7 @@ async fn run_one(
         let steps = worker.steps().len();
         return finish(Report {
             title: task.title,
-            status: "failed",
+            status: RunStatus::Failed,
             report: e,
             steps,
         });
@@ -439,14 +440,14 @@ async fn run_one(
     if !is_report(&text) {
         return finish(Report {
             title: task.title,
-            status: "failed",
+            status: RunStatus::Failed,
             report: "The worker did not write a report.".into(),
             steps,
         });
     }
     finish(Report {
         title: task.title,
-        status: "done",
+        status: RunStatus::Done,
         report: short(&text, MAX_REPORT_CHARS),
         steps,
     })
@@ -598,7 +599,7 @@ mod tests {
     fn report(title: &str, text: &str) -> Report {
         Report {
             title: title.into(),
-            status: "done",
+            status: RunStatus::Done,
             report: text.into(),
             steps: 1,
         }
@@ -745,13 +746,13 @@ mod tests {
         let reports = vec![
             Report {
                 title: "A".into(),
-                status: "done",
+                status: RunStatus::Done,
                 report: "found".into(),
                 steps: 2,
             },
             Report {
                 title: "B".into(),
-                status: "failed",
+                status: RunStatus::Failed,
                 report: "no".into(),
                 steps: 8,
             },

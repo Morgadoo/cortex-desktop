@@ -79,7 +79,9 @@ fn on_delegate<'a>(
                 .await;
                 tools::Outcome {
                     text: subagents::render(&reports),
-                    is_error: reports.iter().all(|r| r.status != "done"),
+                    is_error: reports
+                        .iter()
+                        .all(|r| r.status != crate::chat::events::RunStatus::Done),
                 }
             }
             Err(e) => tools::Outcome::err(e),
