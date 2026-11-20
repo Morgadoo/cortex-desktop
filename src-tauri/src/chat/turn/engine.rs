@@ -306,16 +306,7 @@ async fn traced_turn(
 ) -> Result<bool, String> {
     let config_dir = host.config_dir()?;
     let id = request.conversation_id.as_str();
-    let mut conversation = match store::load_conversation(&config_dir, id) {
-        Ok(c) => c,
-        Err(_) => {
-            let mut c = Conversation::new(id.to_string(), request.project_id.clone(), None);
-            c.workdir = request.workdir.clone().filter(|d| !d.trim().is_empty());
-            c.agent_id = request.agent_id.clone();
-            c.temporary = request.temporary;
-            c
-        }
-    };
+    let mut conversation = open_conversation(&config_dir, request);
     conversation.model = Some(request.model.clone());
     // Filters see the message first: they can rewrite it or refuse it.
     let mut text = request.text.trim().to_string();
@@ -327,19 +318,7 @@ async fn traced_turn(
 
     apply_request(&mut conversation, request, &text)?;
     conversation.updated_at = Utc::now();
-    // What the user did says something about the last answer, rated or not.
-    let signal = if request.edit_index.is_some() {
-        Some("edited")
-    } else if request.resume {
-        Some("resumed")
-    } else if request.text.trim().is_empty() {
-        Some("regenerated")
-    } else {
-        None
-    };
-    if let Some(kind) = signal {
-        crate::chat::traces::signal(&config_dir, id, request.edit_index, kind);
-    }
+    record_signal(&config_dir, request);
     if let Some(note) = &request.route_note {
         conversation
             .notices
@@ -406,111 +385,16 @@ async fn traced_turn(
         &conversation,
         agent.as_ref(),
     );
-    let project = conversation.project_id.as_ref().and_then(|pid| {
-        store::load_projects(&config_dir)
-            .into_iter()
-            .find(|p| &p.id == pid)
-    });
-    let instructions = if request.instructions_off {
-        store::Instructions::default()
-    } else {
-        store::load_instructions(&config_dir)
-    };
-    let mut memories = memory::load(&config_dir);
-    memories
-        .items
-        .retain(|m| !request.facts_off.contains(&m.id));
-    let mut pages = knowledge::load(&config_dir);
-    pages.retain(|p| !request.pages_off.contains(&p.id));
-    let mut skill_list = skills::list(&config_dir);
-    if let Some(agent) = agent.as_ref().filter(|a| !a.skills.is_empty()) {
-        skill_list.retain(|s| agent.skills.contains(&s.name));
-    }
-    skill_list.retain(|s| !request.skills_off.contains(&s.name));
-    let listed_skills: Vec<String> = skill_list
-        .iter()
-        .filter(|s| s.enabled)
-        .map(|s| s.name.clone())
-        .collect();
-    crate::chat::traces::loaded(&config_dir, "skill", &listed_skills);
-    for name in &listed_skills {
-        crate::chat::traces::attribute(&config_dir, run, "skill", name, false);
-    }
-    let canvases = canvas::list_for(&config_dir, id);
-    let latest_prompt = store::last_prompt(&conversation)
-        .and_then(|i| conversation.messages.get(i))
-        .map(crate::chat::context::message_text)
-        .unwrap_or_default();
-    attribute_loaded(
+    let (system, window) = system_prompt(
         &config_dir,
         run,
-        &offered,
-        &memories,
-        &pages,
-        &latest_prompt,
-        project.as_ref().map(|p| p.id.as_str()),
-        agent.as_ref().map(|a| a.id.as_str()),
-    );
-    let library_list = libraries::list(&config_dir);
-    let mut prompt = preamble_prompt(
-        &Context {
-            instructions: Some(&instructions),
-            project: project.as_ref(),
-            workdir: conversation.workdir.as_deref(),
-            memories: Some(&memories),
-            skills: &skill_list,
-            canvases: &canvases,
-            agent: agent.as_ref(),
-            libraries: &library_list,
-            project_digest: project
-                .as_ref()
-                .filter(|p| p.share_chats)
-                .and_then(|p| store::project_digest(&config_dir, &p.id, id)),
-            query: &latest_prompt,
-        },
-        &offered,
-    );
-    // A built-in model runs on this computer's processor: it gets a short brief and no tools, so
-    // it starts answering in seconds rather than reading thousands of tokens of tool manuals.
-    if request.model.starts_with("local/") {
-        offered.clear();
-        prompt.replace_all(
-            "brief",
-            crate::chat::local_models::brief(
-                &instructions,
-                project.as_ref().map(|p| p.instructions.as_str()),
-                agent
-                    .as_ref()
-                    .map(|a| (a.name.as_str(), a.instructions.as_str())),
-            ),
-        );
-    }
-    add_turn_sections(
-        &mut prompt,
-        &config_dir,
         request,
-        &conversation,
-        agent.as_ref(),
-        &offered,
+        &mut conversation,
+        &agent,
+        &mut offered,
         defer,
-        &memories,
-        &pages,
-        &latest_prompt,
     );
-    if let Some(brief) = &request.system {
-        prompt.replace_all("brief", brief.clone());
-    }
     let reasoning = providers::supports_reasoning(&request.model);
-    let window = context::context_window(&request.model);
-    // Within its budget, the least useful sections give way; the context view shows what stayed.
-    let (system, parts, dropped) = prompt.fit(window);
-    if !dropped.is_empty() {
-        info!(
-            "left out of the prompt to fit the window: {}",
-            dropped.join(", ")
-        );
-    }
-    conversation.prompt_parts = parts;
     // Personal data in what the user typed is swapped for placeholders before a cloud request.
     let filter = privacy::load(&config_dir).enabled
         && providers::split_reference(&request.model)
@@ -549,6 +433,165 @@ async fn traced_turn(
     let conversation = steps.conversation;
     name_unless(!conversation.title.is_empty(), host, request, conversation);
     Ok(false)
+}
+
+/// The conversation the request continues, or a new one set up as the request describes.
+fn open_conversation(config_dir: &std::path::Path, request: &TurnRequest) -> Conversation {
+    let id = request.conversation_id.as_str();
+    match store::load_conversation(config_dir, id) {
+        Ok(c) => c,
+        Err(_) => {
+            let mut c = Conversation::new(id.to_string(), request.project_id.clone(), None);
+            c.workdir = request.workdir.clone().filter(|d| !d.trim().is_empty());
+            c.agent_id = request.agent_id.clone();
+            c.temporary = request.temporary;
+            c
+        }
+    }
+}
+
+/// What the user did says something about the last answer, rated or not: an edit, a resume or
+/// a regeneration is recorded as a signal for learning.
+fn record_signal(config_dir: &std::path::Path, request: &TurnRequest) {
+    let signal = if request.edit_index.is_some() {
+        Some("edited")
+    } else if request.resume {
+        Some("resumed")
+    } else if request.text.trim().is_empty() {
+        Some("regenerated")
+    } else {
+        None
+    };
+    if let Some(kind) = signal {
+        crate::chat::traces::signal(
+            config_dir,
+            request.conversation_id.as_str(),
+            request.edit_index,
+            kind,
+        );
+    }
+}
+
+/// The turn's system prompt: the persona, the user's instructions, project, memories, knowledge
+/// pages, skills, canvases and tool guidance, cut to fit the model's window. Records what was
+/// loaded for attribution, and which sections made it (`prompt_parts`, for the context view).
+/// A built-in local model gets a short brief and no tools instead. Returns the prompt and the
+/// window it was fitted to.
+fn system_prompt(
+    config_dir: &std::path::Path,
+    run: &str,
+    request: &TurnRequest,
+    conversation: &mut Conversation,
+    agent: &Option<agents::Agent>,
+    offered: &mut Vec<ChatTool>,
+    defer: bool,
+) -> (String, u64) {
+    let id = request.conversation_id.as_str();
+    let project = conversation.project_id.as_ref().and_then(|pid| {
+        store::load_projects(config_dir)
+            .into_iter()
+            .find(|p| &p.id == pid)
+    });
+    let instructions = if request.instructions_off {
+        store::Instructions::default()
+    } else {
+        store::load_instructions(config_dir)
+    };
+    let mut memories = memory::load(config_dir);
+    memories
+        .items
+        .retain(|m| !request.facts_off.contains(&m.id));
+    let mut pages = knowledge::load(config_dir);
+    pages.retain(|p| !request.pages_off.contains(&p.id));
+    let mut skill_list = skills::list(config_dir);
+    if let Some(agent) = agent.as_ref().filter(|a| !a.skills.is_empty()) {
+        skill_list.retain(|s| agent.skills.contains(&s.name));
+    }
+    skill_list.retain(|s| !request.skills_off.contains(&s.name));
+    let listed_skills: Vec<String> = skill_list
+        .iter()
+        .filter(|s| s.enabled)
+        .map(|s| s.name.clone())
+        .collect();
+    crate::chat::traces::loaded(config_dir, "skill", &listed_skills);
+    for name in &listed_skills {
+        crate::chat::traces::attribute(config_dir, run, "skill", name, false);
+    }
+    let canvases = canvas::list_for(config_dir, id);
+    let latest_prompt = store::last_prompt(conversation)
+        .and_then(|i| conversation.messages.get(i))
+        .map(crate::chat::context::message_text)
+        .unwrap_or_default();
+    attribute_loaded(
+        config_dir,
+        run,
+        offered,
+        &memories,
+        &pages,
+        &latest_prompt,
+        project.as_ref().map(|p| p.id.as_str()),
+        agent.as_ref().map(|a| a.id.as_str()),
+    );
+    let library_list = libraries::list(config_dir);
+    let mut prompt = preamble_prompt(
+        &Context {
+            instructions: Some(&instructions),
+            project: project.as_ref(),
+            workdir: conversation.workdir.as_deref(),
+            memories: Some(&memories),
+            skills: &skill_list,
+            canvases: &canvases,
+            agent: agent.as_ref(),
+            libraries: &library_list,
+            project_digest: project
+                .as_ref()
+                .filter(|p| p.share_chats)
+                .and_then(|p| store::project_digest(config_dir, &p.id, id)),
+            query: &latest_prompt,
+        },
+        offered,
+    );
+    // A built-in model runs on this computer's processor: it gets a short brief and no tools, so
+    // it starts answering in seconds rather than reading thousands of tokens of tool manuals.
+    if request.model.starts_with("local/") {
+        offered.clear();
+        prompt.replace_all(
+            "brief",
+            crate::chat::local_models::brief(
+                &instructions,
+                project.as_ref().map(|p| p.instructions.as_str()),
+                agent
+                    .as_ref()
+                    .map(|a| (a.name.as_str(), a.instructions.as_str())),
+            ),
+        );
+    }
+    add_turn_sections(
+        &mut prompt,
+        config_dir,
+        request,
+        conversation,
+        agent.as_ref(),
+        offered,
+        defer,
+        &memories,
+        &pages,
+        &latest_prompt,
+    );
+    if let Some(brief) = &request.system {
+        prompt.replace_all("brief", brief.clone());
+    }
+    let window = context::context_window(&request.model);
+    // Within its budget, the least useful sections give way; the context view shows what stayed.
+    let (system, parts, dropped) = prompt.fit(window);
+    if !dropped.is_empty() {
+        info!(
+            "left out of the prompt to fit the window: {}",
+            dropped.join(", ")
+        );
+    }
+    conversation.prompt_parts = parts;
+    (system, window)
 }
 
 fn cancelled_outcome() -> tools::Outcome {
