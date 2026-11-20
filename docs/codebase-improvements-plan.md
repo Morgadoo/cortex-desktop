@@ -25,21 +25,18 @@ package is one or more commits there. Measured as section 7 describes:
 | Files directly in `src-tauri/src/chat/` | 86 | 2 | Under 15 |
 | Files directly in `webview/pages/app/` | 51 | 0 | Under 5 |
 | Largest interface file | 4,892 lines | 723 | Under 800 |
-| Rust functions over 150 lines | 11 | 7 | 0 |
+| Rust functions over 150 lines | 11 | 0 | 0 |
 | Layering violations allowed | About 69 modules in one cycle | 0 | 0 |
 | Public functions in chat | About 1,060 | 841, 287 of them commands | Under 400 |
 | `Result<_, String>` in chat, outside `commands/` | About 420 | 419 | 0 below the entry points |
 | Hand edits to add a command | 4 to 5 | 1, plus a script | 1 |
 | Backend calls by string name | 287 | 165 | 0 |
 
-**Done**: phase 0 (0.1 to 0.8), phase 1 (1.1 to 1.6), 2.1 to 2.4, 2.6 to 2.8, 3.1 to 3.3,
+**Done**: phase 0 (0.1 to 0.8), phase 1 (1.1 to 1.6), 2.1 to 2.6, 2.8, 3.1 to 3.3,
 3.6 to 3.9 and 3.11.
 
 **Partly done**:
 
-- 2.5: four of the eleven long functions are split. Left: `traced_turn` (252 lines),
-  `call_model` (248), `sync_once` (202), `transcribe` (184), `run_calls` (164),
-  `preamble_prompt` (154), and the tool schema table `definitions` (392, data rather than logic).
 - 2.7: one token file for every page, no colour literal outside it (the agent tints computed from
   a hue variable aside), `app.css` split into eleven files the build joins in order, and the
   duplicate selectors that can be merged without changing the cascade merged (four; seven others
