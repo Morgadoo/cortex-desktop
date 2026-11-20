@@ -2,7 +2,7 @@
 import { tauriInvoke } from '../../shared/tauri';
 import type { Workflow } from './core/api';
 import { clear, confirmDialog, h, icon, modal, toast, clockHour12 } from './ui/dom';
-import { historyButton } from './versions';
+import { historyButton } from './canvas/versions';
 import { button, modalHeader, pageHeader } from './ui/ui';
 
 export const workflowsApi = {

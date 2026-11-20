@@ -4,7 +4,7 @@
  * from its CDN; the frame reports its height so it fits the diagram.
  */
 import { appUrl } from './canvas';
-import { h, icon, markdown, markdownHooks, saveFile } from './ui/dom';
+import { h, icon, markdown, markdownHooks, saveFile } from '../ui/dom';
 
 const frames = new Map<string, HTMLIFrameElement>();
 let counter = 0;

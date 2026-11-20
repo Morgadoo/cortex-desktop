@@ -3,12 +3,12 @@
  * this computer's network (see src-tauri/src/chat/share.rs). Anyone on the same network with the
  * link can open it while Cortex runs; Stop sharing takes it down.
  */
-import { tauriInvoke } from '../../shared/tauri';
-import { clear, h, icon, modal, toast } from './ui/dom';
-import { button, card, modalHeader } from './ui/ui';
+import { tauriInvoke } from '../../../shared/tauri';
+import { clear, h, icon, modal, toast } from '../ui/dom';
+import { button, card, modalHeader } from '../ui/ui';
 import { appFiles } from './canvas';
-import { escapeHtml } from './core/format';
-import { call, shown } from './core/call';
+import { escapeHtml } from '../core/format';
+import { call, shown } from '../core/call';
 
 export interface SharedLink {
   token: string;

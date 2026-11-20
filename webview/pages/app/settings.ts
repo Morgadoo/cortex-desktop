@@ -3,7 +3,7 @@ import { listen, tauriInvoke } from '../../shared/tauri';
 import { api, type AppSettings, type Provider } from './core/api';
 import { clear, confirmDialog, h, icon, modal, toast, clockHour12, setClock } from './ui/dom';
 import { fileSize } from './core/format';
-import { historyButton } from './versions';
+import { historyButton } from './canvas/versions';
 import {
   autocompleteOn,
   changed,
@@ -51,7 +51,7 @@ import {
 import { setVoicePauseMs, voicePauseMs } from './voice/dictation';
 import { setWakePrefs, wakePrefs } from './voice/wakeword';
 import { setVimEnabled, vimEnabled } from './ui/vim';
-import { sharedLinksCard } from './share';
+import { sharedLinksCard } from './canvas/share';
 import { effectiveLanguage, setStoredLanguage, storedLanguage } from './core/i18n';
 import { setOrbColor, storedOrbColor, type OrbColor } from './theme/orbgl';
 import { choice } from './core/prefs';

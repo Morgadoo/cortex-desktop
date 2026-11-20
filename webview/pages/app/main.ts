@@ -18,7 +18,7 @@ import { AgentPage, AgentsPage, agentName, avatar, newAgent, orgOrder, pinnedAge
 import { TasksPage } from './tasks';
 import { LibrariesPage } from './libraries';
 import { AppsPage } from './apps';
-import { ResourcesPage } from './outputs';
+import { ResourcesPage } from './canvas/outputs';
 import { ChatsPage } from './chatspage';
 import { WorkflowsPage } from './workflows';
 import { applyTheme, openSettings, reloadModels, setTheme, storedTheme } from './settings';

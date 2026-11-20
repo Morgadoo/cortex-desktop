@@ -2,7 +2,7 @@
 import { tauriInvoke } from '../../shared/tauri';
 import { api, newId, type Agent, type AgentSpend } from './core/api';
 import { clear, confirmDialog, h, icon, modal, timeLabel, toast } from './ui/dom';
-import { historyButton } from './versions';
+import { historyButton } from './canvas/versions';
 import { changed, navigate, state } from './core/state';
 import { TasksPage } from './tasks';
 import { agentPanel } from './agentpanel';

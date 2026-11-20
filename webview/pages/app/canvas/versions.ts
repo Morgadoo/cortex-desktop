@@ -3,9 +3,9 @@
  * way back: "Load" puts a version into the open editor, and saving it keeps the one it replaces.
  */
 
-import { tauriInvoke } from '../../shared/tauri';
-import { clear, h, icon, modal, toast, clockHour12 } from './ui/dom';
-import { modalHeader } from './ui/ui';
+import { tauriInvoke } from '../../../shared/tauri';
+import { clear, h, icon, modal, toast, clockHour12 } from '../ui/dom';
+import { modalHeader } from '../ui/ui';
 
 type Kind = 'agents' | 'workflows' | 'tools';
 interface Version {

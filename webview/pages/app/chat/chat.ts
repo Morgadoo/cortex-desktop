@@ -3,7 +3,7 @@ import { emojiFor, findEmoji } from '../ui/emoji';
 import { autocompleteOn } from '../core/state';
 import { tauriInvoke } from '../../../shared/tauri';
 import { api, newId, type ApprovalMode, type ChatEvent, type ChatParams, type Conversation, type Part, type Turn, type UsageTotals } from '../core/api';
-import { openOutputsPanel } from '../outputs';
+import { openOutputsPanel } from '../canvas/outputs';
 import { conversationPng } from './chatimage';
 import { searchInstead } from './uploads';
 import { renderPageView } from './coderun';
@@ -15,9 +15,9 @@ import { actionFor } from '../core/shortcuts';
 import { clear, confirmDialog, greeting, h, icon, markdown, modal, popover, promptText, timeLabel, toast, clockHour12 } from '../ui/dom';
 import { applyEvent, changed, currentModel, followUpsOn, navigate, setMode, state, temporaryByDefault, type LiveTurn, followStreamOn } from '../core/state';
 import { openSettings } from '../settings';
-import { closePanel, enableAskAboutSelection, hasPanel, openSidePanel, renderCanvasCard, setPanelHost, lineDiff } from '../canvas';
+import { closePanel, enableAskAboutSelection, hasPanel, openSidePanel, renderCanvasCard, setPanelHost, lineDiff } from '../canvas/canvas';
 import { hostOf, previewFor, siteIcon } from '../ui/favicon';
-import '../diagrams';
+import '../canvas/diagrams';
 import { renderCodeRun, renderImage, renderVideo } from './coderun';
 import { startRecording, type Recording } from '../voice/dictation';
 import { blobToBase64, bytesToBase64, escapeHtml } from '../core/format';
@@ -4567,7 +4567,7 @@ export class ChatView {
           { class: 'menu' },
           item('link', 'Share a link', 'Anyone on your network with the link can open it', () => {
             const shared = this.sharePage();
-            if (shared) void import('../share').then((s) => s.shareLink(shared.title, shared.page));
+            if (shared) void import('../canvas/share').then((s) => s.shareLink(shared.title, shared.page));
           }),
           item('globe', 'Share as web page', 'One file anyone can open in a browser', () => void this.shareAsPage()),
           item('download', 'Export as Markdown', 'The text, for notes and documents', () => void api.exportConversation(this.id).then((saved) => saved && toast('Conversation exported.')))
