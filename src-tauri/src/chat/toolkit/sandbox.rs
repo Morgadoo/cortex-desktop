@@ -21,6 +21,11 @@ use crate::chat::workbench::Bench;
 use cortex_kernel::approval::ApprovalMode;
 use cortex_kernel::tool::{ChatTool, Outcome};
 
+mod limits;
+mod serving;
+use limits::*;
+pub(crate) use serving::*;
+
 pub const RUN_CODE: &str = "run_code";
 
 /// Seconds a run may take unless the model asks for more, and the most it may ask for: long
@@ -384,17 +389,7 @@ pub(in crate::chat) async fn run_in(
         text,
         is_error: true,
     };
-    let language = args
-        .get("language")
-        .and_then(Value::as_str)
-        .unwrap_or("python")
-        .to_ascii_lowercase();
-    let language = match language.as_str() {
-        "py" | "python3" => "python".to_string(),
-        "js" | "node" | "typescript" => "javascript".to_string(),
-        "sh" | "shell" => "bash".to_string(),
-        _ => language,
-    };
+    let language = language_of(args);
     let Some(code) = args
         .get("code")
         .and_then(Value::as_str)
@@ -434,153 +429,22 @@ pub(in crate::chat) async fn run_in(
 
     let run_name = format!("cortex-run-{}", uuid::Uuid::new_v4().simple());
     let env_file = dir.join(".cell.env");
-    let (isolated, mut command) = if let Some(gpu) = bench {
-        let interpreter = match lang.name {
-            "python" => "python3",
-            "javascript" => "node",
-            _ => "bash",
-        };
-        let run = crate::chat::workbench::Run {
-            workspace: &dir,
-            agent_home: env.map(|e| e.home.as_path()),
-            network: env.is_some_and(|e| e.network),
-            gpu,
-            interpreter,
+    let (isolated, mut command) = match run_command(
+        lang,
+        program,
+        bench,
+        &RunFiles {
+            dir: &dir,
             script: &script,
-            timeout_seconds: timeout,
             env_file: &env_file,
             name: &run_name,
-        };
-        match crate::chat::workbench::command(&run) {
-            Some(c) => (true, c),
-            None => return err("The agent workbench cannot be reached.".into()),
-        }
-    } else {
-        let program = program.expect("checked above");
-        let isolated = bubblewrap().is_some();
-        let command = match bubblewrap() {
-            Some(bwrap) => {
-                // Where a systemd user session can hold it, the run gets a scope of its own with a
-                // cap on its processes and threads, so a fork bomb stops at the cap.
-                let mut c = match task_scope() {
-                    Some(systemd_run) => {
-                        let mut c = tokio::process::Command::new(systemd_run);
-                        c.args(scope_args()).arg(bwrap);
-                        // systemd-run needs the session bus; the program inside does not get it.
-                        for var in SCOPE_VARS {
-                            c.args(["--unsetenv", var]);
-                        }
-                        c
-                    }
-                    None => tokio::process::Command::new(bwrap),
-                };
-                c.args([
-                    "--ro-bind",
-                    "/",
-                    "/",
-                    "--dev",
-                    "/dev",
-                    "--proc",
-                    "/proc",
-                    "--tmpfs",
-                    "/tmp",
-                ]);
-                // Hide the user's files, then put the workspace back where it was.
-                if let Some(home) = dirs_home() {
-                    c.arg("--tmpfs").arg(&home);
-                    // An interpreter installed under the home folder (pyenv, nvm) stays reachable.
-                    if let Some(prefix) = program
-                        .parent()
-                        .and_then(Path::parent)
-                        .filter(|p| p.starts_with(&home))
-                    {
-                        c.arg("--ro-bind").arg(prefix).arg(prefix);
-                    }
-                }
-                c.arg("--bind").arg(&dir).arg(&dir).arg("--chdir").arg(&dir);
-                if let Some(env) = env {
-                    c.arg("--bind").arg(&env.home).arg(&env.home);
-                }
-                c.args(["--unshare-all", "--die-with-parent", "--new-session"]);
-                if env.is_some_and(|e| e.network) {
-                    c.arg("--share-net");
-                }
-                c.arg("--");
-                c.arg(program).arg(&script);
-                c
-            }
-            None => {
-                let mut c = tokio::process::Command::new(program);
-                c.arg(&script).current_dir(&dir);
-                c
-            }
-        };
-        (isolated, command)
+        },
+        timeout,
+        env,
+    ) {
+        Ok(built) => built,
+        Err(e) => return err(e.to_string()),
     };
-    let home = env.map_or_else(|| dir.clone(), |e| e.home.clone());
-    // Inside the workbench, the image's own programs; here, this machine's.
-    let base_path = if bench.is_some() {
-        std::ffi::OsString::from("/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin")
-    } else {
-        std::env::var_os("PATH").unwrap_or_default()
-    };
-    let path = match env {
-        // The agent's own installed commands come first.
-        Some(e) => {
-            let mut p = std::ffi::OsString::from(e.home.join(".local").join("bin"));
-            p.push(if cfg!(windows) { ";" } else { ":" });
-            p.push(&base_path);
-            p
-        }
-        None => base_path,
-    };
-    let text = |p: &Path| p.to_string_lossy().into_owned();
-    let mut vars: Vec<(String, String)> = vec![
-        ("PATH".into(), path.to_string_lossy().into_owned()),
-        ("HOME".into(), text(&home)),
-        ("PYTHONUSERBASE".into(), text(&home.join(".local"))),
-        (
-            "PIP_USER".into(),
-            if env.is_some() { "1" } else { "0" }.into(),
-        ),
-        ("NPM_CONFIG_PREFIX".into(), text(&home.join(".local"))),
-        (
-            "TMPDIR".into(),
-            if isolated {
-                "/tmp".into()
-            } else {
-                text(&std::env::temp_dir())
-            },
-        ),
-        ("LANG".into(), "C.UTF-8".into()),
-        ("MPLBACKEND".into(), "Agg".into()),
-        ("PYTHONDONTWRITEBYTECODE".into(), "1".into()),
-        ("PYTHONUNBUFFERED".into(), "1".into()),
-        ("NO_COLOR".into(), "1".into()),
-    ];
-    // Vault secrets granted to the chat's agent (also reaching the user's own tools).
-    vars.extend(crate::chat::vault::current());
-    if bench.is_some() {
-        // The container gets them from a file; Podman itself keeps its own environment.
-        if let Err(e) = crate::chat::workbench::write_env_file(&env_file, &vars) {
-            return err(format!("Could not prepare the run: {e}"));
-        }
-    } else {
-        command.env_clear().envs(vars);
-        if bench.is_none() && bubblewrap().is_some() && task_scope().is_some() {
-            for var in SCOPE_VARS {
-                if let Some(value) = std::env::var_os(var) {
-                    command.env(var, value);
-                }
-            }
-        }
-        #[cfg(windows)]
-        for key in ["SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT"] {
-            if let Some(v) = std::env::var_os(key) {
-                command.env(key, v);
-            }
-        }
-    }
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -629,19 +493,7 @@ pub(in crate::chat) async fn run_in(
     let _ = std::fs::remove_file(&script);
     let _ = std::fs::remove_file(&env_file);
 
-    let after = snapshot(&dir);
-    let mut files: Vec<FileInfo> = after
-        .iter()
-        .map(|(name, (bytes, modified))| FileInfo {
-            name: name.clone(),
-            bytes: *bytes,
-            new: before
-                .get(name)
-                .is_none_or(|(b, m)| b != bytes || m != modified),
-        })
-        .collect();
-    files.sort_by(|a, b| b.new.cmp(&a.new).then(a.name.cmp(&b.name)));
-    files.truncate(MAX_FILES);
+    let files = changed_files(&before, &snapshot(&dir));
 
     let report = json!({
         "language": lang.name,
@@ -667,248 +519,248 @@ pub(in crate::chat) async fn run_in(
     }
 }
 
-/// Processes and threads a run may have at once, when it runs in a scope of its own.
-const MAX_TASKS: u32 = 256;
+/// Where a run's files are: its workspace, the program, the file its environment goes in (for the
+/// workbench), and the name its container gets.
+struct RunFiles<'a> {
+    dir: &'a Path,
+    script: &'a Path,
+    env_file: &'a Path,
+    name: &'a str,
+}
 
-/// What `systemd-run` needs to reach the user's session; bubblewrap removes them again.
-const SCOPE_VARS: [&str; 2] = ["XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS"];
+/// The command that runs the program, and whether it runs isolated: in the workbench's container
+/// when it is ready, else under bubblewrap where there is one, else on this machine as it is. Its
+/// environment is cleared and set for the run.
+fn run_command(
+    lang: &Language,
+    program: Option<&PathBuf>,
+    bench: Option<bool>,
+    files: &RunFiles<'_>,
+    timeout: u64,
+    env: Option<&AgentEnv>,
+) -> Result<(bool, tokio::process::Command), ChatError> {
+    let RunFiles {
+        dir,
+        script,
+        env_file,
+        name: run_name,
+    } = *files;
+    let (isolated, mut command) = if let Some(gpu) = bench {
+        let interpreter = match lang.name {
+            "python" => "python3",
+            "javascript" => "node",
+            _ => "bash",
+        };
+        let run = crate::chat::workbench::Run {
+            workspace: dir,
+            agent_home: env.map(|e| e.home.as_path()),
+            network: env.is_some_and(|e| e.network),
+            gpu,
+            interpreter,
+            script,
+            timeout_seconds: timeout,
+            env_file,
+            name: run_name,
+        };
+        match crate::chat::workbench::command(&run) {
+            Some(c) => (true, c),
+            None => {
+                return Err(ChatError::Invalid(
+                    "The agent workbench cannot be reached.".into(),
+                ))
+            }
+        }
+    } else {
+        let program = program.expect("checked above");
+        let isolated = bubblewrap().is_some();
+        let command = match bubblewrap() {
+            Some(bwrap) => bubblewrap_command(bwrap, program, dir, script, env),
+            None => {
+                let mut c = tokio::process::Command::new(program);
+                c.arg(script).current_dir(dir);
+                c
+            }
+        };
+        (isolated, command)
+    };
+    let mut vars = run_vars(dir, env, bench.is_some(), isolated);
+    // Vault secrets granted to the chat's agent (also reaching the user's own tools).
+    vars.extend(crate::chat::vault::current());
+    if bench.is_some() {
+        // The container gets them from a file; Podman itself keeps its own environment.
+        if let Err(e) = crate::chat::workbench::write_env_file(env_file, &vars) {
+            return Err(ChatError::Invalid(format!(
+                "Could not prepare the run: {e}"
+            )));
+        }
+    } else {
+        command.env_clear().envs(vars);
+        if bench.is_none() && bubblewrap().is_some() && task_scope().is_some() {
+            for var in SCOPE_VARS {
+                if let Some(value) = std::env::var_os(var) {
+                    command.env(var, value);
+                }
+            }
+        }
+        #[cfg(windows)]
+        for key in ["SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT"] {
+            if let Some(v) = std::env::var_os(key) {
+                command.env(key, v);
+            }
+        }
+    }
+    Ok((isolated, command))
+}
 
-/// The arguments that put a run in a transient systemd scope with a task cap.
-fn scope_args() -> Vec<String> {
+/// The language a run asks for, by the names models use for it.
+fn language_of(args: &Value) -> String {
+    let language = args
+        .get("language")
+        .and_then(Value::as_str)
+        .unwrap_or("python")
+        .to_ascii_lowercase();
+    match language.as_str() {
+        "py" | "python3" => "python".to_string(),
+        "js" | "node" | "typescript" => "javascript".to_string(),
+        "sh" | "shell" => "bash".to_string(),
+        _ => language,
+    }
+}
+
+/// The run under bubblewrap: the system read-only, the user's files hidden, only the workspace
+/// (and the agent's home) writable, and no network unless the agent's environment allows it.
+fn bubblewrap_command(
+    bwrap: &Path,
+    program: &Path,
+    dir: &Path,
+    script: &Path,
+    env: Option<&AgentEnv>,
+) -> tokio::process::Command {
+    // Where a systemd user session can hold it, the run gets a scope of its own with a
+    // cap on its processes and threads, so a fork bomb stops at the cap.
+    let mut c = match task_scope() {
+        Some(systemd_run) => {
+            let mut c = tokio::process::Command::new(systemd_run);
+            c.args(scope_args()).arg(bwrap);
+            // systemd-run needs the session bus; the program inside does not get it.
+            for var in SCOPE_VARS {
+                c.args(["--unsetenv", var]);
+            }
+            c
+        }
+        None => tokio::process::Command::new(bwrap),
+    };
+    c.args([
+        "--ro-bind",
+        "/",
+        "/",
+        "--dev",
+        "/dev",
+        "--proc",
+        "/proc",
+        "--tmpfs",
+        "/tmp",
+    ]);
+    // Hide the user's files, then put the workspace back where it was.
+    if let Some(home) = dirs_home() {
+        c.arg("--tmpfs").arg(&home);
+        // An interpreter installed under the home folder (pyenv, nvm) stays reachable.
+        if let Some(prefix) = program
+            .parent()
+            .and_then(Path::parent)
+            .filter(|p| p.starts_with(&home))
+        {
+            c.arg("--ro-bind").arg(prefix).arg(prefix);
+        }
+    }
+    c.arg("--bind").arg(dir).arg(dir).arg("--chdir").arg(dir);
+    if let Some(env) = env {
+        c.arg("--bind").arg(&env.home).arg(&env.home);
+    }
+    c.args(["--unshare-all", "--die-with-parent", "--new-session"]);
+    if env.is_some_and(|e| e.network) {
+        c.arg("--share-net");
+    }
+    c.arg("--");
+    c.arg(program).arg(script);
+    c
+}
+
+/// The environment a run gets, cleared of the app's own: where to install, a plain locale, and
+/// output that is not buffered or coloured.
+fn run_vars(
+    dir: &Path,
+    env: Option<&AgentEnv>,
+    in_workbench: bool,
+    isolated: bool,
+) -> Vec<(String, String)> {
+    let home = env.map_or_else(|| dir.to_path_buf(), |e| e.home.clone());
+    // Inside the workbench, the image's own programs; here, this machine's.
+    let base_path = if in_workbench {
+        std::ffi::OsString::from("/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin")
+    } else {
+        std::env::var_os("PATH").unwrap_or_default()
+    };
+    let path = match env {
+        // The agent's own installed commands come first.
+        Some(e) => {
+            let mut p = std::ffi::OsString::from(e.home.join(".local").join("bin"));
+            p.push(if cfg!(windows) { ";" } else { ":" });
+            p.push(&base_path);
+            p
+        }
+        None => base_path,
+    };
+    let text = |p: &Path| p.to_string_lossy().into_owned();
     vec![
-        "--user".into(),
-        "--scope".into(),
-        "--quiet".into(),
-        "--collect".into(),
-        "-p".into(),
-        format!("TasksMax={MAX_TASKS}"),
-        "--".into(),
+        ("PATH".into(), path.to_string_lossy().into_owned()),
+        ("HOME".into(), text(&home)),
+        ("PYTHONUSERBASE".into(), text(&home.join(".local"))),
+        (
+            "PIP_USER".into(),
+            if env.is_some() { "1" } else { "0" }.into(),
+        ),
+        ("NPM_CONFIG_PREFIX".into(), text(&home.join(".local"))),
+        (
+            "TMPDIR".into(),
+            if isolated {
+                "/tmp".into()
+            } else {
+                text(&std::env::temp_dir())
+            },
+        ),
+        ("LANG".into(), "C.UTF-8".into()),
+        ("MPLBACKEND".into(), "Agg".into()),
+        ("PYTHONDONTWRITEBYTECODE".into(), "1".into()),
+        ("PYTHONUNBUFFERED".into(), "1".into()),
+        ("NO_COLOR".into(), "1".into()),
     ]
 }
 
-/// `systemd-run`, when this session can start a user scope with it (checked once). Not on macOS
-/// or Windows, nor in containers without a user session; there a run has its time limit and its
-/// own PID namespace instead.
-fn task_scope() -> Option<&'static Path> {
-    static SCOPE: OnceLock<Option<PathBuf>> = OnceLock::new();
-    SCOPE
-        .get_or_init(|| {
-            if !cfg!(target_os = "linux") {
-                return None;
-            }
-            let path = ["/usr/bin/systemd-run", "/bin/systemd-run"]
-                .iter()
-                .map(PathBuf::from)
-                .find(|p| p.exists())?;
-            let works = std::process::Command::new(&path)
-                .args(scope_args())
-                .arg("true")
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()
-                .is_ok_and(|s| s.success());
-            works.then_some(path)
+/// The workspace's files after a run, the new and changed first.
+fn changed_files(
+    before: &HashMap<String, (u64, Option<SystemTime>)>,
+    after: &HashMap<String, (u64, Option<SystemTime>)>,
+) -> Vec<FileInfo> {
+    let mut files: Vec<FileInfo> = after
+        .iter()
+        .map(|(name, (bytes, modified))| FileInfo {
+            name: name.clone(),
+            bytes: *bytes,
+            new: before
+                .get(name)
+                .is_none_or(|(b, m)| b != bytes || m != modified),
         })
-        .as_deref()
-}
-
-/// The least memory a run is allowed, however small the computer.
-#[cfg(target_os = "linux")]
-const MIN_MEMORY: u64 = 1 << 30;
-
-/// The most memory a run may hold: half of this computer's, so a runaway program fails on its
-/// own instead of pushing the desktop into swap.
-#[cfg(target_os = "linux")]
-fn memory_limit() -> u64 {
-    // SAFETY: `sysconf` has no preconditions.
-    let (pages, page) = unsafe {
-        (
-            libc::sysconf(libc::_SC_PHYS_PAGES),
-            libc::sysconf(libc::_SC_PAGESIZE),
-        )
-    };
-    let total = if pages > 0 && page > 0 {
-        pages as u64 * page as u64
-    } else {
-        0
-    };
-    (total / 2).max(MIN_MEMORY)
-}
-
-/// Caps a run's heap and other private writable memory (`RLIMIT_DATA`) at `bytes`, and turns
-/// off core dumps. Not the address space (`RLIMIT_AS`): runtimes such as V8 reserve far more of
-/// it than they use. There is no process limit: `RLIMIT_NPROC` counts every process the user
-/// runs, not only the run's, so it would stop runs on a busy desktop. The run's PID namespace
-/// and time limit bound what it starts instead.
-#[cfg(target_os = "linux")]
-fn limit_memory(command: &mut tokio::process::Command, bytes: u64) {
-    // SAFETY: the closure runs in the child between fork and exec, and calls only `getrlimit`
-    // and `setrlimit`, which are async-signal-safe and touch no memory the parent shares.
-    unsafe {
-        command.pre_exec(move || {
-            let mut current = libc::rlimit {
-                rlim_cur: 0,
-                rlim_max: 0,
-            };
-            if libc::getrlimit(libc::RLIMIT_DATA, &mut current) == 0 {
-                // A process may lower its hard limit, never raise it.
-                let cap = (bytes as libc::rlim_t).min(current.rlim_max);
-                let data = libc::rlimit {
-                    rlim_cur: cap,
-                    rlim_max: cap,
-                };
-                libc::setrlimit(libc::RLIMIT_DATA, &data);
-            }
-            let core = libc::rlimit {
-                rlim_cur: 0,
-                rlim_max: 0,
-            };
-            libc::setrlimit(libc::RLIMIT_CORE, &core);
-            Ok(())
-        });
-    }
+        .collect();
+    files.sort_by(|a, b| b.new.cmp(&a.new).then(a.name.cmp(&b.name)));
+    files.truncate(MAX_FILES);
+    files
 }
 
 fn dirs_home() -> Option<PathBuf> {
     std::env::var_os("HOME")
         .map(PathBuf::from)
         .filter(|p| p.is_absolute() && p != Path::new("/"))
-}
-
-fn content_type(name: &str) -> &'static str {
-    match name
-        .rsplit('.')
-        .next()
-        .map(str::to_ascii_lowercase)
-        .as_deref()
-    {
-        Some("png") => "image/png",
-        Some("jpg" | "jpeg") => "image/jpeg",
-        Some("gif") => "image/gif",
-        Some("webp") => "image/webp",
-        Some("svg") => "image/svg+xml",
-        Some("mp4") => "video/mp4",
-        Some("webm") => "video/webm",
-        Some("mov") => "video/quicktime",
-        Some("csv") => "text/csv; charset=utf-8",
-        Some("json") => "application/json",
-        Some("txt" | "md" | "log") => "text/plain; charset=utf-8",
-        _ => "application/octet-stream",
-    }
-}
-
-/// Serves `cortexapp://localhost/sandbox/<conversation>/<file>` so the chat can show a run's
-/// charts. Only files inside that conversation's workspace are served.
-/// The bytes a `Range: bytes=a-b` header asks for, within a file of `len` bytes.
-pub(in crate::chat::toolkit) fn byte_range(header: &str, len: usize) -> Option<(usize, usize)> {
-    let spec = header
-        .trim()
-        .strip_prefix("bytes=")?
-        .split(',')
-        .next()?
-        .trim();
-    let (a, b) = spec.split_once('-')?;
-    let (start, end) = match (a.trim(), b.trim()) {
-        ("", n) => (len.saturating_sub(n.parse().ok()?), len.checked_sub(1)?),
-        (s, "") => (s.parse().ok()?, len.checked_sub(1)?),
-        (s, e) => (
-            s.parse().ok()?,
-            e.parse::<usize>().ok()?.min(len.checked_sub(1)?),
-        ),
-    };
-    (start <= end && end < len).then_some((start, end))
-}
-
-/// Like `serve`, answering a byte range when one is asked for: the media player reads videos
-/// in pieces and will not play one served only whole.
-pub(crate) fn serve_range(
-    config_dir: &Path,
-    rest: &str,
-    range: Option<&str>,
-) -> tauri::http::Response<Vec<u8>> {
-    let not_found = || {
-        tauri::http::Response::builder()
-            .status(404)
-            .body(b"Not found".to_vec())
-            .unwrap_or_default()
-    };
-    let rest = rest.split('?').next().unwrap_or_default();
-    let Some((conversation, file)) = rest.split_once('/') else {
-        return not_found();
-    };
-    let file = percent_decode(file);
-    if file.is_empty()
-        || file
-            .split('/')
-            .any(|seg| seg.is_empty() || seg == ".." || seg.starts_with('.'))
-        || file.contains('\\')
-    {
-        return not_found();
-    }
-    let Ok(dir) = workspace(config_dir, conversation) else {
-        return not_found();
-    };
-    let path = dir.join(&file);
-    let (Ok(root), Ok(real)) = (dir.canonicalize(), path.canonicalize()) else {
-        return not_found();
-    };
-    if !real.starts_with(&root) {
-        return not_found();
-    }
-    match crate::chat::at_rest::read(&real) {
-        Ok(bytes) if range.is_some() => match byte_range(range.unwrap_or_default(), bytes.len()) {
-            Some((start, end)) => tauri::http::Response::builder()
-                .status(206)
-                .header("Content-Type", content_type(&file))
-                .header(
-                    "Content-Range",
-                    format!("bytes {start}-{end}/{}", bytes.len()),
-                )
-                .header("Accept-Ranges", "bytes")
-                .header("X-Content-Type-Options", "nosniff")
-                .header("Cache-Control", "no-store")
-                .body(bytes[start..=end].to_vec())
-                .unwrap_or_default(),
-            None => tauri::http::Response::builder()
-                .status(416)
-                .header("Content-Range", format!("bytes */{}", bytes.len()))
-                .body(Vec::new())
-                .unwrap_or_default(),
-        },
-        Ok(bytes) => tauri::http::Response::builder()
-            .status(200)
-            .header("Accept-Ranges", "bytes")
-            .header("Content-Type", content_type(&file))
-            // An SVG could carry script; it is shown as an image, never as a page.
-            .header(
-                "Content-Security-Policy",
-                "default-src 'none'; style-src 'unsafe-inline'",
-            )
-            .header("X-Content-Type-Options", "nosniff")
-            .header("Cache-Control", "no-store")
-            .body(bytes)
-            .unwrap_or_default(),
-        Err(_) => not_found(),
-    }
-}
-
-fn percent_decode(s: &str) -> String {
-    let bytes = s.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                out.push(v);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(bytes[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
 }
 
 #[cfg(test)]

@@ -303,52 +303,7 @@ async fn traced_turn(
 ) -> Result<bool, ChatError> {
     let config_dir = host.config_dir()?;
     let id = request.conversation_id.as_str();
-    let mut conversation = open_conversation(&config_dir, request);
-    conversation.model = Some(request.model.clone());
-    // Filters see the message first: they can rewrite it or refuse it.
-    let mut text = request.text.trim().to_string();
-    if !text.is_empty() && crate::chat::functions::has_filters(&config_dir) {
-        text = crate::chat::functions::apply(
-            &bench(host),
-            &config_dir,
-            id,
-            "inlet",
-            &request.model,
-            &text,
-        )
-        .await
-        .map_err(|reason| ChatError::Invalid(format!("Not sent. {reason}")))?;
-    }
-
-    // An answer the app closed in the middle of: continuing keeps what it had said; anything
-    // else starts afresh.
-    if let Some(partial) = crate::chat::partials::take(&config_dir, id) {
-        if request.resume {
-            conversation.messages.push(Message::assistant(partial));
-            conversation
-                .times
-                .push((conversation.messages.len() - 1, Utc::now()));
-        }
-    }
-    apply_request(&mut conversation, request, &text)?;
-    // A new chat is told apart in the sidebar while its first answer runs: its first message
-    // stands in as the title until the model's title replaces it when the answer ends.
-    let named = !conversation.title.is_empty();
-    if !named {
-        conversation.title = titles::fallback_title(&conversation);
-    }
-    conversation.updated_at = Utc::now();
-    record_signal(&config_dir, request);
-    if let Some(note) = &request.route_note {
-        conversation
-            .notices
-            .push((conversation.messages.len(), note.clone()));
-        host.emit(ChatEvent::Notice {
-            conversation_id: id.into(),
-            text: note.clone(),
-        });
-    }
-    store::save_conversation(&config_dir, &conversation)?;
+    let (mut conversation, named) = prepare_conversation(host, request, &config_dir).await?;
 
     // Some "models" are not models: a pipe (a function of the user's), an ACP agent, or a coding
     // agent program (Claude Code, Codex, Gemini CLI) answers in their place, with its own tools.
@@ -459,6 +414,66 @@ async fn traced_turn(
     let conversation = steps.conversation;
     name_unless(named, host, request, conversation);
     Ok(false)
+}
+
+/// The conversation with the user's message in it, saved before the answer starts: what the
+/// user's filters made of the message, the partial answer a restart left (kept when continuing),
+/// and, for a new chat, its first message standing in as the title. Also whether it already had a
+/// title of its own.
+async fn prepare_conversation(
+    host: &Arc<dyn Host>,
+    request: &TurnRequest,
+    config_dir: &std::path::Path,
+) -> Result<(Conversation, bool), ChatError> {
+    let config_dir = config_dir.to_path_buf();
+    let id = request.conversation_id.as_str();
+    let mut conversation = open_conversation(&config_dir, request);
+    conversation.model = Some(request.model.clone());
+    // Filters see the message first: they can rewrite it or refuse it.
+    let mut text = request.text.trim().to_string();
+    if !text.is_empty() && crate::chat::functions::has_filters(&config_dir) {
+        text = crate::chat::functions::apply(
+            &bench(host),
+            &config_dir,
+            id,
+            "inlet",
+            &request.model,
+            &text,
+        )
+        .await
+        .map_err(|reason| ChatError::Invalid(format!("Not sent. {reason}")))?;
+    }
+
+    // An answer the app closed in the middle of: continuing keeps what it had said; anything
+    // else starts afresh.
+    if let Some(partial) = crate::chat::partials::take(&config_dir, id) {
+        if request.resume {
+            conversation.messages.push(Message::assistant(partial));
+            conversation
+                .times
+                .push((conversation.messages.len() - 1, Utc::now()));
+        }
+    }
+    apply_request(&mut conversation, request, &text)?;
+    // A new chat is told apart in the sidebar while its first answer runs: its first message
+    // stands in as the title until the model's title replaces it when the answer ends.
+    let named = !conversation.title.is_empty();
+    if !named {
+        conversation.title = titles::fallback_title(&conversation);
+    }
+    conversation.updated_at = Utc::now();
+    record_signal(&config_dir, request);
+    if let Some(note) = &request.route_note {
+        conversation
+            .notices
+            .push((conversation.messages.len(), note.clone()));
+        host.emit(ChatEvent::Notice {
+            conversation_id: id.into(),
+            text: note.clone(),
+        });
+    }
+    store::save_conversation(&config_dir, &conversation)?;
+    Ok((conversation, named))
 }
 
 /// The conversation the request continues, or a new one set up as the request describes.

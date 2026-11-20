@@ -263,6 +263,7 @@ Put it in the folder for its role, add it to that folder's `mod.rs` and to the f
 | the same with `--features cortex/test-utils,cortex/e2e` | The Rust code with the hosted web app's |
 | `python3 scripts/check-layers.py` | Dependencies point down the chat engine's layers |
 | `python3 scripts/check-statics.py` | At most nine process-wide mutable statics, each saying why |
+| `python3 scripts/measure-plan.py --check` | The measures of the improvements plan (file and function sizes, layering, errors, statics) meet their targets |
 | `python3 scripts/generate-commands.py --check` | The command list and permissions match the code |
 | `python3 scripts/check-kernel-plan.py` | Every test the kernel plan cites exists and passes |
 | `./e2e/run.sh` | The bridge contract, in a container (needs Proton's web clients checkout) |

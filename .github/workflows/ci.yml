@@ -103,6 +103,8 @@ jobs:
         run: python3 scripts/check-layers.py
       - name: State lives in the app, not in process-wide statics
         run: python3 scripts/check-statics.py
+      - name: The plan's measures meet their targets
+        run: python3 scripts/measure-plan.py --check
       # Every test docs/agent-kernel-plan.md cites as evidence must exist and pass.
       - name: The kernel plan's evidence
         run: python3 scripts/check-kernel-plan.py

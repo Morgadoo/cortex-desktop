@@ -30,6 +30,7 @@ cargo test --workspace --features cortex/test-utils
 cd ..
 python3 scripts/check-layers.py
 python3 scripts/check-statics.py
+python3 scripts/measure-plan.py --check
 python3 scripts/generate-commands.py --check
 ```
 

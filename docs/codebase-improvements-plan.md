@@ -12,7 +12,9 @@ listed in package 0.8.
 ## Status, 2026-11-20
 
 Work happened on one branch (pull request #7) rather than one pull request per package; each
-package is one or more commits there. Measured as section 7 describes:
+package is one or more commits there. Every row below is printed by
+`python3 scripts/measure-plan.py` from the code as it is (`--check` fails on a missed target; CI
+runs it), so the table can be checked rather than trusted:
 
 | Measure | Start | Now | Target |
 |---|---|---|---|
@@ -24,15 +26,22 @@ package is one or more commits there. Measured as section 7 describes:
 | Raw error toasts | 148 | 1, the helper itself | 0 |
 | Files directly in `src-tauri/src/chat/` | 86 | 2 | Under 15 |
 | Files directly in `webview/pages/app/` | 51 | 0 | Under 5 |
-| Largest interface file | 4,892 lines | 723 | Under 800 |
-| Rust functions over 150 lines | 11 | 0 | 0 |
+| Largest interface file | 4,892 lines | 759 (`webview/bridges/connectors.ts`; 722 in `pages/`) | Under 800 |
+| Rust functions over 150 lines | 11 | 0, in the app and the crates (the generated `handlers.rs` aside) | 0 |
 | Rust files over 800 lines before their test module | 16 | 0, in the app and the crates | 0 |
 | Layering violations allowed | About 69 modules in one cycle | 0 | 0 |
-| Public functions in chat | About 1,060 | 379, 287 of them commands | Under 400 |
-| Mutable process-wide statics | About 55 | 9, each with its reason (`scripts/check-statics.py`, in CI) | Under 10 |
+| Public functions in chat | About 1,060 | 376 | Under 400 |
 | `Result<_, String>` in chat, outside `commands/` | About 420 | 0 below the entry points (the two kernel `Steps` methods keep the kernel's type) | 0 below the entry points |
+| Mutable process-wide statics | About 55 | 9, each with its reason (`scripts/check-statics.py`) | Under 10 |
+| Hosted-only commands in the default build | At least 10 | 0 `schedule_*` or `skill_*`; the sign-in command stays (below) | 0 |
 | Hand edits to add a command | 4 to 5 | 1, plus a script | 1 |
 | Backend calls by string name | 287 | 0 unchecked: every name is checked against the generated command list | 0 |
+
+An earlier version of this table gave 0 for long functions and long files while
+`toolkit/sandbox.rs` (913 lines, `run_in` 293), `tools/connectors/mcp.rs` (1,134 lines,
+`ensure_connected` 230), `cortex-tools/src/registry.rs` (1,184), `automation/evals.rs` (815) and
+`traced_turn` (165) were over: the measure had been taken on `chat/` alone. Each is split now,
+and the script measures the whole app and the crates.
 
 **Done**: phase 0 (0.1 to 0.8), phase 1 (1.1 to 1.6), phase 2 (2.1 to 2.8), 3.1 to 3.11, 4.1.
 
@@ -83,6 +92,9 @@ from a clipped first line.
   (`tools/exposure.rs`) instead of moving onto the connector trait (review 6.4): one table is
   easier to audit, and pseudo-connectors have no implementation to carry it.
 - `pending_deletes` keeps its process-wide root (3.7): it already fails loudly when not set up.
+- The sign-in command (`start_browser_login`) stays in the default build (3.8): the window's
+  navigation rules, in every build, send a page that asks for another account to it. The
+  scheduler's and the skill scripts' commands are in the hosted build only.
 - The local models' state is one process-wide `LocalModels` rather than a field of `ChatState`
   (3.7): the weights take gigabytes and the processor runs one model at a time, and the model
   layer (connecting a model, embedding, transcribing) is reached from the app, the CLI and the
