@@ -1,11 +1,10 @@
 /** The Terminal panel of a coding session: background commands with live output. */
-import { tauriInvoke } from '../../../shared/tauri';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
 import { modal } from '../ui/overlay';
 import { button, emptyState, iconButton, modalHeader } from '../ui/ui';
 import { localSite } from './devsite';
-import { call, reported, shown } from '../core/call';
+import { call, invoke, reported, shown } from '../core/call';
 
 interface CommandView {
   id: string;
@@ -17,10 +16,10 @@ interface CommandView {
 }
 
 export const terminalApi = {
-  list: (conversationId: string) => tauriInvoke<CommandView[]>('chat_terminal_list', { conversationId }),
-  start: (conversationId: string, command: string) => tauriInvoke<string>('chat_terminal_start', { conversationId, command }),
-  stop: (id: string) => tauriInvoke<void>('chat_terminal_stop', { id }),
-  clear: (conversationId: string) => tauriInvoke<void>('chat_terminal_clear', { conversationId }),
+  list: (conversationId: string) => invoke<CommandView[]>('chat_terminal_list', { conversationId }),
+  start: (conversationId: string, command: string) => invoke<string>('chat_terminal_start', { conversationId, command }),
+  stop: (id: string) => invoke<void>('chat_terminal_stop', { id }),
+  clear: (conversationId: string) => invoke<void>('chat_terminal_clear', { conversationId }),
 };
 
 export function openTerminal(conversationId: string, folder: string) {

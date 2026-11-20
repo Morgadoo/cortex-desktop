@@ -8,7 +8,7 @@
  * with a remote one, every short phrase said near the microphone is sent there, which Settings
  * says plainly.
  */
-import { tauriInvoke } from '../../../shared/tauri';
+import { invoke } from '../core/call';
 import { openMicrophone, type Microphone } from './dictation';
 import { blobToBase64 } from '../core/format';
 import { voiceActive } from './voice';
@@ -78,7 +78,7 @@ export async function startWakeWord(onWake: (request: string) => void): Promise<
     if (seconds < MIN_SECONDS || seconds > MAX_SECONDS) return;
     busy = true;
     try {
-      const text = await tauriInvoke<string>('chat_transcribe', { audio: await blobToBase64(clip), mime: clip.type });
+      const text = await invoke<string>('chat_transcribe', { audio: await blobToBase64(clip), mime: clip.type });
       const request = matchWake(text, wakePrefs().phrase);
       if (request !== null) onWake(request);
     } catch {

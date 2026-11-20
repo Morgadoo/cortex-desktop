@@ -1,5 +1,4 @@
 /** Settings → General: chat defaults, diagnostics, keyboard shortcuts and the integrations. */
-import { tauriInvoke } from '../../../shared/tauri';
 import { api } from '../core/api';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
@@ -22,7 +21,7 @@ import {
 import { card, switchInput } from '../ui/ui';
 import { SHORTCUTS, bindingFor, comboOf, display, setBinding } from '../core/shortcuts';
 import { setVimEnabled, vimEnabled } from '../ui/vim';
-import { call, reported, shown } from '../core/call';
+import { call, invoke, reported, shown } from '../core/call';
 import { apiServerCard, discordCard, slackCard, telegramCard } from './integrations';
 import { row } from './row';
 
@@ -89,7 +88,7 @@ export async function renderGeneral(content: HTMLElement) {
       (() => {
         // Cortex's own browser for links (Vibe's integrated browser); the choice lives in the app.
         const sw = switchInput(false, (v) => void call('set_browser_prefs', { prefs: { inApp: v } }).catch(shown));
-        void tauriInvoke<{ inApp: boolean }>('browser_prefs')
+        void invoke<{ inApp: boolean }>('browser_prefs')
           .then((p) => {
             const box = sw.querySelector('input') ?? (sw as HTMLInputElement);
             (box as HTMLInputElement).checked = p.inApp;
@@ -151,7 +150,7 @@ export async function renderGeneral(content: HTMLElement) {
 /** Model settings every chat starts from; a chat's own settings win. */
 async function chatDefaultsCard(): Promise<HTMLElement> {
   type Params = { temperature: number | null; maxTokens: number | null; topP?: number | null; instructions: string };
-  const current = await tauriInvoke<Params>('chat_get_defaults');
+  const current = await invoke<Params>('chat_get_defaults');
   const field = (value: number | null | undefined, attrs: Record<string, string>) => h('input', { class: 'input select-sm', type: 'number', placeholder: 'Model default', value: value ?? '', ...attrs });
   const temperature = field(current.temperature, { min: '0', max: '2', step: '0.1' });
   const maxTokens = field(current.maxTokens, { min: '16', step: '1' });
@@ -179,7 +178,7 @@ async function chatDefaultsCard(): Promise<HTMLElement> {
 /** What the app sends about itself, and a diagnostics file for bug reports that holds no content. */
 async function diagnosticsCard(): Promise<HTMLElement> {
   type Prefs = { errorReports: boolean; updateChecks: boolean };
-  const view = await tauriInvoke<{ prefs: Prefs; reportingBuilt: boolean }>('chat_diagnostics_prefs');
+  const view = await invoke<{ prefs: Prefs; reportingBuilt: boolean }>('chat_diagnostics_prefs');
   const prefs = view.prefs;
   const persist = () =>
     void call('chat_set_diagnostics_prefs', { prefs })

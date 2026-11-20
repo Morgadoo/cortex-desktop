@@ -1,5 +1,4 @@
 /** Settings → General's integrations: the local API server and its widget, and the Telegram, Slack and Discord bots. */
-import { tauriInvoke } from '../../../shared/tauri';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
 import { modal, toast } from '../ui/overlay';
@@ -7,7 +6,7 @@ import { clockHour12 } from '../core/clock';
 import { state } from '../core/state';
 import { button, card, modalHeader, switchInput } from '../ui/ui';
 import { row } from './row';
-import { call } from '../core/call';
+import { call, invoke } from '../core/call';
 
 interface WidgetSettings {
   enabled: boolean;
@@ -37,7 +36,7 @@ interface TelegramSettings {
 /** Talk to your assistant or an agent from Telegram on your phone, through a bot of your own. */
 export async function telegramCard(): Promise<HTMLElement> {
   const body = h('div', {});
-  let s = await tauriInvoke<TelegramSettings>('chat_telegram');
+  let s = await invoke<TelegramSettings>('chat_telegram');
   const update = async (patch: Partial<{ enabled: boolean; agentId: string | null; allowChanges: boolean; openPairing: boolean; unpair: number }>) => {
     try {
       s = await call<TelegramSettings>('chat_update_telegram', {
@@ -138,7 +137,7 @@ interface SlackSettings {
 /** Talk to your assistant or an agent from Slack, through an app of your own in Socket Mode. */
 export async function slackCard(): Promise<HTMLElement> {
   const body = h('div', {});
-  let s = await tauriInvoke<SlackSettings>('chat_slack');
+  let s = await invoke<SlackSettings>('chat_slack');
   const update = async (patch: Partial<{ enabled: boolean; agentId: string | null; allowChanges: boolean; openPairing: boolean; unpair: string }>) => {
     try {
       s = await call<SlackSettings>('chat_update_slack', {
@@ -241,7 +240,7 @@ interface DiscordSettings {
 /** Talk to your assistant or an agent from Discord, through a bot of your own. */
 export async function discordCard(): Promise<HTMLElement> {
   const body = h('div', {});
-  let s = await tauriInvoke<DiscordSettings>('chat_discord');
+  let s = await invoke<DiscordSettings>('chat_discord');
   const update = async (patch: Partial<{ enabled: boolean; agentId: string | null; allowChanges: boolean; openPairing: boolean; unpair: string }>) => {
     try {
       s = await call<DiscordSettings>('chat_update_discord', {
@@ -363,7 +362,7 @@ export async function apiServerCard(): Promise<HTMLElement> {
       details
     );
   };
-  render(await tauriInvoke<ApiServerView>('chat_api_server'));
+  render(await invoke<ApiServerView>('chat_api_server'));
   return card(body);
 }
 
@@ -434,7 +433,7 @@ function logButton(): HTMLElement {
     void modal((close) => {
       const table = h('div', { class: 'api-log' }, h('p', { class: 'muted' }, 'Loading…'));
       const load = () =>
-        void tauriInvoke<Entry[]>('chat_api_server_log').then((entries) =>
+        void invoke<Entry[]>('chat_api_server_log').then((entries) =>
           clear(
             table,
             entries.length

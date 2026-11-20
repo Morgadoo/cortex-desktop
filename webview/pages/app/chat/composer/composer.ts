@@ -1,5 +1,4 @@
 /** The message box: its state, its setup and sending what was typed. Its menus, attachments, dictation, suggestions and + menu are added from the other files here (see index.ts). */
-import { tauriInvoke } from '../../../../shared/tauri';
 import { api } from '../../core/api';
 import { searchInstead } from '../uploads';
 import { fillVariables } from '../variables';
@@ -13,7 +12,7 @@ import type { Recording } from '../../voice/dictation';
 import { workflowPrompt } from '../../pages/workflows';
 import type { Speed, Workflow } from '../../core/api';
 import { trigger } from '../../ui/ui';
-import { callQuiet } from '../../core/call';
+import { callQuiet, invoke } from '../../core/call';
 import { draftAttachments, drafts, saveDraft } from '../drafts';
 import { countSkillUse, rememberPrompt } from '../history';
 import { queued, setQueue } from '../queue';
@@ -335,7 +334,7 @@ export class Composer {
     for (const file of this.attachments.filter((a) => !a.image)) {
       if (searchInstead(file.text.length)) {
         try {
-          await tauriInvoke<string>('chat_upload_to_library', { name: file.name, text: file.text });
+          await invoke<string>('chat_upload_to_library', { name: file.name, text: file.text });
           searched.push(file.name);
           continue;
         } catch (e) {

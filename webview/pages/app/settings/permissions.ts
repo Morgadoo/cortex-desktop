@@ -1,5 +1,4 @@
 /** Settings → Permissions: what the assistant may reach (files, the computer, secrets, calendars, MCP and OpenAPI servers) and the tools it may run. */
-import { tauriInvoke } from '../../../shared/tauri';
 import { api, type AppSettings } from '../core/api';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
@@ -8,7 +7,7 @@ import { state } from '../core/state';
 import { button, card, modalHeader, switchInput } from '../ui/ui';
 import { customToolsCard, functionsCard, hooksCard } from './tools';
 import { row } from './row';
-import { call, reported, shown } from '../core/call';
+import { call, invoke, reported, shown } from '../core/call';
 
 /** Computer use: the assistant may see the screen and use the mouse and keyboard. */
 /**
@@ -18,7 +17,7 @@ import { call, reported, shown } from '../core/call';
 export async function workbenchCard(): Promise<HTMLElement> {
   type Status = { state: 'unavailable'; reason: string } | { state: 'missing' } | { state: 'building' } | { state: 'ready'; gpu: boolean } | { state: 'failed'; error: string };
   type Info = { enabled: boolean; image: string; status: Status };
-  const info = await tauriInvoke<Info>('chat_workbench_status');
+  const info = await invoke<Info>('chat_workbench_status');
   const status = h('div', { class: 'workbench-status' });
   const actions = h('div', { class: 'card-actions start' });
   const render = () => {
@@ -49,7 +48,7 @@ export async function workbenchCard(): Promise<HTMLElement> {
               info.status = { state: 'building' };
               render();
               try {
-                info.status = await tauriInvoke<Status>('chat_workbench_build');
+                info.status = await invoke<Status>('chat_workbench_build');
                 toast(info.status.state === 'ready' ? 'The agent workbench is ready.' : 'The workbench could not be built.', info.status.state === 'ready' ? 'info' : 'error');
               } catch (e) {
                 info.status = { state: 'failed', error: String(e) };
@@ -85,7 +84,7 @@ export async function workbenchCard(): Promise<HTMLElement> {
 
 export async function computerCard(): Promise<HTMLElement> {
   type Settings = { enabled: boolean; blockedApps: string[]; onlyApps: string[] };
-  let current = await tauriInvoke<Settings>('chat_computer_settings');
+  let current = await invoke<Settings>('chat_computer_settings');
   const save = (next: Partial<Settings>, said: string) => {
     current = { ...current, ...next };
     void call('chat_save_computer_settings', { settings: current })
@@ -170,13 +169,13 @@ export async function openApiCard(): Promise<HTMLElement> {
                   },
                   'Remove'
                 ),
-                switchInput(s.enabled, (v) => void tauriInvoke<OpenApiServer[]>('chat_toggle_openapi_server', { id: s.id, enabled: v }).then(render))
+                switchInput(s.enabled, (v) => void invoke<OpenApiServer[]>('chat_toggle_openapi_server', { id: s.id, enabled: v }).then(render))
               )
             )
           )
         : h('p', { class: 'muted' }, 'No API servers yet.')
     );
-  render(await tauriInvoke<OpenApiServer[]>('chat_openapi_servers'));
+  render(await invoke<OpenApiServer[]>('chat_openapi_servers'));
   const name = h('input', { class: 'input', placeholder: 'Name (optional; the spec’s title otherwise)' });
   const url = h('input', { class: 'input', placeholder: 'https://api.example.com/openapi.json' });
   const key = h('input', { class: 'input', type: 'password', placeholder: 'Bearer token, if the API needs one' });
@@ -209,8 +208,8 @@ export async function openApiCard(): Promise<HTMLElement> {
 }
 
 export function privacyCard(): HTMLElement {
-  const toggle = switchInput(false, (v) => void tauriInvoke('chat_set_privacy', { settings: { enabled: v } }).then(() => toast(v ? 'Privacy filter on.' : 'Privacy filter off.')));
-  void tauriInvoke<{ enabled: boolean }>('chat_get_privacy').then((s) => (toggle.checked = s.enabled));
+  const toggle = switchInput(false, (v) => void invoke('chat_set_privacy', { settings: { enabled: v } }).then(() => toast(v ? 'Privacy filter on.' : 'Privacy filter off.')));
+  void invoke<{ enabled: boolean }>('chat_get_privacy').then((s) => (toggle.checked = s.enabled));
   return card(
     h('h3', {}, 'Privacy filter'),
     row(
@@ -369,7 +368,7 @@ interface VaultSecret {
  * use them as environment variables. The model only ever sees the names.
  */
 async function vaultCard(): Promise<HTMLElement> {
-  let secrets = await tauriInvoke<VaultSecret[]>('chat_vault_list').catch(() => [] as VaultSecret[]);
+  let secrets = await invoke<VaultSecret[]>('chat_vault_list').catch(() => [] as VaultSecret[]);
   const list = h('div', { class: 'hook-list' });
   const users = (name: string) => state.agents.filter((a) => a.secrets?.includes(name)).map((a) => a.name);
   const render = () =>
@@ -425,7 +424,7 @@ async function vaultCard(): Promise<HTMLElement> {
       const error = h('p', { class: 'error-text' });
       const save = async () => {
         try {
-          secrets = await tauriInvoke<VaultSecret[]>('chat_vault_save', {
+          secrets = await invoke<VaultSecret[]>('chat_vault_save', {
             secret: { name: name.value.trim().toUpperCase(), description: description.value.trim(), everywhere },
             value: value.value || null,
           });
@@ -480,7 +479,7 @@ interface CalendarSource {
  * that the assistant reads with calendar_events and find_contact.
  */
 async function calendarCard(): Promise<HTMLElement> {
-  let settings = await tauriInvoke<{ calendars: CalendarSource[]; contacts: CalendarSource[] }>('chat_calendar_sources').catch(() => ({ calendars: [], contacts: [] }));
+  let settings = await invoke<{ calendars: CalendarSource[]; contacts: CalendarSource[] }>('chat_calendar_sources').catch(() => ({ calendars: [], contacts: [] }));
   const list = h('div', { class: 'hook-list' });
   const save = async (next: typeof settings) => {
     try {
@@ -525,7 +524,7 @@ async function calendarCard(): Promise<HTMLElement> {
     size: 'sm',
     label: 'File…',
     onClick: async () => {
-      const path = await tauriInvoke<string | null>('chat_pick_calendar_file', { contacts: kind.value === 'contacts' }).catch(() => null);
+      const path = await invoke<string | null>('chat_pick_calendar_file', { contacts: kind.value === 'contacts' }).catch(() => null);
       if (path) {
         location.value = path;
         if (!name.value)

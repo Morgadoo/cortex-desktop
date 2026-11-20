@@ -1,6 +1,5 @@
 /** What the message box suggests while typing: earlier prompts, completions, and extending a prompt. */
 import { autocompleteOn } from '../../core/state';
-import { tauriInvoke } from '../../../../shared/tauri';
 import { clear } from '../../ui/h';
 import { modal, toast } from '../../ui/overlay';
 import { promptHistory } from '../history';
@@ -8,7 +7,7 @@ import { h } from '../../ui/h';
 import { icon } from '../../ui/icons';
 import { state } from '../../core/state';
 import { Composer } from './composer';
-import { call } from '../../core/call';
+import { call, invoke } from '../../core/call';
 
 const methods = {
   /** Steps through earlier prompts while the caret is on the first (Up) or last (Down) line. */
@@ -84,7 +83,7 @@ const methods = {
     if (!autocompleteOn() || !state.model || this.slashMenu || typed.trim().length < 8 || typed.startsWith('/') || this.textarea.selectionStart !== typed.length) return;
     this.suggestionTimer = window.setTimeout(() => {
       const seq = ++this.suggestionSeq;
-      void tauriInvoke<string>('chat_complete_prompt', { model: state.model, text: typed })
+      void invoke<string>('chat_complete_prompt', { model: state.model, text: typed })
         .then((continuation) => {
           // Only while the text is as it was when asked.
           if (seq !== this.suggestionSeq || this.textarea.value !== typed || !continuation.trim()) return;

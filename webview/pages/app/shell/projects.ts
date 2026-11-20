@@ -1,6 +1,6 @@
 /** Projects in the sidebar: the list, a project's menu and its editor. */
+import { invoke } from '../core/call';
 import { api } from '../core/api';
-import { tauriInvoke } from '../../../shared/tauri';
 import { refreshConversations } from '../chat/send';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
@@ -129,7 +129,7 @@ function editProject(id: string) {
     const share = h('input', { type: 'checkbox', class: 'switch', checked: project.shareChats });
     const files = h('div', { class: 'doc-list' });
     const renderFiles = async () => {
-      const lib = await tauriInvoke<{ id: string; documents: { id: string; name: string }[] }>('chat_project_library', { projectId: project.id });
+      const lib = await invoke<{ id: string; documents: { id: string; name: string }[] }>('chat_project_library', { projectId: project.id });
       project.libraryId = lib.id;
       clear(files, lib.documents.length ? lib.documents.map((d) => h('div', { class: 'doc-row compact' }, icon('file', 15), h('span', { class: 'doc-name' }, d.name))) : h('p', { class: 'muted empty-line' }, 'No files yet.'));
       return lib;
@@ -138,7 +138,7 @@ function editProject(id: string) {
     const addFiles = h('button', { class: 'btn btn-secondary' }, icon('upload', 15), 'Add files');
     addFiles.addEventListener('click', async () => {
       const lib = await renderFiles();
-      const result = await tauriInvoke<{ errors: string[] } | null>('chat_add_documents', { id: lib.id });
+      const result = await invoke<{ errors: string[] } | null>('chat_add_documents', { id: lib.id });
       if (result?.errors.length) toast(result.errors.join(' '), 'error');
       await renderFiles();
     });

@@ -1,5 +1,4 @@
 /** Community agents: searching a public catalog and adding an agent from it. */
-import { tauriInvoke } from '../../../shared/tauri';
 import type { Agent } from '../core/api';
 import { clear, h } from '../ui/h';
 import { modal, toast } from '../ui/overlay';
@@ -7,7 +6,7 @@ import { button, modalHeader } from '../ui/ui';
 import { storedLanguage } from '../core/i18n';
 import { textPref } from '../core/prefs';
 import { reloadAgents } from './agent-list';
-import { call, reported } from '../core/call';
+import { call, invoke, reported } from '../core/call';
 
 interface MarketListing {
   identifier: string;
@@ -88,7 +87,7 @@ export async function openAgentMarket() {
     search.addEventListener('input', draw);
     category.addEventListener('change', draw);
     const load = (refresh: boolean) =>
-      tauriInvoke<MarketListing[]>('chat_agent_market', { source: marketSource(), language, refresh })
+      invoke<MarketListing[]>('chat_agent_market', { source: marketSource(), language, refresh })
         .then((list) => {
           all = list;
           const cats = [...new Set(list.map((a) => a.category).filter(Boolean))].sort();

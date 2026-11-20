@@ -1,6 +1,5 @@
 /** The message box's menus: / commands and skills, # sources, @ files and : emoji. */
 import { emojiFor, findEmoji } from '../../ui/emoji';
-import { tauriInvoke } from '../../../../shared/tauri';
 import { api } from '../../core/api';
 import { popover, toast } from '../../ui/overlay';
 import { openLeaderboard } from '../compare-view';
@@ -13,7 +12,7 @@ import { icon } from '../../ui/icons';
 import { navigate, state } from '../../core/state';
 import { openModelPicker } from './pickers';
 import { Composer, SLASH_COMMANDS } from './composer';
-import { call, shown } from '../../core/call';
+import { call, invoke, shown } from '../../core/call';
 
 const methods = {
   /**
@@ -31,9 +30,9 @@ const methods = {
       this.hashSources = { libraries: [], pages: [], canvases: [] };
       const sources = this.hashSources;
       void Promise.all([
-        tauriInvoke<{ name: string }[]>('chat_list_libraries').catch(() => []),
-        tauriInvoke<{ id: string; title: string }[]>('chat_knowledge_pages').catch(() => []),
-        tauriInvoke<{ id: string; title: string; kind: string }[]>('chat_list_canvases').catch(() => []),
+        invoke<{ name: string }[]>('chat_list_libraries').catch(() => []),
+        invoke<{ id: string; title: string }[]>('chat_knowledge_pages').catch(() => []),
+        invoke<{ id: string; title: string; kind: string }[]>('chat_list_canvases').catch(() => []),
       ]).then(([libs, pages, canvases]) => {
         sources.libraries = libs.map((l) => l.name);
         sources.pages = pages;
@@ -198,7 +197,7 @@ const methods = {
     if (this.folderFiles?.dir !== dir) {
       this.folderFiles = { dir, files: [] };
       const asked = this.folderFiles;
-      void tauriInvoke<[string[], boolean]>('chat_folder_files', { dir })
+      void invoke<[string[], boolean]>('chat_folder_files', { dir })
         .then(([files]) => {
           asked.files = files;
           if (this.folderFiles === asked) this.updateSlashMenu();
@@ -407,12 +406,12 @@ const methods = {
       const id = name.slice(name.indexOf(':') + 1);
       this.dropHashWord();
       const load = page
-        ? tauriInvoke<{ id: string; title: string; body: string }[]>('chat_knowledge_pages').then((pages) => {
+        ? invoke<{ id: string; title: string; body: string }[]>('chat_knowledge_pages').then((pages) => {
             const p = pages.find((x) => x.id === id);
             if (!p) throw new Error('That page is gone.');
             return { name: `Page: ${p.title || 'Untitled'}`, text: `# ${p.title}\n\n${p.body}` };
           })
-        : tauriInvoke<{ title: string; kind: string; versions: { content: string }[] }>('chat_get_canvas', { id }).then((c) => ({
+        : invoke<{ title: string; kind: string; versions: { content: string }[] }>('chat_get_canvas', { id }).then((c) => ({
             name: `Canvas: ${c.title || 'Untitled'}`,
             text: `${c.title} (${c.kind})\n\n${c.versions[c.versions.length - 1]?.content ?? ''}`,
           }));

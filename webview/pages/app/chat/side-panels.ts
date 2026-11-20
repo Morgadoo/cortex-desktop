@@ -4,7 +4,6 @@ import { previewFor } from '../ui/favicon';
 import { host, renderParts } from './transcript';
 import type { Source } from './turn-actions';
 import { composer } from './composer/current';
-import { tauriInvoke } from '../../../shared/tauri';
 import { api, type Part } from '../core/api';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
@@ -13,12 +12,12 @@ import { navigate, state } from '../core/state';
 import { closePanel } from '../canvas/canvas';
 import { siteIcon } from '../ui/favicon';
 import { button, iconButton } from '../ui/ui';
-import { call, shown } from '../core/call';
+import { call, invoke, shown } from '../core/call';
 
 /** The Sources panel beside the conversation: each page with its site, title and what it says. */
 /** Asks which library, then saves the page's text there. */
 async function saveToLibrary(anchor: HTMLElement, url: string) {
-  const libraries = await tauriInvoke<{ id: string; name: string }[]>('chat_list_libraries').catch(() => []);
+  const libraries = await invoke<{ id: string; name: string }[]>('chat_list_libraries').catch(() => []);
   const save = async (id: string, name: string) => {
     close();
     toast(`Saving to ${name}…`);
@@ -58,7 +57,7 @@ function openReader(url: string, fallbackTitle: string, back: () => void) {
     h('div', { class: 'panel-inner reader-panel' }, h('div', { class: 'panel-head' }, backBtn, h('strong', { class: 'panel-title' }, host(url)), h('span', { class: 'spacer' }), external, close), body),
     fallbackTitle
   );
-  void tauriInvoke<ReaderArticle>('chat_read_article', { url })
+  void invoke<ReaderArticle>('chat_read_article', { url })
     .then((a) => {
       const when = a.published && !Number.isNaN(Date.parse(a.published)) ? new Date(a.published).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : '';
       const meta = [a.site, a.byline, when, `${Math.max(1, Math.round(a.words / 220))} min read`].filter(Boolean).join(' · ');

@@ -3,7 +3,7 @@
  * the web. Results come first, as cards; an answer from them, citing them by number, only when
  * asked for; or they go into a new chat as context.
  */
-import { tauriInvoke } from '../../../shared/tauri';
+import { invoke } from '../core/call';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
 import { markdown } from '../ui/markdown';
@@ -69,7 +69,7 @@ export function openSearchMode(initial = '') {
       answer.hidden = false;
       clear(answer, h('div', { class: 'status-line' }, h('span', { class: 'dots' }), ' Reading the results…'));
       try {
-        const text = await tauriInvoke<string>('chat_answer_from_results', { model: state.model, query, cards });
+        const text = await invoke<string>('chat_answer_from_results', { model: state.model, query, cards });
         clear(answer, h('div', { class: 'markdown' }, markdown(text)));
         // [n] in the answer jumps to card n.
         linkCitations(answer, cards.length, (n) => grid.querySelector<HTMLElement>(`[data-card="${n}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
@@ -85,7 +85,7 @@ export function openSearchMode(initial = '') {
       clear(grid);
       clear(status, h('span', { class: 'dots' }), web ? ' Searching your things and the web…' : ' Searching your things…');
       try {
-        const r = await tauriInvoke<{ cards: Card[]; notes: string[] }>('chat_search_everything', { query, web });
+        const r = await invoke<{ cards: Card[]; notes: string[] }>('chat_search_everything', { query, web });
         cards = r.cards;
         const counts = (['library', 'knowledge', 'chat', 'web'] as const).map((k) => [k, cards.filter((c) => c.kind === k).length] as const).filter(([, n]) => n);
         clear(status, cards.length ? counts.map(([k, n]) => `${n} ${KIND[k][1].toLowerCase()}`).join(' · ') : 'Nothing found.', r.notes.length ? h('div', {}, r.notes.join(' ')) : null);

@@ -1,11 +1,10 @@
 /** A coding session's working-tree changes: the files touched and their diffs. */
-import { tauriInvoke } from '../../../shared/tauri';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
 import { modal, promptText, toast } from '../ui/overlay';
 import { iconButton, modalHeader } from '../ui/ui';
 import { choice } from '../core/prefs';
-import { call } from '../core/call';
+import { call, invoke } from '../core/call';
 
 /** Unified or Split, remembered for next time. */
 const diffLayout = choice('cortex.diffLayout', ['unified', 'split'] as const, 'unified');
@@ -25,7 +24,7 @@ export interface Changes {
   truncated: boolean;
 }
 
-export const loadChanges = (conversationId: string) => tauriInvoke<Changes>('chat_code_changes', { conversationId });
+export const loadChanges = (conversationId: string) => invoke<Changes>('chat_code_changes', { conversationId });
 
 /** Unified diff lines, colored: additions, removals, hunk headers and context. */
 export function diffLines(lines: string[]): HTMLElement {
@@ -213,7 +212,7 @@ export function openChanges(conversationId: string, folder: string) {
     const prBar = h('div', { class: 'pr-bar' });
     type Pr = { number: number; title: string; url: string; state: string; review: string; checks: { name: string; state: string; url: string }[] };
     const loadPr = async () => {
-      const pr = await tauriInvoke<Pr | null>('chat_code_pr_status', { conversationId }).catch(() => null);
+      const pr = await invoke<Pr | null>('chat_code_pr_status', { conversationId }).catch(() => null);
       if (!pr) return void clear(prBar);
       const count = (s: string) => pr.checks.filter((c) => c.state === s).length;
       const summary = pr.checks.length ? (count('failed') ? `${count('failed')} failing` : count('running') + count('pending') ? `${count('running') + count('pending')} running` : `${count('passed')} passing`) : 'no checks';
@@ -258,7 +257,7 @@ export function openFiles(conversationId: string, folder: string) {
       list.querySelectorAll('.active').forEach((el) => el.classList.remove('active'));
       row.classList.add('active');
       try {
-        const text = await tauriInvoke<string>('chat_code_read_file', { conversationId, path });
+        const text = await invoke<string>('chat_code_read_file', { conversationId, path });
         const lines = text.split('\n');
         clear(
           view,
@@ -288,7 +287,7 @@ export function openFiles(conversationId: string, folder: string) {
       );
     };
     filter.addEventListener('input', render);
-    void tauriInvoke<[string[], boolean]>('chat_code_files', { conversationId })
+    void invoke<[string[], boolean]>('chat_code_files', { conversationId })
       .then(([files, truncated]) => {
         all = files;
         render();
@@ -304,7 +303,7 @@ export function openFiles(conversationId: string, folder: string) {
 export function openDebug(conversationId: string) {
   void modal((close) => {
     const body = h('div', { class: 'debug-body' }, h('div', { class: 'status-line' }, h('span', { class: 'dots' }), 'Reading the session'));
-    void tauriInvoke<{
+    void invoke<{
       id: string;
       model: string | null;
       workdir: string | null;

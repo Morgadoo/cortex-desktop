@@ -3,13 +3,12 @@
  * way back: "Load" puts a version into the open editor, and saving it keeps the one it replaces.
  */
 
-import { tauriInvoke } from '../../../shared/tauri';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
 import { modal, toast } from '../ui/overlay';
 import { clockHour12 } from '../core/clock';
 import { modalHeader } from '../ui/ui';
-import { call } from '../core/call';
+import { call, invoke } from '../core/call';
 
 type Kind = 'agents' | 'workflows' | 'tools';
 interface Version {
@@ -63,7 +62,7 @@ export function historyButton(kind: Kind, id: string, load: (value: Record<strin
   button.addEventListener('click', () => {
     void modal((close) => {
       const list = h('div', { class: 'version-list' }, h('p', { class: 'muted' }, 'Loading…'));
-      void tauriInvoke<Version[]>('chat_versions', { kind, id })
+      void invoke<Version[]>('chat_versions', { kind, id })
         .then((versions) =>
           clear(
             list,
@@ -131,7 +130,7 @@ export function restoreButton(target: () => { kind: 'memories' | 'knowledge' | '
     const { kind, id } = target();
     void modal((close) => {
       const list = h('div', { class: 'version-list' }, h('p', { class: 'muted' }, 'Loading…'));
-      void tauriInvoke<Version[]>('chat_versions', { kind, id })
+      void invoke<Version[]>('chat_versions', { kind, id })
         .then((versions) =>
           clear(
             list,

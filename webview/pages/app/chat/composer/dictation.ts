@@ -1,9 +1,8 @@
 /** Dictating into the message box: recording, the live caption, and the transcript it adds. */
-import { tauriInvoke } from '../../../../shared/tauri';
 import { api } from '../../core/api';
 import { startVoiceConversation } from '../../voice/voice';
 import { clear } from '../../ui/h';
-import { reportError } from '../../core/call';
+import { invoke, reportError } from '../../core/call';
 import { toast } from '../../ui/overlay';
 import { openSettings } from '../../settings/index';
 import { startRecording, type Recording } from '../../voice/dictation';
@@ -65,7 +64,7 @@ const methods = {
         return void openSettings('audio');
       }
       if (engine === 'provider') {
-        const media = await tauriInvoke<{ speechModel: string | null }>('chat_media_models');
+        const media = await invoke<{ speechModel: string | null }>('chat_media_models');
         if (!media.speechModel) {
           toast('Voice input needs speech-to-text: add OpenAI or Groq, or choose another engine in Settings → Audio.', 'error');
           return void openSettings('audio');
@@ -93,7 +92,7 @@ const methods = {
     try {
       const audio = await recording.stop();
       if (audio.size < 1000) throw new Error('Nothing was recorded.');
-      const text = await tauriInvoke<string>('chat_transcribe', { audio: await blobToBase64(audio), mime: audio.type });
+      const text = await invoke<string>('chat_transcribe', { audio: await blobToBase64(audio), mime: audio.type });
       const current = this.textarea.value;
       this.setText(current ? `${current.trimEnd()} ${text}` : text);
       this.focus();

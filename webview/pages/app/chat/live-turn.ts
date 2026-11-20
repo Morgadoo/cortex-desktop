@@ -1,5 +1,4 @@
 /** A reply while it streams: its parts so far, the working indicator, and an error to copy. */
-import { tauriInvoke } from '../../../shared/tauri';
 import { api } from '../core/api';
 import { h } from '../ui/h';
 import { icon } from '../ui/icons';
@@ -7,7 +6,7 @@ import { toast } from '../ui/overlay';
 import { state, type LiveTurn } from '../core/state';
 import { toolLabel } from './tool-labels';
 import { renderParts } from './transcript';
-import { reported, shown } from '../core/call';
+import { invoke, reported, shown } from '../core/call';
 
 export function renderLiveTurn(conversationId: string, live: LiveTurn): HTMLElement {
   const now = Date.now();
@@ -86,7 +85,7 @@ function copyErrorButton(error: string, conversationId: string): HTMLElement {
   button.addEventListener('click', async () => {
     let version = '';
     try {
-      version = await tauriInvoke<string>('plugin:app|version');
+      version = await invoke<string>('plugin:app|version');
     } catch {
       version = 'unknown';
     }

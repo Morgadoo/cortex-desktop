@@ -1,5 +1,4 @@
 /** The Knowledge page: pages the model and the user write and keep, and the memories beside them. */
-import { tauriInvoke } from '../../../shared/tauri';
 import { api, type Memories } from '../core/api';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
@@ -10,7 +9,7 @@ import { restoreButton } from '../canvas/versions';
 import { navigate, state } from '../core/state';
 import { button, emptyState, iconButton, modalHeader, pageHeader, switchInput, tabs } from '../ui/ui';
 import { learningRows } from './learning';
-import { call, reported, shown } from '../core/call';
+import { call, invoke, reported, shown } from '../core/call';
 
 interface KnowledgePageData {
   id: string;
@@ -22,9 +21,9 @@ interface KnowledgePageData {
 }
 
 const knowledgeApi = {
-  pages: () => tauriInvoke<KnowledgePageData[]>('chat_knowledge_pages'),
-  save: (id: string | null, title: string, body: string) => tauriInvoke<KnowledgePageData[]>('chat_save_knowledge_page', { id, title, body }),
-  remove: (id: string) => tauriInvoke<KnowledgePageData[]>('chat_delete_knowledge_page', { id }),
+  pages: () => invoke<KnowledgePageData[]>('chat_knowledge_pages'),
+  save: (id: string | null, title: string, body: string) => invoke<KnowledgePageData[]>('chat_save_knowledge_page', { id, title, body }),
+  remove: (id: string) => invoke<KnowledgePageData[]>('chat_delete_knowledge_page', { id }),
 };
 
 const MEMORY_CATEGORIES: [string, string][] = [
@@ -173,13 +172,13 @@ export class KnowledgePage {
         'div',
         { class: 'setting-row' },
         h('div', {}, h('strong', {}, 'Save new facts'), h('small', { class: 'muted' }, 'Let the assistant add, change and remove facts and pages as you talk. Off: it uses what is here but changes nothing; you can still edit it yourself.')),
-        switchInput(m.update ?? true, async (v) => this.set(await tauriInvoke<Memories>('chat_set_memory_update', { update: v })))
+        switchInput(m.update ?? true, async (v) => this.set(await invoke<Memories>('chat_set_memory_update', { update: v })))
       ),
       h(
         'div',
         { class: 'setting-row' },
         h('div', {}, h('strong', {}, 'Keep sensitive data out'), h('small', { class: 'muted' }, 'The assistant does not save card numbers, bank accounts, passwords, PINs or keys to knowledge, and tells you when it left something out.')),
-        switchInput(m.keepSensitiveOut ?? true, async (v) => this.set(await tauriInvoke<Memories>('chat_set_keep_sensitive_out', { on: v })))
+        switchInput(m.keepSensitiveOut ?? true, async (v) => this.set(await invoke<Memories>('chat_set_keep_sensitive_out', { on: v })))
       ),
       learningRows()
     );

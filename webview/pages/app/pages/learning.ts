@@ -1,16 +1,15 @@
 /** What the assistant learns and is checked against: the learning switches, evaluation cases and artifacts. */
-import { tauriInvoke } from '../../../shared/tauri';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
 import { confirmDialog, modal, toast } from '../ui/overlay';
 import { button, modalHeader, switchInput } from '../ui/ui';
-import { call, shown } from '../core/call';
+import { call, invoke, shown } from '../core/call';
 
 /** Learning on its own (learning.rs): a weekly knowledge review, and skills from agents' work. */
 export function learningRows(): HTMLElement {
   type Learning = { reviewKnowledge: boolean; skillsFromWork: boolean; lastReview?: string | null; nightlyEvals: boolean; lastEvals?: string | null };
   const box = h('div', {});
-  void tauriInvoke<Learning>('chat_learning', { change: null })
+  void invoke<Learning>('chat_learning', { change: null })
     .then((l) => {
       const change = async (next: Partial<Learning>) => {
         try {
@@ -124,7 +123,7 @@ function editEvalCases(): void {
               class: 'btn btn-danger btn-sm',
               on: {
                 click: async () => {
-                  if (await confirmDialog(`Delete “${c.id}”?`, 'The case is removed from its suite.', 'Delete')) render(await tauriInvoke<EvalSuite[]>('chat_delete_eval_case', { suite, id: c.id }));
+                  if (await confirmDialog(`Delete “${c.id}”?`, 'The case is removed from its suite.', 'Delete')) render(await invoke<EvalSuite[]>('chat_delete_eval_case', { suite, id: c.id }));
                 },
               },
             },
@@ -174,7 +173,7 @@ function editEvalCases(): void {
         )
       );
     };
-    void tauriInvoke<EvalSuite[]>('chat_eval_suites')
+    void invoke<EvalSuite[]>('chat_eval_suites')
       .then(render)
       .catch((e) => clear(body, h('p', { class: 'error-text' }, String(e))));
     return h('div', { class: 'dialog-small wide' }, modalHeader('Eval cases', close, { flush: true }), body);
@@ -188,7 +187,7 @@ function editEvalCases(): void {
 function artifactRows(): HTMLElement {
   type Artifact = { kind: string; id: string; status: string; used: number; critical: boolean; provenance?: string | null };
   const box = h('div', {});
-  void tauriInvoke<Artifact[]>('chat_artifacts')
+  void invoke<Artifact[]>('chat_artifacts')
     .then((all) => {
       const made = all.filter((a) => (a.kind === 'skill' || a.kind === 'script_tool') && a.provenance);
       clear(

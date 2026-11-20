@@ -4,9 +4,8 @@ import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
 import { modal, toast } from '../ui/overlay';
 import { fileSize } from '../core/format';
-import { tauriInvoke } from '../../../shared/tauri';
 import { button, iconButton } from '../ui/ui';
-import { call, shown } from '../core/call';
+import { call, invoke, shown } from '../core/call';
 
 interface RunReport {
   language: string;
@@ -94,7 +93,7 @@ export function workspaceVideo(src: string, attrs: Record<string, unknown>, file
       if (!converted) {
         converted = true;
         video.setAttribute('title', 'Converting the video for this window…');
-        void tauriInvoke<string>('chat_playable_video', file)
+        void invoke<string>('chat_playable_video', file)
           .then((b64) => {
             const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
             video.src = URL.createObjectURL(new Blob([bytes], { type: 'video/ogg' }));
@@ -110,7 +109,7 @@ export function workspaceVideo(src: string, attrs: Record<string, unknown>, file
       const box = h('div', { class: `video-fallback-box ${String(attrs.class ?? '')}` }, still, thumb ? null : h('div', { class: 'video-fallback-actions' }, play));
       if (thumb) clear(still);
       video.replaceWith(box);
-      void tauriInvoke<string>('chat_video_poster', file)
+      void invoke<string>('chat_video_poster', file)
         .then((jpeg) => clear(still, h('img', { src: `data:image/jpeg;base64,${jpeg}`, alt: 'A still from the video' })))
         .catch(() => undefined);
     });

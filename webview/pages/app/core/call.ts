@@ -5,9 +5,21 @@
  */
 import { tauriInvoke } from '../../../shared/tauri';
 import { toast } from '../ui/overlay';
+import type { Command as AppCommand } from './generated/commands';
+
+/** A command the app registers, or one of a Tauri plugin's (`plugin:<name>|<command>`). */
+export type Command = AppCommand | `plugin:${string}|${string}`;
+
+/**
+ * Invokes `command` and leaves failure to the caller, for code that reports it its own way. The
+ * name is checked against the commands the app registers (`generated/commands.ts`).
+ */
+export function invoke<T = unknown>(command: Command, args?: TauriInvokeArgs): Promise<T> {
+  return tauriInvoke<T>(command, args);
+}
 
 /** Invokes `command`; on failure shows the error and rejects with it. */
-export async function call<T = unknown>(command: string, args?: TauriInvokeArgs): Promise<T> {
+export async function call<T = unknown>(command: Command, args?: TauriInvokeArgs): Promise<T> {
   try {
     return await tauriInvoke<T>(command, args);
   } catch (e) {
@@ -39,7 +51,7 @@ export function reportError(e: unknown): void {
 }
 
 /** Invokes `command`; a failure resolves to `undefined` and shows nothing. */
-export function callQuiet<T = unknown>(command: string, args?: TauriInvokeArgs): Promise<T | undefined> {
+export function callQuiet<T = unknown>(command: Command, args?: TauriInvokeArgs): Promise<T | undefined> {
   return tauriInvoke<T>(command, args).catch(() => undefined);
 }
 

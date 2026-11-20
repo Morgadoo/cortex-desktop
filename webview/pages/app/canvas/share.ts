@@ -3,14 +3,13 @@
  * this computer's network (see src-tauri/src/chat/share.rs). Anyone on the same network with the
  * link can open it while Cortex runs; Stop sharing takes it down.
  */
-import { tauriInvoke } from '../../../shared/tauri';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
 import { modal, toast } from '../ui/overlay';
 import { button, card, modalHeader } from '../ui/ui';
 import { appFiles } from './app-files';
 import { escapeHtml } from '../core/format';
-import { call, shown } from '../core/call';
+import { call, invoke, shown } from '../core/call';
 
 export interface SharedLink {
   token: string;
@@ -127,7 +126,7 @@ export function sharedLinksCard(): HTMLElement {
   const box = card(h('h3', {}, 'Shared links'));
   const list = h('div', { class: 'hook-list' });
   const render = async () => {
-    const links = await tauriInvoke<SharedLink[]>('chat_shared_links').catch(() => [] as SharedLink[]);
+    const links = await invoke<SharedLink[]>('chat_shared_links').catch(() => [] as SharedLink[]);
     clear(
       list,
       links.length
@@ -151,7 +150,7 @@ export function sharedLinksCard(): HTMLElement {
                   class: 'link-btn',
                   on: {
                     click: async () => {
-                      await tauriInvoke('chat_stop_share', { token: l.token });
+                      await invoke('chat_stop_share', { token: l.token });
                       void render();
                     },
                   },

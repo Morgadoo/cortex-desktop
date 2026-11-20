@@ -6,7 +6,7 @@ import { closePanel, enableAskAboutSelection, setPanelHost } from '../canvas/can
 import { escapeHtml } from '../core/format';
 import { loadChanges, openChanges, openFiles, openDebug } from './changes';
 import { openTerminal } from './terminal';
-import { call, shown } from '../core/call';
+import { call, invoke, shown } from '../core/call';
 import { followUpRow } from './turn-end';
 import { conversationMenu } from './conversation-menu';
 import { planOf, renderChecklist, textOf } from './transcript';
@@ -19,7 +19,6 @@ import { userParts } from './composer/composer';
 import { composer } from './composer/current';
 import { renderApprovals, renderQuestion } from './approvals';
 import { avatarHue } from './home-view';
-import { tauriInvoke } from '../../../shared/tauri';
 import { api, type Conversation, type Part } from '../core/api';
 import { actionFor } from '../core/shortcuts';
 import { clear, h } from '../ui/h';
@@ -100,7 +99,7 @@ export class ChatView {
       this.conversation = await api.conversation(this.id);
       // A turn running since before this window opened (or reloaded): what it streamed so far.
       if (this.conversation.running && !state.live.get(this.id)?.seenStart) {
-        const events = await tauriInvoke<ChatEvent[]>('chat_live_events', { conversationId: this.id }).catch(() => [] as ChatEvent[]);
+        const events = await invoke<ChatEvent[]>('chat_live_events', { conversationId: this.id }).catch(() => [] as ChatEvent[]);
         // The replay holds everything so far, including what already arrived here: start over from it.
         if (events.length) {
           state.live.delete(this.id);

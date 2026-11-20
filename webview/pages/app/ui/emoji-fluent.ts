@@ -5,7 +5,7 @@
  * pack downloaded once by the app (emoji_pack.rs); until it is there, or with the System style,
  * the system's emoji show.
  */
-import { tauriInvoke } from '../../../shared/tauri';
+import { invoke } from '../core/call';
 import { listen } from '../../../shared/tauri';
 import { buildIndex, MAYBE, onlyEmoji, split } from './emojiscan';
 import { choice } from '../core/prefs';
@@ -107,14 +107,14 @@ export async function startFluentEmoji(): Promise<void> {
   }
   let status: EmojiStatus;
   try {
-    status = await tauriInvoke<EmojiStatus>('chat_emoji_status', { style });
-    if (status.state !== 'ready') status = await tauriInvoke<EmojiStatus>('chat_emoji_install', { style });
+    status = await invoke<EmojiStatus>('chat_emoji_status', { style });
+    if (status.state !== 'ready') status = await invoke<EmojiStatus>('chat_emoji_install', { style });
   } catch {
     return;
   }
   watchers.forEach((fn) => fn(status));
   if (status.state !== 'ready') return;
-  const names = await tauriInvoke<string[]>('chat_emoji_index', { style }).catch(() => [] as string[]);
+  const names = await invoke<string[]>('chat_emoji_index', { style }).catch(() => [] as string[]);
   if (!names.length || emojiStyle() !== style) return;
   const windows = navigator.userAgent.includes('Windows');
   active = { style, ext: EXT[style]!, index: buildIndex(names), base: windows ? 'http://cortexapp.localhost' : 'cortexapp://localhost' };
@@ -135,5 +135,5 @@ export async function setEmojiStyle(style: EmojiStyle): Promise<void> {
 }
 
 export function emojiStatus(style: EmojiStyle): Promise<EmojiStatus> {
-  return style === 'system' ? Promise.resolve({ state: 'ready' }) : tauriInvoke<EmojiStatus>('chat_emoji_status', { style });
+  return style === 'system' ? Promise.resolve({ state: 'ready' }) : invoke<EmojiStatus>('chat_emoji_status', { style });
 }

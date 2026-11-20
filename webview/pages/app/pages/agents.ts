@@ -1,5 +1,4 @@
 /** Agents mode: the workforce overview, an agent's page, and the agent editor. */
-import { tauriInvoke } from '../../../shared/tauri';
 import { api, newId, type Agent, type AgentSpend } from '../core/api';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
@@ -12,7 +11,7 @@ import { agentPanel } from './agentpanel';
 import { button, modalHeader, switchInput } from '../ui/ui';
 import { openAgentMarket } from './agent-market';
 import { agentName, avatar, pinnedAgents, reloadAgents, togglePinnedAgent } from './agent-list';
-import { call, reported, shown } from '../core/call';
+import { call, invoke, reported, shown } from '../core/call';
 
 /** Tools an agent can be given, by the name the engine matches. */
 const TOOL_CHOICES: { id: string; label: string }[] = [
@@ -214,7 +213,7 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
     // Its own reference material: libraries it searches before answering.
     const pickedLibraries = new Set(base?.libraries ?? []);
     const libraryList = h('div', { class: 'tool-grid' }, h('small', { class: 'muted' }, 'Loading libraries…'));
-    void tauriInvoke<{ id: string; name: string; documents: unknown[] }[]>('chat_list_libraries')
+    void invoke<{ id: string; name: string; documents: unknown[] }[]>('chat_list_libraries')
       .then((libs) =>
         clear(
           libraryList,
@@ -237,7 +236,7 @@ export function editAgent(existing: Agent | null, preset?: Agent): Promise<void>
     // Vault secrets it may use (Settings → Permissions → Vault); "everywhere" ones need no pick.
     const pickedSecrets = new Set(base?.secrets ?? []);
     const secretList = h('div', { class: 'tool-grid' }, h('small', { class: 'muted' }, 'Loading the vault…'));
-    void tauriInvoke<{ name: string; description: string; everywhere: boolean }[]>('chat_vault_list')
+    void invoke<{ name: string; description: string; everywhere: boolean }[]>('chat_vault_list')
       .then((all) =>
         clear(
           secretList,
@@ -481,7 +480,7 @@ export class AgentsPage {
           .then((now) => toast(now ? 'New chats now go to the agent that fits them best.' : 'New chats stay with the general assistant.'))
           .catch(shown)
     );
-    void tauriInvoke<boolean>('chat_agent_routing', { enabled: null })
+    void invoke<boolean>('chat_agent_routing', { enabled: null })
       .then((on) => {
         routing.checked = on;
       })

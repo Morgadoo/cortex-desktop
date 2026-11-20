@@ -1,5 +1,4 @@
 /** Libraries: document collections the assistant searches, with a search box to test them. */
-import { tauriInvoke } from '../../../shared/tauri';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
 import { confirmDialog, modal, popover, promptText, toast } from '../ui/overlay';
@@ -7,7 +6,7 @@ import { clockHour12 } from '../core/clock';
 import { characterCount } from '../core/format';
 import { modalHeader } from '../ui/ui';
 import { choice, json } from '../core/prefs';
-import { call, reported, shown } from '../core/call';
+import { call, invoke, reported, shown } from '../core/call';
 
 interface Doc {
   id: string;
@@ -46,12 +45,12 @@ interface Passage {
 }
 
 const api = {
-  list: () => tauriInvoke<Library[]>('chat_list_libraries'),
-  create: (name: string, description: string) => tauriInvoke<Library>('chat_create_library', { name, description }),
-  remove: (id: string) => tauriInvoke<void>('chat_delete_library', { id }),
-  add: (id: string) => tauriInvoke<{ library: Library; errors: string[] } | null>('chat_add_documents', { id }),
-  removeDoc: (libraryId: string, documentId: string) => tauriInvoke<Library>('chat_remove_document', { libraryId, documentId }),
-  search: (query: string, libraryId: string | null) => tauriInvoke<Passage[]>('chat_search_libraries', { query, libraryId }),
+  list: () => invoke<Library[]>('chat_list_libraries'),
+  create: (name: string, description: string) => invoke<Library>('chat_create_library', { name, description }),
+  remove: (id: string) => invoke<void>('chat_delete_library', { id }),
+  add: (id: string) => invoke<{ library: Library; errors: string[] } | null>('chat_add_documents', { id }),
+  removeDoc: (libraryId: string, documentId: string) => invoke<Library>('chat_remove_document', { libraryId, documentId }),
+  search: (query: string, libraryId: string | null) => invoke<Passage[]>('chat_search_libraries', { query, libraryId }),
 };
 
 /** A document's indexed text, with find-in-text. */
@@ -71,7 +70,7 @@ function previewDocument(libraryId: string, documentId: string, name: string) {
       body.querySelector('mark')?.scrollIntoView({ block: 'center' });
     };
     find.addEventListener('input', render);
-    void tauriInvoke<string>('chat_document_text', { libraryId, documentId })
+    void invoke<string>('chat_document_text', { libraryId, documentId })
       .then((t) => {
         text = t;
         render();
@@ -246,7 +245,7 @@ export class LibrariesPage {
     });
     const addConnector = h('button', { class: 'btn btn-secondary' }, icon('plug', 15), 'Mirror a connector');
     addConnector.addEventListener('click', async () => {
-      const list = await tauriInvoke<{ id: string; name: string; mirrored: boolean }[]>('chat_library_connectors', { id: lib.id }).catch(() => []);
+      const list = await invoke<{ id: string; name: string; mirrored: boolean }[]>('chat_library_connectors', { id: lib.id }).catch(() => []);
       const close = popover(
         addConnector,
         h(
@@ -322,7 +321,7 @@ export class LibrariesPage {
     const connectors = connectorRows.length ? h('div', { class: 'folder-list' }, connectorRows) : null;
     if (connectors) {
       // Their names, once the list of connectors answers.
-      void tauriInvoke<{ id: string; name: string }[]>('chat_library_connectors', { id: lib.id })
+      void invoke<{ id: string; name: string }[]>('chat_library_connectors', { id: lib.id })
         .then((all) => {
           connectors.querySelectorAll<HTMLElement>('[data-connector]').forEach((el) => {
             el.textContent = all.find((c) => c.id === el.dataset.connector)?.name ?? el.textContent;
@@ -361,7 +360,7 @@ export class LibrariesPage {
                   title: 'Stop mirroring (its documents leave the library)',
                   on: {
                     click: async () => {
-                      report(await tauriInvoke<SyncReport>('chat_remove_library_folder', { id: lib.id, folder: f }));
+                      report(await invoke<SyncReport>('chat_remove_library_folder', { id: lib.id, folder: f }));
                       await this.load();
                     },
                   },

@@ -3,7 +3,7 @@
  * load images from itself, so the app fetches each icon and preview once and hands it over as a
  * `data:` URL; until it arrives, the site's first letter stands in.
  */
-import { tauriInvoke } from '../../../shared/tauri';
+import { invoke } from '../core/call';
 import { h } from './h';
 import { icon } from './icons';
 import { markdownHooks } from './markdown';
@@ -32,7 +32,7 @@ export function hostOf(url: string): string {
 function iconFor(host: string): Promise<string | null> {
   let pending = icons.get(host);
   if (!pending) {
-    pending = tauriInvoke<string | null>('chat_favicon', { host }).catch(() => null);
+    pending = invoke<string | null>('chat_favicon', { host }).catch(() => null);
     icons.set(host, pending);
   }
   return pending;
@@ -41,7 +41,7 @@ function iconFor(host: string): Promise<string | null> {
 export function previewFor(url: string): Promise<LinkPreview | null> {
   let pending = previews.get(url);
   if (!pending) {
-    pending = tauriInvoke<LinkPreview>('chat_link_preview', { url }).catch(() => null);
+    pending = invoke<LinkPreview>('chat_link_preview', { url }).catch(() => null);
     previews.set(url, pending);
   }
   return pending;

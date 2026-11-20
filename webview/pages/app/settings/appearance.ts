@@ -1,5 +1,5 @@
 /** Settings → Appearance: theme, accent, background, readability and the interface language. */
-import { tauriInvoke } from '../../../shared/tauri';
+import { invoke } from '../core/call';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
 import { toast } from '../ui/overlay';
@@ -39,7 +39,7 @@ import { row } from './row';
 function languageCard(): HTMLElement {
   const box = card(h('h3', {}, 'Language'));
   void (async () => {
-    const languages = await tauriInvoke<[string, string][]>('chat_ui_languages').catch(() => [] as [string, string][]);
+    const languages = await invoke<[string, string][]>('chat_ui_languages').catch(() => [] as [string, string][]);
     const stored = storedLanguage();
     const current = effectiveLanguage(languages.map(([c]) => c));
     const select = h(
@@ -55,7 +55,7 @@ function languageCard(): HTMLElement {
     });
     const extra = h('div', {});
     if (current) {
-      const cov = await tauriInvoke<{ known: number; total: number }>('chat_ui_coverage', { code: current }).catch(() => null);
+      const cov = await invoke<{ known: number; total: number }>('chat_ui_coverage', { code: current }).catch(() => null);
       if (cov && cov.known < cov.total) {
         const missing = cov.total - cov.known;
         const status = h('p', { class: 'muted small' }, `${cov.known} of ${cov.total} interface texts are translated.`);
@@ -68,7 +68,7 @@ function languageCard(): HTMLElement {
             if (!state.model) return toast('Choose a model first.', 'error');
             clear(status, h('span', { class: 'dots' }), ` Translating ${missing} texts…`);
             try {
-              const after = await tauriInvoke<{ known: number; total: number }>('chat_translate_ui', { model: state.model, code: current });
+              const after = await invoke<{ known: number; total: number }>('chat_translate_ui', { model: state.model, code: current });
               toast(`${after.known} of ${after.total} translated. Reloading…`);
               setTimeout(() => location.reload(), 900);
             } catch (e) {

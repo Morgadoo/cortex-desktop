@@ -3,7 +3,6 @@ import type { Provider } from '../core/api';
 import { switchInput } from '../ui/ui';
 import { reloadModels } from '../core/models';
 import { row } from './row';
-import { tauriInvoke } from '../../../shared/tauri';
 import { api } from '../core/api';
 import { h } from '../ui/h';
 import { icon } from '../ui/icons';
@@ -11,11 +10,11 @@ import { toast } from '../ui/overlay';
 import { state } from '../core/state';
 import { card } from '../ui/ui';
 import { acpCard, embeddingCard, extractionCard, localModelsCard, mediaCard, searchCard } from './models';
-import { call, reported, shown } from '../core/call';
+import { call, invoke, reported, shown } from '../core/call';
 
 /** The model a reply switches to, once, when its own fails before answering. */
 export async function backupModelCard(): Promise<HTMLElement> {
-  const current = await tauriInvoke<string | null>('chat_backup_model').catch(() => null);
+  const current = await invoke<string | null>('chat_backup_model').catch(() => null);
   const select = h(
     'select',
     { class: 'input' },
@@ -38,7 +37,7 @@ export async function backupModelCard(): Promise<HTMLElement> {
 
 /** The model that reviews what the assistant writes for itself, before the user decides. */
 export async function reviewModelCard(): Promise<HTMLElement> {
-  const current = await tauriInvoke<string | null>('chat_review_model').catch(() => null);
+  const current = await invoke<string | null>('chat_review_model').catch(() => null);
   const select = h(
     'select',
     { class: 'input' },
@@ -61,7 +60,7 @@ export async function reviewModelCard(): Promise<HTMLElement> {
 
 /** Auto (Onyx's model router): a fast and a strong model, picked per message. */
 export async function autoModelCard(): Promise<HTMLElement> {
-  const [fast, strong] = await tauriInvoke<[string | null, string | null]>('chat_router_models').catch(() => [null, null] as [null, null]);
+  const [fast, strong] = await invoke<[string | null, string | null]>('chat_router_models').catch(() => [null, null] as [null, null]);
   const choices = state.models.filter((m) => m.reference !== 'auto/router');
   const pick = (current: string | null) =>
     h(

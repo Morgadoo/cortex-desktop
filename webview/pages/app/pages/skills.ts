@@ -1,5 +1,4 @@
 /** The Skills page, the skill editor and catalogues, and teaching a task by recording it. */
-import { tauriInvoke } from '../../../shared/tauri';
 import { api, type Skill } from '../core/api';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
@@ -7,7 +6,7 @@ import { confirmDialog, modal, popover, promptText, toast } from '../ui/overlay'
 import { clockHour12 } from '../core/clock';
 import { state } from '../core/state';
 import { button, emptyState, modalHeader, pageHeader, switchInput, tabs } from '../ui/ui';
-import { call, callQuiet, reported, shown } from '../core/call';
+import { call, callQuiet, invoke, reported, shown } from '../core/call';
 import { openSkillCatalog } from './skill-catalog';
 
 // ---------------------------------------------------------------------------------------------
@@ -63,7 +62,7 @@ export function editSkill(skill: Skill | null, onSaved: (skills: Skill[]) => voi
               class: 'btn btn-secondary',
               on: {
                 click: async () => {
-                  const versions = await tauriInvoke<{ id: string; description: string; body: string }[]>('chat_skill_history', { name: skill.name });
+                  const versions = await invoke<{ id: string; description: string; body: string }[]>('chat_skill_history', { name: skill.name });
                   if (!versions.length) return void toast('No earlier versions yet: each save keeps the one it replaces.');
                   const when = (id: string) => {
                     const m = id.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/);
@@ -89,7 +88,7 @@ export function editSkill(skill: Skill | null, onSaved: (skills: Skill[]) => voi
                                 class: 'btn btn-secondary btn-sm',
                                 on: {
                                   click: async () => {
-                                    onSaved(await tauriInvoke('chat_restore_skill', { name: skill.name, version: v.id }));
+                                    onSaved(await invoke('chat_restore_skill', { name: skill.name, version: v.id }));
                                     toast('Restored. The version it replaced is kept.');
                                     closeHistory();
                                     close();
@@ -354,7 +353,7 @@ export class SkillsPage {
         for (const e of picked) {
           toast(`Importing ${e.name}…`);
           try {
-            await tauriInvoke('chat_import_plugin', { link: e.link });
+            await invoke('chat_import_plugin', { link: e.link });
             done.push(e.name);
           } catch (err) {
             toast(`${e.name}: ${String(err)}`, 'error');
@@ -580,7 +579,7 @@ export function reviewRecording(status: { seconds: number; steps: number }) {
         if (!state.model) return void (error.textContent = 'Choose a model that reads images first.');
         clear(error, h('span', { class: 'dots' }), ` ${state.model} is looking at the steps…`);
         try {
-          const draft = await tauriInvoke<{ name: string; description: string; body: string }>('chat_record_draft', { model: state.model, note: note.value });
+          const draft = await invoke<{ name: string; description: string; body: string }>('chat_record_draft', { model: state.model, note: note.value });
           close();
           void editSkill(
             { ...draft, origin: 'user' } as Skill,

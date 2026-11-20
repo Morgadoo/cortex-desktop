@@ -8,7 +8,7 @@ import './code-blocks';
 import { openSearchMode } from '../chat/searchmode';
 import { actionFor } from '../core/shortcuts';
 import { api, type ApprovalRequest, type ChatEvent } from '../core/api';
-import { listen, tauriInvoke } from '../../../shared/tauri';
+import { listen } from '../../../shared/tauri';
 import { recordStepTimes } from '../chat/transcript';
 import { refreshConversations } from '../chat/send';
 import { composer } from '../chat/composer/index';
@@ -40,7 +40,7 @@ import { applyEvent, changed, finishNotificationsOn, finishSoundOn, navigate, pl
 import { startFluentEmoji } from '../ui/emoji-fluent';
 import { refreshAudioSettings } from '../voice/audio';
 import { workdir } from '../core/prefs';
-import { callQuiet, reported, shown } from '../core/call';
+import { callQuiet, invoke, reported, shown } from '../core/call';
 import { openSearch } from './search';
 import { renderSidebar } from './sidebar';
 import { switchMode } from './nav';
@@ -126,7 +126,7 @@ type AppLink = { kind: 'new'; prompt: string; model: string | null; mode: 'work'
 
 /** Applies a link that opened the app or arrived while it ran. */
 async function takeLink() {
-  const link = await tauriInvoke<AppLink | null>('chat_take_link').catch(() => null);
+  const link = await invoke<AppLink | null>('chat_take_link').catch(() => null);
   if (!link) return;
   if (link.kind === 'open') {
     if (!state.conversations.some((c) => c.id === link.conversationId)) await refreshConversations();

@@ -1,5 +1,5 @@
 /** Apps: every mini app the assistant built, each running live in its own sandbox. */
-import { tauriInvoke } from '../../../shared/tauri';
+import { invoke } from '../core/call';
 import { appFrame, openAppWindow } from '../canvas/canvas';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
@@ -42,7 +42,7 @@ export class AppsPage {
   }
 
   private async loadDocs() {
-    this.canvases = (await tauriInvoke<{ id: string; title: string; kind: string; conversationId: string }[]>('chat_list_canvases').catch(() => [])).filter((c) => c.kind !== 'app');
+    this.canvases = (await invoke<{ id: string; title: string; kind: string; conversationId: string }[]>('chat_list_canvases').catch(() => [])).filter((c) => c.kind !== 'app');
     this.renderDocs();
   }
 
@@ -52,7 +52,7 @@ export class AppsPage {
       this.docs,
       shown.length
         ? shown.map((c) => {
-            const exportBtn = button({ variant: 'subtle', size: 'sm', icon: 'download', label: 'Download', onClick: () => void tauriInvoke<boolean>('chat_export_canvas', { id: c.id }).catch(() => false) });
+            const exportBtn = button({ variant: 'subtle', size: 'sm', icon: 'download', label: 'Download', onClick: () => void invoke<boolean>('chat_export_canvas', { id: c.id }).catch(() => false) });
             const chat = button({ variant: 'subtle', size: 'sm', icon: 'chat', label: 'Open', onClick: () => navigate({ kind: 'chat', id: c.conversationId }) });
             return h(
               'div',
@@ -68,7 +68,7 @@ export class AppsPage {
   }
 
   private async load() {
-    const apps = await tauriInvoke<AppCanvas[]>('chat_list_apps');
+    const apps = await invoke<AppCanvas[]>('chat_list_apps');
     if (!apps.length) {
       clear(this.grid, emptyState('apps', 'No apps yet', 'Ask the assistant to build a calculator, a game, a form or a dashboard. It runs here, sandboxed.'));
       return;

@@ -1,5 +1,5 @@
 /** Audio: speech-to-text for voice input and text-to-speech for reading answers aloud. */
-import { tauriInvoke } from '../../../shared/tauri';
+import { invoke } from '../core/call';
 
 export interface SttSettings {
   engine: 'provider' | 'builtin' | 'hex' | 'openai' | 'elevenlabs' | 'off';
@@ -29,16 +29,16 @@ export interface AudioView {
 type SpeechOut = { kind: 'audio'; data: string; mime: string } | { kind: 'browser'; text: string; rate: number; voice: string };
 
 export const audioApi = {
-  get: () => tauriInvoke<AudioView>('chat_audio_settings'),
+  get: () => invoke<AudioView>('chat_audio_settings'),
   save: (settings: AudioView['settings'], keys: { sttKey?: string; ttsKey?: string; clearSttKey?: boolean; clearTtsKey?: boolean }) =>
-    tauriInvoke<AudioView>('chat_save_audio_settings', {
+    invoke<AudioView>('chat_save_audio_settings', {
       settings,
       sttKey: keys.sttKey || null,
       ttsKey: keys.ttsKey || null,
       clearSttKey: keys.clearSttKey ?? false,
       clearTtsKey: keys.clearTtsKey ?? false,
     }),
-  voices: (engine: string, baseUrl: string) => tauriInvoke<[string, string][]>('chat_audio_voices', { engine, baseUrl }),
+  voices: (engine: string, baseUrl: string) => invoke<[string, string][]>('chat_audio_voices', { engine, baseUrl }),
 };
 
 /** The settings, cached for the composer (auto-send) and replies (auto-play). */
@@ -109,7 +109,7 @@ let fallbackNoticeShown = false;
 export async function speakText(text: string): Promise<Playback> {
   let out: SpeechOut;
   try {
-    out = await tauriInvoke<SpeechOut>('chat_speak', { text });
+    out = await invoke<SpeechOut>('chat_speak', { text });
   } catch (e) {
     if (!('speechSynthesis' in window)) throw new Error(`Reading aloud failed: ${shortError(e)}. Settings → Audio chooses another voice.`);
     // Keep talking: the system voice stands in, and the reason is shown once.

@@ -1,5 +1,4 @@
 /** Workflows: reusable step-by-step recipes, run from the composer's + menu. */
-import { tauriInvoke } from '../../../shared/tauri';
 import type { Workflow } from '../core/api';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
@@ -7,15 +6,15 @@ import { confirmDialog, modal, toast } from '../ui/overlay';
 import { clockHour12 } from '../core/clock';
 import { historyButton } from '../canvas/versions';
 import { button, modalHeader, pageHeader } from '../ui/ui';
-import { reported } from '../core/call';
+import { invoke, reported } from '../core/call';
 
 export const workflowsApi = {
-  list: () => tauriInvoke<Workflow[]>('chat_workflows'),
-  save: (workflow: Workflow) => tauriInvoke<Workflow[]>('chat_save_workflow', { workflow }),
-  remove: (id: string) => tauriInvoke<Workflow[]>('chat_delete_workflow', { id }),
+  list: () => invoke<Workflow[]>('chat_workflows'),
+  save: (workflow: Workflow) => invoke<Workflow[]>('chat_save_workflow', { workflow }),
+  remove: (id: string) => invoke<Workflow[]>('chat_delete_workflow', { id }),
   /** Marks `value` (a workflow's fields) as the version that runs, or clears the mark. */
-  setProduction: (id: string, value: Record<string, unknown> | null) => tauriInvoke('chat_set_production', { kind: 'workflows', id, value }),
-  draft: (request: string, current: Workflow | null) => tauriInvoke<Workflow>('chat_draft_workflow', { request, current }),
+  setProduction: (id: string, value: Record<string, unknown> | null) => invoke('chat_set_production', { kind: 'workflows', id, value }),
+  draft: (request: string, current: Workflow | null) => invoke<Workflow>('chat_draft_workflow', { request, current }),
 };
 
 /** An approval step (OpenBot's workflow approvals): the run stops there until the user approves. */

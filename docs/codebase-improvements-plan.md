@@ -30,7 +30,7 @@ package is one or more commits there. Measured as section 7 describes:
 | Public functions in chat | About 1,060 | 841, 287 of them commands | Under 400 |
 | `Result<_, String>` in chat, outside `commands/` | About 420 | 419 | 0 below the entry points |
 | Hand edits to add a command | 4 to 5 | 1, plus a script | 1 |
-| Backend calls by string name | 287 | 165 | 0 |
+| Backend calls by string name | 287 | 0 unchecked: every name is checked against the generated command list | 0 |
 
 **Done**: phase 0 (0.1 to 0.8), phase 1 (1.1 to 1.6), 2.1 to 2.6, 2.8, 3.1 to 3.3,
 3.6 to 3.9 and 3.11.

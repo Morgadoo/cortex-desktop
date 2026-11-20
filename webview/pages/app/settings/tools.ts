@@ -1,12 +1,11 @@
 /** Settings → Permissions' own tools: hooks, custom tools and functions written in code. */
-import { tauriInvoke } from '../../../shared/tauri';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
 import { confirmDialog, modal, toast } from '../ui/overlay';
 import { historyButton } from '../canvas/versions';
 import { button, card, modalHeader, switchInput } from '../ui/ui';
 import { reloadModels } from '../core/models';
-import { call } from '../core/call';
+import { call, invoke } from '../core/call';
 
 interface HookDef {
   event: 'before_tool' | 'after_tool' | 'turn_end';
@@ -28,7 +27,7 @@ const HOOK_EVENTS: [HookDef['event'], string][] = [
  * that exits with code 2 blocks the call and tells the model why.
  */
 export async function hooksCard(): Promise<HTMLElement> {
-  let hooks = await tauriInvoke<HookDef[]>('chat_get_hooks').catch(() => [] as HookDef[]);
+  let hooks = await invoke<HookDef[]>('chat_get_hooks').catch(() => [] as HookDef[]);
   const list = h('div', { class: 'hook-list' });
   const save = async () => {
     try {
@@ -144,13 +143,13 @@ export async function customToolsCard(): Promise<HTMLElement> {
                 'div',
                 { class: 'row-actions' },
                 h('button', { class: 'link-btn', on: { click: () => void editTool(t, render) } }, 'Edit'),
-                switchInput(t.enabled, (v) => void tauriInvoke<CustomTool[]>('chat_save_custom_tool', { tool: { ...t, enabled: v } }).then(render))
+                switchInput(t.enabled, (v) => void invoke<CustomTool[]>('chat_save_custom_tool', { tool: { ...t, enabled: v } }).then(render))
               )
             )
           )
         : h('p', { class: 'muted' }, 'No tools of your own yet.')
     );
-  render(await tauriInvoke<CustomTool[]>('chat_custom_tools'));
+  render(await invoke<CustomTool[]>('chat_custom_tools'));
   const add = h('button', { class: 'btn btn-primary' }, icon('plus', 15), 'New tool');
   add.addEventListener('click', () => void editTool(null, render));
   return card(
@@ -193,7 +192,7 @@ function editTool(existing: CustomTool | null, onSaved: (tools: CustomTool[]) =>
       const tool = current();
       if (!tool) return false;
       try {
-        onSaved(await tauriInvoke<CustomTool[]>('chat_save_custom_tool', { tool }));
+        onSaved(await invoke<CustomTool[]>('chat_save_custom_tool', { tool }));
         error.textContent = '';
         if (andClose) close();
         return true;
@@ -214,7 +213,7 @@ function editTool(existing: CustomTool | null, onSaved: (tools: CustomTool[]) =>
       output.textContent = 'Running…';
       if (!output.isConnected) sample.after(output);
       try {
-        output.textContent = await tauriInvoke<string>('chat_test_custom_tool', { name: name.value.trim(), args });
+        output.textContent = await invoke<string>('chat_test_custom_tool', { name: name.value.trim(), args });
         output.classList.remove('failed');
       } catch (e) {
         output.textContent = String(e);
@@ -229,7 +228,7 @@ function editTool(existing: CustomTool | null, onSaved: (tools: CustomTool[]) =>
             on: {
               click: async () => {
                 if (await confirmDialog('Delete tool?', `“${existing.name}” will no longer be offered to the assistant.`)) {
-                  onSaved(await tauriInvoke<CustomTool[]>('chat_delete_custom_tool', { name: existing.name }));
+                  onSaved(await invoke<CustomTool[]>('chat_delete_custom_tool', { name: existing.name }));
                   close();
                 }
               },
@@ -317,7 +316,7 @@ export async function functionsCard(): Promise<HTMLElement> {
                 switchInput(
                   f.enabled,
                   (v) =>
-                    void tauriInvoke<CortexFunction[]>('chat_save_function', { function: { ...f, enabled: v } }).then((x) => {
+                    void invoke<CortexFunction[]>('chat_save_function', { function: { ...f, enabled: v } }).then((x) => {
                       render(x);
                       void reloadModels();
                     })
@@ -327,7 +326,7 @@ export async function functionsCard(): Promise<HTMLElement> {
           )
         : h('p', { class: 'muted' }, 'No functions yet.')
     );
-  render(await tauriInvoke<CortexFunction[]>('chat_functions').catch(() => []));
+  render(await invoke<CortexFunction[]>('chat_functions').catch(() => []));
   const addFilter = button({
     variant: 'secondary',
     icon: 'plus',
@@ -365,7 +364,7 @@ function editFunction(f: CortexFunction, onSaved: (all: CortexFunction[]) => voi
     const current = (): CortexFunction => ({ id: id.value.trim(), name: name.value.trim(), kind: f.kind, description: description.value.trim(), language: language.value as CortexFunction['language'], code: code.value, enabled: f.enabled });
     const save = async () => {
       try {
-        onSaved(await tauriInvoke<CortexFunction[]>('chat_save_function', { function: current() }));
+        onSaved(await invoke<CortexFunction[]>('chat_save_function', { function: current() }));
         void reloadModels();
         close();
       } catch (e) {
@@ -376,7 +375,7 @@ function editFunction(f: CortexFunction, onSaved: (all: CortexFunction[]) => voi
       output.textContent = 'Running…';
       if (!output.isConnected) sample.closest('.freq-row')?.after(output);
       try {
-        output.textContent = await tauriInvoke<string>('chat_test_function', { function: current(), sample: sample.value });
+        output.textContent = await invoke<string>('chat_test_function', { function: current(), sample: sample.value });
         output.classList.remove('failed');
       } catch (e) {
         output.textContent = String(e);
@@ -391,7 +390,7 @@ function editFunction(f: CortexFunction, onSaved: (all: CortexFunction[]) => voi
             on: {
               click: async () => {
                 if (await confirmDialog('Delete function?', `“${f.name}” will stop running.`, 'Delete')) {
-                  onSaved(await tauriInvoke<CortexFunction[]>('chat_delete_function', { id: f.id }));
+                  onSaved(await invoke<CortexFunction[]>('chat_delete_function', { id: f.id }));
                   void reloadModels();
                   close();
                 }

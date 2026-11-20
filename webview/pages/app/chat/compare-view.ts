@@ -1,12 +1,11 @@
 /** Comparing models side by side: the comparison view, blind comparison and the leaderboard. */
-import { tauriInvoke } from '../../../shared/tauri';
 import { api, type Turn } from '../core/api';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
 import { confirmDialog, modal, toast } from '../ui/overlay';
 import { navigate, state } from '../core/state';
 import { flag } from '../core/prefs';
-import { callQuiet } from '../core/call';
+import { callQuiet, invoke } from '../core/call';
 import { renderLiveTurn } from './live-turn';
 import { modelName, refreshConversations, setCompareModels } from './send';
 import { renderApprovals, renderQuestion } from './approvals';
@@ -24,7 +23,7 @@ export function setBlindCompare(on: boolean) {
 
 /** Your models ranked by the comparisons you decided (Elo). */
 export async function openLeaderboard() {
-  const board = await tauriInvoke<{ model: string; rating: number; wins: number; losses: number }[]>('chat_arena_board').catch(() => []);
+  const board = await invoke<{ model: string; rating: number; wins: number; losses: number }[]>('chat_arena_board').catch(() => []);
   await modal((close) => {
     const reset = h(
       'button',
@@ -33,7 +32,7 @@ export async function openLeaderboard() {
         on: {
           click: async () => {
             if (await confirmDialog('Reset the leaderboard?', 'Every recorded comparison is forgotten.', 'Reset')) {
-              await tauriInvoke('chat_arena_reset');
+              await invoke('chat_arena_reset');
               close();
               toast('Leaderboard reset.');
             }

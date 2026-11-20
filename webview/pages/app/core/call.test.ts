@@ -31,14 +31,14 @@ const rejection = async (pending: Promise<unknown>) => {
 test('call resolves to the result and shows nothing', async () => {
   toasts.length = 0;
   invoke = (command, args) => Promise.resolve({ command, args });
-  assert.deepEqual(await call('chat_x', { a: 1 }), { command: 'chat_x', args: { a: 1 } });
+  assert.deepEqual(await call('chat_notify', { a: 1 }), { command: 'chat_notify', args: { a: 1 } });
   assert.deepEqual(toasts, []);
 });
 
 test('call shows a failure as an error toast and rejects with the same error', async () => {
   toasts.length = 0;
   invoke = () => Promise.reject('No such chat');
-  assert.equal(await rejection(call('chat_x')), 'No such chat');
+  assert.equal(await rejection(call('chat_notify')), 'No such chat');
   assert.deepEqual(toasts, ['toast toast-error: No such chat']);
 });
 
@@ -54,6 +54,6 @@ test('reported shows the failure of any pending work, once, and passes success t
 test('callQuiet turns a failure into undefined without a toast', async () => {
   toasts.length = 0;
   invoke = () => Promise.reject('offline');
-  assert.equal(await callQuiet('chat_x'), undefined);
+  assert.equal(await callQuiet('chat_notify'), undefined);
   assert.deepEqual(toasts, []);
 });

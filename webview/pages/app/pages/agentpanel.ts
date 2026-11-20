@@ -3,7 +3,6 @@
  * notebook) and Scheduled (its tasks), each one click from editing. Shown on the agent's page and
  * on its new-chat page.
  */
-import { tauriInvoke } from '../../../shared/tauri';
 import { api, type Agent } from '../core/api';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
@@ -12,7 +11,7 @@ import { timeLabel } from '../core/clock';
 import { changed, state } from '../core/state';
 import { editTask } from './tasks';
 import { button, modalHeader } from '../ui/ui';
-import { call, reported, shown } from '../core/call';
+import { call, invoke, reported, shown } from '../core/call';
 
 interface Doc {
   id: string;
@@ -55,7 +54,7 @@ function editInstructions(agent: Agent, done: () => void) {
 
 /** The agent's own files: a library made for it on first use, searched before it answers. */
 async function filesLibrary(agent: Agent): Promise<Library> {
-  return tauriInvoke<Library>('chat_agent_files', { id: agent.id });
+  return invoke<Library>('chat_agent_files', { id: agent.id });
 }
 
 function viewFiles(agent: Agent, done: () => void) {
@@ -80,7 +79,7 @@ function viewFiles(agent: Agent, done: () => void) {
                     title: 'Remove',
                     on: {
                       click: async () => {
-                        library = await tauriInvoke<Library>('chat_remove_document', { libraryId: library!.id, documentId: d.id });
+                        library = await invoke<Library>('chat_remove_document', { libraryId: library!.id, documentId: d.id });
                         render();
                         done();
                       },
@@ -222,11 +221,11 @@ export function agentPanel(agentId: string): HTMLElement {
     const agent = state.agents.find((a) => a.id === agentId);
     if (!agent) return void clear(el);
     const [files, notebook, tasks] = await Promise.all([
-      tauriInvoke<Library[]>('chat_list_libraries')
+      invoke<Library[]>('chat_list_libraries')
         .then((ls) => ls.filter((l) => agent.libraries?.includes(l.id)).reduce((n, l) => n + l.documents.length, 0))
         .catch(() => 0),
       api.agentNotebook(agent.id).catch(() => ''),
-      tauriInvoke<{ agentId?: string | null; enabled: boolean }[]>('chat_list_tasks')
+      invoke<{ agentId?: string | null; enabled: boolean }[]>('chat_list_tasks')
         .then((t) => t.filter((x) => x.agentId === agent.id).length)
         .catch(() => 0),
     ]);

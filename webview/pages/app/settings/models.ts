@@ -1,11 +1,11 @@
 /** Settings → Providers' models: web search, embeddings, document extraction, built-in models, media models and coding agents. */
-import { listen, tauriInvoke } from '../../../shared/tauri';
+import { listen } from '../../../shared/tauri';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
 import { confirmDialog, toast } from '../ui/overlay';
 import { fileSize } from '../core/format';
 import { button, card, switchInput } from '../ui/ui';
-import { call, reported, shown } from '../core/call';
+import { call, invoke, reported, shown } from '../core/call';
 import { reloadModels } from '../core/models';
 import { row } from './row';
 
@@ -17,7 +17,7 @@ interface SearchSettings {
 
 /** Which engine `web_search` uses: keyless by default, or SearXNG, Brave or Tavily. */
 export async function searchCard(): Promise<HTMLElement> {
-  let current = await tauriInvoke<SearchSettings>('chat_search_settings');
+  let current = await invoke<SearchSettings>('chat_search_settings');
   const ENGINES: [SearchSettings['engine'], string, string][] = [
     ['auto', 'Keyless (default)', 'Bing results, with DuckDuckGo as a fallback. No account needed.'],
     ['searxng', 'SearXNG', 'Your own or a trusted instance; private and free. JSON output must be enabled on it.'],
@@ -80,7 +80,7 @@ interface EmbeddingSettings {
 
 /** Semantic search for libraries: an OpenAI-compatible embedding model, fused with keyword search. */
 export async function embeddingCard(): Promise<HTMLElement> {
-  let current = await tauriInvoke<EmbeddingSettings>('chat_embedding_settings');
+  let current = await invoke<EmbeddingSettings>('chat_embedding_settings');
   const PRESETS: [string, string, string][] = [
     ['Built-in (MiniLM)', 'builtin', 'minilm-l6'],
     ['Ollama (this computer)', 'http://localhost:11434/v1', 'nomic-embed-text'],
@@ -165,7 +165,7 @@ export async function embeddingCard(): Promise<HTMLElement> {
   const save = h('button', { class: 'btn btn-primary' }, 'Save');
   const indexNow = h('button', { class: 'btn btn-secondary' }, 'Embed documents now');
   const persist = async () => {
-    current = await tauriInvoke<EmbeddingSettings>('chat_save_embedding_settings', {
+    current = await invoke<EmbeddingSettings>('chat_save_embedding_settings', {
       settings: {
         enabled,
         baseUrl: baseUrl.value,
@@ -202,7 +202,7 @@ export async function embeddingCard(): Promise<HTMLElement> {
     qdrantStatus.textContent = 'Checking…';
     try {
       await persist();
-      qdrantStatus.textContent = `Connected: ${await tauriInvoke<string>('chat_check_vector_store')}.`;
+      qdrantStatus.textContent = `Connected: ${await invoke<string>('chat_check_vector_store')}.`;
     } catch (e) {
       qdrantStatus.textContent = String(e);
     }
@@ -212,7 +212,7 @@ export async function embeddingCard(): Promise<HTMLElement> {
     status.textContent = 'Embedding library documents…';
     try {
       await persist();
-      const n = await tauriInvoke<number>('chat_index_libraries');
+      const n = await invoke<number>('chat_index_libraries');
       status.textContent = n ? `Embedded ${n} passages. Library searches now match by meaning too.` : 'Every document is already embedded.';
     } catch (e) {
       status.textContent = String(e);
@@ -282,7 +282,7 @@ interface MediaModels {
 /** ACP agents (Agent Client Protocol): coding agents that answer as models, with their own tools. */
 export async function acpCard(): Promise<HTMLElement> {
   type Acp = { id: string; name: string; command: string; args: string[] };
-  let all = await tauriInvoke<Acp[]>('chat_acp_agents', { agents: null }).catch(() => [] as Acp[]);
+  let all = await invoke<Acp[]>('chat_acp_agents', { agents: null }).catch(() => [] as Acp[]);
   const list = h('div', { class: 'hook-list' });
   const own = () => all.filter((a) => !['claude-code', 'codex', 'gemini'].includes(a.id) || a.command.includes('/'));
   const save = async (next: Acp[]) => {
@@ -342,7 +342,7 @@ export async function acpCard(): Promise<HTMLElement> {
 /** Which engine reads documents: the built-in readers, Apache Tika or Docling (Open WebUI's extraction engines). */
 export async function extractionCard(): Promise<HTMLElement> {
   type Extraction = { engine: string; url: string };
-  const now = await tauriInvoke<Extraction>('chat_extraction', { change: null }).catch(() => ({ engine: 'builtin', url: '' }));
+  const now = await invoke<Extraction>('chat_extraction', { change: null }).catch(() => ({ engine: 'builtin', url: '' }));
   const engine = h(
     'select',
     { class: 'input select-sm' },
@@ -402,7 +402,7 @@ export async function localModelsCard(): Promise<HTMLElement> {
   const progress = new Map<string, { done: number; total: number }>();
   const size = (mb: number) => fileSize(mb * 1_000_000);
   const draw = async () => {
-    const list = await tauriInvoke<LocalModel[]>('chat_local_models').catch(() => []);
+    const list = await invoke<LocalModel[]>('chat_local_models').catch(() => []);
     const row = (m: LocalModel) => {
       const p = progress.get(m.id);
       const pct = p?.total ? Math.floor((p.done / p.total) * 100) : 0;
@@ -418,7 +418,7 @@ export async function localModelsCard(): Promise<HTMLElement> {
             },
           })
         : m.downloading || p
-          ? button({ variant: 'secondary', label: 'Cancel', onClick: () => void tauriInvoke('chat_cancel_local_model', { id: m.id }) })
+          ? button({ variant: 'secondary', label: 'Cancel', onClick: () => void invoke('chat_cancel_local_model', { id: m.id }) })
           : button({
               variant: 'primary',
               label: 'Download',
@@ -485,7 +485,7 @@ export async function localModelsCard(): Promise<HTMLElement> {
 
 /** Which models make images and transcribe voice input. */
 export async function mediaCard(): Promise<HTMLElement> {
-  const media = await tauriInvoke<MediaModels>('chat_media_models');
+  const media = await invoke<MediaModels>('chat_media_models');
   const image = h('input', { class: 'input', value: media.imageModel ?? '', placeholder: 'xai/grok-imagine-image, openai/gpt-image-1' });
   const speech = h('input', { class: 'input', value: media.speechModel ?? '', placeholder: 'openai/gpt-4o-mini-transcribe, groq/whisper-large-v3-turbo' });
   const voice = h('input', { class: 'input', value: media.voiceModel ?? '', placeholder: 'xai/grok-tts, openai/gpt-4o-mini-tts' });

@@ -1,5 +1,4 @@
 /** The + menu: attach, tools, connectors, image creation and the other options for the next message. */
-import { tauriInvoke } from '../../../../shared/tauri';
 import { api } from '../../core/api';
 import { clear } from '../../ui/h';
 import { popover, toast } from '../../ui/overlay';
@@ -12,7 +11,7 @@ import { navigate, state } from '../../core/state';
 import { button } from '../../ui/ui';
 import { grantFolder } from './pickers';
 import { Composer } from './composer';
-import { call } from '../../core/call';
+import { call, invoke } from '../../core/call';
 
 const methods = {
   /** Vibe's + menu: upload, then a flyout for each kind of context. */
@@ -175,7 +174,7 @@ const methods = {
       ];
     };
     const libraries = async () => {
-      const libs = await tauriInvoke<{ id: string; name: string; documents: unknown[] }[]>('chat_list_libraries');
+      const libs = await invoke<{ id: string; name: string; documents: unknown[] }[]>('chat_list_libraries');
       return [
         heading('Search a library'),
         ...(libs.length
@@ -230,7 +229,7 @@ const methods = {
     // Files attached lately (LibreChat's recent files): attached again from what was read then.
     const recent = async () => {
       type Recent = { name: string; text: string; image?: { mediaType: string; data: string }; usedAt: string };
-      const files = await tauriInvoke<Recent[]>('chat_recent_files');
+      const files = await invoke<Recent[]>('chat_recent_files');
       const ago = (iso: string) => {
         const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
         return days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`;
@@ -248,7 +247,7 @@ const methods = {
             )
           : [empty('Files you attach show here.')]),
         files.length ? sep() : null,
-        files.length ? entry('trash', 'Clear the list', null, () => void tauriInvoke('chat_forget_recent_file', { index: null }).then(() => toast('Recent files cleared.'))) : null,
+        files.length ? entry('trash', 'Clear the list', null, () => void invoke('chat_forget_recent_file', { index: null }).then(() => toast('Recent files cleared.'))) : null,
       ];
     };
     const workflows = async () => {

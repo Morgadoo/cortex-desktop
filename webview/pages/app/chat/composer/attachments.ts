@@ -1,5 +1,4 @@
 /** What goes with a message: files, images, a quote and image options, shown as chips. */
-import { tauriInvoke } from '../../../../shared/tauri';
 import { api } from '../../core/api';
 import { clear } from '../../ui/h';
 import { popover, toast } from '../../ui/overlay';
@@ -11,7 +10,7 @@ import { h } from '../../ui/h';
 import { icon } from '../../ui/icons';
 import { IMAGE_TEMPLATES } from '../send';
 import { Composer, IMAGE_TYPES, readImage } from './composer';
-import { call, reported } from '../../core/call';
+import { call, invoke, reported } from '../../core/call';
 
 const methods = {
   /** Turns image mode on (with the image tool) or off. */
@@ -321,7 +320,7 @@ const methods = {
           if (file.size > 200 * 1024 * 1024) throw new Error(`${file.name} is larger than 200 MB.`);
           toast(`Reading ${file.name}…`);
           const data = await blobToBase64(file);
-          const v = await tauriInvoke<{ seconds: number; frames: { at: number; data: string }[]; transcript: string | null; note: string | null }>('chat_read_video', { name: file.name, data });
+          const v = await invoke<{ seconds: number; frames: { at: number; data: string }[]; transcript: string | null; note: string | null }>('chat_read_video', { name: file.name, data });
           const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
           for (const f of v.frames) this.attachments.push({ name: `${file.name} · ${clock(f.at)}`, text: '', image: { mediaType: 'image/jpeg', data: f.data }, file: true });
           const about = `Video ${file.name}, ${clock(v.seconds)} long: ${v.frames.length} frames are attached as images, taken at ${v.frames.map((f) => clock(f.at)).join(', ')}.`;
@@ -338,7 +337,7 @@ const methods = {
           if (file.size > 25 * 1024 * 1024) throw new Error(`${file.name} is larger than 25 MB.`);
           toast(`Transcribing ${file.name}…`);
           const data = await blobToBase64(file);
-          const text = await tauriInvoke<string>('chat_transcribe', { audio: data, mime: file.type || 'audio/mpeg' });
+          const text = await invoke<string>('chat_transcribe', { audio: data, mime: file.type || 'audio/mpeg' });
           this.attachments.push({ name: `${file.name} (transcript)`, text, file: true });
         } catch (e) {
           toast(`${file.name}: ${String(e)}`, 'error');
@@ -349,7 +348,7 @@ const methods = {
       if (/\.(pdf|docx|pptx|odt|odp|zip)$/i.test(file.name)) {
         try {
           const data = await blobToBase64(file);
-          const text = await tauriInvoke<string>('chat_read_document', { name: file.name, data });
+          const text = await invoke<string>('chat_read_document', { name: file.name, data });
           this.attachments.push({ name: file.name, text: text.length > 400_000 ? `${text.slice(0, 400_000)}\n… (cut; add the file to a library to search all of it)` : text, file: true });
         } catch (e) {
           toast(`${file.name}: ${String(e)}`, 'error');

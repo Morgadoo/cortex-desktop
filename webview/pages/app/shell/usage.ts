@@ -1,5 +1,5 @@
 /** The usage dialog: tokens and cost by model, project and day. */
-import { tauriInvoke } from '../../../shared/tauri';
+import { invoke } from '../core/call';
 import { clear, h } from '../ui/h';
 import { modal } from '../ui/overlay';
 import { modalHeader } from '../ui/ui';
@@ -31,7 +31,7 @@ export function openUsageBreakdown() {
           : h('p', { class: 'muted' }, 'Nothing yet this month.')
       );
     };
-    void tauriInvoke<[Line[], Line[]]>('chat_usage_breakdown')
+    void invoke<[Line[], Line[]]>('chat_usage_breakdown')
       .then(([models, agents]) => clear(body, table('By model', models), table('By agent', agents)))
       .catch((e) => clear(body, h('p', { class: 'error-text' }, String(e))));
     return h('div', { class: 'dialog-small wide' }, modalHeader('Usage this month', close, { flush: true }), h('p', { class: 'muted' }, 'Tokens and cost of the chats active this month. Cost is shown where the provider reports it.'), body);

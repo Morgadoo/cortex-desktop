@@ -3,14 +3,13 @@
  * all chats (LobeHub's resource library). Canvases, apps and sheets open in the side panel or as
  * text; images show as thumbnails; files can be saved anywhere.
  */
-import { tauriInvoke } from '../../../shared/tauri';
 import { workspaceVideo } from '../chat/coderun';
 import { appFrame, closePanel, openAppPanel, openSidePanel } from './canvas';
 import { splitSheets } from './sheet';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
 import { markdown } from '../ui/markdown';
-import { reportError } from '../core/call';
+import { invoke, reportError } from '../core/call';
 import { modal, toast } from '../ui/overlay';
 import { timeLabel } from '../core/clock';
 import { fileSize } from '../core/format';
@@ -51,7 +50,7 @@ async function openOutput(o: Output, inPanel: boolean) {
         icon: 'download',
         title: 'Save a copy',
         size: 'sm',
-        onClick: () => void tauriInvoke<boolean>('chat_save_output', { conversationId: o.conversationId, path: o.id }).then((saved) => saved && toast('File saved.')),
+        onClick: () => void invoke<boolean>('chat_save_output', { conversationId: o.conversationId, path: o.id }).then((saved) => saved && toast('File saved.')),
       });
       const head = h(
         'div',
@@ -65,7 +64,7 @@ async function openOutput(o: Output, inPanel: boolean) {
       let body: HTMLElement;
       if (o.kind === 'image') body = h('img', { src: fileUrl(o.conversationId, o.id), alt: o.title });
       else {
-        const text = await tauriInvoke<string>('chat_workspace_text', { conversationId: o.conversationId, path: o.id });
+        const text = await invoke<string>('chat_workspace_text', { conversationId: o.conversationId, path: o.id });
         body =
           ext === 'md' || ext === 'markdown'
             ? h('div', { class: 'markdown' }, markdown(text))
@@ -110,10 +109,10 @@ async function openOutput(o: Output, inPanel: boolean) {
       return;
     }
     if (o.kind === 'file') {
-      if (await tauriInvoke<boolean>('chat_save_output', { conversationId: o.conversationId, path: o.id })) toast('File saved.');
+      if (await invoke<boolean>('chat_save_output', { conversationId: o.conversationId, path: o.id })) toast('File saved.');
       return;
     }
-    const canvas = await tauriInvoke<{ id: string; title: string; kind: string; versions: { content: string }[] }>('chat_get_canvas', { id: o.id });
+    const canvas = await invoke<{ id: string; title: string; kind: string; versions: { content: string }[] }>('chat_get_canvas', { id: o.id });
     const content = canvas.versions[canvas.versions.length - 1]?.content ?? '';
     const body =
       canvas.kind === 'sheet'
@@ -224,7 +223,7 @@ export async function openOutputsPanel(conversationId: string) {
     'Outputs'
   );
   try {
-    const outputs = await tauriInvoke<Output[]>('chat_outputs', { conversationId });
+    const outputs = await invoke<Output[]>('chat_outputs', { conversationId });
     clear(list, outputs.length ? outputs.map((o) => card(o, false)) : h('p', { class: 'muted small' }, 'Nothing yet. Canvases, apps, sheets, generated images and files this chat makes show up here.'));
   } catch (e) {
     clear(list, h('p', { class: 'error-text' }, String(e)));
@@ -253,7 +252,7 @@ export class ResourcesPage {
       h('div', { class: 'toolbar' }, h('div', { class: 'search-wrap' }, icon('search', 16), search)),
       this.grid
     );
-    void tauriInvoke<Output[]>('chat_outputs', { conversationId: null })
+    void invoke<Output[]>('chat_outputs', { conversationId: null })
       .then((o) => {
         this.all = o;
         this.update();

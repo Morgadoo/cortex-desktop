@@ -10,7 +10,7 @@
  * as Whisper invents words ("you", "Thank you.") for silence.
  */
 
-import { tauriInvoke } from '../../../shared/tauri';
+import { invoke } from '../core/call';
 import type { Recording } from './dictation';
 import { blobToBase64 } from '../core/format';
 
@@ -47,7 +47,7 @@ export function liveTranscript(recording: Recording, onText: (text: string) => v
     busy = true;
     lastSeconds = seconds;
     try {
-      const text = await tauriInvoke<string>('chat_transcribe', { audio: await blobToBase64(wav), mime: wav.type, live: true });
+      const text = await invoke<string>('chat_transcribe', { audio: await blobToBase64(wav), mime: wav.type, live: true });
       if (!stopped && text.trim()) onText(text.trim());
     } catch {
       // A guess that fails is skipped; the final transcript reports real errors.

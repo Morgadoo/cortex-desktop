@@ -1,6 +1,5 @@
 /** Scheduled tasks: the list, its tabs and the task editor. */
 import { api, newId, type Frequency, type Task } from '../core/api';
-import { tauriInvoke } from '../../../shared/tauri';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
 import { confirmDialog, modal, toast } from '../ui/overlay';
@@ -8,7 +7,7 @@ import { clockHour12 } from '../core/clock';
 import { navigate, state } from '../core/state';
 import { button, modalHeader } from '../ui/ui';
 import { choice } from '../core/prefs';
-import { call, reported } from '../core/call';
+import { call, invoke, reported } from '../core/call';
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -430,7 +429,7 @@ export class TasksPage {
                       title: 'Remove',
                       on: {
                         click: async () => {
-                          const tasks = await tauriInvoke<Task[]>('chat_task_comment', { id: t.id, text: null, remove: i });
+                          const tasks = await invoke<Task[]>('chat_task_comment', { id: t.id, text: null, remove: i });
                           this.set(tasks);
                           render(tasks.find((x) => x.id === t.id) ?? task);
                         },

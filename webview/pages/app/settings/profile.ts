@@ -1,8 +1,7 @@
 /** Settings → Profile: the user's name and picture, sync, encryption, imports and the activity log. */
 import { row } from './row';
 import { switchInput } from '../ui/ui';
-import { call, reported, shown } from '../core/call';
-import { tauriInvoke } from '../../../shared/tauri';
+import { call, invoke, reported, shown } from '../core/call';
 import { api } from '../core/api';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
@@ -29,7 +28,7 @@ export function encryptionCard(): HTMLElement {
       } catch {
         // Already shown.
       }
-      render(await tauriInvoke<Status>('chat_encryption_status').catch(() => null));
+      render(await invoke<Status>('chat_encryption_status').catch(() => null));
     });
     clear(
       box,
@@ -48,7 +47,7 @@ export function encryptionCard(): HTMLElement {
     );
   };
   render(null);
-  void tauriInvoke<Status>('chat_encryption_status')
+  void invoke<Status>('chat_encryption_status')
     .then(render)
     .catch(() => undefined);
   return box;
@@ -87,7 +86,7 @@ export function importCodingSessions() {
         }
       },
     });
-    void tauriInvoke<CodingSession[]>('chat_find_coding_sessions')
+    void invoke<CodingSession[]>('chat_find_coding_sessions')
       .then((found) =>
         clear(
           list,
@@ -129,7 +128,7 @@ export function activityLogCard(): HTMLElement {
   const summary = h('p', { class: 'muted' }, 'Loading…');
   const range = h('select', { class: 'input', 'aria-label': 'Period' }, h('option', { value: '30' }, 'Last 30 days'), h('option', { value: '7' }, 'Last 7 days'), h('option', { value: '0' }, 'Everything kept'));
   const load = () =>
-    void tauriInvoke<{ count: number; since: string | null; approvals: number; denied: number; errors: number }>('chat_audit_summary')
+    void invoke<{ count: number; since: string | null; approvals: number; denied: number; errors: number }>('chat_audit_summary')
       .then((s) => {
         summary.textContent = s.count
           ? `${s.count} entries since ${new Date(s.since!).toLocaleDateString()}: ${s.count - s.approvals} tool calls (${s.errors} failed) and ${s.approvals} approval decisions (${s.denied} declined).`
@@ -407,7 +406,7 @@ function syncCard(onSynced: () => void): HTMLElement {
       } catch {
         // Already shown.
       }
-      view = await tauriInvoke<View>('chat_sync_settings').catch(() => view);
+      view = await invoke<View>('chat_sync_settings').catch(() => view);
       render();
     };
     clear(
@@ -434,7 +433,7 @@ function syncCard(onSynced: () => void): HTMLElement {
               label: 'Turn off',
               onClick: async () => {
                 if (!(await confirmDialog('Turn off sync?', 'This device stops syncing and forgets the passphrase. Nothing is deleted here or in the folder.'))) return;
-                view = await tauriInvoke<View>('chat_save_sync_settings', { folder: null, everyMinutes: 0, passphrase: null });
+                view = await invoke<View>('chat_save_sync_settings', { folder: null, everyMinutes: 0, passphrase: null });
                 render();
               },
             })
@@ -445,7 +444,7 @@ function syncCard(onSynced: () => void): HTMLElement {
     );
   };
   render();
-  void tauriInvoke<View>('chat_sync_settings')
+  void invoke<View>('chat_sync_settings')
     .then((v) => {
       view = v;
       render();

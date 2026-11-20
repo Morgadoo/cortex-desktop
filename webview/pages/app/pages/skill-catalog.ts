@@ -1,12 +1,11 @@
 /** Skill catalogues to search and add from, and publishing the user's own skills. */
-import { tauriInvoke } from '../../../shared/tauri';
 import { api, type Skill } from '../core/api';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
 import { modal, promptText, toast } from '../ui/overlay';
 import { state } from '../core/state';
 import { button, modalHeader } from '../ui/ui';
-import { call } from '../core/call';
+import { call, invoke } from '../core/call';
 
 interface CatalogSkill {
   catalog: string;
@@ -67,7 +66,7 @@ export async function openSkillCatalog(onAdded: () => void) {
     };
     const load = async (refresh: boolean) => {
       try {
-        const r = await tauriInvoke<{ catalogs: string[]; listings: CatalogSkill[]; errors: string[] }>('chat_skill_catalog', { refresh });
+        const r = await invoke<{ catalogs: string[]; listings: CatalogSkill[]; errors: string[] }>('chat_skill_catalog', { refresh });
         all = r.listings;
         installed = new Set((await api.skills().catch(() => [] as Skill[])).map((s) => s.name));
         clear(
@@ -86,7 +85,7 @@ export async function openSkillCatalog(onAdded: () => void) {
                       title: 'Remove this catalogue',
                       on: {
                         click: async () => {
-                          await tauriInvoke('chat_remove_skill_catalog', { repo: c });
+                          await invoke('chat_remove_skill_catalog', { repo: c });
                           void load(true);
                         },
                       },

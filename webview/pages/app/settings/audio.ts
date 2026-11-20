@@ -1,5 +1,4 @@
 /** Settings → Audio: speech-to-text and text-to-speech engines, voices, the wake word and dictation. */
-import { tauriInvoke } from '../../../shared/tauri';
 import { clear, h } from '../ui/h';
 import { toast } from '../ui/overlay';
 import { button, card, switchInput } from '../ui/ui';
@@ -9,13 +8,13 @@ import { setWakePrefs, wakePrefs } from '../voice/wakeword';
 import { setOrbColor, storedOrbColor, type OrbColor } from '../theme/orbgl';
 import { row } from './row';
 import type { LocalModel } from './models';
-import { call, reported } from '../core/call';
+import { call, invoke, reported } from '../core/call';
 
 /** The Whisper models downloaded, to choose one for voice input. */
 function builtinSpeechSelect(current: string, onChange: (v: string) => void): HTMLSelectElement {
   const sel = h('select', { class: 'input' }, h('option', { value: '' }, 'The first one downloaded'));
   sel.addEventListener('change', () => onChange(sel.value));
-  void tauriInvoke<LocalModel[]>('chat_local_models')
+  void invoke<LocalModel[]>('chat_local_models')
     .then((list) => {
       for (const m of list.filter((x) => x.kind === 'speech')) sel.append(h('option', { value: m.id, selected: m.id === current, disabled: !m.installed }, m.installed ? m.name : `${m.name} (not downloaded)`));
     })
@@ -41,7 +40,7 @@ function hexSpeechField(current: string, onChange: (v: string) => void): HTMLEle
   const sel = h('select', { class: 'input', 'aria-label': 'Hex model' }, h('option', { value: '' }, 'The best one downloaded in Hex'));
   sel.addEventListener('change', () => onChange(sel.value));
   const status = h('small', { class: 'field-hint' }, 'Looking for Hex…');
-  void tauriInvoke<HexStatus>('chat_hex_status')
+  void invoke<HexStatus>('chat_hex_status')
     .then((hex) => {
       for (const m of hex.models) {
         const ready = m.installed && m.verified;
@@ -373,7 +372,7 @@ async function dictationCard(): Promise<HTMLElement> {
   type Prefs = { enabled: boolean; shortcut: string; insert: 'type' | 'paste' | 'copy'; stopOnPause: boolean; holdToTalk: boolean };
   let prefs: Prefs = { enabled: false, shortcut: 'Ctrl+Alt+D', insert: 'type', stopOnPause: false, holdToTalk: false };
   try {
-    prefs = await tauriInvoke<Prefs>('dictation_prefs');
+    prefs = await invoke<Prefs>('dictation_prefs');
   } catch {
     /* defaults */
   }

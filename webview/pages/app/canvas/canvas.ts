@@ -1,6 +1,5 @@
 /** Canvas cards in the conversation, their editor, and quoting a selection into the composer. */
 import { markdownToolbar } from '../ui/mdformat';
-import { tauriInvoke } from '../../../shared/tauri';
 import type { Part } from '../core/api';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
@@ -11,7 +10,7 @@ import { button, iconButton, modalHeader } from '../ui/ui';
 import { improveButton } from '../chat/improve';
 import { renderSheetCard } from './sheet';
 import { diagramFrame, isMarp } from './diagrams';
-import { call, reported, shown } from '../core/call';
+import { call, invoke, reported, shown } from '../core/call';
 import { appFiles, appUrl } from './app-files';
 import { appPage, shareLink } from './share';
 
@@ -23,9 +22,9 @@ interface Canvas {
 }
 
 const api = {
-  get: (id: string) => tauriInvoke<Canvas>('chat_get_canvas', { id }),
-  save: (id: string, title: string, content: string) => tauriInvoke<Canvas>('chat_save_canvas', { id, title, content }),
-  export: (id: string) => tauriInvoke<boolean>('chat_export_canvas', { id }),
+  get: (id: string) => invoke<Canvas>('chat_get_canvas', { id }),
+  save: (id: string, title: string, content: string) => invoke<Canvas>('chat_save_canvas', { id, title, content }),
+  export: (id: string) => invoke<boolean>('chat_export_canvas', { id }),
 };
 
 function idOf(part: Extract<Part, { kind: 'tool' }>): string | null {

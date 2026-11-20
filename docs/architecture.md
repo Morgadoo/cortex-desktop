@@ -132,6 +132,7 @@ it through a temporary file. Moving a file between sealed and plain is a data mi
 |---|---|---|
 | `src-tauri/src/handlers.rs`, `src-tauri/permissions/commands.toml` | `scripts/generate-commands.py` | `--check` |
 | `webview/pages/app/core/generated/ipc.ts` | `scripts/generate-types.sh` (ts-rs, from Rust types marked `typescript`) | `--check` |
+| `webview/pages/app/core/generated/commands.ts` | `scripts/generate-commands.py` (every command name, as a TypeScript union) | `--check` |
 | `src-tauri/i18n/catalog.json` | `scripts/ui-strings.mjs` (`npm run i18n:catalog`) | `npm run check:i18n` |
 | `src-tauri/i18n/{ar,de,es,fr,pt}.json` | `scripts/translate_ui.py` | a Rust test: every catalog string translated |
 | `src-tauri/gen/schemas/` | `tauri-build`, on every build | no |
