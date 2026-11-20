@@ -20,7 +20,8 @@ import { closePanel, enableAskAboutSelection, hasPanel, openSidePanel, renderCan
 import { hostOf, previewFor, siteIcon } from './favicon';
 import './diagrams';
 import { renderCodeRun, renderImage, renderVideo } from './coderun';
-import { startRecording, toBase64, type Recording } from './dictation';
+import { startRecording, type Recording } from './dictation';
+import { blobToBase64, bytesToBase64, escapeHtml } from './format';
 import { liveCapable, liveTranscript, renderLive } from './live';
 import { audioSettings, shortError, speakText, type Playback } from './audio';
 import { editWorkflow, liveWorkflow, workflowPrompt, workflowsApi } from './workflows';
@@ -902,10 +903,8 @@ async function exportImage(id: string) {
     const c = await api.conversation(id);
     const messages = c.turns.map((t) => ({ role: t.role, text: textOf(t.parts) })).filter((m) => m.text.trim());
     const png = await conversationPng(c.title, messages);
-    let binary = '';
-    for (let i = 0; i < png.length; i += 0x8000) binary += String.fromCharCode(...png.subarray(i, i + 0x8000));
     const name = `${(c.title || 'conversation').replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 60) || 'conversation'}.png`;
-    if (await tauriInvoke<boolean>('chat_save_bytes', { name, data: btoa(binary) })) toast('Image saved.');
+    if (await tauriInvoke<boolean>('chat_save_bytes', { name, data: bytesToBase64(png) })) toast('Image saved.');
   } catch (e) {
     toast(String(e), 'error');
   }
@@ -2760,10 +2759,8 @@ class Composer {
           try {
             if (file.size > 200 * 1024 * 1024) throw new Error(`${file.name} is larger than 200 MB.`);
             toast(`Reading ${file.name}…`);
-            const bytes = new Uint8Array(await file.arrayBuffer());
-            let binary = '';
-            for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-            const v = await tauriInvoke<{ seconds: number; frames: { at: number; data: string }[]; transcript: string | null; note: string | null }>('chat_read_video', { name: file.name, data: btoa(binary) });
+            const data = await blobToBase64(file);
+            const v = await tauriInvoke<{ seconds: number; frames: { at: number; data: string }[]; transcript: string | null; note: string | null }>('chat_read_video', { name: file.name, data });
             const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
             for (const f of v.frames) this.attachments.push({ name: `${file.name} · ${clock(f.at)}`, text: '', image: { mediaType: 'image/jpeg', data: f.data }, file: true });
             const about = `Video ${file.name}, ${clock(v.seconds)} long: ${v.frames.length} frames are attached as images, taken at ${v.frames.map((f) => clock(f.at)).join(', ')}.`;
@@ -2779,10 +2776,8 @@ class Composer {
           try {
             if (file.size > 25 * 1024 * 1024) throw new Error(`${file.name} is larger than 25 MB.`);
             toast(`Transcribing ${file.name}…`);
-            const bytes = new Uint8Array(await file.arrayBuffer());
-            let binary = '';
-            for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-            const text = await tauriInvoke<string>('chat_transcribe', { audio: btoa(binary), mime: file.type || 'audio/mpeg' });
+            const data = await blobToBase64(file);
+            const text = await tauriInvoke<string>('chat_transcribe', { audio: data, mime: file.type || 'audio/mpeg' });
             this.attachments.push({ name: `${file.name} (transcript)`, text, file: true });
           } catch (e) {
             toast(`${file.name}: ${String(e)}`, 'error');
@@ -2792,10 +2787,8 @@ class Composer {
         // PDFs, Office documents and ZIP archives are read into text, as libraries read them.
         if (/\.(pdf|docx|pptx|odt|odp|zip)$/i.test(file.name)) {
           try {
-            const bytes = new Uint8Array(await file.arrayBuffer());
-            let binary = '';
-            for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-            const text = await tauriInvoke<string>('chat_read_document', { name: file.name, data: btoa(binary) });
+            const data = await blobToBase64(file);
+            const text = await tauriInvoke<string>('chat_read_document', { name: file.name, data });
             this.attachments.push({ name: file.name, text: text.length > 400_000 ? `${text.slice(0, 400_000)}\n… (cut; add the file to a library to search all of it)` : text, file: true });
           } catch (e) {
             toast(`${file.name}: ${String(e)}`, 'error');
@@ -2805,10 +2798,8 @@ class Composer {
         // Workbooks are read into CSV, one block per sheet.
         if (/\.(xlsx|xlsm|xls|ods)$/i.test(file.name)) {
           try {
-            const bytes = new Uint8Array(await file.arrayBuffer());
-            let binary = '';
-            for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-            const sheets = await tauriInvoke<[string, string][]>('chat_read_spreadsheet', { data: btoa(binary) });
+            const data = await blobToBase64(file);
+            const sheets = await tauriInvoke<[string, string][]>('chat_read_spreadsheet', { data });
             const text = sheets.map(([name, csv]) => `Sheet "${name}" (CSV):\n${csv}`).join('\n\n');
             this.attachments.push({ name: file.name, text: text.length > 400_000 ? `${text.slice(0, 400_000)}\n… (cut; analyse the full file with run_code)` : text, file: true });
           } catch (e) {
@@ -3043,7 +3034,7 @@ class Composer {
     try {
       const audio = await recording.stop();
       if (audio.size < 1000) throw new Error('Nothing was recorded.');
-      const text = await tauriInvoke<string>('chat_transcribe', { audio: await toBase64(audio), mime: audio.type });
+      const text = await tauriInvoke<string>('chat_transcribe', { audio: await blobToBase64(audio), mime: audio.type });
       const current = this.textarea.value;
       this.setText(current ? `${current.trimEnd()} ${text}` : text);
       this.focus();
@@ -4040,7 +4031,7 @@ export class ChatView {
         )
       );
     }
-    const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const esc = escapeHtml;
     const page = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'">

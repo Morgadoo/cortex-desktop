@@ -11,7 +11,8 @@
  */
 
 import { tauriInvoke } from '../../shared/tauri';
-import { toBase64, type Recording } from './dictation';
+import { type Recording } from './dictation';
+import { blobToBase64 } from './format';
 
 /** How often the audio so far is transcribed again, at most. */
 const EVERY_MS = 900;
@@ -46,7 +47,7 @@ export function liveTranscript(recording: Recording, onText: (text: string) => v
     busy = true;
     lastSeconds = seconds;
     try {
-      const text = await tauriInvoke<string>('chat_transcribe', { audio: await toBase64(wav), mime: wav.type, live: true });
+      const text = await tauriInvoke<string>('chat_transcribe', { audio: await blobToBase64(wav), mime: wav.type, live: true });
       if (!stopped && text.trim()) onText(text.trim());
     } catch {
       // A guess that fails is skipped; the final transcript reports real errors.

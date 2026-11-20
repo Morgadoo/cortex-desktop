@@ -7,7 +7,8 @@
  */
 import { tauriInvoke } from '../../shared/tauri';
 import { speakText, type Playback } from './audio';
-import { openMicrophone, toBase64, type Microphone } from './dictation';
+import { openMicrophone, type Microphone } from './dictation';
+import { blobToBase64 } from './format';
 import { h, icon, toast } from './dom';
 import { createGlowOrb, orbCssColor } from './orbgl';
 
@@ -123,7 +124,7 @@ export function startVoiceConversation(hooks: VoiceHooks) {
     show('transcribing');
     let text = '';
     try {
-      text = audio.size < 1000 ? '' : (await tauriInvoke<string>('chat_transcribe', { audio: await toBase64(audio), mime: audio.type })).trim();
+      text = audio.size < 1000 ? '' : (await tauriInvoke<string>('chat_transcribe', { audio: await blobToBase64(audio), mime: audio.type })).trim();
     } catch (e) {
       toast(String(e), 'error');
     }

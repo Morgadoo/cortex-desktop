@@ -9,7 +9,8 @@
  * says plainly.
  */
 import { tauriInvoke } from '../../shared/tauri';
-import { openMicrophone, toBase64, type Microphone } from './dictation';
+import { openMicrophone, type Microphone } from './dictation';
+import { blobToBase64 } from './format';
 import { voiceActive } from './voice';
 import { matchWake } from './wakematch';
 
@@ -78,7 +79,7 @@ export async function startWakeWord(onWake: (request: string) => void): Promise<
     if (seconds < MIN_SECONDS || seconds > MAX_SECONDS) return;
     busy = true;
     try {
-      const text = await tauriInvoke<string>('chat_transcribe', { audio: await toBase64(clip), mime: clip.type });
+      const text = await tauriInvoke<string>('chat_transcribe', { audio: await blobToBase64(clip), mime: clip.type });
       const request = matchWake(text, wakePrefs().phrase);
       if (request !== null) onWake(request);
     } catch {

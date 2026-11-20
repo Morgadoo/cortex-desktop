@@ -8,6 +8,7 @@ import { workspaceVideo } from './coderun';
 import { appFrame, closePanel, openAppPanel, openSidePanel } from './canvas';
 import { splitSheets } from './sheet';
 import { clear, h, icon, markdown, modal, toast, timeLabel } from './dom';
+import { fileSize } from './format';
 import { navigate, state } from './state';
 import { iconButton, modalHeader, pageHeader } from './ui';
 
@@ -35,9 +36,6 @@ function fileUrl(conversationId: string, path: string): string {
   return `${windows ? 'http://cortexapp.localhost' : 'cortexapp://localhost'}/sandbox/${conversationId}/${path.split('/').map(encodeURIComponent).join('/')}`;
 }
 
-function size(bytes: number): string {
-  return bytes >= 1_000_000 ? `${(bytes / 1_000_000).toFixed(1)} MB` : bytes >= 1000 ? `${Math.round(bytes / 1000)} KB` : `${bytes} B`;
-}
 
 /** Opens what an output is: a canvas in the panel (or as text), an image large, a file saved. */
 async function openOutput(o: Output, inPanel: boolean) {
@@ -102,7 +100,7 @@ function card(o: Output, showChat: boolean): HTMLElement {
     'button',
     { class: `output-card kind-${o.kind}`, title: o.id, on: { click: () => void openOutput(o, !showChat) } },
     o.kind === 'image' ? h('img', { class: 'output-thumb', src: fileUrl(o.conversationId, o.id), alt: '', loading: 'lazy' }) : o.kind === 'video' ? workspaceVideo(fileUrl(o.conversationId, o.id), { class: 'output-thumb', muted: true, preload: 'metadata' }, { conversationId: o.conversationId, path: o.id }) : h('div', { class: 'output-icon' }, icon(kind?.[2] ?? 'file', 22)),
-    h('div', { class: 'output-meta' }, h('strong', { class: 'output-title' }, o.title || 'Untitled'), h('small', { class: 'muted' }, [kind?.[1].replace(/s$/, ''), size(o.bytes), o.at ? timeLabel(o.at) : ''].filter(Boolean).join(' · '))),
+    h('div', { class: 'output-meta' }, h('strong', { class: 'output-title' }, o.title || 'Untitled'), h('small', { class: 'muted' }, [kind?.[1].replace(/s$/, ''), fileSize(o.bytes), o.at ? timeLabel(o.at) : ''].filter(Boolean).join(' · '))),
     showChat && chat
       ? h('span', { class: 'output-chat', on: { click: (e: MouseEvent) => { e.stopPropagation(); navigate({ kind: 'chat', id: chat.id }); } } }, icon('chat', 12), chat.title || 'Chat')
       : null

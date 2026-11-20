@@ -1,6 +1,7 @@
 /** Libraries: document collections the assistant searches, with a search box to test them. */
 import { tauriInvoke } from '../../shared/tauri';
 import { clear, confirmDialog, h, icon, modal, popover, promptText, toast, clockHour12 } from './dom';
+import { characterCount } from './format';
 import { modalHeader } from './ui';
 
 interface Doc {
@@ -48,9 +49,6 @@ const api = {
   search: (query: string, libraryId: string | null) => tauriInvoke<Passage[]>('chat_search_libraries', { query, libraryId }),
 };
 
-function size(chars: number): string {
-  return chars > 1_000_000 ? `${(chars / 1_000_000).toFixed(1)}M characters` : chars > 1000 ? `${Math.round(chars / 1000)}k characters` : `${chars} characters`;
-}
 
 /** A document's indexed text, with find-in-text. */
 function previewDocument(libraryId: string, documentId: string, name: string) {
@@ -360,7 +358,7 @@ export class LibrariesPage {
               h('button', { class: `icon-btn small fav-star${favourites().has(d.id) ? ' on' : ''}`, title: favourites().has(d.id) ? 'Remove from favourites' : 'Add to favourites', on: { click: () => { toggleFavourite(d.id); this.render(); } } }, favourites().has(d.id) ? '★' : '☆'),
               icon('file', 16),
               h('button', { class: 'doc-name link-like', title: 'Preview its text', on: { click: () => previewDocument(lib.id, d.id, d.name) } }, d.name),
-              h('span', { class: 'muted' }, size(d.chars)),
+              h('span', { class: 'muted' }, characterCount(d.chars)),
               h('span', { class: 'muted' }, new Date(d.addedAt).toLocaleDateString()),
               h('button', { class: 'icon-btn small', title: 'Move to another library', on: { click: (e: MouseEvent) => void this.moveDocs(e.currentTarget as HTMLElement, lib.id, [d.id]) } }, icon('forward', 15)),
               h('button', { class: 'icon-btn small', title: 'Remove', on: { click: async () => { await api.removeDoc(lib.id, d.id); await this.load(); } } }, icon('trash', 15))

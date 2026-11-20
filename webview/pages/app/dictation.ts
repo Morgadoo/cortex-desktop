@@ -211,14 +211,6 @@ export function encodeWav(samples: Float32Array, rate: number): Blob {
   return new Blob([buffer], { type: 'audio/wav' });
 }
 
-/** A blob as base64, for IPC. */
-export async function toBase64(blob: Blob): Promise<string> {
-  const bytes = new Uint8Array(await blob.arrayBuffer());
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return btoa(binary);
-}
-
 /**
  * A microphone kept open for a whole voice conversation, recording one take per turn. Reopening
  * the device for every turn is slow, and some engines hand a new stream stale audio; one

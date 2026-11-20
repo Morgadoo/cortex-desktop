@@ -7,6 +7,7 @@ import { tauriInvoke } from '../../shared/tauri';
 import { clear, h, icon, modal, toast } from './dom';
 import { button, card, modalHeader } from './ui';
 import { appFiles } from './canvas';
+import { escapeHtml } from './format';
 
 export interface SharedLink {
   token: string;
@@ -20,7 +21,7 @@ export interface SharedLink {
   expiresAt?: string | null;
 }
 
-const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+const esc = escapeHtml;
 
 /** One page for an app: a multi-file app's styles and scripts are put inline. */
 export function appPage(code: string, title: string): string {

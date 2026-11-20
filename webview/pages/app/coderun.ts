@@ -1,6 +1,7 @@
 /** A code run in the conversation: the program, what it printed, and the charts it saved. */
 import type { Part } from './api';
 import { clear, h, icon, modal, toast } from './dom';
+import { fileSize } from './format';
 import { tauriInvoke } from '../../shared/tauri';
 import { button, iconButton } from './ui';
 
@@ -35,9 +36,6 @@ function parse(output: string | null): RunReport | null {
   }
 }
 
-function size(bytes: number): string {
-  return bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
 
 /** An image the model generated, saved in the conversation's workspace. */
 export function renderImage(part: Extract<Part, { kind: 'tool' }>, live: boolean, conversationId: string): HTMLElement {
@@ -204,7 +202,7 @@ export function renderCodeRun(part: Extract<Part, { kind: 'tool' }>, live: boole
     }
     const others = made.filter((f) => !IMAGE.test(f.name));
     if (others.length) {
-      body.push(h('div', { class: 'run-files' }, others.map((f) => h('span', { class: 'run-file' }, icon('file', 13), f.name, h('small', { class: 'muted' }, size(f.bytes))))));
+      body.push(h('div', { class: 'run-files' }, others.map((f) => h('span', { class: 'run-file' }, icon('file', 13), f.name, h('small', { class: 'muted' }, fileSize(f.bytes))))));
     }
   } else if (part.output && !running) {
     body.push(h('pre', { class: 'run-stderr' }, part.output));

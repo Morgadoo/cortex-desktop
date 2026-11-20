@@ -2,6 +2,7 @@
 import { tauriInvoke } from '../../shared/tauri';
 import { api, listen, type AppSettings, type Provider } from './api';
 import { clear, confirmDialog, h, icon, modal, toast, clockHour12, setClock } from './dom';
+import { fileSize } from './format';
 import { historyButton } from './versions';
 import { autocompleteOn, changed, finishNotificationsOn, setAutocomplete, finishSoundOn, followStreamOn, followUpsOn, setFinishNotifications, setFinishSound, setFollowStream, setFollowUps, setTemporaryByDefault, state, temporaryByDefault } from './state';
 import { button, card, modalHeader, switchInput } from './ui';
@@ -234,7 +235,7 @@ function renderProfile(content: HTMLElement) {
   /** Storage, backups, anything damaged, and the conversations deleted in the last 30 days. */
   const renderData = async () => {
     const [health, trash] = await Promise.all([api.storageHealth(), api.trash()]);
-    const size = health.bytes > 1_048_576 ? `${(health.bytes / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(health.bytes / 1024))} KB`;
+    const size = fileSize(Math.max(1000, health.bytes));
     const refresh = () => { window.dispatchEvent(new Event('chat:conversations-changed')); void renderData(); };
     clear(
       dataCard,
@@ -759,7 +760,7 @@ interface LocalModel {
 async function localModelsCard(): Promise<HTMLElement> {
   const body = h('div', { class: 'local-models' });
   const progress = new Map<string, { done: number; total: number }>();
-  const size = (mb: number) => (mb >= 1000 ? `${(mb / 1000).toFixed(1)} GB` : `${mb} MB`);
+  const size = (mb: number) => fileSize(mb * 1_000_000);
   const draw = async () => {
     const list = await tauriInvoke<LocalModel[]>('chat_local_models').catch(() => []);
     const row = (m: LocalModel) => {

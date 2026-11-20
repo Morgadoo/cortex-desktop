@@ -77,12 +77,7 @@ export function openSearchMode(initial = '') {
         const text = await tauriInvoke<string>('chat_answer_from_results', { model: state.model, query, cards });
         clear(answer, h('div', { class: 'markdown' }, markdown(text)));
         // [n] in the answer jumps to card n.
-        for (const el of answer.querySelectorAll<HTMLElement>('.markdown')) {
-          el.innerHTML = el.innerHTML.replace(/\[(\d{1,2})\]/g, (m, n: string) => (Number(n) <= cards.length ? `<a class="search-ref" data-n="${n}">${n}</a>` : m));
-        }
-        answer.querySelectorAll<HTMLElement>('.search-ref').forEach((a) =>
-          a.addEventListener('click', () => grid.querySelector<HTMLElement>(`[data-card="${a.dataset.n}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
-        );
+        linkCitations(answer, cards.length, (n) => grid.querySelector<HTMLElement>(`[data-card="${n}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
       } catch (e) {
         clear(answer, h('p', { class: 'error-text' }, String(e)));
       }
@@ -134,4 +129,32 @@ export function openSearchMode(initial = '') {
       grid
     );
   }, true);
+}
+
+/**
+ * Turns `[n]` in rendered text into links that call `open(n)`, for n up to `count`. Walks text
+ * nodes rather than rewriting HTML, so what the Markdown renderer attached (copy buttons,
+ * citation pills) keeps working, and code and existing links are left alone.
+ */
+function linkCitations(root: HTMLElement, count: number, open: (n: number) => void) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const texts: Text[] = [];
+  while (walker.nextNode()) texts.push(walker.currentNode as Text);
+  const ref = /\[(\d{1,2})\]/g;
+  for (const node of texts) {
+    if (node.parentElement?.closest('code, pre, a')) continue;
+    const value = node.nodeValue ?? '';
+    const matches = [...value.matchAll(ref)].filter((m) => Number(m[1]) >= 1 && Number(m[1]) <= count);
+    if (matches.length === 0) continue;
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    for (const m of matches) {
+      const n = Number(m[1]);
+      frag.append(value.slice(last, m.index));
+      frag.append(h('a', { class: 'search-ref', dataset: { n: String(n) }, on: { click: () => open(n) } }, String(n)));
+      last = m.index + m[0].length;
+    }
+    frag.append(value.slice(last));
+    node.replaceWith(frag);
+  }
 }

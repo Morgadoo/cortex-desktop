@@ -4,6 +4,7 @@
  */
 import { tauriInvoke } from '../../shared/tauri';
 import { clear, h, icon, toast, timeLabel } from './dom';
+import { characterCount } from './format';
 import { navigate } from './state';
 import { card } from './ui';
 
@@ -45,7 +46,7 @@ interface Upload {
   at?: string;
 }
 
-const size = (u: Upload) => (u.kind === 'image' ? `${Math.max(1, Math.round((u.size * 0.75) / 1024))} KB image` : u.size >= 1000 ? `${Math.round(u.size / 1000)}k characters` : `${u.size} characters`);
+const size = (u: Upload) => (u.kind === 'image' ? `${Math.max(1, Math.round((u.size * 0.75) / 1024))} KB image` : characterCount(u.size));
 
 export function uploadsCard(): HTMLElement {
   const mode = h(

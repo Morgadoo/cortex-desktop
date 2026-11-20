@@ -2,6 +2,7 @@
 import DOMPurify from 'dompurify';
 import katex from 'katex';
 import { tauriInvoke } from '../../shared/tauri';
+import { blobToBase64 } from './format';
 import { marked } from 'marked';
 
 type Child = Node | string | null | undefined | false;
@@ -475,11 +476,8 @@ export function toast(message: string, kind: 'info' | 'error' = 'info') {
 
 /** Saves a blob through the system's save dialog (the webview does not download blobs). */
 export async function saveFile(name: string, blob: Blob): Promise<void> {
-  const bytes = new Uint8Array(await blob.arrayBuffer());
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   try {
-    if (await tauriInvoke<boolean>('chat_save_file', { name, data: btoa(binary) })) toast('Saved.');
+    if (await tauriInvoke<boolean>('chat_save_file', { name, data: await blobToBase64(blob) })) toast('Saved.');
   } catch (e) {
     toast(String(e), 'error');
   }
