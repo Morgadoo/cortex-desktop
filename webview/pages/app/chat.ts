@@ -30,6 +30,7 @@ import { diffLines, loadChanges, openChanges, openFiles, openDebug } from './cha
 import { openTerminal } from './terminal';
 import { button, chip, iconButton, modalHeader, trigger } from './ui';
 import { flag, json, textPref, workdir } from './prefs';
+import { call, callQuiet, shown } from './call';
 
 // ---------------------------------------------------------------------------------------------
 // Tool labels
@@ -1228,7 +1229,7 @@ function renderAssistantTurn(conversation: Conversation, turn: Turn, isLast: boo
   numberLibraryCitations(el, turn.parts);
   // Opening a link the answer gave says it pointed somewhere useful: a signal in the run trace.
   el.addEventListener('click', (e) => {
-    if ((e.target as HTMLElement | null)?.closest('a[href]')) void tauriInvoke('chat_signal', { id: conversation.id, index: turn.index, kind: 'opened_source' }).catch(() => undefined);
+    if ((e.target as HTMLElement | null)?.closest('a[href]')) void callQuiet('chat_signal', { id: conversation.id, index: turn.index, kind: 'opened_source' });
   }, { capture: true });
   // A reply that stopped after its tools ran, before answering, can pick up where it left off.
   const unfinished = isLast && !running && turn.parts[turn.parts.length - 1]?.kind === 'tool' && !state.live.has(conversation.id);
@@ -1321,7 +1322,7 @@ function renderActions(conversation: Conversation, turn: Turn, isLast: boolean, 
     // A thumbs down can say what went wrong; kept with the conversation for later review.
     if (next < 0) {
       const reason = await promptText('What was wrong with this reply? (optional)', '', 'Inaccurate, too long, missed the point…');
-      if (reason) await tauriInvoke('chat_rate_reason', { id: conversation.id, index: turn.index, reason }).catch(() => undefined);
+      if (reason) await callQuiet('chat_rate_reason', { id: conversation.id, index: turn.index, reason });
     }
   };
   const copy = h('button', { class: 'icon-btn small', title: 'Copy' }, icon('copy', 16));
@@ -1334,7 +1335,7 @@ function renderActions(conversation: Conversation, turn: Turn, isLast: boolean, 
       : Promise.reject(new Error('no rich clipboard'));
     void rich.catch(() => navigator.clipboard.writeText(text));
     // Copying an answer says it was useful; it goes into the run trace as a signal.
-    void tauriInvoke('chat_signal', { id: conversation.id, index: turn.index, kind: 'copied' }).catch(() => undefined);
+    void callQuiet('chat_signal', { id: conversation.id, index: turn.index, kind: 'copied' });
     copy.replaceChildren(icon('check', 16));
     setTimeout(() => copy.replaceChildren(icon('copy', 16)), 1200);
   });
@@ -2559,7 +2560,7 @@ class Composer {
     if (ok) {
       if (typed) rememberPrompt(typed);
       const files = unsentFiles.filter((a) => a.file).map((a) => ({ name: a.name, text: a.text, image: a.image, usedAt: new Date().toISOString() }));
-      if (files.length) void tauriInvoke('chat_remember_files', { files }).catch(() => undefined);
+      if (files.length) void callQuiet('chat_remember_files', { files });
       this.historyIndex = -1;
       this.draft = '';
       this.textarea.value = '';
@@ -3641,7 +3642,7 @@ export class CompareView {
     // The kept answer's model wins against the others, for the leaderboard.
     const winner = this.columns.find((c) => c.id === id)?.model;
     if (winner) {
-      void tauriInvoke('chat_arena_record', { winner, losers: this.columns.filter((c) => c.id !== id).map((c) => c.model) }).catch(() => undefined);
+      void callQuiet('chat_arena_record', { winner, losers: this.columns.filter((c) => c.id !== id).map((c) => c.model) });
       if (this.blind) toast(`You chose ${modelName(winner)}.`);
     }
     await api.keepConversation(id);
@@ -4037,11 +4038,9 @@ ${body.innerHTML}
     const shared = this.sharePage();
     if (!shared) return;
     const { title, page } = shared;
-    try {
-      if (await tauriInvoke<boolean>('chat_save_shared_page', { title, html: page })) toast('Saved as a web page. Send the file to share the conversation.');
-    } catch (e) {
-      toast(String(e), 'error');
-    }
+    await call<boolean>('chat_save_shared_page', { title, html: page }).then((ok) => {
+      if (ok) toast('Saved as a web page. Send the file to share the conversation.');
+    }, shown);
   }
 
   /** The turn ended: the stored conversation replaces the live one. */
@@ -4271,7 +4270,7 @@ export function conversationMenu(anchor: HTMLElement, id: string, title: string,
       item('download', 'Export as Markdown', () => void api.exportConversation(id).then((saved) => saved && toast('Conversation exported.'))),
       item('link', 'Copy link', () => void navigator.clipboard.writeText(`cortex://chat/${id}`).then(() => toast('Link copied. It opens this chat in Cortex on this computer.'))),
       ...(state.view.kind === 'chat' && state.view.id !== id ? [item('columns', 'Open beside this chat', () => openChatBeside(id))] : []),
-      item('expand', 'Open in new window', () => void tauriInvoke('chat_open_chat_window', { id }).catch((e) => toast(String(e), 'error'))),
+      item('expand', 'Open in new window', () => void call('chat_open_chat_window', { id }).catch(shown)),
       item('download', 'Print or save as PDF', () => void printConversation(id, title)),
       item('image', 'Export as image', () => void exportImage(id)),
       item('code', 'Export as JSON', () => void tauriInvoke<boolean>('chat_export_conversation_json', { id }).then((saved) => saved && toast('Conversation exported.')).catch((e) => toast(String(e), 'error'))),
@@ -4543,12 +4542,7 @@ async function saveToLibrary(anchor: HTMLElement, url: string) {
   const save = async (id: string, name: string) => {
     close();
     toast(`Saving to ${name}…`);
-    try {
-      await tauriInvoke('chat_add_web_page', { libraryId: id, url });
-      toast(`Saved to ${name}. Library searches can now find and cite it.`);
-    } catch (e) {
-      toast(String(e), 'error');
-    }
+    await call('chat_add_web_page', { libraryId: id, url }).then(() => toast(`Saved to ${name}. Library searches can now find and cite it.`), shown);
   };
   const close = popover(
     anchor,

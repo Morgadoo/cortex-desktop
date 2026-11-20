@@ -7,6 +7,7 @@
 import { tauriInvoke } from '../../shared/tauri';
 import { createShaderBackdrop, renderShaderPreview, type ShaderBackdrop } from './backdropgl';
 import { json, textPref } from './prefs';
+import { callQuiet } from './call';
 
 export interface AccentPreset {
   id: string;
@@ -237,7 +238,7 @@ function applyReadability(root: HTMLElement, dark: boolean, borderStrong: string
   // The whole interface, at the webview's own zoom so layout and pointer positions agree.
   if (r.zoom !== appliedZoom) {
     appliedZoom = r.zoom;
-    void tauriInvoke('plugin:webview|set_webview_zoom', { value: r.zoom }).catch(() => undefined);
+    void callQuiet('plugin:webview|set_webview_zoom', { value: r.zoom });
   }
 }
 

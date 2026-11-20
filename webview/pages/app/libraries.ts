@@ -4,6 +4,7 @@ import { clear, confirmDialog, h, icon, modal, popover, promptText, toast, clock
 import { characterCount } from './format';
 import { modalHeader } from './ui';
 import { choice, json } from './prefs';
+import { call, shown } from './call';
 
 interface Doc {
   id: string;
@@ -184,12 +185,7 @@ export class LibrariesPage {
       const url = await promptText('Add a web page', '', 'https://example.com/article');
       if (!url) return;
       toast('Fetching the page…');
-      try {
-        await tauriInvoke('chat_add_web_page', { libraryId: lib.id, url });
-        toast('Page added.');
-      } catch (e) {
-        toast(String(e), 'error');
-      }
+      await call('chat_add_web_page', { libraryId: lib.id, url }).then(() => toast('Page added.'), shown);
       await this.load();
     });
     // A Notion (or Confluence, or notes app) export: every page becomes a document.
@@ -393,7 +389,7 @@ export class LibrariesPage {
         others.map((l) =>
           h('button', { class: 'menu-item', on: { click: async () => {
             close();
-            for (const id of ids) await tauriInvoke('chat_move_document', { libraryId: from, documentId: id, to: l.id }).catch((e) => toast(String(e), 'error'));
+            for (const id of ids) await call('chat_move_document', { libraryId: from, documentId: id, to: l.id }).catch(shown);
             toast(`Moved to ${l.name}.`);
             await this.load();
           } } }, icon('library', 15), h('span', {}, l.name))

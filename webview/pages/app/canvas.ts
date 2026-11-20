@@ -7,6 +7,7 @@ import { button, iconButton, modalHeader } from './ui';
 import { improveButton } from './improve';
 import { renderSheetCard } from './sheet';
 import { diagramFrame, isMarp } from './diagrams';
+import { call, shown } from './call';
 
 interface Canvas {
   id: string;
@@ -33,7 +34,7 @@ function idOf(part: Extract<Part, { kind: 'tool' }>): string | null {
 
 /** Opens an app in a window of its own, beside the main one. */
 export function openAppWindow(id: string) {
-  void tauriInvoke('chat_open_app_window', { id }).catch((e) => toast(String(e), 'error'));
+  void call('chat_open_app_window', { id }).catch(shown);
 }
 
 /** Where a mini app is served: the `cortexapp` protocol, spelled per platform. */

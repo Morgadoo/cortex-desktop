@@ -442,13 +442,6 @@ export interface AppSettings {
   settings_hotkey_enabled: boolean;
 }
 
-/** Subscribes to a Rust event; resolves to the unsubscribe function. */
-export function listen<T>(event: string, handler: (payload: T) => void): Promise<() => void> {
-  const listener = window.__TAURI__?.event?.listen ?? window.__TAURI_INTERNALS__?.event?.listen;
-  if (!listener) return Promise.resolve(() => {});
-  return listener(event, (e) => handler(e.payload as T));
-}
-
 export function newId(): string {
   return crypto.randomUUID();
 }

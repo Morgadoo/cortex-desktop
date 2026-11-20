@@ -1,9 +1,9 @@
 /** Context pages (connectors, skills, scheduled tasks…) and the instructions dialog. */
-import { api, listen, type ConnectorManifest, type Instructions } from './api';
+import { api, type ConnectorManifest, type Instructions } from './api';
 import { clear, h, icon, markdown, modal, toast } from './dom';
 import { state, type Page } from './state';
 import { openSettings } from './settings';
-import { tauriInvoke } from '../../shared/tauri';
+import { listen, tauriInvoke } from '../../shared/tauri';
 import { CONNECTOR_CATEGORIES, FEATURED_MCP_SERVERS, type ConnectorCatalogEntry } from '../../shared/connector-catalog';
 import { emptyState, modalHeader } from './ui';
 

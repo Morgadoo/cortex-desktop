@@ -4,6 +4,7 @@ import { clear, h, icon, modal, toast } from './dom';
 import { fileSize } from './format';
 import { tauriInvoke } from '../../shared/tauri';
 import { button, iconButton } from './ui';
+import { call, shown } from './call';
 
 interface RunReport {
   language: string;
@@ -103,7 +104,7 @@ export function workspaceVideo(src: string, attrs: Record<string, unknown>, file
       }
       replaced = true;
       const still = h('div', { class: 'video-fallback' }, h('span', { class: 'muted small' }, 'This window cannot play the video here.'));
-      const play = button({ variant: 'primary', icon: 'play', label: 'Play in your video player', onClick: () => void tauriInvoke('chat_open_workspace_file', file).catch((e) => toast(String(e), 'error')) });
+      const play = button({ variant: 'primary', icon: 'play', label: 'Play in your video player', onClick: () => void call('chat_open_workspace_file', file).catch(shown) });
       const thumb = String(attrs.class ?? '').includes('output-thumb');
       const box = h('div', { class: `video-fallback-box ${String(attrs.class ?? '')}` }, still, thumb ? null : h('div', { class: 'video-fallback-actions' }, play));
       if (thumb) clear(still);

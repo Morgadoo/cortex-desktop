@@ -1,6 +1,6 @@
 /** The settings dialog: profile, providers, permissions, general and appearance. */
-import { tauriInvoke } from '../../shared/tauri';
-import { api, listen, type AppSettings, type Provider } from './api';
+import { listen, tauriInvoke } from '../../shared/tauri';
+import { api, type AppSettings, type Provider } from './api';
 import { clear, confirmDialog, h, icon, modal, toast, clockHour12, setClock } from './dom';
 import { fileSize } from './format';
 import { historyButton } from './versions';
@@ -19,6 +19,7 @@ import { sharedLinksCard } from './share';
 import { effectiveLanguage, setStoredLanguage, storedLanguage } from './i18n';
 import { setOrbColor, storedOrbColor, type OrbColor } from './orbgl';
 import { choice } from './prefs';
+import { call, shown } from './call';
 
 export type Section = 'profile' | 'providers' | 'audio' | 'permissions' | 'general' | 'appearance';
 
@@ -723,12 +724,7 @@ async function extractionCard(): Promise<HTMLElement> {
   });
   sync();
   const save = button({ variant: 'primary', label: 'Save', onClick: async () => {
-    try {
-      await tauriInvoke('chat_extraction', { change: { engine: engine.value, url: url.value.trim() } });
-      toast(engine.value === 'builtin' ? 'Documents are read by the built-in readers.' : `Documents are read by ${engine.value === 'tika' ? 'Tika' : 'Docling'}, with the built-in readers as a fallback.`);
-    } catch (e) {
-      toast(String(e), 'error');
-    }
+    await call('chat_extraction', { change: { engine: engine.value, url: url.value.trim() } }).then(() => toast(engine.value === 'builtin' ? 'Documents are read by the built-in readers.' : `Documents are read by ${engine.value === 'tika' ? 'Tika' : 'Docling'}, with the built-in readers as a fallback.`), shown);
   } });
   return card(
     h('h3', {}, 'Document extraction'),
@@ -764,7 +760,7 @@ async function localModelsCard(): Promise<HTMLElement> {
       const action = m.installed
         ? button({ variant: 'secondary', label: 'Delete', onClick: async () => {
             if (!(await confirmDialog(`Delete ${m.name}?`, `${size(m.sizeMb)} are freed. You can download it again.`, 'Delete'))) return;
-            await tauriInvoke('chat_remove_local_model', { id: m.id }).catch((e) => toast(String(e), 'error'));
+            await call('chat_remove_local_model', { id: m.id }).catch(shown);
             void draw();
             void reloadModels().catch(() => undefined);
           } })
@@ -773,12 +769,7 @@ async function localModelsCard(): Promise<HTMLElement> {
           : button({ variant: 'primary', label: 'Download', onClick: async () => {
               progress.set(m.id, { done: 0, total: m.sizeMb * 1_000_000 });
               void draw();
-              try {
-                await tauriInvoke('chat_download_local_model', { id: m.id });
-                toast(`${m.name} is ready. ${m.kind === 'chat' ? 'Pick it in the model menu, under Built-in.' : m.kind === 'embedding' ? 'Choose Built-in under Semantic search.' : 'Choose Built-in under Settings → Audio → Speech-to-text.'}`);
-              } catch (e) {
-                toast(String(e), 'error');
-              }
+              await call('chat_download_local_model', { id: m.id }).then(() => toast(`${m.name} is ready. ${m.kind === 'chat' ? 'Pick it in the model menu, under Built-in.' : m.kind === 'embedding' ? 'Choose Built-in under Semantic search.' : 'Choose Built-in under Settings → Audio → Speech-to-text.'}`), shown);
               progress.delete(m.id);
               void draw();
               void reloadModels().catch(() => undefined);
@@ -886,15 +877,13 @@ function activityLogCard(): HTMLElement {
       })
       .catch((e) => (summary.textContent = String(e)));
   const exportAs = (format: 'csv' | 'json') => async () => {
-    try {
-      if (await tauriInvoke<boolean>('chat_export_audit', { format, days: Number(range.value) || null })) toast('Activity log saved.');
-    } catch (e) {
-      toast(String(e), 'error');
-    }
+    await call<boolean>('chat_export_audit', { format, days: Number(range.value) || null }).then((ok) => {
+      if (ok) toast('Activity log saved.');
+    }, shown);
   };
   const clearBtn = button({ variant: 'secondary', label: 'Clear', onClick: async () => {
     if (!(await confirmDialog('Clear the activity log?', 'Every recorded tool call and approval is removed from this computer.', 'Clear'))) return;
-    await tauriInvoke('chat_clear_audit').catch((e) => toast(String(e), 'error'));
+    await call('chat_clear_audit').catch(shown);
     load();
   } });
   load();
@@ -1839,7 +1828,7 @@ async function renderGeneral(content: HTMLElement) {
       row('Suggest follow-ups', 'After each answer, offer three next questions. Each takes one short extra request to the model.', switchInput(followUpsOn(), (v) => setFollowUps(v))),
       (() => {
         // Cortex's own browser for links (Vibe's integrated browser); the choice lives in the app.
-        const sw = switchInput(false, (v) => void tauriInvoke('set_browser_prefs', { prefs: { inApp: v } }).catch((e) => toast(String(e), 'error')));
+        const sw = switchInput(false, (v) => void call('set_browser_prefs', { prefs: { inApp: v } }).catch(shown));
         void tauriInvoke<{ inApp: boolean }>('browser_prefs').then((p) => {
           const box = sw.querySelector('input') ?? (sw as HTMLInputElement);
           (box as HTMLInputElement).checked = p.inApp;

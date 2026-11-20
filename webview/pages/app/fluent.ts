@@ -6,7 +6,7 @@
  * the system's emoji show.
  */
 import { tauriInvoke } from '../../shared/tauri';
-import { listen } from './api';
+import { listen } from '../../shared/tauri';
 import { buildIndex, MAYBE, onlyEmoji, split } from './emojiscan';
 import { choice } from './prefs';
 

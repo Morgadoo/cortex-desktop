@@ -6,6 +6,7 @@ import { improveButton } from './improve';
 import { restoreButton } from './versions';
 import { navigate, state } from './state';
 import { button, emptyState, iconButton, modalHeader, pageHeader, switchInput, tabs } from './ui';
+import { call, callQuiet, shown } from './call';
 
 
 
@@ -296,7 +297,7 @@ function artifactRows(): HTMLElement {
               { class: 'setting-row' },
               h('div', {}, h('strong', {}, a.id), h('small', { class: 'muted' }, `${a.kind === 'skill' ? 'Skill' : 'Tool'}, ${a.status}, used ${a.used} times`)),
               h('label', { class: 'row-gap' }, h('small', { class: 'muted' }, 'Critical'), switchInput(a.critical, (v) => {
-                void tauriInvoke('chat_set_artifact_critical', { kind: a.kind, id: a.id, critical: v }).catch((e) => toast(String(e), 'error'));
+                void call('chat_set_artifact_critical', { kind: a.kind, id: a.id, critical: v }).catch(shown);
               })),
               // A tool the assistant wrote keeps only what it was granted; this takes it all back.
               a.kind === 'script_tool'
@@ -854,7 +855,7 @@ export function reviewRecording(status: { seconds: number; steps: number }) {
     const note = h('textarea', { class: 'input textarea short', rows: 3, placeholder: 'What was the task, and anything to know? e.g. “Export last month’s invoices as PDF and email them to accounting.”' });
     const error = h('p', { class: 'error-text' });
     const discard = async () => {
-      await tauriInvoke('chat_record_discard').catch(() => undefined);
+      await callQuiet('chat_record_discard');
       close();
     };
     const go = button({

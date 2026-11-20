@@ -6,8 +6,8 @@
 import './storage-migration';
 import { openSearchMode } from './searchmode';
 import { actionFor } from './shortcuts';
-import { api, listen, type ApprovalRequest, type ChatEvent } from './api';
-import { tauriInvoke } from '../../shared/tauri';
+import { api, type ApprovalRequest, type ChatEvent } from './api';
+import { listen, tauriInvoke } from '../../shared/tauri';
 import { ChatView, CompareView, HomeView, composer, conversationMenu, recordStepTimes, refreshConversations, scrollToTurn, turnEnded, viewCache } from './chat';
 import { clear, h, icon, modal, popover, promptText, confirmDialog, toast } from './dom';
 import { startUiLanguage } from './i18n';
@@ -28,6 +28,7 @@ import { button, emptyState, iconButton, modalHeader } from './ui';
 import { startFluentEmoji } from './fluent';
 import { refreshAudioSettings } from './audio';
 import { choice, json, workdir } from './prefs';
+import { call, callQuiet, shown } from './call';
 
 interface View {
   readonly el: HTMLElement;
@@ -128,7 +129,7 @@ const CONTEXT_PAGES: { page: Page; label: string; preview?: boolean }[] = [
 function openAppMenu(anchor: HTMLElement) {
   const item = (ic: Parameters<typeof icon>[0], label: string, keys: string | null, run: () => void) =>
     h('button', { class: 'menu-item', on: { click: () => { close(); run(); } } }, icon(ic, 16), h('span', { class: 'grow' }, label), keys ? h('small', { class: 'muted' }, keys) : null);
-  const action = (name: string) => () => void tauriInvoke('app_menu_action', { action: name }).catch((e) => toast(String(e), 'error'));
+  const action = (name: string) => () => void call('app_menu_action', { action: name }).catch(shown);
   const close = popover(
     anchor,
     h(
@@ -270,7 +271,7 @@ async function takeLink() {
 async function startWake() {
   try {
     await startWakeWord((request) => {
-      void tauriInvoke('chat_show_window').catch(() => undefined);
+      void callQuiet('chat_show_window');
       navigate({ kind: 'home' });
       setTimeout(() => {
         if (request) {
@@ -853,7 +854,7 @@ async function start() {
     const text = (live?.parts ?? []).filter((p): p is Extract<typeof p, { kind: 'text' }> => p.kind === 'text').map((p) => p.text).join(' ');
     const plain = text.replace(/```[\s\S]*?```/g, ' [code] ').replace(/[#*_`>|]/g, '').replace(/\s+/g, ' ').trim();
     const body = failed ? `The reply could not finish${live?.error ? `: ${live.error}` : '.'}` : plain || 'Your answer is ready.';
-    void tauriInvoke('chat_notify', { title: summary?.title || 'Cortex', body }).catch(() => undefined);
+    void callQuiet('chat_notify', { title: summary?.title || 'Cortex', body });
     if (finishSoundOn()) playChime();
   };
   void listen<ChatEvent>('chat://event', (event) => {

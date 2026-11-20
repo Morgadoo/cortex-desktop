@@ -8,6 +8,7 @@ import { clear, h, icon, modal, toast } from './dom';
 import { button, card, modalHeader } from './ui';
 import { appFiles } from './canvas';
 import { escapeHtml } from './format';
+import { call, shown } from './call';
 
 export interface SharedLink {
   token: string;
@@ -84,7 +85,7 @@ function showLink(link: SharedLink) {
       variant: 'secondary',
       label: 'Stop sharing',
       onClick: async () => {
-        await tauriInvoke('chat_stop_share', { token: link.token }).catch((e) => toast(String(e), 'error'));
+        await call('chat_stop_share', { token: link.token }).catch(shown);
         toast('No longer shared.');
         close();
       },

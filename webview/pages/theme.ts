@@ -5,7 +5,7 @@
  * preference until the web app has reported. Loaded from <head> so `data-theme` is set before
  * first paint.
  */
-import { tauriInvoke } from '../shared/tauri';
+import { listen, tauriInvoke } from '../shared/tauri';
 
 type Theme = 'light' | 'dark';
 
@@ -31,10 +31,9 @@ type Theme = 'light' | 'dark';
     })
     .catch(() => {});
 
-  const listen = window.__TAURI__?.event?.listen || window.__TAURI_INTERNALS__?.event?.listen;
-  void listen?.('web-theme:changed', (event) => {
-    if (isTheme(event.payload)) {
-      webTheme = event.payload;
+  void listen<unknown>('web-theme:changed', (payload) => {
+    if (isTheme(payload)) {
+      webTheme = payload;
       apply();
     }
   }).catch(() => {});

@@ -9,6 +9,7 @@ import { clear, confirmDialog, h, icon, modal, toast, timeLabel } from './dom';
 import { changed, state } from './state';
 import { editTask } from './tasks';
 import { button, modalHeader } from './ui';
+import { call, shown } from './call';
 
 interface Doc {
   id: string;
@@ -127,12 +128,7 @@ function viewMemory(agent: Agent) {
 /** Forgets the files and packages the agent's code kept. */
 async function resetEnv(agent: Agent) {
   if (!(await confirmDialog(`Reset ${agent.name}'s environment?`, 'Its files and installed packages are removed; its chats stay.', 'Reset'))) return;
-  try {
-    await tauriInvoke('chat_reset_agent_env', { id: agent.id });
-    toast(`${agent.name} starts from a fresh environment.`);
-  } catch (e) {
-    toast(String(e), 'error');
-  }
+  await call('chat_reset_agent_env', { id: agent.id }).then(() => toast(`${agent.name} starts from a fresh environment.`), shown);
 }
 
 /** The agent's own browser profile: sign it in to sites, or forget its session. */
