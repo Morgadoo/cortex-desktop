@@ -164,7 +164,7 @@ fn sha256(bytes: &[u8]) -> String {
 
 /// The key from the passphrase and salt (Argon2id), kept for the session: deriving is slow on
 /// purpose.
-fn derive(passphrase: &str, salt: &[u8]) -> Result<[u8; 32], String> {
+fn derive(passphrase: &str, salt: &[u8]) -> Result<[u8; 32], StoreError> {
     /// The last key derived: (passphrase, salt, key).
     type Derived = (String, Vec<u8>, [u8; 32]);
     static CACHE: Mutex<Option<Derived>> = Mutex::new(None);
@@ -177,30 +177,32 @@ fn derive(passphrase: &str, salt: &[u8]) -> Result<[u8; 32], String> {
     let mut key = [0u8; 32];
     argon2::Argon2::default()
         .hash_password_into(passphrase.as_bytes(), salt, &mut key)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| StoreError::Invalid(format!("could not derive the sync key: {e}")))?;
     *CACHE.lock().unwrap() = Some((hashed, salt.to_vec(), key));
     Ok(key)
 }
 
-fn seal(key: &[u8; 32], plain: &[u8]) -> Result<Vec<u8>, String> {
+fn seal(key: &[u8; 32], plain: &[u8]) -> Result<Vec<u8>, StoreError> {
     let cipher = XChaCha20Poly1305::new(key.into());
     let mut nonce = [0u8; 24];
     rand::fill(&mut nonce);
     let sealed = cipher
         .encrypt(XNonce::from_slice(&nonce), plain)
-        .map_err(|_| "could not encrypt".to_string())?;
+        .map_err(|_| StoreError::Invalid("could not encrypt".into()))?;
     Ok([MAGIC, &nonce[..], &sealed].concat())
 }
 
-fn open(key: &[u8; 32], data: &[u8]) -> Result<Vec<u8>, String> {
-    let rest = data.strip_prefix(MAGIC).ok_or("not a Cortex sync file")?;
+fn open(key: &[u8; 32], data: &[u8]) -> Result<Vec<u8>, StoreError> {
+    let rest = data
+        .strip_prefix(MAGIC)
+        .ok_or_else(|| StoreError::Invalid("not a Cortex sync file".into()))?;
     if rest.len() < 24 {
-        return Err("a sync file is cut short".into());
+        return Err(StoreError::Invalid("a sync file is cut short".into()));
     }
     let (nonce, sealed) = rest.split_at(24);
     XChaCha20Poly1305::new(key.into())
         .decrypt(XNonce::from_slice(nonce), sealed)
-        .map_err(|_| "wrong passphrase, or a damaged sync file".to_string())
+        .map_err(|_| StoreError::Invalid("wrong passphrase, or a damaged sync file".into()))
 }
 
 /// The item's file name: a keyed hash of the path, so the folder shows no names.
@@ -213,23 +215,32 @@ fn item_name(key: &[u8; 32], path: &str) -> String {
 
 /// Opens the sync folder with `passphrase`: the first device sets it up, the others must give
 /// the same passphrase.
-pub fn unlock(remote: &Path, passphrase: &str) -> Result<[u8; 32], String> {
+pub fn unlock(remote: &Path, passphrase: &str) -> Result<[u8; 32], StoreError> {
     if passphrase.chars().count() < 8 {
-        return Err("Use a passphrase of at least 8 characters.".into());
+        return Err(StoreError::Invalid(
+            "Use a passphrase of at least 8 characters.".into(),
+        ));
     }
     let check_path = remote.join("keycheck.json");
     let b64 = base64::engine::general_purpose::STANDARD;
     if let Some(check) = read::<KeyCheck>(&check_path) {
-        let salt = b64.decode(&check.salt).map_err(|e| e.to_string())?;
+        let salt = b64.decode(&check.salt).map_err(|e| {
+            StoreError::Invalid(format!("the sync folder's key check is damaged: {e}"))
+        })?;
         let key = derive(passphrase, &salt)?;
-        let sealed = b64.decode(&check.check).map_err(|e| e.to_string())?;
+        let sealed = b64.decode(&check.check).map_err(|e| {
+            StoreError::Invalid(format!("the sync folder's key check is damaged: {e}"))
+        })?;
         return match open(&key, &sealed) {
             Ok(text) if text == CHECK_TEXT => Ok(key),
-            _ => Err("That passphrase does not open this sync folder. Use the one set on your other device.".into()),
+            _ => Err(StoreError::Invalid(
+                "That passphrase does not open this sync folder. Use the one set on your other device."
+                    .into(),
+            )),
         };
     }
-    std::fs::create_dir_all(remote.join("items"))
-        .map_err(|e| format!("Could not create the sync folder: {e}"))?;
+    let items = remote.join("items");
+    std::fs::create_dir_all(&items).map_err(|e| StoreError::write(&items, e))?;
     let mut salt = [0u8; 16];
     rand::fill(&mut salt);
     let key = derive(passphrase, &salt)?;
@@ -375,12 +386,16 @@ pub(in crate::chat::storage) fn sync_once(
     let (local, local_hashes) = read_local(config_dir, &mut report);
 
     let device = device_name();
-    let put = |item: &Item| -> Result<(), String> {
-        let sealed = seal(key, &serde_json::to_vec(item).map_err(|e| e.to_string())?)?;
+    let put = |item: &Item| -> Result<(), StoreError> {
         let path = items_dir.join(item_name(key, &item.path));
+        let plain = serde_json::to_vec(item).map_err(|source| StoreError::Encode {
+            path: path.clone(),
+            source,
+        })?;
+        let sealed = seal(key, &plain)?;
         let tmp = path.with_extension("part");
-        crate::chat::at_rest::write(&tmp, sealed).map_err(|e| e.to_string())?;
-        std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+        crate::chat::at_rest::write(&tmp, sealed).map_err(|e| StoreError::write(&tmp, e))?;
+        std::fs::rename(&tmp, &path).map_err(|e| StoreError::write(&path, e))
     };
     let upload = |rel: &str, hash: &str, bytes: &[u8]| {
         put(&Item {
@@ -405,7 +420,7 @@ pub(in crate::chat::storage) fn sync_once(
         let l = local_hashes.get(&path);
         let r = remote_items.get(&path);
         let s = state.synced.get(&path).cloned();
-        let result: Result<Option<String>, String> = match (l, r) {
+        let result: Result<Option<String>, StoreError> = match (l, r) {
             (Some((lh, bytes)), None) => upload(&path, lh, bytes).map(|_| {
                 report.sent += 1;
                 Some(lh.clone())
@@ -426,23 +441,19 @@ pub(in crate::chat::storage) fn sync_once(
                         None
                     })
                 } else {
-                    download(item)
-                        .map(|_| {
-                            report.received += 1;
-                            Some(item.hash.clone())
-                        })
-                        .map_err(String::from)
+                    download(item).map(|_| {
+                        report.received += 1;
+                        Some(item.hash.clone())
+                    })
                 }
             }
             (None, Some(_)) => Ok(None),
             (Some((lh, bytes)), Some(item)) if item.deleted => {
                 if s.as_deref() == Some(lh.as_str()) {
-                    remove_local(&path)
-                        .map(|_| {
-                            report.deleted += 1;
-                            None
-                        })
-                        .map_err(String::from)
+                    remove_local(&path).map(|_| {
+                        report.deleted += 1;
+                        None
+                    })
                 } else {
                     // Changed here after it was deleted elsewhere: it comes back.
                     upload(&path, lh, bytes).map(|_| {
@@ -455,12 +466,10 @@ pub(in crate::chat::storage) fn sync_once(
                 if *lh == item.hash {
                     Ok(Some(lh.clone()))
                 } else if s.as_deref() == Some(lh.as_str()) {
-                    download(item)
-                        .map(|_| {
-                            report.received += 1;
-                            Some(item.hash.clone())
-                        })
-                        .map_err(String::from)
+                    download(item).map(|_| {
+                        report.received += 1;
+                        Some(item.hash.clone())
+                    })
                 } else if s.as_deref() == Some(item.hash.as_str()) {
                     upload(&path, lh, bytes).map(|_| {
                         report.sent += 1;
@@ -469,12 +478,10 @@ pub(in crate::chat::storage) fn sync_once(
                 } else {
                     report.conflicts.push(path.clone());
                     if item.modified > modified_ms(&local[&path]) {
-                        download(item)
-                            .map(|_| {
-                                report.received += 1;
-                                Some(item.hash.clone())
-                            })
-                            .map_err(String::from)
+                        download(item).map(|_| {
+                            report.received += 1;
+                            Some(item.hash.clone())
+                        })
                     } else {
                         upload(&path, lh, bytes).map(|_| {
                             report.sent += 1;
@@ -510,10 +517,16 @@ fn read_remote(items_dir: &Path, key: &[u8; 32], report: &mut Report) -> BTreeMa
             if !e.file_name().to_string_lossy().ends_with(".lumo") {
                 continue;
             }
-            let item = crate::chat::at_rest::read(e.path())
-                .map_err(|e| e.to_string())
+            let path = e.path();
+            let item = crate::chat::at_rest::read(&path)
+                .map_err(|err| StoreError::read(&path, err))
                 .and_then(|d| open(key, &d))
-                .and_then(|p| serde_json::from_slice::<Item>(&p).map_err(|e| e.to_string()));
+                .and_then(|p| {
+                    serde_json::from_slice::<Item>(&p).map_err(|source| StoreError::Parse {
+                        path: path.clone(),
+                        source,
+                    })
+                });
             match item {
                 // A name that does not match its path was not written by Cortex with this key.
                 Ok(item)
@@ -641,8 +654,7 @@ pub async fn run(config_dir: &Path) -> Result<Report, StoreError> {
         unlock(&remote, &phrase).map(|key| sync_once(&dir, &remote, &key))
     })
     .await
-    .map_err(|e| StoreError::Invalid(e.to_string()))?
-    .map_err(StoreError::Invalid)?;
+    .map_err(|e| StoreError::Invalid(e.to_string()))??;
     s.last_sync = Some(chrono::Utc::now());
     s.last_report = report.summary();
     save_settings(config_dir, &s)?;
@@ -715,6 +727,7 @@ mod tests {
         assert_eq!(unlock(&remote, "first passphrase").unwrap(), key);
         assert!(unlock(&remote, "wrong passphrase")
             .unwrap_err()
+            .to_string()
             .contains("does not open"));
     }
 

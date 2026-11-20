@@ -114,15 +114,17 @@ pub fn remove(
     index: usize,
     kind: &str,
     name: &str,
-) -> Result<(), String> {
+) -> Result<(), crate::support::error::StoreError> {
     let Some(Message::User { content }) = c.messages.get_mut(index) else {
-        return Err("That message no longer exists.".into());
+        return Err(crate::support::error::StoreError::Invalid(
+            "That message no longer exists.".into(),
+        ));
     };
     if kind == "image" {
         let n: usize = name
             .strip_prefix("Image ")
             .and_then(|n| n.parse().ok())
-            .ok_or("No such image.")?;
+            .ok_or_else(|| crate::support::error::StoreError::Invalid("No such image.".into()))?;
         let mut seen = 0;
         let position = content.iter().position(|p| {
             if matches!(p, UserContent::Image(_)) {
@@ -132,7 +134,8 @@ pub fn remove(
                 false
             }
         });
-        let at = position.ok_or("No such image.")?;
+        let at = position
+            .ok_or_else(|| crate::support::error::StoreError::Invalid("No such image.".into()))?;
         content[at] = UserContent::text("[The user removed an image here.]");
         return Ok(());
     }
@@ -154,7 +157,9 @@ pub fn remove(
     if found {
         Ok(())
     } else {
-        Err("That file is no longer in the message.".into())
+        Err(crate::support::error::StoreError::Invalid(
+            "That file is no longer in the message.".into(),
+        ))
     }
 }
 

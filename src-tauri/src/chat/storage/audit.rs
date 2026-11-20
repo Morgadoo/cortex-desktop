@@ -6,6 +6,7 @@
 //! Arguments and results are kept short (a few hundred characters) and secrets from the vault
 //! are already masked before they reach here.
 
+use crate::support::error::StoreError;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
@@ -64,18 +65,24 @@ fn lock() -> &'static std::sync::Mutex<()> {
 pub fn record(config_dir: &Path, entry: Entry) {
     let _guard = lock().lock();
     let path = month_file(config_dir, entry.at);
-    let result = (|| -> Result<(), String> {
-        std::fs::create_dir_all(dir(config_dir)).map_err(|e| e.to_string())?;
+    let result = (|| -> Result<(), StoreError> {
+        std::fs::create_dir_all(dir(config_dir))
+            .map_err(|e| StoreError::write(&dir(config_dir), e))?;
         let mut text = crate::chat::at_rest::read_to_string(&path).unwrap_or_default();
         if text.lines().count() >= MONTH_LIMIT {
             return Ok(());
         }
-        text.push_str(&serde_json::to_string(&entry).map_err(|e| e.to_string())?);
+        text.push_str(
+            &serde_json::to_string(&entry).map_err(|source| StoreError::Encode {
+                path: path.clone(),
+                source,
+            })?,
+        );
         text.push('\n');
-        crate::chat::at_rest::write(&path, text).map_err(|e| e.to_string())?;
+        crate::chat::at_rest::write(&path, text).map_err(|e| StoreError::write(&path, e))?;
         // Older than a year: gone.
         let mut months: Vec<PathBuf> = std::fs::read_dir(dir(config_dir))
-            .map_err(|e| e.to_string())?
+            .map_err(|e| StoreError::read(&dir(config_dir), e))?
             .flatten()
             .map(|e| e.path())
             .filter(|p| p.extension().is_some_and(|x| x == "jsonl"))

@@ -323,4 +323,5 @@ pub async fn chat_import_coding_sessions(
     })
     .await
     .map_err(|e| e.to_string())?
+    .map_err(String::from)
 }

@@ -6,6 +6,7 @@
 //! the text of user and assistant messages comes across; tool calls, system messages and
 //! attachments do not.
 
+use crate::support::error::StoreError;
 use std::io::Read;
 use std::path::Path;
 
@@ -24,26 +25,27 @@ pub struct ImportReport {
 }
 
 /// Reads `conversations.json` from an export zip, or the JSON file itself.
-fn read_export(path: &Path) -> Result<Value, String> {
-    let bytes = crate::chat::at_rest::read(path).map_err(|e| e.to_string())?;
+fn read_export(path: &Path) -> Result<Value, StoreError> {
+    let bytes = crate::chat::at_rest::read(path).map_err(|e| StoreError::read(path, e))?;
+    let invalid = |what: String| StoreError::Invalid(what);
     let json = if bytes.starts_with(b"PK") {
         let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
-            .map_err(|e| format!("Not a readable zip: {e}"))?;
+            .map_err(|e| invalid(format!("Not a readable zip: {e}")))?;
         let name = (0..archive.len())
             .filter_map(|i| archive.by_index(i).ok().map(|f| f.name().to_string()))
             .find(|n| n.rsplit('/').next() == Some("conversations.json"))
-            .ok_or("The export has no conversations.json.")?;
+            .ok_or_else(|| invalid("The export has no conversations.json.".into()))?;
         let mut text = String::new();
         archive
             .by_name(&name)
-            .map_err(|e| e.to_string())?
+            .map_err(|e| invalid(format!("The export's {name} cannot be opened: {e}")))?
             .read_to_string(&mut text)
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| StoreError::read(path, e))?;
         text
     } else {
-        String::from_utf8(bytes).map_err(|_| "The file is not text.".to_string())?
+        String::from_utf8(bytes).map_err(|_| invalid("The file is not text.".into()))?
     };
-    serde_json::from_str(&json).map_err(|e| format!("The export is not valid JSON: {e}"))
+    serde_json::from_str(&json).map_err(|e| invalid(format!("The export is not valid JSON: {e}")))
 }
 
 fn time_from(value: Option<&Value>) -> Option<DateTime<Utc>> {
@@ -172,16 +174,18 @@ fn claude_lines(conversation: &Value) -> Vec<Line> {
 }
 
 /// Builds conversations from an export's JSON, without saving them.
-fn convert(export: &Value) -> Result<(Vec<Conversation>, usize, &'static str), String> {
+fn convert(export: &Value) -> Result<(Vec<Conversation>, usize, &'static str), StoreError> {
     let items = export
         .as_array()
-        .ok_or("The export is not a list of conversations.")?;
+        .ok_or_else(|| StoreError::Invalid("The export is not a list of conversations.".into()))?;
     let source = if items.iter().any(|c| c.get("mapping").is_some()) {
         "ChatGPT"
     } else if items.iter().any(|c| c.get("chat_messages").is_some()) {
         "Claude"
     } else {
-        return Err("This does not look like a ChatGPT or Claude export.".into());
+        return Err(StoreError::Invalid(
+            "This does not look like a ChatGPT or Claude export.".into(),
+        ));
     };
     let mut out = Vec::new();
     let mut skipped = 0;
@@ -232,7 +236,7 @@ fn convert(export: &Value) -> Result<(Vec<Conversation>, usize, &'static str), S
 }
 
 /// Imports every conversation in the export at `path`.
-pub fn import(config_dir: &Path, path: &Path) -> Result<ImportReport, String> {
+pub fn import(config_dir: &Path, path: &Path) -> Result<ImportReport, StoreError> {
     let (conversations, skipped, source) = convert(&read_export(path)?)?;
     let imported = conversations.len();
     for conversation in &conversations {

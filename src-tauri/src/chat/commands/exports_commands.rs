@@ -81,6 +81,7 @@ pub async fn chat_import_conversations(
         .await
         .map_err(|e| e.to_string())?
         .map(Some)
+        .map_err(String::from)
 }
 
 /// Writes a conversation as Markdown to a file the user picks.

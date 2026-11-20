@@ -4,6 +4,7 @@
 //! folder, with what was said kept and each tool step as a short line, so they can be read,
 //! searched and continued here.
 
+use crate::support::error::StoreError;
 use std::io::BufRead as _;
 use std::path::{Path, PathBuf};
 
@@ -118,8 +119,8 @@ fn is_noise(text: &str) -> bool {
 type Source<'a> = (&'a str, PathBuf, usize, &'a dyn Fn(&str) -> bool);
 
 /// Reads a session file of either agent, line by line.
-pub(in crate::chat::storage) fn read(path: &Path) -> Result<Session, String> {
-    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+pub(in crate::chat::storage) fn read(path: &Path) -> Result<Session, StoreError> {
+    let file = std::fs::File::open(path).map_err(|e| StoreError::read(path, e))?;
     let mut session = Session::default();
     for line in std::io::BufReader::new(file).lines() {
         let Ok(line) = line else { continue };
@@ -315,10 +316,10 @@ pub fn find(config_dir: &Path, home_dir: Option<&Path>) -> Vec<Found> {
 }
 
 /// Imports one session as a Code-mode conversation; again for a file updates the same one.
-pub fn import(config_dir: &Path, path: &Path) -> Result<String, String> {
+pub fn import(config_dir: &Path, path: &Path) -> Result<String, StoreError> {
     let session = read(path)?;
     if !session.turns.iter().any(|t| t.user) {
-        return Err("That session has no messages.".into());
+        return Err(StoreError::Invalid("That session has no messages.".into()));
     }
     let id = id_for(path);
     let mut c = Conversation::new(id.clone(), None, None);
