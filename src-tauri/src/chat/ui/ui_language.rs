@@ -8,6 +8,7 @@
 //!
 //! Only catalog strings are ever sent: no messages, titles, names or anything the user typed.
 
+use crate::chat::error::ChatError;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -94,16 +95,13 @@ pub(in crate::chat::ui) fn load(config_dir: &Path, code: &str) -> BTreeMap<Strin
         .unwrap_or_default()
 }
 
-fn save(config_dir: &Path, code: &str, map: &BTreeMap<String, String>) -> Result<(), String> {
-    let p = path(config_dir, code).ok_or("That language is not offered.")?;
-    if let Some(dir) = p.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    }
-    crate::chat::at_rest::write(
-        p,
-        serde_json::to_string_pretty(map).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())
+fn save(config_dir: &Path, code: &str, map: &BTreeMap<String, String>) -> Result<(), ChatError> {
+    let p = path(config_dir, code).ok_or_else(not_offered)?;
+    Ok(crate::chat::store::write_json(&p, map)?)
+}
+
+fn not_offered() -> ChatError {
+    ChatError::Invalid("That language is not offered.".into())
 }
 
 /// A translation keeps every `{n}` placeholder of the original, and no others.
@@ -146,11 +144,11 @@ pub(in crate::chat::ui) fn parse_reply(reply: &str, asked: &[String]) -> BTreeMa
 }
 
 /// Translates the catalog strings not yet known for `code` with `model`.
-pub async fn translate(config_dir: &Path, model: &str, code: &str) -> Result<Coverage, String> {
+pub async fn translate(config_dir: &Path, model: &str, code: &str) -> Result<Coverage, ChatError> {
     let (_, name) = LANGUAGES
         .iter()
         .find(|(c, _)| *c == code)
-        .ok_or("That language is not offered.")?;
+        .ok_or_else(not_offered)?;
     let mut known = load(config_dir, code);
     let all = translations(config_dir, code);
     let mut wanted: Vec<String> = catalog()
@@ -160,7 +158,7 @@ pub async fn translate(config_dir: &Path, model: &str, code: &str) -> Result<Cov
     wanted.sort();
     wanted.dedup();
     for batch in wanted.chunks(BATCH) {
-        let list = serde_json::to_string_pretty(batch).map_err(|e| e.to_string())?;
+        let list = serde_json::to_string_pretty(batch).unwrap_or_default();
         let prompt = format!(
             "Translate these user-interface strings of a desktop AI assistant app called Cortex from English into {name} ({code}). \
              Use the usual words of desktop software in that language, the same tone (short, plain, friendly), and keep \
@@ -170,10 +168,14 @@ pub async fn translate(config_dir: &Path, model: &str, code: &str) -> Result<Cov
              nothing else.\n\n{list}"
         );
         let request = CompletionRequest::new(Message::user(prompt)).max_tokens(16_000u64);
-        let reply = crate::chat::engine::ask_text(config_dir, model, request, 180).await?;
+        let reply = crate::chat::engine::ask_text(config_dir, model, request, 180)
+            .await
+            .map_err(ChatError::Model)?;
         let got = parse_reply(&reply, batch);
         if got.is_empty() {
-            return Err("The model's translation could not be read; try another model.".into());
+            return Err(ChatError::Model(
+                "its translation could not be read; try another model.".into(),
+            ));
         }
         known.extend(got);
         save(config_dir, code, &known)?;
@@ -182,9 +184,10 @@ pub async fn translate(config_dir: &Path, model: &str, code: &str) -> Result<Cov
 }
 
 /// Forgets the model's translations for `code` (the bundled ones stay).
-pub fn reset(config_dir: &Path, code: &str) -> Result<(), String> {
+pub fn reset(config_dir: &Path, code: &str) -> Result<(), ChatError> {
     match path(config_dir, code) {
-        Some(p) if p.exists() => std::fs::remove_file(p).map_err(|e| e.to_string()),
+        Some(p) if p.exists() => std::fs::remove_file(&p)
+            .map_err(|e| crate::support::error::StoreError::write(&p, e).into()),
         _ => Ok(()),
     }
 }

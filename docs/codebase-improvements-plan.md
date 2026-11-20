@@ -28,7 +28,7 @@ package is one or more commits there. Measured as section 7 describes:
 | Rust functions over 150 lines | 11 | 0 | 0 |
 | Layering violations allowed | About 69 modules in one cycle | 0 | 0 |
 | Public functions in chat | About 1,060 | 841, 287 of them commands | Under 400 |
-| `Result<_, String>` in chat, outside `commands/` | About 420 | 419 | 0 below the entry points |
+| `Result<_, String>` in chat, outside `commands/` | About 420 | About 320; none in storage or ui | 0 below the entry points |
 | Hand edits to add a command | 4 to 5 | 1, plus a script | 1 |
 | Backend calls by string name | 287 | 0 unchecked: every name is checked against the generated command list | 0 |
 
@@ -45,8 +45,10 @@ package is one or more commits there. Measured as section 7 describes:
   `scripts/screenshot-pages.mjs`. The `--cortex-*` names stay until the old settings page is
   rewritten.
 - 3.4: 240 functions narrowed. The rest wait on the crate split, which decides what is public.
-- 3.5: storage has a typed `StoreError` (in `cortex-store`); the other layers still return
-  `String`.
+- 3.5: storage returns `StoreError` throughout (none of its functions returns
+  `Result<_, String>`), and `chat::error::ChatError` (storage, network, model, invalid request)
+  serves the layers above, starting with `ui`. Still on `String`: models, grounding, toolkit,
+  multimedia, turn and automation, about 320 signatures, converted a layer at a time.
 - 3.10: the conversation, its turns and events, providers, models, projects, memories, tasks'
   schedules, search hits, the trash, storage health, skills and workflows are generated from the
   Rust types, and so are agents and scheduled tasks. Package item 4 (verb names) is not started.

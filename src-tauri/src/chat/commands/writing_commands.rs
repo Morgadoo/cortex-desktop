@@ -9,7 +9,9 @@ pub async fn chat_translate_ui(
     model: String,
     code: String,
 ) -> Result<crate::chat::ui_language::Coverage, String> {
-    crate::chat::ui_language::translate(&config_dir(&app)?, &model, &code).await
+    crate::chat::ui_language::translate(&config_dir(&app)?, &model, &code)
+        .await
+        .map_err(String::from)
 }
 
 /// An answer translated into `language`, Markdown kept; shown beside the original, not stored.

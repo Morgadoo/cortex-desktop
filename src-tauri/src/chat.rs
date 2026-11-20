@@ -23,7 +23,7 @@
 
 pub mod base;
 pub mod commands;
-pub use base::{approval, events, tool_names};
+pub use base::{approval, error, events, tool_names};
 pub mod storage;
 pub use storage::{
     at_rest, audit, coding_import, import, recent_files, secrets, store, sync, traces, uploads,

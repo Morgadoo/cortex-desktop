@@ -7,6 +7,8 @@
 //! app's local data folder (not the config folder, so it is not synced or backed up). The page
 //! loads the images through the `cortexapp` protocol, at `/emoji/<style>/<name>.<ext>`.
 
+use crate::chat::error::ChatError;
+use crate::support::error::StoreError;
 use std::collections::HashMap;
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
@@ -100,21 +102,23 @@ pub(in crate::chat::ui) fn verify(bytes: &[u8], integrity: &str) -> bool {
 
 /// Writes the pack's images (`package/assets/<name>.<ext>`) from the tarball into `target`;
 /// anything else in it is ignored.
-pub(in crate::chat::ui) fn extract(tgz: &[u8], ext: &str, target: &Path) -> Result<usize, String> {
-    std::fs::create_dir_all(target).map_err(|e| e.to_string())?;
+pub(in crate::chat::ui) fn extract(
+    tgz: &[u8],
+    ext: &str,
+    target: &Path,
+) -> Result<usize, ChatError> {
+    let damaged = |e: std::io::Error| ChatError::Invalid(format!("The emoji pack is damaged: {e}"));
+    std::fs::create_dir_all(target).map_err(|e| StoreError::write(target, e))?;
     let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(tgz));
     let mut count = 0;
-    for entry in archive
-        .entries()
-        .map_err(|e| format!("The emoji pack is damaged: {e}"))?
-    {
-        let mut entry = entry.map_err(|e| format!("The emoji pack is damaged: {e}"))?;
+    for entry in archive.entries().map_err(damaged)? {
+        let mut entry = entry.map_err(damaged)?;
         if !entry.header().entry_type().is_file() || entry.size() > MAX_IMAGE {
             continue;
         }
         let path = entry
             .path()
-            .map_err(|e| e.to_string())?
+            .map_err(damaged)?
             .to_string_lossy()
             .into_owned();
         let Some(file) = path.strip_prefix("package/assets/") else {
@@ -127,8 +131,9 @@ pub(in crate::chat::ui) fn extract(tgz: &[u8], ext: &str, target: &Path) -> Resu
             continue;
         }
         let mut bytes = Vec::with_capacity(entry.size() as usize);
-        entry.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
-        std::fs::write(target.join(file), bytes).map_err(|e| e.to_string())?;
+        entry.read_to_end(&mut bytes).map_err(damaged)?;
+        let out = target.join(file);
+        std::fs::write(&out, bytes).map_err(|e| StoreError::write(&out, e))?;
         count += 1;
     }
     Ok(count)
@@ -183,8 +188,8 @@ pub fn status(root: &Path, style: &str) -> Status {
 }
 
 /// Downloads, checks and unpacks a pack. Marks it ready only once every image is in place.
-pub async fn install(root: &Path, style: &str) -> Result<usize, String> {
-    let pack = pack(style).ok_or("Unknown emoji style.")?;
+pub async fn install(root: &Path, style: &str) -> Result<usize, ChatError> {
+    let pack = pack(style).ok_or_else(|| ChatError::Invalid("Unknown emoji style.".into()))?;
     if installed(root, style) {
         return Ok(index(root, style).len());
     }
@@ -192,35 +197,36 @@ pub async fn install(root: &Path, style: &str) -> Result<usize, String> {
     let result = download_and_unpack(root, pack).await;
     match &result {
         Ok(_) => set_running(style, None),
-        Err(e) => set_running(style, Some(Some(e.clone()))),
+        Err(e) => set_running(style, Some(Some(e.to_string()))),
     }
     result
 }
 
-async fn download_and_unpack(root: &Path, pack: &Pack) -> Result<usize, String> {
-    let client = crate::support::http::client(std::time::Duration::from_secs(600))?;
+async fn download_and_unpack(root: &Path, pack: &Pack) -> Result<usize, ChatError> {
+    const WHAT: &str = "Could not download the emoji";
+    let client = crate::support::http::client(std::time::Duration::from_secs(600))
+        .map_err(|e| ChatError::network(WHAT, e))?;
     let response = client
         .get(pack.url)
         .send()
         .await
-        .map_err(|e| format!("Could not download the emoji: {e}"))?;
+        .map_err(|e| ChatError::network(WHAT, e))?;
     if !response.status().is_success() {
-        return Err(format!(
-            "Could not download the emoji ({}).",
-            response.status()
-        ));
+        return Err(ChatError::network(WHAT, response.status()));
     }
     let bytes = response
         .bytes()
         .await
-        .map_err(|e| format!("The emoji download stopped: {e}"))?;
+        .map_err(|e| ChatError::network("The emoji download stopped", e))?;
     if bytes.len() > MAX_DOWNLOAD {
-        return Err("The emoji download is larger than expected.".into());
+        return Err(ChatError::Invalid(
+            "The emoji download is larger than expected.".into(),
+        ));
     }
     if !verify(&bytes, pack.integrity) {
-        return Err(
+        return Err(ChatError::Invalid(
             "The emoji download did not match its published checksum, so it was not used.".into(),
-        );
+        ));
     }
     let target = dir(root, pack.style);
     let partial = target.with_extension("partial");
@@ -229,14 +235,17 @@ async fn download_and_unpack(root: &Path, pack: &Pack) -> Result<usize, String> 
     let partial2 = partial.clone();
     let count = tokio::task::spawn_blocking(move || extract(&bytes, ext, &partial2))
         .await
-        .map_err(|e| e.to_string())??;
+        .map_err(|e| ChatError::Invalid(e.to_string()))??;
     if count < 1000 {
         let _ = std::fs::remove_dir_all(&partial);
-        return Err(format!("The emoji pack held only {count} images."));
+        return Err(ChatError::Invalid(format!(
+            "The emoji pack held only {count} images."
+        )));
     }
-    std::fs::write(partial.join(".complete"), count.to_string()).map_err(|e| e.to_string())?;
+    let complete = partial.join(".complete");
+    std::fs::write(&complete, count.to_string()).map_err(|e| StoreError::write(&complete, e))?;
     let _ = std::fs::remove_dir_all(&target);
-    std::fs::rename(&partial, &target).map_err(|e| e.to_string())?;
+    std::fs::rename(&partial, &target).map_err(|e| StoreError::write(&target, e))?;
     log::info!("installed the Fluent {} emoji ({count} images)", pack.style);
     Ok(count)
 }

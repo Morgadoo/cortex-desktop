@@ -217,6 +217,15 @@ npm run build:webview && node scripts/screenshot-pages.mjs shots/after
 node scripts/screenshot-pages.mjs --compare shots/before shots/after
 ```
 
+### An error
+
+Storage returns `StoreError` (`cortex-store`): which file, and whether it was missing, locked,
+unreadable or unwritable. The layers above return `chat::error::ChatError`, which wraps it and adds
+network, model and invalid-request failures; `?` converts one into the other. Words meant for the
+user go in `Invalid`. Only the commands turn an error into a `String`, the text the window shows.
+Some layers (models, grounding, toolkit, multimedia, turn, automation) still return `String` and
+move over one at a time.
+
 ### A module
 
 Put it in the folder for its role, add it to that folder's `mod.rs` and to the folder's

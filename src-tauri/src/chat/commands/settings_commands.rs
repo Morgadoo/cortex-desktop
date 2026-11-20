@@ -189,7 +189,7 @@ pub fn chat_ui_languages() -> Vec<(String, String)> {
 
 #[tauri::command]
 pub fn chat_reset_ui_translations(app: AppHandle, code: String) -> Result<(), String> {
-    crate::chat::ui_language::reset(&config_dir(&app)?, &code)
+    crate::chat::ui_language::reset(&config_dir(&app)?, &code).map_err(String::from)
 }
 
 /// Encryption at rest: whether it is on, and how many files are sealed.
