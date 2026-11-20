@@ -328,7 +328,7 @@ mod tests {
                     && v.value["status"] == "active"
             })
             .unwrap();
-        crate::chat::versions::restore(d, "tools", "script-rates_h", &first.id).unwrap();
+        crate::chat::history::restore(d, "tools", "script-rates_h", &first.id).unwrap();
         assert!(st::load(d, "rates_h").unwrap().script.contains("return 1"));
         let report = maintain(d, Utc::now() + Duration::hours(1)).await;
         assert!(
@@ -377,7 +377,7 @@ mod tests {
                     && v.value["status"] == "active"
             })
             .unwrap();
-        crate::chat::versions::restore(d, "tools", "script-rates_b", &first.id).unwrap();
+        crate::chat::history::restore(d, "tools", "script-rates_b", &first.id).unwrap();
         // Two of its first six calls fail: worse than the set-aside version's week, but that is
         // the user's choice, not a regression.
         for ok in [false, false, true, true, true, true] {
@@ -435,7 +435,7 @@ mod tests {
                 .unwrap()
         };
         let first = active("function main() { return 1; }");
-        crate::chat::versions::restore(d, "tools", "script-rates_i", &first.id).unwrap();
+        crate::chat::history::restore(d, "tools", "script-rates_i", &first.id).unwrap();
         assert_eq!(st::load(d, "rates_i").unwrap().set_aside.len(), 2);
         // Weeks later the first version has a bad week against its own earlier one: it is not
         // rolled forward to the second version, the one before the current at the time.
@@ -476,7 +476,7 @@ mod tests {
         // Bringing back the third version takes it off the list.
         let third = active("function main() { return 3; }");
         let third_hash = st::approval_hash(&serde_json::from_value(third.value.clone()).unwrap());
-        crate::chat::versions::restore(d, "tools", "script-rates_i", &third.id).unwrap();
+        crate::chat::history::restore(d, "tools", "script-rates_i", &third.id).unwrap();
         let back = st::load(d, "rates_i").unwrap();
         assert!(back.script.contains("return 3"));
         assert!(
@@ -524,7 +524,7 @@ mod tests {
             .into_iter()
             .find(|v| v.value["script"] == "function main() { return 2; }")
             .unwrap();
-        crate::chat::versions::restore(d, "tools", "script-rates_d", &draft.id).unwrap();
+        crate::chat::history::restore(d, "tools", "script-rates_d", &draft.id).unwrap();
         st::promote(d, "rates_d", None).await.unwrap();
         for ok in [false, false, true, true, true, true] {
             traces::tool_call_at(
@@ -624,7 +624,7 @@ mod tests {
                     && v.value["status"] == "active"
             })
             .unwrap();
-        crate::chat::versions::restore(d, "tools", "script-rates_f", &first.id).unwrap();
+        crate::chat::history::restore(d, "tools", "script-rates_f", &first.id).unwrap();
         assert_eq!(st::load(d, "rates_f").unwrap().set_aside.len(), 1);
         // Weeks later the first version has a bad week against its own earlier one.
         let mut tool = st::load(d, "rates_f").unwrap();
@@ -827,7 +827,7 @@ mod tests {
                     && v.value["status"] == "active"
             })
             .unwrap();
-        crate::chat::versions::restore(d, "tools", &format!("script-{name}"), &second.id).unwrap();
+        crate::chat::history::restore(d, "tools", &format!("script-{name}"), &second.id).unwrap();
         // As the app would have stamped it, two months ago.
         let mut t = st::load(d, name).unwrap();
         t.approved_at = Some(now - Duration::days(60));
@@ -1004,7 +1004,7 @@ mod tests {
                     && v.value["status"] == "active"
             })
             .unwrap();
-        crate::chat::versions::restore(d, "tools", "script-rates_p", &first.id).unwrap();
+        crate::chat::history::restore(d, "tools", "script-rates_p", &first.id).unwrap();
         let restored = st::load(d, "rates_p").unwrap();
         assert!(restored.set_aside.contains(&v2));
         assert!(restored.restored_at.is_some());

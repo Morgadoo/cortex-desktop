@@ -287,17 +287,6 @@ pub async fn chat_add_library_folder(
         .map(Some)
 }
 
-/// The connectors set up, as the library sync takes them.
-pub(crate) fn registry_connectors(
-    app: &AppHandle,
-) -> Vec<std::sync::Arc<dyn crate::tools::registry::Connector>> {
-    app.state::<crate::tools::registry::ToolRegistry>()
-        .connectors()
-        .into_iter()
-        .map(|c| c as std::sync::Arc<dyn crate::tools::registry::Connector>)
-        .collect()
-}
-
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LibraryConnector {

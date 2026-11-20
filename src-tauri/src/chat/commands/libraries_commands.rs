@@ -183,8 +183,12 @@ pub async fn chat_sync_library(
         .connectors
         .is_empty()
     {
-        let more =
-            crate::chat::libraries::sync_connectors(&dir, &id, &registry_connectors(&app)).await?;
+        let more = crate::chat::libraries::sync_connectors(
+            &dir,
+            &id,
+            &crate::chat::tools::registry_connectors(&app),
+        )
+        .await?;
         report.added += more.added;
         report.updated += more.updated;
         report.removed += more.removed;
@@ -225,8 +229,12 @@ pub async fn chat_set_library_connector(
 ) -> Result<crate::chat::libraries::SyncReport, String> {
     let dir = config_dir(&app)?;
     crate::chat::libraries::set_connector(&dir, &id, &connector_id, on)?;
-    let report =
-        crate::chat::libraries::sync_connectors(&dir, &id, &registry_connectors(&app)).await?;
+    let report = crate::chat::libraries::sync_connectors(
+        &dir,
+        &id,
+        &crate::chat::tools::registry_connectors(&app),
+    )
+    .await?;
     if on
         && report.added == 0
         && report.errors.is_empty()

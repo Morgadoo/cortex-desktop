@@ -7,6 +7,7 @@ pub mod context;
 pub(super) mod deferred;
 pub mod engine;
 pub mod functions;
+pub mod headless_host;
 pub mod hooks;
 pub mod host;
 pub mod prompt;

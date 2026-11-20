@@ -22,11 +22,11 @@ use cortex_kernel::agent_loop::{Reply, Steps};
 use crate::chat::host::{Host, TauriHost};
 use crate::chat::store::{self, Conversation, Instructions, Project};
 use crate::chat::tools::{self, ApprovalMode, ChatTool, ASK_USER};
+use crate::chat::ChatState;
 use crate::chat::{
     agents, builtins, canvas, context, deferred, knowledge, libraries, media, memory, privacy,
     providers, sandbox, skills, subagents, tasks, terminal,
 };
-use crate::chat::{ChatState, EVENT};
 use crate::tools::registry::ApprovalDecision;
 
 /// Model calls in one turn before the engine stops a tool loop that does not converge. The last
@@ -35,103 +35,9 @@ const MAX_STEPS: usize = 24;
 /// Attempts per model call when the failure is transient.
 const MAX_ATTEMPTS: u32 = 3;
 
-/// What the page sees of a turn, on [`EVENT`].
-#[derive(Debug, Clone, Serialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
-pub enum ChatEvent {
-    #[serde(rename_all = "camelCase")]
-    Started { conversation_id: String },
-    /// The user's guidance, sent while the turn ran, has joined the conversation.
-    #[serde(rename_all = "camelCase")]
-    Steered {
-        conversation_id: String,
-        text: String,
-    },
-    #[serde(rename_all = "camelCase")]
-    Text {
-        conversation_id: String,
-        text: String,
-    },
-    #[serde(rename_all = "camelCase")]
-    Reasoning {
-        conversation_id: String,
-        text: String,
-    },
-    /// The model began writing a call to `name`; its arguments are still arriving.
-    #[serde(rename_all = "camelCase")]
-    ToolPending {
-        conversation_id: String,
-        name: String,
-    },
-    #[serde(rename_all = "camelCase")]
-    ToolStart {
-        conversation_id: String,
-        call_id: String,
-        name: String,
-        arguments: Value,
-    },
-    #[serde(rename_all = "camelCase")]
-    ToolEnd {
-        conversation_id: String,
-        call_id: String,
-        output: String,
-        is_error: bool,
-    },
-    /// The model asked the user something; answer with `chat_answer`.
-    #[serde(rename_all = "camelCase")]
-    Question {
-        conversation_id: String,
-        call_id: String,
-        question: String,
-        options: Vec<String>,
-    },
-    #[serde(rename_all = "camelCase")]
-    Title {
-        conversation_id: String,
-        title: String,
-    },
-    /// A sub-agent of a `delegate` call started, moved on, or finished.
-    #[serde(rename_all = "camelCase")]
-    Subagent {
-        conversation_id: String,
-        call_id: String,
-        index: usize,
-        title: String,
-        status: String,
-        activity: String,
-    },
-    /// Tokens and cost so far, and how full the model's window is.
-    #[serde(rename_all = "camelCase")]
-    Usage {
-        conversation_id: String,
-        usage: context::UsageTotals,
-        context_window: u64,
-    },
-    /// Earlier turns are being summarized to make room.
-    #[serde(rename_all = "camelCase")]
-    Compacting { conversation_id: String },
-    #[serde(rename_all = "camelCase")]
-    Compacted {
-        conversation_id: String,
-        upto: usize,
-    },
-    #[serde(rename_all = "camelCase")]
-    Done {
-        conversation_id: String,
-        cancelled: bool,
-    },
-    /// Something the user should know, such as a switch to the backup model.
-    #[serde(rename_all = "camelCase")]
-    Notice {
-        conversation_id: String,
-        text: String,
-    },
-    #[serde(rename_all = "camelCase")]
-    Error {
-        conversation_id: String,
-        message: String,
-    },
-}
+pub use crate::chat::connect::{ask_text, connect_model};
+pub(in crate::chat) use crate::chat::events::emit;
+pub use crate::chat::events::ChatEvent;
 
 /// An image the user attached, as the page read it.
 #[derive(Debug, Clone, Deserialize)]
@@ -266,15 +172,6 @@ pub struct TurnRequest {
     pub pages_off: Vec<String>,
     #[serde(default)]
     pub instructions_off: bool,
-}
-
-pub(in crate::chat) fn emit(app: &AppHandle, event: ChatEvent) {
-    if let (Some(state), Ok(value)) = (app.try_state::<ChatState>(), serde_json::to_value(&event)) {
-        state.record(&value);
-    }
-    if let Err(e) = app.emit(EVENT, event) {
-        warn!("could not emit chat event: {e}");
-    }
 }
 
 const TONES: &[(&str, &str)] = &[
@@ -493,73 +390,6 @@ pub fn preamble_prompt(context: &Context<'_>, tools: &[ChatTool]) -> crate::chat
         }
     }
     p
-}
-
-pub async fn connect_model(
-    config_dir: &std::path::Path,
-    reference: &str,
-) -> Result<DynModel<Completion>, String> {
-    // The app's own errands on Auto use its fast model.
-    let routed;
-    let reference = if reference == crate::chat::router::AUTO {
-        routed = crate::chat::router::models(&providers::load(config_dir))
-            .map(|(fast, _)| fast)
-            .ok_or("Choose Auto's fast and strong models first.")?;
-        routed.as_str()
-    } else {
-        reference
-    };
-    if reference.starts_with("local/") {
-        return crate::chat::local_models::connect(reference).await;
-    }
-    let (vendor, _) = providers::split_reference(reference)
-        .ok_or_else(|| format!("`{reference}` is not a model reference"))?;
-    let file = providers::load(config_dir);
-    let settings = file.providers.get(vendor).cloned().unwrap_or_default();
-    let key = if settings.has_key {
-        crate::chat::providers::api_key(vendor).await?
-    } else {
-        None
-    };
-    providers::connect(reference, &settings, key)
-}
-
-/// One request for a text, for the app's own errands (titles, follow-ups, translations,
-/// rewrites): when the model fails or does not answer in time, the backup model set under
-/// Providers is tried once, as chats do. The error is the first model's, in plain words.
-pub async fn ask_text(
-    config_dir: &std::path::Path,
-    reference: &str,
-    request: CompletionRequest,
-    secs: u64,
-) -> Result<String, String> {
-    let attempt = |reference: String, request: CompletionRequest| async move {
-        let model = connect_model(config_dir, &reference).await?;
-        let response =
-            tokio::time::timeout(std::time::Duration::from_secs(secs), model.call(request))
-                .await
-                .map_err(|_| "The provider did not answer in time.".to_string())?
-                .map_err(|e| crate::chat::context::short_error(&e.to_string()))?;
-        let text = response.text();
-        // A thinking model can spend a small budget on thought and say nothing.
-        if text.trim().is_empty() {
-            return Err("The model gave no text back.".to_string());
-        }
-        Ok::<String, String>(text)
-    };
-    match attempt(reference.to_string(), request.clone()).await {
-        Ok(text) => Ok(text),
-        Err(first) => match providers::load(config_dir)
-            .backup_model
-            .filter(|b| b != reference)
-        {
-            Some(backup) => {
-                log::warn!("{reference} failed ({first}); trying the backup model {backup}");
-                attempt(backup, request).await.map_err(|_| first)
-            }
-            None => Err(first),
-        },
-    }
 }
 
 fn config_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {

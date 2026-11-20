@@ -324,7 +324,7 @@ pub async fn draft(
         }
     }
     let request = CompletionRequest::new(Message::User { content }).max_tokens(6_000u64);
-    let reply = crate::chat::engine::ask_text(config_dir, model, request, 240).await?;
+    let reply = crate::chat::connect::ask_text(config_dir, model, request, 240).await?;
     parse_draft(&reply)
 }
 

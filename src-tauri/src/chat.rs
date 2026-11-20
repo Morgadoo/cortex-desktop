@@ -7,6 +7,7 @@
 //!
 //! The modules are grouped by what they are for. From the bottom up:
 //!
+//! - [`base`]: what every layer shares: the events a turn streams to the window
 //! - [`storage`]: conversations, their index, backups, versions, sync, encryption, secrets
 //! - [`models`]: providers, routing, the built-in runtime, coding-agent back ends
 //! - [`grounding`]: memories, knowledge, libraries, embeddings, search, reading the web
@@ -20,7 +21,9 @@
 //! Every module is also re-exported here by its own name (`crate::chat::store`), which is how
 //! the code refers to it.
 
+pub mod base;
 pub mod commands;
+pub use base::{approval, events, tool_names};
 pub mod storage;
 pub use storage::{
     at_rest, audit, coding_import, import, recent_files, secrets, store, sync, traces, uploads,
@@ -28,7 +31,9 @@ pub use storage::{
 };
 use storage::{backup, index};
 pub mod models;
-pub use models::{acp, agent_cli, arena, batched_qwen2, local_models, privacy, providers, router};
+pub use models::{
+    acp, agent_cli, arena, batched_qwen2, connect, local_models, privacy, providers, router,
+};
 pub mod grounding;
 pub use grounding::{
     calendar, embeddings, extraction, knowledge, libraries, memory, reader, retrieval, search,
@@ -44,8 +49,8 @@ pub mod multimedia;
 pub use multimedia::{animation, audio, hex, media, recorder, video, videogen};
 pub mod automation;
 pub use automation::{
-    agent_market, agents, evals, learning, lifecycle, org, plugins, skill_catalog, skills, tasks,
-    workflows,
+    agent_market, agents, evals, history, learning, lifecycle, org, plugins, skill_catalog, skills,
+    tasks, workflows,
 };
 pub mod integrations;
 pub use integrations::{api_server, discord, links, share, slack, telegram};
@@ -55,7 +60,9 @@ pub mod ui;
 pub use ui::{emoji_pack, ui_language};
 pub mod turn;
 use turn::deferred;
-pub use turn::{builtins, context, engine, functions, hooks, host, prompt, subagents, tools};
+pub use turn::{
+    builtins, context, engine, functions, headless_host, hooks, host, prompt, subagents, tools,
+};
 mod state;
 pub use state::ChatState;
 

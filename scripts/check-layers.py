@@ -23,7 +23,7 @@ ALLOW = ROOT / "scripts" / "check-layers-allow.txt"
 
 # Bottom first. A folder may use folders in its own layer or any layer below it.
 LAYERS = [
-    ["storage"],
+    ["base", "storage"],
     ["models", "grounding", "toolkit", "multimedia", "ui"],
     ["turn", "automation"],
     ["commands", "cli", "integrations"],

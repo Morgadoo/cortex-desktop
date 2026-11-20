@@ -30,7 +30,7 @@ pub fn chat_version_diff(
     version: String,
     current: Option<serde_json::Value>,
 ) -> Result<String, String> {
-    crate::chat::versions::diff(&config_dir(&app)?, &kind, &id, &version, current.as_ref())
+    crate::chat::history::diff(&config_dir(&app)?, &kind, &id, &version, current.as_ref())
 }
 
 /// Brings back an earlier version of a memory list, knowledge pages, instructions, a notebook,
@@ -42,7 +42,7 @@ pub fn chat_restore_version(
     id: String,
     version: String,
 ) -> Result<(), String> {
-    crate::chat::versions::restore(&config_dir(&app)?, &kind, &id, &version)
+    crate::chat::history::restore(&config_dir(&app)?, &kind, &id, &version)
 }
 
 /// The user's eval suites and their cases: the user owns them; no tool writes them.

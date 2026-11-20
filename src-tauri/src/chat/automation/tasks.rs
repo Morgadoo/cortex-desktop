@@ -851,7 +851,7 @@ pub fn start(app: AppHandle) {
                         tokio::task::spawn_blocking(move || crate::chat::libraries::sync_all(&dir))
                             .await;
                     // Connector documents: the connectors answer slower, so after the folders.
-                    let connectors = crate::chat::commands::registry_connectors(&app);
+                    let connectors = crate::chat::tools::registry_connectors(&app);
                     for library in crate::chat::libraries::list(&config_dir)
                         .into_iter()
                         .filter(|l| !l.connectors.is_empty())
@@ -1156,7 +1156,7 @@ mod tests {
         let before = crate::chat::versions::list(d, "tasks", "report")
             .unwrap()
             .remove(0);
-        crate::chat::versions::restore(d, "tasks", "report", &before.id).unwrap();
+        crate::chat::history::restore(d, "tasks", "report", &before.id).unwrap();
         assert_eq!(load(d)[0].prompt, "Write the weekly report.");
     }
 

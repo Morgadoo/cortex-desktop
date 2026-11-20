@@ -754,7 +754,7 @@ pub fn maybe_run() -> Option<i32> {
         return Some(1);
     };
     let live = config_dir.clone();
-    let host: Arc<dyn Host> = Arc::new(crate::chat::headless::HeadlessHost::new(config_dir));
+    let host: Arc<dyn Host> = Arc::new(crate::chat::headless_host::HeadlessHost::new(config_dir));
     let report = tauri::async_runtime::block_on(async {
         // On a copy of the data, like the nightly runs; a full run's score is kept as a baseline.
         let (_folder, copy) = on_a_copy(&host)?;

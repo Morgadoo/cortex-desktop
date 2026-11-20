@@ -28,9 +28,9 @@ use serde::Serialize;
 
 use crate::chat::builtins;
 use crate::chat::engine::{ChatEvent, TurnRequest};
+use crate::chat::headless_host::HeadlessHost;
 use crate::chat::host::Host;
-use crate::chat::tools::{ApprovalMode, ChatTool};
-use crate::tools::registry::ApprovalDecision;
+use crate::chat::tools::ApprovalMode;
 
 /// Tool steps before the answer is asked for, unless `--max-turns` says otherwise.
 const MAX_STEPS: usize = 8;
@@ -196,100 +196,6 @@ pub fn write_export(dir: &Path, export: &Export) -> Result<(), String> {
         serde_json::to_string_pretty(export).map_err(|e| e.to_string())?,
     )
     .map_err(|e| e.to_string())
-}
-
-/// What a headless run needs from the engine's [`Host`]: no window, no connectors, nobody to
-/// approve. It keeps the turn's events for the export and stops the turn at a limit.
-pub(crate) struct HeadlessHost {
-    config_dir: PathBuf,
-    conversation: String,
-    state: crate::chat::ChatState,
-    registry: crate::tools::registry::ToolRegistry,
-    events: Mutex<Vec<ChatEvent>>,
-    max_tokens: Option<u64>,
-    max_price: Option<f64>,
-    /// Why the run was stopped before its answer, when a limit stopped it.
-    stopped: Mutex<Option<String>>,
-}
-
-impl HeadlessHost {
-    /// A host with no limits, for other command-line runs (evals).
-    pub(crate) fn new(config_dir: PathBuf) -> Self {
-        Self {
-            config_dir,
-            conversation: String::new(),
-            state: crate::chat::ChatState::default(),
-            registry: crate::tools::registry::ToolRegistry::new(),
-            events: Mutex::new(Vec::new()),
-            max_tokens: None,
-            max_price: None,
-            stopped: Mutex::new(None),
-        }
-    }
-
-    fn stop(&self, why: String) {
-        let mut stopped = self.stopped.lock().unwrap_or_else(|p| p.into_inner());
-        if stopped.is_none() {
-            *stopped = Some(why);
-            self.state.cancel(&self.conversation);
-        }
-    }
-}
-
-#[async_trait::async_trait]
-impl Host for HeadlessHost {
-    fn config_dir(&self) -> Result<PathBuf, String> {
-        Ok(self.config_dir.clone())
-    }
-
-    fn emit(&self, event: ChatEvent) {
-        match &event {
-            ChatEvent::ToolStart { name, .. } => eprintln!("cortex: used {name}"),
-            ChatEvent::Usage { usage, .. } => {
-                let tokens = usage.input_tokens + usage.output_tokens;
-                if let Some(limit) = self.max_tokens.filter(|l| tokens > *l) {
-                    self.stop(format!("the token limit of {limit} was reached"));
-                }
-                if let Some(limit) = self.max_price.filter(|l| usage.cost > *l) {
-                    self.stop(format!("the price limit of ${limit} was reached"));
-                }
-            }
-            _ => {}
-        }
-        self.events
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .push(event);
-    }
-
-    fn chat_state(&self) -> &crate::chat::ChatState {
-        &self.state
-    }
-
-    fn registry(&self) -> &crate::tools::registry::ToolRegistry {
-        &self.registry
-    }
-
-    async fn connect_model(
-        &self,
-        reference: &str,
-    ) -> Result<rig_core::DynModel<rig_core::operation::Completion>, String> {
-        crate::chat::engine::connect_model(&self.config_dir, reference).await
-    }
-
-    async fn approve(
-        &self,
-        _tool: &ChatTool,
-        _input: &serde_json::Value,
-        _reason: Option<&str>,
-    ) -> ApprovalDecision {
-        // Nobody is there to answer; the run is unattended, so the engine refuses first.
-        ApprovalDecision::Deny
-    }
-
-    fn notify(&self, title: &str, _body: &str) {
-        eprintln!("cortex: {title}");
-    }
 }
 
 /// The tool steps of a turn, from its events.

@@ -14,7 +14,7 @@ use tauri::AppHandle;
 use tokio::io::AsyncReadExt;
 use tokio::sync::watch;
 
-use crate::chat::engine::{emit, ChatEvent};
+use crate::chat::events::{emit, ChatEvent};
 use crate::chat::providers::ModelView;
 use crate::chat::store::{self, Conversation};
 

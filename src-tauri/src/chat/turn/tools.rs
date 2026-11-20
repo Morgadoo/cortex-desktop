@@ -6,10 +6,8 @@
 //! module adds the composer's approval mode on top: in "ask" mode every tool that can change
 //! something waits for the user, and "accept edits" lets file edits through.
 
-use std::time::Duration;
-
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 
 pub use cortex_kernel::approval::{
     auto_check_prompt, auto_check_verdict, needs_approval, reads_only, risk, ApprovalMode,
@@ -48,7 +46,6 @@ pub use cortex_kernel::tool::{
 };
 
 use crate::chat::host::Host;
-use crate::tools::approvals;
 use crate::tools::connector_state::ToolPolicy;
 use crate::tools::registry::{ApprovalDecision, CallContext, ToolDefinition, ToolRegistry};
 
@@ -107,74 +104,7 @@ pub fn available(registry: &ToolRegistry, connectors: Option<&[String]>) -> Vec<
     tools
 }
 
-/// How long a call waits for the user to approve it.
-const APPROVAL_WAIT: Duration = Duration::from_secs(15 * 60);
-
-/// Asks the page to approve a call, with the payload the registry's own gate uses, so one
-/// approval card serves both.
-pub(crate) async fn request_approval(
-    app: &AppHandle,
-    tool: &ChatTool,
-    input: &Value,
-) -> ApprovalDecision {
-    request_approval_because(app, tool, input, None).await
-}
-
-/// Asks with a reason Auto mode gave, shown on the card.
-pub(crate) async fn request_approval_because(
-    app: &AppHandle,
-    tool: &ChatTool,
-    input: &Value,
-    auto_reason: Option<&str>,
-) -> ApprovalDecision {
-    let reason = risk(tool, input)
-        .map(|why| json!({ "kind": "risky", "sources": [], "detail": why }))
-        .or_else(|| auto_reason.map(|why| json!({ "kind": "auto", "sources": [], "detail": why })));
-    let (request_id, rx) = approvals::register();
-    let _ = app.emit(
-        "tool:approval_request",
-        json!({
-            "request_id": request_id,
-            "connector_id": tool.connector_id,
-            "tool_name": tool.tool_name,
-            "input": input,
-            "reason": reason,
-        }),
-    );
-    let decision = match tokio::time::timeout(APPROVAL_WAIT, rx).await {
-        Ok(Ok(decision)) => decision,
-        _ => {
-            approvals::cancel(&request_id);
-            let _ = app.emit(
-                "tool:approval_resolved",
-                json!({ "request_id": request_id, "approved": false }),
-            );
-            ApprovalDecision::Deny
-        }
-    };
-    if let Ok(dir) = crate::settings::get_config_dir(app) {
-        crate::chat::audit::record(
-            &dir,
-            crate::chat::audit::Entry {
-                at: chrono::Utc::now(),
-                kind: "approval".into(),
-                conversation: String::new(),
-                agent: None,
-                tool: tool.name.clone(),
-                arguments: crate::chat::audit::short(&input.to_string()),
-                outcome: match decision {
-                    ApprovalDecision::Deny => "denied",
-                    ApprovalDecision::Once => "approved",
-                    ApprovalDecision::Always => "approved always",
-                }
-                .into(),
-                detail: auto_reason.map(str::to_string).unwrap_or_default(),
-                millis: 0,
-            },
-        );
-    }
-    decision
-}
+pub(crate) use crate::chat::approval::request_approval_because;
 
 /// Tools that are not registry connectors but run behind the registry's gate: the user's own
 /// tools, computer use, and OpenAPI tool servers.
@@ -350,6 +280,17 @@ pub async fn execute(
         Ok(value) => Outcome::ok(value_text(&value)),
         Err(e) => Outcome::err(e.to_ipc_string()),
     }
+}
+
+/// The connectors set up, as the library sync takes them.
+pub(crate) fn registry_connectors(
+    app: &AppHandle,
+) -> Vec<std::sync::Arc<dyn crate::tools::registry::Connector>> {
+    tauri::Manager::state::<crate::tools::registry::ToolRegistry>(app)
+        .connectors()
+        .into_iter()
+        .map(|c| c as std::sync::Arc<dyn crate::tools::registry::Connector>)
+        .collect()
 }
 
 #[cfg(test)]

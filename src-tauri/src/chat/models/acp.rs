@@ -17,7 +17,7 @@ use tauri::AppHandle;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::watch;
 
-use crate::chat::engine::{emit, ChatEvent};
+use crate::chat::events::{emit, ChatEvent};
 use crate::chat::providers::ModelView;
 use crate::chat::store::{self, Conversation};
 
@@ -385,7 +385,7 @@ pub async fn run(
                     read_only: false,
                 };
                 !matches!(
-                    crate::chat::tools::request_approval(&app, &gate, &params["toolCall"]).await,
+                    crate::chat::approval::request_approval(&app, &gate, &params["toolCall"]).await,
                     crate::tools::registry::ApprovalDecision::Deny
                 )
             }

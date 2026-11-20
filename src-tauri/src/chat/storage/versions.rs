@@ -116,14 +116,14 @@ pub fn list(config_dir: &Path, kind: &str, id: &str) -> Result<Vec<Version>, Str
     Ok(out)
 }
 
-/// What changed from version `id` of an item to the version after it (or to `current`, the item
-/// as it is now, when `id` is the newest), as a line diff.
+/// What changed from version `id` of an item to the version after it (or to `current()`, the
+/// item as it is now, when `id` is the newest), as a line diff.
 pub fn diff(
     config_dir: &Path,
     kind: &str,
     id: &str,
     version: &str,
-    current: Option<&Value>,
+    current: impl FnOnce() -> Option<Value>,
 ) -> Result<String, String> {
     let all = list(config_dir, kind, id)?;
     let i = all
@@ -135,9 +135,7 @@ pub fn diff(
     // `all` is newest first: the version after this one is at i - 1.
     let newer = match i.checked_sub(1) {
         Some(n) => pretty(&all[n].value),
-        None => current
-            .cloned()
-            .or_else(|| now(config_dir, kind, id))
+        None => current()
             .map(|v| pretty(&v))
             .ok_or("This is the newest version.")?,
     };
@@ -192,87 +190,6 @@ pub fn set_production(
             }
             Ok(None)
         }
-    }
-}
-
-/// The item as it is now, for diffing its newest version against.
-pub fn now(config_dir: &Path, kind: &str, id: &str) -> Option<Value> {
-    match (kind, id) {
-        ("memories", "all") => serde_json::to_value(crate::chat::memory::load(config_dir)).ok(),
-        ("knowledge", "pages") => {
-            serde_json::to_value(crate::chat::knowledge::load(config_dir)).ok()
-        }
-        ("instructions", "user") => {
-            serde_json::to_value(crate::chat::store::load_instructions(config_dir)).ok()
-        }
-        ("notebooks", agent) => Some(Value::String(crate::chat::agents::notebook(
-            config_dir, agent,
-        ))),
-        ("agents", agent) => {
-            serde_json::to_value(crate::chat::agents::find(config_dir, agent)?).ok()
-        }
-        ("workflows", workflow) => serde_json::to_value(
-            crate::chat::workflows::load(config_dir)
-                .into_iter()
-                .find(|w| w.id == workflow)?,
-        )
-        .ok(),
-        ("tasks", task) => serde_json::to_value(
-            crate::chat::tasks::load(config_dir)
-                .into_iter()
-                .find(|t| t.id == task)?,
-        )
-        .ok(),
-        ("tools", name) => match name.strip_prefix("script-") {
-            Some(script) => {
-                serde_json::to_value(crate::chat::script_tools::load(config_dir, script)?).ok()
-            }
-            None => serde_json::to_value(
-                crate::chat::custom_tools::list(config_dir)
-                    .into_iter()
-                    .find(|t| t.name == name)?,
-            )
-            .ok(),
-        },
-        _ => None,
-    }
-}
-
-/// Brings back version `version` of an item: it is saved again the way the item is always saved,
-/// so the version it replaces is kept in turn and the change can itself be undone. The kernel's
-/// `revert`, for every kind kept here.
-pub fn restore(config_dir: &Path, kind: &str, id: &str, version: &str) -> Result<(), String> {
-    let value = list(config_dir, kind, id)?
-        .into_iter()
-        .find(|v| v.id == version)
-        .ok_or("There is no such version.")?
-        .value;
-    fn parse<T: serde::de::DeserializeOwned>(value: Value) -> Result<T, String> {
-        serde_json::from_value(value)
-            .map_err(|e| format!("That version can no longer be read: {e}"))
-    }
-    match (kind, id) {
-        ("memories", "all") => crate::chat::memory::save(config_dir, &parse(value)?),
-        ("knowledge", "pages") => crate::chat::knowledge::save_all(
-            config_dir,
-            &parse::<Vec<crate::chat::knowledge::Page>>(value)?,
-        ),
-        ("instructions", "user") => {
-            crate::chat::store::save_instructions(config_dir, &parse(value)?)
-        }
-        ("notebooks", agent) => {
-            crate::chat::agents::save_notebook(config_dir, agent, &parse::<String>(value)?)
-        }
-        ("agents", _) => crate::chat::agents::save(config_dir, parse(value)?).map(drop),
-        ("workflows", _) => crate::chat::workflows::save(config_dir, parse(value)?).map(drop),
-        ("tools", name) if name.starts_with("script-") => {
-            // The version keeps the hash the user approved for its own script, so an approved
-            // version comes back approved and an unapproved one stays a candidate.
-            crate::chat::script_tools::restore_version(config_dir, parse(value)?)
-        }
-        ("tools", _) => crate::chat::custom_tools::save(config_dir, &parse(value)?).map(drop),
-        ("tasks", _) => crate::chat::tasks::save(config_dir, parse(value)?).map(drop),
-        _ => Err(format!("{kind} cannot be restored.")),
     }
 }
 
@@ -347,13 +264,13 @@ mod tests {
         assert_ne!(crate::chat::memory::load(d), before);
 
         let newest = list(d, "memories", "all").unwrap().remove(0);
-        restore(d, "memories", "all", &newest.id).unwrap();
+        crate::chat::history::restore(d, "memories", "all", &newest.id).unwrap();
         assert_eq!(crate::chat::memory::load(d), before);
         // The version the revert replaced is kept, so the revert can be undone too.
         let undo = list(d, "memories", "all").unwrap().remove(0);
-        restore(d, "memories", "all", &undo.id).unwrap();
+        crate::chat::history::restore(d, "memories", "all", &undo.id).unwrap();
         assert_eq!(crate::chat::memory::load(d), memories);
-        assert!(restore(d, "memories", "all", "nope").is_err());
+        assert!(crate::chat::history::restore(d, "memories", "all", "nope").is_err());
     }
 
     #[test]
@@ -367,13 +284,13 @@ mod tests {
         second.name = "Rui".into();
         crate::chat::store::save_instructions(d, &second).unwrap();
         let v = list(d, "instructions", "user").unwrap().remove(0);
-        restore(d, "instructions", "user", &v.id).unwrap();
+        crate::chat::history::restore(d, "instructions", "user", &v.id).unwrap();
         assert_eq!(crate::chat::store::load_instructions(d).name, "Ana");
 
         crate::chat::agents::save_notebook(d, "a1", "first notes").unwrap();
         crate::chat::agents::save_notebook(d, "a1", "second notes").unwrap();
         let v = list(d, "notebooks", "a1").unwrap().remove(0);
-        restore(d, "notebooks", "a1", &v.id).unwrap();
+        crate::chat::history::restore(d, "notebooks", "a1", &v.id).unwrap();
         assert_eq!(crate::chat::agents::notebook(d, "a1"), "first notes");
 
         crate::chat::knowledge::save_all(d, &[]).unwrap();
@@ -384,7 +301,7 @@ mod tests {
         .unwrap();
         crate::chat::knowledge::save_all(d, std::slice::from_ref(&page)).unwrap();
         let v = list(d, "knowledge", "pages").unwrap().remove(0);
-        restore(d, "knowledge", "pages", &v.id).unwrap();
+        crate::chat::history::restore(d, "knowledge", "pages", &v.id).unwrap();
         assert!(crate::chat::knowledge::load(d).is_empty());
     }
 }
@@ -405,18 +322,20 @@ mod diff_tests {
         keep(d, "memories", "all", &two, &three).unwrap();
         let versions = list(d, "memories", "all").unwrap();
         let oldest = &versions[1].id;
-        let text = diff(d, "memories", "all", oldest, None).unwrap();
+        let text = crate::chat::history::diff(d, "memories", "all", oldest, None).unwrap();
         assert!(
             text.contains("-   \"text\": \"first\"") && text.contains("+   \"text\": \"second\""),
             "{text}"
         );
         let newest = &versions[0].id;
-        assert!(diff(d, "memories", "all", newest, Some(&three))
-            .unwrap()
-            .contains("third"));
+        assert!(
+            crate::chat::history::diff(d, "memories", "all", newest, Some(&three))
+                .unwrap()
+                .contains("third")
+        );
         // Without `current`, the newest version is compared with the item as it is now.
-        let to_now = diff(d, "memories", "all", newest, None).unwrap();
+        let to_now = crate::chat::history::diff(d, "memories", "all", newest, None).unwrap();
         assert!(to_now.contains("-   \"text\": \"second\""), "{to_now}");
-        assert!(diff(d, "secrets", "all", newest, None).is_err());
+        assert!(crate::chat::history::diff(d, "secrets", "all", newest, None).is_err());
     }
 }

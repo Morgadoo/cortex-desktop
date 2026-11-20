@@ -793,11 +793,11 @@ async fn failing_checks(script: &str, checks: &[Check]) -> Vec<String> {
 
 /// Names a written tool may not take: the app's own tools.
 fn taken(name: &str) -> bool {
-    crate::chat::builtins::NAMES.contains(&name)
+    crate::chat::tool_names::NAMES.contains(&name)
         || [
-            crate::chat::builtins::DELEGATE,
-            crate::chat::builtins::CANVAS,
-            crate::chat::builtins::NOTIFY,
+            crate::chat::tool_names::DELEGATE,
+            crate::chat::tool_names::CANVAS,
+            crate::chat::tool_names::NOTIFY,
             CREATE_TOOL,
             PROMOTE_TOOL,
             RETIRE_TOOL,
@@ -2312,7 +2312,7 @@ mod tests {
             .into_iter()
             .find(|v| v.value["script"] == "function main() { return 2; }")
             .unwrap();
-        crate::chat::versions::restore(d, "tools", "script-draft_t", &v2.id).unwrap();
+        crate::chat::history::restore(d, "tools", "script-draft_t", &v2.id).unwrap();
         promote(d, "draft_t", None).await.unwrap();
         let now = load(d, "draft_t").unwrap();
         assert!(now.script.contains("return 2"));
@@ -2356,7 +2356,7 @@ mod tests {
             .into_iter()
             .find(|v| v.value["script"] == "function main() { return 2; }")
             .unwrap();
-        crate::chat::versions::restore(d, "tools", "script-between_t", &draft.id).unwrap();
+        crate::chat::history::restore(d, "tools", "script-between_t", &draft.id).unwrap();
         promote(d, "between_t", None).await.unwrap();
         let now = load(d, "between_t").unwrap();
         assert!(now.script.contains("return 2"));
@@ -2885,7 +2885,7 @@ mod tests {
             .into_iter()
             .find(|v| v.value["script"] == "function main() { return 9; }")
             .unwrap();
-        crate::chat::versions::restore(d, "tools", "script-forged_t", &draft.id).unwrap();
+        crate::chat::history::restore(d, "tools", "script-forged_t", &draft.id).unwrap();
         promote(d, "forged_t", None).await.unwrap();
         let now = load(d, "forged_t").unwrap();
         let e_set_aside = now.set_aside.contains(&v_e);
@@ -2930,7 +2930,7 @@ mod tests {
                     && v.value["status"] == "active"
             })
             .unwrap();
-        crate::chat::versions::restore(d, "tools", "script-touch_t", &a.id).unwrap();
+        crate::chat::history::restore(d, "tools", "script-touch_t", &a.id).unwrap();
         assert!(load(d, "touch_t").unwrap().set_aside.contains(&v_b));
         // An app save (access renewed, say) keeps the restored state in History, signed.
         let mut t = load(d, "touch_t").unwrap();
@@ -2953,7 +2953,7 @@ mod tests {
                     && v.value["restoredAt"].is_string()
             })
             .unwrap();
-        crate::chat::versions::restore(d, "tools", "script-touch_t", &again.id).unwrap();
+        crate::chat::history::restore(d, "tools", "script-touch_t", &again.id).unwrap();
         let now = load(d, "touch_t").unwrap();
         let kept = now.set_aside.contains(&v_b);
         let rolled = revert(d, "touch_t", &[]).await;
@@ -3011,7 +3011,7 @@ mod tests {
                     && v.value["status"] == "active"
             })
             .unwrap();
-        crate::chat::versions::restore(d, "tools", "script-aside_r", &first.id).unwrap();
+        crate::chat::history::restore(d, "tools", "script-aside_r", &first.id).unwrap();
         std::fs::write(
             path(d, "aside_r").unwrap(),
             serde_json::to_string(&second).unwrap(),
