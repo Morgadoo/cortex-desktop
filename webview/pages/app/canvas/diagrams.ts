@@ -3,7 +3,7 @@
  * scripts from the web, so each diagram is drawn in the mini-app sandbox, which may load Mermaid
  * from its CDN; the frame reports its height so it fits the diagram.
  */
-import { appUrl } from './canvas';
+import { appUrl } from './app-files';
 import { h } from '../ui/h';
 import { icon } from '../ui/icons';
 import { markdown, markdownHooks } from '../ui/markdown';

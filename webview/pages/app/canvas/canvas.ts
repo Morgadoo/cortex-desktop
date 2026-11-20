@@ -12,6 +12,8 @@ import { improveButton } from '../chat/improve';
 import { renderSheetCard } from './sheet';
 import { diagramFrame, isMarp } from './diagrams';
 import { call, shown } from '../core/call';
+import { appFiles, appUrl } from './app-files';
+import { appPage, shareLink } from './share';
 
 interface Canvas {
   id: string;
@@ -39,13 +41,6 @@ function idOf(part: Extract<Part, { kind: 'tool' }>): string | null {
 /** Opens an app in a window of its own, beside the main one. */
 export function openAppWindow(id: string) {
   void call('chat_open_app_window', { id }).catch(shown);
-}
-
-/** Where a mini app is served: the `cortexapp` protocol, spelled per platform. */
-export function appUrl(id: string, version = 0): string {
-  const windows = navigator.userAgent.includes('Windows');
-  // The trailing slash lets a multi-file app's relative links (style.css, js/app.js) resolve.
-  return `${windows ? 'http://cortexapp.localhost' : 'cortexapp://localhost'}/${id}/?v=${version}`;
 }
 
 /** A sandboxed frame running a mini app: scripts run, but it has its own origin and no IPC. */
@@ -180,17 +175,6 @@ interface AppInfo {
 }
 
 /** Preview and code, switched by the two icon buttons. */
-/** A multi-file app's files (Vibe's file list), or `null` for a one-file app. */
-export function appFiles(code: string): { path: string; content: string }[] | null {
-  if (!code.trimStart().startsWith('{')) return null;
-  try {
-    const files = (JSON.parse(code) as { lumoAppFiles?: { path: string; content: string }[] }).lumoAppFiles;
-    return Array.isArray(files) && files.length ? files : null;
-  } catch {
-    return null;
-  }
-}
-
 /** An app's code as text to copy: one file as it is, several each under its path. */
 export function appCodeText(code: string): string {
   const files = appFiles(code);
@@ -252,7 +236,7 @@ export function openAppPanel(app: AppInfo) {
   const save = iconButton({ icon: 'download', title: 'Download as a web page', size: 'sm' });
   save.addEventListener('click', () => download(app.id));
   const shared = iconButton({ icon: 'link', title: 'Share a link on your network', size: 'sm' });
-  shared.addEventListener('click', () => void import('./share').then((s) => s.shareLink(app.title, s.appPage(app.code, app.title), true)));
+  shared.addEventListener('click', () => void shareLink(app.title, appPage(app.code, app.title), true));
   openSidePanel(
     app.id,
     h(
@@ -297,7 +281,7 @@ function renderAppCard(part: Extract<Part, { kind: 'tool' }>, live: boolean): HT
   const save = iconButton({ icon: 'download', title: 'Download as a web page', size: 'sm' });
   save.addEventListener('click', () => download(id));
   const shared = iconButton({ icon: 'link', title: 'Share a link on your network', size: 'sm' });
-  shared.addEventListener('click', () => void import('./share').then((s) => s.shareLink(title, s.appPage(code, title), true)));
+  shared.addEventListener('click', () => void shareLink(title, appPage(code, title), true));
   const expand = h('button', { class: 'canvas-expand', on: { click: open } }, 'Expand');
   const card = h(
     'div',

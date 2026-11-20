@@ -8,7 +8,7 @@ import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
 import { modal, toast } from '../ui/overlay';
 import { button, card, modalHeader } from '../ui/ui';
-import { appFiles } from './canvas';
+import { appFiles } from './app-files';
 import { escapeHtml } from '../core/format';
 import { call, shown } from '../core/call';
 
