@@ -21,12 +21,15 @@ use error::{AuthError, ConnectError};
 use log::{error, info, warn};
 use registry::{Connector, RegistryHost, ToolRegistry};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 
 const CONNECTORS_CHANGED_DEBOUNCE: Duration = Duration::from_millis(300);
 
-static CONNECTORS_CHANGED_TOKEN: AtomicU64 = AtomicU64::new(0);
+/// The latest `connectors:changed` announcement asked for, so a burst of changes sends one.
+#[derive(Default)]
+pub struct ConnectorsChanged(Arc<AtomicU64>);
 
 /// The sole place connectors are registered.
 ///
@@ -180,11 +183,15 @@ pub fn emit_connector_changed(app_handle: &AppHandle, connector_id: &str) {
 }
 
 pub fn emit_connectors_changed(app_handle: &AppHandle) {
-    let token = CONNECTORS_CHANGED_TOKEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let Some(latest) = app_handle.try_state::<ConnectorsChanged>() else {
+        return;
+    };
+    let latest = latest.0.clone();
+    let token = latest.fetch_add(1, Ordering::SeqCst) + 1;
     let app_handle = app_handle.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(CONNECTORS_CHANGED_DEBOUNCE).await;
-        if CONNECTORS_CHANGED_TOKEN.load(Ordering::SeqCst) == token {
+        if latest.load(Ordering::SeqCst) == token {
             let _ = app_handle.emit("connectors:changed", ());
         }
     });

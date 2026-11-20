@@ -16,7 +16,7 @@ use crate::support::settings_file::SettingsFile;
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::path::Path;
-use std::sync::{Mutex, OnceLock};
+use std::sync::Mutex;
 
 use base64::Engine as _;
 use serde::{Deserialize, Serialize};
@@ -104,20 +104,17 @@ pub(crate) fn definition() -> ChatTool {
 }
 
 /// Per conversation: the latest screenshot (JPEG, base64) waiting to go to the model, and the
-/// factor from screenshot pixels to screen pixels.
-fn shots() -> &'static Mutex<HashMap<String, String>> {
-    static SHOTS: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
-    SHOTS.get_or_init(Default::default)
-}
-
-fn scales() -> &'static Mutex<HashMap<String, f64>> {
-    static SCALES: OnceLock<Mutex<HashMap<String, f64>>> = OnceLock::new();
-    SCALES.get_or_init(Default::default)
+/// factor from screenshot pixels to screen pixels. Kept in the app's state:
+/// `state.part::<Screens>()`.
+#[derive(Default)]
+pub struct Screens {
+    shots: Mutex<HashMap<String, String>>,
+    scales: Mutex<HashMap<String, f64>>,
 }
 
 /// The screenshot the last call took, for the tool result; taken once.
-pub(in crate::chat) fn take_image(conversation_id: &str) -> Option<String> {
-    shots().lock().ok()?.remove(conversation_id)
+pub(in crate::chat) fn take_image(screens: &Screens, conversation_id: &str) -> Option<String> {
+    screens.shots.lock().ok()?.remove(conversation_id)
 }
 
 async fn output(program: &str, args: &[&str]) -> Result<Vec<u8>, ChatError> {
@@ -422,13 +419,13 @@ pub(in crate::chat) fn shrink(
     ))
 }
 
-async fn screenshot(conversation_id: &str) -> Result<String, ChatError> {
+async fn screenshot(screens: &Screens, conversation_id: &str) -> Result<String, ChatError> {
     let png = capture().await?;
     let (data, scale, w, h) = shrink(&png, MAX_WIDTH)?;
-    if let Ok(mut s) = shots().lock() {
+    if let Ok(mut s) = screens.shots.lock() {
         s.insert(conversation_id.to_string(), data);
     }
-    if let Ok(mut s) = scales().lock() {
+    if let Ok(mut s) = screens.scales.lock() {
         s.insert(conversation_id.to_string(), scale);
     }
     Ok(format!(
@@ -437,7 +434,7 @@ async fn screenshot(conversation_id: &str) -> Result<String, ChatError> {
 }
 
 /// Screen coordinates for a point in the latest screenshot.
-fn point(conversation_id: &str, input: &Value) -> Result<(i64, i64), ChatError> {
+fn point(screens: &Screens, conversation_id: &str, input: &Value) -> Result<(i64, i64), ChatError> {
     let x = input
         .get("x")
         .and_then(Value::as_i64)
@@ -446,7 +443,8 @@ fn point(conversation_id: &str, input: &Value) -> Result<(i64, i64), ChatError> 
         .get("y")
         .and_then(Value::as_i64)
         .ok_or_else(|| ChatError::Invalid("Give x and y from the latest screenshot.".into()))?;
-    let scale = scales()
+    let scale = screens
+        .scales
         .lock()
         .ok()
         .and_then(|s| s.get(conversation_id).copied())
@@ -457,7 +455,12 @@ fn point(conversation_id: &str, input: &Value) -> Result<(i64, i64), ChatError> 
     ))
 }
 
-async fn act(conversation_id: &str, action: &str, input: &Value) -> Result<String, ChatError> {
+async fn act(
+    screens: &Screens,
+    conversation_id: &str,
+    action: &str,
+    input: &Value,
+) -> Result<String, ChatError> {
     let mac = cfg!(target_os = "macos");
     let text = |k: &str| {
         input
@@ -470,7 +473,7 @@ async fn act(conversation_id: &str, action: &str, input: &Value) -> Result<Strin
         let needs_point = matches!(action, "click" | "double_click" | "right_click" | "move")
             || (action == "scroll" && input.get("x").is_some());
         let at = if needs_point {
-            Some(point(conversation_id, input)?)
+            Some(point(screens, conversation_id, input)?)
         } else {
             None
         };
@@ -488,7 +491,7 @@ async fn act(conversation_id: &str, action: &str, input: &Value) -> Result<Strin
     }
     match action {
         "click" | "double_click" | "right_click" | "move" => {
-            let (x, y) = point(conversation_id, input)?;
+            let (x, y) = point(screens, conversation_id, input)?;
             if mac {
                 let verb = match action {
                     "click" => "c",
@@ -543,7 +546,7 @@ async fn act(conversation_id: &str, action: &str, input: &Value) -> Result<Strin
                 .to_string();
             let down = text("direction") != "up";
             if input.get("x").is_some() {
-                let (x, y) = point(conversation_id, input)?;
+                let (x, y) = point(screens, conversation_id, input)?;
                 if !mac {
                     output(
                         "xdotool",
@@ -572,13 +575,17 @@ async fn act(conversation_id: &str, action: &str, input: &Value) -> Result<Strin
 }
 
 /// Runs one computer action; every action but a screenshot is followed by a fresh screenshot.
-pub async fn run(conversation_id: &str, input: &Value) -> Result<String, ChatError> {
+pub async fn run(
+    screens: &Screens,
+    conversation_id: &str,
+    input: &Value,
+) -> Result<String, ChatError> {
     let action = input
         .get("action")
         .and_then(Value::as_str)
         .unwrap_or("screenshot");
     if action == "screenshot" {
-        return screenshot(conversation_id).await;
+        return screenshot(screens, conversation_id).await;
     }
     // Per-app rules: the window in front decides whether the action may run.
     if let Some(dir) = crate::reporting::early_config_dir() {
@@ -590,9 +597,9 @@ pub async fn run(conversation_id: &str, input: &Value) -> Result<String, ChatErr
             app_allowed(&settings, &window)?;
         }
     }
-    let done = act(conversation_id, action, input).await?;
+    let done = act(screens, conversation_id, action, input).await?;
     tokio::time::sleep(std::time::Duration::from_millis(700)).await;
-    let shot = screenshot(conversation_id)
+    let shot = screenshot(screens, conversation_id)
         .await
         .unwrap_or_else(|e| format!("(No new screenshot: {e})"));
     Ok(format!("{done} {shot}"))
@@ -638,12 +645,13 @@ mod tests {
         assert_eq!((w, h), (1280, 720));
         assert!((scale - 2.0).abs() < 1e-9);
         assert!(!data.is_empty());
-        scales().lock().unwrap().insert("c".into(), scale);
+        let screens = Screens::default();
+        screens.scales.lock().unwrap().insert("c".into(), scale);
         assert_eq!(
-            point("c", &json!({ "x": 100, "y": 50 })).unwrap(),
+            point(&screens, "c", &json!({ "x": 100, "y": 50 })).unwrap(),
             (200, 100)
         );
-        assert!(point("c", &json!({ "x": 1 })).is_err());
+        assert!(point(&screens, "c", &json!({ "x": 1 })).is_err());
         // A screenshot only reads; a click can change things (the kernel's approval policy).
         let tool = cortex_kernel::tool::ChatTool {
             name: TOOL.into(),

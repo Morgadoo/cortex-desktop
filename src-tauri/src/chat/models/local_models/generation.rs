@@ -62,8 +62,7 @@ pub(super) struct Loaded {
 
 /// The model in memory. A fair lock: waiting requests run in the order they came.
 pub(super) fn loaded() -> &'static parking_lot::FairMutex<Option<Loaded>> {
-    static LOADED: OnceLock<parking_lot::FairMutex<Option<Loaded>>> = OnceLock::new();
-    LOADED.get_or_init(|| parking_lot::FairMutex::new(None))
+    &super::LOCAL_MODELS.loaded
 }
 
 /// Frees a model's memory (when it is deleted).
@@ -223,14 +222,7 @@ pub(super) struct Job {
 
 /// Requests waiting for the runtime, in arrival order.
 pub(super) fn pending() -> &'static (Mutex<std::collections::VecDeque<Job>>, std::sync::Condvar) {
-    static PENDING: OnceLock<(Mutex<std::collections::VecDeque<Job>>, std::sync::Condvar)> =
-        OnceLock::new();
-    PENDING.get_or_init(|| {
-        (
-            Mutex::new(std::collections::VecDeque::new()),
-            std::sync::Condvar::new(),
-        )
-    })
+    &super::LOCAL_MODELS.pending
 }
 
 /// The runtime's thread: takes the oldest request and the others waiting for the same model (up

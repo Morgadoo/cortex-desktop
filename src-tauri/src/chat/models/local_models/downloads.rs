@@ -6,13 +6,11 @@ use crate::chat::error::ChatError;
 // Downloads
 
 pub(super) fn downloads() -> &'static Mutex<Vec<String>> {
-    static DOWNLOADS: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
-    DOWNLOADS.get_or_init(|| Mutex::new(Vec::new()))
+    &super::LOCAL_MODELS.downloads
 }
 
 pub(super) fn cancelled() -> &'static Mutex<Vec<String>> {
-    static CANCELLED: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
-    CANCELLED.get_or_init(|| Mutex::new(Vec::new()))
+    &super::LOCAL_MODELS.cancelled
 }
 
 pub(crate) fn cancel(id: &str) {

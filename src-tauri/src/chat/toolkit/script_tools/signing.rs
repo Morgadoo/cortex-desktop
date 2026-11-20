@@ -7,8 +7,7 @@ pub(super) const SIGNING_KEY_NAME: &str = "tool-signing-key";
 pub(super) type Keys = std::sync::RwLock<Vec<(PathBuf, [u8; 32])>>;
 
 pub(super) fn keys() -> &'static Keys {
-    static KEYS: std::sync::OnceLock<Keys> = std::sync::OnceLock::new();
-    KEYS.get_or_init(Default::default)
+    &super::TRUST.keys
 }
 
 /// Signs and verifies the tools in `config_dir` with `key` from now on.
@@ -20,8 +19,7 @@ pub(in crate::chat) fn set_signing_key(config_dir: &Path, key: [u8; 32]) {
 
 /// Live keys a trial's copy checks what it copied against; it never signs with them.
 pub(super) fn inherited() -> &'static Keys {
-    static INHERITED: std::sync::OnceLock<Keys> = std::sync::OnceLock::new();
-    INHERITED.get_or_init(Default::default)
+    &super::TRUST.inherited
 }
 
 /// A trial's copy signs with a key of its own, derived from the live one and the copy's folder,
@@ -100,8 +98,7 @@ pub(super) struct Latest {
 }
 
 pub(super) fn ledger() -> &'static std::sync::Mutex<Ledger> {
-    static LEDGER: std::sync::OnceLock<std::sync::Mutex<Ledger>> = std::sync::OnceLock::new();
-    LEDGER.get_or_init(Default::default)
+    &super::TRUST.ledger
 }
 
 /// The keychain entry holding a folder's record of latest signatures.
@@ -158,8 +155,7 @@ pub(super) fn record_latest(config_dir: &Path, name: &str, signature: &str, seq:
 /// Writes a folder's record to the keychain as it stands when the write runs, one write at a time,
 /// so a slower earlier write never leaves an older record behind.
 pub(super) async fn keep_latest(config_dir: &Path, store: &crate::tools::auth::Secrets) {
-    static WRITING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-    let _one_at_a_time = WRITING.lock().await;
+    let _one_at_a_time = super::TRUST.writing.lock().await;
     let record: std::collections::BTreeMap<String, Latest> = ledger()
         .lock()
         .unwrap_or_else(|p| p.into_inner())

@@ -154,6 +154,7 @@ pub(in crate::chat::toolkit) fn runs_in_wasm(tool: &CustomTool) -> bool {
 
 /// Runs a tool in the sandbox; returns what it printed, or why it failed.
 pub async fn run(
+    bench: &crate::chat::workbench::Bench,
     config_dir: &Path,
     conversation_id: &str,
     name: &str,
@@ -180,6 +181,7 @@ pub async fn run(
             .map_err(|e| ChatError::Invalid(format!("The tool failed: {e}")));
     }
     let outcome = crate::chat::sandbox::run(
+        bench,
         config_dir,
         conversation_id,
         &json!({ "language": tool.language, "code": program(&tool, args) }),
@@ -296,9 +298,15 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            run(dir.path(), "c1", "convert_units", &json!({ "km": 10 }))
-                .await
-                .unwrap(),
+            run(
+                &Default::default(),
+                dir.path(),
+                "c1",
+                "convert_units",
+                &json!({ "km": 10 })
+            )
+            .await
+            .unwrap(),
             "6.21"
         );
         save(
@@ -306,11 +314,17 @@ mod tests {
             &sample("python", "raise SystemExit('bad input')"),
         )
         .unwrap();
-        assert!(run(dir.path(), "c1", "convert_units", &json!({}))
-            .await
-            .unwrap_err()
-            .to_string()
-            .contains("bad input"));
+        assert!(run(
+            &Default::default(),
+            dir.path(),
+            "c1",
+            "convert_units",
+            &json!({})
+        )
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("bad input"));
     }
 }
 
@@ -332,9 +346,15 @@ mod wasm_tests {
         assert!(runs_in_wasm(&tool));
         save(dir.path(), &tool).unwrap();
         assert_eq!(
-            run(dir.path(), "conv", "shout", &json!({ "text": "hi" }))
-                .await
-                .unwrap(),
+            run(
+                &Default::default(),
+                dir.path(),
+                "conv",
+                "shout",
+                &json!({ "text": "hi" })
+            )
+            .await
+            .unwrap(),
             "HI"
         );
         let node = CustomTool {

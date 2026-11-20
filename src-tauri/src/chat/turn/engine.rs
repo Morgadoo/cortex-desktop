@@ -142,7 +142,7 @@ pub(crate) async fn run_turn_on(
     if matches!(outcome, Ok(false)) {
         if let Ok(dir) = host.config_dir() {
             if crate::chat::functions::has_filters(&dir) {
-                filter_answer(&dir, &id).await;
+                filter_answer(&bench(&host), &dir, &id).await;
             }
         }
     }
@@ -184,36 +184,23 @@ pub(crate) async fn run_turn_on(
     }
 }
 
-type QueuedTurn = (
-    Arc<dyn Host>,
-    TurnRequest,
-    watch::Receiver<bool>,
-    tokio::sync::oneshot::Sender<()>,
-);
+/// The workbench's state, in the app's state.
+fn bench(host: &Arc<dyn Host>) -> Arc<crate::chat::workbench::Bench> {
+    host.chat_state().part::<crate::chat::workbench::Bench>()
+}
 
-/// Runs a turn from inside another one (an agent messaging an agent). The turn goes through a
-/// queue to a task of its own, since a turn cannot spawn its own kind directly.
+/// Runs a turn from inside another one (an agent messaging an agent), on a task of its own.
 fn queue_turn(
     host: &Arc<dyn Host>,
     request: TurnRequest,
     cancel: watch::Receiver<bool>,
 ) -> tokio::sync::oneshot::Receiver<()> {
-    static QUEUE: std::sync::OnceLock<tokio::sync::mpsc::UnboundedSender<QueuedTurn>> =
-        std::sync::OnceLock::new();
-    let queue = QUEUE.get_or_init(|| {
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<QueuedTurn>();
-        tauri::async_runtime::spawn(async move {
-            while let Some((host, request, cancel, done)) = rx.recv().await {
-                tauri::async_runtime::spawn(async move {
-                    run_turn_on(host, request, cancel).await;
-                    let _ = done.send(());
-                });
-            }
-        });
-        tx
-    });
     let (done, wait) = tokio::sync::oneshot::channel();
-    let _ = queue.send((host.clone(), request, cancel, done));
+    let host = host.clone();
+    tauri::async_runtime::spawn(async move {
+        run_turn_on(host, request, cancel).await;
+        let _ = done.send(());
+    });
     wait
 }
 
@@ -233,7 +220,11 @@ async fn cancelled(cancel: &mut watch::Receiver<bool>) {
 }
 
 /// Runs the outlet filters over the last answer; a changed answer replaces it.
-async fn filter_answer(config_dir: &std::path::Path, id: &str) {
+async fn filter_answer(
+    bench: &crate::chat::workbench::Bench,
+    config_dir: &std::path::Path,
+    id: &str,
+) {
     use rig_core::completion::message::AssistantContent;
     let Ok(mut c) = store::load_conversation(config_dir, id) else {
         return;
@@ -264,7 +255,7 @@ async fn filter_answer(config_dir: &std::path::Path, id: &str) {
         return;
     }
     let model = c.model.clone().unwrap_or_default();
-    match crate::chat::functions::apply(config_dir, id, "outlet", &model, &text).await {
+    match crate::chat::functions::apply(bench, config_dir, id, "outlet", &model, &text).await {
         Ok(changed) if changed != text => {
             if let Some(last) = c.messages.last_mut() {
                 *last = Message::assistant(changed);
@@ -317,9 +308,16 @@ async fn traced_turn(
     // Filters see the message first: they can rewrite it or refuse it.
     let mut text = request.text.trim().to_string();
     if !text.is_empty() && crate::chat::functions::has_filters(&config_dir) {
-        text = crate::chat::functions::apply(&config_dir, id, "inlet", &request.model, &text)
-            .await
-            .map_err(|reason| ChatError::Invalid(format!("Not sent. {reason}")))?;
+        text = crate::chat::functions::apply(
+            &bench(host),
+            &config_dir,
+            id,
+            "inlet",
+            &request.model,
+            &text,
+        )
+        .await
+        .map_err(|reason| ChatError::Invalid(format!("Not sent. {reason}")))?;
     }
 
     // An answer the app closed in the middle of: continuing keeps what it had said; anything
@@ -404,6 +402,7 @@ async fn traced_turn(
         .filter(|f| f != &request.model);
     let (mut offered, defer) = tools_for_turn(
         registry,
+        &bench(host),
         &config_dir,
         request,
         &conversation,

@@ -2,6 +2,12 @@
 
 use super::*;
 
+/// The workbench's state, in the app's state.
+fn bench(app: &AppHandle) -> std::sync::Arc<crate::chat::workbench::Bench> {
+    app.state::<ChatState>()
+        .part::<crate::chat::workbench::Bench>()
+}
+
 /// The agent workbench (workbench.rs): whether it is on, and its state.
 #[tauri::command]
 pub async fn chat_workbench_status(app: AppHandle) -> Result<serde_json::Value, String> {
@@ -9,7 +15,7 @@ pub async fn chat_workbench_status(app: AppHandle) -> Result<serde_json::Value, 
     Ok(serde_json::json!({
         "enabled": crate::chat::workbench::enabled(&dir),
         "image": crate::chat::workbench::image_tag(),
-        "status": crate::chat::workbench::status().await,
+        "status": crate::chat::workbench::status(&bench(&app)).await,
     }))
 }
 
@@ -23,7 +29,7 @@ pub fn chat_workbench_set_enabled(app: AppHandle, enabled: bool) -> Result<(), S
 pub async fn chat_workbench_build(
     app: AppHandle,
 ) -> Result<crate::chat::workbench::Status, String> {
-    Ok(crate::chat::workbench::build(&config_dir(&app)?).await)
+    Ok(crate::chat::workbench::build(&bench(&app), &config_dir(&app)?).await)
 }
 
 #[tauri::command]
@@ -60,7 +66,8 @@ pub async fn chat_test_function(
     } else {
         serde_json::json!({ "stage": "inlet", "text": sample, "model": "test" })
     };
-    let out = crate::chat::functions::run(&dir, "function-test", &function, &args).await?;
+    let out =
+        crate::chat::functions::run(&bench(&app), &dir, "function-test", &function, &args).await?;
     Ok(
         match (
             function.kind.as_str(),
@@ -230,7 +237,7 @@ pub async fn chat_test_custom_tool(
     name: String,
     args: serde_json::Value,
 ) -> Result<String, String> {
-    crate::chat::custom_tools::run(&config_dir(&app)?, "tool-tests", &name, &args)
+    crate::chat::custom_tools::run(&bench(&app), &config_dir(&app)?, "tool-tests", &name, &args)
         .await
         .map_err(String::from)
 }

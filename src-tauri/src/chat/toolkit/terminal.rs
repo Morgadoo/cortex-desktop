@@ -8,7 +8,7 @@
 use crate::chat::error::ChatError;
 use std::collections::HashMap;
 use std::process::Stdio;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -71,26 +71,27 @@ struct Running {
     pid: Option<u32>,
 }
 
-fn registry() -> &'static Mutex<HashMap<String, Running>> {
-    static REG: OnceLock<Mutex<HashMap<String, Running>>> = OnceLock::new();
-    REG.get_or_init(Default::default)
-}
+/// The background commands while the app runs, by id. Kept in the app's state:
+/// `state.part::<Terminals>()`.
+#[derive(Default)]
+pub struct Terminals(Mutex<HashMap<String, Running>>);
 
-fn lock() -> std::sync::MutexGuard<'static, HashMap<String, Running>> {
-    registry().lock().unwrap_or_else(|p| p.into_inner())
-}
+impl Terminals {
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, Running>> {
+        self.0.lock().unwrap_or_else(|p| p.into_inner())
+    }
 
-fn append(id: &str, text: &str) {
-    if let Some(r) = lock().get_mut(id) {
-        r.view.output.push_str(text);
-        let len = r.view.output.chars().count();
-        if len > OUTPUT_CHARS {
-            r.view.output = r.view.output.chars().skip(len - OUTPUT_CHARS).collect();
+    fn append(&self, id: &str, text: &str) {
+        if let Some(r) = self.lock().get_mut(id) {
+            r.view.output.push_str(text);
+            let len = r.view.output.chars().count();
+            if len > OUTPUT_CHARS {
+                r.view.output = r.view.output.chars().skip(len - OUTPUT_CHARS).collect();
+            }
         }
     }
 }
 
-/// The terminal tools, offered in coding sessions.
 pub(crate) fn definitions() -> Vec<ChatTool> {
     let tool =
         |name: &str, description: &str, parameters: serde_json::Value, read_only: bool| ChatTool {
@@ -125,97 +126,162 @@ pub(crate) fn definitions() -> Vec<ChatTool> {
     ]
 }
 
-/// Starts `command` in `dir` for `conversation_id`; returns its id.
-pub fn start(conversation_id: &str, dir: &str, command: &str) -> Result<String, ChatError> {
-    let command = command.trim();
-    if command.is_empty() {
-        return Err(ChatError::Invalid("Give the command to run.".into()));
-    }
-    if lock()
-        .values()
-        .filter(|r| r.view.status == CommandStatus::Running)
-        .count()
-        >= MAX_RUNNING
-    {
-        return Err(ChatError::Invalid(format!(
-            "{MAX_RUNNING} commands are already running; stop one first."
-        )));
-    }
-    #[cfg(windows)]
-    let mut child = tokio::process::Command::new("cmd");
-    #[cfg(windows)]
-    child.args(["/C", command]);
-    #[cfg(not(windows))]
-    let mut child = tokio::process::Command::new("sh");
-    #[cfg(not(windows))]
-    child.args(["-c", command]);
-    let child = child
-        .current_dir(dir)
-        .env("FORCE_COLOR", "0")
-        .env("NO_COLOR", "1")
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    // Its own process group, so stopping it reaches what the shell started (a server, a watcher).
-    #[cfg(unix)]
-    let child = child.process_group(0);
-    let mut child = child
-        .spawn()
-        .map_err(|e| ChatError::Invalid(format!("Could not start the command: {e}")))?;
-    let pid = child.id();
-    let id = uuid::Uuid::new_v4().to_string()[..8].to_string();
-    let (kill_tx, mut kill_rx) = tokio::sync::oneshot::channel();
-    lock().insert(
-        id.clone(),
-        Running {
-            view: CommandView {
-                id: id.clone(),
-                conversation_id: conversation_id.to_string(),
-                command: command.to_string(),
-                started_at: Utc::now(),
-                status: CommandStatus::Running,
-                exit_code: None,
-                output: String::new(),
+impl Terminals {
+    /// Starts `command` in `dir` for `conversation_id`; returns its id.
+    pub fn start(
+        self: &Arc<Self>,
+        conversation_id: &str,
+        dir: &str,
+        command: &str,
+    ) -> Result<String, ChatError> {
+        let command = command.trim();
+        if command.is_empty() {
+            return Err(ChatError::Invalid("Give the command to run.".into()));
+        }
+        if self
+            .lock()
+            .values()
+            .filter(|r| r.view.status == CommandStatus::Running)
+            .count()
+            >= MAX_RUNNING
+        {
+            return Err(ChatError::Invalid(format!(
+                "{MAX_RUNNING} commands are already running; stop one first."
+            )));
+        }
+        #[cfg(windows)]
+        let mut child = tokio::process::Command::new("cmd");
+        #[cfg(windows)]
+        child.args(["/C", command]);
+        #[cfg(not(windows))]
+        let mut child = tokio::process::Command::new("sh");
+        #[cfg(not(windows))]
+        child.args(["-c", command]);
+        let child = child
+            .current_dir(dir)
+            .env("FORCE_COLOR", "0")
+            .env("NO_COLOR", "1")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+        // Its own process group, so stopping it reaches what the shell started (a server, a watcher).
+        #[cfg(unix)]
+        let child = child.process_group(0);
+        let mut child = child
+            .spawn()
+            .map_err(|e| ChatError::Invalid(format!("Could not start the command: {e}")))?;
+        let pid = child.id();
+        let id = uuid::Uuid::new_v4().to_string()[..8].to_string();
+        let (kill_tx, mut kill_rx) = tokio::sync::oneshot::channel();
+        self.lock().insert(
+            id.clone(),
+            Running {
+                view: CommandView {
+                    id: id.clone(),
+                    conversation_id: conversation_id.to_string(),
+                    command: command.to_string(),
+                    started_at: Utc::now(),
+                    status: CommandStatus::Running,
+                    exit_code: None,
+                    output: String::new(),
+                },
+                kill: Some(kill_tx),
+                pid,
             },
-            kill: Some(kill_tx),
-            pid,
-        },
-    );
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
-    for stream in [
-        stdout.map(|s| Box::new(s) as Box<dyn tokio::io::AsyncRead + Unpin + Send>),
-        stderr.map(|s| Box::new(s) as Box<dyn tokio::io::AsyncRead + Unpin + Send>),
-    ]
-    .into_iter()
-    .flatten()
-    {
-        let id = id.clone();
+        );
+        let stdout = child.stdout.take();
+        let stderr = child.stderr.take();
+        for stream in [
+            stdout.map(|s| Box::new(s) as Box<dyn tokio::io::AsyncRead + Unpin + Send>),
+            stderr.map(|s| Box::new(s) as Box<dyn tokio::io::AsyncRead + Unpin + Send>),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            let id = id.clone();
+            let terminals = self.clone();
+            tauri::async_runtime::spawn(async move {
+                let mut lines = BufReader::new(stream).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    terminals.append(&id, &format!("{line}\n"));
+                }
+            });
+        }
+        let watch_id = id.clone();
+        let terminals = self.clone();
         tauri::async_runtime::spawn(async move {
-            let mut lines = BufReader::new(stream).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                append(&id, &format!("{line}\n"));
+            let (status, code) = tokio::select! {
+                result = child.wait() => (CommandStatus::Exited, result.ok().and_then(|s| s.code())),
+                _ = &mut kill_rx => {
+                    stop_group(pid).await;
+                    let _ = child.kill().await;
+                    (CommandStatus::Stopped, None)
+                }
+            };
+            if let Some(r) = terminals.lock().get_mut(&watch_id) {
+                r.view.status = status;
+                r.view.exit_code = code;
+                r.kill = None;
             }
         });
+        Ok(id)
     }
-    let watch_id = id.clone();
-    tauri::async_runtime::spawn(async move {
-        let (status, code) = tokio::select! {
-            result = child.wait() => (CommandStatus::Exited, result.ok().and_then(|s| s.code())),
-            _ = &mut kill_rx => {
-                stop_group(pid).await;
-                let _ = child.kill().await;
-                (CommandStatus::Stopped, None)
-            }
-        };
-        if let Some(r) = lock().get_mut(&watch_id) {
-            r.view.status = status;
-            r.view.exit_code = code;
-            r.kill = None;
+
+    /// Ends every running command and what it started, synchronously: the app is quitting.
+    pub(crate) fn stop_all(&self) {
+        let pids: Vec<u32> = self
+            .lock()
+            .values()
+            .filter(|r| r.view.status == CommandStatus::Running)
+            .filter_map(|r| r.pid)
+            .collect();
+        for pid in pids {
+            #[cfg(unix)]
+            let _ = std::process::Command::new("kill")
+                .args(["-KILL", "--", &format!("-{pid}")])
+                .status();
+            #[cfg(windows)]
+            let _ = std::process::Command::new("taskkill")
+                .args(["/T", "/F", "/PID", &pid.to_string()])
+                .status();
         }
-    });
-    Ok(id)
+    }
+
+    /// Stops a running command.
+    pub(crate) fn stop(&self, id: &str) -> Result<(), ChatError> {
+        let kill = self.lock().get_mut(id).and_then(|r| r.kill.take());
+        match kill {
+            Some(tx) => {
+                let _ = tx.send(());
+                Ok(())
+            }
+            None => Err(ChatError::Invalid("That command is not running.".into())),
+        }
+    }
+
+    /// The commands of a conversation, newest first.
+    pub fn list(&self, conversation_id: &str) -> Vec<CommandView> {
+        let mut out: Vec<CommandView> = self
+            .lock()
+            .values()
+            .filter(|r| r.view.conversation_id == conversation_id)
+            .map(|r| r.view.clone())
+            .collect();
+        out.sort_by_key(|a| std::cmp::Reverse(a.started_at));
+        out
+    }
+
+    pub fn get(&self, id: &str) -> Option<CommandView> {
+        self.lock().get(id).map(|r| r.view.clone())
+    }
+
+    /// Forgets finished commands of a conversation.
+    pub(in crate::chat) fn clear_finished(&self, conversation_id: &str) {
+        self.lock().retain(|_, r| {
+            r.view.conversation_id != conversation_id || r.view.status == CommandStatus::Running
+        });
+    }
 }
 
 /// Ends a command's whole process group: TERM first, then KILL for anything still running.
@@ -242,59 +308,6 @@ async fn stop_group(pid: Option<u32>) {
     }
 }
 
-/// Ends every running command and what it started, synchronously: the app is quitting.
-pub(crate) fn stop_all() {
-    let pids: Vec<u32> = lock()
-        .values()
-        .filter(|r| r.view.status == CommandStatus::Running)
-        .filter_map(|r| r.pid)
-        .collect();
-    for pid in pids {
-        #[cfg(unix)]
-        let _ = std::process::Command::new("kill")
-            .args(["-KILL", "--", &format!("-{pid}")])
-            .status();
-        #[cfg(windows)]
-        let _ = std::process::Command::new("taskkill")
-            .args(["/T", "/F", "/PID", &pid.to_string()])
-            .status();
-    }
-}
-
-/// Stops a running command.
-pub(crate) fn stop(id: &str) -> Result<(), ChatError> {
-    let kill = lock().get_mut(id).and_then(|r| r.kill.take());
-    match kill {
-        Some(tx) => {
-            let _ = tx.send(());
-            Ok(())
-        }
-        None => Err(ChatError::Invalid("That command is not running.".into())),
-    }
-}
-
-/// The commands of a conversation, newest first.
-pub fn list(conversation_id: &str) -> Vec<CommandView> {
-    let mut out: Vec<CommandView> = lock()
-        .values()
-        .filter(|r| r.view.conversation_id == conversation_id)
-        .map(|r| r.view.clone())
-        .collect();
-    out.sort_by_key(|a| std::cmp::Reverse(a.started_at));
-    out
-}
-
-pub fn get(id: &str) -> Option<CommandView> {
-    lock().get(id).map(|r| r.view.clone())
-}
-
-/// Forgets finished commands of a conversation.
-pub(in crate::chat) fn clear_finished(conversation_id: &str) {
-    lock().retain(|_, r| {
-        r.view.conversation_id != conversation_id || r.view.status == CommandStatus::Running
-    });
-}
-
 /// The tail of a command's output, for the model.
 pub(crate) fn tail(view: &CommandView, chars: usize) -> String {
     let count = view.output.chars().count();
@@ -319,38 +332,48 @@ mod tests {
             return;
         }
         let dir = tempfile::tempdir().unwrap();
-        let quick = start(
-            "conv-t",
-            dir.path().to_str().unwrap(),
-            "echo hello; echo oops >&2; exit 3",
-        )
-        .unwrap();
-        let slow = start(
-            "conv-t",
-            dir.path().to_str().unwrap(),
-            "sleep 98765 & while true; do echo tick; sleep 0.1; done",
-        )
-        .unwrap();
+        let terminals = Arc::new(Terminals::default());
+        let quick = terminals
+            .start(
+                "conv-t",
+                dir.path().to_str().unwrap(),
+                "echo hello; echo oops >&2; exit 3",
+            )
+            .unwrap();
+        let slow = terminals
+            .start(
+                "conv-t",
+                dir.path().to_str().unwrap(),
+                "sleep 98765 & while true; do echo tick; sleep 0.1; done",
+            )
+            .unwrap();
         for _ in 0..50 {
-            if get(&quick).is_some_and(|v| v.status == CommandStatus::Exited)
-                && get(&slow).is_some_and(|v| v.output.contains("tick"))
+            if terminals
+                .get(&quick)
+                .is_some_and(|v| v.status == CommandStatus::Exited)
+                && terminals
+                    .get(&slow)
+                    .is_some_and(|v| v.output.contains("tick"))
             {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
-        let q = get(&quick).unwrap();
+        let q = terminals.get(&quick).unwrap();
         assert_eq!((q.status, q.exit_code), (CommandStatus::Exited, Some(3)));
         assert!(q.output.contains("hello") && q.output.contains("oops"));
-        assert_eq!(get(&slow).unwrap().status, CommandStatus::Running);
-        stop(&slow).unwrap();
+        assert_eq!(terminals.get(&slow).unwrap().status, CommandStatus::Running);
+        terminals.stop(&slow).unwrap();
         for _ in 0..50 {
-            if get(&slow).is_some_and(|v| v.status == CommandStatus::Stopped) {
+            if terminals
+                .get(&slow)
+                .is_some_and(|v| v.status == CommandStatus::Stopped)
+            {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
-        assert_eq!(get(&slow).unwrap().status, CommandStatus::Stopped);
+        assert_eq!(terminals.get(&slow).unwrap().status, CommandStatus::Stopped);
         // What the shell started is gone too.
         let left = std::process::Command::new("pgrep")
             .args(["-f", "sleep 98765"])
@@ -358,10 +381,12 @@ mod tests {
             .map(|o| o.stdout)
             .unwrap_or_default();
         assert!(left.is_empty(), "the background child survived");
-        assert!(stop(&slow).is_err());
-        assert_eq!(list("conv-t").len(), 2);
-        clear_finished("conv-t");
-        assert!(list("conv-t").is_empty());
-        assert!(start("conv-t", dir.path().to_str().unwrap(), "  ").is_err());
+        assert!(terminals.stop(&slow).is_err());
+        assert_eq!(terminals.list("conv-t").len(), 2);
+        terminals.clear_finished("conv-t");
+        assert!(terminals.list("conv-t").is_empty());
+        assert!(terminals
+            .start("conv-t", dir.path().to_str().unwrap(), "  ")
+            .is_err());
     }
 }

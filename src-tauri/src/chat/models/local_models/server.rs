@@ -51,7 +51,9 @@ pub(super) fn error_response(status: u16, message: &str) -> axum::response::Resp
 
 /// Requests waiting for or using the processor. One model runs at a time; the rest wait in
 /// arrival order (the model's lock is fair), and past `QUEUE_LIMIT` a request is told to retry.
-pub(super) static QUEUED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+fn queued() -> &'static std::sync::atomic::AtomicUsize {
+    &super::LOCAL_MODELS.queued
+}
 pub const QUEUE_LIMIT: usize = 8;
 
 /// Holds a place in the queue for as long as it lives.
@@ -61,12 +63,12 @@ impl Place {
     /// A place, or `None` when the queue is full.
     pub(crate) fn take() -> Option<Place> {
         use std::sync::atomic::Ordering;
-        let mut now = QUEUED.load(Ordering::SeqCst);
+        let mut now = queued().load(Ordering::SeqCst);
         loop {
             if now >= QUEUE_LIMIT {
                 return None;
             }
-            match QUEUED.compare_exchange(now, now + 1, Ordering::SeqCst, Ordering::SeqCst) {
+            match queued().compare_exchange(now, now + 1, Ordering::SeqCst, Ordering::SeqCst) {
                 Ok(_) => return Some(Place),
                 Err(actual) => now = actual,
             }
@@ -76,7 +78,7 @@ impl Place {
 
 impl Drop for Place {
     fn drop(&mut self) {
-        QUEUED.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+        queued().fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
     }
 }
 

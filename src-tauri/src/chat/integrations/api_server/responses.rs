@@ -48,6 +48,7 @@ pub(super) async fn responses(
     body: Result<Json<ResponsesBody>, axum::extract::rejection::JsonRejection>,
 ) -> Response {
     let started = std::time::Instant::now();
+    let log = ctx.log.clone();
     let model_name = body.as_ref().map(|b| b.model.clone()).unwrap_or_default();
     let response = async {
         if !authorized(&headers, &ctx.token) {
@@ -111,6 +112,6 @@ pub(super) async fn responses(
         Sse::new(events).keep_alive(KeepAlive::default()).into_response()
     }
     .await;
-    record("responses", &model_name, response.status(), started);
+    record(&log, "responses", &model_name, response.status(), started);
     response
 }

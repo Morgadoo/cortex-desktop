@@ -172,7 +172,12 @@ pub(in crate::chat) async fn widget_token(regenerate: bool) -> Result<String, St
 pub struct ApiServer {
     stop: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
     status: Mutex<Status>,
+    /// The latest requests, newest first, for the log in Settings.
+    log: RequestLog,
 }
+
+/// The latest requests, newest first.
+type RequestLog = Arc<Mutex<std::collections::VecDeque<LogEntry>>>;
 
 #[derive(Debug, Clone, Default, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -251,6 +256,7 @@ pub(crate) async fn apply(app: &AppHandle) -> Status {
         token: Arc::new(token),
         widget: Arc::new(widget),
         app: app.clone(),
+        log: server.log.clone(),
     });
     tauri::async_runtime::spawn(async move {
         let _ = axum::serve(listener, router)
@@ -275,6 +281,7 @@ struct Ctx {
     /// The widget's key; empty while the widget is off.
     widget: Arc<String>,
     app: AppHandle,
+    log: RequestLog,
 }
 
 /// One request, for the log in Settings.
@@ -291,14 +298,14 @@ pub struct LogEntry {
 /// Requests kept in the log.
 const LOG_SIZE: usize = 100;
 
-fn log() -> &'static Mutex<std::collections::VecDeque<LogEntry>> {
-    static LOG: std::sync::OnceLock<Mutex<std::collections::VecDeque<LogEntry>>> =
-        std::sync::OnceLock::new();
-    LOG.get_or_init(|| Mutex::new(std::collections::VecDeque::new()))
-}
-
-fn record(endpoint: &str, model: &str, status: StatusCode, started: std::time::Instant) {
-    if let Ok(mut log) = log().lock() {
+fn record(
+    log: &RequestLog,
+    endpoint: &str,
+    model: &str,
+    status: StatusCode,
+    started: std::time::Instant,
+) {
+    if let Ok(mut log) = log.lock() {
         log.push_front(LogEntry {
             at: chrono::Utc::now(),
             endpoint: endpoint.into(),
@@ -311,8 +318,9 @@ fn record(endpoint: &str, model: &str, status: StatusCode, started: std::time::I
 }
 
 /// The latest requests, newest first.
-pub(crate) fn recent() -> Vec<LogEntry> {
-    log()
+pub(crate) fn recent(server: &ApiServer) -> Vec<LogEntry> {
+    server
+        .log
         .lock()
         .map(|l| l.iter().cloned().collect())
         .unwrap_or_default()
@@ -584,8 +592,9 @@ async fn chat(
 ) -> Response {
     let started = std::time::Instant::now();
     let model = body.as_ref().map(|b| b.model.clone()).unwrap_or_default();
+    let log = ctx.log.clone();
     let response = chat_inner(ctx, headers, body).await;
-    record("chat/completions", &model, response.status(), started);
+    record(&log, "chat/completions", &model, response.status(), started);
     response
 }
 
@@ -808,9 +817,22 @@ mod tests {
     #[test]
     fn requests_are_logged_newest_first() {
         let started = std::time::Instant::now();
-        record("chat/completions", "xai/grok-4", StatusCode::OK, started);
-        record("messages", "agent/a1", StatusCode::UNAUTHORIZED, started);
-        let log = recent();
+        let server = ApiServer::default();
+        record(
+            &server.log,
+            "chat/completions",
+            "xai/grok-4",
+            StatusCode::OK,
+            started,
+        );
+        record(
+            &server.log,
+            "messages",
+            "agent/a1",
+            StatusCode::UNAUTHORIZED,
+            started,
+        );
+        let log = recent(&server);
         assert_eq!((log[0].endpoint.as_str(), log[0].status), ("messages", 401));
         assert_eq!(log[1].model, "xai/grok-4");
     }

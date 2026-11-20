@@ -1,8 +1,9 @@
 //! Turns in flight and questions waiting for the user: the state the chat commands share.
 
+use std::any::{Any, TypeId};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use tokio::sync::{oneshot, watch};
 
@@ -23,6 +24,10 @@ pub struct ChatState {
     allowed: Mutex<HashSet<(String, String)>>,
     /// Agent-to-agent messages in flight, so a loop of agents messaging each other stops.
     message_depth: AtomicUsize,
+    /// Tools' vectors by embedding model and text, for finding tools by meaning.
+    tool_vectors: Mutex<HashMap<String, Vec<f32>>>,
+    /// What other modules keep while the app runs, one value per type: see [`ChatState::part`].
+    parts: Mutex<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>,
 }
 
 impl ChatState {
@@ -44,6 +49,23 @@ impl ChatState {
             return None;
         }
         Some(MessageDepth(&self.message_depth))
+    }
+
+    /// Tools' vectors by embedding model and text, so each tool is embedded once.
+    pub(crate) fn tool_vectors(&self) -> &Mutex<HashMap<String, Vec<f32>>> {
+        &self.tool_vectors
+    }
+
+    /// The state a module keeps while the app runs (its running commands, a cache), made on first
+    /// use. Each module names its own type, so the value belongs to this `ChatState` (the app's,
+    /// or a test's) rather than to the process, and nothing outside the module can reach it.
+    pub(crate) fn part<T: Default + Send + Sync + 'static>(&self) -> Arc<T> {
+        let part = Self::lock(&self.parts)
+            .entry(TypeId::of::<T>())
+            .or_insert_with(|| Arc::new(T::default()))
+            .clone();
+        part.downcast::<T>()
+            .unwrap_or_else(|_| unreachable!("parts are keyed by their type"))
     }
 
     fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -191,6 +213,32 @@ impl Drop for MessageDepth<'_> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_part_is_made_once_and_kept() {
+        #[derive(Default)]
+        struct Counter(std::sync::atomic::AtomicUsize);
+        let state = ChatState::default();
+        state
+            .part::<Counter>()
+            .0
+            .fetch_add(2, std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(
+            state
+                .part::<Counter>()
+                .0
+                .load(std::sync::atomic::Ordering::SeqCst),
+            2
+        );
+        // Another state has its own.
+        assert_eq!(
+            ChatState::default()
+                .part::<Counter>()
+                .0
+                .load(std::sync::atomic::Ordering::SeqCst),
+            0
+        );
+    }
+
     #[test]
     fn a_running_turn_can_be_replayed() {
         use serde_json::json;

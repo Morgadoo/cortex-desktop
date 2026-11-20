@@ -117,6 +117,7 @@ pub(in crate::chat::turn) fn find_pipe(config_dir: &Path, reference: &str) -> Op
 
 /// Runs a function's code in the sandbox with `args`; returns what it printed.
 pub async fn run(
+    bench: &crate::chat::workbench::Bench,
     config_dir: &Path,
     conversation_id: &str,
     f: &Function,
@@ -124,6 +125,7 @@ pub async fn run(
 ) -> Result<String, ChatError> {
     let code = crate::chat::custom_tools::program_for(&f.language, &f.code, args);
     let outcome = crate::chat::sandbox::run(
+        bench,
         config_dir,
         conversation_id,
         &json!({ "language": f.language, "code": code }),
@@ -200,6 +202,7 @@ pub(in crate::chat::turn) fn has_filters(config_dir: &Path) -> bool {
 /// Passes a text through every filter in turn. `Err` is the reason a filter refused it. A filter
 /// that fails is reported in the log and skipped, so a bug in one does not stop the chat.
 pub(in crate::chat::turn) async fn apply(
+    bench: &crate::chat::workbench::Bench,
     config_dir: &Path,
     conversation_id: &str,
     stage: &str,
@@ -209,6 +212,7 @@ pub(in crate::chat::turn) async fn apply(
     let mut text = text.to_string();
     for f in filters(config_dir) {
         match run(
+            bench,
             config_dir,
             conversation_id,
             &f,

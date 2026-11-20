@@ -6,6 +6,8 @@
 use std::sync::{Arc, LazyLock};
 use tokio::sync::{oneshot, Mutex};
 
+// Process-wide: the macOS Keychain serves the whole process, and its operations run one at a time
+// across every account and connector, so they wait in one queue.
 static QUEUE: LazyLock<KeychainQueue> = LazyLock::new(KeychainQueue::default);
 
 #[derive(Default)]

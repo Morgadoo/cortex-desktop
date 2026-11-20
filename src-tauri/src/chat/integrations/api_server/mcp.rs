@@ -67,7 +67,7 @@ pub(super) async fn mcp(
 ) -> Response {
     let started = std::time::Instant::now();
     if !authorized(&headers, &ctx.token) {
-        record("mcp", "", StatusCode::UNAUTHORIZED, started);
+        record(&ctx.log, "mcp", "", StatusCode::UNAUTHORIZED, started);
         return error(StatusCode::UNAUTHORIZED, "Missing or wrong bearer token.");
     }
     let Ok(Json(message)) = body else {
@@ -88,6 +88,7 @@ pub(super) async fn mcp(
         None => StatusCode::ACCEPTED.into_response(),
     };
     record(
+        &ctx.log,
         &format!("mcp {method}"),
         message
             .pointer("/params/arguments/model")

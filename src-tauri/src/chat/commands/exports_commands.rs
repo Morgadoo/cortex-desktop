@@ -203,7 +203,7 @@ pub async fn chat_export_diagnostics(app: AppHandle) -> Result<bool, String> {
             "computerUse": crate::chat::computer::load(&dir).enabled,
             "sandboxLanguages": crate::chat::sandbox::languages(),
         },
-        "localApiRecent": crate::chat::api_server::recent().into_iter().take(20).map(|e| serde_json::json!({ "endpoint": e.endpoint, "status": e.status, "ms": e.ms })).collect::<Vec<_>>(),
+        "localApiRecent": crate::chat::api_server::recent(&app.state::<crate::chat::api_server::ApiServer>()).into_iter().take(20).map(|e| serde_json::json!({ "endpoint": e.endpoint, "status": e.status, "ms": e.ms })).collect::<Vec<_>>(),
         "createdAt": chrono::Utc::now(),
     });
     let Some(path) = crate::support::dialogs::save_file(

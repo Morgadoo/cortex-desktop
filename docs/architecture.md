@@ -238,6 +238,16 @@ user go in `Invalid`; a library's error with no kind of its own is `Internal`. O
 as do the few boundaries outside `chat/` that take text: the kernel's step loop, the tool
 registry's connector call and the sandbox's nested calls.
 
+### State that lasts while the app runs
+
+A cache, the commands a module started, or the server it runs, is a type of the module's own,
+made with `Default` and kept in `ChatState`: `host.chat_state().part::<Terminals>()` in a turn,
+`app.state::<ChatState>().part::<Terminals>()` in a command. It belongs to the app (or to the
+test's host, so tests do not share it) and nothing outside the module can reach it. A
+process-wide `static` is for what really is one per process (the loaded model, the keychain,
+the encryption key every file read uses); `scripts/check-statics.py` lists them, each with a
+`Process-wide:` comment saying why.
+
 ### A module
 
 Put it in the folder for its role, add it to that folder's `mod.rs` and to the folder's
@@ -252,6 +262,7 @@ Put it in the folder for its role, add it to that folder's `mod.rs` and to the f
 | `cargo fmt`, `cargo clippy -- -D warnings`, `cargo test` (in `src-tauri`, `--workspace --features cortex/test-utils`) | The Rust code, native build |
 | the same with `--features cortex/test-utils,cortex/e2e` | The Rust code with the hosted web app's |
 | `python3 scripts/check-layers.py` | Dependencies point down the chat engine's layers |
+| `python3 scripts/check-statics.py` | At most nine process-wide mutable statics, each saying why |
 | `python3 scripts/generate-commands.py --check` | The command list and permissions match the code |
 | `python3 scripts/check-kernel-plan.py` | Every test the kernel plan cites exists and passes |
 | `./e2e/run.sh` | The bridge contract, in a container (needs Proton's web clients checkout) |

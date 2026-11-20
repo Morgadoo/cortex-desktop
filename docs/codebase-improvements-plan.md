@@ -26,8 +26,10 @@ package is one or more commits there. Measured as section 7 describes:
 | Files directly in `webview/pages/app/` | 51 | 0 | Under 5 |
 | Largest interface file | 4,892 lines | 723 | Under 800 |
 | Rust functions over 150 lines | 11 | 0 | 0 |
+| Rust files over 800 lines before their test module | 16 | 0, in the app and the crates | 0 |
 | Layering violations allowed | About 69 modules in one cycle | 0 | 0 |
 | Public functions in chat | About 1,060 | 379, 287 of them commands | Under 400 |
+| Mutable process-wide statics | About 55 | 9, each with its reason (`scripts/check-statics.py`, in CI) | Under 10 |
 | `Result<_, String>` in chat, outside `commands/` | About 420 | 0 below the entry points (the two kernel `Steps` methods keep the kernel's type) | 0 below the entry points |
 | Hand edits to add a command | 4 to 5 | 1, plus a script | 1 |
 | Backend calls by string name | 287 | 0 unchecked: every name is checked against the generated command list | 0 |
@@ -52,6 +54,17 @@ package is one or more commits there. Measured as section 7 describes:
   joins them, which is the order the rules had before, so the built stylesheet is byte-for-byte
   the one it replaced. A stylesheet left out of `order.txt` fails the build.
 
+3.7 in detail: state a module keeps while the app runs is a type of its own in `ChatState`,
+  reached with `state.part::<T>()` from the host a turn has or the command's app handle: the
+  background commands, the computer tool's screenshots, the workbench's status, emoji downloads,
+  the share server, sync's one-at-a-time lock and the tool vectors; the API server's request log
+  is in its own managed state, and the link prompt and the connectors-changed debounce in
+  Tauri's. Some statics simply went: the queue for agent-to-agent turns (a turn now spawns the
+  next directly), the sandbox's settings cache and sync's derived key (each read is cheap).
+  Writes that read a file, change it and write it back (the activity log, the pending keychain
+  deletes) share one per-file lock in `cortex-store`. The nine that stay are listed by
+  `scripts/check-statics.py`, each with a `Process-wide:` comment.
+
 **Checked in the real app**: section 8's checklist runs as `e2e/user-journeys/` (the real app
 under a virtual display, through tauri-driver, against a real model), in the light and dark themes,
 and passes; a second journey covers switching chats while answers run, unread marks, two answers at
@@ -70,6 +83,11 @@ from a clipped first line.
   (`tools/exposure.rs`) instead of moving onto the connector trait (review 6.4): one table is
   easier to audit, and pseudo-connectors have no implementation to carry it.
 - `pending_deletes` keeps its process-wide root (3.7): it already fails loudly when not set up.
+- The local models' state is one process-wide `LocalModels` rather than a field of `ChatState`
+  (3.7): the weights take gigabytes and the processor runs one model at a time, and the model
+  layer (connecting a model, embedding, transcribing) is reached from the app, the CLI and the
+  local API with no app state to carry it. The script tools' signing record stays one per process
+  for the same reason as a security check: there must be one record per data folder.
 - Of the ten HTTP clients still counted, two are the helper itself and one is in a test. Five are
   built in place on purpose: web search sends a full browser user agent, crash reports send
   Sentry's headers, the Luminance connector turns redirects off, the HEX image server is local
@@ -673,7 +691,7 @@ root.
 | Layering violations allowed: `wc -l scripts/check/layers-allow.txt` | Not measured (about 69 modules in one cycle) | 0 | 3.3 |
 | Public functions in chat: `grep -rnE "^\s*pub (async )?fn" src-tauri/src/chat \| wc -l` | About 1,060 | Under 400 | 3.4 |
 | `Result<_, String>` in chat, outside `commands/` | About 420 | 0 below the entry points | 3.5 |
-| Mutable process-wide statics | About 55 | Under 10 | 3.7 |
+| Mutable process-wide statics: `python3 scripts/check-statics.py --list` | About 55 | Under 10 | 3.7 |
 | Hosted-only commands in the default build (`schedule_*`, `skill_*`, sign-in) | At least 10 | 0 | 3.8 |
 | Hand edits to add a command | 4 to 5 | 1, plus a script | 3.9 |
 | Backend calls by string name: `grep -rn "tauriInvoke[<(]" webview/pages/app \| grep -vc "core/"` | 287 | 0 | 3.10 |

@@ -12,8 +12,7 @@ pub(super) type Calls = std::sync::Mutex<
 >;
 
 pub(super) fn rate_calls() -> &'static Calls {
-    static CALLS: std::sync::OnceLock<Calls> = std::sync::OnceLock::new();
-    CALLS.get_or_init(Default::default)
+    &super::TRUST.calls
 }
 
 /// Drops a folder's rate counters, for a folder that is going away (a trial's copy).

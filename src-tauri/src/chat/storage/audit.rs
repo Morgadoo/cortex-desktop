@@ -56,15 +56,10 @@ pub(crate) fn short(text: &str) -> String {
     }
 }
 
-fn lock() -> &'static std::sync::Mutex<()> {
-    static L: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
-    L.get_or_init(|| std::sync::Mutex::new(()))
-}
-
 /// Adds an entry. Failing to log never stops a call: it is reported in the app's log instead.
 pub(crate) fn record(config_dir: &Path, entry: Entry) {
-    let _guard = lock().lock();
     let path = month_file(config_dir, entry.at);
+    let _one_writer = cortex_store::file_lock::hold(&path);
     let result = (|| -> Result<(), StoreError> {
         std::fs::create_dir_all(dir(config_dir))
             .map_err(|e| StoreError::write(&dir(config_dir), e))?;

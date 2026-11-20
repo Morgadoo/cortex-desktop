@@ -29,6 +29,7 @@ cargo clippy --workspace --features cortex/test-utils --all-targets -- -D warnin
 cargo test --workspace --features cortex/test-utils
 cd ..
 python3 scripts/check-layers.py
+python3 scripts/check-statics.py
 python3 scripts/generate-commands.py --check
 ```
 
@@ -55,8 +56,10 @@ These keep the code base easy to change; reviews hold changes to them.
    through `core/api.ts` or `core/call.ts`, formatting through `core/format.ts`. A second
    implementation is a review finding.
 5. **A closed set of values is an enum** (on both sides of IPC), not string literals.
-6. **No new process-wide mutable `static`.** Put state in a struct created at startup and passed
-   down, or in Tauri's managed state.
+6. **No new process-wide mutable `static`.** State a module keeps while the app runs is a type
+   of its own in `ChatState` (`state.part::<T>()`), or in Tauri's managed state, reached from the
+   host or the command that already has it. `scripts/check-statics.py` lists the few that must
+   be process-wide, each with its reason; a new one needs the same, and the list stays under ten.
 7. **Commands are thin**: parse, call one function below, convert the result. Logic in a command
    is logic without tests.
 8. **Model output reaches the page only through `ui/markdown.ts`**, which sanitises it; `h()`

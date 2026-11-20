@@ -50,6 +50,8 @@ fn text_path(config_dir: &Path, id: &str) -> PathBuf {
 }
 
 fn cache() -> std::sync::MutexGuard<'static, HashMap<PathBuf, IndexFile>> {
+    // Process-wide: the index on disk is the one list of conversations; a second copy in memory
+    // (one per caller) would show a list another caller had already changed.
     static CACHE: OnceLock<Mutex<HashMap<PathBuf, IndexFile>>> = OnceLock::new();
     CACHE
         .get_or_init(Default::default)

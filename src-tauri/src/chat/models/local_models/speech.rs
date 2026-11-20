@@ -167,8 +167,7 @@ pub(super) struct Speech {
 }
 
 pub(super) fn speech() -> &'static Mutex<Option<Speech>> {
-    static SPEECH: OnceLock<Mutex<Option<Speech>>> = OnceLock::new();
-    SPEECH.get_or_init(|| Mutex::new(None))
+    &super::LOCAL_MODELS.speech
 }
 
 /// Audio past the end of the speech that a live guess still reads: a second (100 frames make a

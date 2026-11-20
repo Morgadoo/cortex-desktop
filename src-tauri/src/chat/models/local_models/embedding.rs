@@ -12,8 +12,7 @@ pub(super) struct Embedder {
 }
 
 pub(super) fn embedder() -> &'static Mutex<Option<Embedder>> {
-    static EMBEDDER: OnceLock<Mutex<Option<Embedder>>> = OnceLock::new();
-    EMBEDDER.get_or_init(|| Mutex::new(None))
+    &super::LOCAL_MODELS.embedder
 }
 
 /// Passages embedded per forward pass.

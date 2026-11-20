@@ -32,8 +32,15 @@ pub(super) async fn answer_with_pipe(
     let id = request.conversation_id.as_str();
     let named = !conversation.title.is_empty();
     let args = serde_json::json!({ "messages": crate::chat::functions::messages(&conversation), "model": pipe.id });
+    let bench = host.chat_state().part::<crate::chat::workbench::Bench>();
     let answer = tokio::select! {
-        out = crate::chat::functions::run(config_dir, id, pipe, &args) => Some(out?),
+        out = crate::chat::functions::run(
+            &bench,
+            config_dir,
+            id,
+            pipe,
+            &args,
+        ) => Some(out?),
         _ = cancelled(cancel) => None,
     };
     let Some(answer) = answer else {
@@ -334,13 +341,14 @@ pub(super) async fn read_stream(
 /// what the agent, the chat or the run rules out; and whether some load only on demand.
 pub(super) fn tools_for_turn(
     registry: &crate::tools::registry::ToolRegistry,
+    bench: &crate::chat::workbench::Bench,
     config_dir: &std::path::Path,
     request: &TurnRequest,
     conversation: &Conversation,
     agent: Option<&agents::Agent>,
 ) -> (Vec<ChatTool>, bool) {
     let mut offered = tools::available(registry, request.connectors.as_deref());
-    offered.splice(1..1, builtins::definitions(config_dir));
+    offered.splice(1..1, builtins::definitions(bench, config_dir));
     offered.push(read_tool_output_tool());
     offered.extend(crate::chat::openapi::tools(config_dir));
     offered.extend(crate::chat::custom_tools::definitions(config_dir));

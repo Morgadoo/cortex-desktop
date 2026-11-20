@@ -14,12 +14,15 @@ pub(super) fn tool(name: &str, description: &str, parameters: Value) -> ChatTool
 }
 
 /// The built-in tools on offer: memory only while it is on, `use_skill` only with skills enabled.
-pub(in crate::chat::turn) fn definitions(config_dir: &Path) -> Vec<ChatTool> {
+pub(in crate::chat::turn) fn definitions(
+    bench: &crate::chat::workbench::Bench,
+    config_dir: &Path,
+) -> Vec<ChatTool> {
     let mut out = Vec::new();
     work_tools(&mut out);
     source_tools(config_dir, &mut out);
     memory_tools(config_dir, &mut out);
-    other_tools(config_dir, &mut out);
+    other_tools(bench, config_dir, &mut out);
     review_tools(&mut out);
     out
 }
@@ -327,7 +330,7 @@ fn memory_tools(config_dir: &Path, out: &mut Vec<ChatTool>) {
 }
 
 /// Saving skills, notifications, other agents, code, web pages, media and animation.
-fn other_tools(config_dir: &Path, out: &mut Vec<ChatTool>) {
+fn other_tools(bench: &crate::chat::workbench::Bench, config_dir: &Path, out: &mut Vec<ChatTool>) {
     out.push(tool(
         SAVE_SKILL,
         "Save a reusable skill the user asked for and approved: instructions you will follow \
@@ -374,7 +377,7 @@ fn other_tools(config_dir: &Path, out: &mut Vec<ChatTool>) {
             }),
         ));
     }
-    out.extend(crate::chat::sandbox::definition(config_dir));
+    out.extend(crate::chat::sandbox::definition(bench, config_dir));
     out.extend(crate::chat::webpage::definition());
     out.extend(crate::chat::webpage::act_definition());
     out.extend(crate::chat::media::definition(config_dir));

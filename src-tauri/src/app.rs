@@ -240,6 +240,8 @@ fn manage_window_state(app: &App) {
     app.manage(account::ActiveAccount::default());
     app.manage(crate::feature_flags::DesktopFeatureFlags::default());
     app.manage(tools::approvals::PendingApprovals::default());
+    app.manage(tools::ConnectorsChanged::default());
+    app.manage(webview::LinkPrompt::default());
     if crate::e2e_testing_enabled() {
         account::seed_e2e_account(&app.state::<account::ActiveAccount>());
     } else if !crate::HOSTED_WEB_APP {
@@ -378,7 +380,9 @@ fn on_event(app: &AppHandle, event: tauri::RunEvent) {
     }
     if matches!(event, tauri::RunEvent::Exit) {
         // Background commands from coding sessions end with the app.
-        chat::terminal::stop_all();
+        if let Some(state) = app.try_state::<chat::ChatState>() {
+            state.part::<chat::terminal::Terminals>().stop_all();
+        }
         #[cfg(feature = "hosted")]
         {
             if let Some(cache) = app.try_state::<crate::skills::SkillCache>() {

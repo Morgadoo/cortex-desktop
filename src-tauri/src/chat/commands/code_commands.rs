@@ -1,6 +1,7 @@
 //! Code sessions: files, changes, the terminal, pull requests, snippets run from answers, and sessions imported from other coding agents.
 
 use super::*;
+use crate::chat::terminal::Terminals;
 
 /// Whether code runs without asking each time.
 #[tauri::command]
@@ -29,14 +30,18 @@ pub async fn chat_code_changes(
 }
 
 #[tauri::command]
-pub fn chat_terminal_list(conversation_id: String) -> Vec<crate::chat::terminal::CommandView> {
-    crate::chat::terminal::list(&conversation_id)
+pub fn chat_terminal_list(
+    state: State<'_, ChatState>,
+    conversation_id: String,
+) -> Vec<crate::chat::terminal::CommandView> {
+    state.part::<Terminals>().list(&conversation_id)
 }
 
 /// Starts a background command the user typed in the Terminal panel.
 #[tauri::command]
 pub async fn chat_terminal_start(
     app: AppHandle,
+    state: State<'_, ChatState>,
     conversation_id: String,
     command: String,
 ) -> Result<String, String> {
@@ -44,17 +49,20 @@ pub async fn chat_terminal_start(
     let dir = conversation
         .workdir
         .ok_or("This conversation has no folder.")?;
-    crate::chat::terminal::start(&conversation_id, &dir, &command).map_err(String::from)
+    state
+        .part::<Terminals>()
+        .start(&conversation_id, &dir, &command)
+        .map_err(String::from)
 }
 
 #[tauri::command]
-pub fn chat_terminal_stop(id: String) -> Result<(), String> {
-    crate::chat::terminal::stop(&id).map_err(String::from)
+pub fn chat_terminal_stop(state: State<'_, ChatState>, id: String) -> Result<(), String> {
+    state.part::<Terminals>().stop(&id).map_err(String::from)
 }
 
 #[tauri::command]
-pub fn chat_terminal_clear(conversation_id: String) {
-    crate::chat::terminal::clear_finished(&conversation_id);
+pub fn chat_terminal_clear(state: State<'_, ChatState>, conversation_id: String) {
+    state.part::<Terminals>().clear_finished(&conversation_id);
 }
 
 /// Commits the working tree of a coding session's folder.
@@ -281,6 +289,8 @@ pub async fn chat_run_snippet(
     code: String,
 ) -> Result<String, String> {
     let outcome = crate::chat::sandbox::run(
+        &app.state::<ChatState>()
+            .part::<crate::chat::workbench::Bench>(),
         &config_dir(&app)?,
         "snippets",
         &serde_json::json!({ "language": language, "code": code }),

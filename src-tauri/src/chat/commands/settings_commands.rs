@@ -269,7 +269,12 @@ pub async fn chat_save_sync_settings(
 /// Syncs now; returns what happened, in words.
 #[tauri::command]
 pub async fn chat_sync_now(app: AppHandle) -> Result<String, String> {
-    let report = crate::chat::sync::run(&config_dir(&app)?).await?;
+    let report = crate::chat::sync::run(
+        &app.state::<ChatState>()
+            .part::<crate::chat::sync::Syncing>(),
+        &config_dir(&app)?,
+    )
+    .await?;
     Ok(report.summary())
 }
 
@@ -292,8 +297,10 @@ pub fn chat_set_diagnostics_prefs(
 
 /// The local API's latest requests, newest first.
 #[tauri::command]
-pub fn chat_api_server_log() -> Vec<crate::chat::api_server::LogEntry> {
-    crate::chat::api_server::recent()
+pub fn chat_api_server_log(
+    server: State<'_, crate::chat::api_server::ApiServer>,
+) -> Vec<crate::chat::api_server::LogEntry> {
+    crate::chat::api_server::recent(&server)
 }
 
 #[tauri::command]

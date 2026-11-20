@@ -58,15 +58,20 @@ pub enum Status {
     },
 }
 
-static STATUS: Mutex<Option<Status>> = Mutex::new(None);
+/// The workbench's state as last checked, kept in the app's state (`state.part::<Bench>()`):
+/// checking starts Podman, so it is checked once and then kept until a build changes it.
+#[derive(Clone, Default)]
+pub struct Bench(std::sync::Arc<Mutex<Option<Status>>>);
 
-fn cached() -> Option<Status> {
-    STATUS.lock().ok().and_then(|s| s.clone())
-}
+impl Bench {
+    fn cached(&self) -> Option<Status> {
+        self.0.lock().ok().and_then(|s| s.clone())
+    }
 
-fn remember(status: &Status) {
-    if let Ok(mut s) = STATUS.lock() {
-        *s = Some(status.clone());
+    fn remember(&self, status: &Status) {
+        if let Ok(mut s) = self.0.lock() {
+            *s = Some(status.clone());
+        }
     }
 }
 
@@ -168,8 +173,8 @@ async fn gpu_works(tag: &str) -> bool {
 }
 
 /// The workbench's state, checked once and then kept until a build changes it.
-pub(crate) async fn status() -> Status {
-    if let Some(s) = cached() {
+pub(crate) async fn status(bench: &Bench) -> Status {
+    if let Some(s) = bench.cached() {
         return s;
     }
     let status = if podman_prefix().is_none() {
@@ -188,33 +193,33 @@ pub(crate) async fn status() -> Status {
             Status::Missing
         }
     };
-    remember(&status);
+    bench.remember(&status);
     status
 }
 
 /// The status as last checked, without waiting: what the `run_code` description goes by.
-pub(in crate::chat::toolkit) fn status_now() -> Option<Status> {
-    cached()
+pub(in crate::chat::toolkit) fn status_now(bench: &Bench) -> Option<Status> {
+    bench.cached()
 }
 
 /// Whether runs go to the workbench now: on, and built. Gives whether the GPU works.
-pub(in crate::chat::toolkit) async fn ready(config_dir: &Path) -> Option<bool> {
+pub(in crate::chat::toolkit) async fn ready(bench: &Bench, config_dir: &Path) -> Option<bool> {
     if !enabled(config_dir) {
         return None;
     }
-    match status().await {
+    match status(bench).await {
         Status::Ready { gpu } => Some(gpu),
         _ => None,
     }
 }
 
 /// Builds the image, writing the build's output to `chat/workbench/build.log`.
-pub async fn build(config_dir: &Path) -> Status {
-    match status().await {
-        Status::Unavailable { .. } | Status::Building => return status().await,
+pub async fn build(bench: &Bench, config_dir: &Path) -> Status {
+    match status(bench).await {
+        Status::Unavailable { .. } | Status::Building => return status(bench).await,
         _ => {}
     }
-    remember(&Status::Building);
+    bench.remember(&Status::Building);
     let result = async {
         let dir = chat_dir(config_dir).join("workbench");
         std::fs::create_dir_all(&dir).map_err(ChatError::internal)?;
@@ -251,7 +256,7 @@ pub async fn build(config_dir: &Path) -> Status {
         },
         Err(error) => Status::Failed { error },
     };
-    remember(&status);
+    bench.remember(&status);
     status
 }
 

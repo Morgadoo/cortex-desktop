@@ -15,7 +15,6 @@
 use crate::support::error::StoreError;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 
 use base64::Engine as _;
 use chacha20poly1305::aead::{Aead, KeyInit};
@@ -162,23 +161,13 @@ fn sha256(bytes: &[u8]) -> String {
 
 // ---- keys ----------------------------------------------------------------------------------
 
-/// The key from the passphrase and salt (Argon2id), kept for the session: deriving is slow on
-/// purpose.
+/// The key from the passphrase and salt (Argon2id). Slow on purpose, and done once a sync, on a
+/// thread of its own.
 fn derive(passphrase: &str, salt: &[u8]) -> Result<[u8; 32], StoreError> {
-    /// The last key derived: (passphrase, salt, key).
-    type Derived = (String, Vec<u8>, [u8; 32]);
-    static CACHE: Mutex<Option<Derived>> = Mutex::new(None);
-    let hashed = sha256(passphrase.as_bytes());
-    if let Some((p, s, k)) = CACHE.lock().unwrap().as_ref() {
-        if *p == hashed && s == salt {
-            return Ok(*k);
-        }
-    }
     let mut key = [0u8; 32];
     argon2::Argon2::default()
         .hash_password_into(passphrase.as_bytes(), salt, &mut key)
         .map_err(|e| StoreError::Invalid(format!("could not derive the sync key: {e}")))?;
-    *CACHE.lock().unwrap() = Some((hashed, salt.to_vec(), key));
     Ok(key)
 }
 
@@ -636,10 +625,14 @@ pub(in crate::chat) fn remote_dir(folder: &str) -> PathBuf {
         .unwrap_or_else(|| folder.join(DIR_NAME))
 }
 
+/// One sync at a time, however it was started (by hand or on the schedule). Kept in the app's
+/// state: `state.part::<Syncing>()`.
+#[derive(Default)]
+pub struct Syncing(tokio::sync::Mutex<()>);
+
 /// One sync with the saved settings and passphrase; the report is also saved.
-pub async fn run(config_dir: &Path) -> Result<Report, StoreError> {
-    static RUNNING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-    let _one_at_a_time = RUNNING.lock().await;
+pub async fn run(syncing: &Syncing, config_dir: &Path) -> Result<Report, StoreError> {
+    let _one_at_a_time = syncing.0.lock().await;
     let mut s = settings(config_dir);
     let folder = s
         .folder
@@ -672,12 +665,16 @@ pub fn start(app: tauri::AppHandle) {
         let Ok(config_dir) = crate::settings::get_config_dir(&app) else {
             return;
         };
+        let syncing = {
+            use tauri::Manager as _;
+            app.state::<crate::chat::ChatState>().part::<Syncing>()
+        };
         // A first sync shortly after start, then on the chosen interval.
         tokio::time::sleep(std::time::Duration::from_secs(20)).await;
         loop {
             let every = settings(&config_dir).every_minutes;
             if every > 0 && settings(&config_dir).folder.is_some() {
-                match run(&config_dir).await {
+                match run(&syncing, &config_dir).await {
                     Ok(report) if report.received > 0 || report.deleted > 0 => {
                         let _ = app.emit("chat://synced", report.summary());
                     }

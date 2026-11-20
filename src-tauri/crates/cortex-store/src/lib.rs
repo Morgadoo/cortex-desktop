@@ -9,6 +9,7 @@
 pub mod at_rest;
 pub mod backup;
 pub mod error;
+pub mod file_lock;
 pub mod index;
 pub mod partials;
 pub mod settings_file;

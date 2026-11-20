@@ -12,6 +12,7 @@ pub async fn chat_share_link(
     expires_hours: Option<u32>,
 ) -> Result<crate::chat::share::SharedLink, String> {
     crate::chat::share::share(
+        &crate::chat::share::server(&app),
         &config_dir(&app)?,
         &title,
         &html,
@@ -34,7 +35,7 @@ pub fn chat_set_share_expiry(
 pub async fn chat_shared_links(
     app: AppHandle,
 ) -> Result<Vec<crate::chat::share::SharedLink>, String> {
-    Ok(crate::chat::share::links(&config_dir(&app)?).await)
+    Ok(crate::chat::share::links(&crate::chat::share::server(&app), &config_dir(&app)?).await)
 }
 
 #[tauri::command]

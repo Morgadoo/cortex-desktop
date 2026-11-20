@@ -139,11 +139,13 @@ async fn execute_external(
         ..ToolDefinition::default()
     };
     let config_dir = host.config_dir().ok();
+    let screens = host.chat_state().part::<crate::chat::computer::Screens>();
+    let bench = host.chat_state().part::<crate::chat::workbench::Bench>();
     // The registry takes the connector's errors as text; the work inside is typed.
     let run = |input: Value| async move {
         let result: Result<String, ChatError> = async move {
             if connector_id == crate::chat::computer::CONNECTOR {
-                return crate::chat::computer::run(conversation_id, &input).await;
+                return crate::chat::computer::run(&screens, conversation_id, &input).await;
             }
             let config_dir = config_dir.ok_or_else(|| {
                 ChatError::Invalid("The app's data folder is not available.".into())
@@ -160,6 +162,7 @@ async fn execute_external(
             }
             if connector_id == crate::chat::custom_tools::CONNECTOR {
                 crate::chat::custom_tools::run(
+                    &bench,
                     &config_dir,
                     conversation_id,
                     &tool.tool_name,

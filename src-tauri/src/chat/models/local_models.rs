@@ -258,6 +258,32 @@ pub fn entry(id: &str) -> Option<&'static Entry> {
 
 static ROOT: OnceLock<PathBuf> = OnceLock::new();
 
+/// What the built-in models have running: downloads, the loaded weights, the requests waiting
+/// for them, and the embedder and speech model once loaded.
+#[derive(Default)]
+struct LocalModels {
+    /// Models being downloaded, and those asked to stop.
+    downloads: Mutex<Vec<String>>,
+    cancelled: Mutex<Vec<String>>,
+    embedder: Mutex<Option<embedding::Embedder>>,
+    /// The chat model in memory; fair, so requests take turns in arrival order.
+    loaded: parking_lot::FairMutex<Option<generation::Loaded>>,
+    /// Requests waiting for the runtime's thread, and the signal that one arrived.
+    pending: (
+        Mutex<std::collections::VecDeque<generation::Job>>,
+        std::sync::Condvar,
+    ),
+    /// Requests waiting for or using the processor.
+    queued: std::sync::atomic::AtomicUsize,
+    speech: Mutex<Option<speech::Speech>>,
+}
+
+// Process-wide: a model's weights take gigabytes and the processor runs one at a time, so there is
+// one of each per process. The model layer below the turn (connecting a model, embedding a text,
+// transcribing) is reached with no app state, from the app, the CLI and the local API alike.
+static LOCAL_MODELS: std::sync::LazyLock<LocalModels> =
+    std::sync::LazyLock::new(LocalModels::default);
+
 /// Where models are kept: the app's local data folder (not the settings folder, so backups and
 /// sync leave gigabytes of weights alone). Set once at start.
 pub(crate) fn init(local_data_dir: &Path) {

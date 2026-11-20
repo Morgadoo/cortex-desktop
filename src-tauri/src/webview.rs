@@ -302,24 +302,30 @@ fn open_in_browser(url: &url::Url) {
     }
 }
 
+/// Whether a prompt to open a link is showing: one is shown at a time.
+#[derive(Default)]
+pub struct LinkPrompt(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
 /// Links can come from model output, so leaving Proton is confirmed, naming the host. Only one
 /// prompt is shown at a time; links followed while it is open are dropped.
 fn confirm_and_open(app_handle: &tauri::AppHandle, url: url::Url) {
-    use std::sync::atomic::{AtomicBool, Ordering};
-    static PROMPTING: AtomicBool = AtomicBool::new(false);
-
-    if PROMPTING.swap(true, Ordering::SeqCst) {
+    use std::sync::atomic::Ordering;
+    let Some(prompt) = app_handle.try_state::<LinkPrompt>() else {
+        return;
+    };
+    let open = prompt.0.clone();
+    if open.swap(true, Ordering::SeqCst) {
         info!("refused {} while a link prompt is open", loggable(&url));
         return;
     }
     // Owned by the callback, so the flag clears even if the dialog drops it without calling it.
-    struct Reset;
+    struct Reset(std::sync::Arc<std::sync::atomic::AtomicBool>);
     impl Drop for Reset {
         fn drop(&mut self) {
-            PROMPTING.store(false, Ordering::SeqCst);
+            self.0.store(false, Ordering::SeqCst);
         }
     }
-    let reset = Reset;
+    let reset = Reset(open);
     let host = url.host_str().unwrap_or_default().to_string();
     let mut shown: String = crate::support::text::clip(url.as_str(), 300);
     if shown.len() < url.as_str().len() {

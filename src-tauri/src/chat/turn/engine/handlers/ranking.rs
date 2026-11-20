@@ -2,9 +2,13 @@
 
 use super::*;
 
+/// Tools' vectors by embedding model and text, so each is embedded once.
+pub(crate) type ToolVectors = std::sync::Mutex<std::collections::HashMap<String, Vec<f32>>>;
+
 /// The deferrable tools ranked by meaning against `query`, when the user set up an embedding
-/// model: the registry's semantic search. Tool descriptions are embedded once per process.
+/// model: the registry's semantic search. Tool descriptions are embedded once while the app runs.
 pub(super) async fn semantic_tool_ranking(
+    vectors: &ToolVectors,
     config_dir: &std::path::Path,
     offered: &[ChatTool],
     query: &str,
@@ -14,15 +18,16 @@ pub(super) async fn semantic_tool_ranking(
     if !embeddings::ready(&settings) {
         return None;
     }
-    rank_by_meaning(offered, query, &settings.model, |texts| async {
+    rank_by_meaning(vectors, offered, query, &settings.model, |texts| async {
         embeddings::embed(&settings, texts).await
     })
     .await
 }
 
 /// The ranking itself: `embed` turns the query and each tool's name and description into
-/// vectors (with `model`'s cache), and tools come back closest in meaning first.
+/// vectors (kept in `cache` by model and text), and tools come back closest in meaning first.
 pub(in crate::chat::turn::engine) async fn rank_by_meaning<F, Fut>(
+    cache: &ToolVectors,
     offered: &[ChatTool],
     query: &str,
     model: &str,
@@ -33,13 +38,9 @@ where
     Fut: std::future::Future<Output = Result<Vec<Vec<f32>>, crate::chat::error::ChatError>>,
 {
     use crate::chat::embeddings;
-    use std::collections::HashMap;
-    use std::sync::{Mutex, OnceLock};
-    static CACHE: OnceLock<Mutex<HashMap<String, Vec<f32>>>> = OnceLock::new();
     if query.trim().is_empty() {
         return None;
     }
-    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     let tools: Vec<&ChatTool> = offered.iter().filter(|t| deferred::deferrable(t)).collect();
     let text = |t: &ChatTool| {
         format!(

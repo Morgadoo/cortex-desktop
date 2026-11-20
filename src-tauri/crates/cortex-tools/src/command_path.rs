@@ -143,6 +143,8 @@ mod unix {
     }
 
     fn cache() -> &'static Mutex<Option<Vec<PathBuf>>> {
+        // Process-wide: the login shell's PATH belongs to the user's session, not to a connector,
+        // and finding it starts a shell, so every connector that starts a program shares one.
         static CACHE: OnceLock<Mutex<Option<Vec<PathBuf>>>> = OnceLock::new();
         CACHE.get_or_init(|| Mutex::new(None))
     }

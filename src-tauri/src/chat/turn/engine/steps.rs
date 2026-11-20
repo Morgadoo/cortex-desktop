@@ -372,7 +372,7 @@ impl Steps for TurnSteps<'_> {
                 is_error: outcome.is_error,
             });
             track_loaded_tools(conversation, call, &outcome);
-            let content = result_content(config_dir, id, conversation, call, outcome.text);
+            let content = result_content(host, config_dir, id, conversation, call, outcome.text);
             let mut result = call.result(content);
             result.is_error = outcome.is_error;
             results.push(result);
@@ -494,6 +494,7 @@ fn track_loaded_tools(
 /// A tool result's content: its text, cut to its start and end when long (the whole kept in a
 /// file), and for computer use, the screenshot taken with it.
 fn result_content(
+    host: &Arc<dyn Host>,
     config_dir: &std::path::Path,
     id: &str,
     conversation: &mut store::Conversation,
@@ -511,7 +512,10 @@ fn result_content(
     let mut content = vec![ToolResultContent::text(text)];
     // Computer use: the screenshot goes with the result; older ones leave the history.
     if call.function.name.as_str() == crate::chat::computer::TOOL {
-        if let Some(data) = crate::chat::computer::take_image(id) {
+        if let Some(data) = crate::chat::computer::take_image(
+            &host.chat_state().part::<crate::chat::computer::Screens>(),
+            id,
+        ) {
             drop_old_screenshots(&mut conversation.messages);
             content.push(ToolResultContent::image_base64(
                 data,

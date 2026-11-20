@@ -43,8 +43,9 @@ pub(super) async fn messages(
 ) -> Response {
     let started = std::time::Instant::now();
     let model = body.as_ref().map(|b| b.model.clone()).unwrap_or_default();
+    let log = ctx.log.clone();
     let response = messages_inner(ctx, headers, body).await;
-    record("messages", &model, response.status(), started);
+    record(&log, "messages", &model, response.status(), started);
     response
 }
 

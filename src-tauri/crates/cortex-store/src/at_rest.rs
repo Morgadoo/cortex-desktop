@@ -29,11 +29,22 @@ const PLAIN: &[&str] = &[
     "skills",
 ];
 
-/// The settings folder and its key, while encryption is on and unlocked.
-static STATE: RwLock<Option<(PathBuf, [u8; 32])>> = RwLock::new(None);
-/// The settings folder, while it is encrypted but its key could not be read: nothing may be
-/// written there, or plain files and empty defaults would replace sealed data.
-static LOCKED: RwLock<Option<PathBuf>> = RwLock::new(None);
+/// Where encryption stands for the settings folder.
+struct Keys {
+    /// The settings folder and its key, while encryption is on and unlocked.
+    open: RwLock<Option<(PathBuf, [u8; 32])>>,
+    /// The settings folder, while it is encrypted but its key could not be read: nothing may be
+    /// written there, or plain files and empty defaults would replace sealed data.
+    locked: RwLock<Option<PathBuf>>,
+}
+
+// Process-wide: every read and write of the settings folder, from any part of the app or the CLI,
+// goes through this module with only a path, and all of them must seal with the same key (or
+// refuse to write while it is locked).
+static KEYS: Keys = Keys {
+    open: RwLock::new(None),
+    locked: RwLock::new(None),
+};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
@@ -104,7 +115,7 @@ pub fn read<P: AsRef<Path>>(path: P) -> io::Result<Vec<u8>> {
     if !data.starts_with(MAGIC) {
         return Ok(data);
     }
-    match STATE.read().unwrap().as_ref() {
+    match KEYS.open.read().unwrap().as_ref() {
         Some((_, key)) => open(key, &data),
         None => Err(io::Error::new(
             io::ErrorKind::PermissionDenied,
@@ -122,7 +133,7 @@ pub fn open_bytes(data: Vec<u8>) -> io::Result<Vec<u8>> {
     if !data.starts_with(MAGIC) {
         return Ok(data);
     }
-    match STATE.read().unwrap().as_ref() {
+    match KEYS.open.read().unwrap().as_ref() {
         Some((_, key)) => open(key, &data),
         None => Err(io::Error::new(
             io::ErrorKind::PermissionDenied,
@@ -134,7 +145,8 @@ pub fn open_bytes(data: Vec<u8>) -> io::Result<Vec<u8>> {
 /// What to put on disk for `contents` at `path`: sealed when [`write`] would seal it. For code
 /// that writes the file itself.
 pub fn seal_for(path: &Path, contents: &[u8]) -> io::Result<Vec<u8>> {
-    if LOCKED
+    if KEYS
+        .locked
         .read()
         .unwrap()
         .as_ref()
@@ -142,7 +154,7 @@ pub fn seal_for(path: &Path, contents: &[u8]) -> io::Result<Vec<u8>> {
     {
         return Err(io::Error::new(io::ErrorKind::PermissionDenied, "Cortex's data is encrypted and locked (the keychain did not give the key); nothing is saved until it is unlocked"));
     }
-    match STATE.read().unwrap().as_ref() {
+    match KEYS.open.read().unwrap().as_ref() {
         Some((root, key)) if sealed_path(root, path) => seal(key, contents),
         _ => Ok(contents.to_vec()),
     }
@@ -151,7 +163,8 @@ pub fn seal_for(path: &Path, contents: &[u8]) -> io::Result<Vec<u8>> {
 /// Writes a file, sealing it when encryption is on and it is in the settings folder.
 pub fn write<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, contents: C) -> io::Result<()> {
     let path = path.as_ref();
-    if LOCKED
+    if KEYS
+        .locked
         .read()
         .unwrap()
         .as_ref()
@@ -159,7 +172,7 @@ pub fn write<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, contents: C) -> io::Result
     {
         return Err(io::Error::new(io::ErrorKind::PermissionDenied, "Cortex's data is encrypted and locked (the keychain did not give the key); nothing is saved until it is unlocked"));
     }
-    let sealed = match STATE.read().unwrap().as_ref() {
+    let sealed = match KEYS.open.read().unwrap().as_ref() {
         Some((root, key)) if sealed_path(root, path) => Some(seal(key, contents.as_ref())?),
         _ => None,
     };
@@ -197,7 +210,8 @@ fn is_sealed(path: &Path) -> bool {
 
 pub fn status(config_dir: &Path) -> Status {
     let enabled = marker(config_dir).enabled;
-    let locked = enabled && (STATE.read().unwrap().is_none() || LOCKED.read().unwrap().is_some());
+    let locked =
+        enabled && (KEYS.open.read().unwrap().is_none() || KEYS.locked.read().unwrap().is_some());
     let files = covered(config_dir);
     let sealed = files.iter().filter(|p| is_sealed(p)).count();
     Status {
@@ -235,7 +249,7 @@ fn save_marker(config_dir: &Path, enabled: bool) -> Result<(), String> {
 
 /// Turns encryption on with `key` (a new one from [`enable`]); seals what is there.
 pub fn enable_with(config_dir: &Path, key: [u8; 32]) -> Result<usize, String> {
-    *STATE.write().unwrap() = Some((config_dir.to_path_buf(), key));
+    *KEYS.open.write().unwrap() = Some((config_dir.to_path_buf(), key));
     save_marker(config_dir, true)?;
     rewrite_all(config_dir)
 }
@@ -243,7 +257,7 @@ pub fn enable_with(config_dir: &Path, key: [u8; 32]) -> Result<usize, String> {
 /// Turns encryption off: every file is written back in the clear.
 pub fn disable_files(config_dir: &Path) -> Result<usize, String> {
     // Open with the key, then write plain.
-    let key = STATE.read().unwrap().as_ref().map(|(_, k)| *k);
+    let key = KEYS.open.read().unwrap().as_ref().map(|(_, k)| *k);
     let mut n = 0;
     for path in covered(config_dir) {
         let data = std::fs::read(&path).map_err(|e| e.to_string())?;
@@ -260,14 +274,14 @@ pub fn disable_files(config_dir: &Path) -> Result<usize, String> {
         std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
         n += 1;
     }
-    *STATE.write().unwrap() = None;
+    *KEYS.open.write().unwrap() = None;
     save_marker(config_dir, false)?;
     Ok(n)
 }
 
 /// Whether the store is unlocked: encryption is on and its key is in hand.
 pub fn is_unlocked() -> bool {
-    STATE.read().unwrap().is_some()
+    KEYS.open.read().unwrap().is_some()
 }
 
 /// A new random key.
@@ -295,7 +309,7 @@ pub fn parse_key(hex: &str) -> Option<[u8; 32]> {
 pub fn unlock(config_dir: PathBuf, key: Option<[u8; 32]>) {
     match key {
         Some(key) => {
-            *STATE.write().unwrap() = Some((config_dir.clone(), key));
+            *KEYS.open.write().unwrap() = Some((config_dir.clone(), key));
             // Anything left in the clear (written before encryption finished) is sealed now.
             if status(&config_dir).plain > 0 {
                 if let Err(e) = rewrite_all(&config_dir) {
@@ -305,7 +319,7 @@ pub fn unlock(config_dir: PathBuf, key: Option<[u8; 32]>) {
         }
         None => {
             eprintln!("cortex: data on this computer is encrypted, but its key could not be read from the keychain; nothing will be saved until it can be");
-            *LOCKED.write().unwrap() = Some(config_dir);
+            *KEYS.locked.write().unwrap() = Some(config_dir);
         }
     }
 }
@@ -370,12 +384,12 @@ mod tests {
         );
 
         // Locked: writes into the folder are refused, so nothing replaces sealed data.
-        *LOCKED.write().unwrap() = Some(root.clone());
+        *KEYS.locked.write().unwrap() = Some(root.clone());
         assert_eq!(
             write(&page, "{}").unwrap_err().kind(),
             io::ErrorKind::PermissionDenied
         );
         write(&export, "still fine").unwrap();
-        *LOCKED.write().unwrap() = None;
+        *KEYS.locked.write().unwrap() = None;
     }
 }

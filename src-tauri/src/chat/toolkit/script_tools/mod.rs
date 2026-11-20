@@ -323,6 +323,24 @@ pub(in crate::chat) fn has_effects(config_dir: &Path, tool: &ScriptTool) -> bool
     false
 }
 
+/// What the tools of each data folder need to be trusted and called: the keys that sign them,
+/// the record of each one's latest signature, and how often each was called this minute.
+#[derive(Default)]
+struct Trust {
+    keys: signing::Keys,
+    /// A trial copy's live keys, which it checks what it copied against.
+    inherited: signing::Keys,
+    ledger: std::sync::Mutex<signing::Ledger>,
+    /// Writes of a folder's record to the keychain, one at a time.
+    writing: tokio::sync::Mutex<()>,
+    calls: calling::Calls,
+}
+
+// Process-wide: a folder's record of signatures is what stops a tool changed behind the app's
+// back from running, so there must be one record, whatever reaches the tools (a turn, a command,
+// the CLI, a trial's copy), and those reach them with only the folder's path.
+static TRUST: std::sync::LazyLock<Trust> = std::sync::LazyLock::new(Trust::default);
+
 mod authoring;
 mod calling;
 mod review;

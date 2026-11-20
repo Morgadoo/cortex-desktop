@@ -106,6 +106,8 @@ pub struct Spent {
 type Open = (PathBuf, &'static Mutex<Connection>);
 
 fn opened() -> std::sync::MutexGuard<'static, Vec<Open>> {
+    // Process-wide: one connection per database file, however many turns record into it at once,
+    // so SQLite never sees two writers from this process.
     static OPEN: OnceLock<Mutex<Vec<Open>>> = OnceLock::new();
     OPEN.get_or_init(|| Mutex::new(Vec::new()))
         .lock()

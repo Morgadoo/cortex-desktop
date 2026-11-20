@@ -10,13 +10,14 @@ use crate::chat::error::ChatError;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::{LazyLock, Mutex, OnceLock};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant, SystemTime};
 
 use serde::Serialize;
 use serde_json::{json, Value};
 
 use crate::chat::store::{chat_dir, valid_id};
+use crate::chat::workbench::Bench;
 use cortex_kernel::approval::ApprovalMode;
 use cortex_kernel::tool::{ChatTool, Outcome};
 
@@ -32,23 +33,18 @@ const OUTPUT_CHARS: usize = 300_000;
 /// Files listed back to the model after a run.
 const MAX_FILES: usize = 40;
 
-/// Whether code runs without asking: "Always allow" on a run, or the switch in Settings.
-/// Saved in `chat/sandbox.json`, and cached once read, per config folder.
-static ALWAYS: LazyLock<Mutex<HashMap<PathBuf, bool>>> = LazyLock::new(Default::default);
-
 fn settings_path(config_dir: &Path) -> PathBuf {
     chat_dir(config_dir).join("sandbox.json")
 }
 
+/// Whether code runs without asking: "Always allow" on a run, or the switch in Settings. Saved
+/// in `chat/sandbox.json`, read on each run.
 pub(crate) fn always_allowed(config_dir: &Path) -> bool {
-    let mut cache = ALWAYS.lock().unwrap_or_else(|p| p.into_inner());
-    *cache.entry(config_dir.to_path_buf()).or_insert_with(|| {
-        crate::chat::at_rest::read_to_string(settings_path(config_dir))
-            .ok()
-            .and_then(|t| serde_json::from_str::<Value>(&t).ok())
-            .and_then(|v| v.get("alwaysAllow").and_then(Value::as_bool))
-            .unwrap_or(false)
-    })
+    crate::chat::at_rest::read_to_string(settings_path(config_dir))
+        .ok()
+        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+        .and_then(|v| v.get("alwaysAllow").and_then(Value::as_bool))
+        .unwrap_or(false)
 }
 
 pub(in crate::chat) fn set_always_allowed(
@@ -59,10 +55,6 @@ pub(in crate::chat) fn set_always_allowed(
         &settings_path(config_dir),
         &json!({ "alwaysAllow": allowed }),
     )?;
-    ALWAYS
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .insert(config_dir.to_path_buf(), allowed);
     Ok(())
 }
 
@@ -168,7 +160,7 @@ pub(in crate::chat) fn languages() -> Vec<&'static str> {
 /// Whether `run_code` runs isolated here: in the workbench container, or under bubblewrap. Where
 /// it does not (macOS, Windows, a Linux without user namespaces), code runs on the user's machine,
 /// and every run asks first.
-pub(in crate::chat) fn isolated(config_dir: &Path) -> bool {
+pub(in crate::chat) fn isolated(bench: &Bench, config_dir: &Path) -> bool {
     #[cfg(test)]
     if unsandboxed_for_test()
         .lock()
@@ -181,7 +173,7 @@ pub(in crate::chat) fn isolated(config_dir: &Path) -> bool {
     bubblewrap().is_some()
         || (crate::chat::workbench::enabled(config_dir)
             && matches!(
-                crate::chat::workbench::status_now(),
+                crate::chat::workbench::status_now(bench),
                 Some(crate::chat::workbench::Status::Ready { .. })
             ))
 }
@@ -230,14 +222,17 @@ pub(in crate::chat) fn code_gate(
 }
 
 /// The `run_code` tool, when an interpreter is installed (or the workbench is ready).
-pub(crate) fn definition(config_dir: &Path) -> Option<ChatTool> {
+pub(crate) fn definition(bench: &Bench, config_dir: &Path) -> Option<ChatTool> {
     // The workbench is checked in the background the first time; until then, and wherever it is
     // off or not built, runs use what this machine has.
     let bench = if crate::chat::workbench::enabled(config_dir) {
-        match crate::chat::workbench::status_now() {
+        match crate::chat::workbench::status_now(bench) {
             Some(crate::chat::workbench::Status::Ready { gpu }) => Some(gpu),
             None => {
-                tauri::async_runtime::spawn(crate::chat::workbench::status());
+                let bench = bench.clone();
+                tauri::async_runtime::spawn(async move {
+                    crate::chat::workbench::status(&bench).await;
+                });
                 None
             }
             _ => None,
@@ -373,12 +368,13 @@ pub(in crate::chat) fn reset_agent_env(config_dir: &Path, id: &str) -> Result<()
     }
 }
 
-pub async fn run(config_dir: &Path, conversation_id: &str, args: &Value) -> Outcome {
-    run_in(config_dir, conversation_id, args, None).await
+pub async fn run(bench: &Bench, config_dir: &Path, conversation_id: &str, args: &Value) -> Outcome {
+    run_in(bench, config_dir, conversation_id, args, None).await
 }
 
 /// Runs code in the conversation's workspace, inside an agent's environment when given.
 pub(in crate::chat) async fn run_in(
+    bench: &Bench,
     config_dir: &Path,
     conversation_id: &str,
     args: &Value,
@@ -413,7 +409,7 @@ pub(in crate::chat) async fn run_in(
         ));
     };
     // In the workbench (when it is on and built) the image has every language.
-    let bench = crate::chat::workbench::ready(config_dir).await;
+    let bench = crate::chat::workbench::ready(bench, config_dir).await;
     let program = interpreters().get(lang.name);
     if bench.is_none() && program.is_none() {
         return err(format!("{} is not installed on this computer.", lang.name));
@@ -930,7 +926,7 @@ mod tests {
             return;
         }
         let dir = tempfile::tempdir().unwrap();
-        let out = run(dir.path(), "conv", &json!({
+        let out = run(&Bench::default(), dir.path(), "conv", &json!({
             "language": "python",
             "code": "import os\nopen('out.csv','w').write('a,b\\n1,2\\n')\nprint(sum(range(10)))\nprint('KEY' in ''.join(os.environ))"
         }))
@@ -956,13 +952,14 @@ mod tests {
         assert_eq!(serve_range(dir.path(), "../x/out.csv", None).status(), 404);
 
         let failed = run(
+            &Bench::default(),
             dir.path(),
             "conv",
             &json!({ "language": "python", "code": "raise SystemExit(3)" }),
         )
         .await;
         assert!(failed.is_error);
-        let slow = run(dir.path(), "conv", &json!({ "language": "python", "code": "import time\ntime.sleep(5)", "timeout_seconds": 1 })).await;
+        let slow = run(&Bench::default(), dir.path(), "conv", &json!({ "language": "python", "code": "import time\ntime.sleep(5)", "timeout_seconds": 1 })).await;
         assert!(slow.is_error && slow.text.contains("\"timed_out\": true"));
     }
 
@@ -1020,6 +1017,7 @@ mod limit_tests {
         }
         let dir = tempfile::tempdir().unwrap();
         let out = run(
+            &Bench::default(),
             dir.path(),
             "conv",
             &json!({
@@ -1038,6 +1036,7 @@ mod limit_tests {
         assert!(started < MAX_TASKS, "{started} processes started");
         // The session bus that systemd-run needed does not reach the program.
         let env = run(
+            &Bench::default(),
             dir.path(),
             "conv",
             &json!({ "language": "bash", "code": "echo \"${DBUS_SESSION_BUS_ADDRESS:-none} ${XDG_RUNTIME_DIR:-none}\"" }),
@@ -1099,19 +1098,23 @@ mod permission_tests {
         let a = agent_env(dir.path(), "agent-a", false).unwrap();
         let b = agent_env(dir.path(), "agent-b", false).unwrap();
         let write = json!({"language": "bash", "code": "echo kept > \"$HOME/note.txt\"; echo $PYTHONUSERBASE"});
-        let out = run_in(dir.path(), "chat-1", &write, Some(&a)).await;
+        let out = run_in(&Bench::default(), dir.path(), "chat-1", &write, Some(&a)).await;
         assert!(!out.is_error, "{}", out.text);
         assert!(out.text.contains("agent-a/.local"), "{}", out.text);
         // Another chat of the same agent sees the file; another agent does not.
         let read = json!({"language": "bash", "code": "cat \"$HOME/note.txt\" 2>/dev/null || echo missing"});
-        assert!(run_in(dir.path(), "chat-2", &read, Some(&a))
-            .await
-            .text
-            .contains("kept"));
-        assert!(run_in(dir.path(), "chat-3", &read, Some(&b))
-            .await
-            .text
-            .contains("missing"));
+        assert!(
+            run_in(&Bench::default(), dir.path(), "chat-2", &read, Some(&a))
+                .await
+                .text
+                .contains("kept")
+        );
+        assert!(
+            run_in(&Bench::default(), dir.path(), "chat-3", &read, Some(&b))
+                .await
+                .text
+                .contains("missing")
+        );
         reset_agent_env(dir.path(), "agent-a").unwrap();
         assert!(!a.home.exists());
         assert!(agent_env(dir.path(), "../x", false).is_err());

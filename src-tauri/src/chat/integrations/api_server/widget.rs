@@ -114,7 +114,7 @@ pub(super) async fn widget_chat(
     let started = std::time::Instant::now();
     let Some(origin) = widget_origin(&ctx, &headers) else {
         let asked = any_origin(&ctx, &headers).unwrap_or_default();
-        record("widget", &asked, StatusCode::FORBIDDEN, started);
+        record(&ctx.log, "widget", &asked, StatusCode::FORBIDDEN, started);
         let refused = error(StatusCode::FORBIDDEN, "This page may not use the Cortex widget. Add its origin in Cortex → Settings → Local API → Website widget.");
         return if asked.is_empty() {
             refused
@@ -157,6 +157,6 @@ pub(super) async fn widget_chat(
             }
         }
     };
-    record("widget", &origin, response.status(), started);
+    record(&ctx.log, "widget", &origin, response.status(), started);
     with_cors(response, &origin)
 }

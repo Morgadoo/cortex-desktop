@@ -984,7 +984,7 @@ async fn unsandboxed_code_asks_even_in_auto() {
         ),
         says("I did not run it."),
     ]);
-    if sandbox::definition(host.dir.path()).is_none() {
+    if sandbox::definition(&Default::default(), host.dir.path()).is_none() {
         // In CI the runner has Python, so a skip there would hide a failure.
         assert!(
             std::env::var_os("CI").is_none(),
@@ -1039,7 +1039,9 @@ async fn tools_are_ranked_by_meaning_from_their_embeddings() {
         }
     };
     let asked = std::sync::Mutex::new(Vec::new());
+    let vectors = Default::default();
     let ranked = super::handlers::rank_by_meaning(
+        &vectors,
         &offered,
         "my schedule tomorrow",
         "test-embedder-ranking",
@@ -1054,6 +1056,7 @@ async fn tools_are_ranked_by_meaning_from_their_embeddings() {
     assert_eq!(asked.lock().unwrap()[0][0], "my schedule tomorrow");
     // A second search embeds only the query: the tools' vectors are kept.
     super::handlers::rank_by_meaning(
+        &vectors,
         &offered,
         "send a note",
         "test-embedder-ranking",
@@ -1066,16 +1069,20 @@ async fn tools_are_ranked_by_meaning_from_their_embeddings() {
     .unwrap();
     assert_eq!(asked.lock().unwrap()[1], vec!["send a note".to_string()]);
     // An embedding server that fails leaves the word ranking alone.
-    assert!(
-        super::handlers::rank_by_meaning(&offered, "x", "test-embedder-failing", |_| async {
+    assert!(super::handlers::rank_by_meaning(
+        &vectors,
+        &offered,
+        "x",
+        "test-embedder-failing",
+        |_| async {
             Err::<Vec<Vec<f32>>, _>(crate::chat::error::ChatError::network(
                 "the embedder",
                 "down",
             ))
-        })
-        .await
-        .is_none()
-    );
+        }
+    )
+    .await
+    .is_none());
 }
 
 /// A separate model reviews: `reviewer` answers every review.

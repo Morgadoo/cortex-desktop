@@ -148,30 +148,34 @@ pub struct Status {
     pub error: Option<String>,
 }
 
-static RUNNING: Mutex<Option<HashMap<String, Option<String>>>> = Mutex::new(None);
+/// Packs being downloaded, by style: `None` while it runs, the error when it failed. Kept in the
+/// app's state: `state.part::<Installs>()`.
+#[derive(Default)]
+pub struct Installs(Mutex<HashMap<String, Option<String>>>);
 
-fn set_running(style: &str, value: Option<Option<String>>) {
-    let mut guard = RUNNING.lock().unwrap_or_else(|e| e.into_inner());
-    let map = guard.get_or_insert_with(HashMap::new);
-    match value {
-        Some(v) => {
-            map.insert(style.to_string(), v);
-        }
-        None => {
-            map.remove(style);
+impl Installs {
+    fn set(&self, style: &str, value: Option<Option<String>>) {
+        let mut map = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        match value {
+            Some(v) => {
+                map.insert(style.to_string(), v);
+            }
+            None => {
+                map.remove(style);
+            }
         }
     }
 }
 
-pub(crate) fn status(root: &Path, style: &str) -> Status {
+pub(crate) fn status(installs: &Installs, root: &Path, style: &str) -> Status {
     if installed(root, style) {
         return Status {
             state: "ready".into(),
             error: None,
         };
     }
-    let guard = RUNNING.lock().unwrap_or_else(|e| e.into_inner());
-    match guard.as_ref().and_then(|m| m.get(style)) {
+    let running = installs.0.lock().unwrap_or_else(|e| e.into_inner());
+    match running.get(style) {
         Some(None) => Status {
             state: "downloading".into(),
             error: None,
@@ -188,16 +192,20 @@ pub(crate) fn status(root: &Path, style: &str) -> Status {
 }
 
 /// Downloads, checks and unpacks a pack. Marks it ready only once every image is in place.
-pub(crate) async fn install(root: &Path, style: &str) -> Result<usize, ChatError> {
+pub(crate) async fn install(
+    installs: &Installs,
+    root: &Path,
+    style: &str,
+) -> Result<usize, ChatError> {
     let pack = pack(style).ok_or_else(|| ChatError::Invalid("Unknown emoji style.".into()))?;
     if installed(root, style) {
         return Ok(index(root, style).len());
     }
-    set_running(style, Some(None));
+    installs.set(style, Some(None));
     let result = download_and_unpack(root, pack).await;
     match &result {
-        Ok(_) => set_running(style, None),
-        Err(e) => set_running(style, Some(Some(e.to_string()))),
+        Ok(_) => installs.set(style, None),
+        Err(e) => installs.set(style, Some(Some(e.to_string()))),
     }
     result
 }
@@ -326,8 +334,14 @@ mod tests {
         std::fs::create_dir_all(dir.path().join("emoji")).unwrap();
         std::fs::rename(&target, super::dir(dir.path(), "3d")).unwrap();
         assert_eq!(index(dir.path(), "3d"), ["1f44d-1f3fd", "1f600"]);
-        assert_eq!(status(dir.path(), "3d").state, "ready");
-        assert_eq!(status(dir.path(), "flat").state, "missing");
+        assert_eq!(
+            status(&Installs::default(), dir.path(), "3d").state,
+            "ready"
+        );
+        assert_eq!(
+            status(&Installs::default(), dir.path(), "flat").state,
+            "missing"
+        );
         let ok = serve(dir.path(), "3d/1f600.webp?x=1");
         assert_eq!(ok.status(), 200);
         assert_eq!(ok.body(), b"RIFFgrin");

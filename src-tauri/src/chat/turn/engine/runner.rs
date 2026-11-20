@@ -110,6 +110,18 @@ pub(super) struct Runner<'a> {
 }
 
 impl Runner<'_> {
+    /// The background commands, in the app's state.
+    /// The workbench's state, in the app's state.
+    fn bench(&self) -> std::sync::Arc<crate::chat::workbench::Bench> {
+        self.host
+            .chat_state()
+            .part::<crate::chat::workbench::Bench>()
+    }
+
+    fn terminals(&self) -> std::sync::Arc<terminal::Terminals> {
+        self.host.chat_state().part::<terminal::Terminals>()
+    }
+
     /// Runs a call between the user's `before_tool` and `after_tool` hooks.
     pub(super) async fn run(&self, call: &ToolCall) -> tools::Outcome {
         let arguments = Value::Object(call.function.arguments.clone());
@@ -310,7 +322,7 @@ impl Runner<'_> {
                 .to_string()
         };
         match name {
-            terminal::READ => match terminal::get(&arg("id")) {
+            terminal::READ => match self.terminals().get(&arg("id")) {
                 Some(view) if view.conversation_id == self.id => {
                     let chars = arguments
                         .get("chars")
@@ -331,11 +343,13 @@ impl Runner<'_> {
                 }
                 _ => fail("There is no background command with that id here."),
             },
-            terminal::STOP => match terminal::get(&arg("id")) {
-                Some(view) if view.conversation_id == self.id => match terminal::stop(&view.id) {
-                    Ok(()) => tools::Outcome::ok("Stopped."),
-                    Err(e) => fail(&e.to_string()),
-                },
+            terminal::STOP => match self.terminals().get(&arg("id")) {
+                Some(view) if view.conversation_id == self.id => {
+                    match self.terminals().stop(&view.id) {
+                        Ok(()) => tools::Outcome::ok("Stopped."),
+                        Err(e) => fail(&e.to_string()),
+                    }
+                }
                 _ => fail("There is no background command with that id here."),
             },
             _ => {
@@ -377,11 +391,11 @@ impl Runner<'_> {
                         }
                     }
                 }
-                match terminal::start(self.id, &dir, &arg("command")) {
+                match self.terminals().start(self.id, &dir, &arg("command")) {
                     Ok(id) => {
                         // A moment for the first lines (a server's address, an early error).
                         tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
-                        let view = terminal::get(&id);
+                        let view = self.terminals().get(&id);
                         tools::Outcome {
                             text: format!(
                                 "Started in the background with id {id}. Status: {}.\n{}",
@@ -423,7 +437,7 @@ impl Runner<'_> {
     pub(super) async fn run_code(&self, arguments: &Value) -> tools::Outcome {
         let gate = sandbox::code_gate(
             self.request.approval,
-            sandbox::isolated(self.config_dir),
+            sandbox::isolated(&self.bench(), self.config_dir),
             sandbox::always_allowed(self.config_dir),
         );
         match gate {
@@ -455,7 +469,14 @@ impl Runner<'_> {
         let env = self
             .agent
             .and_then(|a| sandbox::agent_env(self.config_dir, &a.id, a.code_network).ok());
-        sandbox::run_in(self.config_dir, self.id, arguments, env.as_ref()).await
+        sandbox::run_in(
+            &self.bench(),
+            self.config_dir,
+            self.id,
+            arguments,
+            env.as_ref(),
+        )
+        .await
     }
 }
 

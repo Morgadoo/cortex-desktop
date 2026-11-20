@@ -160,7 +160,17 @@ pub fn chat_emoji_status(
     app: AppHandle,
     style: String,
 ) -> Result<crate::chat::emoji_pack::Status, String> {
-    Ok(crate::chat::emoji_pack::status(&emoji_root(&app)?, &style))
+    Ok(crate::chat::emoji_pack::status(
+        &installs(&app),
+        &emoji_root(&app)?,
+        &style,
+    ))
+}
+
+/// The emoji packs being downloaded, in the app's state.
+fn installs(app: &AppHandle) -> std::sync::Arc<crate::chat::emoji_pack::Installs> {
+    app.state::<ChatState>()
+        .part::<crate::chat::emoji_pack::Installs>()
 }
 
 /// Downloads an emoji pack in the background; `chat://emoji` reports when it is ready or failed.
@@ -172,20 +182,21 @@ pub fn chat_emoji_install(
     use tauri::Emitter as _;
     let root = emoji_root(&app)?;
     crate::chat::emoji_pack::pack(&style).ok_or("Unknown emoji style.")?;
-    let now = crate::chat::emoji_pack::status(&root, &style);
+    let installs = installs(&app);
+    let now = crate::chat::emoji_pack::status(&installs, &root, &style);
     if now.state == "ready" || now.state == "downloading" {
         return Ok(now);
     }
     let style2 = style.clone();
     let root2 = root.clone();
     tauri::async_runtime::spawn(async move {
-        let result = crate::chat::emoji_pack::install(&root2, &style2).await;
+        let result = crate::chat::emoji_pack::install(&installs, &root2, &style2).await;
         if let Err(e) = &result {
             log::warn!("the {style2} emoji could not be installed: {e}");
         }
         let _ = app.emit(
             "chat://emoji",
-            crate::chat::emoji_pack::status(&root2, &style2),
+            crate::chat::emoji_pack::status(&installs, &root2, &style2),
         );
     });
     Ok(crate::chat::emoji_pack::Status {

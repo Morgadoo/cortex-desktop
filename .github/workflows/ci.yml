@@ -101,6 +101,8 @@ jobs:
         run: python3 scripts/generate-commands.py --check
       - name: Dependencies point down the chat engine's layers
         run: python3 scripts/check-layers.py
+      - name: State lives in the app, not in process-wide statics
+        run: python3 scripts/check-statics.py
       # Every test docs/agent-kernel-plan.md cites as evidence must exist and pass.
       - name: The kernel plan's evidence
         run: python3 scripts/check-kernel-plan.py

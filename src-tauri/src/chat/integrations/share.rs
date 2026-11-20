@@ -129,12 +129,18 @@ fn link(share: Share, port: u16) -> SharedLink {
     }
 }
 
-/// The port the share server listens on, once started.
-static RUNNING: Mutex<Option<u16>> = Mutex::new(None);
+/// The port the share server listens on, once started. Kept in the app's state:
+/// `state.part::<ShareServer>()`.
+#[derive(Default)]
+pub struct ShareServer(std::sync::Arc<Mutex<Option<u16>>>);
 
 /// Starts the server unless it runs; returns its port.
-pub(in crate::chat::integrations) async fn ensure_server(config_dir: &Path) -> Result<u16, String> {
-    if let Some(port) = *RUNNING.lock().unwrap() {
+pub(in crate::chat::integrations) async fn ensure_server(
+    server: &ShareServer,
+    config_dir: &Path,
+) -> Result<u16, String> {
+    let running = server.0.clone();
+    if let Some(port) = *running.lock().unwrap() {
         return Ok(port);
     }
     let listener = match tokio::net::TcpListener::bind(SocketAddr::from(([0, 0, 0, 0], PORT))).await
@@ -149,13 +155,13 @@ pub(in crate::chat::integrations) async fn ensure_server(config_dir: &Path) -> R
     let app = Router::new()
         .route("/s/{token}", get(page))
         .with_state(config_dir.to_path_buf());
+    *running.lock().unwrap() = Some(port);
     tauri::async_runtime::spawn(async move {
         if let Err(e) = axum::serve(listener, app).await {
             warn!("share server stopped: {e}");
         }
-        *RUNNING.lock().unwrap() = None;
+        *running.lock().unwrap() = None;
     });
-    *RUNNING.lock().unwrap() = Some(port);
     info!("sharing on port {port}");
     Ok(port)
 }
@@ -203,6 +209,7 @@ async fn page(State(config_dir): State<PathBuf>, UrlPath(token): UrlPath<String>
 
 /// Shares `html` under a new link.
 pub(crate) async fn share(
+    server: &ShareServer,
     config_dir: &Path,
     title: &str,
     html: &str,
@@ -233,11 +240,11 @@ pub(crate) async fn share(
     let mut shares = list(config_dir);
     shares.insert(0, share.clone());
     write_list(config_dir, &shares)?;
-    let port = ensure_server(config_dir).await?;
+    let port = ensure_server(server, config_dir).await?;
     Ok(link(share, port))
 }
 
-pub(crate) async fn links(config_dir: &Path) -> Vec<SharedLink> {
+pub(crate) async fn links(server: &ShareServer, config_dir: &Path) -> Vec<SharedLink> {
     // Expired links are taken down for good.
     let now = chrono::Utc::now();
     for s in list(config_dir).into_iter().filter(|s| s.expired(now)) {
@@ -247,7 +254,7 @@ pub(crate) async fn links(config_dir: &Path) -> Vec<SharedLink> {
     if shares.is_empty() {
         return Vec::new();
     }
-    let port = ensure_server(config_dir).await.unwrap_or(PORT);
+    let port = ensure_server(server, config_dir).await.unwrap_or(PORT);
     shares.into_iter().map(|s| link(s, port)).collect()
 }
 
@@ -281,6 +288,12 @@ pub(in crate::chat) fn set_expiry(
     Ok(at)
 }
 
+/// The share server, in the app's state.
+pub(crate) fn server(app: &tauri::AppHandle) -> std::sync::Arc<ShareServer> {
+    use tauri::Manager as _;
+    app.state::<crate::chat::ChatState>().part::<ShareServer>()
+}
+
 /// At start: serve what is still shared.
 pub fn start(app: &tauri::AppHandle) {
     let Ok(config_dir) = crate::settings::get_config_dir(app) else {
@@ -289,8 +302,9 @@ pub fn start(app: &tauri::AppHandle) {
     if list(&config_dir).is_empty() {
         return;
     }
+    let server = server(app);
     tauri::async_runtime::spawn(async move {
-        if let Err(e) = ensure_server(&config_dir).await {
+        if let Err(e) = ensure_server(&server, &config_dir).await {
             warn!("{e}");
         }
     });
@@ -335,9 +349,16 @@ mod tests {
     #[tokio::test]
     async fn a_shared_page_is_served_until_stopped() {
         let dir = tempfile::tempdir().unwrap();
-        let shared = share(dir.path(), "Trip plan", "<h1>Porto</h1>", false, None)
-            .await
-            .unwrap();
+        let shared = share(
+            &Default::default(),
+            dir.path(),
+            "Trip plan",
+            "<h1>Porto</h1>",
+            false,
+            None,
+        )
+        .await
+        .unwrap();
         assert!(
             shared.url.contains(&shared.share.token)
                 && shared.local_url.starts_with("http://127.0.0.1:")
@@ -350,9 +371,16 @@ mod tests {
             .contains("default-src 'none'"));
         assert_eq!(body.text().await.unwrap(), "<h1>Porto</h1>");
         assert_eq!(list(dir.path())[0].views, 1);
-        let app = share(dir.path(), "Counter", "<script>1</script>", true, None)
-            .await
-            .unwrap();
+        let app = share(
+            &Default::default(),
+            dir.path(),
+            "Counter",
+            "<script>1</script>",
+            true,
+            None,
+        )
+        .await
+        .unwrap();
         let csp = reqwest::get(&app.local_url).await.unwrap().headers()["content-security-policy"]
             .to_str()
             .unwrap()

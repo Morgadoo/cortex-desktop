@@ -84,7 +84,13 @@ pub(super) fn on_find_tools<'a>(
             .get("query")
             .and_then(Value::as_str)
             .unwrap_or_default();
-        let semantic = semantic_tool_ranking(r.config_dir, r.offered, query).await;
+        let semantic = semantic_tool_ranking(
+            r.host.chat_state().tool_vectors(),
+            r.config_dir,
+            r.offered,
+            query,
+        )
+        .await;
         tools::Outcome::ok(deferred::find_with(r.offered, &arguments, semantic).0)
     })
 }

@@ -11,6 +11,8 @@ use tokio::sync::broadcast;
 pub const SLACK_CALLBACK_URI: &str = "proton-lumo://oauth/callback";
 type CallbackResult = Result<(String, String, Option<String>), AuthError>;
 fn callbacks() -> &'static broadcast::Sender<url::Url> {
+    // Process-wide: the system hands a sign-in's deep link to the process, which passes it on to
+    // whichever sign-in is waiting for it.
     static CALLBACKS: OnceLock<broadcast::Sender<url::Url>> = OnceLock::new();
     CALLBACKS.get_or_init(|| broadcast::channel(16).0)
 }

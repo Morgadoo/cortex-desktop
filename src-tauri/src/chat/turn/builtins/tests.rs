@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn built_ins_that_change_something_are_not_offered_as_read_only() {
     let config = tempfile::tempdir().unwrap();
-    let offered = definitions(config.path());
+    let offered = definitions(&Default::default(), config.path());
     let read_only = |name: &str| {
         offered
             .iter()
@@ -175,7 +175,7 @@ async fn skills_load_by_name() {
 #[test]
 fn definitions_follow_settings() {
     let dir = tempfile::tempdir().unwrap();
-    let names: Vec<String> = definitions(dir.path())
+    let names: Vec<String> = definitions(&Default::default(), dir.path())
         .into_iter()
         .map(|t| t.name)
         .filter(|n| {
@@ -218,7 +218,7 @@ fn definitions_follow_settings() {
         },
     )
     .unwrap();
-    let names: Vec<String> = definitions(dir.path())
+    let names: Vec<String> = definitions(&Default::default(), dir.path())
         .into_iter()
         .map(|t| t.name)
         .filter(|n| {
@@ -261,7 +261,7 @@ async fn knowledge_can_be_used_without_being_changed() {
         },
     )
     .unwrap();
-    let names: Vec<String> = definitions(dir.path())
+    let names: Vec<String> = definitions(&Default::default(), dir.path())
         .into_iter()
         .map(|t| t.name)
         .collect();

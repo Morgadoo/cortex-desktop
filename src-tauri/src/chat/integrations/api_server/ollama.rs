@@ -99,6 +99,7 @@ pub(super) async fn ollama(
     chat: bool,
 ) -> Response {
     let started = std::time::Instant::now();
+    let log = ctx.log.clone();
     let endpoint = if chat { "api/chat" } else { "api/generate" };
     let model_name = body.as_ref().map(|b| b.model.clone()).unwrap_or_default();
     let response = async {
@@ -159,6 +160,6 @@ pub(super) async fn ollama(
         Response::builder().header("content-type", "application/x-ndjson").body(axum::body::Body::from_stream(lines)).unwrap_or_else(|_| ollama_error(StatusCode::INTERNAL_SERVER_ERROR, "could not stream"))
     }
     .await;
-    record(endpoint, &model_name, response.status(), started);
+    record(&log, endpoint, &model_name, response.status(), started);
     response
 }
