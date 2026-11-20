@@ -10,6 +10,50 @@ use crate::dialog::loading::Loading;
 
 const BUILD_TIME_MANIFEST_URL: Option<&str> = option_env!("CORTEX_UPDATE_MANIFEST_URL");
 
+/// The GitHub repository releases are published to, as `owner/name`. A fork that publishes its
+/// own releases builds with `CORTEX_RELEASES_REPO` set to its repository.
+const RELEASES_REPO: &str = match option_env!("CORTEX_RELEASES_REPO") {
+    Some(repo) => repo,
+    None => "Morgadoo/cortex-desktop",
+};
+
+/// Which releases this installation follows (Settings → General).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UpdateChannel {
+    /// Published releases only.
+    Stable,
+    /// Pre-releases as well (`0.6.0-beta.1`), as soon as they are published.
+    Preview,
+}
+
+impl Default for UpdateChannel {
+    /// A preview build follows previews, a stable build stable releases, until the user chooses.
+    fn default() -> Self {
+        if env!("CARGO_PKG_VERSION").contains('-') {
+            Self::Preview
+        } else {
+            Self::Stable
+        }
+    }
+}
+
+impl UpdateChannel {
+    /// The update manifest for the channel. GitHub's `releases/latest` is the newest release
+    /// that is not a pre-release; previews come from the rolling `updater` release, whose
+    /// `preview.json` the release workflow replaces with every release, stable or not.
+    pub fn manifest_url(self) -> String {
+        match self {
+            Self::Stable => {
+                format!("https://github.com/{RELEASES_REPO}/releases/latest/download/latest.json")
+            }
+            Self::Preview => {
+                format!("https://github.com/{RELEASES_REPO}/releases/download/updater/preview.json")
+            }
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct UpdateState {
     // Remains set until process exit after a mandatory update is detected.
@@ -23,17 +67,21 @@ pub fn is_required<R: Runtime>(app: &AppHandle<R>) -> bool {
         .is_some_and(|state| state.required.load(Ordering::SeqCst))
 }
 
-// Endpoint precedence: runtime override, build-time override, then tauri.conf.json.
-fn manifest_url() -> Option<String> {
+// Endpoint precedence: runtime override, build-time override, then the chosen channel's.
+fn manifest_url(app: &AppHandle) -> String {
     if let Some(url) = std::env::var("CORTEX_UPDATE_MANIFEST_URL")
         .ok()
         .filter(|value| !value.is_empty())
     {
-        return Some(url);
+        return url;
     }
-    BUILD_TIME_MANIFEST_URL
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
+    if let Some(url) = BUILD_TIME_MANIFEST_URL.filter(|value| !value.is_empty()) {
+        return url.to_string();
+    }
+    crate::settings::get_config_dir(app)
+        .map(|dir| crate::reporting::load_prefs(&dir).update_channel)
+        .unwrap_or_default()
+        .manifest_url()
 }
 
 fn mandatory(current: &Version, release: &Version, raw: &serde_json::Value) -> bool {
@@ -62,15 +110,13 @@ fn mandatory(current: &Version, release: &Version, raw: &serde_json::Value) -> b
 
 async fn check(app: &AppHandle) -> Result<Option<(Update, bool)>, String> {
     let mut builder = app.updater_builder().timeout(Duration::from_secs(15));
-
-    if let Some(url) = manifest_url() {
-        let parsed: Url = url
-            .parse()
-            .map_err(|e| format!("Invalid update endpoint {url}: {e}"))?;
-        builder = builder
-            .endpoints(vec![parsed])
-            .map_err(|e| format!("Invalid update endpoint {url}: {e}"))?;
-    }
+    let url = manifest_url(app);
+    let parsed: Url = url
+        .parse()
+        .map_err(|e| format!("Invalid update endpoint {url}: {e}"))?;
+    builder = builder
+        .endpoints(vec![parsed])
+        .map_err(|e| format!("Invalid update endpoint {url}: {e}"))?;
 
     let update = builder
         .build()
@@ -267,6 +313,28 @@ mod tests {
             &Version::parse(release).unwrap(),
             &raw,
         )
+    }
+
+    #[test]
+    fn channels_follow_github_releases() {
+        assert_eq!(
+            UpdateChannel::Stable.manifest_url(),
+            format!("https://github.com/{RELEASES_REPO}/releases/latest/download/latest.json")
+        );
+        assert!(UpdateChannel::Preview
+            .manifest_url()
+            .ends_with("/releases/download/updater/preview.json"));
+        assert_eq!(
+            serde_json::from_str::<UpdateChannel>("\"preview\"").unwrap(),
+            UpdateChannel::Preview
+        );
+        // The build decides until the user chooses: this build's version has no pre-release part.
+        let expected = if env!("CARGO_PKG_VERSION").contains('-') {
+            UpdateChannel::Preview
+        } else {
+            UpdateChannel::Stable
+        };
+        assert_eq!(UpdateChannel::default(), expected);
     }
 
     #[test]

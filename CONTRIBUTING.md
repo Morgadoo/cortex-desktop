@@ -80,3 +80,7 @@ These keep the code base easy to change; reviews hold changes to them.
 
 Open an issue with what you did, what you expected and what happened. Settings → General →
 Error reports and updates → Export diagnostics saves the app's log, which usually says why.
+
+## Releases
+
+See [docs/releasing.md](docs/releasing.md): one-time signing setup, `node scripts/set-version.mjs`, a tag, and the release workflow does the rest.

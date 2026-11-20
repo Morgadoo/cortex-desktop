@@ -177,13 +177,25 @@ async function chatDefaultsCard(): Promise<HTMLElement> {
 
 /** What the app sends about itself, and a diagnostics file for bug reports that holds no content. */
 async function diagnosticsCard(): Promise<HTMLElement> {
-  type Prefs = { errorReports: boolean; updateChecks: boolean };
+  type Prefs = { errorReports: boolean; updateChecks: boolean; updateChannel: 'stable' | 'preview' };
   const view = await invoke<{ prefs: Prefs; reportingBuilt: boolean }>('chat_diagnostics_prefs');
   const prefs = view.prefs;
   const persist = () =>
     void call('chat_set_diagnostics_prefs', { prefs })
       .then(() => toast('Saved. Takes effect at the next start.'))
       .catch(shown);
+  const channel = h(
+    'select',
+    { class: 'input', 'aria-label': 'Update channel' },
+    h('option', { value: 'stable', selected: prefs.updateChannel === 'stable' }, 'Stable'),
+    h('option', { value: 'preview', selected: prefs.updateChannel === 'preview' }, 'Preview')
+  ) as HTMLSelectElement;
+  channel.addEventListener('change', () => {
+    prefs.updateChannel = channel.value === 'preview' ? 'preview' : 'stable';
+    void call('chat_set_diagnostics_prefs', { prefs })
+      .then(() => toast(prefs.updateChannel === 'preview' ? 'You will get previews as they are published.' : 'You will get stable releases only.'))
+      .catch(shown);
+  });
   const exportBtn = h('button', { class: 'btn btn-secondary' }, icon('download', 14), 'Export diagnostics');
   exportBtn.addEventListener(
     'click',
@@ -210,6 +222,11 @@ async function diagnosticsCard(): Promise<HTMLElement> {
         prefs.updateChecks = v;
         persist();
       })
+    ),
+    row(
+      'Update channel',
+      'Stable gets published releases. Preview also gets pre-releases to try new features early; they may have rough edges. Going back to Stable takes effect at the next stable release newer than the version you have.',
+      channel
     ),
     row('Diagnostics for a bug report', 'A file with the app version, platform, settings and counts, without anything said, typed or stored.', exportBtn)
   );

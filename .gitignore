@@ -31,3 +31,6 @@ src-tauri/crates/cortex-sandbox/wasm/js-runtime/target/
 
 # Screenshots from scripts/screenshot-pages.mjs
 shots/
+
+# Written by the release workflow from tauri.github.conf.json
+src-tauri/tauri.release.conf.json

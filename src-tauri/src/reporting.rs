@@ -62,6 +62,8 @@ pub struct DiagnosticsPrefs {
     pub error_reports: bool,
     /// Look for a newer version when the app starts. Checking from the menu always works.
     pub update_checks: bool,
+    /// Stable releases only, or previews too.
+    pub update_channel: crate::updater::UpdateChannel,
 }
 
 impl Default for DiagnosticsPrefs {
@@ -69,6 +71,7 @@ impl Default for DiagnosticsPrefs {
         Self {
             error_reports: false,
             update_checks: true,
+            update_channel: Default::default(),
         }
     }
 }
