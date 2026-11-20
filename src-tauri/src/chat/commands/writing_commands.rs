@@ -35,7 +35,9 @@ pub async fn chat_translate(
         rig_core::completion::message::Message::user(prompt),
     )
     .max_tokens(8_000u64);
-    engine::ask_text(&config_dir(&app)?, &model, request, 120).await
+    engine::ask_text(&config_dir(&app)?, &model, request, 120)
+        .await
+        .map_err(String::from)
 }
 
 /// Rewrites `text` as asked (shorter, clearer, fixed grammar, …) for editing in place. `context`

@@ -6,6 +6,7 @@
 //! text, and the model's reply is restored before the user sees it. Local providers (Ollama,
 //! llama.cpp) never leave the machine, so nothing is filtered for them.
 
+use crate::chat::error::ChatError;
 use crate::support::settings_file::SettingsFile;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -25,8 +26,9 @@ pub fn load(config_dir: &Path) -> PrivacySettings {
     PRIVACY_FILE.load(config_dir)
 }
 
-pub fn save(config_dir: &Path, settings: &PrivacySettings) -> Result<(), String> {
+pub fn save(config_dir: &Path, settings: &PrivacySettings) -> Result<(), ChatError> {
     PRIVACY_FILE
         .save(config_dir, settings)
         .map_err(String::from)
+        .map_err(ChatError::Invalid)
 }

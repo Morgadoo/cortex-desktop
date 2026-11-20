@@ -54,7 +54,9 @@ pub async fn chat_answer_from_results(
         rig_core::completion::message::Message::user(prompt),
     )
     .max_tokens(4_000u64);
-    engine::ask_text(&config_dir(&app)?, &model, request, 90).await
+    engine::ask_text(&config_dir(&app)?, &model, request, 90)
+        .await
+        .map_err(String::from)
 }
 
 #[tauri::command]

@@ -25,6 +25,22 @@ pub enum ChatError {
 }
 
 impl ChatError {
+    /// The same failure, for another receiver (several jobs waiting on one run): the kind is kept,
+    /// except that a storage error, which holds an I/O error that cannot be copied, travels as its
+    /// message.
+    pub fn copy_for_another(&self) -> Self {
+        match self {
+            Self::Store(e) => Self::Internal(e.to_string()),
+            Self::Network { what, reason } => Self::Network {
+                what: what.clone(),
+                reason: reason.clone(),
+            },
+            Self::Model(m) => Self::Model(m.clone()),
+            Self::Invalid(m) => Self::Invalid(m.clone()),
+            Self::Internal(m) => Self::Internal(m.clone()),
+        }
+    }
+
     /// An unclassified failure, as its message: `.map_err(ChatError::internal)`.
     pub fn internal(error: impl std::fmt::Display) -> Self {
         Self::Internal(error.to_string())

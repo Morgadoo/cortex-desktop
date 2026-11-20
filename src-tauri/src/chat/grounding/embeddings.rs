@@ -118,7 +118,8 @@ pub async fn embed(
             crate::chat::local_models::embed_texts(&root, &model, &texts)
         })
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?
+        .map_err(String::from);
     }
     let config = OpenAIConfig::with_key(&dialects::OPENAI, key().await?)
         .with_base_url(settings.base_url.clone());

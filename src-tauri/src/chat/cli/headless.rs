@@ -284,7 +284,7 @@ pub(in crate::chat::cli) async fn run(args: &Args) -> Export {
     export.model = reference.clone();
     // A model that cannot be reached at all is a settings problem, not a failed run.
     if let Err(e) = crate::chat::engine::connect_model(&config_dir, &reference).await {
-        return end(export, Ending::UsageError, e);
+        return end(export, Ending::UsageError, e.to_string());
     }
     let id = format!("headless-{}", uuid::Uuid::new_v4().simple());
     // Named already, so the engine does not write a title after the run is gone.

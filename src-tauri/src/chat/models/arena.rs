@@ -4,6 +4,7 @@
 //! model in it. Ratings are Elo (start 1000, K 32), replayed from the stored results in order, so
 //! they can always be recomputed. Results live in `chat/arena.json`.
 
+use crate::chat::error::ChatError;
 use crate::support::settings_file::SettingsFile;
 use std::collections::HashMap;
 use std::path::Path;
@@ -38,14 +39,16 @@ pub fn load(config_dir: &Path) -> Vec<Match> {
 }
 
 /// Records a comparison's result.
-pub fn record(config_dir: &Path, winner: &str, losers: &[String]) -> Result<(), String> {
+pub fn record(config_dir: &Path, winner: &str, losers: &[String]) -> Result<(), ChatError> {
     let losers: Vec<String> = losers
         .iter()
         .filter(|l| l.as_str() != winner)
         .cloned()
         .collect();
     if winner.trim().is_empty() || losers.is_empty() {
-        return Err("A comparison needs a winner and at least one other model.".into());
+        return Err(ChatError::Invalid(
+            "A comparison needs a winner and at least one other model.".into(),
+        ));
     }
     let mut all = load(config_dir);
     all.push(Match {
@@ -53,7 +56,10 @@ pub fn record(config_dir: &Path, winner: &str, losers: &[String]) -> Result<(), 
         losers,
         at: Utc::now(),
     });
-    ARENA_FILE.save(config_dir, &all).map_err(String::from)
+    ARENA_FILE
+        .save(config_dir, &all)
+        .map_err(String::from)
+        .map_err(ChatError::Invalid)
 }
 
 /// Ratings from the results, best first.
@@ -85,10 +91,11 @@ pub fn standings(matches: &[Match]) -> Vec<Standing> {
     out
 }
 
-pub fn reset(config_dir: &Path) -> Result<(), String> {
+pub fn reset(config_dir: &Path) -> Result<(), ChatError> {
     ARENA_FILE
         .save(config_dir, &Vec::<Match>::new())
         .map_err(String::from)
+        .map_err(ChatError::Invalid)
 }
 
 #[cfg(test)]

@@ -5,6 +5,7 @@
 //! on stdio; its message and thoughts stream into the chat, its tool calls show as notes, and
 //! its permission requests come to the user as approval cards.
 
+use crate::chat::error::ChatError;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
@@ -59,13 +60,17 @@ pub(in crate::chat::models) fn load(config_dir: &Path) -> Vec<AcpAgent> {
         .unwrap_or_default()
 }
 
-pub fn save(config_dir: &Path, agents: &[AcpAgent]) -> Result<(), String> {
+pub fn save(config_dir: &Path, agents: &[AcpAgent]) -> Result<(), ChatError> {
     for a in agents {
         if !store::valid_id(&a.id) || a.name.trim().is_empty() || a.command.trim().is_empty() {
-            return Err("An ACP agent needs a name and a command.".into());
+            return Err(ChatError::Invalid(
+                "An ACP agent needs a name and a command.".into(),
+            ));
         }
     }
-    store::write_json(&path(config_dir), &agents).map_err(String::from)
+    store::write_json(&path(config_dir), &agents)
+        .map_err(String::from)
+        .map_err(ChatError::Invalid)
 }
 
 fn locate(program: &str) -> Option<PathBuf> {
@@ -176,7 +181,7 @@ pub(in crate::chat::models) async fn drive<F, P, Fut>(
     mut on_event: F,
     permit: P,
     mut cancel: watch::Receiver<bool>,
-) -> Result<String, String>
+) -> Result<String, ChatError>
 where
     F: FnMut(Event),
     P: Fn(Value) -> Fut,
@@ -190,9 +195,18 @@ where
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn()
-        .map_err(|e| format!("The agent could not start: {e}"))?;
-    let mut stdin = child.stdin.take().ok_or("no input")?;
-    let mut lines = BufReader::new(child.stdout.take().ok_or("no output")?).lines();
+        .map_err(|e| ChatError::Invalid(format!("The agent could not start: {e}")))?;
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| ChatError::Invalid("no input".into()))?;
+    let mut lines = BufReader::new(
+        child
+            .stdout
+            .take()
+            .ok_or_else(|| ChatError::Invalid("no output".into()))?,
+    )
+    .lines();
     let stderr = child.stderr.take();
     let errors = tokio::spawn(async move {
         let mut text = String::new();
@@ -201,12 +215,13 @@ where
         }
         text
     });
-    let send = async |msg: Value, stdin: &mut tokio::process::ChildStdin| -> Result<(), String> {
-        stdin
-            .write_all(format!("{msg}\n").as_bytes())
-            .await
-            .map_err(|e| format!("The agent stopped listening: {e}"))
-    };
+    let send =
+        async |msg: Value, stdin: &mut tokio::process::ChildStdin| -> Result<(), ChatError> {
+            stdin
+                .write_all(format!("{msg}\n").as_bytes())
+                .await
+                .map_err(|e| ChatError::Invalid(format!("The agent stopped listening: {e}")))
+        };
     let cwd_text = cwd.to_string_lossy().to_string();
     send(json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": 1, "clientCapabilities": {"fs": {"readTextFile": false, "writeTextFile": false}, "terminal": false}}}), &mut stdin).await?;
     let mut session: Option<String> = None;
@@ -214,7 +229,7 @@ where
     tokio::pin!(deadline);
     let result = loop {
         let line = tokio::select! {
-            l = lines.next_line() => l.map_err(|e| e.to_string())?,
+            l = lines.next_line() => l.map_err(ChatError::internal)?,
             () = wait_cancel(&mut cancel) => {
                 if let Some(s) = &session {
                     let _ = send(json!({"jsonrpc": "2.0", "method": "session/cancel", "params": {"sessionId": s}}), &mut stdin).await;
@@ -222,7 +237,7 @@ where
                 tokio::time::sleep(std::time::Duration::from_millis(300)).await;
                 break Ok("cancelled".to_string());
             }
-            () = &mut deadline => break Err("The agent ran for 30 minutes and was stopped.".to_string()),
+            () = &mut deadline => break Err(ChatError::Invalid("The agent ran for 30 minutes and was stopped.".into())),
         };
         let Some(line) = line else {
             let detail: String = errors
@@ -237,9 +252,9 @@ where
                 .rev()
                 .collect();
             return Err(if detail.is_empty() {
-                "The agent closed before answering.".into()
+                ChatError::Invalid("The agent closed before answering.".into())
             } else {
-                format!("The agent closed before answering: {detail}")
+                ChatError::Invalid(format!("The agent closed before answering: {detail}"))
             });
         };
         let Ok(msg) = serde_json::from_str::<Value>(line.trim()) else {
@@ -248,15 +263,15 @@ where
         // Answers to our requests.
         if msg.get("method").is_none() {
             if let Some(err) = msg.get("error") {
-                break Err(format!(
+                break Err(ChatError::Invalid(format!(
                     "The agent refused: {}",
                     err["message"].as_str().unwrap_or("error")
-                ));
+                )));
             }
             match msg["id"].as_u64() {
                 Some(1) => send(json!({"jsonrpc": "2.0", "id": 2, "method": "session/new", "params": {"cwd": cwd_text, "mcpServers": []}}), &mut stdin).await?,
                 Some(2) => {
-                    let s = msg["result"]["sessionId"].as_str().ok_or("The agent opened no session.")?.to_string();
+                    let s = msg["result"]["sessionId"].as_str().ok_or_else(|| ChatError::Invalid("The agent opened no session.".into()))?.to_string();
                     send(json!({"jsonrpc": "2.0", "id": 3, "method": "session/prompt", "params": {"sessionId": s, "prompt": [{"type": "text", "text": prompt}]}}), &mut stdin).await?;
                     session = Some(s);
                 }
@@ -307,17 +322,19 @@ pub async fn run(
     mut conversation: Conversation,
     agent: &AcpAgent,
     cancel: watch::Receiver<bool>,
-) -> Result<bool, String> {
+) -> Result<bool, ChatError> {
     let id = conversation.id.clone();
-    let program = locate(&agent.command).ok_or_else(|| {
-        format!(
-            "{} is not installed: `{}` was not found.",
-            agent.name, agent.command
-        )
-    })?;
+    let program = locate(&agent.command)
+        .ok_or_else(|| {
+            format!(
+                "{} is not installed: `{}` was not found.",
+                agent.name, agent.command
+            )
+        })
+        .map_err(ChatError::Invalid)?;
     let prompt = crate::chat::agent_cli::prompt(&conversation);
     if prompt.trim().is_empty() {
-        return Err("There is nothing to send.".into());
+        return Err(ChatError::Invalid("There is nothing to send.".into()));
     }
     let cwd = match conversation
         .workdir
@@ -329,7 +346,7 @@ pub async fn run(
             let d = store::chat_dir(config_dir)
                 .join("agent-runs")
                 .join(&conversation.id);
-            std::fs::create_dir_all(&d).map_err(|e| e.to_string())?;
+            std::fs::create_dir_all(&d).map_err(ChatError::internal)?;
             d
         }
     };
@@ -396,7 +413,10 @@ pub async fn run(
     let cancelled = stop == "cancelled";
     if !cancelled && text.trim().is_empty() {
         warn!("{} gave no answer (stop: {stop})", agent.name);
-        return Err(format!("{} gave no answer ({stop}).", agent.name));
+        return Err(ChatError::Invalid(format!(
+            "{} gave no answer ({stop}).",
+            agent.name
+        )));
     }
     if !text.trim().is_empty() {
         conversation

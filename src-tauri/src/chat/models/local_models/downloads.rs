@@ -1,6 +1,7 @@
 //! Downloading the built-in models' weights, with progress, cancelling and removal.
 
 use super::*;
+use crate::chat::error::ChatError;
 
 // Downloads
 
@@ -32,23 +33,25 @@ pub async fn download(
     root: &Path,
     id: &str,
     mut progress: impl FnMut(u64, u64),
-) -> Result<(), String> {
+) -> Result<(), ChatError> {
     use futures::StreamExt as _;
-    let e = entry(id).ok_or_else(|| format!("Unknown model `{id}`."))?;
+    let e = entry(id)
+        .ok_or_else(|| format!("Unknown model `{id}`."))
+        .map_err(ChatError::Invalid)?;
     {
-        let mut d = downloads().lock().map_err(|e| e.to_string())?;
+        let mut d = downloads().lock().map_err(ChatError::internal)?;
         if d.iter().any(|x| x == id) {
-            return Err("It is already downloading.".into());
+            return Err(ChatError::Invalid("It is already downloading.".into()));
         }
         d.push(id.to_string());
     }
     let result = async {
         let dir = model_dir(root, id)?;
-        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(&dir).map_err(ChatError::internal)?;
         let client = reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(20))
             .build()
-            .map_err(|e| e.to_string())?;
+            .map_err(ChatError::internal)?;
         // Sizes first, for one progress bar over all files.
         let mut sizes = Vec::new();
         for (repo, path, _) in e.files {
@@ -56,7 +59,7 @@ pub async fn download(
                 .head(file_url(repo, path))
                 .send()
                 .await
-                .map_err(|err| format!("Hugging Face did not answer: {err}"))?;
+                .map_err(|err| ChatError::Invalid(format!("Hugging Face did not answer: {err}")))?;
             sizes.push(
                 head.headers()
                     .get("x-linked-size")
@@ -81,33 +84,37 @@ pub async fn download(
                 .get(file_url(repo, path))
                 .send()
                 .await
-                .map_err(|err| format!("The download failed: {err}"))?;
+                .map_err(|err| ChatError::Invalid(format!("The download failed: {err}")))?;
             if !r.status().is_success() {
-                return Err(format!("Hugging Face answered {} for {path}.", r.status()));
+                return Err(ChatError::Invalid(format!(
+                    "Hugging Face answered {} for {path}.",
+                    r.status()
+                )));
             }
             let part = dir.join(format!("{name}.part"));
-            let mut out = std::fs::File::create(&part).map_err(|e| e.to_string())?;
+            let mut out = std::fs::File::create(&part).map_err(ChatError::internal)?;
             let mut stream = r.bytes_stream();
             let mut last = std::time::Instant::now();
             while let Some(chunk) = stream.next().await {
                 if cancelled().lock().is_ok_and(|c| c.iter().any(|x| x == id)) {
                     drop(out);
                     let _ = std::fs::remove_file(&part);
-                    return Err("Download cancelled.".into());
+                    return Err(ChatError::Invalid("Download cancelled.".into()));
                 }
-                let chunk = chunk.map_err(|err| format!("The download stopped: {err}"))?;
-                out.write_all(&chunk).map_err(|e| e.to_string())?;
+                let chunk = chunk
+                    .map_err(|err| ChatError::Invalid(format!("The download stopped: {err}")))?;
+                out.write_all(&chunk).map_err(ChatError::internal)?;
                 done += chunk.len() as u64;
                 if last.elapsed().as_millis() > 250 {
                     last = std::time::Instant::now();
                     progress(done, total);
                 }
             }
-            out.flush().map_err(|e| e.to_string())?;
+            out.flush().map_err(ChatError::internal)?;
             drop(out);
-            std::fs::rename(&part, &target).map_err(|e| e.to_string())?;
+            std::fs::rename(&part, &target).map_err(ChatError::internal)?;
         }
-        std::fs::write(dir.join(".complete"), b"").map_err(|e| e.to_string())?;
+        std::fs::write(dir.join(".complete"), b"").map_err(ChatError::internal)?;
         progress(total, total);
         Ok(())
     }
@@ -121,11 +128,11 @@ pub async fn download(
     result
 }
 
-pub fn remove(root: &Path, id: &str) -> Result<(), String> {
+pub fn remove(root: &Path, id: &str) -> Result<(), ChatError> {
     unload(id);
     match std::fs::remove_dir_all(model_dir(root, id)?) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(e.to_string()),
+        Err(e) => Err(ChatError::Invalid(e.to_string())),
     }
 }

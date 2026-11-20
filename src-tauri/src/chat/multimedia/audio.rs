@@ -353,8 +353,7 @@ pub async fn transcribe(
                     crate::chat::local_models::audio_samples(&audio)
                 })
                 .await
-                .map_err(ChatError::internal)?
-                .map_err(ChatError::Invalid)?
+                .map_err(ChatError::internal)??
             };
             match with_hex(&samples, settings).await {
                 Ok(text) => Ok(text),
@@ -461,7 +460,7 @@ async fn builtin(
     language: &str,
     live: bool,
 ) -> Result<String, ChatError> {
-    let root = crate::chat::local_models::root().map_err(ChatError::Invalid)?;
+    let root = crate::chat::local_models::root()?;
     let speech = |id: &str| {
         crate::chat::local_models::entry(id)
             .is_some_and(|e| e.kind == crate::chat::local_models::Kind::Speech)
@@ -483,7 +482,6 @@ async fn builtin(
     })
     .await
     .map_err(ChatError::internal)?
-    .map_err(ChatError::Invalid)
 }
 
 /// Hex, with the model chosen in Settings when it is ready there, else its best ready one.

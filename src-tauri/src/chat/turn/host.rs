@@ -81,7 +81,9 @@ impl Host for TauriHost {
 
     async fn connect_model(&self, reference: &str) -> Result<DynModel<Completion>, String> {
         let dir = self.config_dir()?;
-        crate::chat::engine::connect_model(&dir, reference).await
+        crate::chat::engine::connect_model(&dir, reference)
+            .await
+            .map_err(String::from)
     }
 
     async fn approve(

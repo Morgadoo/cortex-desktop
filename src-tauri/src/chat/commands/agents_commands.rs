@@ -19,7 +19,7 @@ pub fn chat_set_router_models(
     let mut file = crate::chat::providers::load(&dir);
     file.router_fast = fast.filter(|m| !m.trim().is_empty() && m != crate::chat::router::AUTO);
     file.router_strong = strong.filter(|m| !m.trim().is_empty() && m != crate::chat::router::AUTO);
-    crate::chat::providers::save(&dir, &file)
+    crate::chat::providers::save(&dir, &file).map_err(String::from)
 }
 
 /// The community agent catalog (LobeHub's open index, or another with its layout).
@@ -213,7 +213,7 @@ pub fn chat_arena_record(
     winner: String,
     losers: Vec<String>,
 ) -> Result<(), String> {
-    crate::chat::arena::record(&config_dir(&app)?, &winner, &losers)
+    crate::chat::arena::record(&config_dir(&app)?, &winner, &losers).map_err(String::from)
 }
 
 #[tauri::command]
@@ -225,7 +225,7 @@ pub fn chat_arena_board(app: AppHandle) -> Result<Vec<crate::chat::arena::Standi
 
 #[tauri::command]
 pub fn chat_arena_reset(app: AppHandle) -> Result<(), String> {
-    crate::chat::arena::reset(&config_dir(&app)?)
+    crate::chat::arena::reset(&config_dir(&app)?).map_err(String::from)
 }
 
 /// An agent's notebook.

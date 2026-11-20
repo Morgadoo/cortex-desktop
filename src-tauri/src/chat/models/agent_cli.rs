@@ -4,6 +4,7 @@
 //! folder of its own), and its output streams into the chat as the answer. The program works
 //! with its own tools, login and permission settings; Cortex's tools are not offered to it.
 
+use crate::chat::error::ChatError;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
@@ -133,7 +134,7 @@ pub(in crate::chat::models) fn prompt(conversation: &Conversation) -> String {
 }
 
 /// The folder a run works in: the chat's own folder, or one kept for this conversation.
-fn workdir(config_dir: &Path, conversation: &Conversation) -> Result<PathBuf, String> {
+fn workdir(config_dir: &Path, conversation: &Conversation) -> Result<PathBuf, ChatError> {
     if let Some(dir) = conversation
         .workdir
         .as_deref()
@@ -144,7 +145,7 @@ fn workdir(config_dir: &Path, conversation: &Conversation) -> Result<PathBuf, St
     let dir = store::chat_dir(config_dir)
         .join("agent-runs")
         .join(&conversation.id);
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(ChatError::internal)?;
     Ok(dir)
 }
 
@@ -156,17 +157,19 @@ pub async fn run(
     mut conversation: Conversation,
     cli: &Cli,
     mut cancel: watch::Receiver<bool>,
-) -> Result<bool, String> {
+) -> Result<bool, ChatError> {
     let id = conversation.id.clone();
-    let program = locate(cli.program).ok_or_else(|| {
-        format!(
-            "{} is not installed: `{}` was not found on PATH.",
-            cli.name, cli.program
-        )
-    })?;
+    let program = locate(cli.program)
+        .ok_or_else(|| {
+            format!(
+                "{} is not installed: `{}` was not found on PATH.",
+                cli.name, cli.program
+            )
+        })
+        .map_err(ChatError::Invalid)?;
     let prompt = prompt(&conversation);
     if prompt.trim().is_empty() {
-        return Err("There is nothing to send.".into());
+        return Err(ChatError::Invalid("There is nothing to send.".into()));
     }
     let dir = workdir(config_dir, &conversation)?;
     info!("running {} in {}", cli.name, dir.display());
@@ -178,9 +181,15 @@ pub async fn run(
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn()
-        .map_err(|e| format!("{} could not start: {e}", cli.name))?;
-    let mut stdout = child.stdout.take().ok_or("no output")?;
-    let mut stderr = child.stderr.take().ok_or("no output")?;
+        .map_err(|e| ChatError::Invalid(format!("{} could not start: {e}", cli.name)))?;
+    let mut stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| ChatError::Invalid("no output".into()))?;
+    let mut stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| ChatError::Invalid("no output".into()))?;
     let errors = tokio::spawn(async move {
         let mut text = String::new();
         let _ = stderr.read_to_string(&mut text).await;
@@ -195,7 +204,7 @@ pub async fn run(
     loop {
         tokio::select! {
             read = stdout.read(&mut buf) => {
-                let n = read.map_err(|e| e.to_string())?;
+                let n = read.map_err(ChatError::internal)?;
                 if n == 0 {
                     break;
                 }
@@ -238,9 +247,9 @@ pub async fn run(
             .collect();
         warn!("{} gave no answer ({status:?}): {detail}", cli.name);
         return Err(if detail.is_empty() {
-            format!("{} gave no answer.", cli.name)
+            ChatError::Invalid(format!("{} gave no answer.", cli.name))
         } else {
-            format!("{} gave no answer: {detail}", cli.name)
+            ChatError::Invalid(format!("{} gave no answer: {detail}", cli.name))
         });
     }
     if !text.trim().is_empty() {

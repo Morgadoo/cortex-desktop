@@ -240,5 +240,5 @@ pub fn chat_set_privacy(
     app: AppHandle,
     settings: crate::chat::privacy::PrivacySettings,
 ) -> Result<(), String> {
-    crate::chat::privacy::save(&config_dir(&app)?, &settings)
+    crate::chat::privacy::save(&config_dir(&app)?, &settings).map_err(String::from)
 }

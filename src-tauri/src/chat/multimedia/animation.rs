@@ -159,12 +159,12 @@ fn command(
             let _ = (out, format);
             Ok(c)
         }
-        other => Err(format!("Unknown engine `{other}`: use html or manim.")),
+        other => Err(ChatError::Invalid(format!("Unknown engine `{other}`: use html or manim."))),
     }
     .map(|mut c| {
         c.current_dir(dir).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).kill_on_drop(true);
         c
-    }).map_err(ChatError::Invalid)
+    })
 }
 
 pub async fn make(config_dir: &Path, conversation_id: &str, args: &Value) -> Outcome {

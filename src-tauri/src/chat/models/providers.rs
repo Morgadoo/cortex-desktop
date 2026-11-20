@@ -4,6 +4,7 @@
 //! reachable in this build ([`ProviderId::catalog`]). Keys live in the OS keychain under the
 //! local account, never in the settings file, which only records that one is saved.
 
+use crate::chat::error::ChatError;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -186,8 +187,10 @@ pub fn load(config_dir: &Path) -> ProvidersFile {
         .unwrap_or_default()
 }
 
-pub fn save(config_dir: &Path, file: &ProvidersFile) -> Result<(), String> {
-    crate::chat::store::write_json(&file_path(config_dir), file).map_err(String::from)
+pub fn save(config_dir: &Path, file: &ProvidersFile) -> Result<(), ChatError> {
+    crate::chat::store::write_json(&file_path(config_dir), file)
+        .map_err(String::from)
+        .map_err(ChatError::Invalid)
 }
 
 /// What the settings page shows for a provider.
@@ -457,19 +460,20 @@ pub(in crate::chat::models) fn connect(
     reference: &str,
     settings: &ProviderSettings,
     api_key: Option<String>,
-) -> Result<DynModel<Completion>, String> {
-    let (vendor, _) =
-        split_reference(reference).ok_or_else(|| format!("`{reference}` is not vendor/model"))?;
+) -> Result<DynModel<Completion>, ChatError> {
+    let (vendor, _) = split_reference(reference)
+        .ok_or_else(|| format!("`{reference}` is not vendor/model"))
+        .map_err(ChatError::Invalid)?;
     let mut options = ConnectOptions::new();
     match api_key.filter(|k| !k.is_empty()) {
         Some(key) => options = options.api_key(key),
         // rig reads the variable itself.
         None if env_key(vendor).is_some() => {}
         None if requires_key(vendor) => {
-            return Err(format!(
+            return Err(ChatError::Invalid(format!(
                 "Add an API key for {} in Settings → Providers.",
                 info(vendor).map_or(vendor, |p| p.label)
-            ))
+            )))
         }
         // rig reads the key from the environment when none is given; a local server needs none,
         // and an empty one keeps it from picking up an unrelated variable.
@@ -480,7 +484,7 @@ pub(in crate::chat::models) fn connect(
     }
     Catalog::builtin()
         .connect_with(reference, options)
-        .map_err(|e| e.to_string())
+        .map_err(ChatError::internal)
 }
 
 /// Whether the catalog says `reference` can reason, so a "think" request is not refused.
@@ -491,10 +495,11 @@ pub fn supports_reasoning(reference: &str) -> bool {
 }
 
 /// The API key for `vendor` from the keychain, if one is saved.
-pub async fn api_key(vendor: &str) -> Result<Option<String>, String> {
+pub async fn api_key(vendor: &str) -> Result<Option<String>, ChatError> {
     crate::chat::secrets::local()?
         .load(&secret_name(vendor))
         .await
+        .map_err(ChatError::Invalid)
 }
 
 #[cfg(test)]
@@ -603,7 +608,7 @@ mod tests {
             return; // a developer's own key would satisfy it
         }
         let error = connect("openai/gpt-5.5", &ProviderSettings::default(), None).unwrap_err();
-        assert!(error.contains("OpenAI"), "{error}");
+        assert!(error.to_string().contains("OpenAI"), "{error}");
     }
 
     #[test]

@@ -168,9 +168,7 @@ pub async fn translate(config_dir: &Path, model: &str, code: &str) -> Result<Cov
              nothing else.\n\n{list}"
         );
         let request = CompletionRequest::new(Message::user(prompt)).max_tokens(16_000u64);
-        let reply = crate::chat::engine::ask_text(config_dir, model, request, 180)
-            .await
-            .map_err(ChatError::Model)?;
+        let reply = crate::chat::engine::ask_text(config_dir, model, request, 180).await?;
         let got = parse_reply(&reply, batch);
         if got.is_empty() {
             return Err(ChatError::Model(

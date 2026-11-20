@@ -143,9 +143,7 @@ fn base_url(file: &ProvidersFile, vendor: &str) -> String {
 
 async fn key(file: &ProvidersFile, vendor: &str) -> Result<String, ChatError> {
     let saved = if file.providers.get(vendor).is_some_and(|s| s.has_key) {
-        crate::chat::providers::api_key(vendor)
-            .await
-            .map_err(ChatError::Invalid)?
+        crate::chat::providers::api_key(vendor).await?
     } else {
         None
     };

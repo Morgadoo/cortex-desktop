@@ -1,6 +1,7 @@
 //! Speech to text with Whisper: audio decoding and resampling, mel filters, and transcription.
 
 use super::*;
+use crate::chat::error::ChatError;
 
 // Speech: Whisper
 
@@ -59,9 +60,9 @@ pub(in crate::chat::models) fn mel_filters(n_mels: usize) -> Vec<f32> {
 }
 
 /// Mono 16 kHz samples from a WAV file (16-bit, 24-bit, 32-bit or float), mixed and resampled.
-pub(in crate::chat::models) fn wav_samples(bytes: &[u8]) -> Result<Vec<f32>, String> {
+pub(in crate::chat::models) fn wav_samples(bytes: &[u8]) -> Result<Vec<f32>, ChatError> {
     if bytes.len() < 12 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
-        return Err("not a WAV file".into());
+        return Err(ChatError::Invalid("not a WAV file".into()));
     }
     let (mut channels, mut rate, mut bits, mut format) = (1usize, 16_000usize, 16usize, 1u16);
     let mut data: &[u8] = &[];
@@ -86,7 +87,7 @@ pub(in crate::chat::models) fn wav_samples(bytes: &[u8]) -> Result<Vec<f32>, Str
     }
     let width = bits / 8;
     if width == 0 || data.is_empty() {
-        return Err("The recording is empty.".into());
+        return Err(ChatError::Invalid("The recording is empty.".into()));
     }
     let frames = data.len() / (width * channels);
     let sample = |j: usize| -> f32 {
@@ -125,25 +126,29 @@ pub(in crate::chat::models) fn resample(samples: &[f32], from: usize, to: usize)
 }
 
 /// Samples from any recording: WAV directly, other formats through ffmpeg when installed.
-pub fn audio_samples(bytes: &[u8]) -> Result<Vec<f32>, String> {
+pub fn audio_samples(bytes: &[u8]) -> Result<Vec<f32>, ChatError> {
     if let Ok(s) = wav_samples(bytes) {
         return Ok(s);
     }
     let input =
         std::env::temp_dir().join(format!("cortex-audio-{}", uuid::Uuid::new_v4().simple()));
-    std::fs::write(&input, bytes).map_err(|e| e.to_string())?;
+    std::fs::write(&input, bytes).map_err(ChatError::internal)?;
     let out = std::process::Command::new("ffmpeg")
         .args(["-loglevel", "error", "-i"])
         .arg(&input)
         .args(["-ac", "1", "-ar", "16000", "-f", "f32le", "-"])
         .output();
     let _ = std::fs::remove_file(&input);
-    let out = out.map_err(|_| {
-        "The built-in speech model reads WAV recordings; install ffmpeg for other formats."
-            .to_string()
-    })?;
+    let out = out
+        .map_err(|_| {
+            "The built-in speech model reads WAV recordings; install ffmpeg for other formats."
+                .to_string()
+        })
+        .map_err(ChatError::Invalid)?;
     if !out.status.success() || out.stdout.is_empty() {
-        return Err("The recording could not be read.".into());
+        return Err(ChatError::Invalid(
+            "The recording could not be read.".into(),
+        ));
     }
     Ok(out
         .stdout
@@ -182,39 +187,41 @@ pub fn transcribe(
     samples: &[f32],
     language: &str,
     live: bool,
-) -> Result<String, String> {
+) -> Result<String, ChatError> {
     use candle_core::IndexOp as _;
     use candle_transformers::models::whisper as w;
     if !installed(root, id) {
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "Download {} first (Settings → Providers → Built-in models).",
             entry(id).map_or(id, |e| e.name)
-        ));
+        )));
     }
     if samples.len() < w::SAMPLE_RATE / 10 {
         return Ok(String::new());
     }
-    let mut guard = speech().lock().map_err(|e| e.to_string())?;
+    let mut guard = speech().lock().map_err(ChatError::internal)?;
     if guard.as_ref().is_none_or(|s| s.id != id) {
         *guard = None;
         *guard = Some(load_speech(root, id)?);
     }
-    let s = guard.as_mut().ok_or("The speech model is not loaded.")?;
+    let s = guard
+        .as_mut()
+        .ok_or_else(|| ChatError::Invalid("The speech model is not loaded.".into()))?;
     let token = |t: &str| {
         s.tokenizer
             .token_to_id(t)
             .ok_or_else(|| format!("The tokenizer has no {t}."))
     };
     let (sot, transcribe, no_ts, eot) = (
-        token(w::SOT_TOKEN)?,
-        token(w::TRANSCRIBE_TOKEN)?,
-        token(w::NO_TIMESTAMPS_TOKEN)?,
-        token(w::EOT_TOKEN)?,
+        token(w::SOT_TOKEN).map_err(ChatError::Invalid)?,
+        token(w::TRANSCRIBE_TOKEN).map_err(ChatError::Invalid)?,
+        token(w::NO_TIMESTAMPS_TOKEN).map_err(ChatError::Invalid)?,
+        token(w::EOT_TOKEN).map_err(ChatError::Invalid)?,
     );
     let n_mels = s.model.config.num_mel_bins;
     let mel = w::audio::pcm_to_mel(&s.model.config, samples, &s.filters);
     let mel = Tensor::from_vec(mel.clone(), (1, n_mels, mel.len() / n_mels), &Device::Cpu)
-        .map_err(|e| e.to_string())?;
+        .map_err(ChatError::internal)?;
     let frames = samples.len() / w::HOP_LENGTH;
     let vocab = s.model.config.vocab_size;
     // Only words and the end: no timestamps or other special tokens.
@@ -224,12 +231,12 @@ pub fn transcribe(
             *m = f32::NEG_INFINITY;
         }
     }
-    let mask = Tensor::new(mask.as_slice(), &Device::Cpu).map_err(|e| e.to_string())?;
+    let mask = Tensor::new(mask.as_slice(), &Device::Cpu).map_err(ChatError::internal)?;
     let mut text = String::new();
     let mut seek = 0;
     let max_tokens = s.model.config.max_target_positions / 2;
     // Whisper reads 30-second windows; the mel is padded with silence, so the last one is full too.
-    let (_, _, padded) = mel.dims3().map_err(|e| e.to_string())?;
+    let (_, _, padded) = mel.dims3().map_err(ChatError::internal)?;
     while seek < frames {
         let size = if live {
             // Even: the encoder halves the frames with a stride of two.
@@ -240,13 +247,13 @@ pub fn transcribe(
         } else {
             (padded - seek).min(w::N_FRAMES)
         };
-        let segment = mel.narrow(2, seek, size).map_err(|e| e.to_string())?;
+        let segment = mel.narrow(2, seek, size).map_err(ChatError::internal)?;
         seek += w::N_FRAMES;
         let features = s
             .model
             .encoder
             .forward(&segment, true)
-            .map_err(|e| e.to_string())?;
+            .map_err(ChatError::internal)?;
         // The language: the one asked for, else the one the model finds likeliest.
         let lang = match language.trim() {
             l if !l.is_empty() => s.tokenizer.token_to_id(&format!("<|{l}|>")),
@@ -260,24 +267,24 @@ pub fn transcribe(
         for i in 0..max_tokens {
             let input = Tensor::new(tokens.as_slice(), &Device::Cpu)
                 .and_then(|t| t.unsqueeze(0))
-                .map_err(|e| e.to_string())?;
+                .map_err(ChatError::internal)?;
             let ys = s
                 .model
                 .decoder
                 .forward(&input, &features, i == 0)
-                .map_err(|e| e.to_string())?;
-            let (_, len, _) = ys.dims3().map_err(|e| e.to_string())?;
+                .map_err(ChatError::internal)?;
+            let (_, len, _) = ys.dims3().map_err(ChatError::internal)?;
             let logits = s
                 .model
                 .decoder
-                .final_linear(&ys.i((..1, len - 1..)).map_err(|e| e.to_string())?)
+                .final_linear(&ys.i((..1, len - 1..)).map_err(ChatError::internal)?)
                 .and_then(|l| l.i(0)?.i(0))
-                .map_err(|e| e.to_string())?;
-            let logits = logits.broadcast_add(&mask).map_err(|e| e.to_string())?;
+                .map_err(ChatError::internal)?;
+            let logits = logits.broadcast_add(&mask).map_err(ChatError::internal)?;
             let next = logits
                 .argmax(0)
                 .and_then(|t| t.to_scalar::<u32>())
-                .map_err(|e| e.to_string())?;
+                .map_err(ChatError::internal)?;
             if next == eot {
                 break;
             }
@@ -290,7 +297,7 @@ pub fn transcribe(
         let piece = s
             .tokenizer
             .decode(&tokens[start..], true)
-            .map_err(|e| e.to_string())?;
+            .map_err(ChatError::internal)?;
         let piece = piece.trim();
         if !piece.is_empty() {
             if !text.is_empty() {
@@ -304,13 +311,13 @@ pub fn transcribe(
 }
 
 /// Loads a downloaded Whisper model, its tokenizer and mel filters.
-fn load_speech(root: &Path, id: &str) -> Result<Speech, String> {
+fn load_speech(root: &Path, id: &str) -> Result<Speech, ChatError> {
     use candle_transformers::models::whisper as w;
     let dir = model_dir(root, id)?;
     let config: w::Config = serde_json::from_str(
-        &std::fs::read_to_string(dir.join("config.json")).map_err(|e| e.to_string())?,
+        &std::fs::read_to_string(dir.join("config.json")).map_err(ChatError::internal)?,
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(ChatError::internal)?;
     // SAFETY: the file is ours, downloaded and not changed while it is mapped.
     let vb = unsafe {
         candle_nn::VarBuilder::from_mmaped_safetensors(
@@ -319,11 +326,11 @@ fn load_speech(root: &Path, id: &str) -> Result<Speech, String> {
             &Device::Cpu,
         )
     }
-    .map_err(|e| e.to_string())?;
+    .map_err(ChatError::internal)?;
     let filters = mel_filters(config.num_mel_bins);
-    let model = w::model::Whisper::load(&vb, config).map_err(|e| e.to_string())?;
-    let tokenizer =
-        tokenizers::Tokenizer::from_file(dir.join("tokenizer.json")).map_err(|e| e.to_string())?;
+    let model = w::model::Whisper::load(&vb, config).map_err(ChatError::internal)?;
+    let tokenizer = tokenizers::Tokenizer::from_file(dir.join("tokenizer.json"))
+        .map_err(ChatError::internal)?;
     Ok(Speech {
         id: id.to_string(),
         model,
@@ -333,7 +340,11 @@ fn load_speech(root: &Path, id: &str) -> Result<Speech, String> {
 }
 
 /// The language the model finds likeliest for a window of audio, from those it knows.
-fn likeliest_language(s: &mut Speech, features: &Tensor, sot: u32) -> Result<Option<u32>, String> {
+fn likeliest_language(
+    s: &mut Speech,
+    features: &Tensor,
+    sot: u32,
+) -> Result<Option<u32>, ChatError> {
     use candle_core::IndexOp as _;
     let ids: Vec<(u32, &str)> = LANGUAGES
         .iter()
@@ -346,19 +357,19 @@ fn likeliest_language(s: &mut Speech, features: &Tensor, sot: u32) -> Result<Opt
     if ids.is_empty() {
         return Ok(None);
     }
-    let input = Tensor::new(&[[sot]], &Device::Cpu).map_err(|e| e.to_string())?;
+    let input = Tensor::new(&[[sot]], &Device::Cpu).map_err(ChatError::internal)?;
     let ys = s
         .model
         .decoder
         .forward(&input, features, true)
-        .map_err(|e| e.to_string())?;
+        .map_err(ChatError::internal)?;
     let logits = s
         .model
         .decoder
-        .final_linear(&ys.i((..1, 0..1)).map_err(|e| e.to_string())?)
+        .final_linear(&ys.i((..1, 0..1)).map_err(ChatError::internal)?)
         .and_then(|l| l.i(0)?.i(0))
-        .map_err(|e| e.to_string())?;
-    let logits: Vec<f32> = logits.to_vec1().map_err(|e| e.to_string())?;
+        .map_err(ChatError::internal)?;
+    let logits: Vec<f32> = logits.to_vec1().map_err(ChatError::internal)?;
     Ok(ids
         .iter()
         .max_by(|a, b| logits[a.0 as usize].total_cmp(&logits[b.0 as usize]))

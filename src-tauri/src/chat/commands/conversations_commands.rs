@@ -424,8 +424,8 @@ pub async fn chat_complete_prompt(
     .max_tokens(600u64);
     let out = match engine::ask_text(&config_dir(&app)?, &model, request, 10).await {
         Ok(out) => out,
-        Err(e) if e.contains("no text") => return Ok(String::new()),
-        Err(e) => return Err(e),
+        Err(e) if e.to_string().contains("no text") => return Ok(String::new()),
+        Err(e) => return Err(e.into()),
     };
     let out = out
         .trim_end()

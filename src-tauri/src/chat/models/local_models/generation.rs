@@ -1,6 +1,7 @@
 //! The built-in chat models: loading their weights, chat templates, and the worker that batches requests.
 
 use super::*;
+use crate::chat::error::ChatError;
 
 // Chat models
 
@@ -74,17 +75,17 @@ pub(in crate::chat::models) fn unload(id: &str) {
     }
 }
 
-pub(super) fn load(root: &Path, id: &str) -> Result<Loaded, String> {
+pub(super) fn load(root: &Path, id: &str) -> Result<Loaded, ChatError> {
     if !installed(root, id) {
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "Download {} first (Settings → Providers → Built-in models).",
             entry(id).map_or(id, |e| e.name)
-        ));
+        )));
     }
     let dir = model_dir(root, id)?;
-    let mut file = std::fs::File::open(dir.join("model.gguf")).map_err(|e| e.to_string())?;
+    let mut file = std::fs::File::open(dir.join("model.gguf")).map_err(ChatError::internal)?;
     let content = candle_core::quantized::gguf_file::Content::read(&mut file)
-        .map_err(|e| format!("The model file could not be read: {e}"))?;
+        .map_err(|e| ChatError::Invalid(format!("The model file could not be read: {e}")))?;
     let arch = content
         .metadata
         .get("general.architecture")
@@ -96,7 +97,7 @@ pub(super) fn load(root: &Path, id: &str) -> Result<Loaded, String> {
         "qwen2" => (
             Weights::Qwen2(
                 crate::chat::batched_qwen2::ModelWeights::from_gguf(content, &mut file, &device)
-                    .map_err(|e| e.to_string())?,
+                    .map_err(ChatError::internal)?,
             ),
             Template::ChatMl,
         ),
@@ -105,18 +106,18 @@ pub(super) fn load(root: &Path, id: &str) -> Result<Loaded, String> {
                 candle_transformers::models::quantized_llama::ModelWeights::from_gguf(
                     content, &mut file, &device,
                 )
-                .map_err(|e| e.to_string())?,
+                .map_err(ChatError::internal)?,
             ),
             Template::Llama3,
         ),
         other => {
-            return Err(format!(
+            return Err(ChatError::Invalid(format!(
                 "Models of the `{other}` kind are not supported yet."
-            ))
+            )))
         }
     };
     let tokenizer = tokenizers::Tokenizer::from_file(dir.join("tokenizer.json"))
-        .map_err(|e| format!("The tokenizer could not be read: {e}"))?;
+        .map_err(|e| ChatError::Invalid(format!("The tokenizer could not be read: {e}")))?;
     let stop = [
         "<|im_end|>",
         "<|endoftext|>",
@@ -208,7 +209,7 @@ pub(super) const GATHER: std::time::Duration = std::time::Duration::from_millis(
 
 pub(super) enum Out {
     Text(String),
-    Done(Result<Usage, String>),
+    Done(Result<Usage, ChatError>),
 }
 
 pub(super) struct Job {
@@ -283,7 +284,7 @@ pub(in crate::chat::models) fn generate(
     messages: &[Value],
     params: &Params,
     mut on_text: impl FnMut(&str) -> bool,
-) -> Result<Usage, String> {
+) -> Result<Usage, ChatError> {
     start_worker();
     let (out, answers) = std::sync::mpsc::channel();
     let cancelled = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -311,7 +312,7 @@ pub(in crate::chat::models) fn generate(
             Out::Done(result) => return result,
         }
     }
-    Err("The built-in runtime stopped.".into())
+    Err(ChatError::Invalid("The built-in runtime stopped.".into()))
 }
 
 /// The prompt's tokens: oldest messages go first (the system prompt stays) until it fits.
@@ -319,13 +320,13 @@ pub(super) fn prompt_tokens(
     m: &Loaded,
     messages: &[Value],
     params: &Params,
-) -> Result<Vec<u32>, String> {
+) -> Result<Vec<u32>, ChatError> {
     let mut turns = turns(messages);
     let budget = CONTEXT - params.max_tokens.unwrap_or(MAX_ANSWER).min(MAX_ANSWER);
     let mut prompt = m
         .tokenizer
         .encode(render(m.template, &turns), false)
-        .map_err(|e| e.to_string())?
+        .map_err(ChatError::internal)?
         .get_ids()
         .to_vec();
     while prompt.len() > budget && turns.len() > 2 {
@@ -334,7 +335,7 @@ pub(super) fn prompt_tokens(
         prompt = m
             .tokenizer
             .encode(render(m.template, &turns), false)
-            .map_err(|e| e.to_string())?
+            .map_err(ChatError::internal)?
             .get_ids()
             .to_vec();
     }
@@ -356,7 +357,7 @@ pub(super) struct Row {
 }
 
 impl Row {
-    pub(super) fn finish(&mut self, result: Result<Usage, String>) {
+    pub(super) fn finish(&mut self, result: Result<Usage, ChatError>) {
         if !self.done {
             self.done = true;
             let _ = self.job.out.send(Out::Done(result));
@@ -373,7 +374,7 @@ pub(super) fn run_batch(jobs: Vec<Job>) {
             Ok(m) => *guard = Some(m),
             Err(e) => {
                 for job in jobs {
-                    let _ = job.out.send(Out::Done(Err(e.clone())));
+                    let _ = job.out.send(Out::Done(Err(e.copy_for_another())));
                 }
                 return;
             }
@@ -418,7 +419,7 @@ pub(super) fn run_batch(jobs: Vec<Job>) {
         }
         if let Err(e) = run_rows(m, &id, &mut group) {
             for row in &mut group {
-                row.finish(Err(e.clone()));
+                row.finish(Err(e.copy_for_another()));
             }
         }
     }
@@ -426,7 +427,7 @@ pub(super) fn run_batch(jobs: Vec<Job>) {
 
 /// Answers the rows together: one prefill for all prompts (padded on the left), then one token
 /// per row per step; a finished row leaves the batch.
-pub(super) fn run_rows(m: &mut Loaded, id: &str, rows: &mut [Row]) -> Result<(), String> {
+pub(super) fn run_rows(m: &mut Loaded, id: &str, rows: &mut [Row]) -> Result<(), ChatError> {
     use std::sync::atomic::Ordering;
     let device = Device::Cpu;
     let width = rows.iter().map(|r| r.prompt.len()).max().unwrap_or(0);
@@ -439,11 +440,11 @@ pub(super) fn run_rows(m: &mut Loaded, id: &str, rows: &mut [Row]) -> Result<(),
     }
     m.weights.clear();
     let started = std::time::Instant::now();
-    let input = Tensor::from_vec(ids, (rows.len(), width), &device).map_err(|e| e.to_string())?;
+    let input = Tensor::from_vec(ids, (rows.len(), width), &device).map_err(ChatError::internal)?;
     let mut logits = m
         .weights
         .forward(&input, 0, &pads)
-        .map_err(|e| e.to_string())?;
+        .map_err(ChatError::internal)?;
     log::info!(
         "built-in model {id}: read {} prompt(s) of up to {width} tokens in {:?}",
         rows.len(),
@@ -463,12 +464,15 @@ pub(super) fn run_rows(m: &mut Loaded, id: &str, rows: &mut [Row]) -> Result<(),
                 }));
                 continue;
             }
-            let row_logits = logits.get(slot).map_err(|e| e.to_string())?;
+            let row_logits = logits.get(slot).map_err(ChatError::internal)?;
             let recent = &row.answer[row.answer.len().saturating_sub(64)..];
             let penalized =
                 candle_transformers::utils::apply_repeat_penalty(&row_logits, 1.1, recent)
-                    .map_err(|e| e.to_string())?;
-            let next = row.sampler.sample(&penalized).map_err(|e| e.to_string())?;
+                    .map_err(ChatError::internal)?;
+            let next = row
+                .sampler
+                .sample(&penalized)
+                .map_err(ChatError::internal)?;
             if m.stop.contains(&next) {
                 row.finish(Ok(Usage {
                     prompt: row.prompt.len(),
@@ -481,7 +485,7 @@ pub(super) fn run_rows(m: &mut Loaded, id: &str, rows: &mut [Row]) -> Result<(),
             let text = m
                 .tokenizer
                 .decode(&row.answer, true)
-                .map_err(|e| e.to_string())?;
+                .map_err(ChatError::internal)?;
             if text.len() > row.shown && !text.ends_with('\u{FFFD}') {
                 if row
                     .job
@@ -507,16 +511,16 @@ pub(super) fn run_rows(m: &mut Loaded, id: &str, rows: &mut [Row]) -> Result<(),
             return Ok(());
         }
         if keep.len() < active.len() {
-            m.weights.retain(&keep).map_err(|e| e.to_string())?;
+            m.weights.retain(&keep).map_err(ChatError::internal)?;
             pads = keep.iter().map(|&s| pads[s]).collect();
             active = keep.iter().map(|&s| active[s]).collect();
         }
-        let input =
-            Tensor::from_vec(next_tokens, (active.len(), 1), &device).map_err(|e| e.to_string())?;
+        let input = Tensor::from_vec(next_tokens, (active.len(), 1), &device)
+            .map_err(ChatError::internal)?;
         logits = m
             .weights
             .forward(&input, pos, &pads)
-            .map_err(|e| e.to_string())?;
+            .map_err(ChatError::internal)?;
         pos += 1;
     }
 }

@@ -268,9 +268,7 @@ pub(crate) async fn connect(
         .cloned()
         .unwrap_or_default();
     let key = if settings.has_key {
-        crate::chat::providers::api_key(vendor)
-            .await
-            .map_err(ChatError::Invalid)?
+        crate::chat::providers::api_key(vendor).await?
     } else {
         None
     };

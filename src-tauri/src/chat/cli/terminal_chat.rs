@@ -390,7 +390,9 @@ impl Host for TerminalHost {
         &self,
         reference: &str,
     ) -> Result<rig_core::DynModel<rig_core::operation::Completion>, String> {
-        crate::chat::engine::connect_model(&self.config_dir, reference).await
+        crate::chat::engine::connect_model(&self.config_dir, reference)
+            .await
+            .map_err(String::from)
     }
 
     async fn approve(

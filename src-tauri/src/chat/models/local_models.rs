@@ -9,6 +9,7 @@
 //! - Speech: Whisper (tiny to large-v3-turbo) as the "Built-in" speech-to-text engine, for the
 //!   composer's microphone and for dictation anywhere.
 
+use crate::chat::error::ChatError;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -263,14 +264,16 @@ pub fn init(local_data_dir: &Path) {
     let _ = ROOT.set(local_data_dir.join("models"));
 }
 
-pub fn root() -> Result<PathBuf, String> {
+pub fn root() -> Result<PathBuf, ChatError> {
     ROOT.get()
         .cloned()
-        .ok_or_else(|| "The model folder is not set up yet.".into())
+        .ok_or_else(|| ChatError::Invalid("The model folder is not set up yet.".into()))
 }
 
-fn model_dir(root: &Path, id: &str) -> Result<PathBuf, String> {
-    entry(id).ok_or_else(|| format!("Unknown model `{id}`."))?;
+fn model_dir(root: &Path, id: &str) -> Result<PathBuf, ChatError> {
+    entry(id)
+        .ok_or_else(|| format!("Unknown model `{id}`."))
+        .map_err(ChatError::Invalid)?;
     Ok(root.join(id))
 }
 

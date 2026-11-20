@@ -1,18 +1,19 @@
 //! The endpoint the engine talks to: OpenAI's chat completions, on 127.0.0.1 only.
 
 use super::*;
+use crate::chat::error::ChatError;
 
 // The endpoint the engine talks to: OpenAI's chat completions, on 127.0.0.1 only.
 
 pub(super) static PORT: tokio::sync::OnceCell<u16> = tokio::sync::OnceCell::const_new();
 
 /// The port of the built-in endpoint, started on first use.
-pub(in crate::chat::models) async fn endpoint() -> Result<u16, String> {
+pub(in crate::chat::models) async fn endpoint() -> Result<u16, ChatError> {
     PORT.get_or_try_init(|| async {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
-            .map_err(|e| e.to_string())?;
-        let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+            .map_err(ChatError::internal)?;
+        let port = listener.local_addr().map_err(ChatError::internal)?.port();
         let app = axum::Router::new()
             .route("/v1/chat/completions", axum::routing::post(completions))
             .route("/v1/models", axum::routing::get(list_models));
@@ -25,6 +26,7 @@ pub(in crate::chat::models) async fn endpoint() -> Result<u16, String> {
     })
     .await
     .copied()
+    .map_err(ChatError::Invalid)
 }
 
 pub(super) async fn list_models() -> axum::Json<Value> {
@@ -128,7 +130,7 @@ pub(super) async fn completions(axum::Json(body): axum::Json<Value>) -> axum::re
     );
     let created = chrono::Utc::now().timestamp();
     let rid = format!("chatcmpl-{}", uuid::Uuid::new_v4().simple());
-    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Result<String, String>>();
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Result<String, ChatError>>();
     let model_id = id.clone();
     let task = tokio::task::spawn_blocking(move || {
         let _place = place;
@@ -137,7 +139,7 @@ pub(super) async fn completions(axum::Json(body): axum::Json<Value>) -> axum::re
             tx_text.send(Ok(piece.to_string())).is_ok()
         });
         result.inspect_err(|e| {
-            let _ = tx.send(Err(e.clone()));
+            let _ = tx.send(Err(e.copy_for_another()));
         })
     });
     if !stream {
@@ -146,12 +148,12 @@ pub(super) async fn completions(axum::Json(body): axum::Json<Value>) -> axum::re
         while let Some(piece) = rx.recv().await {
             match piece {
                 Ok(p) => text.push_str(&p),
-                Err(e) => return error_response(500, &e),
+                Err(e) => return error_response(500, &e.to_string()),
             }
         }
         let usage = match task.await {
             Ok(Ok(u)) => u,
-            Ok(Err(e)) => return error_response(500, &e),
+            Ok(Err(e)) => return error_response(500, &e.to_string()),
             Err(e) => return error_response(500, &e.to_string()),
         };
         let body = json!({
@@ -191,7 +193,7 @@ pub(super) async fn completions(axum::Json(body): axum::Json<Value>) -> axum::re
             Some(Err(e)) => {
                 let err = format!(
                     "data: {}\n\ndata: [DONE]\n\n",
-                    json!({ "error": { "message": e } })
+                    json!({ "error": { "message": e.to_string() } })
                 );
                 Some((Ok(axum::body::Bytes::from(err)), (rx, None, true, chunk)))
             }
@@ -259,17 +261,17 @@ pub fn brief(
 /// The model a `local/<id>` reference runs on, through the built-in endpoint.
 pub(in crate::chat::models) async fn connect(
     reference: &str,
-) -> Result<rig_core::DynModel<rig_core::operation::Completion>, String> {
+) -> Result<rig_core::DynModel<rig_core::operation::Completion>, ChatError> {
     let id = reference
         .strip_prefix(VENDOR)
         .and_then(|r| r.strip_prefix('/'))
-        .ok_or("Not a built-in model.")?;
+        .ok_or_else(|| ChatError::Invalid("Not a built-in model.".into()))?;
     let root = root()?;
     if !installed(&root, id) {
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "Download {} first (Settings → Providers → Built-in models).",
             entry(id).map_or(id, |e| e.name)
-        ));
+        )));
     }
     let port = endpoint().await?;
     let settings = crate::chat::providers::ProviderSettings {
