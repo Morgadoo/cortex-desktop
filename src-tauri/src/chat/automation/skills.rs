@@ -27,11 +27,13 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
 pub struct Skill {
     pub name: String,
     pub description: String,
     pub body: String,
     /// `user` or `builtin`.
+    #[cfg_attr(feature = "typescript", ts(type = "'user' | 'builtin'"))]
     pub origin: &'static str,
     pub enabled: bool,
     /// Supporting files in the skill's folder, as paths relative to it.

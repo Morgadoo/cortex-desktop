@@ -1,6 +1,6 @@
 /** Community agents: searching a public catalog and adding an agent from it. */
 import { tauriInvoke } from '../../../shared/tauri';
-import { type Agent } from '../core/api';
+import type { Agent } from '../core/api';
 import { clear, h } from '../ui/h';
 import { modal, toast } from '../ui/overlay';
 import { button, modalHeader } from '../ui/ui';

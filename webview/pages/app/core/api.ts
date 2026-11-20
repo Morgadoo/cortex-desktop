@@ -6,57 +6,11 @@
 import { tauriInvoke } from '../../../shared/tauri';
 
 // Generated from the Rust types (scripts/generate-types.sh), so the two cannot drift.
-import type { ChatParams, Frequency, Instructions, Memories, Memory, ModelView, Project, ProviderSettings, ProviderView, Speed } from './generated/ipc';
+import type { AgentSpend, ChatParams, ConversationSummary, Frequency, Instructions, Memories, Memory, ModelView, Project, ProviderSettings, ProviderView, SearchHit, Skill, Speed, StorageHealth, TrashItem } from './generated/ipc';
 
-export type { ChatParams, Frequency, Instructions, Memories, Memory, Project, ProviderSettings, Speed };
+export type { AgentSpend, ChatParams, ConversationSummary, Frequency, Instructions, Memories, Memory, Project, ProviderSettings, SearchHit, Skill, Speed, StorageHealth, TrashItem };
 export type Provider = ProviderView;
 export type Model = ModelView;
-
-export interface ConversationSummary {
-  id: string;
-  title: string;
-  projectId: string | null;
-  workdir: string | null;
-  agentId: string | null;
-  taskId: string | null;
-  /** How the conversation left off, for the sidebar's hover. */
-  preview?: string;
-  /** Bookmarked messages: turn index and snippet. */
-  bookmarks?: [number, string][];
-  unread: boolean;
-  pinned: boolean;
-  archived: boolean;
-  tags: string[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface SearchHit {
-  id: string;
-  title: string;
-  snippet: string;
-  inTitle: boolean;
-  archived: boolean;
-  tags: string[];
-  updatedAt: string;
-}
-
-export interface TrashItem {
-  id: string;
-  title: string;
-  deletedAt: string;
-  daysLeft: number;
-}
-
-export interface StorageHealth {
-  conversations: number;
-  damaged: { id: string; backup: string | null }[];
-  trash: number;
-  backupDays: number;
-  newestBackup: string | null;
-  bytes: number;
-  keepDays: number;
-}
 
 export interface ContextBreakdown {
   window: number;
@@ -109,16 +63,6 @@ export interface Conversation {
   versions: { from: number; kind: 'answer' | 'prompt'; current: number; total: number }[];
 }
 
-export interface Skill {
-  name: string;
-  description: string;
-  body: string;
-  origin: 'user' | 'builtin';
-  enabled: boolean;
-  /** Supporting files in the skill's folder, relative to it. */
-  files: string[];
-}
-
 export interface Agent {
   id: string;
   name: string;
@@ -153,12 +97,6 @@ export interface Agent {
   /** The agent it reports to, by id. */
   reportsTo?: string | null;
   createdAt: string;
-}
-
-export interface AgentSpend {
-  runs: number;
-  tokens: number;
-  cost: number;
 }
 
 export interface Task {

@@ -8,7 +8,7 @@ import { navigate, state } from '../core/state';
 import { flag } from '../core/prefs';
 import { callQuiet } from '../core/call';
 import { renderLiveTurn } from './live-turn';
-import { compareModels, modelName, refreshConversations, setCompareModels } from './send';
+import { modelName, refreshConversations, setCompareModels } from './send';
 import { renderApprovals, renderQuestion } from './approvals';
 import { renderParts } from './transcript';
 

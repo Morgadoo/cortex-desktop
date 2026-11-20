@@ -290,6 +290,7 @@ pub fn delete_conversation(config_dir: &Path, id: &str) -> Result<(), String> {
 /// A sidebar row.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
 pub struct ConversationSummary {
     pub archived: bool,
     pub tags: Vec<String>,
@@ -305,6 +306,7 @@ pub struct ConversationSummary {
     pub updated_at: DateTime<Utc>,
     /// Tokens used (in and out) and their cost, for budgets and the agent pages.
     #[serde(default)]
+    #[cfg_attr(feature = "typescript", ts(type = "number"))]
     pub tokens: u64,
     #[serde(default)]
     pub cost: f64,

@@ -8,7 +8,7 @@ import { setVoicePauseMs, voicePauseMs } from '../voice/dictation';
 import { setWakePrefs, wakePrefs } from '../voice/wakeword';
 import { setOrbColor, storedOrbColor, type OrbColor } from '../theme/orbgl';
 import { row } from './row';
-import { type LocalModel } from './models';
+import type { LocalModel } from './models';
 import { call, reported } from '../core/call';
 
 /** The Whisper models downloaded, to choose one for voice input. */

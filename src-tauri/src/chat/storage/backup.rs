@@ -134,10 +134,12 @@ pub(in crate::chat::storage) fn trash(config_dir: &Path, id: &str) -> Result<(),
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
 pub struct TrashItem {
     pub id: String,
     pub title: String,
     pub deleted_at: DateTime<Utc>,
+    #[cfg_attr(feature = "typescript", ts(type = "number"))]
     pub days_left: i64,
 }
 
@@ -234,6 +236,7 @@ pub fn recover(config_dir: &Path, id: &str) -> Result<String, String> {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
 pub struct Damaged {
     pub id: String,
     /// The date of the newest backup that can replace it.
@@ -243,6 +246,7 @@ pub struct Damaged {
 /// How the stored data is doing, for Settings.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export, rename = "StorageHealth"))]
 pub struct Health {
     pub conversations: usize,
     pub damaged: Vec<Damaged>,
@@ -251,7 +255,9 @@ pub struct Health {
     pub backup_days: usize,
     pub newest_backup: Option<String>,
     /// Bytes under `chat/`, backups included.
+    #[cfg_attr(feature = "typescript", ts(type = "number"))]
     pub bytes: u64,
+    #[cfg_attr(feature = "typescript", ts(type = "number"))]
     pub keep_days: i64,
 }
 

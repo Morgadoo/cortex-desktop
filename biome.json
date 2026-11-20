@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["webview/**/*.ts", "scripts/**/*.mjs", "scripts/**/*.js", "extension/**/*.js", "!webview/pages/settings/index.js", "!webview/pages/app/core/generated/**"]
+    "includes": ["webview/**/*.ts", "scripts/**/*.mjs", "scripts/**/*.js", "extension/**/*.js", "!webview/pages/settings/index.js", "!webview/pages/app/core/generated"]
   },
   "formatter": {
     "enabled": true,

@@ -3,7 +3,7 @@ import { api, type ConnectorManifest } from '../core/api';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
 import { toast } from '../ui/overlay';
-import { type Page } from '../core/state';
+import type { Page } from '../core/state';
 import { openSettings } from '../settings/index';
 import { listen } from '../../../shared/tauri';
 import { CONNECTOR_CATEGORIES, FEATURED_MCP_SERVERS, type ConnectorCatalogEntry } from '../../../shared/connector-catalog';
