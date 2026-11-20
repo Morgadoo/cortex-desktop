@@ -5,7 +5,11 @@ use super::*;
 /// What an agent's conversations cost this calendar month.
 #[derive(Debug, Clone, Default, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export, rename = "AgentSpend"))]
+#[cfg_attr(
+    feature = "typescript",
+    derive(ts_rs::TS),
+    ts(export, rename = "AgentSpend")
+)]
 pub struct Spend {
     pub runs: usize,
     #[cfg_attr(feature = "typescript", ts(type = "number"))]

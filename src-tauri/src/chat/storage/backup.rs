@@ -246,7 +246,11 @@ pub struct Damaged {
 /// How the stored data is doing, for Settings.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export, rename = "StorageHealth"))]
+#[cfg_attr(
+    feature = "typescript",
+    derive(ts_rs::TS),
+    ts(export, rename = "StorageHealth")
+)]
 pub struct Health {
     pub conversations: usize,
     pub damaged: Vec<Damaged>,

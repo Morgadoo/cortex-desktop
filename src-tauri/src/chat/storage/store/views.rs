@@ -5,6 +5,7 @@ use super::*;
 /// One step of an assistant turn, as the page draws it.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 pub enum Part {
     Text {
         text: String,
@@ -18,6 +19,7 @@ pub enum Part {
         text: String,
         /// How long the model thought, in milliseconds, when measured.
         #[serde(skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "typescript", ts(optional))]
         ms: Option<u32>,
     },
     #[serde(rename_all = "camelCase")]
@@ -29,6 +31,7 @@ pub enum Part {
     Tool {
         call_id: String,
         name: String,
+        #[cfg_attr(feature = "typescript", ts(type = "Record<string, unknown>"))]
         arguments: Value,
         output: Option<String>,
         is_error: bool,
@@ -37,8 +40,10 @@ pub enum Part {
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 pub struct Turn {
     /// `user` or `assistant`.
+    #[cfg_attr(feature = "typescript", ts(type = "'user' | 'assistant'"))]
     pub role: &'static str,
     pub parts: Vec<Part>,
     /// Index of the turn's last message, which ratings and timestamps key on.
@@ -49,6 +54,7 @@ pub struct Turn {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 pub struct ConversationView {
     pub id: String,
     pub usage: cortex_kernel::context::UsageTotals,
@@ -103,10 +109,12 @@ impl Versions {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 pub struct VersionsView {
     /// Message index of the prompt the branches start at.
     pub from: usize,
     /// `answer` or `prompt`: which turn shows the switcher.
+    #[cfg_attr(feature = "typescript", ts(type = "'answer' | 'prompt'"))]
     pub kind: String,
     /// 0-based position of the showing branch.
     pub current: usize,

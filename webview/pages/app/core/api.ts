@@ -6,62 +6,33 @@
 import { tauriInvoke } from '../../../shared/tauri';
 
 // Generated from the Rust types (scripts/generate-types.sh), so the two cannot drift.
-import type { AgentSpend, ChatParams, ConversationSummary, Frequency, Instructions, Memories, Memory, ModelView, Project, ProviderSettings, ProviderView, SearchHit, Skill, Speed, StorageHealth, TrashItem } from './generated/ipc';
+import type {
+  AgentSpend,
+  ChatParams,
+  ContextBreakdown,
+  Conversation,
+  ConversationSummary,
+  Frequency,
+  Instructions,
+  Memories,
+  Memory,
+  ModelView,
+  Part,
+  Project,
+  ProviderSettings,
+  ProviderView,
+  SearchHit,
+  Skill,
+  Speed,
+  StorageHealth,
+  TrashItem,
+  Turn,
+  UsageTotals,
+} from './generated/ipc';
 
-export type { AgentSpend, ChatParams, ConversationSummary, Frequency, Instructions, Memories, Memory, Project, ProviderSettings, SearchHit, Skill, Speed, StorageHealth, TrashItem };
+export type { AgentSpend, ChatParams, ContextBreakdown, Conversation, ConversationSummary, Frequency, Instructions, Memories, Memory, Part, Project, ProviderSettings, SearchHit, Skill, Speed, StorageHealth, TrashItem, Turn, UsageTotals };
 export type Provider = ProviderView;
 export type Model = ModelView;
-
-export interface ContextBreakdown {
-  window: number;
-  measured: number;
-  slices: { label: string; tokens: number }[];
-  summarizedMessages: number;
-  clearedResults: number;
-}
-
-export type Part =
-  | { kind: 'text'; text: string }
-  | { kind: 'reasoning'; text: string; ms?: number }
-  | { kind: 'notice'; text: string }
-  | { kind: 'image'; mediaType: string; data: string }
-  | { kind: 'tool'; callId: string; name: string; arguments: Record<string, unknown>; output: string | null; isError: boolean };
-
-export interface Turn {
-  role: 'user' | 'assistant';
-  parts: Part[];
-  index: number;
-  time: string | null;
-  rating: number;
-}
-
-export interface UsageTotals {
-  inputTokens: number;
-  outputTokens: number;
-  cost: number;
-  contextTokens: number;
-}
-
-export interface Conversation {
-  id: string;
-  usage: UsageTotals;
-  compactedBefore: number | null;
-  title: string;
-  projectId: string | null;
-  workdir: string | null;
-  agentId: string | null;
-  model: string | null;
-  pinned: boolean;
-  archived: boolean;
-  /** This conversation's own model settings. */
-  params: ChatParams;
-  /** Turn indexes the user bookmarked. */
-  bookmarks: number[];
-  turns: Turn[];
-  running: boolean;
-  /** Which answer to the last prompt shows, when it was answered more than once. */
-  versions: { from: number; kind: 'answer' | 'prompt'; current: number; total: number }[];
-}
 
 export interface Agent {
   id: string;

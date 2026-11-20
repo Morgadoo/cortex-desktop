@@ -27,6 +27,37 @@ topP?: number | null,
 instructions: string, };
 
 /**
+ * What fills the model's window, for the context view.
+ */
+export type ContextBreakdown = { window: number, 
+/**
+ * What the latest request carried, as the provider measured it; 0 before the first reply.
+ */
+measured: number, 
+/**
+ * Estimates (four characters a token), largest first.
+ */
+slices: Array<Slice>, 
+/**
+ * Messages replaced by the summary, and tool results shortened to save room.
+ */
+summarizedMessages: number, clearedResults: number, };
+
+export type Conversation = { running: boolean, id: string, usage: UsageTotals, 
+/**
+ * Index of the first turn requests still carry verbatim, when earlier ones were compacted.
+ */
+compactedBefore: number | null, title: string, projectId: string | null, workdir: string | null, agentId: string | null, model: string | null, pinned: boolean, archived: boolean, params: ChatParams, 
+/**
+ * Turn indexes the user bookmarked.
+ */
+bookmarks: Array<number>, turns: Array<Turn>, 
+/**
+ * The branch points along the showing path, each with its switcher position.
+ */
+versions: Array<VersionsView>, };
+
+/**
  * A sidebar row.
  */
 export type ConversationSummary = { archived: boolean, tags: Array<string>, id: string, title: string, projectId: string | null, workdir: string | null, agentId: string | null, taskId: string | null, unread: boolean, pinned: boolean, createdAt: string, updatedAt: string, 
@@ -114,6 +145,15 @@ export type ModelView = {
  */
 reference: string, vendor: string, providerLabel: string, id: string, name: string, reasoning: boolean, tools: boolean, contextWindow: number | null, };
 
+/**
+ * One step of an assistant turn, as the page draws it.
+ */
+export type Part = { "kind": "text", text: string, } | { "kind": "notice", text: string, } | { "kind": "reasoning", text: string, 
+/**
+ * How long the model thought, in milliseconds, when measured.
+ */
+ms?: number, } | { "kind": "image", mediaType: string, data: string, } | { "kind": "tool", callId: string, name: string, arguments: Record<string, unknown>, output: string | null, isError: boolean, };
+
 export type Project = { id: string, name: string, 
 /**
  * Instructions added to every conversation in the project.
@@ -175,6 +215,11 @@ origin: 'user' | 'builtin', enabled: boolean,
 files: Array<string>, };
 
 /**
+ * One slice of the context window.
+ */
+export type Slice = { label: string, tokens: number, };
+
+/**
  * The composer's speed setting: how much the model reasons (Vibe's thinking levels).
  */
 export type Speed = "fast" | "low" | "think" | "deep";
@@ -193,4 +238,41 @@ backupDays: number, newestBackup: string | null,
 bytes: number, keepDays: number, };
 
 export type TrashItem = { id: string, title: string, deletedAt: string, daysLeft: number, };
+
+export type Turn = { 
+/**
+ * `user` or `assistant`.
+ */
+role: 'user' | 'assistant', parts: Array<Part>, 
+/**
+ * Index of the turn's last message, which ratings and timestamps key on.
+ */
+index: number, time: string | null, rating: number, };
+
+/**
+ * Tokens spent in a conversation, as providers reported them.
+ */
+export type UsageTotals = { inputTokens: number, outputTokens: number, 
+/**
+ * In US dollars, when the catalog prices the model.
+ */
+cost: number, 
+/**
+ * What the latest request carried, which the next one sends again.
+ */
+contextTokens: number, };
+
+export type VersionsView = { 
+/**
+ * Message index of the prompt the branches start at.
+ */
+from: number, 
+/**
+ * `answer` or `prompt`: which turn shows the switcher.
+ */
+kind: 'answer' | 'prompt', 
+/**
+ * 0-based position of the showing branch.
+ */
+current: number, total: number, };
 

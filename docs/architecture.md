@@ -167,9 +167,18 @@ Derive its TypeScript declaration from the Rust type instead of writing it again
 then run `bash scripts/generate-types.sh` and import it from `core/generated/ipc.ts`. ts-rs
 follows the type's `serde` attributes, so the declaration is what the window really gets. The
 provider, model, project, instructions, chat settings, memory, speed and schedule types are
-converted; the others in `api.ts` are still written by hand and move over one area at a time. A
-64-bit integer field needs `#[cfg_attr(feature = "typescript", ts(type = "number"))]`: it
-travels as a JSON number, not a `bigint`.
+converted, and so are the conversation (its turns, parts, versions and usage), the sidebar rows,
+search hits, the trash, storage health, the context breakdown, an agent's spend and skills; the
+others in `api.ts` are still written by hand and move over one area at a time.
+
+- A 64-bit integer field needs `#[cfg_attr(feature = "typescript", ts(type = "number"))]`: it
+  travels as a JSON number, not a `bigint`.
+- A field serde leaves out (`skip_serializing_if = "Option::is_none"`) needs `ts(optional)` to be
+  declared `field?: T`.
+- A `&'static str` that holds one of a few words is better declared as their union:
+  `ts(type = "'user' | 'assistant'")`.
+- `cortex-kernel` has its own `typescript` feature, turned on by the app's; types from other
+  crates need the same before the app's types can name them.
 
 ### A built-in tool
 

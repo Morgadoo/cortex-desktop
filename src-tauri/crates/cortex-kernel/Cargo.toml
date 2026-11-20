@@ -14,6 +14,11 @@ regex = { workspace = true }
 rig-core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+ts-rs = { version = "12.0.1", optional = true, features = ["chrono-impl"] }
+
+[features]
+# TypeScript declarations of the types the window receives (scripts/generate-types.sh).
+typescript = ["dep:ts-rs"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

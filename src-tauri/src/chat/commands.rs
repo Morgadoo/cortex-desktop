@@ -77,6 +77,11 @@ pub struct ModelList {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(
+    feature = "typescript",
+    derive(ts_rs::TS),
+    ts(export, rename = "Conversation")
+)]
 pub struct OpenConversation {
     #[serde(flatten)]
     pub view: ConversationView,

@@ -265,7 +265,11 @@ pub(in crate::chat::storage) fn damaged(config_dir: &Path) -> Vec<String> {
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export, rename = "SearchHit"))]
+#[cfg_attr(
+    feature = "typescript",
+    derive(ts_rs::TS),
+    ts(export, rename = "SearchHit")
+)]
 pub struct Hit {
     pub id: String,
     pub title: String,

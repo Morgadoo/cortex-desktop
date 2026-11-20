@@ -41,12 +41,16 @@ pub struct Summary {
 /// Tokens spent in a conversation, as providers reported them.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 pub struct UsageTotals {
+    #[cfg_attr(feature = "typescript", ts(type = "number"))]
     pub input_tokens: u64,
+    #[cfg_attr(feature = "typescript", ts(type = "number"))]
     pub output_tokens: u64,
     /// In US dollars, when the catalog prices the model.
     pub cost: f64,
     /// What the latest request carried, which the next one sends again.
+    #[cfg_attr(feature = "typescript", ts(type = "number"))]
     pub context_tokens: u64,
 }
 
@@ -278,17 +282,26 @@ pub fn short_error(text: &str) -> String {
 /// One slice of the context window.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 pub struct Slice {
     pub label: String,
+    #[cfg_attr(feature = "typescript", ts(type = "number"))]
     pub tokens: u64,
 }
 
 /// What fills the model's window, for the context view.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(
+    feature = "typescript",
+    derive(ts_rs::TS),
+    ts(export, rename = "ContextBreakdown")
+)]
 pub struct Breakdown {
+    #[cfg_attr(feature = "typescript", ts(type = "number"))]
     pub window: u64,
     /// What the latest request carried, as the provider measured it; 0 before the first reply.
+    #[cfg_attr(feature = "typescript", ts(type = "number"))]
     pub measured: u64,
     /// Estimates (four characters a token), largest first.
     pub slices: Vec<Slice>,
