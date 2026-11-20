@@ -28,7 +28,7 @@ use sha2::{Digest, Sha256};
 
 use crate::chat::store::{chat_dir, write_json};
 
-pub const CONTAINERFILE: &str = include_str!("../../assets/workbench/Containerfile");
+pub const CONTAINERFILE: &str = include_str!("../../../assets/workbench/Containerfile");
 
 /// The image this version of the app runs: a hash of its Containerfile, so a changed recipe
 /// builds a new image instead of reusing a stale one.

@@ -2130,14 +2130,14 @@ mod tests {
                 .filter(|l| l.starts_with("rig-core"))
                 .collect::<Vec<_>>()
         };
-        let root = include_str!("../../../Cargo.toml");
+        let root = include_str!("../../../../Cargo.toml");
         let workspace = &root[root
             .find("[workspace.dependencies]")
             .expect("the workspace declares shared dependencies")..];
         let pin = rig(workspace)[0];
         assert!(pin.contains("version = \"=0.46.0\""), "{pin}");
         for line in rig(root).into_iter().skip(1).chain(rig(include_str!(
-            "../../../crates/cortex-kernel/Cargo.toml"
+            "../../../../crates/cortex-kernel/Cargo.toml"
         ))) {
             assert!(line.contains("workspace = true"), "{line}");
         }

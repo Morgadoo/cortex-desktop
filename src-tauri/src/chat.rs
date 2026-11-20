@@ -16,13 +16,9 @@ pub mod animation;
 pub mod api_server;
 pub mod audio;
 pub mod builtins;
-pub mod canvas;
-pub mod code;
 pub mod commands;
-pub mod computer;
 pub mod config_cli;
 pub mod context;
-pub mod custom_tools;
 mod deferred;
 pub mod discord;
 pub mod emoji_pack;
@@ -36,32 +32,24 @@ pub mod host;
 pub mod lifecycle;
 pub mod links;
 pub mod media;
-pub mod openapi;
 pub mod org;
 pub mod plugins;
 pub mod privacy;
 pub mod prompt;
-pub mod proposals;
 pub mod recorder;
-pub mod sandbox;
-pub mod script_tools;
 pub mod share;
-pub mod sheets;
 pub mod skill_catalog;
 pub mod skills;
 pub mod slack;
 pub mod subagents;
 pub mod tasks;
 pub mod telegram;
-pub mod terminal;
 pub mod terminal_chat;
 pub mod tools;
 pub mod traces;
 pub mod ui_language;
 pub mod video;
 pub mod videogen;
-pub mod webpage;
-pub mod workbench;
 pub mod workflows;
 
 use std::collections::HashMap;
@@ -76,6 +64,8 @@ pub use models::{acp, agent_cli, arena, batched_qwen2, local_models, providers, 
 pub mod grounding;
 pub use grounding::{calendar, embeddings, extraction, knowledge, learning, libraries, memory, reader, retrieval, search, search_all};
 use grounding::{favicon, preview};
+pub mod toolkit;
+pub use toolkit::{canvas, code, computer, custom_tools, openapi, proposals, sandbox, script_tools, sheets, terminal, webpage, workbench};
 
 /// The account every account-scoped subsystem (connectors, secrets, skills) runs under. Proton
 /// accounts are gone; one local profile takes their place.
