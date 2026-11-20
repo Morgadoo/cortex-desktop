@@ -470,7 +470,7 @@ pub(in crate::chat) async fn nightly(host: &Arc<dyn Host>, model: &str) -> Vec<N
         return Vec::new();
     };
     let mut out = Vec::new();
-    for suite in suites(&config_dir) {
+    for suite in nightly_suites(&config_dir) {
         if !cases(&config_dir, &suite)
             .iter()
             .any(|c| !c.needs_expectation)
@@ -493,6 +493,18 @@ pub(in crate::chat) async fn nightly(host: &Arc<dyn Host>, model: &str) -> Vec<N
         });
     }
     out
+}
+
+/// The suites a nightly run checks. A user who turns the nightly run on before writing any suite
+/// gets the starter's three cases, so the run has a baseline to compare against from the first
+/// night instead of running nothing.
+fn nightly_suites(config_dir: &Path) -> Vec<String> {
+    if suites(config_dir).is_empty() {
+        if let Err(e) = ensure_starter(config_dir) {
+            log::warn!("nightly evals: could not write the starter suite: {e}");
+        }
+    }
+    suites(config_dir)
 }
 
 /// The nightly run: every suite, and a notification for each whose score dropped.
@@ -674,6 +686,20 @@ mod tests {
         assert!(cases(dir.path(), STARTER)
             .iter()
             .any(|c| c.facts == vec!["1.99".to_string()]));
+    }
+
+    #[test]
+    fn the_first_nightly_run_has_the_starter_suite_to_run() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(suites(dir.path()).is_empty());
+        assert_eq!(nightly_suites(dir.path()), vec![STARTER.to_string()]);
+        assert_eq!(cases(dir.path(), STARTER).len(), 3);
+        // A user's own suites are run as they are; the starter is not added beside them.
+        let other = tempfile::tempdir().unwrap();
+        let mut case = cases(dir.path(), STARTER)[0].clone();
+        case.id = "mine".into();
+        add_case(other.path(), "office", &case).unwrap();
+        assert_eq!(nightly_suites(other.path()), vec!["office".to_string()]);
     }
 
     /// A top-level link that leads back up to the data folder, or above it, is left out of a

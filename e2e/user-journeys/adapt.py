@@ -157,11 +157,10 @@ try:
     agent_row = js("""const b=[...document.querySelectorAll('main.main button')].find(b=>b.textContent.trim()==='Chat with Researcher'); if(!b) return false; b.click(); return true;""")
     wait_for(lambda: qs("textarea.composer-input"), 15)
     work = ask("Every Monday I check the price of a 1 kg bag of basmati rice at Continente, Pingo Doce and Lidl in Portugal. Do this week's check: search each shop, then tell me the cheapest in two sentences.")
-    steps = js("return document.querySelectorAll('.turn-assistant .tool-call, .turn-assistant .tool, .turn-assistant [data-tool]').length")
     learnt = wait_for(lambda: [s for s in invoke("chat_list_skills") or [] if s["name"] not in before], 120) or []
-    notice = js("return [...document.querySelectorAll('.notice, .turn-notice, .chat-notice')].map(n=>n.innerText).join(' | ')") or ""
+    notice = js("return [...document.querySelectorAll('.notice-line')].map(n=>n.innerText).join(' | ')") or ""
     note("an agent's repeated procedure becomes a skill, off until reviewed", bool(learnt) and all(not s.get("enabled", False) for s in learnt),
-         f"agent chat opened={agent_row}; tool steps shown={steps}; learnt={[(s['name'], s.get('enabled')) for s in learnt]}; notice={notice[:160]!r}; answer={work[:100]!r}")
+         f"agent chat opened={agent_row}; learnt={[(s['name'], s.get('enabled')) for s in learnt]}; notice={notice[:160]!r}; answer={work[:100]!r}")
 
     # The weekly review and the daily evals run in the background, from the app's scheduler (every
     # 30 seconds): the review leaves its proposals in an unread chat, the evals a scored run.
