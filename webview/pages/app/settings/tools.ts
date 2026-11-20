@@ -5,7 +5,7 @@ import { icon } from '../ui/icons';
 import { confirmDialog, modal, toast } from '../ui/overlay';
 import { historyButton } from '../canvas/versions';
 import { button, card, modalHeader, switchInput } from '../ui/ui';
-import { reloadModels } from './index';
+import { reloadModels } from '../core/models';
 
 interface HookDef {
   event: 'before_tool' | 'after_tool' | 'turn_end';

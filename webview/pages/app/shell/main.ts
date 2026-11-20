@@ -24,14 +24,16 @@ import { startWakeWord, stopWakeWord, wakePrefs } from '../voice/wakeword';
 import { ConnectorsPage, PlaceholderPage } from '../pages/connectors';
 import { SkillsPage, reviewRecording } from '../pages/skills';
 import { KnowledgePage } from '../pages/knowledge';
-import { AgentPage, AgentsPage, reloadAgents } from '../pages/agents';
+import { AgentPage, AgentsPage } from '../pages/agents';
+import { reloadAgents } from '../pages/agent-list';
 import { TasksPage } from '../pages/tasks';
 import { LibrariesPage } from '../pages/libraries';
 import { AppsPage } from '../pages/apps';
 import { ResourcesPage } from '../canvas/outputs';
 import { ChatsPage } from '../pages/chatspage';
 import { WorkflowsPage } from '../pages/workflows';
-import { openSettings, reloadModels } from '../settings/index';
+import { openSettings } from '../settings/index';
+import { reloadModels } from '../core/models';
 import { applyTheme, storedTheme } from '../theme/theme';
 import { stepZoom, applyBackdrop, backdropLayer } from '../theme/appearance';
 import { applyEvent, changed, finishNotificationsOn, finishSoundOn, navigate, playChime, state, subscribe } from '../core/state';
@@ -40,7 +42,9 @@ import { refreshAudioSettings } from '../voice/audio';
 import { workdir } from '../core/prefs';
 import { callQuiet } from '../core/call';
 import { openSearch } from './search';
-import { renderSidebar, switchMode } from './sidebar';
+import { renderSidebar } from './sidebar';
+import { switchMode } from './nav';
+import { newChat, sidebar } from './nav';
 
 interface View {
   readonly el: HTMLElement;
@@ -56,7 +60,6 @@ interface View {
  */
 const SOLO_CHAT: string | null = (window as unknown as { __CORTEX_SOLO_CHAT?: string }).__CORTEX_SOLO_CHAT ?? null;
 
-export const sidebar = h('aside', { class: 'sidebar' });
 const main = h('main', { class: 'main' });
 let view: View | null = null;
 
@@ -161,12 +164,6 @@ async function startWake() {
   } catch (e) {
     toast(`The wake word needs the microphone: ${String(e)}`, 'error');
   }
-}
-
-export function newChat() {
-  navigate({ kind: 'home' });
-  composer.setText('');
-  setTimeout(() => composer.focus());
 }
 
 // ---------------------------------------------------------------------------------------------

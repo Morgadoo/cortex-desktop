@@ -1,9 +1,7 @@
-/** The settings dialog: its sections and search, and reloading the models. Each section is a file here. */
-import { api } from '../core/api';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
 import { modal } from '../ui/overlay';
-import { changed, state } from '../core/state';
+import { state } from '../core/state';
 import { modalHeader } from '../ui/ui';
 import { renderAudio } from './audio';
 import { renderAppearance } from './appearance';
@@ -83,14 +81,6 @@ const SETTINGS_INDEX: [string, Section, string][] = [
   ['Material', 'appearance', 'liquid glass apple translucent blur frosted material solid'],
   ['Emoji', 'appearance', 'emoji style microsoft fluent teams 3d flat system'],
 ];
-
-/** Reloads models after providers change, keeping the chosen one when it still exists. */
-export async function reloadModels() {
-  const { models, defaultModel } = await api.models();
-  state.models = models;
-  if (!state.model || !models.some((m) => m.reference === state.model)) state.model = defaultModel;
-  changed();
-}
 
 export function openSettings(section: Section = 'profile'): Promise<void> {
   let current = section;

@@ -9,7 +9,7 @@ import { improveButton } from '../chat/improve';
 import { restoreButton } from '../canvas/versions';
 import { navigate, state } from '../core/state';
 import { button, emptyState, iconButton, modalHeader, pageHeader, switchInput, tabs } from '../ui/ui';
-import { learningRows } from './skills';
+import { learningRows } from './learning';
 
 interface KnowledgePageData {
   id: string;

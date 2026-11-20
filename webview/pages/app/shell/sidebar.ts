@@ -1,20 +1,21 @@
 /** The sidebar: navigation, context pages, agents, conversation links and the app menu. */
 import { popover } from '../ui/overlay';
 import { openInstructions } from '../pages/instructions';
-import { agentName, avatar, newAgent, orgOrder } from '../pages/agents';
+import { newAgent, orgOrder } from '../pages/agents';
+import { agentName, avatar } from '../pages/agent-list';
 import { back, forward, type Page } from '../core/state';
 import { call, shown } from '../core/call';
 import { openWhatsNew, renderFooter } from './footer';
 import { renderConversations } from './chat-list';
 import { renderProjects } from './projects';
-import { newChat, sidebar } from './main';
+import { newChat, sidebar } from './nav';
 import { openSearchMode } from '../chat/searchmode';
-import { conversationMenu } from '../chat/conversation-menu';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
 import { openSettings } from '../settings/index';
 import { changed, navigate, state } from '../core/state';
 import { openSearch } from './search';
+import { conversationLink, sectionHeading } from './nav';
 
 // ---------------------------------------------------------------------------------------------
 // Sidebar
@@ -188,34 +189,4 @@ function renderAgents(): HTMLElement {
     for (const c of runs.slice(0, 4)) section.append(conversationLink(c.id, c.title, c.pinned, true));
   }
   return section;
-}
-
-export function switchMode(mode: 'work' | 'code' | 'agents') {
-  state.mode = mode;
-  navigate(mode === 'agents' ? { kind: 'page', page: 'agents' } : { kind: 'home' });
-}
-
-export function sectionHeading(label: string, action?: HTMLElement): HTMLElement {
-  return h('div', { class: 'section-heading' }, h('span', {}, label), action ?? null);
-}
-
-export function conversationLink(id: string, title: string, pinned: boolean, nested = false): HTMLElement {
-  const active = state.view.kind === 'chat' && state.view.id === id;
-  const more = h('button', { class: 'icon-btn tiny row-more', title: 'More' }, icon('more', 16));
-  more.addEventListener('click', (e) => {
-    e.stopPropagation();
-    conversationMenu(more, id, title, pinned);
-  });
-  const running = state.live.has(id) && !state.live.get(id)?.error;
-  // Hovering shows the title and how the conversation left off.
-  const preview = state.conversations.find((c) => c.id === id)?.preview;
-  return h(
-    'div',
-    { class: `conv-link${active ? ' active' : ''}${nested ? ' nested' : ''}`, 'data-chat-id': id, on: { click: () => navigate({ kind: 'chat', id }) }, title: preview ? `${title}\n\n${preview}` : title },
-    pinned ? icon('pin', 13) : null,
-    h('span', { class: 'conv-title' }, title),
-    state.conversations.find((c) => c.id === id)?.unread ? h('span', { class: 'unread-dot' }) : null,
-    running ? h('span', { class: 'dots small' }) : null,
-    more
-  );
 }

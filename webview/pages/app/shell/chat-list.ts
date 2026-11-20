@@ -4,11 +4,11 @@ import { refreshConversations } from '../chat/send';
 import { clear, h } from '../ui/h';
 import { icon } from '../ui/icons';
 import { modal, popover } from '../ui/overlay';
-import { avatar, pinnedAgents } from '../pages/agents';
+import { avatar, pinnedAgents } from '../pages/agent-list';
 import { changed, navigate, state } from '../core/state';
 import { button, emptyState, iconButton, modalHeader } from '../ui/ui';
 import { choice, json } from '../core/prefs';
-import { conversationLink, sectionHeading } from './sidebar';
+import { conversationLink, sectionHeading } from './nav';
 
 type ChatSort = 'recent' | 'created' | 'title' | 'unread';
 const CHAT_SORTS: Record<ChatSort, string> = { recent: 'Recent activity', created: 'Newest first', title: 'A–Z', unread: 'Unread first' };

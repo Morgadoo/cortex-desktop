@@ -1,7 +1,7 @@
 /** Settings → Providers: each provider's key and models, and the backup, review and Auto models. */
 import { type Provider } from '../core/api';
 import { switchInput } from '../ui/ui';
-import { reloadModels } from './index';
+import { reloadModels } from '../core/models';
 import { row } from './row';
 import { tauriInvoke } from '../../../shared/tauri';
 import { api } from '../core/api';

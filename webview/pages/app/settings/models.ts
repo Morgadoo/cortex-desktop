@@ -6,7 +6,7 @@ import { confirmDialog, toast } from '../ui/overlay';
 import { fileSize } from '../core/format';
 import { button, card, switchInput } from '../ui/ui';
 import { call, shown } from '../core/call';
-import { reloadModels } from './index';
+import { reloadModels } from '../core/models';
 import { row } from './row';
 
 interface SearchSettings {

@@ -7,7 +7,7 @@ import { icon } from '../ui/icons';
 import { modal, popover, promptText, confirmDialog, toast } from '../ui/overlay';
 import { changed, navigate, state } from '../core/state';
 import { modalHeader } from '../ui/ui';
-import { conversationLink, sectionHeading } from './sidebar';
+import { conversationLink, sectionHeading } from './nav';
 
 export function renderProjects(): HTMLElement {
   const add = h('button', { class: 'icon-btn tiny', title: 'New project' }, icon('plus', 15));

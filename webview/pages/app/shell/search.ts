@@ -7,8 +7,8 @@ import { icon } from '../ui/icons';
 import { modal } from '../ui/overlay';
 import { openSettings } from '../settings/index';
 import { changed, navigate, state } from '../core/state';
-import { newChat } from './main';
-import { switchMode } from './sidebar';
+import { newChat } from './nav';
+import { switchMode } from './nav';
 import { openArchived } from './chat-list';
 import { openWhatsNew } from './footer';
 
