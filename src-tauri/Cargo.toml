@@ -123,6 +123,8 @@ cortex-kernel = { workspace = true }
 cortex-retrieval = { workspace = true }
 cortex-sandbox = { workspace = true }
 cortex-traces = { workspace = true }
+# TypeScript declarations of the types the window sees (scripts/generate-types.sh).
+ts-rs = { version = "12.0.1", optional = true }
 
 [features]
 test-utils = []
@@ -133,6 +135,8 @@ hosted = []
 # The WebDriver suite in e2e/: the bridges and their Rust side, driven through a stub page.
 # CORTEX_E2E_TESTING is honoured only in builds with this feature.
 e2e = ["hosted"]
+# Derives TypeScript declarations for IPC types; only scripts/generate-types.sh builds it.
+typescript = ["dep:ts-rs"]
 
 [lints]
 workspace = true

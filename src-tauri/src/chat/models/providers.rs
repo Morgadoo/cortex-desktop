@@ -130,6 +130,7 @@ pub fn secret_name(vendor: &str) -> String {
 /// One provider's saved settings. The key itself is in the keychain.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", default)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
 pub struct ProviderSettings {
     pub enabled: bool,
     pub has_key: bool,
@@ -192,6 +193,7 @@ pub fn save(config_dir: &Path, file: &ProvidersFile) -> Result<(), String> {
 /// What the settings page shows for a provider.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
 pub struct ProviderView {
     pub vendor: String,
     pub label: String,
@@ -267,6 +269,7 @@ pub fn views(file: &ProvidersFile) -> Vec<ProviderView> {
 /// A model the composer can pick.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
 pub struct ModelView {
     /// `vendor/model`.
     pub reference: String,

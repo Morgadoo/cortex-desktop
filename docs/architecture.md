@@ -130,6 +130,7 @@ it through a temporary file. Moving a file between sealed and plain is a data mi
 | File | Made by | Checked in CI |
 |---|---|---|
 | `src-tauri/src/handlers.rs`, `src-tauri/permissions/commands.toml` | `scripts/generate-commands.py` | `--check` |
+| `webview/pages/app/core/generated/ipc.ts` | `scripts/generate-types.sh` (ts-rs, from Rust types marked `typescript`) | `--check` |
 | `src-tauri/i18n/catalog.json` | `scripts/ui-strings.mjs` (`npm run i18n:catalog`) | `npm run check:i18n` |
 | `src-tauri/i18n/{ar,de,es,fr,pt}.json` | `scripts/translate_ui.py` | a Rust test: every catalog string translated |
 | `src-tauri/gen/schemas/` | `tauri-build`, on every build | no |
@@ -153,6 +154,19 @@ it through a temporary file. Moving a file between sealed and plain is a data mi
 4. Call it from the interface through `core/api.ts` or `core/call.ts`.
 
 `tests/ipc_surface.rs` fails if a command is registered but not permitted, or the reverse.
+
+### A type the window receives
+
+Derive its TypeScript declaration from the Rust type instead of writing it again in `api.ts`:
+
+```rust
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
+```
+
+then run `bash scripts/generate-types.sh` and import it from `core/generated/ipc.ts`. ts-rs
+follows the type's `serde` attributes, so the declaration is what the window really gets. The
+provider and model types are the first converted; the others in `api.ts` are still written by
+hand and move over one area at a time.
 
 ### A built-in tool
 

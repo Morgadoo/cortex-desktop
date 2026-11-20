@@ -95,6 +95,8 @@ jobs:
         run: |
           cargo clippy --workspace --features cortex/test-utils,cortex/e2e --all-targets -- -D warnings
           cargo test --workspace --features cortex/test-utils,cortex/e2e
+      - name: The interface's generated types match the Rust types
+        run: bash scripts/generate-types.sh --check
       - name: The command list and permissions match the code
         run: python3 scripts/generate-commands.py --check
       - name: Dependencies point down the chat engine's layers

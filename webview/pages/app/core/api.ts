@@ -1,38 +1,16 @@
 /**
  * Typed wrappers over the chat commands in `src-tauri/src/chat/commands.rs`, and the events Rust
- * pushes back. The shapes mirror the Rust structs' camelCase serialization.
+ * pushes back. The shapes mirror the Rust structs' camelCase serialization; those generated from
+ * the Rust types themselves are in `generated/ipc.ts`.
  */
 import { tauriInvoke } from '../../../shared/tauri';
 
-export interface ProviderSettings {
-  enabled: boolean;
-  hasKey: boolean;
-  baseUrl: string | null;
-  customModels: string[];
-}
+// Generated from the Rust types (scripts/generate-types.sh), so the two cannot drift.
+import type { ModelView, ProviderSettings, ProviderView } from './generated/ipc';
 
-export interface Provider {
-  vendor: string;
-  label: string;
-  keyUrl: string;
-  local: boolean;
-  requiresKey: boolean;
-  defaultBaseUrl: string;
-  envKey: string | null;
-  settings: ProviderSettings;
-  ready: boolean;
-}
-
-export interface Model {
-  reference: string;
-  vendor: string;
-  providerLabel: string;
-  id: string;
-  name: string;
-  reasoning: boolean;
-  tools: boolean;
-  contextWindow: number | null;
-}
+export type { ProviderSettings };
+export type Provider = ProviderView;
+export type Model = ModelView;
 
 export interface ConversationSummary {
   id: string;
