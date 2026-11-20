@@ -50,7 +50,7 @@ pub fn load(config_dir: &Path) -> Settings {
 }
 
 pub fn save(config_dir: &Path, s: &Settings) -> Result<(), String> {
-    crate::chat::store::write_json(&path(config_dir), s)
+    crate::chat::store::write_json(&path(config_dir), s).map_err(String::from)
 }
 
 /// Where Telegram's Bot API is; `CORTEX_TELEGRAM_API` points elsewhere for testing.
@@ -240,7 +240,7 @@ pub async fn run_message(
                 c.agent_id = agent_id.clone();
                 c.title = title.into();
                 if let Err(e) = crate::chat::store::save_conversation(config_dir, &c) {
-                    return (None, Err(e));
+                    return (None, Err(e.to_string()));
                 }
                 id
             }
@@ -291,7 +291,7 @@ pub async fn run_message(
             }
             _ => Err("I could not answer that; see the chat in Cortex for what went wrong.".into()),
         },
-        Err(e) => Err(e),
+        Err(e) => Err(e.to_string()),
     };
     (Some(id), answer)
 }

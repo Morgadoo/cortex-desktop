@@ -95,7 +95,7 @@ pub fn load_prefs(config_dir: &std::path::Path) -> DiagnosticsPrefs {
 }
 
 pub fn save_prefs(config_dir: &std::path::Path, prefs: &DiagnosticsPrefs) -> Result<(), String> {
-    PREFS_FILE.save(config_dir, prefs)
+    PREFS_FILE.save(config_dir, prefs).map_err(String::from)
 }
 
 /// Whether this build was made with error reporting in it at all.

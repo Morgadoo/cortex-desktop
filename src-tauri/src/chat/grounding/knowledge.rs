@@ -52,7 +52,7 @@ pub(crate) fn save_all(config_dir: &Path, pages: &[Page]) -> Result<(), String> 
         &load(config_dir),
         &pages.to_vec(),
     )?;
-    KNOWLEDGE_FILE.save(config_dir, pages)
+    KNOWLEDGE_FILE.save(config_dir, pages).map_err(String::from)
 }
 
 /// Finds a page by id, id prefix (8+ characters) or exact title (any case).

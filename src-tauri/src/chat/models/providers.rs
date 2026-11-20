@@ -186,7 +186,7 @@ pub fn load(config_dir: &Path) -> ProvidersFile {
 }
 
 pub fn save(config_dir: &Path, file: &ProvidersFile) -> Result<(), String> {
-    crate::chat::store::write_json(&file_path(config_dir), file)
+    crate::chat::store::write_json(&file_path(config_dir), file).map_err(String::from)
 }
 
 /// What the settings page shows for a provider.

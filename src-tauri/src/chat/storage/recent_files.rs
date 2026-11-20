@@ -77,7 +77,7 @@ pub fn remember(list: &mut Vec<RecentFile>, files: Vec<RecentFile>) {
 pub fn add(config_dir: &Path, files: Vec<RecentFile>) -> Result<(), String> {
     let mut list = load(config_dir);
     remember(&mut list, files);
-    write_json(&path(config_dir), &list)
+    write_json(&path(config_dir), &list).map_err(String::from)
 }
 
 /// Takes one file off the list, or every file when `index` is `None`.

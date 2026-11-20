@@ -103,7 +103,9 @@ pub fn load(config_dir: &Path) -> Memories {
 pub fn save(config_dir: &Path, memories: &Memories) -> Result<(), String> {
     // The memories as they were stay restorable.
     crate::chat::versions::keep(config_dir, "memories", "all", &load(config_dir), memories)?;
-    MEMORIES_FILE.save(config_dir, memories)
+    MEMORIES_FILE
+        .save(config_dir, memories)
+        .map_err(String::from)
 }
 
 /// Adds a memory, or returns the existing one when the same fact is already known.

@@ -45,7 +45,7 @@ pub fn save(config_dir: &Path, e: &Extraction) -> Result<(), String> {
     {
         return Err("Give the server's address, like http://localhost:9998.".into());
     }
-    EXTRACTION_FILE.save(config_dir, e)
+    EXTRACTION_FILE.save(config_dir, e).map_err(String::from)
 }
 
 /// Text from Docling's answer: Markdown, else plain text.

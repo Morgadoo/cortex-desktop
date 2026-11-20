@@ -386,7 +386,7 @@ pub fn delete(config_dir: &Path, name: &str) -> Result<(), String> {
 pub fn set_enabled(config_dir: &Path, name: &str, enabled: bool) -> Result<(), String> {
     let mut state = load_state(config_dir);
     state.enabled.insert(name.to_string(), enabled);
-    SKILLS_FILE.save(config_dir, &state)
+    SKILLS_FILE.save(config_dir, &state).map_err(String::from)
 }
 
 /// Imports a `SKILL.md`, or a folder holding one with its supporting files.

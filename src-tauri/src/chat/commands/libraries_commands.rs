@@ -311,7 +311,7 @@ pub fn chat_remove_upload(
     let dir = config_dir(&app)?;
     let mut c = store::load_conversation(&dir, &conversation_id)?;
     crate::chat::uploads::remove(&mut c, message_index, &kind, &name)?;
-    store::save_conversation(&dir, &c)
+    store::save_conversation(&dir, &c).map_err(String::from)
 }
 
 /// Puts a large attachment in the "Uploads" library (made when missing), for the assistant to

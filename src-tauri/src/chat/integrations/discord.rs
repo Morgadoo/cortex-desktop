@@ -48,7 +48,7 @@ pub fn load(config_dir: &Path) -> Settings {
 }
 
 pub fn save(config_dir: &Path, s: &Settings) -> Result<(), String> {
-    crate::chat::store::write_json(&path(config_dir), s)
+    crate::chat::store::write_json(&path(config_dir), s).map_err(String::from)
 }
 
 /// Discord's REST API; `CORTEX_DISCORD_API` points elsewhere for testing.

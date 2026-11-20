@@ -91,7 +91,7 @@ pub fn save(config_dir: &Path, settings: &EmbeddingSettings) -> Result<(), Strin
     if s.vector_store != "qdrant" {
         s.vector_store = "local".into();
     }
-    write_json(&settings_path(config_dir), &s)
+    write_json(&settings_path(config_dir), &s).map_err(String::from)
 }
 
 /// Whether semantic search is set up enough to try.
@@ -191,6 +191,7 @@ fn write_cache(
             vectors,
         },
     )
+    .map_err(String::from)
 }
 
 pub fn cosine(a: &[f32], b: &[f32]) -> f32 {

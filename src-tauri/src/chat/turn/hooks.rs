@@ -60,7 +60,7 @@ pub fn save(config_dir: &Path, hooks: &[Hook]) -> Result<(), String> {
             return Err("A hook needs a command.".into());
         }
     }
-    HOOKS_FILE.save(config_dir, hooks)
+    HOOKS_FILE.save(config_dir, hooks).map_err(String::from)
 }
 
 /// Whether a hook's matcher covers a tool.

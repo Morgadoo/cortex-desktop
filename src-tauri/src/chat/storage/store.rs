@@ -4,6 +4,7 @@
 //! the model saw. The page never reads that format: [`ConversationView`] flattens it into turns of
 //! text, reasoning and tool steps.
 
+use crate::support::error::StoreError;
 use crate::support::settings_file::{self, Storage};
 use std::path::{Path, PathBuf};
 
@@ -33,16 +34,19 @@ pub fn valid_id(id: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
-fn conversation_path(config_dir: &Path, id: &str) -> Result<PathBuf, String> {
+fn conversation_path(config_dir: &Path, id: &str) -> Result<PathBuf, StoreError> {
     if !valid_id(id) {
-        return Err(format!("invalid conversation id `{id}`"));
+        return Err(StoreError::InvalidId {
+            kind: "conversation",
+            id: id.to_string(),
+        });
     }
     Ok(conversations_dir(config_dir).join(format!("{id}.json")))
 }
 
 /// Writes through a temporary file, so a crash never leaves half a conversation. Sealed when
 /// encryption at rest is on.
-pub fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
+pub fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), StoreError> {
     settings_file::write_json(path, Storage::Sealed, value)
 }
 
@@ -244,11 +248,14 @@ pub fn save_chat_defaults(config_dir: &Path, params: ChatParams) -> Result<ChatP
     Ok(params)
 }
 
-pub fn load_conversation(config_dir: &Path, id: &str) -> Result<Conversation, String> {
-    read_json(&conversation_path(config_dir, id)?).ok_or_else(|| format!("no conversation `{id}`"))
+pub fn load_conversation(config_dir: &Path, id: &str) -> Result<Conversation, StoreError> {
+    read_json(&conversation_path(config_dir, id)?).ok_or_else(|| StoreError::NotFound {
+        kind: "conversation",
+        id: id.to_string(),
+    })
 }
 
-pub fn save_conversation(config_dir: &Path, conversation: &Conversation) -> Result<(), String> {
+pub fn save_conversation(config_dir: &Path, conversation: &Conversation) -> Result<(), StoreError> {
     let path = conversation_path(config_dir, &conversation.id)?;
     if !conversation.temporary {
         crate::chat::backup::before_overwrite(config_dir, &path);
@@ -346,7 +353,7 @@ pub fn load_projects(config_dir: &Path) -> Vec<Project> {
 }
 
 pub fn save_projects(config_dir: &Path, projects: &[Project]) -> Result<(), String> {
-    write_json(&projects_path(config_dir), &projects)
+    write_json(&projects_path(config_dir), &projects).map_err(String::from)
 }
 
 /// The user's standing instructions: a tone preset and free text.
@@ -375,7 +382,7 @@ pub fn save_instructions(config_dir: &Path, instructions: &Instructions) -> Resu
         &load_instructions(config_dir),
         instructions,
     )?;
-    write_json(&instructions_path(config_dir), instructions)
+    write_json(&instructions_path(config_dir), instructions).map_err(String::from)
 }
 
 /// One step of an assistant turn, as the page draws it.

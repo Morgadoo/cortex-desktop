@@ -65,7 +65,9 @@ pub fn load(config_dir: &Path) -> ComputerSettings {
 }
 
 pub fn save(config_dir: &Path, settings: &ComputerSettings) -> Result<(), String> {
-    COMPUTER_FILE.save(config_dir, settings)
+    COMPUTER_FILE
+        .save(config_dir, settings)
+        .map_err(String::from)
 }
 
 pub fn definition() -> ChatTool {

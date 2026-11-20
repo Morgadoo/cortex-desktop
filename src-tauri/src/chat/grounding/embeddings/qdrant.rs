@@ -201,7 +201,8 @@ pub async fn sync(config_dir: &Path, settings: &EmbeddingSettings) -> Result<(),
         .await?;
         if status == 404 {
             marker.insert(format!("{}|{name}", settings.qdrant_url), now);
-            return crate::chat::store::write_json(&marker_path(config_dir), &marker);
+            return crate::chat::store::write_json(&marker_path(config_dir), &marker)
+                .map_err(String::from);
         }
     }
     // A changed document's old passages go first (it may now have fewer).
@@ -259,7 +260,7 @@ pub async fn sync(config_dir: &Path, settings: &EmbeddingSettings) -> Result<(),
         }
     }
     marker.insert(format!("{}|{name}", settings.qdrant_url), now);
-    crate::chat::store::write_json(&marker_path(config_dir), &marker)
+    crate::chat::store::write_json(&marker_path(config_dir), &marker).map_err(String::from)
 }
 
 /// The `k` passages nearest to `vector`, in the given libraries (all when empty).

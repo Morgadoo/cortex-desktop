@@ -163,7 +163,7 @@ pub fn chat_select_version(
     let dir = config_dir(&app)?;
     let mut conversation = store::load_conversation(&dir, &id)?;
     store::select_version(&mut conversation, from, index)?;
-    store::save_conversation(&dir, &conversation)
+    store::save_conversation(&dir, &conversation).map_err(String::from)
 }
 
 #[tauri::command]

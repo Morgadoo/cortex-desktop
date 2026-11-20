@@ -105,11 +105,13 @@ fn read_json<T: Default + for<'de> Deserialize<'de>>(path: PathBuf) -> Result<T,
     settings_file::read_json(&path, Storage::Plain)
         .map(Option::unwrap_or_default)
         .inspect_err(|_| config_failure("Settings load failed"))
+        .map_err(String::from)
 }
 
 fn write_json<T: Serialize>(path: PathBuf, value: &T) -> Result<(), String> {
     settings_file::write_json(&path, Storage::Plain, value)
         .inspect_err(|_| config_failure("Settings save failed"))
+        .map_err(String::from)
 }
 
 pub fn get_settings_path(app_handle: &AppHandle) -> Result<PathBuf, String> {

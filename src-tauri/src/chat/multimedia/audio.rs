@@ -102,7 +102,7 @@ pub fn load(config_dir: &Path) -> AudioSettings {
 }
 
 pub fn save(config_dir: &Path, settings: &AudioSettings) -> Result<(), String> {
-    AUDIO_FILE.save(config_dir, settings)
+    AUDIO_FILE.save(config_dir, settings).map_err(String::from)
 }
 
 /// Whether live transcripts may use this engine: one on this computer, asked again about once a

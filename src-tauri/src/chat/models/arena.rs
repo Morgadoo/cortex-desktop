@@ -53,7 +53,7 @@ pub fn record(config_dir: &Path, winner: &str, losers: &[String]) -> Result<(), 
         losers,
         at: Utc::now(),
     });
-    ARENA_FILE.save(config_dir, &all)
+    ARENA_FILE.save(config_dir, &all).map_err(String::from)
 }
 
 /// Ratings from the results, best first.
@@ -86,7 +86,9 @@ pub fn standings(matches: &[Match]) -> Vec<Standing> {
 }
 
 pub fn reset(config_dir: &Path) -> Result<(), String> {
-    ARENA_FILE.save(config_dir, &Vec::<Match>::new())
+    ARENA_FILE
+        .save(config_dir, &Vec::<Match>::new())
+        .map_err(String::from)
 }
 
 #[cfg(test)]

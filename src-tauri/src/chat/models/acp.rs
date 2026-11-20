@@ -65,7 +65,7 @@ pub fn save(config_dir: &Path, agents: &[AcpAgent]) -> Result<(), String> {
             return Err("An ACP agent needs a name and a command.".into());
         }
     }
-    store::write_json(&path(config_dir), &agents)
+    store::write_json(&path(config_dir), &agents).map_err(String::from)
 }
 
 fn locate(program: &str) -> Option<PathBuf> {

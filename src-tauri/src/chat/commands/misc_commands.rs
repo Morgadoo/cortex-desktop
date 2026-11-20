@@ -285,7 +285,7 @@ pub fn chat_delete_exchange(
     let dir = config_dir(&app)?;
     let mut conversation = store::load_conversation(&dir, &id)?;
     store::delete_exchange(&mut conversation, index)?;
-    store::save_conversation(&dir, &conversation)
+    store::save_conversation(&dir, &conversation).map_err(String::from)
 }
 
 /// Opens a conversation in a window of its own (LobeHub's "open in new window"), or brings its

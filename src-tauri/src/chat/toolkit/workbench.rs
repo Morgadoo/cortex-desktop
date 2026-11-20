@@ -87,6 +87,7 @@ pub fn set_enabled(config_dir: &Path, on: bool) -> Result<(), String> {
         &settings_path(config_dir),
         &serde_json::json!({ "enabled": on }),
     )
+    .map_err(String::from)
 }
 
 /// How to start Podman: itself, or on the host from inside a toolbox or distrobox container.

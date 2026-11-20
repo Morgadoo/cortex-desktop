@@ -25,6 +25,8 @@ use std::path::{Path, PathBuf};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
+use super::error::StoreError;
+
 /// How a settings file is stored on disk.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Storage {
@@ -75,12 +77,12 @@ impl<T: Serialize + DeserializeOwned + Default> SettingsFile<T> {
     }
 
     /// The saved value, the default when there is none, or why it could not be read.
-    pub fn try_load(&self, config_dir: &Path) -> Result<T, String> {
+    pub fn try_load(&self, config_dir: &Path) -> Result<T, StoreError> {
         Ok(read_json(&self.path(config_dir), self.storage)?.unwrap_or_default())
     }
 
     /// Saves `value`: the file's type itself, or what it borrows as (a `&[T]` for a `Vec<T>`).
-    pub fn save<V>(&self, config_dir: &Path, value: &V) -> Result<(), String>
+    pub fn save<V>(&self, config_dir: &Path, value: &V) -> Result<(), StoreError>
     where
         T: Borrow<V>,
         V: Serialize + ?Sized,
@@ -90,7 +92,10 @@ impl<T: Serialize + DeserializeOwned + Default> SettingsFile<T> {
 }
 
 /// Reads a JSON file: `None` when it does not exist.
-pub fn read_json<T: DeserializeOwned>(path: &Path, storage: Storage) -> Result<Option<T>, String> {
+pub fn read_json<T: DeserializeOwned>(
+    path: &Path,
+    storage: Storage,
+) -> Result<Option<T>, StoreError> {
     let text = match storage {
         Storage::Sealed => crate::chat::at_rest::read_to_string(path),
         Storage::Plain => std::fs::read_to_string(path),
@@ -98,11 +103,14 @@ pub fn read_json<T: DeserializeOwned>(path: &Path, storage: Storage) -> Result<O
     let text = match text {
         Ok(text) => text,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(format!("could not read {}: {e}", path.display())),
+        Err(e) => return Err(StoreError::read(path, e)),
     };
     serde_json::from_str(&text)
         .map(Some)
-        .map_err(|e| format!("could not parse {}: {e}", path.display()))
+        .map_err(|source| StoreError::Parse {
+            path: path.to_path_buf(),
+            source,
+        })
 }
 
 /// Writes a JSON file through a temporary file, so a crash never leaves half of it.
@@ -110,19 +118,21 @@ pub fn write_json<T: Serialize + ?Sized>(
     path: &Path,
     storage: Storage,
     value: &T,
-) -> Result<(), String> {
+) -> Result<(), StoreError> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("could not create {}: {e}", parent.display()))?;
+        std::fs::create_dir_all(parent).map_err(|e| StoreError::write(parent, e))?;
     }
-    let text = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
+    let text = serde_json::to_string_pretty(value).map_err(|source| StoreError::Encode {
+        path: path.to_path_buf(),
+        source,
+    })?;
     let tmp = path.with_extension("json.tmp");
     match storage {
         Storage::Sealed => crate::chat::at_rest::write(&tmp, text),
         Storage::Plain => std::fs::write(&tmp, text),
     }
-    .map_err(|e| format!("could not write {}: {e}", tmp.display()))?;
-    std::fs::rename(&tmp, path).map_err(|e| format!("could not replace {}: {e}", path.display()))
+    .map_err(|e| StoreError::write(&tmp, e))?;
+    std::fs::rename(&tmp, path).map_err(|e| StoreError::write(path, e))
 }
 
 #[cfg(test)]
@@ -160,10 +170,10 @@ mod tests {
         let path = PLAIN.path(dir.path());
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, "{ not json").unwrap();
-        assert!(PLAIN
-            .try_load(dir.path())
-            .unwrap_err()
-            .contains("could not parse"));
+        assert!(matches!(
+            PLAIN.try_load(dir.path()),
+            Err(StoreError::Parse { .. })
+        ));
         assert_eq!(PLAIN.load(dir.path()), Prefs::default());
     }
 

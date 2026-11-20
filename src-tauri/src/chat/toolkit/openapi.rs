@@ -54,7 +54,7 @@ pub fn list(config_dir: &Path) -> Vec<Server> {
 }
 
 fn store(config_dir: &Path, servers: &[Server]) -> Result<(), String> {
-    write_json(&dir(config_dir).join("servers.json"), &servers)
+    write_json(&dir(config_dir).join("servers.json"), &servers).map_err(String::from)
 }
 
 fn spec_path(config_dir: &Path, id: &str) -> Result<PathBuf, String> {

@@ -113,7 +113,7 @@ pub fn load(config_dir: &Path) -> Vec<Workflow> {
 
 fn save_mine(config_dir: &Path, workflows: &[Workflow]) -> Result<(), String> {
     let mine: Vec<&Workflow> = workflows.iter().filter(|w| !w.builtin).collect();
-    write_json(&path(config_dir), &mine)
+    write_json(&path(config_dir), &mine).map_err(String::from)
 }
 
 pub fn save(config_dir: &Path, mut workflow: Workflow) -> Result<Vec<Workflow>, String> {

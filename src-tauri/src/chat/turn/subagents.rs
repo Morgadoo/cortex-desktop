@@ -364,7 +364,7 @@ async fn run_one(
         return finish(Report {
             title: task.title,
             status: RunStatus::Failed,
-            report: e,
+            report: e.to_string(),
             steps: 0,
         });
     }

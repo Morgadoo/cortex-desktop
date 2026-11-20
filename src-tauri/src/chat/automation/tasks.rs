@@ -737,7 +737,7 @@ pub fn load(config_dir: &Path) -> Vec<Task> {
 }
 
 fn store(config_dir: &Path, tasks: &[Task]) -> Result<(), String> {
-    TASKS_FILE.save(config_dir, tasks)
+    TASKS_FILE.save(config_dir, tasks).map_err(String::from)
 }
 
 /// A planned run, for the calendar.

@@ -152,7 +152,7 @@ pub fn save_settings(
         s.engine = "auto".into();
     }
     s.base_url = s.base_url.trim().trim_end_matches('/').to_string();
-    SEARCH_FILE.save(config_dir, &s)
+    SEARCH_FILE.save(config_dir, &s).map_err(String::from)
 }
 
 async fn key() -> Result<Option<String>, String> {

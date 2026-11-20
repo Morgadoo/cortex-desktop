@@ -26,5 +26,7 @@ pub fn load(config_dir: &Path) -> PrivacySettings {
 }
 
 pub fn save(config_dir: &Path, settings: &PrivacySettings) -> Result<(), String> {
-    PRIVACY_FILE.save(config_dir, settings)
+    PRIVACY_FILE
+        .save(config_dir, settings)
+        .map_err(String::from)
 }

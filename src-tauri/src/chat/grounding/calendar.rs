@@ -31,7 +31,9 @@ pub fn load(config_dir: &Path) -> Settings {
 }
 
 pub fn save(config_dir: &Path, settings: &Settings) -> Result<(), String> {
-    CALENDARS_FILE.save(config_dir, settings)
+    CALENDARS_FILE
+        .save(config_dir, settings)
+        .map_err(String::from)
 }
 
 /// The text of a source: fetched for a link, read for a file.

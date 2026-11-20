@@ -290,7 +290,7 @@ pub async fn run(args: &Args) -> Export {
     conversation.temporary = true;
     conversation.title = "Headless run".into();
     if let Err(e) = crate::chat::store::save_conversation(&config_dir, &conversation) {
-        return end(export, Ending::UsageError, e);
+        return end(export, Ending::UsageError, e.to_string());
     }
     let host = Arc::new(HeadlessHost {
         config_dir: config_dir.clone(),

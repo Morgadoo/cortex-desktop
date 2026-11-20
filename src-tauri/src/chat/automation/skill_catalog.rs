@@ -52,7 +52,7 @@ fn load(config_dir: &Path) -> Store {
 }
 
 fn save(config_dir: &Path, s: &Store) -> Result<(), String> {
-    crate::chat::store::write_json(&path(config_dir), s)
+    crate::chat::store::write_json(&path(config_dir), s).map_err(String::from)
 }
 
 /// `owner/repo` from what the user typed: the pair itself or a GitHub link.

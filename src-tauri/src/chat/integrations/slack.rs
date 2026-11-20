@@ -45,7 +45,7 @@ pub fn load(config_dir: &Path) -> Settings {
 }
 
 pub fn save(config_dir: &Path, s: &Settings) -> Result<(), String> {
-    crate::chat::store::write_json(&path(config_dir), s)
+    crate::chat::store::write_json(&path(config_dir), s).map_err(String::from)
 }
 
 /// Slack's Web API; `CORTEX_SLACK_API` points elsewhere for testing.

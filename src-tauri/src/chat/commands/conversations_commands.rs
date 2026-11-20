@@ -94,7 +94,7 @@ pub fn chat_update_conversation(app: AppHandle, update: UpdateConversation) -> R
             conversation.agent_id.as_deref(),
         );
     }
-    store::save_conversation(&dir, &conversation)
+    store::save_conversation(&dir, &conversation).map_err(String::from)
 }
 
 /// Something the user did with an answer (`copied`), recorded as a signal in the trace.
@@ -267,7 +267,7 @@ pub fn chat_keep_conversation(app: AppHandle, id: String) -> Result<(), String> 
     let dir = config_dir(&app)?;
     let mut conversation = store::load_conversation(&dir, &id)?;
     conversation.temporary = false;
-    store::save_conversation(&dir, &conversation)
+    store::save_conversation(&dir, &conversation).map_err(String::from)
 }
 
 /// Three short messages the user might send next, from the latest exchange (Open WebUI's
@@ -600,7 +600,7 @@ pub fn chat_rewrite_message(
     let dir = config_dir(&app)?;
     let mut conversation = store::load_conversation(&dir, &id)?;
     store::rewrite_message(&mut conversation, index, &text)?;
-    store::save_conversation(&dir, &conversation)
+    store::save_conversation(&dir, &conversation).map_err(String::from)
 }
 
 /// Saves an agent, its notebook and the skills it uses as one file, to back up or share.
@@ -789,7 +789,7 @@ pub fn chat_bookmark(app: AppHandle, id: String, index: usize, on: bool) -> Resu
     let dir = config_dir(&app)?;
     let mut conversation = store::load_conversation(&dir, &id)?;
     store::set_bookmark(&mut conversation, index, on)?;
-    store::save_conversation(&dir, &conversation)
+    store::save_conversation(&dir, &conversation).map_err(String::from)
 }
 
 /// Why a reply was rated down, kept with the conversation.
@@ -809,7 +809,7 @@ pub fn chat_rate_reason(
     if !reason.is_empty() {
         conversation.rating_reasons.push((index, reason));
     }
-    store::save_conversation(&dir, &conversation)
+    store::save_conversation(&dir, &conversation).map_err(String::from)
 }
 
 #[tauri::command]

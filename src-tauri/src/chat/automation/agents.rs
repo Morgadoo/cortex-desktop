@@ -466,6 +466,7 @@ pub fn set_routing(config_dir: &Path, enabled: bool) -> Result<(), String> {
         &chat_dir(config_dir).join("agent-routing.json"),
         &serde_json::json!({ "enabled": enabled }),
     )
+    .map_err(String::from)
 }
 
 /// The question that picks an agent for a new chat.

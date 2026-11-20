@@ -130,7 +130,7 @@ pub fn save(config_dir: &Path, settings: &ApiServerSettings) -> Result<(), Strin
         return Err(format!("`{bad}` is not an origin. Write it as https://example.com (or null for files opened from disk)."));
     }
     settings.widget.origins = origins;
-    write_json(&settings_path(config_dir), &settings)
+    write_json(&settings_path(config_dir), &settings).map_err(String::from)
 }
 
 fn secrets() -> Result<crate::tools::auth::Secrets, String> {

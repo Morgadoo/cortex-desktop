@@ -5,6 +5,7 @@
 //! so that any of them can use it. One exception remains: [`settings_file`] seals files through
 //! `chat::at_rest`, until encryption at rest moves here with its keychain access injected.
 
+pub mod error;
 pub mod http;
 pub mod names;
 pub mod settings_file;

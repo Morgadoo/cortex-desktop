@@ -32,7 +32,9 @@ pub fn load(config_dir: &Path) -> Learning {
 }
 
 pub fn save(config_dir: &Path, learning: &Learning) -> Result<(), String> {
-    LEARNING_FILE.save(config_dir, learning)
+    LEARNING_FILE
+        .save(config_dir, learning)
+        .map_err(String::from)
 }
 
 /// Whether the daily eval run is due (turned on, and a day since the last); marks it started.

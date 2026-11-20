@@ -99,6 +99,7 @@ fn save(config_dir: &Path, library: &Library) -> Result<(), String> {
         &lib_dir(config_dir, &library.id)?.join("library.json"),
         library,
     )
+    .map_err(String::from)
 }
 
 pub fn create(config_dir: &Path, name: &str, description: &str) -> Result<Library, String> {
