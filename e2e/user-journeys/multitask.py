@@ -121,8 +121,10 @@ if PHASE == "run":
     type_in_composer("List five fruits, one per line, nothing else.")
     b_started = wait_for(lambda: current_id() and current_id() != a_id, 20)
     b_id = current_id()
-    both = wait_for(lambda: sum(1 for x in rows() if x["running"]) >= 2, 20)
-    note("two answers run at once, both marked in the sidebar", bool(both), json.dumps(rows()))
+    both = wait_for(lambda: (lambda r: r if len(r) >= 2 else None)([x for x in rows() if x["running"]]), 20)
+    titles = [x["title"] for x in (both or [])]
+    note("two answers run at once, both marked in the sidebar and told apart by title",
+         bool(both) and len(set(titles)) == len(titles) and "New chat" not in titles, json.dumps(titles))
 
     # Wait for B; stay on B until A finishes in the background.
     wait_for(lambda: not qs(".send-btn.stop"), 120)
@@ -135,6 +137,10 @@ if PHASE == "run":
     text = answer_text()
     words = len(text.split())
     r = {x["id"]: x for x in rows()}
+    # The model writes the title just after the answer ends, in the background.
+    title_of_a = lambda: {x["id"]: x for x in rows()}.get(a_id, {}).get("title", "")
+    final_title = wait_for(lambda: (lambda t: t if t and not t.startswith("Answer directly") else None)(title_of_a()), 30) or title_of_a()
+    note("A's provisional title is replaced by the model's", bool(final_title) and not final_title.startswith("Answer directly"), final_title)
     note("A holds the whole answer, and opening it clears unread", words > 700 and not r.get(a_id, {}).get("unread", True), f"{words} words")
 
     # C: a long answer that the app is closed in the middle of.

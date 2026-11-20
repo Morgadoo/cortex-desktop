@@ -333,6 +333,12 @@ async fn traced_turn(
         }
     }
     apply_request(&mut conversation, request, &text)?;
+    // A new chat is told apart in the sidebar while its first answer runs: its first message
+    // stands in as the title until the model's title replaces it when the answer ends.
+    let named = !conversation.title.is_empty();
+    if !named {
+        conversation.title = titles::fallback_title(&conversation);
+    }
     conversation.updated_at = Utc::now();
     record_signal(&config_dir, request);
     if let Some(note) = &request.route_note {
@@ -353,7 +359,6 @@ async fn traced_turn(
             .await;
     }
     if let Some(acp_agent) = crate::chat::acp::find(&config_dir, &request.model) {
-        let named = !conversation.title.is_empty();
         let app = host
             .app()
             .ok_or_else(|| ChatError::Invalid(NO_APP.into()))?;
@@ -364,7 +369,6 @@ async fn traced_turn(
         return Ok(cancelled);
     }
     if let Some(cli) = crate::chat::agent_cli::find(&request.model) {
-        let named = !conversation.title.is_empty();
         let app = host
             .app()
             .ok_or_else(|| ChatError::Invalid(NO_APP.into()))?;
@@ -454,7 +458,7 @@ async fn traced_turn(
         return Ok(true);
     }
     let conversation = steps.conversation;
-    name_unless(!conversation.title.is_empty(), host, request, conversation);
+    name_unless(named, host, request, conversation);
     Ok(false)
 }
 

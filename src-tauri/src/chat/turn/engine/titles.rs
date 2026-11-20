@@ -110,7 +110,9 @@ pub(super) async fn name_conversation(
         conversation.title.clone_from(&title);
         conversation.clone()
     });
-    if latest.title.is_empty() {
+    // Untitled, or still the first message standing in while the answer ran: the user has not
+    // renamed it, so the model's title takes its place.
+    if latest.title.is_empty() || latest.title == fallback_title(&latest) {
         latest.title.clone_from(&title);
         if store::save_conversation(&config_dir, &latest).is_ok() {
             host.emit(ChatEvent::Title {
