@@ -12,9 +12,7 @@
 
 pub mod agent_market;
 pub mod agents;
-pub mod animation;
 pub mod api_server;
-pub mod audio;
 pub mod builtins;
 pub mod commands;
 pub mod config_cli;
@@ -26,17 +24,14 @@ pub mod engine;
 pub mod evals;
 pub mod functions;
 pub mod headless;
-pub mod hex;
 pub mod hooks;
 pub mod host;
 pub mod lifecycle;
 pub mod links;
-pub mod media;
 pub mod org;
 pub mod plugins;
 pub mod privacy;
 pub mod prompt;
-pub mod recorder;
 pub mod share;
 pub mod skill_catalog;
 pub mod skills;
@@ -48,8 +43,6 @@ pub mod terminal_chat;
 pub mod tools;
 pub mod traces;
 pub mod ui_language;
-pub mod video;
-pub mod videogen;
 pub mod workflows;
 
 use std::collections::HashMap;
@@ -66,6 +59,8 @@ pub use grounding::{calendar, embeddings, extraction, knowledge, learning, libra
 use grounding::{favicon, preview};
 pub mod toolkit;
 pub use toolkit::{canvas, code, computer, custom_tools, openapi, proposals, sandbox, script_tools, sheets, terminal, webpage, workbench};
+pub mod multimedia;
+pub use multimedia::{animation, audio, hex, media, recorder, video, videogen};
 
 /// The account every account-scoped subsystem (connectors, secrets, skills) runs under. Proton
 /// accounts are gone; one local profile takes their place.
