@@ -80,35 +80,66 @@ pub(in crate::chat::turn) fn preamble_prompt(
     let project = context.project;
     let workdir = context.workdir;
     let mut p = Prompt::new();
+    p.push("identity", ESSENTIAL, identity(context, instructions));
+    if !instructions.custom.trim().is_empty() {
+        p.push(
+            "your instructions",
+            ESSENTIAL,
+            format!(
+                "\n\nThe user's instructions:\n{}",
+                instructions.custom.trim()
+            ),
+        );
+    }
+    if let Some(project) = project {
+        p.push(
+            "project",
+            ESSENTIAL,
+            project_text(project, context.libraries),
+        );
+        if let Some(digest) = &context.project_digest {
+            p.push(
+                "project's other chats",
+                OPTIONAL,
+                format!("\nOther conversations in this project, most recent first (build on them when relevant):\n{digest}"),
+            );
+        }
+    }
+    if let Some(dir) = workdir {
+        p.push("code session", ESSENTIAL, crate::chat::code::prompt(dir));
+    }
+    p.push("how to use tools", USEFUL, tool_guidance(tools));
+    if let Some(memories) = context.memories.and_then(|m| {
+        memory::prompt_for(
+            m,
+            context.query,
+            project.map(|p| p.id.as_str()),
+            context.agent.map(|a| a.id.as_str()),
+        )
+    }) {
+        p.push("memories", USEFUL, memories);
+    }
+    if let Some(skills) = skills::prompt_for(context.skills, context.query) {
+        p.push("skills", USEFUL, skills);
+    }
+    if let Some(canvases) = canvas::prompt(context.canvases) {
+        p.push("canvases", OPTIONAL, canvases);
+    }
+    if tools.iter().any(|t| t.name == builtins::SEARCH_LIBRARY) {
+        if let Some(libraries) = libraries::prompt(context.libraries) {
+            p.push("libraries", USEFUL, libraries);
+        }
+    }
+    p
+}
+
+/// Who the assistant is: the agent's persona and material when one answers, the base persona,
+/// the time, the user's name and the tone.
+fn identity(context: &Context<'_>, instructions: &Instructions) -> String {
+    let project = context.project;
     let mut identity = String::new();
     if let Some(agent) = context.agent {
-        identity.push_str(&format!("You are {}", agent.label()));
-        if !agent.description.trim().is_empty() {
-            identity.push_str(&format!(": {}", agent.description.trim()));
-        }
-        identity.push_str("\n\n");
-        identity.push_str(&agent.role_prompt());
-        if !agent.instructions.trim().is_empty() {
-            identity.push_str(agent.instructions.trim());
-            identity.push_str("\n\n");
-        }
-        let own: Vec<&libraries::Library> = agent
-            .libraries
-            .iter()
-            .filter_map(|id| context.libraries.iter().find(|l| &l.id == id))
-            .filter(|l| !l.documents.is_empty())
-            .collect();
-        if !own.is_empty() {
-            let names: Vec<String> = own
-                .iter()
-                .map(|l| format!("\"{}\" ({} documents)", l.name, l.documents.len()))
-                .collect();
-            identity.push_str(&format!(
-                "Your reference material is in the {} {}; search it with `search_library` before answering questions it may cover, and cite what you use.\n\n",
-                if own.len() == 1 { "library" } else { "libraries" },
-                names.join(", ")
-            ));
-        }
+        identity.push_str(&agent_identity(agent, context.libraries));
     }
     identity.push_str(
         "You are a helpful, accurate assistant running in a desktop app. Answer in the user's \
@@ -132,51 +163,71 @@ pub(in crate::chat::turn) fn preamble_prompt(
         identity.push_str("\n\n");
         identity.push_str(tone);
     }
-    p.push("identity", ESSENTIAL, identity);
-    if !instructions.custom.trim().is_empty() {
-        p.push(
-            "your instructions",
-            ESSENTIAL,
-            format!(
-                "\n\nThe user's instructions:\n{}",
-                instructions.custom.trim()
-            ),
-        );
+    identity
+}
+
+/// An agent's persona, role and instructions, and the libraries it searches.
+fn agent_identity(agent: &agents::Agent, libraries: &[libraries::Library]) -> String {
+    let mut identity = String::new();
+    identity.push_str(&format!("You are {}", agent.label()));
+    if !agent.description.trim().is_empty() {
+        identity.push_str(&format!(": {}", agent.description.trim()));
     }
-    if let Some(project) = project {
-        let mut text = format!(
-            "\n\nThis conversation belongs to the project \"{}\".",
-            project.name
-        );
-        if !project.instructions.trim().is_empty() {
-            text.push_str(" Project instructions:\n");
-            text.push_str(project.instructions.trim());
-        }
-        if let Some(library) = project
-            .library_id
-            .as_ref()
-            .and_then(|id| context.libraries.iter().find(|l| &l.id == id))
-        {
-            if !library.documents.is_empty() {
-                text.push_str(&format!(
-                    "\nThe project's files are in the library \"{}\" ({} documents); search it with `search_library` before answering questions they may cover.",
-                    library.name,
-                    library.documents.len()
-                ));
-            }
-        }
-        p.push("project", ESSENTIAL, text);
-        if let Some(digest) = &context.project_digest {
-            p.push(
-                "project's other chats",
-                OPTIONAL,
-                format!("\nOther conversations in this project, most recent first (build on them when relevant):\n{digest}"),
-            );
+    identity.push_str("\n\n");
+    identity.push_str(&agent.role_prompt());
+    if !agent.instructions.trim().is_empty() {
+        identity.push_str(agent.instructions.trim());
+        identity.push_str("\n\n");
+    }
+    let own: Vec<&libraries::Library> = agent
+        .libraries
+        .iter()
+        .filter_map(|id| libraries.iter().find(|l| &l.id == id))
+        .filter(|l| !l.documents.is_empty())
+        .collect();
+    if !own.is_empty() {
+        let names: Vec<String> = own
+            .iter()
+            .map(|l| format!("\"{}\" ({} documents)", l.name, l.documents.len()))
+            .collect();
+        identity.push_str(&format!(
+            "Your reference material is in the {} {}; search it with `search_library` before answering questions it may cover, and cite what you use.\n\n",
+            if own.len() == 1 { "library" } else { "libraries" },
+            names.join(", ")
+        ));
+    }
+
+    identity
+}
+
+/// The project's name and instructions, and its library when it has one.
+fn project_text(project: &Project, libraries: &[libraries::Library]) -> String {
+    let mut text = format!(
+        "\n\nThis conversation belongs to the project \"{}\".",
+        project.name
+    );
+    if !project.instructions.trim().is_empty() {
+        text.push_str(" Project instructions:\n");
+        text.push_str(project.instructions.trim());
+    }
+    if let Some(library) = project
+        .library_id
+        .as_ref()
+        .and_then(|id| libraries.iter().find(|l| &l.id == id))
+    {
+        if !library.documents.is_empty() {
+            text.push_str(&format!(
+                "\nThe project's files are in the library \"{}\" ({} documents); search it with `search_library` before answering questions they may cover.",
+                library.name,
+                library.documents.len()
+            ));
         }
     }
-    if let Some(dir) = workdir {
-        p.push("code session", ESSENTIAL, crate::chat::code::prompt(dir));
-    }
+    text
+}
+
+/// How to use the tools the turn has.
+fn tool_guidance(tools: &[ChatTool]) -> String {
     let mut guidance = String::new();
     if tools.iter().any(|t| t.name == builtins::WEB_SEARCH) {
         guidance.push_str(
@@ -200,27 +251,5 @@ pub(in crate::chat::turn) fn preamble_prompt(
              combine their reports. Call independent tools in the same step; they run at once.",
         );
     }
-    p.push("how to use tools", USEFUL, guidance);
-    if let Some(memories) = context.memories.and_then(|m| {
-        memory::prompt_for(
-            m,
-            context.query,
-            project.map(|p| p.id.as_str()),
-            context.agent.map(|a| a.id.as_str()),
-        )
-    }) {
-        p.push("memories", USEFUL, memories);
-    }
-    if let Some(skills) = skills::prompt_for(context.skills, context.query) {
-        p.push("skills", USEFUL, skills);
-    }
-    if let Some(canvases) = canvas::prompt(context.canvases) {
-        p.push("canvases", OPTIONAL, canvases);
-    }
-    if tools.iter().any(|t| t.name == builtins::SEARCH_LIBRARY) {
-        if let Some(libraries) = libraries::prompt(context.libraries) {
-            p.push("libraries", USEFUL, libraries);
-        }
-    }
-    p
+    guidance
 }
