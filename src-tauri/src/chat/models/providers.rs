@@ -216,14 +216,23 @@ pub(in crate::chat::models) fn default_base_url(vendor: &str) -> Option<String> 
 
 /// The user's base URL as rig expects it. Some dialects put `/v1` in their request paths and keep
 /// it out of the base URL; a user pasting `https://gateway/v1` for one of those would otherwise
-/// send to `/v1/v1/...`.
+/// send to `/v1/v1/...`. Others (DeepSeek) send to `{base}/chat/completions`, so a gateway's
+/// `/v1` must stay.
 pub fn normalize_base_url(vendor: &str, base_url: &str) -> String {
     let url = base_url.trim().trim_end_matches('/');
-    let default_has_v1 =
-        default_base_url(vendor).is_none_or(|d| d.trim_end_matches('/').ends_with("/v1"));
     match url.strip_suffix("/v1") {
-        Some(root) if !default_has_v1 => root.to_string(),
+        Some(root) if paths_carry_v1(vendor) => root.to_string(),
         _ => url.to_string(),
+    }
+}
+
+/// Whether rig's request paths for `vendor` already start with `/v1`. Asked of the dialect itself
+/// where rig describes one; otherwise a default address without `/v1` means the paths add it
+/// (xAI, Anthropic).
+fn paths_carry_v1(vendor: &str) -> bool {
+    match rig_core::providers::openai::wire::by_name(vendor) {
+        Some(dialect) => dialect.quirks.completion_path.starts_with("/v1"),
+        None => default_base_url(vendor).is_some_and(|d| !d.trim_end_matches('/').ends_with("/v1")),
     }
 }
 
@@ -561,6 +570,16 @@ mod tests {
         assert_eq!(
             normalize_base_url("ollama", "http://box:11434/v1"),
             "http://box:11434/v1"
+        );
+        // DeepSeek sends to {base}/chat/completions: a gateway's /v1 stays (a 404 otherwise).
+        assert_eq!(
+            normalize_base_url("deepseek", "https://gw.example/v1"),
+            "https://gw.example/v1"
+        );
+        // Mistral's paths carry /v1, like xAI's.
+        assert_eq!(
+            normalize_base_url("mistral", "https://gw.example/v1"),
+            "https://gw.example"
         );
         assert_eq!(
             default_base_url("ollama").as_deref(),
