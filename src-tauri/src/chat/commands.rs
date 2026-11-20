@@ -86,6 +86,10 @@ pub struct OpenConversation {
     #[serde(flatten)]
     pub view: ConversationView,
     pub running: bool,
+    /// What an answer had streamed when the app closed in the middle of it; continuing keeps it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "typescript", ts(optional))]
+    pub interrupted: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

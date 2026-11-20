@@ -13,10 +13,15 @@ pub fn chat_get_conversation(
     state: State<'_, ChatState>,
     id: String,
 ) -> Result<OpenConversation, String> {
-    let conversation = store::load_conversation(&config_dir(&app)?, &id)?;
+    let dir = config_dir(&app)?;
+    let conversation = store::load_conversation(&dir, &id)?;
+    let running = state.is_running(&id);
     Ok(OpenConversation {
         view: store::view(&conversation),
-        running: state.is_running(&id),
+        running,
+        interrupted: (!running)
+            .then(|| crate::chat::partials::get(&dir, &id))
+            .flatten(),
     })
 }
 

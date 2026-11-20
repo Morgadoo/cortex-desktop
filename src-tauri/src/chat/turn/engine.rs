@@ -322,6 +322,16 @@ async fn traced_turn(
             .map_err(|reason| ChatError::Invalid(format!("Not sent. {reason}")))?;
     }
 
+    // An answer the app closed in the middle of: continuing keeps what it had said; anything
+    // else starts afresh.
+    if let Some(partial) = crate::chat::partials::take(&config_dir, id) {
+        if request.resume {
+            conversation.messages.push(Message::assistant(partial));
+            conversation
+                .times
+                .push((conversation.messages.len() - 1, Utc::now()));
+        }
+    }
     apply_request(&mut conversation, request, &text)?;
     conversation.updated_at = Utc::now();
     record_signal(&config_dir, request);

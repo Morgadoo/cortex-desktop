@@ -133,7 +133,11 @@ slices: Array<Slice>,
  */
 summarizedMessages: number, clearedResults: number, };
 
-export type Conversation = { running: boolean, id: string, usage: UsageTotals, 
+export type Conversation = { running: boolean, 
+/**
+ * What an answer had streamed when the app closed in the middle of it; continuing keeps it.
+ */
+interrupted?: string, id: string, usage: UsageTotals, 
 /**
  * Index of the first turn requests still carry verbatim, when earlier ones were compacted.
  */

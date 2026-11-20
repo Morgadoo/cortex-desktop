@@ -11,7 +11,7 @@ import { followUpRow } from './turn-end';
 import { conversationMenu } from './conversation-menu';
 import { planOf, renderChecklist, textOf } from './transcript';
 import { renderUserTurn } from './user-turn';
-import { bookmarked, renderAssistantTurn, scrollToTurn, sourcesOf, versionSwitcher } from './turn-actions';
+import { bookmarked, renderAssistantTurn, renderUnanswered, scrollToTurn, sourcesOf, versionSwitcher } from './turn-actions';
 import { autoPlay } from './speech';
 import { renderLiveTurn } from './live-turn';
 import { pendingUser, refreshConversations, temporaryChats } from './send';
@@ -174,7 +174,8 @@ export class ChatView {
         }
         return [el];
       }),
-      !running && c.turns[last]?.role === 'assistant' ? followUpRow(c.id) : null
+      renderUnanswered(c, running),
+      !running && c.turns[last]?.role === 'assistant' && !c.interrupted ? followUpRow(c.id) : null
     );
   }
 

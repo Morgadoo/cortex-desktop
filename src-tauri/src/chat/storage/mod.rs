@@ -8,6 +8,7 @@ pub(super) mod backup;
 pub mod coding_import;
 pub mod import;
 pub(super) mod index;
+pub mod partials;
 pub mod recent_files;
 pub mod secrets;
 pub mod store;

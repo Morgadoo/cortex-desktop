@@ -175,6 +175,8 @@ impl Steps for TurnSteps<'_> {
                 }
                 conversation.updated_at = Utc::now();
                 store::save_conversation(config_dir, conversation)?;
+                // Saved: the checkpoint of what streamed is no longer needed.
+                crate::chat::partials::clear(config_dir, id);
                 return Ok(Reply::Cancelled);
             }
 
@@ -267,9 +269,11 @@ impl Steps for TurnSteps<'_> {
                 .times
                 .push((conversation.messages.len() - 1, Utc::now()));
             store::save_conversation(config_dir, conversation)?;
+            crate::chat::partials::clear(config_dir, id);
             return Ok(Reply::Answered);
         }
         store::save_conversation(config_dir, conversation)?;
+        crate::chat::partials::clear(config_dir, id);
         info!("chat step {step}: {} tool call(s)", calls.len());
         *pending = calls;
         Ok(Reply::CalledTools)

@@ -12,7 +12,7 @@ import { hostOf, siteIcon } from '../ui/favicon';
 import { bytesToBase64 } from '../core/format';
 import { button, iconButton, modalHeader } from '../ui/ui';
 import { json } from '../core/prefs';
-import { call, callQuiet, reported, shown } from '../core/call';
+import { call, callQuiet, reported } from '../core/call';
 import { numberLibraryCitations, openSourcesPanel } from './side-panels';
 import { viewCache } from './views';
 import { composer } from './composer/current';
@@ -453,6 +453,40 @@ export function editButton(turn: Turn, conversationId: string, text: string): HT
   return button;
 }
 
+/** A notice with a button that picks the turn up where it stopped (`resume`: nothing added). */
+function resumeCard(conversationId: string, title: string, hint: string, label: string): HTMLElement {
+  const resume = h('button', { class: 'btn btn-secondary' }, icon('retry', 15), label);
+  resume.addEventListener('click', () => {
+    if (!state.model) return void toast('Choose a model first.', 'error');
+    resume.disabled = true;
+    void reported(api.send({ conversationId, text: '', model: state.model, speed: state.speed, approval: state.approval, resume: true })).catch(() => {
+      // reported() has shown why; the button can be tried again.
+      resume.disabled = false;
+    });
+  });
+  return h('div', { class: 'error-card' }, icon('wait', 16), h('div', { class: 'grow' }, h('strong', {}, title), h('div', { class: 'hint' }, hint)), resume);
+}
+
+/**
+ * What ends a conversation that has no answer yet, when nothing is running: the answer the app
+ * closed in the middle of (what it had said, kept), or a message that was never answered (stopped
+ * before any text, or the app closed first). Each offers to pick it up.
+ */
+export function renderUnanswered(conversation: Conversation, running: boolean): HTMLElement | null {
+  if (running || state.live.has(conversation.id)) return null;
+  if (conversation.interrupted) {
+    return h(
+      'div',
+      { class: 'turn turn-assistant' },
+      ...renderParts([{ kind: 'text', text: conversation.interrupted }], false, `${conversation.id}:interrupted`),
+      resumeCard(conversation.id, 'Cortex closed before this answer finished', 'Continue keeps what it had written and goes on from there.', 'Continue')
+    );
+  }
+  const last = conversation.turns[conversation.turns.length - 1];
+  if (last?.role !== 'user') return null;
+  return resumeCard(conversation.id, 'No answer to this message', 'It was stopped before the answer began, or Cortex closed first.', 'Answer now');
+}
+
 export function renderAssistantTurn(conversation: Conversation, turn: Turn, isLast: boolean, running: boolean, branch: HTMLElement | null = null): HTMLElement {
   const durations = isLast ? stepDurations.get(conversation.id) : undefined;
   const el = h('div', { class: 'turn turn-assistant', 'data-index': String(turn.index) }, ...renderParts(turn.parts, false, `${conversation.id}:${turn.index}`, durations));
@@ -466,15 +500,9 @@ export function renderAssistantTurn(conversation: Conversation, turn: Turn, isLa
     { capture: true }
   );
   // A reply that stopped after its tools ran, before answering, can pick up where it left off.
-  const unfinished = isLast && !running && turn.parts[turn.parts.length - 1]?.kind === 'tool' && !state.live.has(conversation.id);
-  if (unfinished) {
-    const resume = h('button', { class: 'btn btn-secondary' }, icon('retry', 15), 'Continue');
-    resume.addEventListener('click', () => {
-      if (!state.model) return void toast('Choose a model first.', 'error');
-      void reported(api.send({ conversationId: conversation.id, text: '', model: state.model, speed: state.speed, approval: state.approval, resume: true })).catch(shown);
-    });
-    el.append(h('div', { class: 'error-card' }, icon('wait', 16), h('div', { class: 'grow' }, h('strong', {}, 'This reply stopped before it finished'), h('div', { class: 'hint' }, 'Continue picks up from the work already done.')), resume));
-  }
+  // (An answer cut off after its tools says so itself, below the transcript: one notice, not two.)
+  const unfinished = isLast && !running && !conversation.interrupted && turn.parts[turn.parts.length - 1]?.kind === 'tool' && !state.live.has(conversation.id);
+  if (unfinished) el.append(resumeCard(conversation.id, 'This reply stopped before it finished', 'Continue picks up from the work already done.', 'Continue'));
   if (!isLast || !running) {
     const sources = renderSources(sourcesOf(turn.parts));
     if (sources) el.append(sources);

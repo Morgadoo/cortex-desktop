@@ -270,6 +270,11 @@ pub(super) async fn read_stream(
     let mut streamed_text = String::new();
     let mut streamed_anything = false;
     let mut held = String::new();
+    // What has streamed is kept every few seconds, so an answer cut short by the app closing
+    // is not lost (see `partials`).
+    let config_dir = host.config_dir().ok();
+    let mut checkpointed = std::time::Instant::now();
+    let mut checkpointed_len = 0;
     let cancelled_by_user = loop {
         tokio::select! {
             _ = cancelled(cancel) => break true,
@@ -287,6 +292,17 @@ pub(super) async fn read_stream(
                         streamed_text.push_str(&text);
                         if !text.is_empty() {
                             host.emit(ChatEvent::Text { conversation_id: id.into(), text });
+                        }
+                        // Every second, or sooner when much has arrived: fast models write a
+                        // paragraph a second.
+                        let due = checkpointed.elapsed().as_millis() >= 1000
+                            || streamed_text.len() >= checkpointed_len + 400;
+                        if let Some(dir) = config_dir.as_deref().filter(|_| due) {
+                            checkpointed = std::time::Instant::now();
+                            checkpointed_len = streamed_text.len();
+                            if let Err(e) = crate::chat::partials::save(dir, id, &streamed_text) {
+                                log::warn!("could not keep the answer so far: {e}");
+                            }
                         }
                     }
                     StreamEvent::Reasoning { text, .. } => {

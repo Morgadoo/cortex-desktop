@@ -26,8 +26,8 @@ pub mod commands;
 pub use base::{approval, error, events, tool_names};
 pub mod storage;
 pub use storage::{
-    at_rest, audit, coding_import, import, recent_files, secrets, store, sync, traces, uploads,
-    vault, versions,
+    at_rest, audit, coding_import, import, partials, recent_files, secrets, store, sync, traces,
+    uploads, vault, versions,
 };
 use storage::{backup, index};
 pub mod models;

@@ -239,6 +239,10 @@ async function start() {
       } else {
         if (!failed) state.live.delete(id);
         if (failed) toast(event.message, 'error');
+        // Finished (or failed) while the user was in another chat: the sidebar marks it unread.
+        if (failed || (event.type === 'done' && !event.cancelled)) {
+          void callQuiet('chat_set_conversation', { update: { id, unread: true } }).then(() => refreshConversations());
+        }
       }
     }
     changed();
