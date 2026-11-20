@@ -1,6 +1,7 @@
 //! What a turn is asked to do: the message, its images, speed and mode, and where it runs.
 
 use super::*;
+use crate::chat::error::ChatError;
 
 /// An image the user attached, as the page read it.
 #[derive(Debug, Clone, Deserialize)]
@@ -17,13 +18,15 @@ pub(super) const MAX_IMAGES: usize = 6;
 pub(super) const MAX_IMAGE_BYTES: usize = 8 * 1024 * 1024;
 
 /// The user's message with its images, checked for type and size.
-pub fn user_message(text: &str, images: &[ImageInput]) -> Result<Message, String> {
+pub fn user_message(text: &str, images: &[ImageInput]) -> Result<Message, ChatError> {
     use rig_core::completion::message::{ImageMediaType, MimeType, UserContent};
     if images.is_empty() {
         return Ok(Message::user(text));
     }
     if images.len() > MAX_IMAGES {
-        return Err(format!("Attach at most {MAX_IMAGES} images."));
+        return Err(ChatError::Invalid(format!(
+            "Attach at most {MAX_IMAGES} images."
+        )));
     }
     let mut content = vec![UserContent::text(if text.is_empty() {
         "What is in this image?"
@@ -32,9 +35,10 @@ pub fn user_message(text: &str, images: &[ImageInput]) -> Result<Message, String
     })];
     for image in images {
         let media = ImageMediaType::from_mime_type(&image.media_type)
-            .ok_or_else(|| format!("{} images are not supported.", image.media_type))?;
+            .ok_or_else(|| format!("{} images are not supported.", image.media_type))
+            .map_err(ChatError::Invalid)?;
         if image.data.len() / 4 * 3 > MAX_IMAGE_BYTES {
-            return Err("Each image can be at most 8 MB.".into());
+            return Err(ChatError::Invalid("Each image can be at most 8 MB.".into()));
         }
         content.push(UserContent::image_base64(
             image.data.clone(),

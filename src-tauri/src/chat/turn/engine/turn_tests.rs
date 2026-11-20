@@ -69,7 +69,7 @@ async fn run(host: &Arc<TestHost>, request: &TurnRequest) -> Result<bool, String
     let dyn_host: Arc<dyn Host> = host.clone();
     let outcome = turn(&dyn_host, request, cancel).await;
     host.state.finish(&request.conversation_id);
-    outcome
+    outcome.map_err(String::from)
 }
 
 fn saved(host: &TestHost) -> Conversation {
@@ -173,7 +173,7 @@ async fn guidance_sent_during_a_turn_joins_the_conversation() {
     let cancel = host.state.begin("chat-1").unwrap();
     assert!(host.state.steer("chat-1", "about autumn".into()));
     let dyn_host: Arc<dyn Host> = host.clone();
-    assert_eq!(turn(&dyn_host, &request, cancel).await, Ok(false));
+    assert!(matches!(turn(&dyn_host, &request, cancel).await, Ok(false)));
     host.state.finish("chat-1");
     assert!(host
         .events()

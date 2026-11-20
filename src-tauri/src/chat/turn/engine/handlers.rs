@@ -1,6 +1,7 @@
 //! The engine's own tools, each a handler found by its name: adding one means writing its
 //! handler here and adding it to [`table`]. Calls to anything else go to the connectors.
 
+use crate::chat::error::ChatError;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
@@ -101,8 +102,8 @@ fn on_read_tool_output<'a>(
                 text,
                 is_error: false,
             },
-            Err(text) => tools::Outcome {
-                text,
+            Err(e) => tools::Outcome {
+                text: e.to_string(),
                 is_error: true,
             },
         }
@@ -143,7 +144,7 @@ fn on_builtin<'a>(
             skill_scores = match trial(r, |dir| async move {
                 let outcome = builtins::run(&dir, name, draft).await;
                 if outcome.is_error {
-                    Err(outcome.text)
+                    Err(ChatError::Invalid(outcome.text))
                 } else {
                     Ok(())
                 }

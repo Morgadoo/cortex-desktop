@@ -203,7 +203,7 @@ struct RecordingHost {
 
 #[async_trait::async_trait]
 impl Host for RecordingHost {
-    fn config_dir(&self) -> Result<PathBuf, String> {
+    fn config_dir(&self) -> Result<PathBuf, crate::chat::error::ChatError> {
         self.parent.config_dir()
     }
 
@@ -247,7 +247,8 @@ impl Host for RecordingHost {
     async fn connect_model(
         &self,
         reference: &str,
-    ) -> Result<rig_core::DynModel<rig_core::operation::Completion>, String> {
+    ) -> Result<rig_core::DynModel<rig_core::operation::Completion>, crate::chat::error::ChatError>
+    {
         self.parent.connect_model(reference).await
     }
 
@@ -391,7 +392,7 @@ impl InFolder {
 
 #[async_trait::async_trait]
 impl Host for InFolder {
-    fn config_dir(&self) -> Result<PathBuf, String> {
+    fn config_dir(&self) -> Result<PathBuf, crate::chat::error::ChatError> {
         Ok(self.dir.clone())
     }
 
@@ -408,7 +409,8 @@ impl Host for InFolder {
     async fn connect_model(
         &self,
         reference: &str,
-    ) -> Result<rig_core::DynModel<rig_core::operation::Completion>, String> {
+    ) -> Result<rig_core::DynModel<rig_core::operation::Completion>, crate::chat::error::ChatError>
+    {
         self.parent.connect_model(reference).await
     }
 

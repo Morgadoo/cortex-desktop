@@ -1,6 +1,7 @@
 //! Agents talking to each other, and a message routed to the agent that should answer it.
 
 use super::*;
+use crate::chat::error::ChatError;
 
 /// `message_agent`: the receiving agent answers in a new chat of its own (unread, so the user
 /// sees it), and its reply comes back as the tool's result.
@@ -69,7 +70,8 @@ pub(super) async fn message_agent(
         })
         .or(providers::load(config_dir).default_model);
     let result = async {
-        let model = model.ok_or("No model to run the other agent on.")?;
+        let model = model
+            .ok_or_else(|| ChatError::Invalid("No model to run the other agent on.".into()))?;
         let id = uuid::Uuid::new_v4().to_string();
         let mut c = Conversation::new(id.clone(), None, Some(model.clone()));
         c.title = format!(
@@ -79,7 +81,10 @@ pub(super) async fn message_agent(
         c.agent_id = Some(target.id.clone());
         c.unread = true;
         store::save_conversation(config_dir, &c)?;
-        let cancel = host.chat_state().begin(&id).ok_or("That chat is busy.")?;
+        let cancel = host
+            .chat_state()
+            .begin(&id)
+            .ok_or_else(|| ChatError::Invalid("That chat is busy.".into()))?;
         let request = TurnRequest {
             conversation_id: id.clone(),
             text: agents::message_text(&sender, &s("message"), &files),
@@ -114,7 +119,8 @@ pub(super) async fn message_agent(
         // A turn of its own, so the other agent's events stream to its chat as usual.
         queue_turn(host, request, cancel)
             .await
-            .map_err(|_| "The other agent's turn stopped.".to_string())?;
+            .map_err(|_| "The other agent's turn stopped.".to_string())
+            .map_err(ChatError::Invalid)?;
         let done = store::load_conversation(config_dir, &id)?;
         let reply = done
             .messages
@@ -123,12 +129,16 @@ pub(super) async fn message_agent(
             .map(crate::chat::context::message_text)
             .unwrap_or_default();
         if reply.trim().is_empty() {
-            return Err(format!("{} could not answer.", target.name));
+            return Err(ChatError::Invalid(format!(
+                "{} could not answer.",
+                target.name
+            )));
         }
         Ok::<String, String>(format!(
             "{} replied:\n\n{reply}\n\n(The exchange is kept in a chat under {} in the sidebar.)",
             target.name, target.name
         ))
+        .map_err(ChatError::Invalid)
     }
     .await;
     drop(depth);
@@ -137,7 +147,7 @@ pub(super) async fn message_agent(
             text,
             is_error: false,
         },
-        Err(e) => fail(e),
+        Err(e) => fail(e.to_string()),
     }
 }
 
@@ -184,13 +194,20 @@ pub(super) async fn route_to_agent(host: &dyn Host, mut request: TurnRequest) ->
 }
 
 /// The Auto model: picks the fast or the strong model for this message and says which.
-pub(super) fn auto_route(host: &dyn Host, mut request: TurnRequest) -> Result<TurnRequest, String> {
+pub(super) fn auto_route(
+    host: &dyn Host,
+    mut request: TurnRequest,
+) -> Result<TurnRequest, ChatError> {
     if request.model != crate::chat::router::AUTO {
         return Ok(request);
     }
     let dir = host.config_dir()?;
-    let (fast, strong) = crate::chat::router::models(&providers::load(&dir))
-        .ok_or("Choose Auto's fast and strong models under Settings → Providers & models first.")?;
+    let (fast, strong) = crate::chat::router::models(&providers::load(&dir)).ok_or_else(|| {
+        ChatError::Invalid(
+            "Choose Auto's fast and strong models under Settings → Providers & models first."
+                .into(),
+        )
+    })?;
     // Regenerating: the message being answered again decides.
     let text = if request.text.trim().is_empty() {
         store::load_conversation(&dir, &request.conversation_id)

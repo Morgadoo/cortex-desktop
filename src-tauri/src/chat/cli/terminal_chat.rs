@@ -326,7 +326,7 @@ struct TerminalHost {
 
 #[async_trait::async_trait]
 impl Host for TerminalHost {
-    fn config_dir(&self) -> Result<std::path::PathBuf, String> {
+    fn config_dir(&self) -> Result<std::path::PathBuf, crate::chat::error::ChatError> {
         Ok(self.config_dir.clone())
     }
 
@@ -389,10 +389,9 @@ impl Host for TerminalHost {
     async fn connect_model(
         &self,
         reference: &str,
-    ) -> Result<rig_core::DynModel<rig_core::operation::Completion>, String> {
-        crate::chat::engine::connect_model(&self.config_dir, reference)
-            .await
-            .map_err(String::from)
+    ) -> Result<rig_core::DynModel<rig_core::operation::Completion>, crate::chat::error::ChatError>
+    {
+        crate::chat::engine::connect_model(&self.config_dir, reference).await
     }
 
     async fn approve(
@@ -453,7 +452,7 @@ async fn turn(
     }
     outcome
         .map(|_| ())
-        .map_err(|e| crate::chat::context::short_error(&e))
+        .map_err(|e| crate::chat::context::short_error(&e.to_string()))
 }
 
 #[cfg(test)]

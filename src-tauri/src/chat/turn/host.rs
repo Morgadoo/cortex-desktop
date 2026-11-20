@@ -8,6 +8,7 @@
 //! Tools that still need the Tauri app itself (the browser, computer use, agents messaging
 //! agents) reach it through [`Host::app`], and say they are not available where there is none.
 
+use crate::chat::error::ChatError;
 use std::path::PathBuf;
 
 use async_trait::async_trait;
@@ -26,7 +27,7 @@ use crate::tools::registry::{ApprovalDecision, ToolRegistry};
 #[async_trait]
 pub trait Host: Send + Sync {
     /// The app's data folder.
-    fn config_dir(&self) -> Result<PathBuf, String>;
+    fn config_dir(&self) -> Result<PathBuf, ChatError>;
     /// Shows a turn's progress to the user.
     fn emit(&self, event: ChatEvent);
     /// Running turns, steering and open questions.
@@ -34,7 +35,7 @@ pub trait Host: Send + Sync {
     /// The connectors and their gate.
     fn registry(&self) -> &ToolRegistry;
     /// The model a reference such as `anthropic/claude-haiku-5-5` names.
-    async fn connect_model(&self, reference: &str) -> Result<DynModel<Completion>, String>;
+    async fn connect_model(&self, reference: &str) -> Result<DynModel<Completion>, ChatError>;
     /// Asks the user whether a call may run. `reason` is shown on the card.
     async fn approve(
         &self,
@@ -63,8 +64,8 @@ impl TauriHost {
 
 #[async_trait]
 impl Host for TauriHost {
-    fn config_dir(&self) -> Result<PathBuf, String> {
-        crate::settings::get_config_dir(&self.app)
+    fn config_dir(&self) -> Result<PathBuf, ChatError> {
+        crate::settings::get_config_dir(&self.app).map_err(ChatError::Invalid)
     }
 
     fn emit(&self, event: ChatEvent) {
@@ -79,11 +80,12 @@ impl Host for TauriHost {
         self.app.state::<ToolRegistry>().inner()
     }
 
-    async fn connect_model(&self, reference: &str) -> Result<DynModel<Completion>, String> {
+    async fn connect_model(&self, reference: &str) -> Result<DynModel<Completion>, ChatError> {
         let dir = self.config_dir()?;
         crate::chat::engine::connect_model(&dir, reference)
             .await
             .map_err(String::from)
+            .map_err(ChatError::Invalid)
     }
 
     async fn approve(
@@ -168,7 +170,7 @@ pub(crate) mod testing {
 
     #[async_trait]
     impl Host for TestHost {
-        fn config_dir(&self) -> Result<PathBuf, String> {
+        fn config_dir(&self) -> Result<PathBuf, ChatError> {
             Ok(self.dir.path().to_path_buf())
         }
 
@@ -184,13 +186,14 @@ pub(crate) mod testing {
             &self.registry
         }
 
-        async fn connect_model(&self, reference: &str) -> Result<DynModel<Completion>, String> {
+        async fn connect_model(&self, reference: &str) -> Result<DynModel<Completion>, ChatError> {
             self.models
                 .lock()
                 .unwrap()
                 .get(reference)
                 .cloned()
                 .ok_or_else(|| format!("no scripted model for {reference}"))
+                .map_err(ChatError::Invalid)
         }
 
         async fn approve(

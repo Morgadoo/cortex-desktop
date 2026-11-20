@@ -1,6 +1,7 @@
 //! One conversation turn: stream the model's reply, run the tools it calls, and repeat until it
 //! answers, with every step saved and mirrored to the page as [`ChatEvent`]s.
 
+use crate::chat::error::ChatError;
 use chrono::Utc;
 use futures::StreamExt;
 use log::{info, warn};
@@ -39,8 +40,8 @@ pub use crate::chat::connect::{ask_text, connect_model};
 pub(in crate::chat) use crate::chat::events::emit;
 pub use crate::chat::events::ChatEvent;
 
-fn config_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
-    crate::settings::get_config_dir(app)
+fn config_dir(app: &AppHandle) -> Result<std::path::PathBuf, ChatError> {
+    crate::settings::get_config_dir(app).map_err(ChatError::Invalid)
 }
 
 /// Drops everything after the last message the user typed, so the reply is written again.
@@ -79,7 +80,7 @@ pub(crate) async fn run_turn_on(
             host.chat_state().finish(&id);
             host.emit(ChatEvent::Error {
                 conversation_id: id,
-                message,
+                message: message.to_string(),
             });
             return;
         }
@@ -164,12 +165,13 @@ pub(crate) async fn run_turn_on(
                 }
             }
             // A provider's raw error (status, JSON) becomes what it means; the log keeps it all.
-            let message =
-                if message.contains("ProviderResponseError") || message.contains("status ") {
-                    crate::chat::context::short_error(&message)
-                } else {
-                    message
-                };
+            let message = if message.to_string().contains("ProviderResponseError")
+                || message.to_string().contains("status ")
+            {
+                crate::chat::context::short_error(&message.to_string())
+            } else {
+                message.to_string()
+            };
             host.emit(ChatEvent::Error {
                 conversation_id: id,
                 message,
@@ -284,7 +286,7 @@ pub(crate) async fn turn(
     host: &Arc<dyn Host>,
     request: &TurnRequest,
     cancel: watch::Receiver<bool>,
-) -> Result<bool, String> {
+) -> Result<bool, ChatError> {
     let run = uuid::Uuid::new_v4().to_string();
     let outcome = traced_turn(host, request, cancel, &run).await;
     if let Ok(dir) = host.config_dir() {
@@ -303,7 +305,7 @@ async fn traced_turn(
     request: &TurnRequest,
     mut cancel: watch::Receiver<bool>,
     run: &str,
-) -> Result<bool, String> {
+) -> Result<bool, ChatError> {
     let config_dir = host.config_dir()?;
     let id = request.conversation_id.as_str();
     let mut conversation = open_conversation(&config_dir, request);
@@ -313,7 +315,7 @@ async fn traced_turn(
     if !text.is_empty() && crate::chat::functions::has_filters(&config_dir) {
         text = crate::chat::functions::apply(&config_dir, id, "inlet", &request.model, &text)
             .await
-            .map_err(|reason| format!("Not sent. {reason}"))?;
+            .map_err(|reason| ChatError::Invalid(format!("Not sent. {reason}")))?;
     }
 
     apply_request(&mut conversation, request, &text)?;
@@ -338,7 +340,9 @@ async fn traced_turn(
     }
     if let Some(acp_agent) = crate::chat::acp::find(&config_dir, &request.model) {
         let named = !conversation.title.is_empty();
-        let app = host.app().ok_or(NO_APP)?;
+        let app = host
+            .app()
+            .ok_or_else(|| ChatError::Invalid(NO_APP.into()))?;
         let cancelled =
             crate::chat::acp::run(app, &config_dir, conversation.clone(), &acp_agent, cancel)
                 .await?;
@@ -347,7 +351,9 @@ async fn traced_turn(
     }
     if let Some(cli) = crate::chat::agent_cli::find(&request.model) {
         let named = !conversation.title.is_empty();
-        let app = host.app().ok_or(NO_APP)?;
+        let app = host
+            .app()
+            .ok_or_else(|| ChatError::Invalid(NO_APP.into()))?;
         let cancelled =
             crate::chat::agent_cli::run(app, &config_dir, conversation.clone(), cli, cancel)
                 .await?;
@@ -362,7 +368,7 @@ async fn traced_turn(
         .as_deref()
         .and_then(|a| agents::find(&config_dir, a));
     if let Some(agent) = &agent {
-        agents::check_budget(&config_dir, agent)?;
+        agents::check_budget(&config_dir, agent).map_err(ChatError::Invalid)?;
     }
     crate::chat::traces::start_run(
         &config_dir,
@@ -427,7 +433,10 @@ async fn traced_turn(
         run,
         calls: Vec::new(),
     };
-    if cortex_kernel::agent_loop::run(&mut steps, max_steps).await? {
+    if cortex_kernel::agent_loop::run(&mut steps, max_steps)
+        .await
+        .map_err(ChatError::Invalid)?
+    {
         return Ok(true);
     }
     let conversation = steps.conversation;

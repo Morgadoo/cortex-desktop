@@ -1,6 +1,7 @@
 //! The state of a running turn and its steps for the kernel's loop: one model call, then the tools it called.
 
 use super::*;
+use crate::chat::error::ChatError;
 
 /// A turn's state across its steps, for the kernel's loop ([`cortex_kernel::agent_loop`]): each
 /// step streams one model call, then runs the tools it called.
@@ -32,7 +33,7 @@ impl TurnSteps<'_> {
     /// The request for this step: guidance sent meanwhile joins the conversation, older turns are
     /// compacted when the window is filling, and the system prompt and the newest message get
     /// what this step adds to them.
-    async fn prepare_request(&mut self, last: bool) -> Result<CompletionRequest, String> {
+    async fn prepare_request(&mut self, last: bool) -> Result<CompletionRequest, ChatError> {
         let TurnSteps {
             host,
             request,
@@ -78,7 +79,7 @@ impl TurnSteps<'_> {
             carried = privacy::redact_messages(&carried, redactions);
         }
         let Some((prompt, history)) = carried.split_last() else {
-            return Err("empty conversation".into());
+            return Err(ChatError::Invalid("empty conversation".into()));
         };
         let last_step = last;
         let mut step_system = match &conversation.summary {
@@ -158,7 +159,7 @@ impl Steps for TurnSteps<'_> {
         let mut thought_ms: Option<u32>;
         let response = loop {
             attempt += 1;
-            let mut stream = model.stream(call.clone()).map_err(|e| e.to_string())?;
+            let mut stream = model.stream(call.clone()).map_err(ChatError::internal)?;
             let read = read_stream(&mut stream, cancel, host, id, filter, redactions).await;
             let (was_cancelled, streamed_text, streamed_anything, thinking) =
                 (read.cancelled, read.text, read.anything, read.thinking);

@@ -1,6 +1,7 @@
 //! Handlers for the tools the assistant writes: creating, running and promoting them (with trials against the eval suites), and proposing changes.
 
 use super::*;
+use crate::chat::error::ChatError;
 
 /// `create_tool`: writing and testing a candidate is free; it is not offered until promoted.
 #[allow(unused_variables)]
@@ -150,15 +151,18 @@ pub(super) fn on_promote_tool<'a>(
         let days = arguments.get("days").and_then(Value::as_i64);
         // Tried first, in a copy of the data, with nothing granted: it is not approved yet.
         let scores = match trial(r, |dir| async move {
-            script_tools::promote(&dir, name, None).await?;
-            let mut tried = script_tools::load(&dir, name).ok_or("gone")?;
+            script_tools::promote(&dir, name, None)
+                .await
+                .map_err(ChatError::Invalid)?;
+            let mut tried =
+                script_tools::load(&dir, name).ok_or_else(|| ChatError::Invalid("gone".into()))?;
             tried.granted = script_tools::Capabilities::default();
-            script_tools::save(&dir, &tried)
+            script_tools::save(&dir, &tried).map_err(ChatError::Invalid)
         })
         .await
         {
             Ok(scores) => scores,
-            Err(why) => return refuse(&why),
+            Err(why) => return refuse(&why.to_string()),
         };
         let mut card = script_tools::review(&tool);
         card["review"] = Value::String(verdict.clone());
@@ -200,36 +204,40 @@ pub(super) fn runnable_suites(config_dir: &std::path::Path) -> Vec<String> {
 /// The scores go on the approval card; a change that makes any suite worse is never offered.
 /// The model is told only that, not the scores or the cases, so it cannot fit itself to the
 /// suites. `Ok(None)` without suites: the user's approval stands alone.
-pub(super) async fn trial<F, Fut>(r: &Runner<'_>, apply: F) -> Result<Option<Value>, String>
+pub(super) async fn trial<F, Fut>(r: &Runner<'_>, apply: F) -> Result<Option<Value>, ChatError>
 where
     F: FnOnce(std::path::PathBuf) -> Fut,
-    Fut: std::future::Future<Output = Result<(), String>>,
+    Fut: std::future::Future<Output = Result<(), ChatError>>,
 {
     use crate::chat::evals;
     let suites = runnable_suites(r.config_dir);
     if suites.is_empty() {
         return Ok(None);
     }
-    let folder = evals::trial_folder(r.config_dir)?;
+    let folder = evals::trial_folder(r.config_dir).map_err(ChatError::Invalid)?;
     let host: Arc<dyn Host> = Arc::new(evals::InFolder::new(r.host.clone(), folder.dir.clone()));
     let mut before = Vec::new();
     for suite in &suites {
         before.push(
-            evals::run_suite(&host, suite, &r.request.model, &evals::Without::default()).await?,
+            evals::run_suite(&host, suite, &r.request.model, &evals::Without::default())
+                .await
+                .map_err(ChatError::Invalid)?,
         );
     }
     apply(folder.dir.clone()).await?;
     let mut scores = Vec::new();
     for (suite, base) in suites.iter().zip(&before) {
-        let after =
-            evals::run_suite(&host, suite, &r.request.model, &evals::Without::default()).await?;
+        let after = evals::run_suite(&host, suite, &r.request.model, &evals::Without::default())
+            .await
+            .map_err(ChatError::Invalid)?;
         let mut comparison = evals::compare(base, &after);
         if !comparison.holds() {
             // Models answer differently from run to run: one worse run is checked once more
             // before the change is held to have made the suite worse.
             let again =
                 evals::run_suite(&host, suite, &r.request.model, &evals::Without::default())
-                    .await?;
+                    .await
+                    .map_err(ChatError::Invalid)?;
             let second = evals::compare(base, &again);
             if second.holds() {
                 comparison = second;
@@ -242,11 +250,11 @@ where
                 comparison.after,
                 comparison.worse.join(", ")
             );
-            return Err(
+            return Err(ChatError::Invalid(
                 "Tried against the user's eval suites, it made one worse, so it was not offered. \
                  Leave it, or propose something else."
                     .into(),
-            );
+            ));
         }
         scores.push(serde_json::json!({
             "suite": suite,
@@ -305,12 +313,14 @@ pub(super) fn on_propose_change<'a>(
         };
         let change = &proposal.change;
         let scores = match trial(r, |dir| async move {
-            proposals::apply(&dir, r.id, change).map(drop)
+            proposals::apply(&dir, r.id, change)
+                .map(drop)
+                .map_err(ChatError::Invalid)
         })
         .await
         {
             Ok(scores) => scores,
-            Err(why) => return refuse(&why),
+            Err(why) => return refuse(&why.to_string()),
         };
         let card = serde_json::json!({
             "summary": proposal.summary,

@@ -367,7 +367,7 @@ pub(in crate::chat::cli) async fn run(args: &Args) -> Export {
         Err(e) => end(
             export,
             Ending::ModelError,
-            crate::chat::context::short_error(&e),
+            crate::chat::context::short_error(&e.to_string()),
         ),
         Ok(true) => end(
             export,

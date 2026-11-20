@@ -12,6 +12,7 @@
 //! As with your own tools, the code never runs inside the app: each run uses the code sandbox
 //! (isolated with bubblewrap where available). Functions live in `chat/functions.json`.
 
+use crate::chat::error::ChatError;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -50,7 +51,7 @@ pub fn list(config_dir: &Path) -> Vec<Function> {
     read_json::<Vec<Function>>(&path(config_dir)).unwrap_or_default()
 }
 
-pub fn save(config_dir: &Path, f: Function) -> Result<Vec<Function>, String> {
+pub fn save(config_dir: &Path, f: Function) -> Result<Vec<Function>, ChatError> {
     if f.id.is_empty()
         || f.id.len() > 48
         || !f
@@ -58,16 +59,22 @@ pub fn save(config_dir: &Path, f: Function) -> Result<Vec<Function>, String> {
             .chars()
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
     {
-        return Err("Give it an id of lowercase letters, digits and dashes.".into());
+        return Err(ChatError::Invalid(
+            "Give it an id of lowercase letters, digits and dashes.".into(),
+        ));
     }
     if !matches!(f.kind.as_str(), "filter" | "pipe") {
-        return Err("A function is a filter or a pipe.".into());
+        return Err(ChatError::Invalid(
+            "A function is a filter or a pipe.".into(),
+        ));
     }
     if !matches!(f.language.as_str(), "python" | "javascript" | "bash") {
-        return Err("Write it in Python, JavaScript or Bash.".into());
+        return Err(ChatError::Invalid(
+            "Write it in Python, JavaScript or Bash.".into(),
+        ));
     }
     if f.name.trim().is_empty() || f.code.trim().is_empty() {
-        return Err("Give it a name and some code.".into());
+        return Err(ChatError::Invalid("Give it a name and some code.".into()));
     }
     let mut all = list(config_dir);
     all.retain(|x| x.id != f.id);
@@ -76,7 +83,7 @@ pub fn save(config_dir: &Path, f: Function) -> Result<Vec<Function>, String> {
     Ok(all)
 }
 
-pub fn delete(config_dir: &Path, id: &str) -> Result<Vec<Function>, String> {
+pub fn delete(config_dir: &Path, id: &str) -> Result<Vec<Function>, ChatError> {
     let mut all = list(config_dir);
     all.retain(|x| x.id != id);
     write_json(&path(config_dir), &all)?;
@@ -114,7 +121,7 @@ pub async fn run(
     conversation_id: &str,
     f: &Function,
     args: &Value,
-) -> Result<String, String> {
+) -> Result<String, ChatError> {
     let code = crate::chat::custom_tools::program_for(&f.language, &f.code, args);
     let outcome = crate::chat::sandbox::run(
         config_dir,
@@ -142,11 +149,11 @@ pub async fn run(
             .and_then(Value::as_i64)
             .is_some_and(|c| c != 0)
     {
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "{} failed: {}",
             f.name,
             if stderr.is_empty() { stdout } else { stderr }
-        ));
+        )));
     }
     Ok(stdout)
 }
@@ -198,7 +205,7 @@ pub(in crate::chat::turn) async fn apply(
     stage: &str,
     model: &str,
     text: &str,
-) -> Result<String, String> {
+) -> Result<String, ChatError> {
     let mut text = text.to_string();
     for f in filters(config_dir) {
         match run(
@@ -212,7 +219,9 @@ pub(in crate::chat::turn) async fn apply(
             Ok(out) => match verdict(&out) {
                 Verdict::Keep => {}
                 Verdict::Replace(t) => text = t,
-                Verdict::Block(reason) => return Err(format!("{}: {reason}", f.name)),
+                Verdict::Block(reason) => {
+                    return Err(ChatError::Invalid(format!("{}: {reason}", f.name)))
+                }
             },
             Err(e) => log::warn!("filter {} skipped: {e}", f.id),
         }

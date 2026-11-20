@@ -6,6 +6,7 @@
 //! module adds the composer's approval mode on top: in "ask" mode every tool that can change
 //! something waits for the user, and "accept edits" lets file edits through.
 
+use crate::chat::error::ChatError;
 use serde_json::{json, Value};
 use tauri::AppHandle;
 
@@ -142,7 +143,8 @@ async fn execute_external(
         if connector_id == crate::chat::computer::CONNECTOR {
             return crate::chat::computer::run(conversation_id, &input).await;
         }
-        let config_dir = config_dir.ok_or("The app's data folder is not available.")?;
+        let config_dir = config_dir
+            .ok_or_else(|| ChatError::Invalid("The app's data folder is not available.".into()))?;
         if connector_id == crate::chat::script_tools::CONNECTOR {
             let workspace = crate::chat::sandbox::workspace(&config_dir, conversation_id).ok();
             return crate::chat::script_tools::call(

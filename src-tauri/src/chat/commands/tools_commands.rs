@@ -36,7 +36,7 @@ pub fn chat_save_function(
     app: AppHandle,
     function: crate::chat::functions::Function,
 ) -> Result<Vec<crate::chat::functions::Function>, String> {
-    crate::chat::functions::save(&config_dir(&app)?, function)
+    crate::chat::functions::save(&config_dir(&app)?, function).map_err(String::from)
 }
 
 #[tauri::command]
@@ -44,7 +44,7 @@ pub fn chat_delete_function(
     app: AppHandle,
     id: String,
 ) -> Result<Vec<crate::chat::functions::Function>, String> {
-    crate::chat::functions::delete(&config_dir(&app)?, &id)
+    crate::chat::functions::delete(&config_dir(&app)?, &id).map_err(String::from)
 }
 
 /// Runs a function on a sample, without saving it, to see what it does.
@@ -122,7 +122,7 @@ pub fn chat_get_hooks(app: AppHandle) -> Result<Vec<crate::chat::hooks::Hook>, S
 /// Saves the user's hooks.
 #[tauri::command]
 pub fn chat_save_hooks(app: AppHandle, hooks: Vec<crate::chat::hooks::Hook>) -> Result<(), String> {
-    crate::chat::hooks::save(&config_dir(&app)?, &hooks)
+    crate::chat::hooks::save(&config_dir(&app)?, &hooks).map_err(String::from)
 }
 
 #[tauri::command]

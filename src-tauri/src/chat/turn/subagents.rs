@@ -6,6 +6,7 @@
 //! task instead of every page a worker read. Workers run concurrently, can't ask the user
 //! anything, can't change anything, and can't delegate further.
 
+use crate::chat::error::ChatError;
 use crate::chat::events::RunStatus;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -144,15 +145,18 @@ pub(in crate::chat::turn) fn rebuttal(task: &Task, own: usize, first: &[Report])
     }
 }
 
-pub(in crate::chat::turn) fn parse_tasks(args: &Value) -> Result<Vec<Task>, String> {
+pub(in crate::chat::turn) fn parse_tasks(args: &Value) -> Result<Vec<Task>, ChatError> {
     let tasks: Vec<Task> =
         serde_json::from_value(args.get("tasks").cloned().unwrap_or(Value::Null))
-            .map_err(|_| "`tasks` must be a list of {title, instructions}.".to_string())?;
+            .map_err(|_| "`tasks` must be a list of {title, instructions}.".to_string())
+            .map_err(ChatError::Invalid)?;
     if tasks.is_empty() {
-        return Err("Give at least one task.".into());
+        return Err(ChatError::Invalid("Give at least one task.".into()));
     }
     if tasks.len() > MAX_TASKS {
-        return Err(format!("At most {MAX_TASKS} tasks at once."));
+        return Err(ChatError::Invalid(format!(
+            "At most {MAX_TASKS} tasks at once."
+        )));
     }
     Ok(tasks)
 }
@@ -242,7 +246,7 @@ impl WorkerHost {
 
 #[async_trait::async_trait]
 impl Host for WorkerHost {
-    fn config_dir(&self) -> Result<std::path::PathBuf, String> {
+    fn config_dir(&self) -> Result<std::path::PathBuf, ChatError> {
         self.parent.config_dir()
     }
 
@@ -285,7 +289,7 @@ impl Host for WorkerHost {
         self.parent.registry()
     }
 
-    async fn connect_model(&self, reference: &str) -> Result<DynModel<Completion>, String> {
+    async fn connect_model(&self, reference: &str) -> Result<DynModel<Completion>, ChatError> {
         self.parent.connect_model(reference).await
     }
 
@@ -388,7 +392,10 @@ async fn run_one(
         let worker = worker.clone();
         let id = id.clone();
         async move {
-            let cancel = worker.state.begin(&id).ok_or("the worker is busy")?;
+            let cancel = worker
+                .state
+                .begin(&id)
+                .ok_or_else(|| ChatError::Invalid("the worker is busy".into()))?;
             let outcome = crate::chat::engine::turn(&dyn_worker, &request, cancel).await;
             worker.state.finish(&id);
             outcome
@@ -417,7 +424,7 @@ async fn run_one(
         return finish(Report {
             title: task.title,
             status: RunStatus::Failed,
-            report: e,
+            report: e.to_string(),
             steps,
         });
     }

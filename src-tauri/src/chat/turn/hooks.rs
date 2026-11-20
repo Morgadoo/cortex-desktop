@@ -12,6 +12,7 @@
 //! hooks that come with a Claude plugin run as they are. It runs in the chat's folder when it has one, for at
 //! most 60 seconds, with the user's shell.
 
+use crate::chat::error::ChatError;
 use crate::support::settings_file::SettingsFile;
 use std::path::Path;
 use std::process::Stdio;
@@ -51,16 +52,22 @@ pub fn load(config_dir: &Path) -> Vec<Hook> {
     HOOKS_FILE.load(config_dir)
 }
 
-pub fn save(config_dir: &Path, hooks: &[Hook]) -> Result<(), String> {
+pub fn save(config_dir: &Path, hooks: &[Hook]) -> Result<(), ChatError> {
     for hook in hooks {
         if !EVENTS.contains(&hook.event.as_str()) {
-            return Err(format!("Unknown hook event {}.", hook.event));
+            return Err(ChatError::Invalid(format!(
+                "Unknown hook event {}.",
+                hook.event
+            )));
         }
         if hook.command.trim().is_empty() {
-            return Err("A hook needs a command.".into());
+            return Err(ChatError::Invalid("A hook needs a command.".into()));
         }
     }
-    HOOKS_FILE.save(config_dir, hooks).map_err(String::from)
+    HOOKS_FILE
+        .save(config_dir, hooks)
+        .map_err(String::from)
+        .map_err(ChatError::Invalid)
 }
 
 /// Whether a hook's matcher covers a tool.
@@ -313,7 +320,7 @@ pub fn from_claude(config: &Value, root: &Path, source: &str) -> (Vec<Hook>, Vec
 }
 
 /// Replaces the hooks that came with `source` by `hooks`.
-pub fn replace_from(config_dir: &Path, source: &str, hooks: Vec<Hook>) -> Result<(), String> {
+pub fn replace_from(config_dir: &Path, source: &str, hooks: Vec<Hook>) -> Result<(), ChatError> {
     let mut all: Vec<Hook> = load(config_dir)
         .into_iter()
         .filter(|h| h.source.as_deref() != Some(source))

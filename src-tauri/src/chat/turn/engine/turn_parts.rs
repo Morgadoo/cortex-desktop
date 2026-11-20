@@ -1,6 +1,7 @@
 //! The parts of a turn: putting the request into the conversation, the back ends that answer in a model's place, the tools offered, the prompt's per-turn sections, one step's request, and reading its streamed reply.
 
 use super::*;
+use crate::chat::error::ChatError;
 
 /// Titles a new conversation in the background, once its first answer is in.
 pub(super) fn name_unless(
@@ -27,7 +28,7 @@ pub(super) async fn answer_with_pipe(
     mut conversation: Conversation,
     cancel: &mut watch::Receiver<bool>,
     pipe: &crate::chat::functions::Function,
-) -> Result<bool, String> {
+) -> Result<bool, ChatError> {
     let id = request.conversation_id.as_str();
     let named = !conversation.title.is_empty();
     let args = serde_json::json!({ "messages": crate::chat::functions::messages(&conversation), "model": pipe.id });
@@ -39,7 +40,10 @@ pub(super) async fn answer_with_pipe(
         return Ok(true);
     };
     if answer.trim().is_empty() {
-        return Err(format!("{} printed nothing.", pipe.name));
+        return Err(ChatError::Invalid(format!(
+            "{} printed nothing.",
+            pipe.name
+        )));
     }
     host.emit(ChatEvent::Text {
         conversation_id: id.into(),
@@ -144,13 +148,13 @@ pub(super) fn apply_request(
     conversation: &mut Conversation,
     request: &TurnRequest,
     text: &str,
-) -> Result<(), String> {
+) -> Result<(), ChatError> {
     if let Some(index) = request.edit_index {
         let is_prompt = conversation.messages.get(index).is_some_and(|m| {
             matches!(m, Message::User { content } if content.iter().any(|c| matches!(c, rig_core::completion::message::UserContent::Text(_))))
         });
         if !is_prompt || text.is_empty() {
-            return Err("That message cannot be edited.".into());
+            return Err(ChatError::Invalid("That message cannot be edited.".into()));
         }
         // The old message and everything after it stay available as a branch.
         store::keep_branch(conversation, index, "prompt");
@@ -170,7 +174,7 @@ pub(super) fn apply_request(
             .push((conversation.messages.len() - 1, Utc::now()));
     } else if request.resume {
         if conversation.messages.is_empty() {
-            return Err("There is nothing to continue.".into());
+            return Err(ChatError::Invalid("There is nothing to continue.".into()));
         }
         // A reply that ended mid-way may end on an assistant message; nudge it to go on.
         if matches!(conversation.messages.last(), Some(Message::Assistant(_))) {
@@ -178,7 +182,9 @@ pub(super) fn apply_request(
         }
     } else if request.text.trim().is_empty() {
         if !rewind_to_last_prompt(conversation) {
-            return Err("There is nothing to regenerate yet.".into());
+            return Err(ChatError::Invalid(
+                "There is nothing to regenerate yet.".into(),
+            ));
         }
     } else {
         conversation

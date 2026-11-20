@@ -1,6 +1,7 @@
 //! A [`Host`] with no window: a turn's events are kept and printed, nothing can be approved, and
 //! token and price limits stop the turn. Headless runs and eval cases run turns on it.
 
+use crate::chat::error::ChatError;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -49,7 +50,7 @@ impl HeadlessHost {
 
 #[async_trait::async_trait]
 impl Host for HeadlessHost {
-    fn config_dir(&self) -> Result<PathBuf, String> {
+    fn config_dir(&self) -> Result<PathBuf, ChatError> {
         Ok(self.config_dir.clone())
     }
 
@@ -84,10 +85,11 @@ impl Host for HeadlessHost {
     async fn connect_model(
         &self,
         reference: &str,
-    ) -> Result<rig_core::DynModel<rig_core::operation::Completion>, String> {
+    ) -> Result<rig_core::DynModel<rig_core::operation::Completion>, ChatError> {
         crate::chat::engine::connect_model(&self.config_dir, reference)
             .await
             .map_err(String::from)
+            .map_err(ChatError::Invalid)
     }
 
     async fn approve(

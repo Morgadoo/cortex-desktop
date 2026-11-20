@@ -1,6 +1,7 @@
 //! Long tool results, kept in files and read back in parts with read_tool_output.
 
 use super::*;
+use crate::chat::error::ChatError;
 
 pub const READ_TOOL_OUTPUT: &str = "read_tool_output";
 
@@ -30,10 +31,15 @@ pub(super) fn save_tool_output(
     conversation: &str,
     call_id: &str,
     text: &str,
-) -> Result<(), String> {
-    let path = tool_output_path(config_dir, conversation, call_id).ok_or("unusable call id")?;
-    std::fs::create_dir_all(path.parent().ok_or("no folder")?).map_err(|e| e.to_string())?;
-    crate::chat::at_rest::write(path, text).map_err(|e| e.to_string())
+) -> Result<(), ChatError> {
+    let path = tool_output_path(config_dir, conversation, call_id)
+        .ok_or_else(|| ChatError::Invalid("unusable call id".into()))?;
+    std::fs::create_dir_all(
+        path.parent()
+            .ok_or_else(|| ChatError::Invalid("no folder".into()))?,
+    )
+    .map_err(ChatError::internal)?;
+    crate::chat::at_rest::write(path, text).map_err(ChatError::internal)
 }
 
 /// A part of a saved long output, from `offset` characters, at most 20,000.
@@ -42,12 +48,12 @@ pub(in crate::chat::turn) fn read_tool_output(
     conversation: &str,
     call_id: &str,
     offset: usize,
-) -> Result<String, String> {
+) -> Result<String, ChatError> {
     let path = tool_output_path(config_dir, conversation, call_id)
-        .ok_or("There is no saved output with that call id.")?;
-    let text = crate::chat::at_rest::read_to_string(path).map_err(|_| {
-        "There is no saved output with that call id in this conversation.".to_string()
-    })?;
+        .ok_or_else(|| ChatError::Invalid("There is no saved output with that call id.".into()))?;
+    let text = crate::chat::at_rest::read_to_string(path)
+        .map_err(|_| "There is no saved output with that call id in this conversation.".to_string())
+        .map_err(ChatError::Invalid)?;
     let total = text.chars().count();
     let part: String = text.chars().skip(offset).take(20_000).collect();
     let end = (offset + part.chars().count()).min(total);
