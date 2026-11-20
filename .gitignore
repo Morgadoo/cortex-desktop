@@ -28,3 +28,6 @@ fastlane/test_output
 
 # The script-tool interpreter's build folder (scripts/build-js-runtime.sh)
 src-tauri/crates/cortex-sandbox/wasm/js-runtime/target/
+
+# Screenshots from scripts/screenshot-pages.mjs
+shots/

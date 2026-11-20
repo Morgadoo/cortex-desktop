@@ -85,7 +85,7 @@ terminal or eval (`turn/headless_host.rs`), or a test (`host::testing::TestHost`
 | `pages/app/canvas/`, `pages/`, `settings/`, `voice/`, `theme/` | Work products; the full pages; the settings dialog by section; voice; appearance |
 | `bridges/`, `pages/settings/`, `types/` | The hosted web app's bridges and old settings page (built into the app only with `hosted`) |
 | `shared/` | What both kinds of page use: the Tauri entry point, the connector catalog (`connector-catalog.json`), the logger |
-| `static/` | HTML, CSS and images, copied as they are |
+| `static/` | HTML, CSS and images, copied as they are; every colour is a token in `static/styles/tokens.css` |
 
 ## Two builds
 
@@ -202,6 +202,20 @@ the trait.
 A field on the module's settings struct (with `#[serde(default)]`, so older files still load),
 and, if the window changes it, a command as above. A per-device interface convenience instead
 goes in `core/prefs.ts`.
+
+### A style
+
+Rules go in the page's stylesheet under `static/styles/`; colours, shadows and gradients go in
+`tokens.css` as named tokens (a value for each theme where they differ), and the rule uses
+`var(--name)`. Rule order decides which rule wins, so moving or merging rules is checked with
+screenshots of every page in both themes:
+
+```sh
+npm run build:webview && node scripts/screenshot-pages.mjs shots/before
+# change the stylesheets
+npm run build:webview && node scripts/screenshot-pages.mjs shots/after
+node scripts/screenshot-pages.mjs --compare shots/before shots/after
+```
 
 ### A module
 

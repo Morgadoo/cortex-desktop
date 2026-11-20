@@ -1,4 +1,4 @@
-@import url("cortex-tokens.css");
+@import url("tokens.css");
 
 * { box-sizing: border-box; }
 
@@ -47,7 +47,7 @@ body {
 
 .login-card button {
     background: var(--cortex-purple);
-    color: #fff;
+    color: var(--cortex-on-solid);
     border: none;
     width: 100%;
     padding: 12px 18px;

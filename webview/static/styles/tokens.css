@@ -1,0 +1,342 @@
+/*
+ * Design tokens for every page: the only stylesheet that holds colour values (the WebGL backdrops
+ * aside, whose colours live in their shaders). Every page imports it first. Components use these
+ * names, never a colour of their own, so a palette or theme is a change here alone.
+ *
+ * 1. The app (index.html, app.css): colours per theme on <html data-theme>, and the scales.
+ *    Settings → Appearance swaps palettes and the accent at runtime (appearance.ts).
+ * 2. The Liquid Glass material (glass.css), under html[data-material="glass"].
+ * 3. The other pages (settings, search overlay, dictation, login): the --cortex-* tokens.
+ *    They keep their own names until those pages move onto the app's.
+ */
+
+/* ================================================================== 1. The app */
+
+/* Colour tokens: the Graphite default. Settings → Appearance swaps in other palettes, including
+   T3 Code's (MIT, pingdotgg/t3code), and the accent at runtime (appearance.ts). */
+:root,
+:root[data-theme="dark"] {
+  --bg: #1d1d20;
+  --bg-sidebar: #171719;
+  --bg-elevated: #26262a;
+  --bg-input: #2a2a2e;
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-active: rgba(255, 255, 255, 0.09);
+  --bg-bubble: #2c2c31;
+  --bg-code: #141416;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --text: #ececef;
+  --text-secondary: #b4b4bb;
+  --text-muted: #8f8f97;
+  --accent: #8b6dff;
+  --accent-strong: #a48bff;
+  --accent-soft: rgba(139, 109, 255, 0.16);
+  --accent-contrast: #ffffff;
+  --primary-btn: var(--accent);
+  --primary-btn-text: var(--accent-contrast);
+  --success: #34d399;
+  --danger: #ff6467;
+  --warning: #ffb900;
+  --shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --shadow-composer: 0 4px 24px rgba(0, 0, 0, 0.18);
+  --overlay: rgba(0, 0, 0, 0.55);
+  --scrollbar: rgba(255, 255, 255, 0.2);
+  --scrollbar-hover: rgba(255, 255, 255, 0.36);
+  --control-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  --bg-track: rgba(0, 0, 0, 0.28);
+  --bg-input-sunken: rgba(0, 0, 0, 0.22);
+}
+
+:root[data-theme="light"] {
+  --bg: #fbfaf7;
+  --bg-sidebar: #f3f1ec;
+  --bg-elevated: #ffffff;
+  --bg-input: #ffffff;
+  --bg-hover: rgba(0, 0, 0, 0.045);
+  --bg-active: rgba(0, 0, 0, 0.07);
+  --bg-bubble: #efede7;
+  --bg-code: #f4f2ed;
+  --border: rgba(0, 0, 0, 0.08);
+  --border-strong: rgba(0, 0, 0, 0.14);
+  --text: #1b1a17;
+  --text-secondary: #4d4a44;
+  --text-muted: #85817a;
+  --accent: #6d4aff;
+  --accent-strong: #5a3ae6;
+  --accent-soft: rgba(109, 74, 255, 0.1);
+  --accent-contrast: #ffffff;
+  --primary-btn: var(--accent);
+  --primary-btn-text: var(--accent-contrast);
+  --success: #059669;
+  --danger: #c10007;
+  --warning: #bb4d00;
+  --shadow: 0 12px 32px -12px rgba(24, 24, 27, 0.18), 0 0 0 1px rgba(24, 24, 27, 0.06);
+  --shadow-composer: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --overlay: rgba(24, 24, 27, 0.32);
+  --scrollbar: rgb(217, 217, 217);
+  --scrollbar-hover: rgb(191, 191, 191);
+  --control-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  --bg-track: rgba(0, 0, 0, 0.05);
+}
+
+/* Scales shared by both themes: radii, type, spacing, elevation and motion. Components use
+   these instead of raw numbers, so the app has one rhythm. */
+:root {
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-pill: 999px;
+  --fs-2xs: 11px;
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 14px;
+  --fs-base: 15px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+  --fs-2xl: 24px;
+  --fs-3xl: 30px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-fast: 120ms;
+  --dur: 180ms;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Inter Variable", Inter, "Segoe UI", system-ui, Ubuntu, Cantarell, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  --focus-ring: 0 0 0 1px var(--bg), 0 0 0 3px color-mix(in srgb, var(--accent) 75%, transparent);
+  --info: #5b9cff;
+  --on-solid: #ffffff;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.18);
+  --hover-lift: 0 6px 18px rgba(0, 0, 0, 0.18);
+
+  /* Colours that stay the same in both themes. */
+  --swatch-rim: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  --paper: #ffffff;
+  --media-bg: #000000;
+  --mask-opaque: #000000;
+  --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-raised-strong: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-lift: 0 2px 8px rgba(0, 0, 0, 0.22);
+  --shadow-pressed: inset 0 1px 0 rgba(0, 0, 0, 0.08);
+  --shadow-hairline: 0 1px 0 rgba(0, 0, 0, 0.04);
+  --icon-shadow: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.4));
+  --thumb-border: rgba(127, 127, 127, 0.2);
+  --diff-add-bg: rgba(61, 214, 140, 0.13);
+  --diff-del-bg: rgba(229, 72, 77, 0.13);
+  --diff-hunk-bg: rgba(91, 156, 255, 0.08);
+  --diff-added: #3fb950;
+  --diff-removed: #f85149;
+  --diff-word-added: #22c55e;
+  --status-ok: #22c55e;
+  --status-ok-text: #16a34a;
+  --status-failed: #ef4444;
+  --status-pending: #f59e0b;
+  --status-merged: #a855f7;
+  --hue-wheel: conic-gradient(#ff6b6b, #facc15, #4ade80, #2dd4bf, #5b9cff, #8b6dff, #fb7185, #ff6b6b);
+  --banner-app-bg: linear-gradient(135deg, #ea4335, #fbbc05);
+  --glass-sample-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.06)), radial-gradient(80px 50px at 20% 20%, rgba(120, 90, 255, 0.8), transparent), radial-gradient(90px 60px at 85% 80%, rgba(255, 90, 160, 0.7), transparent), radial-gradient(70px 50px at 70% 10%, rgba(0, 190, 255, 0.7), transparent);
+  --glass-sample-border: rgba(255, 255, 255, 0.4);
+  --glass-sample-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+
+  /* Print or save as PDF: the transcript on white, whatever the theme. */
+  --print-paper: #fff;
+  --print-ink: #111;
+  --print-ink-secondary: #333;
+  --print-muted: #555;
+  --print-surface: #f2f2f4;
+  --print-code: #f5f5f7;
+  --print-border: #ddd;
+}
+
+@media print {
+  :root { --bg: var(--print-paper); --text: var(--print-ink); --text-secondary: var(--print-ink-secondary); --text-muted: var(--print-muted); --bg-bubble: var(--print-surface); --bg-code: var(--print-code); --border: var(--print-border); }
+}
+
+/* ================================================================== 2. Liquid Glass */
+
+html[data-material="glass"] {
+  --glass-tint: color-mix(in srgb, var(--bg-elevated) 74%, transparent);
+  --glass-tint-input: color-mix(in srgb, var(--bg-input) 70%, transparent);
+  --glass-rim: rgba(255, 255, 255, 0.09);
+  --glass-rim-top: rgba(255, 255, 255, 0.16);
+  --glass-shadow: 0 8px 30px rgba(0, 0, 0, 0.22);
+  --glass-blur: blur(22px) saturate(1.7);
+  --glass-bar-glint: rgba(255, 255, 255, 0.03);
+  --glass-button-glint: rgba(255, 255, 255, 0.35);
+}
+html[data-material="glass"][data-theme="light"] {
+  --glass-tint: color-mix(in srgb, var(--bg-elevated) 70%, transparent);
+  --glass-tint-input: color-mix(in srgb, var(--bg-input) 66%, transparent);
+  --glass-rim: rgba(255, 255, 255, 0.6);
+  --glass-rim-top: rgba(255, 255, 255, 0.95);
+  --glass-shadow: 0 8px 28px rgba(40, 30, 80, 0.10);
+  --glass-blur: blur(22px) saturate(1.6);
+}
+
+/* ================================================================== 3. The other pages */
+
+/* Shared Cortex desktop UI tokens (settings, search overlay, etc.) */
+:root {
+    --cortex-purple: #6D4AFF;
+    --cortex-purple-hover: #5A3AE6;
+    --cortex-purple-dark: #4A2DC5;
+    --cortex-purple-deep: #372580;
+    --cortex-purple-muted: #E8E1F9;
+    --cortex-purple-subtle: rgba(109, 74, 255, 0.1);
+    --cortex-purple-ring: rgba(109, 74, 255, 0.22);
+    --cortex-accent-text: var(--cortex-purple);
+
+    --cortex-bg: #FFFFFF;
+    --cortex-bg-page: #FAFAFC;
+    --cortex-bg-elevated: #FFFFFF;
+
+    --cortex-sidebar-bg: #FFFFFF;
+    --cortex-sidebar-border: var(--cortex-border);
+    --cortex-sidebar-text: var(--cortex-text-secondary);
+    --cortex-sidebar-text-hover: var(--cortex-text);
+    --cortex-sidebar-active-bg: var(--cortex-purple-muted);
+    --cortex-sidebar-active-text: var(--cortex-purple-dark);
+
+    --cortex-text: #1A1523;
+    --cortex-text-secondary: #5C5469;
+    --cortex-text-muted: #8A8299;
+
+    --cortex-border: #E8E4F0;
+    --cortex-border-strong: #D4CFE6;
+
+    --cortex-radius-sm: 8px;
+    --cortex-radius-md: 12px;
+    --cortex-radius-lg: 16px;
+    --cortex-radius-pill: 50px;
+
+    --cortex-shadow-sm: 0 1px 3px rgba(55, 37, 128, 0.06);
+    --cortex-shadow-md: 0 8px 24px rgba(55, 37, 128, 0.1);
+    --cortex-shadow-lg: 0 20px 50px rgba(20, 16, 24, 0.25);
+
+    --cortex-success: #22c55e;
+    --cortex-warning: #f59e0b;
+    --cortex-danger: #ef4444;
+
+    --cortex-danger-text: #b42318;
+    --cortex-danger-title: #912018;
+    --cortex-danger-body: #7a271a;
+    --cortex-danger-bg: #fef3f2;
+    --cortex-danger-border: #fecdca;
+
+    --cortex-card-bg: rgba(255, 255, 255, 0.94);
+    --cortex-card-border: rgba(255, 255, 255, 0.65);
+    --cortex-card-footer-bg: rgba(250, 248, 255, 0.92);
+    --cortex-card-connected-footer-bg: rgba(240, 253, 244, 0.95);
+    --cortex-chip-bg: rgba(255, 255, 255, 0.85);
+    --cortex-icon-tile-from: #FFFFFF;
+    --cortex-icon-tile-to: var(--cortex-purple-muted);
+    --cortex-pre-bg: rgba(255, 255, 255, 0.7);
+
+    --cortex-content-max: 920px;
+    --cortex-gutter: 24px;
+
+    /* Settings page surfaces. */
+    --cortex-on-solid: #fff;
+    --cortex-sidebar-shadow: 1px 0 0 rgba(55, 37, 128, 0.04);
+    --cortex-button-hover-shadow: 0 2px 8px rgba(109, 74, 255, 0.35);
+    --cortex-card-shadow: 0 1px 2px rgba(55, 37, 128, 0.05), 0 8px 20px rgba(55, 37, 128, 0.06);
+    --cortex-card-hover-border: rgba(109, 74, 255, 0.22);
+    --cortex-card-hover-shadow: 0 2px 4px rgba(55, 37, 128, 0.06), 0 10px 22px rgba(55, 37, 128, 0.08);
+    --cortex-connected-border: rgba(34, 197, 94, 0.45);
+    --cortex-connected-tint: rgba(34, 197, 94, 0.07);
+    --cortex-connected-shadow: 0 1px 2px rgba(34, 197, 94, 0.08), 0 10px 24px rgba(34, 197, 94, 0.08);
+    --cortex-connected-rule: rgba(34, 197, 94, 0.15);
+    --cortex-icon-border: rgba(109, 74, 255, 0.14);
+    --cortex-icon-shadow: 0 2px 8px rgba(109, 74, 255, 0.08);
+    --cortex-footer-rule: rgba(109, 74, 255, 0.1);
+    --cortex-success-halo: 0 0 0 2px rgba(34, 197, 94, 0.25);
+    --cortex-warning-halo: 0 0 0 2px rgba(245, 158, 11, 0.25);
+    --cortex-overlay: rgba(20, 16, 24, 0.45);
+    --cortex-note-border: rgba(109, 74, 255, 0.12);
+    --cortex-knob-shadow: 0 1px 3px rgba(55, 37, 128, 0.25);
+
+    --cortex-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+    color-scheme: light;
+}
+
+/* `data-theme` is set by scripts/theme.js: the web app's theme, else the OS preference. */
+:root[data-theme="dark"] {
+    color-scheme: dark;
+
+    /* Button fill stays deep enough for white labels (>= 4.5:1); purple text uses the lighter accent. */
+    --cortex-purple: #6D4AFF;
+    --cortex-purple-hover: #7556FF;
+    --cortex-purple-dark: #B9A6FF;
+    --cortex-purple-deep: #D6CBFF;
+    --cortex-purple-muted: rgba(139, 111, 255, 0.24);
+    --cortex-purple-subtle: rgba(139, 111, 255, 0.12);
+    --cortex-purple-ring: rgba(139, 111, 255, 0.4);
+    --cortex-accent-text: #A994FF;
+
+    --cortex-bg: #1E1A26;
+    --cortex-bg-page: #15131B;
+    --cortex-bg-elevated: #252030;
+
+    --cortex-sidebar-bg: #1A1721;
+
+    --cortex-text: #F2EFF8;
+    --cortex-text-secondary: #B8B0C8;
+    --cortex-text-muted: #A39CB2;
+
+    --cortex-border: #3A3448;
+    /* Input and button outlines: >= 3:1 against their fill. */
+    --cortex-border-strong: #6E6682;
+
+    --cortex-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+    --cortex-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
+    --cortex-shadow-lg: 0 20px 50px rgba(0, 0, 0, 0.6);
+
+    --cortex-danger-text: #FDA29B;
+    --cortex-danger-title: #FECDCA;
+    --cortex-danger-body: #FDA29B;
+    --cortex-danger-bg: rgba(239, 68, 68, 0.12);
+    --cortex-danger-border: rgba(239, 68, 68, 0.35);
+
+    --cortex-card-bg: var(--cortex-bg-elevated);
+    --cortex-card-border: var(--cortex-border);
+    --cortex-card-footer-bg: rgba(255, 255, 255, 0.03);
+    --cortex-card-connected-footer-bg: rgba(34, 197, 94, 0.08);
+    --cortex-chip-bg: rgba(255, 255, 255, 0.05);
+    /* Light even in dark mode: many connector logos are dark marks. */
+    --cortex-icon-tile-from: #F7F4FF;
+    --cortex-icon-tile-to: #E4DBFF;
+    --cortex-pre-bg: rgba(0, 0, 0, 0.3);
+}
+
+/* The dictation pill (dictate.css). */
+:root {
+    --dictate-border: #DDDEFB;
+    --dictate-shadow: 0 4px 10px rgba(55, 37, 128, 0.14);
+    --dictate-live: #d93f5b;
+}
+
+:root[data-theme="dark"] {
+    --dictate-border: rgba(221, 222, 251, 0.16);
+    --dictate-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+    --dictate-live: #ff6f86;
+}
+
+/* The search overlay (search.css). */
+:root {
+    --search-border: #DDDEFB; /* matches the web app composer */
+    --search-shadow: 0 4px 10px rgba(55, 37, 128, 0.12);
+}
+
+:root[data-theme="dark"] {
+    --search-border: rgba(221, 222, 251, 0.16);
+    --search-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+}
