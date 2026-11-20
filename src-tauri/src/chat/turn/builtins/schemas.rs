@@ -288,7 +288,8 @@ fn memory_tools(config_dir: &Path, out: &mut Vec<ChatTool>) {
             REMEMBER,
             "Save one lasting fact about the user for future conversations. Before saving, ask: \
              will this still be true and useful in a month, in another conversation? If not, do \
-             not save it.",
+             not save it. When the user asks you to remember something, this call is how it is \
+             kept: make one per fact.",
             json!({
                 "type": "object",
                 "properties": {

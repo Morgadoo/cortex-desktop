@@ -299,6 +299,8 @@ fn render(memories: &Memories) -> Option<String> {
         "\n\nMemory: you can save lasting facts about the user with `remember` (preferences, \
          their work, people and projects they mention, how they like answers) and remove wrong \
          ones with `forget`. Save only what will help in future conversations, never secrets. \
+         When the user asks you to remember something, call `remember` once per fact before you \
+         answer, and say it is saved only once the call has succeeded: nothing is kept otherwise. \
          Use what you know naturally; do not recite it."
     } else {
         "\n\nMemory: what you know about the user is below. The user has turned off saving new \
