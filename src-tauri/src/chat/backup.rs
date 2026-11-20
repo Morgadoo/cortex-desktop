@@ -14,7 +14,7 @@ use std::time::{Duration, SystemTime};
 use chrono::{DateTime, Local, NaiveDate, Utc};
 use serde::Serialize;
 
-use super::store::{chat_dir, valid_id, Conversation};
+use crate::chat::store::{chat_dir, valid_id, Conversation};
 
 /// Days a backup or a deleted conversation is kept.
 pub const KEEP_DAYS: i64 = 30;
@@ -268,8 +268,8 @@ pub fn health(config_dir: &Path) -> Health {
         .map(|m| m.len())
         .sum();
     Health {
-        conversations: super::index::list(config_dir).len(),
-        damaged: super::index::damaged(config_dir)
+        conversations: crate::chat::index::list(config_dir).len(),
+        damaged: crate::chat::index::damaged(config_dir)
             .into_iter()
             .map(|id| Damaged {
                 backup: latest_backup(config_dir, &id).map(|(day, _)| day),

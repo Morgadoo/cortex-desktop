@@ -40,11 +40,11 @@ struct Store {
 }
 
 fn path(config_dir: &Path) -> PathBuf {
-    super::store::chat_dir(config_dir).join("skill-catalogs.json")
+    crate::chat::store::chat_dir(config_dir).join("skill-catalogs.json")
 }
 
 fn load(config_dir: &Path) -> Store {
-    let mut s: Store = super::store::read_json(&path(config_dir)).unwrap_or_default();
+    let mut s: Store = crate::chat::store::read_json(&path(config_dir)).unwrap_or_default();
     if s.catalogs.is_empty() {
         s.catalogs.push(DEFAULT.into());
     }
@@ -52,7 +52,7 @@ fn load(config_dir: &Path) -> Store {
 }
 
 fn save(config_dir: &Path, s: &Store) -> Result<(), String> {
-    super::store::write_json(&path(config_dir), s)
+    crate::chat::store::write_json(&path(config_dir), s)
 }
 
 /// `owner/repo` from what the user typed: the pair itself or a GitHub link.
@@ -162,7 +162,7 @@ async fn read_catalog(client: &reqwest::Client, repo: &str) -> Result<Vec<Listin
             let (group, p) = (group.clone(), p.clone());
             async move {
                 let text = get_text(client, &url).await.ok()?;
-                let (name, description, _) = super::skills::parse(&text)?;
+                let (name, description, _) = crate::chat::skills::parse(&text)?;
                 Some(Listing {
                     catalog: repo.to_string(),
                     branch: branch.to_string(),
@@ -285,8 +285,8 @@ pub async fn install(
     )
     .await?;
     let (name, description, body) =
-        super::skills::parse(&text).ok_or("That skill has no name and description.")?;
-    super::skills::save(config_dir, &name, &description, &body)?;
+        crate::chat::skills::parse(&text).ok_or("That skill has no name and description.")?;
+    crate::chat::skills::save(config_dir, &name, &description, &body)?;
     // Its scripts, references and templates: listed by GitHub's API, fetched from raw files.
     let api =
         std::env::var("CORTEX_GITHUB_API").unwrap_or_else(|_| "https://api.github.com".into());
@@ -314,7 +314,7 @@ pub async fn install(
         let url = format!("{}/{repo}/{branch}/{folder}/{rel}", raw_base());
         match client.get(&url).send().await {
             Ok(r) if r.status().is_success() => match r.bytes().await {
-                Ok(b) => match super::skills::add_file(config_dir, &name, &rel, &b) {
+                Ok(b) => match crate::chat::skills::add_file(config_dir, &name, &rel, &b) {
                     Ok(()) => files += 1,
                     Err(e) => skipped.push(e),
                 },
@@ -355,19 +355,19 @@ pub fn export(
     std::fs::create_dir_all(dest.join(".claude-plugin")).map_err(|e| e.to_string())?;
     let mut paths = Vec::new();
     for name in names {
-        let skill = super::skills::find(config_dir, name)
+        let skill = crate::chat::skills::find(config_dir, name)
             .ok_or_else(|| format!("There is no skill named {name}."))?;
         let dir = skills_root.join(&skill.name);
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         std::fs::write(
             dir.join("SKILL.md"),
-            super::skills::render(&skill.name, &skill.description, &skill.body),
+            crate::chat::skills::render(&skill.name, &skill.description, &skill.body),
         )
         .map_err(|e| e.to_string())?;
         for rel in &skill.files {
             // Whole and exact (binaries too): read from the skill's folder, decrypted if kept sealed.
-            let bytes = super::at_rest::read(
-                super::skills::skills_dir(config_dir)
+            let bytes = crate::chat::at_rest::read(
+                crate::chat::skills::skills_dir(config_dir)
                     .join(&skill.name)
                     .join(rel),
             )
@@ -453,14 +453,14 @@ mod tests {
     #[test]
     fn exported_catalogues_read_back() {
         let dir = tempfile::tempdir().unwrap();
-        super::super::skills::save(
+        crate::chat::skills::save(
             dir.path(),
             "trip-planner",
             "Use when planning a trip.",
             "1. Ask the dates.",
         )
         .unwrap();
-        super::super::skills::add_file(dir.path(), "trip-planner", "templates/day.md", b"# Day")
+        crate::chat::skills::add_file(dir.path(), "trip-planner", "templates/day.md", b"# Day")
             .unwrap();
         let out = dir.path().join("published");
         assert_eq!(
@@ -483,7 +483,7 @@ mod tests {
             vec![("travel-skills".into(), "skills/trip-planner".into())]
         );
         let md = std::fs::read_to_string(out.join("skills/trip-planner/SKILL.md")).unwrap();
-        assert_eq!(super::super::skills::parse(&md).unwrap().0, "trip-planner");
+        assert_eq!(crate::chat::skills::parse(&md).unwrap().0, "trip-planner");
         assert_eq!(
             std::fs::read_to_string(out.join("skills/trip-planner/templates/day.md")).unwrap(),
             "# Day"
@@ -510,7 +510,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(done.name, pdf.name);
-        assert!(super::super::skills::find(dir.path(), &done.name).is_some());
+        assert!(crate::chat::skills::find(dir.path(), &done.name).is_some());
         eprintln!(
             "listed {}, added {} with {} files ({:?})",
             b.listings.len(),

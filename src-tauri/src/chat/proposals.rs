@@ -11,7 +11,7 @@ use std::path::Path;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use super::tools::ChatTool;
+use crate::chat::tools::ChatTool;
 
 pub const PROPOSE_CHANGE: &str = "propose_change";
 
@@ -65,21 +65,21 @@ pub fn review_prompt(p: &Proposal, original: &Value) -> String {
 pub fn apply(config_dir: &Path, conversation: &str, change: &Change) -> Result<String, String> {
     match change {
         Change::Memory { fact } => {
-            let mut memories = super::memory::load(config_dir);
+            let mut memories = crate::chat::memory::load(config_dir);
             // The same write-time filter as `remember`: sensitive data stays out.
-            if let Some(reason) = super::memory::refuse_sensitive(&memories, fact) {
+            if let Some(reason) = crate::chat::memory::refuse_sensitive(&memories, fact) {
                 return Err(reason);
             }
-            let saved = super::memory::add_filed(
+            let saved = crate::chat::memory::add_filed(
                 &mut memories,
                 fact,
                 "assistant",
-                super::memory::Filing {
+                crate::chat::memory::Filing {
                     conversation: Some(conversation.to_string()),
                     ..Default::default()
                 },
             )?;
-            super::memory::save(config_dir, &memories)?;
+            crate::chat::memory::save(config_dir, &memories)?;
             Ok(format!("Remembered: {}", saved.text))
         }
         Change::Skill {
@@ -87,20 +87,21 @@ pub fn apply(config_dir: &Path, conversation: &str, change: &Change) -> Result<S
             description,
             instructions,
         } => {
-            let provenance = super::builtins::skill_provenance(config_dir, name, conversation);
-            super::skills::save(config_dir, name, description, instructions)?;
-            super::traces::register(
+            let provenance =
+                crate::chat::builtins::skill_provenance(config_dir, name, conversation);
+            crate::chat::skills::save(config_dir, name, description, instructions)?;
+            crate::chat::traces::register(
                 config_dir,
                 "skill",
                 name,
-                Some(&super::traces::hash(instructions)),
+                Some(&crate::chat::traces::hash(instructions)),
                 Some(&provenance),
                 "active",
             );
             Ok(format!("Saved the skill `{name}`."))
         }
         Change::Instructions { text } => {
-            let mut instructions = super::store::load_instructions(config_dir);
+            let mut instructions = crate::chat::store::load_instructions(config_dir);
             let line = text.trim();
             if line.is_empty() {
                 return Err("The instruction is empty.".into());
@@ -109,7 +110,7 @@ pub fn apply(config_dir: &Path, conversation: &str, change: &Change) -> Result<S
                 instructions.custom.push('\n');
             }
             instructions.custom.push_str(line);
-            super::store::save_instructions(config_dir, &instructions)?;
+            crate::chat::store::save_instructions(config_dir, &instructions)?;
             Ok("Added to your instructions.".into())
         }
     }
@@ -166,7 +167,7 @@ mod tests {
         }))
         .unwrap();
         apply(d, "chat-1", &p.change).unwrap();
-        assert!(super::super::memory::load(d)
+        assert!(crate::chat::memory::load(d)
             .items
             .iter()
             .any(|m| m.text == "Works in Lisbon time"));
@@ -180,7 +181,7 @@ mod tests {
 
         // An update to a skill the user wrote keeps it the user's, so the lifecycle never
         // retires it as the assistant's.
-        super::super::skills::save(d, "my-report", "Use for my report.", "1. Mine.").unwrap();
+        crate::chat::skills::save(d, "my-report", "Use for my report.", "1. Mine.").unwrap();
         apply(
             d,
             "chat-1",
@@ -192,7 +193,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            super::super::traces::artifact(d, "skill", "my-report")
+            crate::chat::traces::artifact(d, "skill", "my-report")
                 .unwrap()
                 .provenance
                 .as_deref(),
@@ -206,11 +207,11 @@ mod tests {
         }))
         .unwrap();
         apply(d, "chat-1", &p.change).unwrap();
-        assert!(super::super::store::load_instructions(d)
+        assert!(crate::chat::store::load_instructions(d)
             .custom
             .contains("Use metric units."));
         // The instructions as they were are kept.
-        assert!(!super::super::versions::list(d, "instructions", "user")
+        assert!(!crate::chat::versions::list(d, "instructions", "user")
             .unwrap()
             .is_empty());
 

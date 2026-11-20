@@ -19,14 +19,14 @@ use std::sync::Arc;
 
 use cortex_kernel::agent_loop::{Reply, Steps};
 
-use super::host::{Host, TauriHost};
-use super::store::{self, Conversation, Instructions, Project};
-use super::tools::{self, ApprovalMode, ChatTool, ASK_USER};
-use super::{
+use crate::chat::host::{Host, TauriHost};
+use crate::chat::store::{self, Conversation, Instructions, Project};
+use crate::chat::tools::{self, ApprovalMode, ChatTool, ASK_USER};
+use crate::chat::{
     agents, builtins, canvas, context, deferred, knowledge, libraries, media, memory, privacy,
     providers, sandbox, skills, subagents, tasks, terminal,
 };
-use super::{ChatState, EVENT};
+use crate::chat::{ChatState, EVENT};
 use crate::tools::registry::ApprovalDecision;
 
 /// Model calls in one turn before the engine stops a tool loop that does not converge. The last
@@ -342,9 +342,9 @@ pub fn preamble(context: &Context<'_>, tools: &[ChatTool]) -> String {
     preamble_prompt(context, tools).render()
 }
 
-/// The system prompt's base, as named sections (see [`super::prompt`]).
-pub fn preamble_prompt(context: &Context<'_>, tools: &[ChatTool]) -> super::prompt::Prompt {
-    use super::prompt::{Prompt, ESSENTIAL, OPTIONAL, USEFUL};
+/// The system prompt's base, as named sections (see [`crate::chat::prompt`]).
+pub fn preamble_prompt(context: &Context<'_>, tools: &[ChatTool]) -> crate::chat::prompt::Prompt {
+    use crate::chat::prompt::{Prompt, ESSENTIAL, OPTIONAL, USEFUL};
     let default_instructions = Instructions::default();
     let instructions = context.instructions.unwrap_or(&default_instructions);
     let project = context.project;
@@ -445,7 +445,7 @@ pub fn preamble_prompt(context: &Context<'_>, tools: &[ChatTool]) -> super::prom
         }
     }
     if let Some(dir) = workdir {
-        p.push("code session", ESSENTIAL, super::code::prompt(dir));
+        p.push("code session", ESSENTIAL, crate::chat::code::prompt(dir));
     }
     let mut guidance = String::new();
     if tools.iter().any(|t| t.name == builtins::WEB_SEARCH) {
@@ -501,8 +501,8 @@ pub async fn connect_model(
 ) -> Result<DynModel<Completion>, String> {
     // The app's own errands on Auto use its fast model.
     let routed;
-    let reference = if reference == super::router::AUTO {
-        routed = super::router::models(&providers::load(config_dir))
+    let reference = if reference == crate::chat::router::AUTO {
+        routed = crate::chat::router::models(&providers::load(config_dir))
             .map(|(fast, _)| fast)
             .ok_or("Choose Auto's fast and strong models first.")?;
         routed.as_str()
@@ -510,14 +510,14 @@ pub async fn connect_model(
         reference
     };
     if reference.starts_with("local/") {
-        return super::local_models::connect(reference).await;
+        return crate::chat::local_models::connect(reference).await;
     }
     let (vendor, _) = providers::split_reference(reference)
         .ok_or_else(|| format!("`{reference}` is not a model reference"))?;
     let file = providers::load(config_dir);
     let settings = file.providers.get(vendor).cloned().unwrap_or_default();
     let key = if settings.has_key {
-        super::secrets::api_key(vendor).await?
+        crate::chat::secrets::api_key(vendor).await?
     } else {
         None
     };
@@ -539,7 +539,7 @@ pub async fn ask_text(
             tokio::time::timeout(std::time::Duration::from_secs(secs), model.call(request))
                 .await
                 .map_err(|_| "The provider did not answer in time.".to_string())?
-                .map_err(|e| super::context::short_error(&e.to_string()))?;
+                .map_err(|e| crate::chat::context::short_error(&e.to_string()))?;
         let text = response.text();
         // A thinking model can spend a small budget on thought and say nothing.
         if text.trim().is_empty() {
@@ -617,7 +617,7 @@ pub(crate) async fn run_turn_on(
     if let Ok(cancelled) = outcome {
         // The user's turn_end hooks, without holding up the next message.
         if let Ok(dir) = host.config_dir() {
-            if super::hooks::load(&dir)
+            if crate::chat::hooks::load(&dir)
                 .iter()
                 .any(|h| h.enabled && h.event == "turn_end")
             {
@@ -644,7 +644,7 @@ pub(crate) async fn run_turn_on(
                                 .join("\n")
                         })
                         .unwrap_or_default();
-                    super::hooks::turn_end(
+                    crate::chat::hooks::turn_end(
                         &dir,
                         &id,
                         &answer,
@@ -659,7 +659,7 @@ pub(crate) async fn run_turn_on(
     // Filters see the finished answer too, and can rewrite it before it is shown for good.
     if matches!(outcome, Ok(false)) {
         if let Ok(dir) = host.config_dir() {
-            if super::functions::has_filters(&dir) {
+            if crate::chat::functions::has_filters(&dir) {
                 filter_answer(&dir, &id).await;
             }
         }
@@ -689,7 +689,7 @@ pub(crate) async fn run_turn_on(
             // A provider's raw error (status, JSON) becomes what it means; the log keeps it all.
             let message =
                 if message.contains("ProviderResponseError") || message.contains("status ") {
-                    super::context::short_error(&message)
+                    crate::chat::context::short_error(&message)
                 } else {
                     message
                 };
@@ -856,7 +856,7 @@ async fn message_agent(
             .messages
             .last()
             .filter(|m| matches!(m, Message::Assistant(_)))
-            .map(super::context::message_text)
+            .map(crate::chat::context::message_text)
             .unwrap_or_default();
         if reply.trim().is_empty() {
             return Err(format!("{} could not answer.", target.name));
@@ -881,7 +881,7 @@ async fn message_agent(
 /// may turn the procedure into a skill, saved turned off; the chat says so.
 async fn learn_from_turn(host: &dyn Host, id: &str) {
     let Ok(dir) = host.config_dir() else { return };
-    if !super::learning::load(&dir).skills_from_work {
+    if !crate::chat::learning::load(&dir).skills_from_work {
         return;
     }
     let Ok(c) = store::load_conversation(&dir, id) else {
@@ -907,7 +907,7 @@ async fn learn_from_turn(host: &dyn Host, id: &str) {
             _ => None,
         })
         .collect();
-    if steps.len() < super::learning::MIN_STEPS {
+    if steps.len() < crate::chat::learning::MIN_STEPS {
         return;
     }
     let request = turns
@@ -940,16 +940,17 @@ async fn learn_from_turn(host: &dyn Host, id: &str) {
         })
         .collect::<Vec<_>>()
         .join("\n");
-    let existing: Vec<String> = super::skills::list(&dir)
+    let existing: Vec<String> = crate::chat::skills::list(&dir)
         .into_iter()
         .map(|s| s.name)
         .collect();
-    let reference = super::router::models(&providers::load(&dir))
+    let reference = crate::chat::router::models(&providers::load(&dir))
         .map(|(fast, _)| fast)
         .or_else(|| c.model.clone())
         .or(providers::load(&dir).default_model);
     let Some(reference) = reference else { return };
-    let prompt = super::learning::reflect_prompt(&agent.name, &request, &steps, &answer, &existing);
+    let prompt =
+        crate::chat::learning::reflect_prompt(&agent.name, &request, &steps, &answer, &existing);
     let reply = match ask_text(
         &dir,
         &reference,
@@ -964,10 +965,10 @@ async fn learn_from_turn(host: &dyn Host, id: &str) {
             return;
         }
     };
-    let Some(skill) = super::learning::parse_reflection(&reply, &existing) else {
+    let Some(skill) = crate::chat::learning::parse_reflection(&reply, &existing) else {
         return;
     };
-    if let Err(e) = super::learning::keep(&dir, &agent.name, &skill) {
+    if let Err(e) = crate::chat::learning::keep(&dir, &agent.name, &skill) {
         warn!("could not keep a learned skill: {e}");
         return;
     }
@@ -1008,7 +1009,7 @@ async fn route_to_agent(host: &dyn Host, mut request: TurnRequest) -> TurnReques
         return request;
     }
     // The fast model decides when Auto has one; otherwise the chat's own.
-    let reference = super::router::models(&providers::load(&dir))
+    let reference = crate::chat::router::models(&providers::load(&dir))
         .map_or_else(|| request.model.clone(), |(fast, _)| fast);
     let ask = CompletionRequest::new(Message::user(agents::route_prompt(&team, &request.text)));
     let reply = match ask_text(&dir, &reference, ask, 30).await {
@@ -1032,11 +1033,11 @@ async fn route_to_agent(host: &dyn Host, mut request: TurnRequest) -> TurnReques
 
 /// The Auto model: picks the fast or the strong model for this message and says which.
 fn auto_route(host: &dyn Host, mut request: TurnRequest) -> Result<TurnRequest, String> {
-    if request.model != super::router::AUTO {
+    if request.model != crate::chat::router::AUTO {
         return Ok(request);
     }
     let dir = host.config_dir()?;
-    let (fast, strong) = super::router::models(&providers::load(&dir))
+    let (fast, strong) = crate::chat::router::models(&providers::load(&dir))
         .ok_or("Choose Auto's fast and strong models under Settings → Providers & models first.")?;
     // Regenerating: the message being answered again decides.
     let text = if request.text.trim().is_empty() {
@@ -1061,7 +1062,7 @@ fn auto_route(host: &dyn Host, mut request: TurnRequest) -> Result<TurnRequest, 
     } else {
         request.text.clone()
     };
-    let route = super::router::route(&text, request.images.len());
+    let route = crate::chat::router::route(&text, request.images.len());
     request.model = if route.strong { strong } else { fast };
     let name = providers::split_reference(&request.model)
         .map_or(request.model.as_str(), |(_, m)| m)
@@ -1194,7 +1195,7 @@ async fn filter_answer(config_dir: &std::path::Path, id: &str) {
         return;
     }
     let model = c.model.clone().unwrap_or_default();
-    match super::functions::apply(config_dir, id, "outlet", &model, &text).await {
+    match crate::chat::functions::apply(config_dir, id, "outlet", &model, &text).await {
         Ok(changed) if changed != text => {
             if let Some(last) = c.messages.last_mut() {
                 *last = Message::assistant(changed);
@@ -1215,7 +1216,7 @@ async fn filter_answer(config_dir: &std::path::Path, id: &str) {
     }
 }
 
-/// Returns whether the turn was cancelled. Every turn is traced (see [`super::traces`]).
+/// Returns whether the turn was cancelled. Every turn is traced (see [`crate::chat::traces`]).
 pub(crate) async fn turn(
     host: &Arc<dyn Host>,
     request: &TurnRequest,
@@ -1229,7 +1230,7 @@ pub(crate) async fn turn(
             Ok(true) => "cancelled",
             Err(_) => "error",
         };
-        super::traces::end_run(&dir, &run, ending);
+        crate::chat::traces::end_run(&dir, &run, ending);
     }
     outcome
 }
@@ -1255,8 +1256,8 @@ async fn traced_turn(
     conversation.model = Some(request.model.clone());
     // Filters see the message first: they can rewrite it or refuse it.
     let mut text = request.text.trim().to_string();
-    if !text.is_empty() && super::functions::has_filters(&config_dir) {
-        text = super::functions::apply(&config_dir, id, "inlet", &request.model, &text)
+    if !text.is_empty() && crate::chat::functions::has_filters(&config_dir) {
+        text = crate::chat::functions::apply(&config_dir, id, "inlet", &request.model, &text)
             .await
             .map_err(|reason| format!("Not sent. {reason}"))?;
     }
@@ -1316,7 +1317,7 @@ async fn traced_turn(
         None
     };
     if let Some(kind) = signal {
-        super::traces::signal(&config_dir, id, request.edit_index, kind);
+        crate::chat::traces::signal(&config_dir, id, request.edit_index, kind);
     }
     if let Some(note) = &request.route_note {
         conversation
@@ -1330,11 +1331,11 @@ async fn traced_turn(
     store::save_conversation(&config_dir, &conversation)?;
 
     // A pipe (a function of the user's) answers with whatever its code prints.
-    if let Some(pipe) = super::functions::find_pipe(&config_dir, &request.model) {
+    if let Some(pipe) = crate::chat::functions::find_pipe(&config_dir, &request.model) {
         let named = !conversation.title.is_empty();
-        let args = serde_json::json!({ "messages": super::functions::messages(&conversation), "model": pipe.id });
+        let args = serde_json::json!({ "messages": crate::chat::functions::messages(&conversation), "model": pipe.id });
         let answer = tokio::select! {
-            out = super::functions::run(&config_dir, id, &pipe, &args) => Some(out?),
+            out = crate::chat::functions::run(&config_dir, id, &pipe, &args) => Some(out?),
             _ = cancelled(&mut cancel) => None,
         };
         let Some(answer) = answer else {
@@ -1363,9 +1364,9 @@ async fn traced_turn(
         return Ok(false);
     }
     // An ACP agent answers over the Agent Client Protocol, with its own tools.
-    if let Some(acp_agent) = super::acp::find(&config_dir, &request.model) {
+    if let Some(acp_agent) = crate::chat::acp::find(&config_dir, &request.model) {
         let named = !conversation.title.is_empty();
-        let cancelled = super::acp::run(
+        let cancelled = crate::chat::acp::run(
             host.app().ok_or(NO_APP)?,
             &config_dir,
             conversation.clone(),
@@ -1383,9 +1384,9 @@ async fn traced_turn(
         return Ok(cancelled);
     }
     // A coding agent program (Claude Code, Codex, Gemini CLI) answers with its own tools.
-    if let Some(cli) = super::agent_cli::find(&request.model) {
+    if let Some(cli) = crate::chat::agent_cli::find(&request.model) {
         let named = !conversation.title.is_empty();
-        let cancelled = super::agent_cli::run(
+        let cancelled = crate::chat::agent_cli::run(
             host.app().ok_or(NO_APP)?,
             &config_dir,
             conversation.clone(),
@@ -1412,7 +1413,7 @@ async fn traced_turn(
     if let Some(agent) = &agent {
         agents::check_budget(&config_dir, agent)?;
     }
-    super::traces::start_run(
+    crate::chat::traces::start_run(
         &config_dir,
         run,
         id,
@@ -1429,16 +1430,16 @@ async fn traced_turn(
     let mut offered = tools::available(registry, request.connectors.as_deref());
     offered.splice(1..1, builtins::definitions(&config_dir));
     offered.push(read_tool_output_tool());
-    offered.extend(super::openapi::tools(&config_dir));
-    offered.extend(super::custom_tools::definitions(&config_dir));
+    offered.extend(crate::chat::openapi::tools(&config_dir));
+    offered.extend(crate::chat::custom_tools::definitions(&config_dir));
     // Tools the assistant wrote and the user approved, and the way to write more.
-    offered.extend(super::script_tools::definitions(&config_dir));
-    offered.extend(super::script_tools::builtin_definitions());
+    offered.extend(crate::chat::script_tools::definitions(&config_dir));
+    offered.extend(crate::chat::script_tools::builtin_definitions());
     if !conversation.temporary {
-        offered.push(super::proposals::definition());
+        offered.push(crate::chat::proposals::definition());
     }
-    if super::computer::load(&config_dir).enabled {
-        offered.push(super::computer::definition());
+    if crate::chat::computer::load(&config_dir).enabled {
+        offered.push(crate::chat::computer::definition());
     }
     if let Some(agent) = &agent {
         offered.retain(|t| t.name == ASK_USER || agents::allows(agent, &t.name));
@@ -1465,7 +1466,7 @@ async fn traced_turn(
     }
     if agent.as_ref().is_some_and(|a| a.can_manage_agents) {
         // A manager, as the user allowed, builds and runs its own organization of agents.
-        offered.push(super::org::definition());
+        offered.push(crate::chat::org::definition());
     }
     if conversation.workdir.is_some() {
         // Coding sessions get a terminal for long-running commands.
@@ -1481,10 +1482,10 @@ async fn traced_turn(
                     | builtins::FORGET
                     | builtins::KNOWLEDGE_WRITE
                     | builtins::SAVE_SKILL
-                    | super::script_tools::CREATE_TOOL
-                    | super::script_tools::PROMOTE_TOOL
-                    | super::script_tools::RETIRE_TOOL
-                    | super::script_tools::REQUEST_CAPABILITY
+                    | crate::chat::script_tools::CREATE_TOOL
+                    | crate::chat::script_tools::PROMOTE_TOOL
+                    | crate::chat::script_tools::RETIRE_TOOL
+                    | crate::chat::script_tools::REQUEST_CAPABILITY
             )
         });
     }
@@ -1521,14 +1522,14 @@ async fn traced_turn(
         .filter(|s| s.enabled)
         .map(|s| s.name.clone())
         .collect();
-    super::traces::loaded(&config_dir, "skill", &listed_skills);
+    crate::chat::traces::loaded(&config_dir, "skill", &listed_skills);
     for name in &listed_skills {
-        super::traces::attribute(&config_dir, run, "skill", name, false);
+        crate::chat::traces::attribute(&config_dir, run, "skill", name, false);
     }
     let canvases = canvas::list_for(&config_dir, id);
     let latest_prompt = store::last_prompt(&conversation)
         .and_then(|i| conversation.messages.get(i))
-        .map(super::context::message_text)
+        .map(crate::chat::context::message_text)
         .unwrap_or_default();
     attribute_loaded(
         &config_dir,
@@ -1559,14 +1560,14 @@ async fn traced_turn(
         },
         &offered,
     );
-    use super::prompt::{ESSENTIAL, OPTIONAL, USEFUL};
+    use crate::chat::prompt::{ESSENTIAL, OPTIONAL, USEFUL};
     // A built-in model runs on this computer's processor: it gets a short brief and no tools, so
     // it starts answering in seconds rather than reading thousands of tokens of tool manuals.
     if request.model.starts_with("local/") {
         offered.clear();
         prompt.replace_all(
             "brief",
-            super::local_models::brief(
+            crate::chat::local_models::brief(
                 &instructions,
                 project.as_ref().map(|p| p.instructions.as_str()),
                 agent
@@ -1575,8 +1576,8 @@ async fn traced_turn(
             ),
         );
     }
-    if let Some(secrets) = super::vault::prompt(&super::vault::granted(
-        &super::vault::list(&config_dir),
+    if let Some(secrets) = crate::chat::vault::prompt(&crate::chat::vault::granted(
+        &crate::chat::vault::list(&config_dir),
         agent.as_ref(),
     )) {
         prompt.push("vault", ESSENTIAL, secrets);
@@ -1608,7 +1609,7 @@ async fn traced_turn(
             prompt.push(
                 "organization",
                 USEFUL,
-                super::org::prompt(&agents::load(&config_dir), agent),
+                crate::chat::org::prompt(&agents::load(&config_dir), agent),
             );
         }
     }
@@ -1916,7 +1917,7 @@ impl Steps for TurnSteps<'_> {
             });
             let finished = stream.finish().await;
             if let Err(e) = &finished {
-                super::traces::model_call(
+                crate::chat::traces::model_call(
                     config_dir,
                     run,
                     step,
@@ -1932,7 +1933,7 @@ impl Steps for TurnSteps<'_> {
             }
             match finished {
                 Ok(response) => {
-                    super::traces::model_call(
+                    crate::chat::traces::model_call(
                         config_dir,
                         run,
                         step,
@@ -1963,7 +1964,7 @@ impl Steps for TurnSteps<'_> {
                             let label = backup.rsplit('/').next().unwrap_or(&backup).to_string();
                             let text = format!(
                                 "{}; continuing with {label}.",
-                                super::context::brief_error(&e.to_string())
+                                crate::chat::context::brief_error(&e.to_string())
                             );
                             conversation
                                 .notices
@@ -2178,8 +2179,8 @@ impl Steps for TurnSteps<'_> {
             }
             let mut content = vec![ToolResultContent::text(text)];
             // Computer use: the screenshot goes with the result; older ones leave the history.
-            if call.function.name.as_str() == super::computer::TOOL {
-                if let Some(data) = super::computer::take_image(id) {
+            if call.function.name.as_str() == crate::chat::computer::TOOL {
+                if let Some(data) = crate::chat::computer::take_image(id) {
                     drop_old_screenshots(&mut conversation.messages);
                     content.push(ToolResultContent::image_base64(
                         data,
@@ -2256,24 +2257,24 @@ fn attribute_loaded(
     agent: Option<&str>,
 ) {
     for tool in offered {
-        super::traces::attribute(config_dir, run, "tool", &tool.name, false);
+        crate::chat::traces::attribute(config_dir, run, "tool", &tool.name, false);
     }
     let facts: Vec<String> = memory::shown(memories, query, project, agent)
         .into_iter()
         .map(|m| m.id)
         .collect();
-    super::traces::loaded(config_dir, "memory", &facts);
+    crate::chat::traces::loaded(config_dir, "memory", &facts);
     for id in &facts {
-        super::traces::attribute(config_dir, run, "memory", id, false);
+        crate::chat::traces::attribute(config_dir, run, "memory", id, false);
     }
     if memories.enabled {
         let recalled: Vec<String> = knowledge::recalled(pages, query)
             .into_iter()
             .map(|p| p.id.clone())
             .collect();
-        super::traces::loaded(config_dir, "page", &recalled);
+        crate::chat::traces::loaded(config_dir, "page", &recalled);
         for id in &recalled {
-            super::traces::attribute(config_dir, run, "page", id, false);
+            crate::chat::traces::attribute(config_dir, run, "page", id, false);
         }
     }
 }
@@ -2296,35 +2297,35 @@ where
     F: std::future::Future<Output = tools::Outcome>,
 {
     if let Some(reason) =
-        super::hooks::before_tool(config_dir, conversation_id, name, arguments, workdir).await
+        crate::chat::hooks::before_tool(config_dir, conversation_id, name, arguments, workdir).await
     {
         return tools::Outcome::err(format!("A hook blocked this call: {reason}"));
     }
     // The agent's vault secrets reach the processes this call starts, and never the model.
-    let secrets = super::vault::env_for(config_dir, agent).await;
+    let secrets = crate::chat::vault::env_for(config_dir, agent).await;
     let started = std::time::Instant::now();
     // A written tool records its runs itself, in this run's trace.
-    let run = super::script_tools::in_run(trace.unwrap_or_default().to_string(), run);
-    let mut outcome = super::vault::scope(secrets.clone(), run).await;
+    let run = crate::chat::script_tools::in_run(trace.unwrap_or_default().to_string(), run);
+    let mut outcome = crate::chat::vault::scope(secrets.clone(), run).await;
     if !secrets.is_empty() {
-        outcome.text = super::vault::mask(&outcome.text, &secrets);
+        outcome.text = crate::chat::vault::mask(&outcome.text, &secrets);
     }
     let shown_args = if secrets.is_empty() {
         arguments.to_string()
     } else {
-        super::vault::mask(&arguments.to_string(), &secrets)
+        crate::chat::vault::mask(&arguments.to_string(), &secrets)
     };
-    super::audit::record(
+    crate::chat::audit::record(
         config_dir,
-        super::audit::Entry {
+        crate::chat::audit::Entry {
             at: Utc::now(),
             kind: "tool".into(),
             conversation: conversation_id.to_string(),
             agent: agent.map(|a| a.name.clone()),
             tool: name.to_string(),
-            arguments: super::audit::short(&shown_args),
+            arguments: crate::chat::audit::short(&shown_args),
             outcome: if outcome.is_error { "error" } else { "ok" }.into(),
-            detail: super::audit::short(&outcome.text),
+            detail: crate::chat::audit::short(&outcome.text),
             millis: started.elapsed().as_millis() as u64,
         },
     );
@@ -2335,10 +2336,10 @@ where
             // unapproved tool, the rate limit) is not counted against it as a failure. A run that
             // fails, a lapsed grant's denial included, is.
             if !outcome.is_error {
-                super::traces::attribute(config_dir, trace, "tool", name, true);
+                crate::chat::traces::attribute(config_dir, trace, "tool", name, true);
             }
         } else {
-            super::traces::tool_call(
+            crate::chat::traces::tool_call(
                 config_dir,
                 trace,
                 name,
@@ -2347,10 +2348,10 @@ where
             );
         }
     }
-    if !outcome.is_error && super::traces::empty_result(&outcome.text) {
-        super::traces::signal(config_dir, conversation_id, None, "empty_result");
+    if !outcome.is_error && crate::chat::traces::empty_result(&outcome.text) {
+        crate::chat::traces::signal(config_dir, conversation_id, None, "empty_result");
     }
-    let notes = super::hooks::after_tool(
+    let notes = crate::chat::hooks::after_tool(
         config_dir,
         conversation_id,
         name,
@@ -2453,10 +2454,10 @@ impl Runner<'_> {
         let Some(agent) = self.agent else {
             return refuse("Only agents can manage agents.");
         };
-        if super::org::changes(arguments) {
+        if crate::chat::org::changes(arguments) {
             if let Err(refused) = self
                 .confirm_change(
-                    super::org::MANAGE_AGENTS,
+                    crate::chat::org::MANAGE_AGENTS,
                     Some(agent.name.clone()),
                     arguments,
                     asked,
@@ -2468,7 +2469,7 @@ impl Runner<'_> {
                 return refused;
             }
         }
-        match super::org::apply(self.config_dir, &agent.id, arguments) {
+        match crate::chat::org::apply(self.config_dir, &agent.id, arguments) {
             Ok((text, changed)) => {
                 if changed {
                     if let Some(app) = self.host.app() {
@@ -2503,9 +2504,9 @@ impl Runner<'_> {
         let asks_with_its_own_card = matches!(
             name,
             builtins::SAVE_SKILL
-                | super::script_tools::PROMOTE_TOOL
-                | super::script_tools::REQUEST_CAPABILITY
-                | super::proposals::PROPOSE_CHANGE
+                | crate::chat::script_tools::PROMOTE_TOOL
+                | crate::chat::script_tools::REQUEST_CAPABILITY
+                | crate::chat::proposals::PROPOSE_CHANGE
         );
         if !asks_with_its_own_card
             && self.agent.is_some_and(|a| agents::asks_first(a, name))
@@ -2679,7 +2680,7 @@ impl Runner<'_> {
         let conversation = store::load_conversation(self.config_dir, self.id).ok()?;
         let request = store::last_prompt(&conversation)
             .and_then(|i| conversation.messages.get(i))
-            .map(super::context::message_text)
+            .map(crate::chat::context::message_text)
             .unwrap_or_default();
         let prompt = tools::auto_check_prompt(&request, tool, arguments);
         let call = rig_core::completion::CompletionRequest::new(Message::user(prompt));
@@ -2688,7 +2689,7 @@ impl Runner<'_> {
             // No answer: asking is the safe side.
             Err(e) => Some(format!(
                 "the safety check could not run ({})",
-                super::context::short_error(&e.to_string())
+                crate::chat::context::short_error(&e.to_string())
             )),
         }
     }
@@ -2956,7 +2957,7 @@ pub async fn run_task(app: AppHandle, task: tasks::Task) {
     let answer = finished
         .as_ref()
         .and_then(|c| c.messages.last())
-        .map(super::context::message_text)
+        .map(crate::chat::context::message_text)
         .unwrap_or_default();
     tasks::notify_webhook(&task, &id, if answered { "ok" } else { "failed" }, &answer).await;
     notify(

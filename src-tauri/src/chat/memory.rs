@@ -83,7 +83,7 @@ impl Default for Memories {
 
 /// Why the assistant may not save `text`, when the user keeps sensitive data out.
 pub fn refuse_sensitive(memories: &Memories, text: &str) -> Option<String> {
-    let kinds = super::privacy::sensitive_kinds(text);
+    let kinds = crate::chat::privacy::sensitive_kinds(text);
     (memories.keep_sensitive_out && !kinds.is_empty()).then(|| {
         format!("Not saved: it holds {}, and the user keeps sensitive data out of knowledge. Tell them you did not save it.", kinds.join(" and "))
     })
@@ -102,7 +102,7 @@ pub fn load(config_dir: &Path) -> Memories {
 
 pub fn save(config_dir: &Path, memories: &Memories) -> Result<(), String> {
     // The memories as they were stay restorable.
-    super::versions::keep(config_dir, "memories", "all", &load(config_dir), memories)?;
+    crate::chat::versions::keep(config_dir, "memories", "all", &load(config_dir), memories)?;
     MEMORIES_FILE.save(config_dir, memories)
 }
 
@@ -201,9 +201,9 @@ pub fn search<'a>(
         .iter()
         .filter(|m| applies(m, project, agent))
         .collect();
-    let corpus = super::retrieval::Corpus::new(
+    let corpus = crate::chat::retrieval::Corpus::new(
         here.iter()
-            .map(|m| super::retrieval::tokens(&format!("{} {}", m.category, m.text))),
+            .map(|m| crate::chat::retrieval::tokens(&format!("{} {}", m.category, m.text))),
     )
     .with_prefixes();
     corpus
@@ -397,7 +397,7 @@ mod tests {
         save(dir.path(), &memories).unwrap();
         add(&mut memories, "Lives in Lisbon", "assistant").unwrap();
         save(dir.path(), &memories).unwrap();
-        let versions = super::super::versions::list(dir.path(), "memories", "all").unwrap();
+        let versions = crate::chat::versions::list(dir.path(), "memories", "all").unwrap();
         assert_eq!(versions.len(), 2);
         let previous = serde_json::to_string(&versions[0].value).unwrap();
         assert!(
@@ -629,7 +629,7 @@ mod consolidate_tests {
             .iter()
             .any(|f| f.importance == 3 && f.text.contains("metric")));
         // Undoable: the list before consolidation is a version.
-        let versions = super::super::versions::list(d, "memories", "all").unwrap();
+        let versions = crate::chat::versions::list(d, "memories", "all").unwrap();
         assert!(serde_json::to_string(&versions[0].value)
             .unwrap()
             .contains("Prefers metric units"));

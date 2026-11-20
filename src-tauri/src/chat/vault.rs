@@ -13,9 +13,9 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use super::agents::Agent;
-use super::LOCAL_ACCOUNT;
 use crate::account::AccountId;
+use crate::chat::agents::Agent;
+use crate::chat::LOCAL_ACCOUNT;
 use crate::tools::auth::keychain_secrets;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]

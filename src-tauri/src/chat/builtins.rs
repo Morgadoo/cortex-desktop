@@ -4,8 +4,8 @@ use std::path::Path;
 
 use serde_json::{json, Value};
 
-use super::tools::{ChatTool, Outcome};
-use super::{memory, search, skills};
+use crate::chat::tools::{ChatTool, Outcome};
+use crate::chat::{memory, search, skills};
 
 pub const WEB_SEARCH: &str = "web_search";
 pub const REMEMBER: &str = "remember";
@@ -124,7 +124,7 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
                 "tasks": {
                     "type": "array",
                     "minItems": 1,
-                    "maxItems": super::subagents::MAX_TASKS,
+                    "maxItems": crate::chat::subagents::MAX_TASKS,
                     "items": {
                         "type": "object",
                         "properties": {
@@ -195,7 +195,7 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             "required": ["title", "prompt", "frequency", "time"]
         }),
     ));
-    let libraries = super::libraries::list(config_dir);
+    let libraries = crate::chat::libraries::list(config_dir);
     if libraries.iter().any(|l| !l.documents.is_empty()) {
         out.push(tool(
             SEARCH_LIBRARY,
@@ -213,7 +213,7 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             }),
         ));
     }
-    let sources = super::calendar::load(config_dir);
+    let sources = crate::chat::calendar::load(config_dir);
     if !sources.calendars.is_empty() {
         let names: Vec<&str> = sources.calendars.iter().map(|c| c.name.as_str()).collect();
         out.push(tool(
@@ -391,9 +391,9 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             "required": ["title", "body"]
         }),
     ));
-    if !super::agents::load(config_dir).is_empty() {
+    if !crate::chat::agents::load(config_dir).is_empty() {
         out.push(tool(
-            super::agents::MESSAGE_AGENT,
+            crate::chat::agents::MESSAGE_AGENT,
             "Write to one of the user's agents by name and get its reply. It works on the message in a chat \
              of its own, with its own instructions, tools and memory; the user can open that chat. Share files \
              with `files` (paths in this chat's folder, or full paths). Use it when another agent owns the \
@@ -409,12 +409,12 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
             }),
         ));
     }
-    out.extend(super::sandbox::definition(config_dir));
-    out.extend(super::webpage::definition());
-    out.extend(super::webpage::act_definition());
-    out.extend(super::media::definition(config_dir));
-    out.extend(super::videogen::definition(config_dir));
-    out.push(super::animation::definition());
+    out.extend(crate::chat::sandbox::definition(config_dir));
+    out.extend(crate::chat::webpage::definition());
+    out.extend(crate::chat::webpage::act_definition());
+    out.extend(crate::chat::media::definition(config_dir));
+    out.extend(crate::chat::videogen::definition(config_dir));
+    out.push(crate::chat::animation::definition());
     let days = json!({
         "type": "object",
         "properties": {
@@ -611,7 +611,7 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
             ) {
                 return err(reason);
             }
-            match super::knowledge::write(
+            match crate::chat::knowledge::write(
                 config_dir,
                 (!id.is_empty()).then_some(id.as_str()),
                 &str_arg("title"),
@@ -626,8 +626,8 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
             }
         }
         KNOWLEDGE_READ => {
-            let pages = super::knowledge::load(config_dir);
-            match super::knowledge::find(&pages, &str_arg("page")) {
+            let pages = crate::chat::knowledge::load(config_dir);
+            match crate::chat::knowledge::find(&pages, &str_arg("page")) {
                 Some(page) => ok(format!(
                     "# {}\n\n{}\n\nSources: {}",
                     page.title,
@@ -642,8 +642,8 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
             }
         }
         KNOWLEDGE_SEARCH => {
-            let pages = super::knowledge::load(config_dir);
-            let hits: Vec<Value> = super::knowledge::rank(&pages, &str_arg("query"))
+            let pages = crate::chat::knowledge::load(config_dir);
+            let hits: Vec<Value> = crate::chat::knowledge::rank(&pages, &str_arg("query"))
                 .into_iter()
                 .take(5)
                 .map(|(p, _)| json!({ "id": &p.id[..8], "title": p.title, "excerpt": p.body.chars().take(400).collect::<String>() }))
@@ -658,7 +658,7 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
             let wanted = str_arg("document");
             let in_library = str_arg("library");
             let part = args.get("part").and_then(Value::as_u64).unwrap_or(1).max(1) as usize;
-            match super::libraries::read_document(config_dir, &in_library, &wanted, part) {
+            match crate::chat::libraries::read_document(config_dir, &in_library, &wanted, part) {
                 Ok(text) => ok(text),
                 Err(e) => err(e),
             }
@@ -707,7 +707,7 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
                 .and_then(Value::as_i64)
                 .unwrap_or(7)
                 .clamp(1, 365);
-            let filter = super::traces::RunFilter {
+            let filter = crate::chat::traces::RunFilter {
                 since: Some(chrono::Utc::now() - chrono::Duration::days(days)),
                 outcome: Some(str_arg("outcome")).filter(|o| !o.is_empty()),
                 tool: Some(str_arg("tool")).filter(|t| !t.is_empty()),
@@ -718,11 +718,11 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
                 limit: args.get("limit").and_then(Value::as_u64).unwrap_or(20) as usize,
             };
             ok(
-                serde_json::to_string_pretty(&super::traces::runs(config_dir, &filter))
+                serde_json::to_string_pretty(&crate::chat::traces::runs(config_dir, &filter))
                     .unwrap_or_default(),
             )
         }
-        GET_RUN => match super::traces::run_detail(config_dir, &str_arg("id")) {
+        GET_RUN => match crate::chat::traces::run_detail(config_dir, &str_arg("id")) {
             Some(detail) => ok(serde_json::to_string_pretty(&detail).unwrap_or_default()),
             None => err("There is no run with that id; list them with query_traces."),
         },
@@ -734,7 +734,7 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
                     "Name the artifact as kind:id, e.g. skill:summarize or tool:web_search.",
                 );
             };
-            match super::traces::artifact(config_dir, kind, id) {
+            match crate::chat::traces::artifact(config_dir, kind, id) {
                 Some(a) => ok(serde_json::to_string_pretty(&json!({
                     "artifact": wanted,
                     "status": a.status,
@@ -752,12 +752,12 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
         USAGE_STATS | FAILURE_SUMMARY => {
             let days = args.get("days").and_then(Value::as_i64).unwrap_or(7);
             ok(if name == USAGE_STATS {
-                super::traces::usage_report(config_dir, days)
+                crate::chat::traces::usage_report(config_dir, days)
             } else {
-                super::traces::failure_report(config_dir, days)
+                crate::chat::traces::failure_report(config_dir, days)
             })
         }
-        READ_CHAT => match super::store::load_conversation(config_dir, &str_arg("id")) {
+        READ_CHAT => match crate::chat::store::load_conversation(config_dir, &str_arg("id")) {
             Ok(c) if !c.temporary => ok(chat_transcript(&c, READ_CHAT_LIMIT)),
             _ => err("There is no conversation with that id; use an id from search_chats."),
         },
@@ -771,11 +771,11 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
                 &str_arg("instructions"),
             ) {
                 Ok(()) => {
-                    super::traces::register(
+                    crate::chat::traces::register(
                         config_dir,
                         "skill",
                         &str_arg("name"),
-                        Some(&super::traces::hash(&str_arg("instructions"))),
+                        Some(&crate::chat::traces::hash(&str_arg("instructions"))),
                         Some(&provenance),
                         "active",
                     );
@@ -815,11 +815,11 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
             let (from, to) = (local(from_day, false), local(to_day, true));
             let mut events = Vec::new();
             let mut problems = Vec::new();
-            for cal in super::calendar::load(config_dir).calendars {
-                match super::calendar::fetch(&cal.location).await {
-                    Ok(text) => events.extend(super::calendar::occurrences(
+            for cal in crate::chat::calendar::load(config_dir).calendars {
+                match crate::chat::calendar::fetch(&cal.location).await {
+                    Ok(text) => events.extend(crate::chat::calendar::occurrences(
                         &cal.name,
-                        &super::calendar::parse_ics(&text),
+                        &crate::chat::calendar::parse_ics(&text),
                         from,
                         to,
                         &str_arg("query"),
@@ -845,13 +845,13 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
             }
             let mut all = Vec::new();
             let mut problems = Vec::new();
-            for book in super::calendar::load(config_dir).contacts {
-                match super::calendar::fetch(&book.location).await {
-                    Ok(text) => all.extend(super::calendar::parse_vcards(&text)),
+            for book in crate::chat::calendar::load(config_dir).contacts {
+                match crate::chat::calendar::fetch(&book.location).await {
+                    Ok(text) => all.extend(crate::chat::calendar::parse_vcards(&text)),
                     Err(e) => problems.push(format!("{}: {e}", book.name)),
                 }
             }
-            let found = super::calendar::find(&all, &query);
+            let found = crate::chat::calendar::find(&all, &query);
             ok(serde_json::to_string_pretty(
                 &json!({ "query": query, "contacts": found, "unreadable": problems }),
             )
@@ -866,7 +866,7 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
             let only: Vec<String> = if wanted.is_empty() {
                 Vec::new()
             } else {
-                match super::libraries::list(config_dir)
+                match crate::chat::libraries::list(config_dir)
                     .into_iter()
                     .find(|l| l.name.eq_ignore_ascii_case(&wanted))
                 {
@@ -875,12 +875,12 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
                 }
             };
             let since_text = str_arg("since");
-            let since = super::libraries::parse_since(&since_text, chrono::Utc::now());
+            let since = crate::chat::libraries::parse_since(&since_text, chrono::Utc::now());
             if !since_text.is_empty() && since.is_none() {
                 return err("`since` is a date like 2026-03-01, or a span like 30d, 6m or 1y.");
             }
             // With a cutoff, a wider pool is searched and the older documents' passages left out.
-            let (hits, note) = super::embeddings::search(
+            let (hits, note) = crate::chat::embeddings::search(
                 config_dir,
                 &only,
                 &query,
@@ -888,7 +888,7 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
             )
             .await;
             let hits: Vec<_> = match since {
-                Some(cutoff) => super::libraries::changed_since(config_dir, hits, cutoff)
+                Some(cutoff) => crate::chat::libraries::changed_since(config_dir, hits, cutoff)
                     .into_iter()
                     .take(6)
                     .collect(),
@@ -919,7 +919,7 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
             }
         }
         USE_SKILL => match skills::find(config_dir, &str_arg("name"))
-            .inspect(|skill| super::traces::used(config_dir, "skill", &skill.name))
+            .inspect(|skill| crate::chat::traces::used(config_dir, "skill", &skill.name))
         {
             Some(skill) if skill.enabled && !str_arg("file").trim().is_empty() => {
                 match skills::read_file(config_dir, &skill.name, str_arg("file").trim()) {
@@ -965,7 +965,7 @@ pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {
 /// with the chat it came from.
 pub(crate) fn skill_provenance(config_dir: &Path, name: &str, conversation: &str) -> String {
     let users = skills::find(config_dir, name).is_some_and(|s| s.origin == "user")
-        && super::traces::artifact(config_dir, "skill", name)
+        && crate::chat::traces::artifact(config_dir, "skill", name)
             .is_none_or(|a| a.provenance.as_deref().is_none_or(|p| p == "user"));
     if users {
         "user".into()
@@ -977,7 +977,7 @@ pub(crate) fn skill_provenance(config_dir: &Path, name: &str, conversation: &str
 }
 
 fn schedule(config_dir: &Path, args: &Value) -> Outcome {
-    use super::tasks::{self, Frequency};
+    use crate::chat::tasks::{self, Frequency};
     let s = |k: &str| {
         args.get(k)
             .and_then(Value::as_str)
@@ -1033,7 +1033,7 @@ fn schedule(config_dir: &Path, args: &Value) -> Outcome {
     };
     let agent_id = match s("agent") {
         name if name.is_empty() => None,
-        name => match super::agents::load(config_dir)
+        name => match crate::chat::agents::load(config_dir)
             .into_iter()
             .find(|a| a.name.eq_ignore_ascii_case(&name))
         {
@@ -1085,8 +1085,8 @@ fn schedule(config_dir: &Path, args: &Value) -> Outcome {
 const READ_CHAT_LIMIT: usize = 24_000;
 
 /// Earlier conversations matching `query`: every word first; failing that, the most words.
-pub(crate) fn search_chats(config_dir: &Path, query: &str) -> Vec<super::index::Hit> {
-    let all = super::index::search(config_dir, query, 8);
+pub(crate) fn search_chats(config_dir: &Path, query: &str) -> Vec<crate::chat::index::Hit> {
+    let all = crate::chat::index::search(config_dir, query, 8);
     let words: Vec<&str> = query
         .split_whitespace()
         .filter(|w| w.chars().count() > 2)
@@ -1094,9 +1094,9 @@ pub(crate) fn search_chats(config_dir: &Path, query: &str) -> Vec<super::index::
     if !all.is_empty() || words.len() < 2 {
         return all;
     }
-    let mut found: Vec<(usize, super::index::Hit)> = Vec::new();
+    let mut found: Vec<(usize, crate::chat::index::Hit)> = Vec::new();
     for word in words {
-        for hit in super::index::search(config_dir, word, 20) {
+        for hit in crate::chat::index::search(config_dir, word, 20) {
             match found.iter_mut().find(|(_, h)| h.id == hit.id) {
                 Some((n, _)) => *n += 1,
                 None => found.push((1, hit)),
@@ -1108,7 +1108,10 @@ pub(crate) fn search_chats(config_dir: &Path, query: &str) -> Vec<super::index::
 }
 
 /// What was said in a conversation, as plain text, cut at `limit` characters.
-pub(super) fn chat_transcript(conversation: &super::store::Conversation, limit: usize) -> String {
+pub(super) fn chat_transcript(
+    conversation: &crate::chat::store::Conversation,
+    limit: usize,
+) -> String {
     let mut text = format!(
         "# {}
 Date: {}
@@ -1116,13 +1119,13 @@ Date: {}
         conversation.title,
         conversation.created_at.format("%Y-%m-%d")
     );
-    for turn in super::store::turns(conversation) {
+    for turn in crate::chat::store::turns(conversation) {
         let said: Vec<String> = turn
             .parts
             .iter()
             .filter_map(|p| match p {
-                super::store::Part::Text { text } => Some(text.clone()),
-                super::store::Part::Tool { name, .. } => Some(format!("[used {name}]")),
+                crate::chat::store::Part::Text { text } => Some(text.clone()),
+                crate::chat::store::Part::Tool { name, .. } => Some(format!("[used {name}]")),
                 _ => None,
             })
             .collect();
@@ -1177,7 +1180,7 @@ mod tests {
         let out = run(dir.path(), SCHEDULE_TASK, &json!({"title": "AI news", "prompt": "Brief me", "frequency": "weekly", "time": "09:00", "days": ["monday"]})).await;
         assert!(!out.is_error, "{}", out.text);
         assert!(out.text.contains("Every Monday at 09:00"));
-        assert_eq!(super::super::tasks::load(dir.path()).len(), 1);
+        assert_eq!(crate::chat::tasks::load(dir.path()).len(), 1);
         let bad = run(
             dir.path(),
             SCHEDULE_TASK,
@@ -1189,7 +1192,7 @@ mod tests {
         // when the model asked for it.
         run(dir.path(), SCHEDULE_TASK, &json!({"title": "Check prices", "prompt": "Check again", "frequency": "once", "date": "2030-01-02", "time": "08:00", "in_this_chat": true, "reply_in": "conv-1"})).await;
         run(dir.path(), SCHEDULE_TASK, &json!({"title": "Other", "prompt": "New chat", "frequency": "daily", "time": "08:00", "reply_in": "conv-1"})).await;
-        let tasks = super::super::tasks::load(dir.path());
+        let tasks = crate::chat::tasks::load(dir.path());
         assert_eq!(
             tasks
                 .iter()
@@ -1210,12 +1213,12 @@ mod tests {
     async fn the_model_lists_runs_and_opens_one() {
         let dir = tempfile::tempdir().unwrap();
         let d = dir.path();
-        super::super::traces::start_run(d, "run-ok", "c1", None, "m/a");
-        super::super::traces::tool_call(d, "run-ok", "web_search", 12, true);
-        super::super::traces::end_run(d, "run-ok", "done");
-        super::super::traces::start_run(d, "run-bad", "c2", None, "m/a");
-        super::super::traces::tool_call(d, "run-bad", "read_chat", 7, false);
-        super::super::traces::end_run(d, "run-bad", "error");
+        crate::chat::traces::start_run(d, "run-ok", "c1", None, "m/a");
+        crate::chat::traces::tool_call(d, "run-ok", "web_search", 12, true);
+        crate::chat::traces::end_run(d, "run-ok", "done");
+        crate::chat::traces::start_run(d, "run-bad", "c2", None, "m/a");
+        crate::chat::traces::tool_call(d, "run-bad", "read_chat", 7, false);
+        crate::chat::traces::end_run(d, "run-bad", "error");
         let listed = run(d, QUERY_TRACES, &json!({ "failed_tools": true })).await;
         assert!(!listed.is_error, "{}", listed.text);
         let runs: Value = serde_json::from_str(&listed.text).unwrap();
@@ -1232,8 +1235,8 @@ mod tests {
     async fn usage_stats_can_be_read_for_one_artifact() {
         let dir = tempfile::tempdir().unwrap();
         let d = dir.path();
-        super::super::traces::loaded(d, "skill", &["summarize".into(), "summarize".into()]);
-        super::super::traces::used(d, "skill", "summarize");
+        crate::chat::traces::loaded(d, "skill", &["summarize".into(), "summarize".into()]);
+        crate::chat::traces::used(d, "skill", "summarize");
         let out = run(d, USAGE_STATS, &json!({ "artifact": "skill:summarize" })).await;
         assert!(!out.is_error, "{}", out.text);
         let v: Value = serde_json::from_str(&out.text).unwrap();
@@ -1327,14 +1330,14 @@ mod tests {
             .into_iter()
             .map(|t| t.name)
             .filter(|n| {
-                n != super::super::sandbox::RUN_CODE
-                    && n != super::super::media::GENERATE_IMAGE
-                    && n != super::super::videogen::GENERATE_VIDEO
-                    && n != super::super::animation::MAKE_ANIMATION
+                n != crate::chat::sandbox::RUN_CODE
+                    && n != crate::chat::media::GENERATE_IMAGE
+                    && n != crate::chat::videogen::GENERATE_VIDEO
+                    && n != crate::chat::animation::MAKE_ANIMATION
                     && n != SAVE_SKILL
                     && n != NOTIFY
-                    && n != super::super::webpage::BROWSER_VIEW
-                    && n != super::super::webpage::BROWSER_ACT
+                    && n != crate::chat::webpage::BROWSER_VIEW
+                    && n != crate::chat::webpage::BROWSER_ACT
                     && !n.starts_with("knowledge_")
             })
             .collect();
@@ -1370,14 +1373,14 @@ mod tests {
             .into_iter()
             .map(|t| t.name)
             .filter(|n| {
-                n != super::super::sandbox::RUN_CODE
-                    && n != super::super::media::GENERATE_IMAGE
-                    && n != super::super::videogen::GENERATE_VIDEO
-                    && n != super::super::animation::MAKE_ANIMATION
+                n != crate::chat::sandbox::RUN_CODE
+                    && n != crate::chat::media::GENERATE_IMAGE
+                    && n != crate::chat::videogen::GENERATE_VIDEO
+                    && n != crate::chat::animation::MAKE_ANIMATION
                     && n != SAVE_SKILL
                     && n != NOTIFY
-                    && n != super::super::webpage::BROWSER_VIEW
-                    && n != super::super::webpage::BROWSER_ACT
+                    && n != crate::chat::webpage::BROWSER_VIEW
+                    && n != crate::chat::webpage::BROWSER_ACT
                     && !n.starts_with("knowledge_")
             })
             .collect();
@@ -1430,13 +1433,13 @@ mod tests {
     async fn earlier_chats_are_found_and_read() {
         use rig_core::completion::Message;
         let dir = tempfile::tempdir().unwrap();
-        let mut c = super::super::store::Conversation::new("c1".into(), None, None);
+        let mut c = crate::chat::store::Conversation::new("c1".into(), None, None);
         c.title = "Kitchen renovation".into();
         c.messages = vec![
             Message::user("Which oak worktop should we pick?"),
             Message::assistant("The 40 mm solid oak one, oiled."),
         ];
-        super::super::store::save_conversation(dir.path(), &c).unwrap();
+        crate::chat::store::save_conversation(dir.path(), &c).unwrap();
         let found = run(dir.path(), SEARCH_CHATS, &json!({"query": "oak worktop"})).await;
         assert!(
             found.text.contains("\"c1\"") && found.text.contains("Kitchen renovation"),

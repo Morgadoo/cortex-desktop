@@ -15,8 +15,8 @@ use std::time::{Duration, Instant, SystemTime};
 use serde::Serialize;
 use serde_json::{json, Value};
 
-use super::store::{chat_dir, valid_id};
-use super::tools::{ApprovalMode, ChatTool, Outcome};
+use crate::chat::store::{chat_dir, valid_id};
+use crate::chat::tools::{ApprovalMode, ChatTool, Outcome};
 
 pub const RUN_CODE: &str = "run_code";
 
@@ -50,7 +50,7 @@ pub fn always_allowed(config_dir: &Path) -> bool {
 }
 
 pub fn set_always_allowed(config_dir: &Path, allowed: bool) -> Result<(), String> {
-    super::store::write_json(
+    crate::chat::store::write_json(
         &settings_path(config_dir),
         &json!({ "alwaysAllow": allowed }),
     )?;
@@ -174,10 +174,10 @@ pub fn isolated(config_dir: &Path) -> bool {
         return false;
     }
     bubblewrap().is_some()
-        || (super::workbench::enabled(config_dir)
+        || (crate::chat::workbench::enabled(config_dir)
             && matches!(
-                super::workbench::status_now(),
-                Some(super::workbench::Status::Ready { .. })
+                crate::chat::workbench::status_now(),
+                Some(crate::chat::workbench::Status::Ready { .. })
             ))
 }
 
@@ -224,11 +224,11 @@ pub fn code_gate(mode: ApprovalMode, isolated: bool, always_allowed: bool) -> Co
 pub fn definition(config_dir: &Path) -> Option<ChatTool> {
     // The workbench is checked in the background the first time; until then, and wherever it is
     // off or not built, runs use what this machine has.
-    let bench = if super::workbench::enabled(config_dir) {
-        match super::workbench::status_now() {
-            Some(super::workbench::Status::Ready { gpu }) => Some(gpu),
+    let bench = if crate::chat::workbench::enabled(config_dir) {
+        match crate::chat::workbench::status_now() {
+            Some(crate::chat::workbench::Status::Ready { gpu }) => Some(gpu),
             None => {
-                tauri::async_runtime::spawn(super::workbench::status());
+                tauri::async_runtime::spawn(crate::chat::workbench::status());
                 None
             }
             _ => None,
@@ -245,7 +245,7 @@ pub fn definition(config_dir: &Path) -> Option<ChatTool> {
         return None;
     }
     let isolation = match bench {
-        Some(gpu) => super::workbench::description(gpu),
+        Some(gpu) => crate::chat::workbench::description(gpu),
         None if bubblewrap().is_some() => "It runs isolated: no network, the user's files are hidden, and only the workspace is writable.".to_string(),
         None => "It runs on the user's machine with a cleared environment.".to_string(),
     };
@@ -397,7 +397,7 @@ pub async fn run_in(
         ));
     };
     // In the workbench (when it is on and built) the image has every language.
-    let bench = super::workbench::ready(config_dir).await;
+    let bench = crate::chat::workbench::ready(config_dir).await;
     let program = interpreters().get(lang.name);
     if bench.is_none() && program.is_none() {
         return err(format!("{} is not installed on this computer.", lang.name));
@@ -428,7 +428,7 @@ pub async fn run_in(
             "javascript" => "node",
             _ => "bash",
         };
-        let run = super::workbench::Run {
+        let run = crate::chat::workbench::Run {
             workspace: &dir,
             agent_home: env.map(|e| e.home.as_path()),
             network: env.is_some_and(|e| e.network),
@@ -439,7 +439,7 @@ pub async fn run_in(
             env_file: &env_file,
             name: &run_name,
         };
-        match super::workbench::command(&run) {
+        match crate::chat::workbench::command(&run) {
             Some(c) => (true, c),
             None => return err("The agent workbench cannot be reached.".into()),
         }
@@ -547,10 +547,10 @@ pub async fn run_in(
         ("NO_COLOR".into(), "1".into()),
     ];
     // Vault secrets granted to the chat's agent (also reaching the user's own tools).
-    vars.extend(super::vault::current());
+    vars.extend(crate::chat::vault::current());
     if bench.is_some() {
         // The container gets them from a file; Podman itself keeps its own environment.
-        if let Err(e) = super::workbench::write_env_file(&env_file, &vars) {
+        if let Err(e) = crate::chat::workbench::write_env_file(&env_file, &vars) {
             return err(format!("Could not prepare the run: {e}"));
         }
     } else {
@@ -609,7 +609,7 @@ pub async fn run_in(
             // Dropping the future kills the process; a container is removed by name.
             Err(_) => {
                 if bench.is_some() {
-                    super::workbench::remove(&run_name).await;
+                    crate::chat::workbench::remove(&run_name).await;
                 }
                 (None, String::new(), String::new(), true)
             }

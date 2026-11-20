@@ -15,7 +15,7 @@ use std::time::UNIX_EPOCH;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use super::store::{chat_dir, write_json, Conversation, ConversationSummary};
+use crate::chat::store::{chat_dir, write_json, Conversation, ConversationSummary};
 
 /// Bumped when the index's own shape changes; an older index is rebuilt.
 const INDEX_VERSION: u32 = 6;
@@ -89,7 +89,7 @@ fn preview(c: &Conversation) -> String {
         .messages
         .iter()
         .rev()
-        .map(super::context::message_text)
+        .map(crate::chat::context::message_text)
         .find(|t| !t.trim().is_empty() && !t.starts_with('{'))
         .unwrap_or_default();
     // Markdown marks read as noise in a tooltip.
@@ -109,7 +109,7 @@ fn preview(c: &Conversation) -> String {
 fn searchable(c: &Conversation) -> String {
     let mut text = format!("{}\n", c.title);
     for message in &c.messages {
-        let said = super::context::message_text(message);
+        let said = crate::chat::context::message_text(message);
         if !said.trim().is_empty() {
             text.push_str(said.trim());
             text.push('\n');

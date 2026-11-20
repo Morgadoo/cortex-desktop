@@ -18,8 +18,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use super::store::chat_dir;
-use super::tools::ChatTool;
+use crate::chat::store::chat_dir;
+use crate::chat::tools::ChatTool;
 pub use sandbox::{Capabilities, Limits};
 
 /// The connector id script tools are offered under (`script__<name>`).
@@ -628,7 +628,7 @@ fn save_resigned(config_dir: &Path, tool: &ScriptTool) -> Result<(), String> {
     let tool = &tool;
     std::fs::create_dir_all(dir(config_dir)).map_err(|e| e.to_string())?;
     if let Some(previous) = previous {
-        super::versions::keep(
+        crate::chat::versions::keep(
             config_dir,
             "tools",
             &format!("script-{}", tool.name),
@@ -663,7 +663,7 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
                 && verifies(config_dir, t)
         })
         .map(|t| ChatTool {
-            name: super::tools::safe_name(&format!("{CONNECTOR}__{}", t.name)),
+            name: crate::chat::tools::safe_name(&format!("{CONNECTOR}__{}", t.name)),
             description: format!(
                 "{} (A tool you wrote; it runs in a sandbox.)",
                 t.description
@@ -737,7 +737,7 @@ fn near_duplicate<'a>(
 ) -> Option<&'a ScriptTool> {
     use std::collections::HashSet;
     let words = |t: &str| -> HashSet<String> {
-        super::retrieval::tokens(t)
+        crate::chat::retrieval::tokens(t)
             .into_iter()
             .filter(|w| w.chars().count() > 3 && !matches!(w.as_str(), "tool" | "tools"))
             .collect()
@@ -793,11 +793,11 @@ async fn failing_checks(script: &str, checks: &[Check]) -> Vec<String> {
 
 /// Names a written tool may not take: the app's own tools.
 fn taken(name: &str) -> bool {
-    super::builtins::NAMES.contains(&name)
+    crate::chat::builtins::NAMES.contains(&name)
         || [
-            super::builtins::DELEGATE,
-            super::builtins::CANVAS,
-            super::builtins::NOTIFY,
+            crate::chat::builtins::DELEGATE,
+            crate::chat::builtins::CANVAS,
+            crate::chat::builtins::NOTIFY,
             CREATE_TOOL,
             PROMOTE_TOOL,
             RETIRE_TOOL,
@@ -938,7 +938,7 @@ pub async fn create(config_dir: &Path, conversation: &str, args: &Value) -> Resu
     };
     let mut tool = tool;
     save_resigned(config_dir, &tool)?;
-    super::traces::register(
+    crate::chat::traces::register(
         config_dir,
         "script_tool",
         &name,
@@ -1042,7 +1042,7 @@ fn last_signed(config_dir: &Path, name: &str) -> Option<ScriptTool> {
         .and_then(|text| serde_json::from_str::<ScriptTool>(&text).ok())
         .filter(|t| t.name == name && verifies(config_dir, t));
     copy.or_else(|| {
-        super::versions::list(config_dir, "tools", &format!("script-{name}"))
+        crate::chat::versions::list(config_dir, "tools", &format!("script-{name}"))
             .unwrap_or_default()
             .into_iter()
             .filter_map(|v| serde_json::from_value::<ScriptTool>(v.value).ok())
@@ -1107,7 +1107,7 @@ fn save_taking_away(config_dir: &Path, tool: &ScriptTool) -> Result<(), String> 
     let mut tool = tool.clone();
     tool.signature = None;
     if let Some(previous) = on_disk {
-        super::versions::keep(
+        crate::chat::versions::keep(
             config_dir,
             "tools",
             &format!("script-{}", tool.name),
@@ -1183,7 +1183,7 @@ async fn promote_with(
     tool.set_aside.retain(|h| h != &approved);
     // The user saw it on the card and approved it: signed afresh.
     save_resigned(config_dir, &tool)?;
-    super::traces::register(
+    crate::chat::traces::register(
         config_dir,
         "script_tool",
         name,
@@ -1206,7 +1206,7 @@ pub fn demote(config_dir: &Path, name: &str) -> Result<(), String> {
     tool.granted = Capabilities::default();
     tool.expires.clear();
     save_taking_away(config_dir, &tool)?;
-    super::traces::set_status(config_dir, "script_tool", name, Status::Candidate.as_str());
+    crate::chat::traces::set_status(config_dir, "script_tool", name, Status::Candidate.as_str());
     Ok(())
 }
 
@@ -1361,7 +1361,7 @@ pub fn restore_version(config_dir: &Path, mut old: ScriptTool) -> Result<(), Str
         .map(|c| c.set_aside.clone())
         .unwrap_or_default();
     let mut later: Vec<String> =
-        super::versions::list(config_dir, "tools", &format!("script-{}", old.name))
+        crate::chat::versions::list(config_dir, "tools", &format!("script-{}", old.name))
             .unwrap_or_default()
             .into_iter()
             .filter_map(|v| serde_json::from_value::<ScriptTool>(v.value).ok())
@@ -1394,7 +1394,7 @@ pub fn restore_version(config_dir: &Path, mut old: ScriptTool) -> Result<(), Str
     old.restored_at = Some(now);
     old.monitor_reverted_at = None;
     save_resigned(config_dir, &old)?;
-    super::traces::register(
+    crate::chat::traces::register(
         config_dir,
         "script_tool",
         &old.name,
@@ -1440,7 +1440,7 @@ pub async fn check_all(config_dir: &Path) -> Checked {
 /// `Ok(false)` when there is no such version.
 pub async fn revert(config_dir: &Path, name: &str, checks: &[Check]) -> Result<bool, String> {
     let current = load(config_dir, name).ok_or("There is no tool by that name.")?;
-    for version in super::versions::list(config_dir, "tools", &format!("script-{name}"))? {
+    for version in crate::chat::versions::list(config_dir, "tools", &format!("script-{name}"))? {
         let Ok(old) = serde_json::from_value::<ScriptTool>(version.value) else {
             continue;
         };
@@ -1482,7 +1482,7 @@ pub async fn revert(config_dir: &Path, name: &str, checks: &[Check]) -> Result<b
             back.set_aside = current.set_aside.clone();
             back.restored_at = None;
             save(config_dir, &back)?;
-            super::traces::register(
+            crate::chat::traces::register(
                 config_dir,
                 "script_tool",
                 name,
@@ -1549,7 +1549,7 @@ pub fn retire(config_dir: &Path, name: &str) -> Result<(), String> {
         tool.approved_at = None;
     }
     save_taking_away(config_dir, &tool)?;
-    super::traces::set_status(config_dir, "script_tool", name, Status::Deprecated.as_str());
+    crate::chat::traces::set_status(config_dir, "script_tool", name, Status::Deprecated.as_str());
     Ok(())
 }
 
@@ -1649,7 +1649,7 @@ fn call_at(
                 .iter()
                 .any(|h| h.eq_ignore_ascii_case(host))
             {
-                if let Some(value) = super::vault::value(&config_dir, secret).await {
+                if let Some(value) = crate::chat::vault::value(&config_dir, secret).await {
                     secrets.insert(secret.to_string(), value);
                 }
             }
@@ -1668,7 +1668,7 @@ fn call_at(
         .await;
         // Its run, ok or not, in the trace: what the lifecycle and the monitor judge it by. A call
         // from another tool counts too, so a tool used only that way is not retired as unused.
-        super::traces::tool_call(
+        crate::chat::traces::tool_call(
             &config_dir,
             &RUN.try_with(Clone::clone).unwrap_or_default(),
             &format!("{CONNECTOR}__{name}"),
@@ -1684,7 +1684,7 @@ fn call_at(
         // Masked whether it succeeded or failed: an error can quote a response, and with it a
         // credential. A callee's result is masked before it reaches its caller.
         let mask = |text: String| {
-            let text = super::vault::mask(&text, &shown);
+            let text = crate::chat::vault::mask(&text, &shown);
             let (masked, found) = cortex_kernel::privacy::mask_secrets(&text);
             if found > 0 {
                 log::warn!("[script tool {name}] {found} secret(s) masked in its output");
@@ -1695,17 +1695,17 @@ fn call_at(
         // A call from another tool does not pass the chat's own record: it is logged here, so the
         // activity log shows every tool that ran.
         if depth > 0 {
-            super::audit::record(
+            crate::chat::audit::record(
                 &config_dir,
-                super::audit::Entry {
+                crate::chat::audit::Entry {
                     at: Utc::now(),
                     kind: "tool".into(),
                     conversation: String::new(),
                     agent: None,
                     tool: format!("{CONNECTOR}__{name} (called by a tool)"),
-                    arguments: super::audit::short(&args.to_string()),
+                    arguments: crate::chat::audit::short(&args.to_string()),
                     outcome: if result.is_ok() { "ok" } else { "error" }.into(),
-                    detail: super::audit::short(match &result {
+                    detail: crate::chat::audit::short(match &result {
                         Ok(text) | Err(text) => text,
                     }),
                     millis: started.elapsed().as_millis() as u64,
@@ -1860,7 +1860,7 @@ mod tests {
             r#"{"words":2}"#
         );
         assert_eq!(
-            super::super::traces::artifact(d, "script_tool", "count_words").map(|a| a.status),
+            crate::chat::traces::artifact(d, "script_tool", "count_words").map(|a| a.status),
             Some("active".into())
         );
 
@@ -2075,7 +2075,7 @@ mod tests {
         forged.script = "function main(a) { return { words: 3 }; }".into();
         forged.approved_hash = Some(approval_hash(&forged));
         forged.granted.http_hosts = vec!["evil.example".into()];
-        super::super::versions::keep(d, "tools", "script-count_words", &forged, &current).unwrap();
+        crate::chat::versions::keep(d, "tools", "script-count_words", &forged, &current).unwrap();
         assert_eq!(revert(d, "count_words", &current.checks).await, Ok(false));
         assert_eq!(load(d, "count_words").unwrap().script, SCRIPT);
     }
@@ -2307,12 +2307,12 @@ mod tests {
         create(d, "", &draft("function main() { return 3; }"))
             .await
             .unwrap();
-        let v2 = super::super::versions::list(d, "tools", "script-draft_t")
+        let v2 = crate::chat::versions::list(d, "tools", "script-draft_t")
             .unwrap()
             .into_iter()
             .find(|v| v.value["script"] == "function main() { return 2; }")
             .unwrap();
-        super::super::versions::restore(d, "tools", "script-draft_t", &v2.id).unwrap();
+        crate::chat::versions::restore(d, "tools", "script-draft_t", &v2.id).unwrap();
         promote(d, "draft_t", None).await.unwrap();
         let now = load(d, "draft_t").unwrap();
         assert!(now.script.contains("return 2"));
@@ -2351,12 +2351,12 @@ mod tests {
             .await
             .unwrap();
         let v4 = approve().await;
-        let draft = super::super::versions::list(d, "tools", "script-between_t")
+        let draft = crate::chat::versions::list(d, "tools", "script-between_t")
             .unwrap()
             .into_iter()
             .find(|v| v.value["script"] == "function main() { return 2; }")
             .unwrap();
-        super::super::versions::restore(d, "tools", "script-between_t", &draft.id).unwrap();
+        crate::chat::versions::restore(d, "tools", "script-between_t", &draft.id).unwrap();
         promote(d, "between_t", None).await.unwrap();
         let now = load(d, "between_t").unwrap();
         assert!(now.script.contains("return 2"));
@@ -2547,7 +2547,7 @@ mod tests {
             "\"bottom\""
         );
         // A tool only ever called by another tool is still used, so it is never retired unused.
-        let callee = super::super::traces::artifact(d, "script_tool", "level_four").unwrap();
+        let callee = crate::chat::traces::artifact(d, "script_tool", "level_four").unwrap();
         assert!(callee.used >= 1 && callee.last_used.is_some(), "{callee:?}");
         let err = call(d, "level_one", &json!({}), None).await.unwrap_err();
         assert!(err.contains("too deep"), "{err}");
@@ -2880,12 +2880,12 @@ mod tests {
             .await
             .unwrap();
         approve().await;
-        let draft = super::super::versions::list(d, "tools", "script-forged_t")
+        let draft = crate::chat::versions::list(d, "tools", "script-forged_t")
             .unwrap()
             .into_iter()
             .find(|v| v.value["script"] == "function main() { return 9; }")
             .unwrap();
-        super::super::versions::restore(d, "tools", "script-forged_t", &draft.id).unwrap();
+        crate::chat::versions::restore(d, "tools", "script-forged_t", &draft.id).unwrap();
         promote(d, "forged_t", None).await.unwrap();
         let now = load(d, "forged_t").unwrap();
         let e_set_aside = now.set_aside.contains(&v_e);
@@ -2922,7 +2922,7 @@ mod tests {
             .unwrap();
         let v_b = approve().await;
         std::thread::sleep(std::time::Duration::from_millis(20));
-        let a = super::super::versions::list(d, "tools", "script-touch_t")
+        let a = crate::chat::versions::list(d, "tools", "script-touch_t")
             .unwrap()
             .into_iter()
             .find(|v| {
@@ -2930,7 +2930,7 @@ mod tests {
                     && v.value["status"] == "active"
             })
             .unwrap();
-        super::super::versions::restore(d, "tools", "script-touch_t", &a.id).unwrap();
+        crate::chat::versions::restore(d, "tools", "script-touch_t", &a.id).unwrap();
         assert!(load(d, "touch_t").unwrap().set_aside.contains(&v_b));
         // An app save (access renewed, say) keeps the restored state in History, signed.
         let mut t = load(d, "touch_t").unwrap();
@@ -2945,7 +2945,7 @@ mod tests {
         )
         .unwrap();
         // The user brings back the same restored version from History.
-        let again = super::super::versions::list(d, "tools", "script-touch_t")
+        let again = crate::chat::versions::list(d, "tools", "script-touch_t")
             .unwrap()
             .into_iter()
             .find(|v| {
@@ -2953,7 +2953,7 @@ mod tests {
                     && v.value["restoredAt"].is_string()
             })
             .unwrap();
-        super::super::versions::restore(d, "tools", "script-touch_t", &again.id).unwrap();
+        crate::chat::versions::restore(d, "tools", "script-touch_t", &again.id).unwrap();
         let now = load(d, "touch_t").unwrap();
         let kept = now.set_aside.contains(&v_b);
         let rolled = revert(d, "touch_t", &[]).await;
@@ -3003,7 +3003,7 @@ mod tests {
             .unwrap();
         promote(d, "aside_r", None).await.unwrap();
         let second = load(d, "aside_r").unwrap();
-        let first = super::super::versions::list(d, "tools", "script-aside_r")
+        let first = crate::chat::versions::list(d, "tools", "script-aside_r")
             .unwrap()
             .into_iter()
             .find(|v| {
@@ -3011,7 +3011,7 @@ mod tests {
                     && v.value["status"] == "active"
             })
             .unwrap();
-        super::super::versions::restore(d, "tools", "script-aside_r", &first.id).unwrap();
+        crate::chat::versions::restore(d, "tools", "script-aside_r", &first.id).unwrap();
         std::fs::write(
             path(d, "aside_r").unwrap(),
             serde_json::to_string(&second).unwrap(),

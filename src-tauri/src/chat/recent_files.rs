@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use super::store::write_json;
+use crate::chat::store::write_json;
 
 /// Files kept.
 const KEEP: usize = 20;

@@ -17,9 +17,9 @@ use tauri::AppHandle;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::watch;
 
-use super::engine::{emit, ChatEvent};
-use super::providers::ModelView;
-use super::store::{self, Conversation};
+use crate::chat::engine::{emit, ChatEvent};
+use crate::chat::providers::ModelView;
+use crate::chat::store::{self, Conversation};
 
 pub const VENDOR: &str = "acp";
 const TIMEOUT_SECS: u64 = 30 * 60;
@@ -315,7 +315,7 @@ pub async fn run(
             agent.name, agent.command
         )
     })?;
-    let prompt = super::agent_cli::prompt(&conversation);
+    let prompt = crate::chat::agent_cli::prompt(&conversation);
     if prompt.trim().is_empty() {
         return Err("There is nothing to send.".into());
     }
@@ -376,7 +376,7 @@ pub async fn run(
                     .as_str()
                     .unwrap_or("an action")
                     .to_string();
-                let gate = super::tools::ChatTool {
+                let gate = crate::chat::tools::ChatTool {
                     name: title.clone(),
                     description: String::new(),
                     parameters: Value::Null,
@@ -385,7 +385,7 @@ pub async fn run(
                     read_only: false,
                 };
                 !matches!(
-                    super::tools::request_approval(&app, &gate, &params["toolCall"]).await,
+                    crate::chat::tools::request_approval(&app, &gate, &params["toolCall"]).await,
                     crate::tools::registry::ApprovalDecision::Deny
                 )
             }

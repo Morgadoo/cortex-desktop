@@ -20,7 +20,7 @@ use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
-use super::store::valid_id;
+use crate::chat::store::valid_id;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -786,7 +786,7 @@ pub fn save(config_dir: &Path, mut task: Task) -> Result<Vec<Task>, String> {
     match tasks.iter_mut().find(|t| t.id == task.id) {
         Some(existing) => {
             // The task as it was stays restorable, like the rest of what can act on its own.
-            super::versions::keep(config_dir, "tasks", &task.id, &*existing, &task)?;
+            crate::chat::versions::keep(config_dir, "tasks", &task.id, &*existing, &task)?;
             *existing = task;
         }
         None => tasks.push(task),
@@ -848,14 +848,15 @@ pub fn start(app: AppHandle) {
                 if let Ok(config_dir) = crate::settings::get_config_dir(&app) {
                     let dir = config_dir.clone();
                     let _ =
-                        tokio::task::spawn_blocking(move || super::libraries::sync_all(&dir)).await;
+                        tokio::task::spawn_blocking(move || crate::chat::libraries::sync_all(&dir))
+                            .await;
                     // Connector documents: the connectors answer slower, so after the folders.
-                    let connectors = super::commands::registry_connectors(&app);
-                    for library in super::libraries::list(&config_dir)
+                    let connectors = crate::chat::commands::registry_connectors(&app);
+                    for library in crate::chat::libraries::list(&config_dir)
                         .into_iter()
                         .filter(|l| !l.connectors.is_empty())
                     {
-                        match super::libraries::sync_connectors(
+                        match crate::chat::libraries::sync_connectors(
                             &config_dir,
                             &library.id,
                             &connectors,
@@ -883,9 +884,9 @@ pub fn start(app: AppHandle) {
                 for task in take_due(&config_dir, Utc::now()) {
                     info!("running scheduled task {}", task.title);
                     let app = app.clone();
-                    tauri::async_runtime::spawn(
-                        async move { super::engine::run_task(app, task).await },
-                    );
+                    tauri::async_runtime::spawn(async move {
+                        crate::chat::engine::run_task(app, task).await
+                    });
                 }
                 // The kernel's maintenance jobs: lifecycle and regression checks daily, evals
                 // nightly when on, the review weekly when on (`maintenance`, tested on its own).
@@ -894,24 +895,24 @@ pub fn start(app: AppHandle) {
                 dispatch(
                     due,
                     move |model| {
-                        let host: std::sync::Arc<dyn super::host::Host> =
-                            std::sync::Arc::new(super::host::TauriHost::new(evals_app));
+                        let host: std::sync::Arc<dyn crate::chat::host::Host> =
+                            std::sync::Arc::new(crate::chat::host::TauriHost::new(evals_app));
                         tauri::async_runtime::spawn(async move {
-                            super::evals::nightly_and_notify(&host, &model).await
+                            crate::chat::evals::nightly_and_notify(&host, &model).await
                         });
                     },
                     move |task| {
                         tauri::async_runtime::spawn(async move {
-                            super::engine::run_task(review_app, task).await
+                            crate::chat::engine::run_task(review_app, task).await
                         });
                     },
                 );
                 for task in take_new_files(&config_dir, std::time::SystemTime::now()) {
                     info!("new files started task {}", task.title);
                     let app = app.clone();
-                    tauri::async_runtime::spawn(
-                        async move { super::engine::run_task(app, task).await },
-                    );
+                    tauri::async_runtime::spawn(async move {
+                        crate::chat::engine::run_task(app, task).await
+                    });
                 }
                 // Feeds: every 10 minutes (the first tick is right after start).
                 if ticks % 20 == 1 {
@@ -919,7 +920,7 @@ pub fn start(app: AppHandle) {
                         info!("new feed items started task {}", task.title);
                         let app = app.clone();
                         tauri::async_runtime::spawn(async move {
-                            super::engine::run_task(app, task).await
+                            crate::chat::engine::run_task(app, task).await
                         });
                     }
                 }
@@ -943,7 +944,7 @@ pub fn run_now(app: &AppHandle, id: &str) -> Result<(), String> {
         "running",
     );
     let app = app.clone();
-    tauri::async_runtime::spawn(async move { super::engine::run_task(app, task).await });
+    tauri::async_runtime::spawn(async move { crate::chat::engine::run_task(app, task).await });
     Ok(())
 }
 
@@ -951,9 +952,9 @@ pub fn run_now(app: &AppHandle, id: &str) -> Result<(), String> {
 #[derive(Debug, Default)]
 pub struct Maintenance {
     /// The daily lifecycle pass, when it ran.
-    pub lifecycle: Option<super::lifecycle::Report>,
+    pub lifecycle: Option<crate::chat::lifecycle::Report>,
     /// The daily regression checks, run with the lifecycle pass.
-    pub checked: Option<super::script_tools::Checked>,
+    pub checked: Option<crate::chat::script_tools::Checked>,
     /// The model to run the user's eval suites on, when the nightly run is due.
     pub evals_on: Option<String>,
     /// The weekly review to run, when due.
@@ -991,15 +992,15 @@ pub fn dispatch(
 /// week's failures) weekly, when turned on. The loop runs what this returns that needs the app.
 pub async fn maintenance(config_dir: &Path, now: DateTime<Utc>) -> Maintenance {
     let mut due = Maintenance::default();
-    if let Some(report) = super::lifecycle::daily(config_dir, now).await {
+    if let Some(report) = crate::chat::lifecycle::daily(config_dir, now).await {
         due.lifecycle = Some(report);
-        due.checked = Some(super::script_tools::check_all(config_dir).await);
+        due.checked = Some(crate::chat::script_tools::check_all(config_dir).await);
     }
-    if super::learning::take_evals(config_dir, now) {
-        due.evals_on = super::providers::load(config_dir).default_model;
+    if crate::chat::learning::take_evals(config_dir, now) {
+        due.evals_on = crate::chat::providers::load(config_dir).default_model;
     }
-    if super::learning::take_review(config_dir, now) {
-        due.review = Some(super::learning::review_task(config_dir));
+    if crate::chat::learning::take_review(config_dir, now) {
+        due.review = Some(crate::chat::learning::review_task(config_dir));
     }
     due
 }
@@ -1011,7 +1012,7 @@ mod tests {
     /// what needs the app (the evals, the review turn) comes back for the loop to start.
     #[tokio::test]
     async fn maintenance_runs_each_job_when_it_is_due() {
-        use super::super::{learning, providers, script_tools};
+        use crate::chat::{learning, providers, script_tools};
         let dir = tempfile::tempdir().unwrap();
         let d = dir.path();
         let now = Utc::now();
@@ -1094,7 +1095,7 @@ mod tests {
         let started = std::cell::RefCell::new(Vec::new());
         let due = Maintenance {
             evals_on: Some("m/a".into()),
-            review: Some(super::super::learning::review_task(std::path::Path::new(
+            review: Some(crate::chat::learning::review_task(std::path::Path::new(
                 "/nonexistent",
             ))),
             ..Maintenance::default()
@@ -1122,7 +1123,7 @@ mod tests {
 
     #[test]
     fn a_nightly_drop_is_announced() {
-        use super::super::evals::{drop_notice, Nightly};
+        use crate::chat::evals::{drop_notice, Nightly};
         let result = |score: f64, before: Option<f64>| Nightly {
             suite: "trips".into(),
             score,
@@ -1141,7 +1142,7 @@ mod tests {
     fn a_task_edit_can_be_undone() {
         let dir = tempfile::tempdir().unwrap();
         let d = dir.path();
-        let mut task = super::super::learning::review_task(d);
+        let mut task = crate::chat::learning::review_task(d);
         task.id = "report".into();
         task.prompt = "Write the weekly report.".into();
         task.frequency = Frequency::Weekly {
@@ -1152,10 +1153,10 @@ mod tests {
         let mut changed = task.clone();
         changed.prompt = "Email everyone the report.".into();
         save(d, changed).unwrap();
-        let before = super::super::versions::list(d, "tasks", "report")
+        let before = crate::chat::versions::list(d, "tasks", "report")
             .unwrap()
             .remove(0);
-        super::super::versions::restore(d, "tasks", "report", &before.id).unwrap();
+        crate::chat::versions::restore(d, "tasks", "report", &before.id).unwrap();
         assert_eq!(load(d)[0].prompt, "Write the weekly report.");
     }
 

@@ -12,8 +12,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
-use super::store::{chat_dir, write_json};
-use super::tools::ChatTool;
+use crate::chat::store::{chat_dir, write_json};
+use crate::chat::tools::ChatTool;
 
 /// Operations offered per server.
 const MAX_OPERATIONS: usize = 60;
@@ -235,7 +235,7 @@ pub fn tools(config_dir: &Path) -> Vec<ChatTool> {
         for op in operations(&spec) {
             let read_only = op.method == "GET";
             out.push(ChatTool {
-                name: super::tools::safe_name(&format!("api-{}__{}", server.id, op.id)),
+                name: crate::chat::tools::safe_name(&format!("api-{}__{}", server.id, op.id)),
                 description: format!("{} (via {})", op.description, server.name),
                 parameters: op.parameters,
                 connector_id: Some(format!("{PREFIX}{}", server.id)),
@@ -434,7 +434,7 @@ pub async fn call(config_dir: &Path, tool: &ChatTool, input: &Value) -> Result<S
         &url,
     );
     if server.has_key {
-        let account = crate::account::AccountId::parse(super::LOCAL_ACCOUNT)?;
+        let account = crate::account::AccountId::parse(crate::chat::LOCAL_ACCOUNT)?;
         if let Some(key) = crate::tools::auth::keychain_secrets(account)
             .load(&secret_name(id))
             .await?

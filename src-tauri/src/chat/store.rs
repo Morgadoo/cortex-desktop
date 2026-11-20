@@ -85,7 +85,7 @@ pub struct Conversation {
     pub temporary: bool,
     /// The parts of the system prompt the latest turn sent and their sizes, for the context view.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub prompt_parts: Vec<super::prompt::Part>,
+    pub prompt_parts: Vec<crate::chat::prompt::Part>,
     /// Hidden from the main list; still searchable and openable.
     #[serde(default)]
     pub archived: bool,
@@ -131,9 +131,9 @@ pub struct Conversation {
     pub params: ChatParams,
     /// The note standing in for compacted turns.
     #[serde(default)]
-    pub summary: Option<super::context::Summary>,
+    pub summary: Option<crate::chat::context::Summary>,
     #[serde(default)]
-    pub usage: super::context::UsageTotals,
+    pub usage: crate::chat::context::UsageTotals,
 }
 
 impl Conversation {
@@ -251,7 +251,7 @@ pub fn load_conversation(config_dir: &Path, id: &str) -> Result<Conversation, St
 pub fn save_conversation(config_dir: &Path, conversation: &Conversation) -> Result<(), String> {
     let path = conversation_path(config_dir, &conversation.id)?;
     if !conversation.temporary {
-        super::backup::before_overwrite(config_dir, &path);
+        crate::chat::backup::before_overwrite(config_dir, &path);
     }
     if conversation.schema < SCHEMA {
         let mut current = conversation.clone();
@@ -275,7 +275,7 @@ pub fn purge_temporary(config_dir: &Path) {
 
 /// Deleting moves the conversation to the trash, where it stays for 30 days.
 pub fn delete_conversation(config_dir: &Path, id: &str) -> Result<(), String> {
-    super::backup::trash(config_dir, id)
+    crate::chat::backup::trash(config_dir, id)
 }
 
 /// A sidebar row.
@@ -312,7 +312,7 @@ pub struct ConversationSummary {
 
 /// The sidebar rows, from the index (see [`super::index`]), so a long history stays fast.
 pub fn list_conversations(config_dir: &Path) -> Vec<ConversationSummary> {
-    super::index::list(config_dir)
+    crate::chat::index::list(config_dir)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -368,7 +368,7 @@ pub fn load_instructions(config_dir: &Path) -> Instructions {
 }
 
 pub fn save_instructions(config_dir: &Path, instructions: &Instructions) -> Result<(), String> {
-    super::versions::keep(
+    crate::chat::versions::keep(
         config_dir,
         "instructions",
         "user",
@@ -427,7 +427,7 @@ pub struct Turn {
 #[serde(rename_all = "camelCase")]
 pub struct ConversationView {
     pub id: String,
-    pub usage: super::context::UsageTotals,
+    pub usage: crate::chat::context::UsageTotals,
     /// Index of the first turn requests still carry verbatim, when earlier ones were compacted.
     pub compacted_before: Option<usize>,
     pub title: String,
@@ -1194,7 +1194,7 @@ mod tests {
         c.ratings = vec![(3, 1), (5, -1)];
         delete_exchange(&mut c, 2).unwrap();
         assert_eq!(c.messages.len(), 4);
-        assert_eq!(super::super::context::message_text(&c.messages[2]), "three");
+        assert_eq!(crate::chat::context::message_text(&c.messages[2]), "three");
         assert_eq!(
             c.ratings,
             vec![(3, -1)],
@@ -1233,12 +1233,12 @@ mod tests {
         ];
         rewrite_message(&mut c, 0, "what is 2+3?").unwrap();
         assert_eq!(
-            super::super::context::message_text(&c.messages[0]),
+            crate::chat::context::message_text(&c.messages[0]),
             "what is 2+3?"
         );
         // Editing an answer changes its final text and keeps the tool step before it.
         rewrite_message(&mut c, 2, "Four.").unwrap();
-        assert_eq!(super::super::context::message_text(&c.messages[2]), "Four.");
+        assert_eq!(crate::chat::context::message_text(&c.messages[2]), "Four.");
         assert!(
             matches!(&c.messages[1], Message::Assistant(a) if matches!(a.content[0], AssistantContent::ToolCall(_)))
         );
@@ -1297,12 +1297,12 @@ mod tests {
             (vec![(1, 1)], 0),
             "notes on later messages go with them"
         );
-        assert!(super::super::context::message_text(&upto.messages[0]).contains("secret plans"));
+        assert!(crate::chat::context::message_text(&upto.messages[0]).contains("secret plans"));
         let mut bare = c.clone();
         branch_copy(&mut bare, None, true).unwrap();
         assert_eq!(bare.messages.len(), 4);
         assert_eq!(
-            super::super::context::message_text(&bare.messages[0]),
+            crate::chat::context::message_text(&bare.messages[0]),
             "Summarise this"
         );
         assert!(branch_copy(&mut c.clone(), Some(9), false).is_err());

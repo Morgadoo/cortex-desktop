@@ -17,10 +17,10 @@ use rig_core::DynModel;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::engine::{ChatEvent, TurnRequest};
-use super::host::Host;
-use super::tools::{ApprovalMode, ChatTool};
-use super::{builtins, context, store};
+use crate::chat::engine::{ChatEvent, TurnRequest};
+use crate::chat::host::Host;
+use crate::chat::tools::{ApprovalMode, ChatTool};
+use crate::chat::{builtins, context, store};
 
 /// Tool calls a worker may make before it must report.
 pub const MAX_WORKER_STEPS: usize = 8;
@@ -55,12 +55,12 @@ pub struct Task {
 /// task names some, only those (the kernel's `spawn(role, task, tools)`).
 pub fn task_tools(
     worker_tools: &[ChatTool],
-    agent: Option<&super::agents::Agent>,
+    agent: Option<&crate::chat::agents::Agent>,
     wanted: &[String],
 ) -> Vec<ChatTool> {
     worker_tools
         .iter()
-        .filter(|t| agent.is_none_or(|a| super::agents::allows(a, &t.name)))
+        .filter(|t| agent.is_none_or(|a| crate::chat::agents::allows(a, &t.name)))
         .filter(|t| wanted.is_empty() || wanted.contains(&t.name))
         .cloned()
         .collect()
@@ -156,7 +156,7 @@ pub fn parse_tasks(args: &Value) -> Result<Vec<Task>, String> {
     Ok(tasks)
 }
 
-fn worker_preamble(task: &Task, agent: Option<&super::agents::Agent>) -> String {
+fn worker_preamble(task: &Task, agent: Option<&crate::chat::agents::Agent>) -> String {
     let persona = agent.map_or(String::new(), |a| {
         format!(
             "You are {}, an agent with this role: {}\n\n{}{}\n\n",
@@ -214,7 +214,7 @@ fn activity_of(name: &str, args: &Value) -> String {
 /// tool steps to the transcript, and everything else (data, models, approvals) is the parent's.
 struct WorkerHost {
     parent: Arc<dyn Host>,
-    state: super::ChatState,
+    state: crate::chat::ChatState,
     conversation_id: String,
     call_id: String,
     index: usize,
@@ -276,7 +276,7 @@ impl Host for WorkerHost {
         }
     }
 
-    fn chat_state(&self) -> &super::ChatState {
+    fn chat_state(&self) -> &crate::chat::ChatState {
         &self.state
     }
 
@@ -319,11 +319,11 @@ async fn run_one(
     call_id: &str,
     index: usize,
     task: Task,
-    agent: Option<&super::agents::Agent>,
+    agent: Option<&crate::chat::agents::Agent>,
 ) -> Report {
     let worker = Arc::new(WorkerHost {
         parent: host.clone(),
-        state: super::ChatState::default(),
+        state: crate::chat::ChatState::default(),
         conversation_id: conversation_id.into(),
         call_id: call_id.into(),
         index,
@@ -368,7 +368,7 @@ async fn run_one(
         });
     }
     let mut only: Vec<String> = tools.iter().map(|t| t.name.clone()).collect();
-    only.push(super::engine::READ_TOOL_OUTPUT.into());
+    only.push(crate::chat::engine::READ_TOOL_OUTPUT.into());
     let system = worker_preamble(&task, agent);
     let request = |text: String, only_tools: Vec<String>, max_steps: usize| TurnRequest {
         conversation_id: id.clone(),
@@ -388,7 +388,7 @@ async fn run_one(
         let id = id.clone();
         async move {
             let cancel = worker.state.begin(&id).ok_or("the worker is busy")?;
-            let outcome = super::engine::turn(&dyn_worker, &request, cancel).await;
+            let outcome = crate::chat::engine::turn(&dyn_worker, &request, cancel).await;
             worker.state.finish(&id);
             outcome
         }
@@ -466,13 +466,13 @@ pub async fn run_all(
     mode: Mode,
 ) -> Vec<Report> {
     let tools = worker_tools(offered);
-    let team = super::agents::load(config_dir);
+    let team = crate::chat::agents::load(config_dir);
     let mut prepared = Vec::new();
     for mut task in tasks {
         let agent = task
             .agent
             .as_deref()
-            .and_then(|n| super::agents::by_name(&team, n))
+            .and_then(|n| crate::chat::agents::by_name(&team, n))
             .cloned();
         // The agent's own model when it can be reached, otherwise the chat's.
         let reference = match agent.as_ref().and_then(|a| a.model.clone()) {
@@ -563,7 +563,7 @@ fn transcript_path(config_dir: &Path, call_id: &str, index: usize) -> Option<std
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
     safe.then(|| {
-        super::store::chat_dir(config_dir)
+        crate::chat::store::chat_dir(config_dir)
             .join("subagents")
             .join(format!("{call_id}-{index}.json"))
     })
@@ -571,7 +571,7 @@ fn transcript_path(config_dir: &Path, call_id: &str, index: usize) -> Option<std
 
 fn save_transcript(config_dir: &Path, call_id: &str, index: usize, steps: &[Step]) {
     if let Some(path) = transcript_path(config_dir, call_id, index) {
-        if let Err(e) = super::store::write_json(&path, &steps) {
+        if let Err(e) = crate::chat::store::write_json(&path, &steps) {
             log::warn!("could not keep a worker's transcript: {e}");
         }
     }

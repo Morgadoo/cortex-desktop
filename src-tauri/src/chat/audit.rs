@@ -39,7 +39,7 @@ pub struct Entry {
 }
 
 fn dir(config_dir: &Path) -> PathBuf {
-    super::store::chat_dir(config_dir).join("audit")
+    crate::chat::store::chat_dir(config_dir).join("audit")
 }
 
 fn month_file(config_dir: &Path, at: DateTime<Utc>) -> PathBuf {
@@ -66,13 +66,13 @@ pub fn record(config_dir: &Path, entry: Entry) {
     let path = month_file(config_dir, entry.at);
     let result = (|| -> Result<(), String> {
         std::fs::create_dir_all(dir(config_dir)).map_err(|e| e.to_string())?;
-        let mut text = super::at_rest::read_to_string(&path).unwrap_or_default();
+        let mut text = crate::chat::at_rest::read_to_string(&path).unwrap_or_default();
         if text.lines().count() >= MONTH_LIMIT {
             return Ok(());
         }
         text.push_str(&serde_json::to_string(&entry).map_err(|e| e.to_string())?);
         text.push('\n');
-        super::at_rest::write(&path, text).map_err(|e| e.to_string())?;
+        crate::chat::at_rest::write(&path, text).map_err(|e| e.to_string())?;
         // Older than a year: gone.
         let mut months: Vec<PathBuf> = std::fs::read_dir(dir(config_dir))
             .map_err(|e| e.to_string())?
@@ -105,7 +105,7 @@ pub fn entries(config_dir: &Path, since: Option<DateTime<Utc>>) -> Vec<Entry> {
     months
         .into_iter()
         .flat_map(|p| {
-            super::at_rest::read_to_string(p)
+            crate::chat::at_rest::read_to_string(p)
                 .unwrap_or_default()
                 .lines()
                 .filter_map(|l| serde_json::from_str::<Entry>(l).ok())

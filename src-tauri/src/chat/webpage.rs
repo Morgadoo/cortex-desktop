@@ -10,7 +10,7 @@ use std::process::Stdio;
 
 use serde_json::{json, Value};
 
-use super::tools::{ChatTool, Outcome};
+use crate::chat::tools::{ChatTool, Outcome};
 
 pub const BROWSER_VIEW: &str = "browser_view";
 const TIMEOUT_SECS: u64 = 45;
@@ -81,7 +81,7 @@ pub fn profile_dir(config_dir: &Path, agent: Option<&str>) -> PathBuf {
         .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
         .take(64)
         .collect();
-    super::store::chat_dir(config_dir)
+    crate::chat::store::chat_dir(config_dir)
         .join("browser-profiles")
         .join(if name.is_empty() {
             "assistant".to_string()
@@ -305,7 +305,7 @@ pub async fn view(
     }
     let mut out = json!({ "url": url });
     if capture != "text" {
-        let dir = match super::sandbox::workspace(config_dir, conversation_id) {
+        let dir = match crate::chat::sandbox::workspace(config_dir, conversation_id) {
             Ok(d) => d.join("images"),
             Err(e) => return err(e),
         };
@@ -751,7 +751,7 @@ pub async fn act(
         Ok(r) => r,
         Err(e) => return err(e),
     };
-    let dir = match super::sandbox::workspace(config_dir, conversation_id) {
+    let dir = match crate::chat::sandbox::workspace(config_dir, conversation_id) {
         Ok(d) => d.join("images"),
         Err(e) => return err(e),
     };
@@ -847,7 +847,7 @@ mod act_tests {
             controls.contains("#name") && controls.contains("text=Greet"),
             "{controls}"
         );
-        let shot = super::super::sandbox::workspace(dir.path(), "c1")
+        let shot = crate::chat::sandbox::workspace(dir.path(), "c1")
             .unwrap()
             .join(v["file"].as_str().unwrap());
         assert!(std::fs::read(shot).unwrap().starts_with(b"\x89PNG"));

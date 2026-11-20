@@ -66,7 +66,7 @@ pub async fn search(config_dir: &Path, query: &str, web: bool) -> Results {
     if query.is_empty() {
         return out;
     }
-    let (passages, note) = super::embeddings::search(config_dir, &[], query, 6).await;
+    let (passages, note) = crate::chat::embeddings::search(config_dir, &[], query, 6).await;
     if let Some(note) = note {
         out.notes.push(note);
     }
@@ -79,8 +79,11 @@ pub async fn search(config_dir: &Path, query: &str, web: bool) -> Results {
             target: format!("{}:{}", p.library, p.document),
         });
     }
-    let pages = super::knowledge::load(config_dir);
-    for (page, _) in super::knowledge::rank(&pages, query).into_iter().take(4) {
+    let pages = crate::chat::knowledge::load(config_dir);
+    for (page, _) in crate::chat::knowledge::rank(&pages, query)
+        .into_iter()
+        .take(4)
+    {
         out.cards.push(Card {
             kind: "knowledge".into(),
             title: page.title.clone(),
@@ -89,7 +92,7 @@ pub async fn search(config_dir: &Path, query: &str, web: bool) -> Results {
             target: page.id.clone(),
         });
     }
-    for hit in super::builtins::search_chats(config_dir, query)
+    for hit in crate::chat::builtins::search_chats(config_dir, query)
         .into_iter()
         .take(6)
     {
@@ -106,7 +109,7 @@ pub async fn search(config_dir: &Path, query: &str, web: bool) -> Results {
         });
     }
     if web {
-        match super::search::search_with(config_dir, query, 6, None).await {
+        match crate::chat::search::search_with(config_dir, query, 6, None).await {
             Ok(hits) => {
                 for h in hits {
                     let site = h
@@ -156,15 +159,15 @@ mod tests {
     #[tokio::test]
     async fn one_query_finds_libraries_knowledge_and_chats() {
         let dir = std::env::temp_dir().join(format!("cortex-searchall-{}", std::process::id()));
-        let lib = super::super::libraries::create(&dir, "Company docs", "").unwrap();
-        super::super::libraries::add_text(
+        let lib = crate::chat::libraries::create(&dir, "Company docs", "").unwrap();
+        crate::chat::libraries::add_text(
             &dir,
             &lib.id,
             "handbook.md",
             "The on-call rotation changes every Monday.",
         )
         .unwrap();
-        super::super::knowledge::write(
+        crate::chat::knowledge::write(
             &dir,
             None,
             "On-call",

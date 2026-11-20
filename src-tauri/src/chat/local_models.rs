@@ -308,11 +308,11 @@ pub fn list(root: &Path) -> Vec<View> {
 }
 
 /// The chat models downloaded, for the model picker.
-pub fn models(root: &Path) -> Vec<super::providers::ModelView> {
+pub fn models(root: &Path) -> Vec<crate::chat::providers::ModelView> {
     CATALOG
         .iter()
         .filter(|e| e.kind == Kind::Chat && installed(root, e.id))
-        .map(|e| super::providers::ModelView {
+        .map(|e| crate::chat::providers::ModelView {
             reference: format!("{VENDOR}/{}", e.id),
             vendor: VENDOR.into(),
             provider_label: "Built-in (on this computer)".into(),
@@ -464,7 +464,7 @@ const MAX_ANSWER: usize = 2_048;
 
 enum Weights {
     /// Runs several requests at once.
-    Qwen2(super::batched_qwen2::ModelWeights),
+    Qwen2(crate::chat::batched_qwen2::ModelWeights),
     Llama(candle_transformers::models::quantized_llama::ModelWeights),
 }
 
@@ -543,7 +543,7 @@ fn load(root: &Path, id: &str) -> Result<Loaded, String> {
     let (weights, template) = match arch.as_str() {
         "qwen2" => (
             Weights::Qwen2(
-                super::batched_qwen2::ModelWeights::from_gguf(content, &mut file, &device)
+                crate::chat::batched_qwen2::ModelWeights::from_gguf(content, &mut file, &device)
                     .map_err(|e| e.to_string())?,
             ),
             Template::ChatMl,
@@ -1193,7 +1193,7 @@ async fn completions(axum::Json(body): axum::Json<Value>) -> axum::response::Res
 /// The system prompt of a built-in model: who it is, today's date, and the user's own
 /// instructions; short, because a small model on a processor reads every token.
 pub fn brief(
-    instructions: &super::store::Instructions,
+    instructions: &crate::chat::store::Instructions,
     project: Option<&str>,
     agent: Option<(&str, &str)>,
 ) -> String {
@@ -1242,12 +1242,12 @@ pub async fn connect(
         ));
     }
     let port = endpoint().await?;
-    let settings = super::providers::ProviderSettings {
+    let settings = crate::chat::providers::ProviderSettings {
         enabled: true,
         base_url: Some(format!("http://127.0.0.1:{port}/v1")),
         ..Default::default()
     };
-    super::providers::connect(&format!("llamacpp/{id}"), &settings, None)
+    crate::chat::providers::connect(&format!("llamacpp/{id}"), &settings, None)
 }
 
 // ---------------------------------------------------------------------------------------------

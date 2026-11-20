@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::process::Command;
 
-use super::tools::ChatTool;
+use crate::chat::tools::ChatTool;
 
 pub const CONNECTOR: &str = "computer";
 pub const TOOL: &str = "computer";
@@ -572,7 +572,7 @@ pub async fn run(conversation_id: &str, input: &Value) -> Result<String, String>
     if let Some(dir) = crate::reporting::early_config_dir() {
         let settings = load(&dir);
         if !settings.blocked_apps.is_empty() || !settings.only_apps.is_empty() {
-            let window = tokio::task::spawn_blocking(super::recorder::active_window)
+            let window = tokio::task::spawn_blocking(crate::chat::recorder::active_window)
                 .await
                 .unwrap_or_default();
             app_allowed(&settings, &window)?;
@@ -631,7 +631,7 @@ mod tests {
         );
         assert!(point("c", &json!({ "x": 1 })).is_err());
         // A screenshot only reads; a click can change things (the kernel's approval policy).
-        let tool = super::super::tools::ChatTool {
+        let tool = crate::chat::tools::ChatTool {
             name: TOOL.into(),
             description: String::new(),
             parameters: json!({}),

@@ -11,7 +11,7 @@ use std::time::Duration;
 use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 
-use super::store::{chat_dir, write_json};
+use crate::chat::store::{chat_dir, write_json};
 
 const MAX_PAGE_BYTES: usize = 512 * 1024;
 const MAX_IMAGE_BYTES: usize = 1_500 * 1024;
@@ -165,7 +165,7 @@ pub async fn get(config_dir: &Path, url: &str) -> Result<Preview, String> {
         .unwrap_or_default()
         .trim_start_matches("www.")
         .to_string();
-    if !super::favicon::valid_host(&host) {
+    if !crate::chat::favicon::valid_host(&host) {
         return Err("Not a public web address.".into());
     }
     let path = cache_path(config_dir, url);

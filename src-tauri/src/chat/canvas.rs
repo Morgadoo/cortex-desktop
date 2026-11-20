@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use super::store::{chat_dir, valid_id, write_json};
+use crate::chat::store::{chat_dir, valid_id, write_json};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]

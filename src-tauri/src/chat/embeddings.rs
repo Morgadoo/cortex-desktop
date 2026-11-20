@@ -31,8 +31,8 @@ use rig_core::providers::openai::wire::{self as dialects};
 use rig_core::providers::openai::OpenAIConfig;
 use serde::{Deserialize, Serialize};
 
-use super::libraries::{self, Passage};
-use super::store::write_json;
+use crate::chat::libraries::{self, Passage};
+use crate::chat::store::write_json;
 
 pub const SECRET: &str = "embeddings";
 pub const RERANK_SECRET: &str = "rerank";
@@ -112,10 +112,10 @@ pub async fn embed(
     texts: Vec<String>,
 ) -> Result<Vec<Vec<f32>>, String> {
     if settings.base_url == BUILTIN {
-        let root = super::local_models::root()?;
+        let root = crate::chat::local_models::root()?;
         let model = settings.model.clone();
         return tokio::task::spawn_blocking(move || {
-            super::local_models::embed_texts(&root, &model, &texts)
+            crate::chat::local_models::embed_texts(&root, &model, &texts)
         })
         .await
         .map_err(|e| e.to_string())?;
@@ -131,7 +131,7 @@ pub async fn embed(
         )
         .await
         .map_err(|_| "The embedding server did not answer in time.".to_string())?
-        .map_err(|e| super::context::short_error(&e.to_string()))?;
+        .map_err(|e| crate::chat::context::short_error(&e.to_string()))?;
         if response.embeddings.len() != chunk.len() {
             return Err(format!(
                 "The embedding server returned {} vectors for {} passages.",
@@ -973,7 +973,7 @@ mod tests {
         ) else {
             return;
         };
-        super::super::local_models::init(Path::new(&models));
+        crate::chat::local_models::init(Path::new(&models));
         let dir = tempfile::tempdir().unwrap();
         let settings = EmbeddingSettings {
             enabled: true,

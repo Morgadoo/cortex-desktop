@@ -63,9 +63,9 @@ pub fn take_review(config_dir: &Path, now: DateTime<Utc>) -> bool {
 /// The task the review runs as: not stored, so it never shows on the Scheduled page. It also
 /// diagnoses: the week's failures from the traces are in its prompt, so it reads what went wrong
 /// and proposes fixes alongside the knowledge clean-up (the kernel's Diagnose step).
-pub fn review_task(config_dir: &Path) -> super::tasks::Task {
-    let failures = super::traces::failure_report(config_dir, 7);
-    super::tasks::Task {
+pub fn review_task(config_dir: &Path) -> crate::chat::tasks::Task {
+    let failures = crate::chat::traces::failure_report(config_dir, 7);
+    crate::chat::tasks::Task {
         id: "knowledge-review".into(),
         title: "Weekly knowledge review".into(),
         prompt: format!(
@@ -77,7 +77,7 @@ pub fn review_task(config_dir: &Path) -> super::tasks::Task {
              Do not change anything now: end with one table of proposed actions, knowledge and fixes, and ask me which \
              to apply. If everything is in order, say so in one line."
         ),
-        frequency: super::tasks::Frequency::Once { date: String::new(), time: String::new() },
+        frequency: crate::chat::tasks::Frequency::Once { date: String::new(), time: String::new() },
         agent_id: None,
         model: None,
         enabled: true,
@@ -134,7 +134,7 @@ pub fn parse_reflection(text: &str, existing: &[String]) -> Option<LearnedSkill>
     let end = text.rfind('}')?;
     let skill: LearnedSkill = serde_json::from_str(&text[start..=end]).ok()?;
     let name = skill.name.trim().to_lowercase();
-    if !super::skills::valid_name(&name)
+    if !crate::chat::skills::valid_name(&name)
         || existing.contains(&name)
         || skill.body.trim().len() < 40
         || skill.description.trim().is_empty()
@@ -154,17 +154,17 @@ pub fn keep(config_dir: &Path, agent: &str, skill: &LearnedSkill) -> Result<(), 
         "{}\n\n(Learned by {agent} from its own work; review before relying on it.)",
         skill.body
     );
-    super::skills::save(config_dir, &skill.name, &skill.description, &body)?;
+    crate::chat::skills::save(config_dir, &skill.name, &skill.description, &body)?;
     // A candidate until the user turns it on (and, with evals, until it measures up).
-    super::traces::register(
+    crate::chat::traces::register(
         config_dir,
         "skill",
         &skill.name,
-        Some(&super::traces::hash(&body)),
+        Some(&crate::chat::traces::hash(&body)),
         Some(agent),
         "candidate",
     );
-    super::skills::set_enabled(config_dir, &skill.name, false)
+    crate::chat::skills::set_enabled(config_dir, &skill.name, false)
 }
 
 #[cfg(test)]
@@ -215,7 +215,7 @@ mod tests {
         assert!(parse_reflection(r#"{"name": "x y", "description": "d", "body": "long enough body text that passes the length check easily"}"#, &existing).is_none());
         let dir = tempfile::tempdir().unwrap();
         keep(dir.path(), "Researcher", &skill).unwrap();
-        let saved = super::super::skills::find(dir.path(), "vendor-price-check").unwrap();
+        let saved = crate::chat::skills::find(dir.path(), "vendor-price-check").unwrap();
         assert!(!saved.enabled && saved.body.contains("Learned by Researcher"));
         assert!(reflect_prompt(
             "Researcher",

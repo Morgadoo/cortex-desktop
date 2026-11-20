@@ -20,11 +20,11 @@ use std::sync::{Arc, Mutex};
 use rig_core::completion::message::UserContent;
 use rig_core::completion::Message;
 
-use super::builtins;
-use super::engine::{ChatEvent, Speed, TurnRequest};
-use super::host::Host;
-use super::store::{self, Conversation};
-use super::tools::{ApprovalMode, ChatTool};
+use crate::chat::builtins;
+use crate::chat::engine::{ChatEvent, Speed, TurnRequest};
+use crate::chat::host::Host;
+use crate::chat::store::{self, Conversation};
+use crate::chat::tools::{ApprovalMode, ChatTool};
 use crate::tools::registry::ApprovalDecision;
 
 const MAX_STEPS: usize = 8;
@@ -111,7 +111,7 @@ pub fn markdown(c: &Conversation) -> String {
     for m in &c.messages {
         // Tool results travel as user messages; only what was said is kept.
         let is_tool = matches!(m, Message::User { content } if content.iter().all(|p| !matches!(p, UserContent::Text(_))));
-        let text = super::context::message_text(m);
+        let text = crate::chat::context::message_text(m);
         if text.trim().is_empty() || is_tool {
             continue;
         }
@@ -186,7 +186,7 @@ async fn run(model_arg: Option<String>, resume: Option<String>) -> i32 {
     };
     let mut reference = match model_arg
         .or_else(|| conversation.model.clone())
-        .or_else(|| super::providers::load(&config_dir).default_model)
+        .or_else(|| crate::chat::providers::load(&config_dir).default_model)
     {
         Some(r) => r,
         None => {
@@ -196,7 +196,7 @@ async fn run(model_arg: Option<String>, resume: Option<String>) -> i32 {
             return 1;
         }
     };
-    if let Err(e) = super::engine::connect_model(&config_dir, &reference).await {
+    if let Err(e) = crate::chat::engine::connect_model(&config_dir, &reference).await {
         eprintln!("cortex: {e}");
         return 1;
     }
@@ -224,7 +224,7 @@ async fn run(model_arg: Option<String>, resume: Option<String>) -> i32 {
                 Command::Exit => return 0,
                 Command::Model(None) => println!("{reference}"),
                 Command::Model(Some(r)) => {
-                    match super::engine::connect_model(&config_dir, &r).await {
+                    match crate::chat::engine::connect_model(&config_dir, &r).await {
                         Ok(_) => {
                             reference = r;
                             println!("Now using {reference}.");
@@ -233,7 +233,10 @@ async fn run(model_arg: Option<String>, resume: Option<String>) -> i32 {
                     }
                 }
                 Command::Models => {
-                    for m in super::providers::models(&super::providers::load(&config_dir)).await {
+                    for m in
+                        crate::chat::providers::models(&crate::chat::providers::load(&config_dir))
+                            .await
+                    {
                         println!(
                             "  {}{}",
                             m.reference,
@@ -313,7 +316,7 @@ async fn run(model_arg: Option<String>, resume: Option<String>) -> i32 {
 /// per tool step.
 struct TerminalHost {
     config_dir: std::path::PathBuf,
-    state: super::ChatState,
+    state: crate::chat::ChatState,
     registry: crate::tools::registry::ToolRegistry,
     /// Call id → tool name, for the line printed when the call ends.
     calls: Mutex<HashMap<String, String>>,
@@ -375,7 +378,7 @@ impl Host for TerminalHost {
         let _ = std::io::stdout().flush();
     }
 
-    fn chat_state(&self) -> &super::ChatState {
+    fn chat_state(&self) -> &crate::chat::ChatState {
         &self.state
     }
 
@@ -387,7 +390,7 @@ impl Host for TerminalHost {
         &self,
         reference: &str,
     ) -> Result<rig_core::DynModel<rig_core::operation::Completion>, String> {
-        super::engine::connect_model(&self.config_dir, reference).await
+        crate::chat::engine::connect_model(&self.config_dir, reference).await
     }
 
     async fn approve(
@@ -416,7 +419,7 @@ async fn turn(
 ) -> Result<(), String> {
     let host = Arc::new(TerminalHost {
         config_dir: config_dir.to_path_buf(),
-        state: super::ChatState::default(),
+        state: crate::chat::ChatState::default(),
         registry: crate::tools::registry::ToolRegistry::new(),
         calls: Mutex::new(HashMap::new()),
         printing: Mutex::new((false, false)),
@@ -441,14 +444,14 @@ async fn turn(
         .begin(conversation_id)
         .ok_or("this conversation is busy")?;
     let dyn_host: Arc<dyn Host> = host.clone();
-    let outcome = super::engine::turn(&dyn_host, &request, cancel).await;
+    let outcome = crate::chat::engine::turn(&dyn_host, &request, cancel).await;
     host.state.finish(conversation_id);
     if host.printing.lock().unwrap_or_else(|p| p.into_inner()).1 {
         println!();
     }
     outcome
         .map(|_| ())
-        .map_err(|e| super::context::short_error(&e))
+        .map_err(|e| crate::chat::context::short_error(&e))
 }
 
 #[cfg(test)]

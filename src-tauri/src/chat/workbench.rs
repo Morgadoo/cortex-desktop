@@ -26,7 +26,7 @@ use std::sync::{Mutex, OnceLock};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-use super::store::{chat_dir, write_json};
+use crate::chat::store::{chat_dir, write_json};
 
 pub const CONTAINERFILE: &str = include_str!("../../assets/workbench/Containerfile");
 
@@ -98,20 +98,20 @@ fn podman_prefix() -> Option<&'static [OsString]> {
                 return None;
             }
             let mut candidates: Vec<Vec<OsString>> = Vec::new();
-            if let Some(podman) = super::sandbox::find_program("podman") {
+            if let Some(podman) = crate::chat::sandbox::find_program("podman") {
                 candidates.push(vec![podman.into_os_string()]);
             }
             let in_container =
                 Path::new("/run/.containerenv").exists() || Path::new("/run/.toolboxenv").exists();
             if in_container {
-                if let Some(spawn) = super::sandbox::find_program("flatpak-spawn") {
+                if let Some(spawn) = crate::chat::sandbox::find_program("flatpak-spawn") {
                     candidates.push(vec![
                         spawn.into_os_string(),
                         "--host".into(),
                         "podman".into(),
                     ]);
                 }
-                if let Some(exec) = super::sandbox::find_program("distrobox-host-exec") {
+                if let Some(exec) = crate::chat::sandbox::find_program("distrobox-host-exec") {
                     candidates.push(vec![exec.into_os_string(), "podman".into()]);
                 }
             }

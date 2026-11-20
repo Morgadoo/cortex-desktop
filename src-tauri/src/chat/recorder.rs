@@ -180,7 +180,7 @@ impl Recorder {
             loop {
                 // One last look when stopping: how the task ended matters most.
                 let ending = stop.load(Ordering::Relaxed) || started.elapsed() >= MAX_LENGTH;
-                if let Ok(png) = super::computer::capture().await {
+                if let Ok(png) = crate::chat::computer::capture().await {
                     let window = active_window();
                     if let Some(thumb) = thumbnail(&png) {
                         let changed = last.as_ref().is_none_or(|(t, w)| {
@@ -188,7 +188,7 @@ impl Recorder {
                                 || difference(t, &thumb) > if ending { 0.0 } else { CHANGED }
                         });
                         if changed {
-                            if let Ok((image, ..)) = super::computer::shrink(&png, 1024) {
+                            if let Ok((image, ..)) = crate::chat::computer::shrink(&png, 1024) {
                                 let mut list = frames.lock().unwrap();
                                 list.push(Frame {
                                     seconds: started.elapsed().as_secs_f64(),
@@ -324,7 +324,7 @@ pub async fn draft(
         }
     }
     let request = CompletionRequest::new(Message::User { content }).max_tokens(6_000u64);
-    let reply = super::engine::ask_text(config_dir, model, request, 240).await?;
+    let reply = crate::chat::engine::ask_text(config_dir, model, request, 240).await?;
     parse_draft(&reply)
 }
 

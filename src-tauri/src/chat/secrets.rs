@@ -9,10 +9,14 @@ use crate::tools::auth::{keychain_secrets, Secrets};
 
 /// The keychain store of the local profile.
 pub fn local() -> Result<Secrets, String> {
-    Ok(keychain_secrets(AccountId::parse(super::LOCAL_ACCOUNT)?))
+    Ok(keychain_secrets(AccountId::parse(
+        crate::chat::LOCAL_ACCOUNT,
+    )?))
 }
 
 /// The API key for `vendor` from the keychain, if one is saved.
 pub async fn api_key(vendor: &str) -> Result<Option<String>, String> {
-    local()?.load(&super::providers::secret_name(vendor)).await
+    local()?
+        .load(&crate::chat::providers::secret_name(vendor))
+        .await
 }

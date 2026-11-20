@@ -16,9 +16,9 @@ use rig_core::DynModel;
 use serde_json::Value;
 use tauri::{AppHandle, Manager};
 
-use super::engine::ChatEvent;
-use super::tools::ChatTool;
-use super::ChatState;
+use crate::chat::engine::ChatEvent;
+use crate::chat::tools::ChatTool;
+use crate::chat::ChatState;
 use crate::tools::registry::{ApprovalDecision, ToolRegistry};
 
 // async-trait's generated methods trip this lint on current clippy; the futures are awaited.
@@ -68,7 +68,7 @@ impl Host for TauriHost {
     }
 
     fn emit(&self, event: ChatEvent) {
-        super::engine::emit(&self.app, event);
+        crate::chat::engine::emit(&self.app, event);
     }
 
     fn chat_state(&self) -> &ChatState {
@@ -81,7 +81,7 @@ impl Host for TauriHost {
 
     async fn connect_model(&self, reference: &str) -> Result<DynModel<Completion>, String> {
         let dir = self.config_dir()?;
-        super::engine::connect_model(&dir, reference).await
+        crate::chat::engine::connect_model(&dir, reference).await
     }
 
     async fn approve(
@@ -90,11 +90,11 @@ impl Host for TauriHost {
         input: &Value,
         reason: Option<&str>,
     ) -> ApprovalDecision {
-        super::tools::request_approval_because(&self.app, tool, input, reason).await
+        crate::chat::tools::request_approval_because(&self.app, tool, input, reason).await
     }
 
     fn notify(&self, title: &str, body: &str) {
-        super::engine::notify(&self.app, title, body);
+        crate::chat::engine::notify(&self.app, title, body);
     }
 
     fn app(&self) -> Option<&AppHandle> {

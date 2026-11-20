@@ -10,7 +10,7 @@ use rig_core::completion::message::UserContent;
 use rig_core::completion::Message;
 use serde::Serialize;
 
-use super::store;
+use crate::chat::store;
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]

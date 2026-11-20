@@ -13,8 +13,8 @@ use std::time::Duration;
 use rig_core::completion::message::MimeType;
 use serde_json::{json, Value};
 
-use super::providers::{self, ProvidersFile};
-use super::tools::{ChatTool, Outcome};
+use crate::chat::providers::{self, ProvidersFile};
+use crate::chat::tools::{ChatTool, Outcome};
 
 pub const GENERATE_VIDEO: &str = "generate_video";
 
@@ -27,20 +27,20 @@ const WAIT: Duration = Duration::from_secs(600);
 pub fn video_model(file: &ProvidersFile) -> Option<String> {
     if let Some(chosen) = file.video_model.as_ref().filter(|c| !c.trim().is_empty()) {
         let vendor = providers::split_reference(chosen)?.0;
-        return (super::media::usable(file, vendor)
+        return (crate::chat::media::usable(file, vendor)
             && VIDEO_DEFAULTS.iter().any(|(v, _)| *v == vendor))
         .then(|| chosen.clone());
     }
     VIDEO_DEFAULTS
         .iter()
-        .find(|(vendor, _)| super::media::usable(file, vendor))
+        .find(|(vendor, _)| crate::chat::media::usable(file, vendor))
         .map(|(vendor, model)| format!("{vendor}/{model}"))
 }
 
 pub fn vendors(file: &ProvidersFile) -> Vec<String> {
     VIDEO_DEFAULTS
         .iter()
-        .filter(|(v, _)| super::media::usable(file, v))
+        .filter(|(v, _)| crate::chat::media::usable(file, v))
         .map(|(v, _)| v.to_string())
         .collect()
 }
@@ -137,7 +137,7 @@ fn base_url(file: &ProvidersFile, vendor: &str) -> String {
 
 async fn key(file: &ProvidersFile, vendor: &str) -> Result<String, String> {
     let saved = if file.providers.get(vendor).is_some_and(|s| s.has_key) {
-        super::secrets::api_key(vendor).await?
+        crate::chat::secrets::api_key(vendor).await?
     } else {
         None
     };
@@ -170,7 +170,7 @@ pub async fn make_at(
                 .map(str::to_string)
                 .or_else(|| e.get("message").and_then(Value::as_str).map(str::to_string))
         });
-        return Err(super::context::short_error(&format!(
+        return Err(crate::chat::context::short_error(&format!(
             "The video service answered {status}{}",
             why.map(|w| format!(": {w}")).unwrap_or_default()
         )));
@@ -267,9 +267,9 @@ async fn run(config_dir: &Path, conversation_id: &str, args: &Value) -> Result<S
         providers::split_reference(&reference).ok_or("The video model is not vendor/model.")?;
     let image_url = match s("reference") {
         Some(r) => {
-            let image = super::media::reference_image(config_dir, conversation_id, &r)?;
-            let data =
-                super::media::image_b64(&image).ok_or("The reference image could not be read.")?;
+            let image = crate::chat::media::reference_image(config_dir, conversation_id, &r)?;
+            let data = crate::chat::media::image_b64(&image)
+                .ok_or("The reference image could not be read.")?;
             let mime = image
                 .media_type
                 .as_ref()
@@ -286,7 +286,7 @@ async fn run(config_dir: &Path, conversation_id: &str, args: &Value) -> Result<S
         Duration::from_secs(5),
     )
     .await?;
-    let dir = super::sandbox::workspace(config_dir, conversation_id)?.join("videos");
+    let dir = crate::chat::sandbox::workspace(config_dir, conversation_id)?.join("videos");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let name = format!(
         "{}.{}",

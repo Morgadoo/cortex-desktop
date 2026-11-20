@@ -47,7 +47,7 @@ pub use cortex_kernel::tool::{
     normalize_schema, safe_name, value_text, ChatTool, Outcome, ASK_USER,
 };
 
-use super::host::Host;
+use crate::chat::host::Host;
 use crate::tools::approvals;
 use crate::tools::connector_state::ToolPolicy;
 use crate::tools::registry::{ApprovalDecision, CallContext, ToolDefinition, ToolRegistry};
@@ -153,15 +153,15 @@ pub(crate) async fn request_approval_because(
         }
     };
     if let Ok(dir) = crate::settings::get_config_dir(app) {
-        super::audit::record(
+        crate::chat::audit::record(
             &dir,
-            super::audit::Entry {
+            crate::chat::audit::Entry {
                 at: chrono::Utc::now(),
                 kind: "approval".into(),
                 conversation: String::new(),
                 agent: None,
                 tool: tool.name.clone(),
-                arguments: super::audit::short(&input.to_string()),
+                arguments: crate::chat::audit::short(&input.to_string()),
                 outcome: match decision {
                     ApprovalDecision::Deny => "denied",
                     ApprovalDecision::Once => "approved",
@@ -179,10 +179,10 @@ pub(crate) async fn request_approval_because(
 /// Tools that are not registry connectors but run behind the registry's gate: the user's own
 /// tools, computer use, and OpenAPI tool servers.
 fn is_external(connector_id: &str) -> bool {
-    connector_id == super::custom_tools::CONNECTOR
-        || connector_id == super::script_tools::CONNECTOR
-        || connector_id == super::computer::CONNECTOR
-        || connector_id.starts_with(super::openapi::PREFIX)
+    connector_id == crate::chat::custom_tools::CONNECTOR
+        || connector_id == crate::chat::script_tools::CONNECTOR
+        || connector_id == crate::chat::computer::CONNECTOR
+        || connector_id.starts_with(crate::chat::openapi::PREFIX)
 }
 
 /// Runs an [external](is_external) tool through the registry's per-tool policy and
@@ -206,13 +206,13 @@ async fn execute_external(
     };
     let config_dir = host.config_dir().ok();
     let run = |input: Value| async move {
-        if connector_id == super::computer::CONNECTOR {
-            return super::computer::run(conversation_id, &input).await;
+        if connector_id == crate::chat::computer::CONNECTOR {
+            return crate::chat::computer::run(conversation_id, &input).await;
         }
         let config_dir = config_dir.ok_or("The app's data folder is not available.")?;
-        if connector_id == super::script_tools::CONNECTOR {
-            let workspace = super::sandbox::workspace(&config_dir, conversation_id).ok();
-            return super::script_tools::call(
+        if connector_id == crate::chat::script_tools::CONNECTOR {
+            let workspace = crate::chat::sandbox::workspace(&config_dir, conversation_id).ok();
+            return crate::chat::script_tools::call(
                 &config_dir,
                 &tool.tool_name,
                 &input,
@@ -220,10 +220,11 @@ async fn execute_external(
             )
             .await;
         }
-        if connector_id == super::custom_tools::CONNECTOR {
-            super::custom_tools::run(&config_dir, conversation_id, &tool.tool_name, &input).await
+        if connector_id == crate::chat::custom_tools::CONNECTOR {
+            crate::chat::custom_tools::run(&config_dir, conversation_id, &tool.tool_name, &input)
+                .await
         } else {
-            super::openapi::call(&config_dir, tool, &input).await
+            crate::chat::openapi::call(&config_dir, tool, &input).await
         }
     };
     match host
@@ -255,11 +256,11 @@ pub async fn execute(
     // makes it change something from that call on.
     let fresh;
     let tool = match (tool.connector_id.as_deref(), host.config_dir()) {
-        (Some(super::script_tools::CONNECTOR), Ok(dir)) => {
-            match super::script_tools::load(&dir, &tool.tool_name) {
+        (Some(crate::chat::script_tools::CONNECTOR), Ok(dir)) => {
+            match crate::chat::script_tools::load(&dir, &tool.tool_name) {
                 Some(written) => {
                     fresh = ChatTool {
-                        read_only: !super::script_tools::has_effects(&dir, &written),
+                        read_only: !crate::chat::script_tools::has_effects(&dir, &written),
                         ..tool.clone()
                     };
                     &fresh

@@ -47,7 +47,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::{AppHandle, Manager};
 
-use super::store::write_json;
+use crate::chat::store::write_json;
 
 pub const SECRET: &str = "api-server";
 pub const WIDGET_SECRET: &str = "api-widget";
@@ -380,13 +380,17 @@ async fn resolve(
     String,
 > {
     let Some(id) = model.strip_prefix(AGENT_PREFIX) else {
-        return Ok((super::engine::connect_model(config_dir, model).await?, None));
+        return Ok((
+            crate::chat::engine::connect_model(config_dir, model).await?,
+            None,
+        ));
     };
-    let agent = super::agents::find(config_dir, id).ok_or("There is no agent with that id.")?;
+    let agent =
+        crate::chat::agents::find(config_dir, id).ok_or("There is no agent with that id.")?;
     let reference = agent
         .model
         .clone()
-        .or_else(|| super::providers::load(config_dir).default_model)
+        .or_else(|| crate::chat::providers::load(config_dir).default_model)
         .ok_or("The agent has no model and there is no default model.")?;
     let mut preamble = format!("You are {}", agent.name);
     if !agent.description.trim().is_empty() {
@@ -394,13 +398,13 @@ async fn resolve(
     }
     preamble.push_str(".\n\n");
     preamble.push_str(agent.instructions.trim());
-    let notebook = super::agents::notebook(config_dir, &agent.id);
+    let notebook = crate::chat::agents::notebook(config_dir, &agent.id);
     if !notebook.trim().is_empty() {
         preamble.push_str("\n\n");
-        preamble.push_str(&super::agents::notebook_prompt(&notebook));
+        preamble.push_str(&crate::chat::agents::notebook_prompt(&notebook));
     }
     Ok((
-        super::engine::connect_model(config_dir, &reference).await?,
+        crate::chat::engine::connect_model(config_dir, &reference).await?,
         Some(preamble),
     ))
 }
@@ -436,13 +440,13 @@ async fn models(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
     if !authorized(&headers, &ctx.token) {
         return error(StatusCode::UNAUTHORIZED, "Missing or wrong bearer token.");
     }
-    let file = super::providers::load(&ctx.config_dir);
-    let data: Vec<Value> = super::providers::models(&file)
+    let file = crate::chat::providers::load(&ctx.config_dir);
+    let data: Vec<Value> = crate::chat::providers::models(&file)
         .await
         .into_iter()
         .map(|m| json!({ "id": m.reference, "object": "model", "owned_by": m.vendor, "name": m.name }))
-        .chain(super::local_models::root().map(|r| super::local_models::models(&r)).unwrap_or_default().into_iter().map(|m| json!({ "id": m.reference, "object": "model", "owned_by": "cortex-built-in", "name": m.name })))
-        .chain(super::agents::load(&ctx.config_dir).into_iter().map(|a| json!({ "id": format!("{AGENT_PREFIX}{}", a.id), "object": "model", "owned_by": "cortex-agent", "name": a.name })))
+        .chain(crate::chat::local_models::root().map(|r| crate::chat::local_models::models(&r)).unwrap_or_default().into_iter().map(|m| json!({ "id": m.reference, "object": "model", "owned_by": "cortex-built-in", "name": m.name })))
+        .chain(crate::chat::agents::load(&ctx.config_dir).into_iter().map(|a| json!({ "id": format!("{AGENT_PREFIX}{}", a.id), "object": "model", "owned_by": "cortex-agent", "name": a.name })))
         .collect();
     Json(json!({ "object": "list", "data": data })).into_response()
 }
@@ -451,9 +455,9 @@ async fn list_tasks(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
     if !authorized(&headers, &ctx.token) {
         return error(StatusCode::UNAUTHORIZED, "Missing or wrong bearer token.");
     }
-    let data: Vec<Value> = super::tasks::load(&ctx.config_dir)
+    let data: Vec<Value> = crate::chat::tasks::load(&ctx.config_dir)
         .into_iter()
-        .map(|t| json!({ "id": t.id, "title": t.title, "enabled": t.enabled, "schedule": super::tasks::describe(&t.frequency), "lastRun": t.last_run, "lastStatus": t.last_status }))
+        .map(|t| json!({ "id": t.id, "title": t.title, "enabled": t.enabled, "schedule": crate::chat::tasks::describe(&t.frequency), "lastRun": t.last_run, "lastStatus": t.last_status }))
         .collect();
     Json(json!({ "object": "list", "data": data })).into_response()
 }
@@ -475,7 +479,7 @@ async fn run_task(
     if !authorized(&headers, &ctx.token) {
         return error(StatusCode::UNAUTHORIZED, "Missing or wrong bearer token.");
     }
-    let Some(mut task) = super::tasks::load(&ctx.config_dir)
+    let Some(mut task) = crate::chat::tasks::load(&ctx.config_dir)
         .into_iter()
         .find(|t| t.id == id)
     else {
@@ -497,7 +501,7 @@ async fn run_task(
             input.trim()
         );
     }
-    super::tasks::record(
+    crate::chat::tasks::record(
         &ctx.config_dir,
         &task.id,
         task.last_conversation.as_deref().unwrap_or_default(),
@@ -505,7 +509,7 @@ async fn run_task(
     );
     let app = ctx.app.clone();
     let title = task.title.clone();
-    tauri::async_runtime::spawn(async move { super::engine::run_task(app, task).await });
+    tauri::async_runtime::spawn(async move { crate::chat::engine::run_task(app, task).await });
     (
         StatusCode::ACCEPTED,
         Json(json!({ "started": true, "task": title })),
@@ -633,7 +637,7 @@ async fn complete(ctx: &Ctx, body: ChatBody) -> Response {
                 },
             }))
             .into_response(),
-            Err(e) => error(upstream_status(&e.to_string()), &super::context::short_error(&e.to_string())),
+            Err(e) => error(upstream_status(&e.to_string()), &crate::chat::context::short_error(&e.to_string())),
         };
     }
     let mut stream = match model.stream(request) {
@@ -811,7 +815,7 @@ async fn widget_chat(
             Ok(messages) => {
                 let settings = load(&ctx.config_dir).widget;
                 let model = if settings.model.is_empty() {
-                    super::providers::load(&ctx.config_dir)
+                    crate::chat::providers::load(&ctx.config_dir)
                         .default_model
                         .unwrap_or_default()
                 } else {
@@ -931,7 +935,7 @@ async fn messages_inner(
                 "usage": { "input_tokens": response.usage.input_tokens.unwrap_or(0), "output_tokens": response.usage.output_tokens.unwrap_or(0) },
             }))
             .into_response(),
-            Err(e) => anthropic_error(upstream_status(&e.to_string()), &super::context::short_error(&e.to_string())),
+            Err(e) => anthropic_error(upstream_status(&e.to_string()), &crate::chat::context::short_error(&e.to_string())),
         };
     }
     let mut stream = match model.stream(request) {
@@ -1137,14 +1141,14 @@ async fn mcp_call(ctx: &Ctx, name: &str, args: &Value) -> Value {
             }
             let only: Vec<String> = match text("library") {
                 l if l.is_empty() => Vec::new(),
-                l => super::libraries::list(&ctx.config_dir)
+                l => crate::chat::libraries::list(&ctx.config_dir)
                     .into_iter()
                     .filter(|x| x.name.eq_ignore_ascii_case(&l))
                     .map(|x| x.id)
                     .collect(),
             };
             let (passages, note) =
-                super::embeddings::search(&ctx.config_dir, &only, &query, 8).await;
+                crate::chat::embeddings::search(&ctx.config_dir, &only, &query, 8).await;
             if passages.is_empty() {
                 return tool_text("No passage matched.", false);
             }
@@ -1171,7 +1175,9 @@ async fn mcp_call(ctx: &Ctx, name: &str, args: &Value) -> Value {
                 return tool_text("Give a prompt.", true);
             }
             let model = match text("model") {
-                m if m.is_empty() => match super::providers::load(&ctx.config_dir).default_model {
+                m if m.is_empty() => match crate::chat::providers::load(&ctx.config_dir)
+                    .default_model
+                {
                     Some(m) => m,
                     None => {
                         return tool_text("No default model is set in Cortex; pass `model`.", true)
@@ -1191,32 +1197,32 @@ async fn mcp_call(ctx: &Ctx, name: &str, args: &Value) -> Value {
                 .await
             {
                 Ok(response) => tool_text(response.text(), false),
-                Err(e) => tool_text(super::context::short_error(&e.to_string()), true),
+                Err(e) => tool_text(crate::chat::context::short_error(&e.to_string()), true),
             }
         }
         "list_models" => {
-            let file = super::providers::load(&ctx.config_dir);
-            let mut lines: Vec<String> = super::providers::models(&file)
+            let file = crate::chat::providers::load(&ctx.config_dir);
+            let mut lines: Vec<String> = crate::chat::providers::models(&file)
                 .await
                 .into_iter()
                 .map(|m| format!("{} — {}", m.reference, m.name))
                 .collect();
             lines.extend(
-                super::agents::load(&ctx.config_dir)
+                crate::chat::agents::load(&ctx.config_dir)
                     .into_iter()
                     .map(|a| format!("{AGENT_PREFIX}{} — agent {}", a.id, a.name)),
             );
             tool_text(lines.join("\n"), false)
         }
         "list_tasks" => {
-            let lines: Vec<String> = super::tasks::load(&ctx.config_dir)
+            let lines: Vec<String> = crate::chat::tasks::load(&ctx.config_dir)
                 .into_iter()
                 .map(|t| {
                     format!(
                         "{} — {} ({}{})",
                         t.id,
                         t.title,
-                        super::tasks::describe(&t.frequency),
+                        crate::chat::tasks::describe(&t.frequency),
                         if t.enabled { "" } else { ", paused" }
                     )
                 })
@@ -1231,7 +1237,7 @@ async fn mcp_call(ctx: &Ctx, name: &str, args: &Value) -> Value {
             )
         }
         "run_task" => {
-            let Some(mut task) = super::tasks::load(&ctx.config_dir)
+            let Some(mut task) = crate::chat::tasks::load(&ctx.config_dir)
                 .into_iter()
                 .find(|t| t.id == text("id"))
             else {
@@ -1244,7 +1250,7 @@ async fn mcp_call(ctx: &Ctx, name: &str, args: &Value) -> Value {
                     task.prompt
                 );
             }
-            super::tasks::record(
+            crate::chat::tasks::record(
                 &ctx.config_dir,
                 &task.id,
                 task.last_conversation.as_deref().unwrap_or_default(),
@@ -1252,7 +1258,9 @@ async fn mcp_call(ctx: &Ctx, name: &str, args: &Value) -> Value {
             );
             let title = task.title.clone();
             let app = ctx.app.clone();
-            tauri::async_runtime::spawn(async move { super::engine::run_task(app, task).await });
+            tauri::async_runtime::spawn(
+                async move { crate::chat::engine::run_task(app, task).await },
+            );
             tool_text(
                 format!("Started “{title}”. Its result will be a new conversation in Cortex."),
                 false,
@@ -1341,7 +1349,7 @@ async fn responses(
         if !body.stream {
             return match model.call(request).await {
                 Ok(r) => Json(finished(&r.text(), r.usage.input_tokens.unwrap_or(0), r.usage.output_tokens.unwrap_or(0))).into_response(),
-                Err(e) => error(upstream_status(&e.to_string()), &super::context::short_error(&e.to_string())),
+                Err(e) => error(upstream_status(&e.to_string()), &crate::chat::context::short_error(&e.to_string())),
             };
         }
         let mut stream = match model.stream(request) {
@@ -1395,14 +1403,14 @@ async fn ollama_tags(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
         return ollama_error(StatusCode::UNAUTHORIZED, "missing or wrong bearer token");
     }
     let now = chrono::Utc::now().to_rfc3339();
-    let file = super::providers::load(&ctx.config_dir);
+    let file = crate::chat::providers::load(&ctx.config_dir);
     let entry = |name: String, family: &str| json!({ "name": name, "model": name, "modified_at": now, "size": 0, "digest": "", "details": { "format": "remote", "family": family, "families": [family], "parameter_size": "", "quantization_level": "" } });
-    let models: Vec<Value> = super::providers::models(&file)
+    let models: Vec<Value> = crate::chat::providers::models(&file)
         .await
         .into_iter()
         .map(|m| entry(m.reference, &m.vendor))
         .chain(
-            super::agents::load(&ctx.config_dir)
+            crate::chat::agents::load(&ctx.config_dir)
                 .into_iter()
                 .map(|a| entry(format!("{AGENT_PREFIX}{}", a.id), "cortex-agent")),
         )
@@ -1510,7 +1518,7 @@ async fn ollama(
         if !body.stream {
             return match model.call(request).await {
                 Ok(r) => Json(line(&r.text(), true)).into_response(),
-                Err(e) => ollama_error(upstream_status(&e.to_string()), &super::context::short_error(&e.to_string())),
+                Err(e) => ollama_error(upstream_status(&e.to_string()), &crate::chat::context::short_error(&e.to_string())),
             };
         }
         let mut stream = match model.stream(request) {

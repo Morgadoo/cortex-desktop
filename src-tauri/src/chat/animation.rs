@@ -18,7 +18,7 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
-use super::tools::{ChatTool, Outcome};
+use crate::chat::tools::{ChatTool, Outcome};
 
 pub const MAKE_ANIMATION: &str = "make_animation";
 /// The HyperFrames release used; pinned so a render behaves the same from day to day.
@@ -193,7 +193,7 @@ async fn run(config_dir: &Path, conversation_id: &str, args: &Value) -> Result<S
         "mp4"
     };
     let name = slug(&s("name"));
-    let workspace = super::sandbox::workspace(config_dir, conversation_id)?;
+    let workspace = crate::chat::sandbox::workspace(config_dir, conversation_id)?;
     let dir = workspace.join("animations").join(&name);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     match engine.as_str() {
@@ -306,7 +306,7 @@ mod tests {
         assert!(!out.is_error, "{}", out.text);
         let v: Value = serde_json::from_str(&out.text).unwrap();
         let ws =
-            super::super::sandbox::workspace(dir.path(), "00000000-0000-4000-8000-000000000002")
+            crate::chat::sandbox::workspace(dir.path(), "00000000-0000-4000-8000-000000000002")
                 .unwrap();
         assert!(
             std::fs::metadata(ws.join(v["file"].as_str().unwrap()))

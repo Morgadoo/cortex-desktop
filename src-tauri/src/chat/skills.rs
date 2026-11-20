@@ -665,7 +665,7 @@ pub fn prompt_for(skills: &[Skill], query: &str) -> Option<String> {
 
 /// Skills ranked by how well their name and description fit `query`, best first.
 pub fn relevant<'a>(skills: &[&'a Skill], query: &str) -> Vec<&'a Skill> {
-    use super::retrieval::{tokens, Corpus};
+    use crate::chat::retrieval::{tokens, Corpus};
     let corpus = Corpus::new(skills.iter().map(|s| {
         let mut words = tokens(&s.name.replace('-', " "));
         words.extend(tokens(&s.name.replace('-', " ")));

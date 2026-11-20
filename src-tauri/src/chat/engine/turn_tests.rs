@@ -279,7 +279,7 @@ async fn a_delegate_worker_runs_through_the_same_loop() {
     assert_eq!(host.streamed_text(), "It ships in March.");
     let report = serde_json::to_string(&model.requests()[3].chat_history).unwrap();
     assert!(report.contains("planned for March"), "{report}");
-    let logged: Vec<String> = super::super::audit::entries(host.dir.path(), None)
+    let logged: Vec<String> = crate::chat::audit::entries(host.dir.path(), None)
         .into_iter()
         .map(|e| e.tool)
         .collect();
@@ -312,8 +312,7 @@ async fn a_turn_is_traced_and_the_model_can_read_the_trace() {
         run(&host, &request("Plan, then check", ApprovalMode::Ask)).await,
         Ok(false)
     );
-    let usage =
-        super::super::traces::usage(host.dir.path(), Utc::now() - chrono::Duration::days(1));
+    let usage = crate::chat::traces::usage(host.dir.path(), Utc::now() - chrono::Duration::days(1));
     assert_eq!(usage.runs, 1);
     assert_eq!(usage.models[0].model, MODEL);
     assert_eq!(usage.models[0].calls, 4);
@@ -581,16 +580,16 @@ async fn a_run_records_what_it_had_and_what_it_used() {
         run(&host, &request("Plan the Porto trip", ApprovalMode::Ask)).await,
         Ok(false)
     );
-    let run_id = super::super::traces::runs(
+    let run_id = crate::chat::traces::runs(
         d,
-        &super::super::traces::RunFilter {
+        &crate::chat::traces::RunFilter {
             limit: 1,
             ..Default::default()
         },
     )
     .remove(0)
     .id;
-    let had = super::super::traces::run_detail(d, &run_id)
+    let had = crate::chat::traces::run_detail(d, &run_id)
         .unwrap()
         .artifacts;
     let has = |kind: &str, id: &str, used: bool| {
@@ -921,7 +920,7 @@ async fn a_proposed_change_is_reviewed_and_applied_only_when_approved() {
         !ends[0].1 && ends[0].0.contains("Reviewer: SUPPORT: a stable fact"),
         "{ends:?}"
     );
-    assert!(super::super::memory::load(host.dir.path())
+    assert!(crate::chat::memory::load(host.dir.path())
         .items
         .iter()
         .any(|m| m.text == "Works on Lisbon time"));
@@ -931,7 +930,7 @@ async fn a_proposed_change_is_reviewed_and_applied_only_when_approved() {
         run(&declined, &request("Remember that", ApprovalMode::Auto)).await,
         Ok(false)
     );
-    assert!(super::super::memory::load(declined.dir.path())
+    assert!(crate::chat::memory::load(declined.dir.path())
         .items
         .is_empty());
 }
@@ -1165,7 +1164,7 @@ async fn a_declined_skill_leaves_nothing_behind() {
     assert_eq!(cards[0]["evals"][0]["after"], 1.0, "{cards:?}");
     assert!(cards[0]["review"].is_string());
     assert!(crate::chat::skills::find(d, "move-plans").is_none());
-    assert!(super::super::traces::artifact(d, "skill", "move-plans").is_none());
+    assert!(crate::chat::traces::artifact(d, "skill", "move-plans").is_none());
     assert!(
         evals::last_run(d, "plans").is_none(),
         "trial runs are no baseline"
@@ -1265,7 +1264,7 @@ async fn a_refused_call_is_not_counted_as_the_tool_failing() {
         .await
         .unwrap();
     assert!(tool_ends(&host)[0].1, "refused");
-    let usage = super::super::traces::usage(d, Utc::now() - chrono::Duration::days(1));
+    let usage = crate::chat::traces::usage(d, Utc::now() - chrono::Duration::days(1));
     assert!(
         !usage
             .tools
@@ -1499,9 +1498,9 @@ async fn a_written_tool_s_runs_are_in_its_turn_s_trace() {
     run(&host, &request("Use it", ApprovalMode::Auto))
         .await
         .unwrap();
-    let failed = super::super::traces::runs(
+    let failed = crate::chat::traces::runs(
         d,
-        &super::super::traces::RunFilter {
+        &crate::chat::traces::RunFilter {
             failed_tools: true,
             tool: Some("script__broken".into()),
             limit: 10,
@@ -1509,7 +1508,7 @@ async fn a_written_tool_s_runs_are_in_its_turn_s_trace() {
         },
     );
     assert_eq!(failed.len(), 1, "{failed:?}");
-    let detail = super::super::traces::run_detail(d, &failed[0].id).unwrap();
+    let detail = crate::chat::traces::run_detail(d, &failed[0].id).unwrap();
     assert_eq!(detail.tool_calls[0].0, "script__broken");
     assert!(!detail.tool_calls[0].2, "recorded as failed");
 
@@ -1522,7 +1521,7 @@ async fn a_written_tool_s_runs_are_in_its_turn_s_trace() {
         .await
         .unwrap();
     script_tools::promote(d, "outer_one", None).await.unwrap();
-    super::super::traces::start_run(d, "run-nested", "chat-1", None, MODEL);
+    crate::chat::traces::start_run(d, "run-nested", "chat-1", None, MODEL);
     script_tools::in_run(
         "run-nested".into(),
         script_tools::call(d, "outer_one", &json!({}), None),
@@ -1530,7 +1529,7 @@ async fn a_written_tool_s_runs_are_in_its_turn_s_trace() {
     .await
     .unwrap();
     // The callee's run is in the same turn's trace as its caller's.
-    let nested = super::super::traces::run_detail(d, "run-nested").unwrap();
+    let nested = crate::chat::traces::run_detail(d, "run-nested").unwrap();
     let names: Vec<&str> = nested.tool_calls.iter().map(|c| c.0.as_str()).collect();
     assert!(
         names.contains(&"script__inner_one") && names.contains(&"script__outer_one"),
@@ -1656,7 +1655,7 @@ async fn nightly_evals_compare_each_suite_with_its_last_run() {
     assert_eq!(second[0].worse, vec!["four".to_string()]);
     // The cases ran on a copy: the live trace holds none of their runs, and only the scores
     // came back, as baselines.
-    let live = super::super::traces::usage(host.dir.path(), Utc::now() - chrono::Duration::days(1));
+    let live = crate::chat::traces::usage(host.dir.path(), Utc::now() - chrono::Duration::days(1));
     assert_eq!(live.runs, 0, "{live:?}");
     assert!(evals::last_full_run(host.dir.path(), "words", MODEL).is_some());
     // The drop reached the user as a notification.

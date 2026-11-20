@@ -201,7 +201,7 @@ pub async fn speak(
     let audio = match settings.engine.as_str() {
         "off" => return Err("Read aloud is off in Settings → Audio.".into()),
         "browser" => return Ok(None),
-        "provider" => return super::media::speak(config_dir, text).await.map(Some),
+        "provider" => return crate::chat::media::speak(config_dir, text).await.map(Some),
         "openai" | "xai" => {
             let key = secret(TTS_SECRET).await?.unwrap_or_default();
             let xai = settings.engine == "xai";
@@ -215,7 +215,7 @@ pub async fn speak(
             );
             if !settings.base_url.is_empty() {
                 config = config.with_base_url(if xai {
-                    super::providers::normalize_base_url("xai", &settings.base_url)
+                    crate::chat::providers::normalize_base_url("xai", &settings.base_url)
                 } else {
                     settings.base_url.clone()
                 });
@@ -317,19 +317,21 @@ pub async fn transcribe(
 ) -> Result<String, String> {
     match settings.engine.as_str() {
         "off" => Err("Voice input is off in Settings → Audio.".into()),
-        "provider" => super::media::transcribe(config_dir, audio, file_name).await,
+        "provider" => crate::chat::media::transcribe(config_dir, audio, file_name).await,
         "builtin" => builtin(audio, &settings.model, &settings.language, live).await,
         "hex" => {
             let samples = {
                 let audio = audio.clone();
-                tokio::task::spawn_blocking(move || super::local_models::audio_samples(&audio))
-                    .await
-                    .map_err(|e| e.to_string())??
+                tokio::task::spawn_blocking(move || {
+                    crate::chat::local_models::audio_samples(&audio)
+                })
+                .await
+                .map_err(|e| e.to_string())??
             };
             match with_hex(&samples, settings).await {
                 Ok(text) => Ok(text),
                 // Hex isn't running: the built-in Whisper takes over, when one is downloaded.
-                Err(super::hex::Failure::Unavailable(why)) => {
+                Err(crate::chat::hex::Failure::Unavailable(why)) => {
                     log::info!("speech-to-text: {why} Using the built-in Whisper instead.");
                     builtin(audio, "", &settings.language, live).await.map_err(|e| {
                         if e == NO_WHISPER {
@@ -341,7 +343,7 @@ pub async fn transcribe(
                         }
                     })
                 }
-                Err(super::hex::Failure::Refused(why)) => Err(why),
+                Err(crate::chat::hex::Failure::Refused(why)) => Err(why),
             }
         }
         "openai" => {
@@ -427,35 +429,39 @@ async fn builtin(
     language: &str,
     live: bool,
 ) -> Result<String, String> {
-    let root = super::local_models::root()?;
+    let root = crate::chat::local_models::root()?;
     let speech = |id: &str| {
-        super::local_models::entry(id).is_some_and(|e| e.kind == super::local_models::Kind::Speech)
-            && super::local_models::installed(&root, id)
+        crate::chat::local_models::entry(id)
+            .is_some_and(|e| e.kind == crate::chat::local_models::Kind::Speech)
+            && crate::chat::local_models::installed(&root, id)
     };
     let id = Some(chosen.to_string())
         .filter(|m| speech(m))
         .or_else(|| {
-            super::local_models::list(&root)
+            crate::chat::local_models::list(&root)
                 .into_iter()
-                .find(|m| m.installed && m.kind == super::local_models::Kind::Speech)
+                .find(|m| m.installed && m.kind == crate::chat::local_models::Kind::Speech)
                 .map(|m| m.id)
         })
         .ok_or(NO_WHISPER)?;
     let language = language.to_string();
     tokio::task::spawn_blocking(move || {
-        let samples = super::local_models::audio_samples(&audio)?;
-        super::local_models::transcribe(&root, &id, &samples, &language, live)
+        let samples = crate::chat::local_models::audio_samples(&audio)?;
+        crate::chat::local_models::transcribe(&root, &id, &samples, &language, live)
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
 /// Hex, with the model chosen in Settings when it is ready there, else its best ready one.
-async fn with_hex(samples: &[f32], settings: &SttSettings) -> Result<String, super::hex::Failure> {
-    let client = super::hex::Client::connect().await?;
+async fn with_hex(
+    samples: &[f32],
+    settings: &SttSettings,
+) -> Result<String, crate::chat::hex::Failure> {
+    let client = crate::chat::hex::Client::connect().await?;
     let models = client.models().await?;
-    let model = super::hex::pick_model(&models, &settings.model).ok_or_else(|| {
-        super::hex::Failure::Refused(
+    let model = crate::chat::hex::pick_model(&models, &settings.model).ok_or_else(|| {
+        crate::chat::hex::Failure::Refused(
             "Hex has no speech model downloaded yet; download one in Hex.".into(),
         )
     })?;

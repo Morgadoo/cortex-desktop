@@ -15,8 +15,8 @@ use rig_core::transcription::TranscriptionRequestBuilder;
 use serde::Serialize;
 use serde_json::{json, Value};
 
-use super::providers::{self, ProviderSettings, ProvidersFile};
-use super::tools::{ChatTool, Outcome};
+use crate::chat::providers::{self, ProviderSettings, ProvidersFile};
+use crate::chat::tools::{ChatTool, Outcome};
 
 pub const GENERATE_IMAGE: &str = "generate_image";
 
@@ -222,8 +222,8 @@ pub fn models(config_dir: &Path) -> MediaModels {
         speech_vendors: vendors(SPEECH_DEFAULTS),
         voice_vendors: vendors(VOICE_DEFAULTS),
         image_server: file.image_server.clone(),
-        video_model: super::videogen::video_model(&file),
-        video_vendors: super::videogen::vendors(&file),
+        video_model: crate::chat::videogen::video_model(&file),
+        video_vendors: crate::chat::videogen::vendors(&file),
     }
 }
 
@@ -258,7 +258,7 @@ pub(crate) async fn connect(
         .cloned()
         .unwrap_or_default();
     let key = if settings.has_key {
-        super::secrets::api_key(vendor).await?
+        crate::chat::secrets::api_key(vendor).await?
     } else {
         None
     };
@@ -348,7 +348,7 @@ pub(crate) fn reference_image(
         DocumentSourceKind, Image, ImageMediaType, Message, UserContent,
     };
     let (data, media_type) = if reference == "attached" {
-        let conversation = super::store::load_conversation(config_dir, conversation_id)?;
+        let conversation = crate::chat::store::load_conversation(config_dir, conversation_id)?;
         conversation
             .messages
             .iter()
@@ -368,7 +368,7 @@ pub(crate) fn reference_image(
             .ok_or("No image was attached in this conversation.")?
     } else {
         // Only files inside this conversation's workspace.
-        let root = super::sandbox::workspace(config_dir, conversation_id)?;
+        let root = crate::chat::sandbox::workspace(config_dir, conversation_id)?;
         let canonical = root
             .join(reference)
             .canonicalize()
@@ -699,7 +699,7 @@ pub async fn make_images(
         None => None,
     };
     let count = request.count.clamp(1, 4);
-    let dir = super::sandbox::workspace(config_dir, workspace)?.join("images");
+    let dir = crate::chat::sandbox::workspace(config_dir, workspace)?.join("images");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     if reference.starts_with(SDWEBUI_PREFIX) {
         let server = image_server(config_dir)
@@ -787,7 +787,7 @@ pub async fn make_images(
             }
             Ok(Ok(_)) => errors.push("The provider sent back no image.".into()),
             Ok(Err(e)) if e.to_string().contains("takes no reference images") => errors.push(format!("{reference} cannot edit images; start from nothing, or choose a model that edits (OpenAI gpt-image, or a local image server).")),
-            Ok(Err(e)) => errors.push(super::context::short_error(&e.to_string())),
+            Ok(Err(e)) => errors.push(crate::chat::context::short_error(&e.to_string())),
             Err(_) => errors.push("An image took too long.".into()),
         }
     }

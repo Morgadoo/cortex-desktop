@@ -41,15 +41,15 @@ pub struct Settings {
 }
 
 fn path(config_dir: &Path) -> PathBuf {
-    super::store::chat_dir(config_dir).join("telegram.json")
+    crate::chat::store::chat_dir(config_dir).join("telegram.json")
 }
 
 pub fn load(config_dir: &Path) -> Settings {
-    super::store::read_json(&path(config_dir)).unwrap_or_default()
+    crate::chat::store::read_json(&path(config_dir)).unwrap_or_default()
 }
 
 pub fn save(config_dir: &Path, s: &Settings) -> Result<(), String> {
-    super::store::write_json(&path(config_dir), s)
+    crate::chat::store::write_json(&path(config_dir), s)
 }
 
 /// Where Telegram's Bot API is; `CORTEX_TELEGRAM_API` points elsewhere for testing.
@@ -58,7 +58,7 @@ fn api_base() -> String {
 }
 
 pub async fn token() -> Option<String> {
-    super::secrets::api_key(SECRET)
+    crate::chat::secrets::api_key(SECRET)
         .await
         .ok()
         .flatten()
@@ -68,10 +68,12 @@ pub async fn token() -> Option<String> {
 pub async fn set_token(token: &str) -> Result<(), String> {
     let secrets = crate::chat::secrets::local()?;
     if token.trim().is_empty() {
-        secrets.delete(&super::providers::secret_name(SECRET)).await
+        secrets
+            .delete(&crate::chat::providers::secret_name(SECRET))
+            .await
     } else {
         secrets
-            .store(&super::providers::secret_name(SECRET), token.trim())
+            .store(&crate::chat::providers::secret_name(SECRET), token.trim())
             .await
     }
 }
@@ -222,31 +224,33 @@ pub async fn run_message(
     title: &str,
     text: &str,
 ) -> (Option<String>, Result<String, String>) {
-    use super::engine::{run_turn, TurnRequest};
+    use crate::chat::engine::{run_turn, TurnRequest};
     let agent = agent_id
         .as_deref()
-        .and_then(|a| super::agents::find(config_dir, a));
+        .and_then(|a| crate::chat::agents::find(config_dir, a));
     let Some(model) = agent
         .as_ref()
         .and_then(|a| a.model.clone())
-        .or(super::providers::load(config_dir).default_model)
+        .or(crate::chat::providers::load(config_dir).default_model)
     else {
         return (None, Err("Choose a default model in Cortex first.".into()));
     };
-    let id = match existing.filter(|id| super::store::load_conversation(config_dir, id).is_ok()) {
-        Some(id) => id,
-        None => {
-            let id = uuid::Uuid::new_v4().to_string();
-            let mut c = super::store::Conversation::new(id.clone(), None, Some(model.clone()));
-            c.agent_id = agent_id.clone();
-            c.title = title.into();
-            if let Err(e) = super::store::save_conversation(config_dir, &c) {
-                return (None, Err(e));
+    let id =
+        match existing.filter(|id| crate::chat::store::load_conversation(config_dir, id).is_ok()) {
+            Some(id) => id,
+            None => {
+                let id = uuid::Uuid::new_v4().to_string();
+                let mut c =
+                    crate::chat::store::Conversation::new(id.clone(), None, Some(model.clone()));
+                c.agent_id = agent_id.clone();
+                c.title = title.into();
+                if let Err(e) = crate::chat::store::save_conversation(config_dir, &c) {
+                    return (None, Err(e));
+                }
+                id
             }
-            id
-        }
-    };
-    let Some(cancel) = app.state::<super::ChatState>().begin(&id) else {
+        };
+    let Some(cancel) = app.state::<crate::chat::ChatState>().begin(&id) else {
         return (
             Some(id),
             Err("I am still answering your last message.".into()),
@@ -257,14 +261,14 @@ pub async fn run_message(
         text: text.to_string(),
         model,
         speed: if agent.as_ref().is_some_and(|a| a.think) {
-            super::engine::Speed::Think
+            crate::chat::engine::Speed::Think
         } else {
-            super::engine::Speed::Fast
+            crate::chat::engine::Speed::Fast
         },
         approval: if allow_changes {
-            super::tools::ApprovalMode::Autonomous
+            crate::chat::tools::ApprovalMode::Autonomous
         } else {
-            super::tools::ApprovalMode::Unattended
+            crate::chat::tools::ApprovalMode::Unattended
         },
         project_id: None,
         agent_id,
@@ -285,10 +289,10 @@ pub async fn run_message(
         instructions_off: false,
     };
     run_turn(app.clone(), request, cancel).await;
-    let answer = match super::store::load_conversation(config_dir, &id) {
+    let answer = match crate::chat::store::load_conversation(config_dir, &id) {
         Ok(c) => match c.messages.last() {
             Some(m @ rig_core::completion::Message::Assistant(_)) => {
-                Ok(super::context::message_text(m))
+                Ok(crate::chat::context::message_text(m))
             }
             _ => Err("I could not answer that; see the chat in Cortex for what went wrong.".into()),
         },

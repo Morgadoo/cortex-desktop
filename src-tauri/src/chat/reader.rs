@@ -268,7 +268,7 @@ pub async fn read(url: &str) -> Result<Article, String> {
     let response = client.get(parsed.clone()).send().await.map_err(|e| {
         format!(
             "The page could not be loaded: {}",
-            super::context::short_error(&e.to_string())
+            crate::chat::context::short_error(&e.to_string())
         )
     })?;
     if !response.status().is_success() {

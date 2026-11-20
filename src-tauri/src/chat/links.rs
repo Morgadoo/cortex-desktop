@@ -57,7 +57,7 @@ pub fn parse(url: &url::Url) -> Option<Link> {
         }
         "chat" => {
             let id = url.path().trim_matches('/');
-            if !super::store::valid_id(id) {
+            if !crate::chat::store::valid_id(id) {
                 return None;
             }
             Some(Link::Open {

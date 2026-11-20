@@ -13,7 +13,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use rig_core::completion::message::Message;
 use serde_json::Value;
 
-use super::store::{self, Conversation};
+use crate::chat::store::{self, Conversation};
 
 #[derive(Debug, Default, serde::Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]

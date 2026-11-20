@@ -266,7 +266,7 @@ pub fn disable_files(config_dir: &Path) -> Result<usize, String> {
 
 fn secrets() -> Result<crate::tools::auth::Secrets, String> {
     Ok(crate::tools::auth::keychain_secrets(
-        crate::account::AccountId::parse(super::LOCAL_ACCOUNT)?,
+        crate::account::AccountId::parse(crate::chat::LOCAL_ACCOUNT)?,
     ))
 }
 

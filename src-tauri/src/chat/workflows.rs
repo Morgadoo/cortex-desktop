@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use super::store::{chat_dir, valid_id, write_json};
+use crate::chat::store::{chat_dir, valid_id, write_json};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -130,7 +130,13 @@ pub fn save(config_dir: &Path, mut workflow: Workflow) -> Result<Vec<Workflow>, 
     let mut all = load(config_dir);
     match all.iter_mut().find(|w| w.id == workflow.id) {
         Some(existing) => {
-            super::versions::keep(config_dir, "workflows", &workflow.id, &*existing, &workflow)?;
+            crate::chat::versions::keep(
+                config_dir,
+                "workflows",
+                &workflow.id,
+                &*existing,
+                &workflow,
+            )?;
             *existing = workflow;
         }
         None => all.insert(0, workflow),
@@ -210,7 +216,7 @@ pub fn views(config_dir: &Path, all: Vec<Workflow>) -> Vec<WorkflowView> {
             let production = if workflow.builtin {
                 None
             } else {
-                super::versions::production(config_dir, "workflows", &workflow.id)
+                crate::chat::versions::production(config_dir, "workflows", &workflow.id)
             }
             .and_then(|p| {
                 let w: Workflow = serde_json::from_value(p.value).ok()?;
@@ -313,7 +319,7 @@ mod draft_tests {
         assert!(views(dir.path(), all.clone())
             .iter()
             .all(|v| v.production.is_none()));
-        super::super::versions::set_production(
+        crate::chat::versions::set_production(
             dir.path(),
             "workflows",
             &mine.id,

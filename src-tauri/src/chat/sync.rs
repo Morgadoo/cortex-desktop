@@ -434,7 +434,7 @@ pub fn sync_once(config_dir: &Path, remote: &Path, key: &[u8; 32]) -> Report {
         }
         // An overwritten conversation keeps a backup, as any other change does.
         if item.path.starts_with("chat/conversations/") {
-            super::backup::before_overwrite(config_dir, &target);
+            crate::chat::backup::before_overwrite(config_dir, &target);
         }
         let tmp = target.with_extension("sync-tmp");
         crate::chat::at_rest::write(&tmp, &bytes).map_err(|e| e.to_string())?;
@@ -445,7 +445,7 @@ pub fn sync_once(config_dir: &Path, remote: &Path, key: &[u8; 32]) -> Report {
             .strip_prefix("chat/conversations/")
             .and_then(|n| n.strip_suffix(".json"))
         {
-            return super::store::delete_conversation(config_dir, id);
+            return crate::chat::store::delete_conversation(config_dir, id);
         }
         std::fs::remove_file(config_dir.join(rel)).map_err(|e| e.to_string())
     };

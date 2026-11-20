@@ -2,7 +2,7 @@
 //! one, chosen from the message itself, so quick questions stay quick and cheap and demanding
 //! ones get the stronger model. The two models are set under Providers.
 
-use super::providers::{self, ModelView};
+use crate::chat::providers::{self, ModelView};
 
 /// The reference the model picker uses for Auto.
 pub const AUTO: &str = "auto/router";

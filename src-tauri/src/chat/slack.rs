@@ -36,15 +36,15 @@ pub struct Settings {
 }
 
 fn path(config_dir: &Path) -> PathBuf {
-    super::store::chat_dir(config_dir).join("slack.json")
+    crate::chat::store::chat_dir(config_dir).join("slack.json")
 }
 
 pub fn load(config_dir: &Path) -> Settings {
-    super::store::read_json(&path(config_dir)).unwrap_or_default()
+    crate::chat::store::read_json(&path(config_dir)).unwrap_or_default()
 }
 
 pub fn save(config_dir: &Path, s: &Settings) -> Result<(), String> {
-    super::store::write_json(&path(config_dir), s)
+    crate::chat::store::write_json(&path(config_dir), s)
 }
 
 /// Slack's Web API; `CORTEX_SLACK_API` points elsewhere for testing.
@@ -53,12 +53,12 @@ fn api_base() -> String {
 }
 
 pub async fn tokens() -> Option<(String, String)> {
-    let app = super::secrets::api_key(APP_TOKEN)
+    let app = crate::chat::secrets::api_key(APP_TOKEN)
         .await
         .ok()
         .flatten()
         .filter(|t| !t.is_empty())?;
-    let bot = super::secrets::api_key(BOT_TOKEN)
+    let bot = crate::chat::secrets::api_key(BOT_TOKEN)
         .await
         .ok()
         .flatten()
@@ -70,10 +70,12 @@ pub async fn set_tokens(app_token: &str, bot_token: &str) -> Result<(), String> 
     let secrets = crate::chat::secrets::local()?;
     for (name, value) in [(APP_TOKEN, app_token), (BOT_TOKEN, bot_token)] {
         if value.trim().is_empty() {
-            secrets.delete(&super::providers::secret_name(name)).await?;
+            secrets
+                .delete(&crate::chat::providers::secret_name(name))
+                .await?;
         } else {
             secrets
-                .store(&super::providers::secret_name(name), value.trim())
+                .store(&crate::chat::providers::secret_name(name), value.trim())
                 .await?;
         }
     }
@@ -289,7 +291,7 @@ async fn session(
                     .iter()
                     .find(|(c, _)| *c == key)
                     .map(|(_, id)| id.clone());
-                let (id, answer) = super::telegram::run_message(
+                let (id, answer) = crate::chat::telegram::run_message(
                     app,
                     config_dir,
                     settings.agent_id.clone(),

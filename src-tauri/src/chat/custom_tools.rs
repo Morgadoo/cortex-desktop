@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use super::store::{chat_dir, write_json};
-use super::tools::ChatTool;
+use crate::chat::store::{chat_dir, write_json};
+use crate::chat::tools::ChatTool;
 
 pub const CONNECTOR: &str = "custom";
 
@@ -82,7 +82,7 @@ pub fn save(config_dir: &Path, tool: &CustomTool) -> Result<Vec<CustomTool>, Str
         return Err("The input schema must be a JSON object schema, like {\"type\": \"object\", \"properties\": {…}}.".into());
     }
     if let Some(previous) = list(config_dir).into_iter().find(|t| t.name == tool.name) {
-        super::versions::keep(config_dir, "tools", &tool.name, &previous, tool)?;
+        crate::chat::versions::keep(config_dir, "tools", &tool.name, &previous, tool)?;
     }
     write_json(&dir(config_dir).join(&tool.name).join("tool.json"), tool)?;
     Ok(list(config_dir))
@@ -163,8 +163,8 @@ pub async fn run(
     // JavaScript that needs nothing from Node runs in the WebAssembly sandbox, which works the same
     // on every system; what it prints is its result. Anything else keeps the process sandbox.
     if runs_in_wasm(&tool) {
-        super::script_tools::sandbox::cache_in(config_dir);
-        let (result, _) = super::script_tools::sandbox::run(
+        crate::chat::script_tools::sandbox::cache_in(config_dir);
+        let (result, _) = crate::chat::script_tools::sandbox::run(
             &program(&tool, args),
             "{}",
             &Default::default(),
@@ -176,7 +176,7 @@ pub async fn run(
             .map(|out| out.trim().to_string())
             .map_err(|e| format!("The tool failed: {e}"));
     }
-    let outcome = super::sandbox::run(
+    let outcome = crate::chat::sandbox::run(
         config_dir,
         conversation_id,
         &json!({ "language": tool.language, "code": program(&tool, args) }),
@@ -280,7 +280,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_python_tool_runs_in_the_sandbox() {
-        if super::super::sandbox::languages()
+        if crate::chat::sandbox::languages()
             .iter()
             .all(|l| *l != "python")
         {

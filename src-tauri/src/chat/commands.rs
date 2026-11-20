@@ -3,10 +3,10 @@
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
-use super::engine::{self, TurnRequest};
-use super::providers::{self, ModelView, ProviderView};
-use super::store::{self, ConversationSummary, ConversationView, Instructions, Project};
-use super::ChatState;
+use crate::chat::engine::{self, TurnRequest};
+use crate::chat::providers::{self, ModelView, ProviderView};
+use crate::chat::store::{self, ConversationSummary, ConversationView, Instructions, Project};
+use crate::chat::ChatState;
 
 // The commands, by area; each is re-exported here, where the app's handler list names them.
 mod agents_commands;
@@ -39,7 +39,7 @@ fn config_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
 }
 
 fn secrets() -> Result<crate::tools::auth::Secrets, String> {
-    super::secrets::local()
+    crate::chat::secrets::local()
 }
 
 #[derive(Debug, Deserialize)]
@@ -112,7 +112,7 @@ mod serde_with_none {
 #[serde(rename_all = "camelCase")]
 pub struct ScoredArtifact {
     #[serde(flatten)]
-    artifact: super::traces::Artifact,
+    artifact: crate::chat::traces::Artifact,
     score: f64,
 }
 
@@ -133,7 +133,7 @@ pub enum SpeechOut {
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AudioView {
-    pub settings: super::audio::AudioSettings,
+    pub settings: crate::chat::audio::AudioSettings,
     /// What the `provider` engines resolve to now.
     pub provider_speech_model: Option<String>,
     pub provider_voice_model: Option<String>,
@@ -195,7 +195,7 @@ fn sanitize_file_name(title: &str) -> String {
 #[serde(rename_all = "camelCase")]
 pub struct SyncView {
     #[serde(flatten)]
-    settings: super::sync::Settings,
+    settings: crate::chat::sync::Settings,
     has_passphrase: bool,
 }
 
@@ -203,15 +203,15 @@ pub struct SyncView {
 #[serde(rename_all = "camelCase")]
 pub struct TaskView {
     #[serde(flatten)]
-    pub task: super::tasks::Task,
+    pub task: crate::chat::tasks::Task,
     pub schedule: String,
 }
 
-fn task_views(tasks: Vec<super::tasks::Task>) -> Vec<TaskView> {
+fn task_views(tasks: Vec<crate::chat::tasks::Task>) -> Vec<TaskView> {
     tasks
         .into_iter()
         .map(|task| TaskView {
-            schedule: super::tasks::describe(&task.frequency),
+            schedule: crate::chat::tasks::describe(&task.frequency),
             task,
         })
         .collect()
@@ -220,7 +220,7 @@ fn task_views(tasks: Vec<super::tasks::Task>) -> Vec<TaskView> {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AddResult {
-    pub library: super::libraries::Library,
+    pub library: crate::chat::libraries::Library,
     pub errors: Vec<String>,
 }
 
@@ -267,7 +267,7 @@ const OCR_PROMPT: &str = "Transcribe all the text in this image exactly, in read
 pub async fn chat_add_library_folder(
     app: AppHandle,
     id: String,
-) -> Result<Option<super::libraries::SyncReport>, String> {
+) -> Result<Option<crate::chat::libraries::SyncReport>, String> {
     use tauri_plugin_dialog::DialogExt;
     let (tx, rx) = tokio::sync::oneshot::channel();
     app.dialog()
@@ -281,7 +281,7 @@ pub async fn chat_add_library_folder(
     };
     let folder = path.into_path().map_err(|e| e.to_string())?;
     let dir = config_dir(&app)?;
-    tokio::task::spawn_blocking(move || super::libraries::add_folder(&dir, &id, &folder))
+    tokio::task::spawn_blocking(move || crate::chat::libraries::add_folder(&dir, &id, &folder))
         .await
         .map_err(|e| e.to_string())?
         .map(Some)
@@ -317,7 +317,7 @@ fn workspace_file(
     conversation_id: &str,
     path: &str,
 ) -> Result<std::path::PathBuf, String> {
-    let ws = super::sandbox::workspace(&config_dir(app)?, conversation_id)?;
+    let ws = crate::chat::sandbox::workspace(&config_dir(app)?, conversation_id)?;
     let (Ok(root), Ok(real)) = (ws.canonicalize(), ws.join(path).canonicalize()) else {
         return Err("No such file.".into());
     };
@@ -330,8 +330,8 @@ fn workspace_file(
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiServerView {
-    settings: super::api_server::ApiServerSettings,
-    status: super::api_server::Status,
+    settings: crate::chat::api_server::ApiServerSettings,
+    status: crate::chat::api_server::Status,
     /// Shown so the user can paste it into other tools; only once the server was turned on.
     token: Option<String>,
     /// The website widget's key, while the widget is on.
@@ -339,15 +339,15 @@ pub struct ApiServerView {
 }
 
 async fn api_server_view(app: &AppHandle) -> Result<ApiServerView, String> {
-    let settings = super::api_server::load(&config_dir(app)?);
-    let status = app.state::<super::api_server::ApiServer>().status();
+    let settings = crate::chat::api_server::load(&config_dir(app)?);
+    let status = app.state::<crate::chat::api_server::ApiServer>().status();
     let token = if settings.enabled {
-        Some(super::api_server::token(false).await?)
+        Some(crate::chat::api_server::token(false).await?)
     } else {
         None
     };
     let widget_token = if settings.enabled && settings.widget.enabled {
-        Some(super::api_server::widget_token(false).await?)
+        Some(crate::chat::api_server::widget_token(false).await?)
     } else {
         None
     };
@@ -444,10 +444,10 @@ const TOOL_CHOICES: &[&str] = &[
 
 /// Tokens and cost across all conversations this calendar month, for the usage gauge.
 #[tauri::command]
-pub fn chat_usage_month(app: AppHandle) -> Result<super::agents::Spend, String> {
+pub fn chat_usage_month(app: AppHandle) -> Result<crate::chat::agents::Spend, String> {
     use chrono::Datelike;
     let now = chrono::Utc::now();
-    let mut total = super::agents::Spend::default();
+    let mut total = crate::chat::agents::Spend::default();
     for c in store::list_conversations(&config_dir(&app)?) {
         if c.updated_at.year() == now.year() && c.updated_at.month() == now.month() {
             total.runs += 1;
@@ -472,15 +472,15 @@ pub struct UsageLine {
 pub fn setup(app: &tauri::App) {
     app.manage(ChatState::default());
     if let Ok(dir) = config_dir(app.handle()) {
-        super::store::purge_temporary(&dir);
+        crate::chat::store::purge_temporary(&dir);
         // Off the startup path: copying state files and pruning old backups can touch many files.
-        std::thread::spawn(move || super::backup::daily(&dir));
+        std::thread::spawn(move || crate::chat::backup::daily(&dir));
     }
-    super::tasks::start(app.handle().clone());
-    app.manage(super::api_server::ApiServer::default());
+    crate::chat::tasks::start(app.handle().clone());
+    app.manage(crate::chat::api_server::ApiServer::default());
     let handle = app.handle().clone();
     tauri::async_runtime::spawn(async move {
-        super::api_server::apply(&handle).await;
+        crate::chat::api_server::apply(&handle).await;
     });
 }
 

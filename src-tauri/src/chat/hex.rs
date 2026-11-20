@@ -503,7 +503,7 @@ mod tests {
         assert_eq!(i16::from_le_bytes([w[46], w[47]]), i16::MAX);
         assert_eq!(i16::from_le_bytes([w[50], w[51]]), i16::MAX, "clamped");
         assert_eq!(
-            super::super::local_models::audio_samples(&w).unwrap().len(),
+            crate::chat::local_models::audio_samples(&w).unwrap().len(),
             4,
             "the built-in decoder reads it back"
         );

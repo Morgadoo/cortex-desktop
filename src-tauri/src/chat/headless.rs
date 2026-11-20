@@ -26,10 +26,10 @@ use std::sync::{Arc, Mutex};
 use rig_core::completion::Message;
 use serde::Serialize;
 
-use super::builtins;
-use super::engine::{ChatEvent, TurnRequest};
-use super::host::Host;
-use super::tools::{ApprovalMode, ChatTool};
+use crate::chat::builtins;
+use crate::chat::engine::{ChatEvent, TurnRequest};
+use crate::chat::host::Host;
+use crate::chat::tools::{ApprovalMode, ChatTool};
 use crate::tools::registry::ApprovalDecision;
 
 /// Tool steps before the answer is asked for, unless `--max-turns` says otherwise.
@@ -203,7 +203,7 @@ pub fn write_export(dir: &Path, export: &Export) -> Result<(), String> {
 pub(crate) struct HeadlessHost {
     config_dir: PathBuf,
     conversation: String,
-    state: super::ChatState,
+    state: crate::chat::ChatState,
     registry: crate::tools::registry::ToolRegistry,
     events: Mutex<Vec<ChatEvent>>,
     max_tokens: Option<u64>,
@@ -218,7 +218,7 @@ impl HeadlessHost {
         Self {
             config_dir,
             conversation: String::new(),
-            state: super::ChatState::default(),
+            state: crate::chat::ChatState::default(),
             registry: crate::tools::registry::ToolRegistry::new(),
             events: Mutex::new(Vec::new()),
             max_tokens: None,
@@ -262,7 +262,7 @@ impl Host for HeadlessHost {
             .push(event);
     }
 
-    fn chat_state(&self) -> &super::ChatState {
+    fn chat_state(&self) -> &crate::chat::ChatState {
         &self.state
     }
 
@@ -274,7 +274,7 @@ impl Host for HeadlessHost {
         &self,
         reference: &str,
     ) -> Result<rig_core::DynModel<rig_core::operation::Completion>, String> {
-        super::engine::connect_model(&self.config_dir, reference).await
+        crate::chat::engine::connect_model(&self.config_dir, reference).await
     }
 
     async fn approve(
@@ -361,7 +361,7 @@ pub async fn run(args: &Args) -> Export {
     };
     let reference = match &args.model {
         Some(m) => m.clone(),
-        None => match super::providers::load(&config_dir).default_model {
+        None => match crate::chat::providers::load(&config_dir).default_model {
             Some(m) => m,
             None => {
                 return end(
@@ -374,22 +374,22 @@ pub async fn run(args: &Args) -> Export {
     };
     export.model = reference.clone();
     // A model that cannot be reached at all is a settings problem, not a failed run.
-    if let Err(e) = super::engine::connect_model(&config_dir, &reference).await {
+    if let Err(e) = crate::chat::engine::connect_model(&config_dir, &reference).await {
         return end(export, Ending::UsageError, e);
     }
     let id = format!("headless-{}", uuid::Uuid::new_v4().simple());
     // Named already, so the engine does not write a title after the run is gone.
     let mut conversation =
-        super::store::Conversation::new(id.clone(), None, Some(reference.clone()));
+        crate::chat::store::Conversation::new(id.clone(), None, Some(reference.clone()));
     conversation.temporary = true;
     conversation.title = "Headless run".into();
-    if let Err(e) = super::store::save_conversation(&config_dir, &conversation) {
+    if let Err(e) = crate::chat::store::save_conversation(&config_dir, &conversation) {
         return end(export, Ending::UsageError, e);
     }
     let host = Arc::new(HeadlessHost {
         config_dir: config_dir.clone(),
         conversation: id.clone(),
-        state: super::ChatState::default(),
+        state: crate::chat::ChatState::default(),
         registry: crate::tools::registry::ToolRegistry::new(),
         events: Mutex::new(Vec::new()),
         max_tokens: args.max_tokens,
@@ -421,7 +421,7 @@ pub async fn run(args: &Args) -> Export {
         });
     }
     let dyn_host: Arc<dyn Host> = host.clone();
-    let outcome = super::engine::turn(&dyn_host, &request, cancel).await;
+    let outcome = crate::chat::engine::turn(&dyn_host, &request, cancel).await;
     host.state.finish(&id);
 
     let events = host
@@ -438,24 +438,28 @@ pub async fn run(args: &Args) -> Export {
         export.output_tokens = usage.output_tokens;
         export.cost = usage.cost;
     }
-    let answer = super::store::load_conversation(&config_dir, &id)
+    let answer = crate::chat::store::load_conversation(&config_dir, &id)
         .ok()
         .and_then(|c| {
             c.messages
                 .last()
                 .filter(|m| matches!(m, Message::Assistant(_)))
-                .map(super::context::message_text)
+                .map(crate::chat::context::message_text)
         })
         .unwrap_or_default();
     // Nothing is kept: a temporary conversation is deleted outright.
-    let _ = super::store::delete_conversation(&config_dir, &id);
+    let _ = crate::chat::store::delete_conversation(&config_dir, &id);
     let stopped = host
         .stopped
         .lock()
         .unwrap_or_else(|p| p.into_inner())
         .clone();
     match outcome {
-        Err(e) => end(export, Ending::ModelError, super::context::short_error(&e)),
+        Err(e) => end(
+            export,
+            Ending::ModelError,
+            crate::chat::context::short_error(&e),
+        ),
         Ok(true) => end(
             export,
             Ending::Limit,
@@ -483,7 +487,7 @@ mod tests {
         let host = HeadlessHost {
             config_dir: PathBuf::new(),
             conversation: "h".into(),
-            state: super::super::ChatState::default(),
+            state: crate::chat::ChatState::default(),
             registry: crate::tools::registry::ToolRegistry::new(),
             events: Mutex::new(Vec::new()),
             max_tokens: Some(100),
@@ -493,7 +497,7 @@ mod tests {
         let mut cancel = host.state.begin("h").unwrap();
         let usage = |tokens: u64, cost: f64| ChatEvent::Usage {
             conversation_id: "h".into(),
-            usage: super::super::context::UsageTotals {
+            usage: crate::chat::context::UsageTotals {
                 input_tokens: tokens,
                 cost,
                 ..Default::default()

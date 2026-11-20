@@ -186,7 +186,7 @@ pub fn load(config_dir: &Path) -> ProvidersFile {
 }
 
 pub fn save(config_dir: &Path, file: &ProvidersFile) -> Result<(), String> {
-    super::store::write_json(&file_path(config_dir), file)
+    crate::chat::store::write_json(&file_path(config_dir), file)
 }
 
 /// What the settings page shows for a provider.
@@ -427,9 +427,9 @@ pub async fn models(file: &ProvidersFile) -> Vec<ModelView> {
         out.extend(models);
     }
     // Coding agent programs installed on this computer.
-    out.extend(super::agent_cli::installed());
+    out.extend(crate::chat::agent_cli::installed());
     // Auto, when its two models are set.
-    out.extend(super::router::model_view(file));
+    out.extend(crate::chat::router::model_view(file));
     out
 }
 

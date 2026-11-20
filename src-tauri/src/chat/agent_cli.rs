@@ -14,9 +14,9 @@ use tauri::AppHandle;
 use tokio::io::AsyncReadExt;
 use tokio::sync::watch;
 
-use super::engine::{emit, ChatEvent};
-use super::providers::ModelView;
-use super::store::{self, Conversation};
+use crate::chat::engine::{emit, ChatEvent};
+use crate::chat::providers::ModelView;
+use crate::chat::store::{self, Conversation};
 
 /// The vendor part of these models' references: `agentcli/claude-code`.
 pub const VENDOR: &str = "agentcli";
@@ -124,7 +124,7 @@ pub fn prompt(conversation: &Conversation) -> String {
     };
     let mut earlier = conversation.clone();
     earlier.messages.truncate(last);
-    let history = super::builtins::chat_transcript(&earlier, HISTORY_CHARS);
+    let history = crate::chat::builtins::chat_transcript(&earlier, HISTORY_CHARS);
     if earlier.messages.is_empty() || history.trim().is_empty() {
         now
     } else {

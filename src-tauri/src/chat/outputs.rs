@@ -57,7 +57,7 @@ fn walk(base: &Path, dir: &Path, depth: usize, out: &mut Vec<(String, std::fs::M
 
 /// The files in a chat's workspace.
 pub fn files(config_dir: &Path, conversation_id: &str) -> Vec<Output> {
-    let Ok(dir) = super::sandbox::workspace(config_dir, conversation_id) else {
+    let Ok(dir) = crate::chat::sandbox::workspace(config_dir, conversation_id) else {
         return Vec::new();
     };
     let mut found = Vec::new();
@@ -85,7 +85,7 @@ pub fn files(config_dir: &Path, conversation_id: &str) -> Vec<Output> {
         .collect()
 }
 
-fn canvases(list: Vec<super::canvas::Canvas>) -> Vec<Output> {
+fn canvases(list: Vec<crate::chat::canvas::Canvas>) -> Vec<Output> {
     list.into_iter()
         .map(|c| Output {
             bytes: c.versions.last().map_or(0, |v| v.content.len() as u64),
@@ -105,18 +105,18 @@ fn newest_first(mut out: Vec<Output>) -> Vec<Output> {
 
 /// What one chat made.
 pub fn for_conversation(config_dir: &Path, conversation_id: &str) -> Vec<Output> {
-    let mut out = canvases(super::canvas::list_for(config_dir, conversation_id));
+    let mut out = canvases(crate::chat::canvas::list_for(config_dir, conversation_id));
     out.extend(files(config_dir, conversation_id));
     newest_first(out)
 }
 
 /// What every chat made.
 pub fn all(config_dir: &Path) -> Vec<Output> {
-    let mut out = canvases(super::canvas::list_all(config_dir));
-    let sandbox = super::store::chat_dir(config_dir).join("sandbox");
+    let mut out = canvases(crate::chat::canvas::list_all(config_dir));
+    let sandbox = crate::chat::store::chat_dir(config_dir).join("sandbox");
     for entry in std::fs::read_dir(sandbox).into_iter().flatten().flatten() {
         let id = entry.file_name().to_string_lossy().into_owned();
-        if super::store::valid_id(&id) {
+        if crate::chat::store::valid_id(&id) {
             out.extend(files(config_dir, &id));
         }
     }
@@ -130,14 +130,14 @@ mod tests {
     #[test]
     fn outputs_gather_canvases_and_workspace_files() {
         let dir = tempfile::tempdir().unwrap();
-        let ws = super::super::sandbox::workspace(dir.path(), "c1").unwrap();
+        let ws = crate::chat::sandbox::workspace(dir.path(), "c1").unwrap();
         std::fs::create_dir_all(ws.join("images")).unwrap();
         std::fs::create_dir_all(ws.join("__pycache__")).unwrap();
         std::fs::write(ws.join("images/cat.png"), b"png").unwrap();
         std::fs::write(ws.join("report.csv"), b"a,b").unwrap();
         std::fs::write(ws.join(".hidden"), b"x").unwrap();
         std::fs::write(ws.join("__pycache__/x.pyc"), b"x").unwrap();
-        super::super::canvas::write(dir.path(), "c1", None, Some("Plan"), "# Plan", "assistant")
+        crate::chat::canvas::write(dir.path(), "c1", None, Some("Plan"), "# Plan", "assistant")
             .unwrap();
         let mine = for_conversation(dir.path(), "c1");
         let mut kinds: Vec<(&str, &str)> = mine

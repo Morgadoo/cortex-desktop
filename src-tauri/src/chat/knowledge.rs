@@ -12,7 +12,7 @@ use std::path::Path;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use super::retrieval::tokens;
+use crate::chat::retrieval::tokens;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -45,7 +45,7 @@ pub fn load(config_dir: &Path) -> Vec<Page> {
 
 pub(crate) fn save_all(config_dir: &Path, pages: &[Page]) -> Result<(), String> {
     // The pages as they were stay restorable.
-    super::versions::keep(
+    crate::chat::versions::keep(
         config_dir,
         "knowledge",
         "pages",
@@ -135,7 +135,7 @@ pub fn delete(config_dir: &Path, id: &str) -> Result<Vec<Page>, String> {
 
 /// Pages ranked by BM25 against `query`, best first, with their scores; the title counts twice.
 pub fn rank<'a>(pages: &'a [Page], query: &str) -> Vec<(&'a Page, f64)> {
-    let corpus = super::retrieval::Corpus::new(pages.iter().map(|p| {
+    let corpus = crate::chat::retrieval::Corpus::new(pages.iter().map(|p| {
         let mut words = tokens(&p.title);
         words.extend(tokens(&p.title));
         words.extend(tokens(&p.body));

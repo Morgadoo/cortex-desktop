@@ -39,15 +39,15 @@ pub struct Settings {
 }
 
 fn path(config_dir: &Path) -> PathBuf {
-    super::store::chat_dir(config_dir).join("discord.json")
+    crate::chat::store::chat_dir(config_dir).join("discord.json")
 }
 
 pub fn load(config_dir: &Path) -> Settings {
-    super::store::read_json(&path(config_dir)).unwrap_or_default()
+    crate::chat::store::read_json(&path(config_dir)).unwrap_or_default()
 }
 
 pub fn save(config_dir: &Path, s: &Settings) -> Result<(), String> {
-    super::store::write_json(&path(config_dir), s)
+    crate::chat::store::write_json(&path(config_dir), s)
 }
 
 /// Discord's REST API; `CORTEX_DISCORD_API` points elsewhere for testing.
@@ -56,7 +56,7 @@ fn api_base() -> String {
 }
 
 pub async fn token() -> Option<String> {
-    super::secrets::api_key(TOKEN)
+    crate::chat::secrets::api_key(TOKEN)
         .await
         .ok()
         .flatten()
@@ -66,10 +66,12 @@ pub async fn token() -> Option<String> {
 pub async fn set_token(token: &str) -> Result<(), String> {
     let secrets = crate::chat::secrets::local()?;
     if token.trim().is_empty() {
-        secrets.delete(&super::providers::secret_name(TOKEN)).await
+        secrets
+            .delete(&crate::chat::providers::secret_name(TOKEN))
+            .await
     } else {
         secrets
-            .store(&super::providers::secret_name(TOKEN), token.trim())
+            .store(&crate::chat::providers::secret_name(TOKEN), token.trim())
             .await
     }
 }
@@ -361,7 +363,7 @@ async fn handle(app: &AppHandle, config_dir: &Path, token: &str, bot_id: &str, m
                 .iter()
                 .find(|(c, _)| *c == channel)
                 .map(|(_, id)| id.clone());
-            let (id, answer) = super::telegram::run_message(
+            let (id, answer) = crate::chat::telegram::run_message(
                 app,
                 config_dir,
                 settings.agent_id.clone(),
@@ -380,7 +382,7 @@ async fn handle(app: &AppHandle, config_dir: &Path, token: &str, bot_id: &str, m
             answer.unwrap_or_else(|e| e)
         }
     };
-    for (i, piece) in super::telegram::chunks_of(&reply, MAX_MESSAGE)
+    for (i, piece) in crate::chat::telegram::chunks_of(&reply, MAX_MESSAGE)
         .into_iter()
         .enumerate()
     {
@@ -459,7 +461,7 @@ mod tests {
         assert_eq!(decide(&s, &dm("U1", "new"), "B9"), Action::Reset);
         assert_eq!(clean("<@!B9> hello there ", "B9"), "hello there");
         assert!(
-            super::super::telegram::chunks_of(&"a".repeat(4500), MAX_MESSAGE)
+            crate::chat::telegram::chunks_of(&"a".repeat(4500), MAX_MESSAGE)
                 .iter()
                 .all(|c| c.chars().count() <= MAX_MESSAGE)
         );

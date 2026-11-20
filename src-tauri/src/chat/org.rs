@@ -17,8 +17,8 @@ use std::path::Path;
 use chrono::Utc;
 use serde_json::{json, Value};
 
-use super::agents::{self, Agent};
-use super::tools::ChatTool;
+use crate::chat::agents::{self, Agent};
+use crate::chat::tools::ChatTool;
 
 pub const MANAGE_AGENTS: &str = "manage_agents";
 /// Levels of agents under the top manager.

@@ -37,78 +37,78 @@ const FILES: &[File] = &[
         path: "chat/providers.json",
         about:
             "Model providers, the default, backup, Auto and media models. Keys are in the keychain.",
-        schema: || schema_for!(super::providers::ProvidersFile),
-        check: read::<super::providers::ProvidersFile>,
+        schema: || schema_for!(crate::chat::providers::ProvidersFile),
+        check: read::<crate::chat::providers::ProvidersFile>,
     },
     File {
         name: "agents",
         path: "chat/agents.json",
         about: "Agents: instructions, model, tools, skills, libraries, vault secrets.",
-        schema: || schema_for!(Vec<super::agents::Agent>),
-        check: read::<Vec<super::agents::Agent>>,
+        schema: || schema_for!(Vec<crate::chat::agents::Agent>),
+        check: read::<Vec<crate::chat::agents::Agent>>,
     },
     File {
         name: "tasks",
         path: "chat/tasks.json",
         about: "Scheduled tasks and their triggers.",
-        schema: || schema_for!(Vec<super::tasks::Task>),
-        check: read::<Vec<super::tasks::Task>>,
+        schema: || schema_for!(Vec<crate::chat::tasks::Task>),
+        check: read::<Vec<crate::chat::tasks::Task>>,
     },
     File {
         name: "hooks",
         path: "chat/hooks.json",
         about: "Commands run before and after tool calls and when a reply finishes.",
-        schema: || schema_for!(Vec<super::hooks::Hook>),
-        check: read::<Vec<super::hooks::Hook>>,
+        schema: || schema_for!(Vec<crate::chat::hooks::Hook>),
+        check: read::<Vec<crate::chat::hooks::Hook>>,
     },
     File {
         name: "audio",
         path: "chat/audio.json",
         about: "Speech to text and text to speech.",
-        schema: || schema_for!(super::audio::AudioSettings),
-        check: read::<super::audio::AudioSettings>,
+        schema: || schema_for!(crate::chat::audio::AudioSettings),
+        check: read::<crate::chat::audio::AudioSettings>,
     },
     File {
         name: "memories",
         path: "chat/memories.json",
         about: "Facts the assistant knows, and whether it uses and saves them.",
-        schema: || schema_for!(super::memory::Memories),
-        check: read::<super::memory::Memories>,
+        schema: || schema_for!(crate::chat::memory::Memories),
+        check: read::<crate::chat::memory::Memories>,
     },
     File {
         name: "vault",
         path: "chat/vault.json",
         about: "Names of vault secrets and who may use them. Values are in the keychain.",
-        schema: || schema_for!(Vec<super::vault::Secret>),
-        check: read::<Vec<super::vault::Secret>>,
+        schema: || schema_for!(Vec<crate::chat::vault::Secret>),
+        check: read::<Vec<crate::chat::vault::Secret>>,
     },
     File {
         name: "sync",
         path: "chat/sync.json",
         about: "Sync between devices on this computer. The passphrase is in the keychain.",
-        schema: || schema_for!(super::sync::Settings),
-        check: read::<super::sync::Settings>,
+        schema: || schema_for!(crate::chat::sync::Settings),
+        check: read::<crate::chat::sync::Settings>,
     },
     File {
         name: "api-server",
         path: "chat/api-server.json",
         about: "The local API.",
-        schema: || schema_for!(super::api_server::ApiServerSettings),
-        check: read::<super::api_server::ApiServerSettings>,
+        schema: || schema_for!(crate::chat::api_server::ApiServerSettings),
+        check: read::<crate::chat::api_server::ApiServerSettings>,
     },
     File {
         name: "computer",
         path: "chat/computer.json",
         about: "Computer use.",
-        schema: || schema_for!(super::computer::ComputerSettings),
-        check: read::<super::computer::ComputerSettings>,
+        schema: || schema_for!(crate::chat::computer::ComputerSettings),
+        check: read::<crate::chat::computer::ComputerSettings>,
     },
     File {
         name: "privacy",
         path: "chat/privacy.json",
         about: "The personal-data filter.",
-        schema: || schema_for!(super::privacy::PrivacySettings),
-        check: read::<super::privacy::PrivacySettings>,
+        schema: || schema_for!(crate::chat::privacy::PrivacySettings),
+        check: read::<crate::chat::privacy::PrivacySettings>,
     },
     File {
         name: "dictation",
@@ -379,9 +379,9 @@ mod tests {
         assert!(tasks.contains("newFeedItems") && tasks.contains("newFiles"));
         // What the app writes passes its own check.
         let dir = tempfile::tempdir().unwrap();
-        super::super::providers::save(
+        crate::chat::providers::save(
             dir.path(),
-            &super::super::providers::ProvidersFile {
+            &crate::chat::providers::ProvidersFile {
                 default_model: Some("x/y".into()),
                 ..Default::default()
             },

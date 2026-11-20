@@ -10,7 +10,7 @@ use std::time::{Duration, SystemTime};
 
 use base64::Engine as _;
 
-use super::store::chat_dir;
+use crate::chat::store::chat_dir;
 
 /// Largest icon kept.
 const MAX_ICON_BYTES: usize = 200 * 1024;

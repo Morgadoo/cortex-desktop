@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use super::store::{chat_dir, valid_id};
+use crate::chat::store::{chat_dir, valid_id};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -174,7 +174,7 @@ pub struct BundledSkill {
 pub fn bundle(config_dir: &Path, id: &str) -> Result<Bundle, String> {
     let agent = find(config_dir, id).ok_or("There is no such agent.")?;
     // Built-in skills exist everywhere; only the user's own travel with the agent.
-    let skills = super::skills::list(config_dir)
+    let skills = crate::chat::skills::list(config_dir)
         .into_iter()
         .filter(|s| s.origin == "user" && agent.skills.contains(&s.name))
         .map(|s| BundledSkill {
@@ -209,13 +209,13 @@ pub fn install(config_dir: &Path, bundle: Bundle) -> Result<Agent, String> {
     {
         agent.name = format!("{} (imported)", agent.name);
     }
-    let have = super::skills::list(config_dir);
+    let have = crate::chat::skills::list(config_dir);
     for skill in bundle
         .skills
         .iter()
         .filter(|s| !have.iter().any(|h| h.name == s.name))
     {
-        super::skills::save(config_dir, &skill.name, &skill.description, &skill.body)?;
+        crate::chat::skills::save(config_dir, &skill.name, &skill.description, &skill.body)?;
     }
     save(config_dir, agent.clone())?;
     if !bundle.notebook.trim().is_empty() {
@@ -238,7 +238,7 @@ pub fn save(config_dir: &Path, agent: Agent) -> Result<Vec<Agent>, String> {
     let mut agents = load(config_dir);
     match agents.iter_mut().find(|a| a.id == agent.id) {
         Some(existing) => {
-            super::versions::keep(config_dir, "agents", &agent.id, &*existing, &agent)?;
+            crate::chat::versions::keep(config_dir, "agents", &agent.id, &*existing, &agent)?;
             *existing = agent;
         }
         None => agents.push(agent),
@@ -260,11 +260,12 @@ pub fn allows(agent: &Agent, name: &str) -> bool {
         return true;
     }
     // A group works through its members.
-    if !agent.members.is_empty() && name == super::builtins::DELEGATE {
+    if !agent.members.is_empty() && name == crate::chat::builtins::DELEGATE {
         return true;
     }
     // A manager reaches its team: it writes to its reports and hands them work.
-    if agent.can_manage_agents && (name == MESSAGE_AGENT || name == super::builtins::DELEGATE) {
+    if agent.can_manage_agents && (name == MESSAGE_AGENT || name == crate::chat::builtins::DELEGATE)
+    {
         return true;
     }
     // Libraries given to the agent come with the tools that read them.
@@ -310,7 +311,7 @@ pub fn save_notebook(config_dir: &Path, id: &str, text: &str) -> Result<(), Stri
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     // The notebook as it was stays restorable.
-    super::versions::keep(
+    crate::chat::versions::keep(
         config_dir,
         "notebooks",
         id,
@@ -320,8 +321,8 @@ pub fn save_notebook(config_dir: &Path, id: &str, text: &str) -> Result<(), Stri
     crate::chat::at_rest::write(path, text).map_err(|e| e.to_string())
 }
 
-pub fn notebook_tool() -> super::tools::ChatTool {
-    super::tools::ChatTool {
+pub fn notebook_tool() -> crate::chat::tools::ChatTool {
+    crate::chat::tools::ChatTool {
         name: NOTEBOOK_TOOL.into(),
         description: format!(
             "Rewrite your notebook: the working memory you keep across all your conversations and \
@@ -424,9 +425,12 @@ pub fn read_shared(
 }
 
 /// The agent's own files: a library named for it, made and given to it on first use.
-pub fn files_library(config_dir: &Path, id: &str) -> Result<super::libraries::Library, String> {
+pub fn files_library(
+    config_dir: &Path,
+    id: &str,
+) -> Result<crate::chat::libraries::Library, String> {
     let mut agent = find(config_dir, id).ok_or("No such agent.")?;
-    let all = super::libraries::list(config_dir);
+    let all = crate::chat::libraries::list(config_dir);
     let wanted = format!("{} files", agent.name);
     if let Some(l) = all
         .iter()
@@ -435,7 +439,7 @@ pub fn files_library(config_dir: &Path, id: &str) -> Result<super::libraries::Li
     {
         return Ok(l.clone());
     }
-    let library = super::libraries::create(
+    let library = crate::chat::libraries::create(
         config_dir,
         &wanted,
         &format!(
@@ -458,7 +462,7 @@ pub fn routing_enabled(config_dir: &Path) -> bool {
 }
 
 pub fn set_routing(config_dir: &Path, enabled: bool) -> Result<(), String> {
-    super::store::write_json(
+    crate::chat::store::write_json(
         &chat_dir(config_dir).join("agent-routing.json"),
         &serde_json::json!({ "enabled": enabled }),
     )
@@ -580,7 +584,7 @@ pub fn spend_this_month(config_dir: &Path) -> std::collections::HashMap<String, 
     use chrono::Datelike;
     let now = Utc::now();
     let mut out: std::collections::HashMap<String, Spend> = Default::default();
-    for c in super::store::list_conversations(config_dir) {
+    for c in crate::chat::store::list_conversations(config_dir) {
         let Some(agent) = c.agent_id.clone() else {
             continue;
         };
@@ -610,7 +614,7 @@ pub fn check_budget(config_dir: &Path, agent: &Agent) -> Result<(), String> {
             .unwrap_or(now)
     };
     let spent =
-        super::traces::agent_cost(config_dir, &agent.id, month_start).unwrap_or_else(|| {
+        crate::chat::traces::agent_cost(config_dir, &agent.id, month_start).unwrap_or_else(|| {
             spend_this_month(config_dir)
                 .get(&agent.id)
                 .map_or(0.0, |s| s.cost)
@@ -731,9 +735,9 @@ pub fn asks_first(agent: &Agent, tool: &str) -> bool {
 pub fn mode_for(
     agent: Option<&Agent>,
     tool: &str,
-    mode: super::tools::ApprovalMode,
-) -> super::tools::ApprovalMode {
-    use super::tools::ApprovalMode;
+    mode: crate::chat::tools::ApprovalMode,
+) -> crate::chat::tools::ApprovalMode {
+    use crate::chat::tools::ApprovalMode;
     let Some(agent) = agent else { return mode };
     let ask = asks_first(agent, tool);
     match mode {
@@ -954,7 +958,7 @@ mod group_tests {
         );
         assert!(!p.contains("**Board**"), "a group is not its own member");
         assert!(
-            allows(&group, super::super::builtins::DELEGATE),
+            allows(&group, crate::chat::builtins::DELEGATE),
             "a group may always delegate"
         );
         assert!(!allows(
@@ -962,7 +966,7 @@ mod group_tests {
                 tools: vec!["web_search".into()],
                 ..Default::default()
             },
-            super::super::builtins::DELEGATE
+            crate::chat::builtins::DELEGATE
         ));
     }
 }
@@ -972,7 +976,7 @@ mod tests {
     #[test]
     fn agents_travel_as_bundles() {
         let from = tempfile::tempdir().unwrap();
-        super::super::skills::save(
+        crate::chat::skills::save(
             from.path(),
             "triage-inbox",
             "Use when sorting email.",
@@ -1018,7 +1022,7 @@ mod tests {
         let installed = install(to.path(), serde_json::from_str(&json).unwrap()).unwrap();
         assert_ne!(installed.id, "a1");
         assert_eq!(notebook(to.path(), &installed.id), "Boss emails first.");
-        assert!(super::super::skills::find(to.path(), "triage-inbox").is_some());
+        assert!(crate::chat::skills::find(to.path(), "triage-inbox").is_some());
         let again = install(to.path(), serde_json::from_str(&json).unwrap()).unwrap();
         assert_eq!(again.name, "Inbox helper (imported)");
         let mut wrong: Bundle = serde_json::from_str(&json).unwrap();

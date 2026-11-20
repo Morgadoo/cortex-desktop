@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use super::store::{chat_dir, read_json, write_json};
+use crate::chat::store::{chat_dir, read_json, write_json};
 
 pub const VENDOR: &str = "fn";
 
@@ -84,11 +84,11 @@ pub fn delete(config_dir: &Path, id: &str) -> Result<Vec<Function>, String> {
 }
 
 /// Pipes, for the model menu.
-pub fn models(config_dir: &Path) -> Vec<super::providers::ModelView> {
+pub fn models(config_dir: &Path) -> Vec<crate::chat::providers::ModelView> {
     list(config_dir)
         .into_iter()
         .filter(|f| f.enabled && f.kind == "pipe")
-        .map(|f| super::providers::ModelView {
+        .map(|f| crate::chat::providers::ModelView {
             reference: format!("{VENDOR}/{}", f.id),
             vendor: VENDOR.into(),
             provider_label: "Your functions".into(),
@@ -115,8 +115,8 @@ pub async fn run(
     f: &Function,
     args: &Value,
 ) -> Result<String, String> {
-    let code = super::custom_tools::program_for(&f.language, &f.code, args);
-    let outcome = super::sandbox::run(
+    let code = crate::chat::custom_tools::program_for(&f.language, &f.code, args);
+    let outcome = crate::chat::sandbox::run(
         config_dir,
         conversation_id,
         &json!({ "language": f.language, "code": code }),
@@ -221,15 +221,15 @@ pub async fn apply(
 }
 
 /// The conversation as `{role, content}` pairs, for a pipe.
-pub fn messages(conversation: &super::store::Conversation) -> Vec<Value> {
-    super::store::turns(conversation)
+pub fn messages(conversation: &crate::chat::store::Conversation) -> Vec<Value> {
+    crate::chat::store::turns(conversation)
         .iter()
         .map(|t| {
             let text = t
                 .parts
                 .iter()
                 .filter_map(|p| {
-                    if let super::store::Part::Text { text } = p {
+                    if let crate::chat::store::Part::Text { text } = p {
                         Some(text.as_str())
                     } else {
                         None

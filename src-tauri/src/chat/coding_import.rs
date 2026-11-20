@@ -12,7 +12,7 @@ use rig_core::completion::Message;
 use serde::Serialize;
 use serde_json::Value;
 
-use super::store::{self, Conversation};
+use crate::chat::store::{self, Conversation};
 
 /// Characters kept of one message, and messages kept of one session.
 const MAX_TEXT: usize = 20_000;

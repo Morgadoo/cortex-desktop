@@ -25,9 +25,9 @@ use serde_json::Value;
 
 pub use cortex_kernel::evals::*;
 
-use super::engine::{ChatEvent, TurnRequest};
-use super::host::Host;
-use super::tools::{ApprovalMode, ChatTool};
+use crate::chat::engine::{ChatEvent, TurnRequest};
+use crate::chat::host::Host;
+use crate::chat::tools::{ApprovalMode, ChatTool};
 use crate::tools::registry::ApprovalDecision;
 
 pub const REGRESSIONS: &str = "regressions";
@@ -173,17 +173,17 @@ pub fn ensure_starter(config_dir: &Path) -> Result<(), String> {
         case(
             "current-facts-search-the-web",
             "What is the latest stable version of the Rust compiler?",
-            &[super::builtins::WEB_SEARCH],
+            &[crate::chat::builtins::WEB_SEARCH],
         ),
         case(
             "earlier-chats-are-searched",
             "What did we decide earlier about the trip to Porto?",
-            &[super::builtins::SEARCH_CHATS],
+            &[crate::chat::builtins::SEARCH_CHATS],
         ),
         case(
             "several-steps-get-a-plan",
             "Plan, step by step, how I should migrate a small website to a new host this weekend.",
-            &[super::builtins::UPDATE_PLAN],
+            &[crate::chat::builtins::UPDATE_PLAN],
         ),
     ] {
         add_case(config_dir, STARTER, &c)?;
@@ -194,7 +194,7 @@ pub fn ensure_starter(config_dir: &Path) -> Result<(), String> {
 /// Runs one case's turn through `parent`'s models and data, recording the tools it calls.
 struct RecordingHost {
     parent: Arc<dyn Host>,
-    state: super::ChatState,
+    state: crate::chat::ChatState,
     called: Mutex<Vec<String>>,
     /// Calls started, by id, until they end.
     started: Mutex<std::collections::HashMap<String, String>>,
@@ -235,7 +235,7 @@ impl Host for RecordingHost {
         }
     }
 
-    fn chat_state(&self) -> &super::ChatState {
+    fn chat_state(&self) -> &crate::chat::ChatState {
         &self.state
     }
 
@@ -301,9 +301,9 @@ pub struct TrialFolder {
 impl Drop for TrialFolder {
     fn drop(&mut self) {
         // Its trace database and signing key are let go first, so the folder can be removed.
-        super::traces::forget(&self.dir);
-        super::script_tools::forget_signing_key(&self.dir);
-        super::script_tools::forget_rates(&self.dir);
+        crate::chat::traces::forget(&self.dir);
+        crate::chat::script_tools::forget_signing_key(&self.dir);
+        crate::chat::script_tools::forget_rates(&self.dir);
         let _ = std::fs::remove_dir_all(&self.dir);
     }
 }
@@ -367,7 +367,7 @@ pub fn trial_folder(config_dir: &Path) -> Result<TrialFolder, String> {
     copy(config_dir, &folder.dir, config_dir)
         .map_err(|e| format!("Could not set up the trial: {e}"))?;
     // Tools in the copy are held to the live folder's signatures.
-    super::script_tools::share_signing_key(config_dir, &folder.dir);
+    crate::chat::script_tools::share_signing_key(config_dir, &folder.dir);
     Ok(folder)
 }
 
@@ -375,7 +375,7 @@ pub fn trial_folder(config_dir: &Path) -> Result<TrialFolder, String> {
 pub struct InFolder {
     parent: Arc<dyn Host>,
     dir: PathBuf,
-    state: super::ChatState,
+    state: crate::chat::ChatState,
 }
 
 impl InFolder {
@@ -383,7 +383,7 @@ impl InFolder {
         Self {
             parent,
             dir,
-            state: super::ChatState::default(),
+            state: crate::chat::ChatState::default(),
         }
     }
 }
@@ -396,7 +396,7 @@ impl Host for InFolder {
 
     fn emit(&self, _event: ChatEvent) {}
 
-    fn chat_state(&self) -> &super::ChatState {
+    fn chat_state(&self) -> &crate::chat::ChatState {
         &self.state
     }
 
@@ -431,15 +431,16 @@ pub async fn run_case(
         return grade(case, &[], "");
     };
     let id = format!("eval-{}", uuid::Uuid::new_v4().simple());
-    let mut conversation = super::store::Conversation::new(id.clone(), None, Some(model.into()));
+    let mut conversation =
+        crate::chat::store::Conversation::new(id.clone(), None, Some(model.into()));
     conversation.temporary = true;
     conversation.title = format!("Eval: {}", case.id);
-    if super::store::save_conversation(&config_dir, &conversation).is_err() {
+    if crate::chat::store::save_conversation(&config_dir, &conversation).is_err() {
         return grade(case, &[], "");
     }
     let recorder = Arc::new(RecordingHost {
         parent: host.clone(),
-        state: super::ChatState::default(),
+        state: crate::chat::ChatState::default(),
         called: Mutex::new(Vec::new()),
         started: Mutex::new(Default::default()),
     });
@@ -459,16 +460,16 @@ pub async fn run_case(
     let answer = match recorder.state.begin(&id) {
         Some(cancel) => {
             let dyn_host: Arc<dyn Host> = recorder.clone();
-            let outcome = super::engine::turn(&dyn_host, &request, cancel).await;
+            let outcome = crate::chat::engine::turn(&dyn_host, &request, cancel).await;
             recorder.state.finish(&id);
             match outcome {
-                Ok(_) => super::store::load_conversation(&config_dir, &id)
+                Ok(_) => crate::chat::store::load_conversation(&config_dir, &id)
                     .ok()
                     .and_then(|c| {
                         c.messages
                             .last()
                             .filter(|m| matches!(m, rig_core::completion::Message::Assistant(_)))
-                            .map(super::context::message_text)
+                            .map(crate::chat::context::message_text)
                     })
                     .unwrap_or_default(),
                 Err(e) => format!("(the turn failed: {e})"),
@@ -476,7 +477,7 @@ pub async fn run_case(
         }
         None => String::new(),
     };
-    let _ = super::store::delete_conversation(&config_dir, &id);
+    let _ = crate::chat::store::delete_conversation(&config_dir, &id);
     // Its exposure goes with it, so the user's saved state keeps only real conversations.
     host.registry().forget_conversation(&id);
     let called = recorder
@@ -665,20 +666,20 @@ pub async fn ablate(
 /// the answer that was wrong in its note. It waits for the user to add what a right answer does.
 pub fn regression_from_rating(
     config_dir: &Path,
-    conversation: &super::store::Conversation,
+    conversation: &crate::chat::store::Conversation,
     answer_index: usize,
 ) -> Result<(), String> {
     let prompt = conversation.messages[..answer_index.min(conversation.messages.len())]
         .iter()
         .rev()
         .find(|m| matches!(m, rig_core::completion::Message::User { .. }))
-        .map(super::context::message_text)
+        .map(crate::chat::context::message_text)
         .filter(|t| !t.trim().is_empty())
         .ok_or("no prompt before that answer")?;
     let wrong = conversation
         .messages
         .get(answer_index)
-        .map(super::context::message_text)
+        .map(crate::chat::context::message_text)
         .unwrap_or_default();
     let id = format!(
         "{}-{answer_index}",
@@ -746,13 +747,13 @@ pub fn maybe_run() -> Option<i32> {
             return Some(1);
         }
     }
-    let Some(model) = model_arg.or_else(|| super::providers::load(&config_dir).default_model)
+    let Some(model) = model_arg.or_else(|| crate::chat::providers::load(&config_dir).default_model)
     else {
         eprintln!("cortex: no model: pass --model vendor/model, or choose one in the app first");
         return Some(1);
     };
     let live = config_dir.clone();
-    let host: Arc<dyn Host> = Arc::new(super::headless::HeadlessHost::new(config_dir));
+    let host: Arc<dyn Host> = Arc::new(crate::chat::headless::HeadlessHost::new(config_dir));
     let report = tauri::async_runtime::block_on(async {
         // On a copy of the data, like the nightly runs; a full run's score is kept as a baseline.
         let (_folder, copy) = on_a_copy(&host)?;
@@ -788,7 +789,7 @@ mod tests {
         ensure_starter(dir.path()).unwrap();
         assert_eq!(suites(dir.path()), vec![STARTER.to_string()]);
         assert_eq!(cases(dir.path(), STARTER).len(), 3);
-        assert!(!evals_dir(dir.path()).starts_with(super::super::store::chat_dir(dir.path())));
+        assert!(!evals_dir(dir.path()).starts_with(crate::chat::store::chat_dir(dir.path())));
         // Running the starter again keeps the user's edits.
         let mut edited = cases(dir.path(), STARTER)[0].clone();
         edited.facts = vec!["1.99".into()];
@@ -877,7 +878,7 @@ mod tests {
             .join("SKILL.md")
             .exists());
         // The trial's own trace database is opened, as a trial's turns do, and let go on drop.
-        super::super::traces::start_run(&copy, "r", "c", None, "m");
+        crate::chat::traces::start_run(&copy, "r", "c", None, "m");
         assert!(copy.join("chat").join("traces.db").exists());
         drop(folder);
         assert!(!copy.exists());
@@ -895,7 +896,7 @@ mod tests {
     /// the live folder's signatures.
     #[tokio::test]
     async fn a_trial_copy_refuses_what_the_app_refuses() {
-        use super::super::script_tools as st;
+        use crate::chat::script_tools as st;
         let dir = tempfile::tempdir().unwrap();
         let d = dir.path();
         st::set_signing_key(d, [3; 32]);
@@ -918,7 +919,7 @@ mod tests {
     #[test]
     fn a_rated_down_answer_becomes_a_waiting_regression_case() {
         let dir = tempfile::tempdir().unwrap();
-        let mut c = super::super::store::Conversation::new("chat-1".into(), None, None);
+        let mut c = crate::chat::store::Conversation::new("chat-1".into(), None, None);
         c.messages.push(rig_core::completion::Message::user(
             "What is the capital of Australia?",
         ));

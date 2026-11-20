@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use super::store::{chat_dir, valid_id, write_json};
+use crate::chat::store::{chat_dir, valid_id, write_json};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -1225,7 +1225,7 @@ pub fn passages(text: &str) -> Vec<String> {
 }
 
 /// Lowercased words without accents, so "regulação" matches "regulacao".
-pub use super::retrieval::tokens;
+pub use crate::chat::retrieval::tokens;
 
 /// BM25 over the passages of the given libraries (all when `only` is empty).
 pub fn search(config_dir: &Path, only: &[String], query: &str, k: usize) -> Vec<Passage> {
@@ -1265,7 +1265,7 @@ pub fn search(config_dir: &Path, only: &[String], query: &str, k: usize) -> Vec<
             }
         }
     }
-    super::retrieval::Corpus::new(words)
+    crate::chat::retrieval::Corpus::new(words)
         .rank(&query_terms)
         .into_iter()
         .take(k)

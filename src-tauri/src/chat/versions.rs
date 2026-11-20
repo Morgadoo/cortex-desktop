@@ -15,7 +15,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::store::chat_dir;
+use crate::chat::store::chat_dir;
 
 /// Versions kept per item.
 const KEEP: usize = 30;
@@ -181,7 +181,7 @@ pub fn set_production(
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
             }
-            super::store::write_json(&path, &marked)?;
+            crate::chat::store::write_json(&path, &marked)?;
             Ok(Some(marked))
         }
         None => {
@@ -198,31 +198,37 @@ pub fn set_production(
 /// The item as it is now, for diffing its newest version against.
 pub fn now(config_dir: &Path, kind: &str, id: &str) -> Option<Value> {
     match (kind, id) {
-        ("memories", "all") => serde_json::to_value(super::memory::load(config_dir)).ok(),
-        ("knowledge", "pages") => serde_json::to_value(super::knowledge::load(config_dir)).ok(),
-        ("instructions", "user") => {
-            serde_json::to_value(super::store::load_instructions(config_dir)).ok()
+        ("memories", "all") => serde_json::to_value(crate::chat::memory::load(config_dir)).ok(),
+        ("knowledge", "pages") => {
+            serde_json::to_value(crate::chat::knowledge::load(config_dir)).ok()
         }
-        ("notebooks", agent) => Some(Value::String(super::agents::notebook(config_dir, agent))),
-        ("agents", agent) => serde_json::to_value(super::agents::find(config_dir, agent)?).ok(),
+        ("instructions", "user") => {
+            serde_json::to_value(crate::chat::store::load_instructions(config_dir)).ok()
+        }
+        ("notebooks", agent) => Some(Value::String(crate::chat::agents::notebook(
+            config_dir, agent,
+        ))),
+        ("agents", agent) => {
+            serde_json::to_value(crate::chat::agents::find(config_dir, agent)?).ok()
+        }
         ("workflows", workflow) => serde_json::to_value(
-            super::workflows::load(config_dir)
+            crate::chat::workflows::load(config_dir)
                 .into_iter()
                 .find(|w| w.id == workflow)?,
         )
         .ok(),
         ("tasks", task) => serde_json::to_value(
-            super::tasks::load(config_dir)
+            crate::chat::tasks::load(config_dir)
                 .into_iter()
                 .find(|t| t.id == task)?,
         )
         .ok(),
         ("tools", name) => match name.strip_prefix("script-") {
             Some(script) => {
-                serde_json::to_value(super::script_tools::load(config_dir, script)?).ok()
+                serde_json::to_value(crate::chat::script_tools::load(config_dir, script)?).ok()
             }
             None => serde_json::to_value(
-                super::custom_tools::list(config_dir)
+                crate::chat::custom_tools::list(config_dir)
                     .into_iter()
                     .find(|t| t.name == name)?,
             )
@@ -246,23 +252,26 @@ pub fn restore(config_dir: &Path, kind: &str, id: &str, version: &str) -> Result
             .map_err(|e| format!("That version can no longer be read: {e}"))
     }
     match (kind, id) {
-        ("memories", "all") => super::memory::save(config_dir, &parse(value)?),
-        ("knowledge", "pages") => {
-            super::knowledge::save_all(config_dir, &parse::<Vec<super::knowledge::Page>>(value)?)
+        ("memories", "all") => crate::chat::memory::save(config_dir, &parse(value)?),
+        ("knowledge", "pages") => crate::chat::knowledge::save_all(
+            config_dir,
+            &parse::<Vec<crate::chat::knowledge::Page>>(value)?,
+        ),
+        ("instructions", "user") => {
+            crate::chat::store::save_instructions(config_dir, &parse(value)?)
         }
-        ("instructions", "user") => super::store::save_instructions(config_dir, &parse(value)?),
         ("notebooks", agent) => {
-            super::agents::save_notebook(config_dir, agent, &parse::<String>(value)?)
+            crate::chat::agents::save_notebook(config_dir, agent, &parse::<String>(value)?)
         }
-        ("agents", _) => super::agents::save(config_dir, parse(value)?).map(drop),
-        ("workflows", _) => super::workflows::save(config_dir, parse(value)?).map(drop),
+        ("agents", _) => crate::chat::agents::save(config_dir, parse(value)?).map(drop),
+        ("workflows", _) => crate::chat::workflows::save(config_dir, parse(value)?).map(drop),
         ("tools", name) if name.starts_with("script-") => {
             // The version keeps the hash the user approved for its own script, so an approved
             // version comes back approved and an unapproved one stays a candidate.
-            super::script_tools::restore_version(config_dir, parse(value)?)
+            crate::chat::script_tools::restore_version(config_dir, parse(value)?)
         }
-        ("tools", _) => super::custom_tools::save(config_dir, &parse(value)?).map(drop),
-        ("tasks", _) => super::tasks::save(config_dir, parse(value)?).map(drop),
+        ("tools", _) => crate::chat::custom_tools::save(config_dir, &parse(value)?).map(drop),
+        ("tasks", _) => crate::chat::tasks::save(config_dir, parse(value)?).map(drop),
         _ => Err(format!("{kind} cannot be restored.")),
     }
 }

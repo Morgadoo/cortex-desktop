@@ -38,7 +38,7 @@ struct Cache {
 }
 
 fn cache_path(config_dir: &Path) -> PathBuf {
-    super::store::chat_dir(config_dir).join("agent-market.json")
+    crate::chat::store::chat_dir(config_dir).join("agent-market.json")
 }
 
 /// The catalog's index in LobeHub's layout, as listings.
@@ -132,7 +132,7 @@ pub async fn listings(
     let source = source.trim().trim_end_matches('/');
     let lang = locale(language);
     if !refresh {
-        if let Some(c) = super::store::read_json::<Cache>(&cache_path(config_dir)) {
+        if let Some(c) = crate::chat::store::read_json::<Cache>(&cache_path(config_dir)) {
             if c.source == source
                 && c.language == lang
                 && chrono::Utc::now() - c.fetched_at < chrono::Duration::hours(CACHE_HOURS)
@@ -151,7 +151,7 @@ pub async fn listings(
     if listings.is_empty() {
         return Err("The agent catalog lists no agents.".into());
     }
-    let _ = super::store::write_json(
+    let _ = crate::chat::store::write_json(
         &cache_path(config_dir),
         &Cache {
             source: source.into(),
@@ -164,7 +164,7 @@ pub async fn listings(
 }
 
 /// A catalog agent as one of yours: its prompt, avatar, description and opening questions.
-pub fn to_agent(body: &Value, id: String) -> Result<super::agents::Agent, String> {
+pub fn to_agent(body: &Value, id: String) -> Result<crate::chat::agents::Agent, String> {
     let s = |v: Option<&Value>| {
         v.and_then(Value::as_str)
             .unwrap_or_default()
@@ -215,7 +215,7 @@ pub fn to_agent(body: &Value, id: String) -> Result<super::agents::Agent, String
         ));
     }
     let avatar = s(meta.and_then(|m| m.get("avatar")));
-    Ok(super::agents::Agent {
+    Ok(crate::chat::agents::Agent {
         id,
         name: name.chars().take(80).collect(),
         // Emoji avatars carry over; image links do not (the app shows no remote images here).
@@ -240,7 +240,7 @@ pub async fn install(
     source: &str,
     language: &str,
     identifier: &str,
-) -> Result<super::agents::Agent, String> {
+) -> Result<crate::chat::agents::Agent, String> {
     if identifier.is_empty()
         || !identifier
             .chars()
@@ -259,7 +259,7 @@ pub async fn install(
     };
     let mut agent = to_agent(&body, uuid::Uuid::new_v4().to_string())?;
     // A name already taken gets a number, as imports do.
-    let taken: Vec<String> = super::agents::load(config_dir)
+    let taken: Vec<String> = crate::chat::agents::load(config_dir)
         .into_iter()
         .map(|a| a.name)
         .collect();
@@ -270,7 +270,7 @@ pub async fn install(
             .find(|n| !taken.contains(n))
             .unwrap_or(base);
     }
-    super::agents::save(config_dir, agent.clone())?;
+    crate::chat::agents::save(config_dir, agent.clone())?;
     Ok(agent)
 }
 

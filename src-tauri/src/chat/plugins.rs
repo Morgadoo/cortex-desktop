@@ -629,7 +629,7 @@ pub fn server_config(
 
 /// Where a plugin's files are kept, for servers that run them.
 pub fn plugin_dir(config_dir: &Path, name: &str) -> PathBuf {
-    super::store::chat_dir(config_dir)
+    crate::chat::store::chat_dir(config_dir)
         .join("plugins")
         .join(slug(name))
 }
@@ -665,25 +665,25 @@ pub fn keep_files(files: &Files, root: &str, dir: &Path) -> Result<(), String> {
 /// plugin's name in front; an agent of the same name is updated.
 pub fn install(config_dir: &Path, plugin: &PluginDraft, out: &mut Imported) -> Result<(), String> {
     for skill in &plugin.skills {
-        if !super::skills::valid_name(&skill.name) || skill.body.trim().is_empty() {
+        if !crate::chat::skills::valid_name(&skill.name) || skill.body.trim().is_empty() {
             out.skipped.push(format!("skill {}", skill.name));
             continue;
         }
         let mut name = skill.name.clone();
-        if super::skills::find(config_dir, &name)
+        if crate::chat::skills::find(config_dir, &name)
             .is_some_and(|s| s.body.trim() != skill.body.trim())
         {
             name = slug(&format!("{}-{}", plugin.name, skill.name));
         }
-        super::skills::save(config_dir, &name, &skill.description, &skill.body)?;
+        crate::chat::skills::save(config_dir, &name, &skill.description, &skill.body)?;
         for (rel, bytes) in &skill.files {
-            if let Err(e) = super::skills::add_file(config_dir, &name, rel, bytes) {
+            if let Err(e) = crate::chat::skills::add_file(config_dir, &name, rel, bytes) {
                 out.skipped.push(format!("{rel} in skill {name} ({e})"));
             }
         }
         out.skills.push(name);
     }
-    let existing = super::agents::load(config_dir);
+    let existing = crate::chat::agents::load(config_dir);
     for draft in &plugin.agents {
         if draft.instructions.trim().is_empty() {
             out.skipped.push(format!("agent {}", draft.name));
@@ -693,7 +693,7 @@ pub fn install(config_dir: &Path, plugin: &PluginDraft, out: &mut Imported) -> R
             .iter()
             .find(|a| a.name.eq_ignore_ascii_case(&draft.name))
             .map_or_else(|| uuid::Uuid::new_v4().to_string(), |a| a.id.clone());
-        let mut agent: super::agents::Agent = serde_json::from_value(serde_json::json!({
+        let mut agent: crate::chat::agents::Agent = serde_json::from_value(serde_json::json!({
             "id": id,
             "name": draft.name,
             "description": draft.description,
@@ -705,19 +705,19 @@ pub fn install(config_dir: &Path, plugin: &PluginDraft, out: &mut Imported) -> R
             agent.created_at = old.created_at;
             agent.avatar.clone_from(&old.avatar);
         }
-        super::agents::save(config_dir, agent)?;
+        crate::chat::agents::save(config_dir, agent)?;
         out.agents.push(draft.name.clone());
     }
     // Hooks run commands, so they arrive turned off; the user turns them on under Hooks.
     match &plugin.hooks {
         Some(config) => {
-            let (hooks, unsupported) = super::hooks::from_claude(
+            let (hooks, unsupported) = crate::chat::hooks::from_claude(
                 config,
                 &plugin_dir(config_dir, &plugin.name),
                 &plugin.name,
             );
             out.hooks += hooks.len();
-            super::hooks::replace_from(config_dir, &plugin.name, hooks)?;
+            crate::chat::hooks::replace_from(config_dir, &plugin.name, hooks)?;
             out.skipped.extend(
                 unsupported
                     .into_iter()
@@ -785,13 +785,13 @@ mod tests {
         let mut out = Imported::default();
         install(dir.path(), &p, &mut out).unwrap();
         assert_eq!(out.hooks, 1);
-        let hooks = super::super::hooks::load(dir.path());
+        let hooks = crate::chat::hooks::load(dir.path());
         assert!(
             !hooks[0].enabled && hooks[0].command.ends_with("plugins/review-kit/guard.sh"),
             "{hooks:?}"
         );
         assert_eq!(
-            super::super::skills::read_file(dir.path(), "pr-summary", "template.md").unwrap(),
+            crate::chat::skills::read_file(dir.path(), "pr-summary", "template.md").unwrap(),
             "## Summary"
         );
         assert_eq!(p.servers.len(), 2);

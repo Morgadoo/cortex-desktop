@@ -7,7 +7,7 @@
 
 use serde_json::{json, Value};
 
-use super::tools::ChatTool;
+use crate::chat::tools::ChatTool;
 
 pub const FIND_TOOLS: &str = "find_tools";
 /// Connector tools offered before the rest are loaded on demand.
@@ -55,7 +55,7 @@ pub fn find_tools_tool() -> ChatTool {
 
 /// The deferred tools that best match `query`, by shared words in name and description.
 pub fn search<'a>(offered: &'a [ChatTool], query: &str, limit: usize) -> Vec<&'a ChatTool> {
-    use super::retrieval::{tokens, Corpus};
+    use crate::chat::retrieval::{tokens, Corpus};
     let candidates: Vec<&ChatTool> = offered.iter().filter(|t| deferrable(t)).collect();
     // The name counts three times; words match as prefixes, so `email` finds `emails`.
     let corpus = Corpus::new(candidates.iter().map(|t| {
@@ -102,7 +102,7 @@ pub fn find_with(
                 .filter_map(|n| index(n))
                 .take(MATCHES * 3)
                 .collect();
-            super::retrieval::fuse_ranks(&[by_words, by_meaning])
+            crate::chat::retrieval::fuse_ranks(&[by_words, by_meaning])
                 .into_iter()
                 .take(MATCHES)
                 .map(|i| candidates[i])
