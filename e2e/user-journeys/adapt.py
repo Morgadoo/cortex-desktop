@@ -112,6 +112,59 @@ try:
     new_chat()
     place = ask("Name one market near where I live that I could visit this weekend. One sentence.")
     note("and knows where the user lives", "porto" in place.lower() or "bolhão" in place.lower() or "bolhao" in place.lower(), f"{place[:160]!r}")
+
+    # It grows with the user: the three learning switches, turned on where the user would, on the
+    # Knowledge page. They are off until then, since each costs model calls.
+    def invoke(command, args=None):
+        return d.execute_async_script("""const [c, a]=arguments; const done=arguments[arguments.length-1];
+            window.__TAURI__.core.invoke(c, a||{}).then(done).catch(e=>done({error: String(e)}));""", command, args or {})
+
+    # A second way of saying something already known, for the review to find.
+    invoke("chat_add_memory", {"text": "Doesn't eat meat or fish."})
+    # An agent that researches with web search: skills are learnt from an agent's work.
+    invoke("chat_save_agent", {"agent": {"id": "price-scout", "name": "Price Scout", "tools": ["web_search"],
+        "instructions": "You compare prices for the user. Use web search once per shop, then give the cheapest."}})
+    js("location.reload()")
+    time.sleep(6)
+    click("Context")
+    time.sleep(1)
+    click("Knowledge")
+    time.sleep(1.5)
+    switched = []
+    for title in ["Review my knowledge weekly", "Agents learn skills from their work", "Run my eval suites daily"]:
+        ok = js("""const want=arguments[0]; const label=[...document.querySelectorAll('main.main *')].find(e=>e.children.length===0 && e.textContent.trim()===want);
+                   if(!label) return false; let row=label; while(row && !row.querySelector('input.switch')) row=row.parentElement;
+                   const s=row && row.querySelector('input.switch'); if(!s) return false; if(!s.checked) s.click(); return s.checked;""", title)
+        switched.append((title, ok))
+        time.sleep(0.8)
+    learning = invoke("chat_learning")
+    note("the user turns on learning on the Knowledge page", all(ok for _, ok in switched) and learning.get("reviewKnowledge") and learning.get("skillsFromWork") and learning.get("nightlyEvals"),
+         f"{switched}; saved: review={learning.get('reviewKnowledge')} skills={learning.get('skillsFromWork')} evals={learning.get('nightlyEvals')}")
+
+    # Skills from work: the agent does a procedure of several steps; a reflection after the turn may
+    # keep it as a skill, turned off until the user reviews it.
+    before = {s["name"] for s in invoke("chat_list_skills") or []}
+    agent_row = js("""const r=[...document.querySelectorAll('.conv-link.project')].find(e=>e.textContent.includes('Price Scout')); if(!r) return false; r.click(); return true;""")
+    time.sleep(1.5)
+    work = ask("Every Monday I check the price of a 1 kg bag of basmati rice at Continente, Pingo Doce and Lidl in Portugal. Do this week's check: search each shop, then tell me the cheapest in two sentences.")
+    steps = js("return document.querySelectorAll('.turn-assistant .tool-call, .turn-assistant .tool, .turn-assistant [data-tool]').length")
+    learnt = wait_for(lambda: [s for s in invoke("chat_list_skills") or [] if s["name"] not in before], 120) or []
+    notice = js("return [...document.querySelectorAll('.notice, .turn-notice, .chat-notice')].map(n=>n.innerText).join(' | ')") or ""
+    note("an agent's repeated procedure becomes a skill, off until reviewed", bool(learnt) and all(not s.get("enabled", False) for s in learnt),
+         f"agent chat opened={agent_row}; tool steps shown={steps}; learnt={[(s['name'], s.get('enabled')) for s in learnt]}; notice={notice[:160]!r}; answer={work[:100]!r}")
+
+    # The weekly review and the daily evals run in the background, from the app's scheduler (every
+    # 30 seconds): the review leaves its proposals in an unread chat, the evals a scored run.
+    review = wait_for(lambda: [r for r in js("""return [...document.querySelectorAll('.conv-link[data-chat-id]')].map(r=>({title: r.querySelector('.conv-title')?.textContent||'', unread: !!r.querySelector('.unread-dot')}))""")
+                               if r["unread"] and re.search(r"review|knowledge|memor|fact", r["title"], re.I)], 300) or []
+    note("the weekly review leaves its proposals in an unread chat", bool(review), json.dumps(review)[:200])
+    scored = wait_for(lambda: [s for s in invoke("chat_eval_suites") or [] if s.get("lastScore") is not None], 600) or []
+    note("the daily evals score the starter suite on the user's model", bool(scored), json.dumps([(s["suite"], s["lastScore"], len(s["cases"])) for s in scored]))
+    if review:
+        js("""const r=[...document.querySelectorAll('.conv-link[data-chat-id]')].find(r=>r.querySelector('.unread-dot')); if(r) r.click();""")
+        time.sleep(2)
+        body = js("const m=[...document.querySelectorAll('.turn-assistant .markdown')].pop(); return m ? m.innerText : ''") or ""
+        note("the review proposes merging the fact said twice", bool(re.search(r"duplicate|merge|same|overlap|redundant|combine", body, re.I)), body[:240].replace("\n", " | "))
 finally:
     (OUT / "adapt.json").write_text(json.dumps(log, indent=1))
     d.quit()
