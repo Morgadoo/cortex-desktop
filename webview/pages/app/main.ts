@@ -22,7 +22,7 @@ import { ResourcesPage } from './outputs';
 import { ChatsPage } from './chatspage';
 import { WorkflowsPage } from './workflows';
 import { applyTheme, openSettings, reloadModels, setTheme, storedTheme } from './settings';
-import { stepZoom, applyBackdrop, backdropLayer } from './appearance';
+import { stepZoom, applyBackdrop, backdropLayer } from './theme/appearance';
 import { applyEvent, back, changed, finishNotificationsOn, finishSoundOn, forward, navigate, playChime, state, subscribe, type Page } from './core/state';
 import { button, emptyState, iconButton, modalHeader } from './ui/ui';
 import { startFluentEmoji } from './ui/emoji-fluent';

@@ -10,7 +10,7 @@ import { speakText, type Playback } from './audio';
 import { openMicrophone, type Microphone } from './dictation';
 import { blobToBase64 } from './core/format';
 import { h, icon, toast } from './ui/dom';
-import { createGlowOrb, orbCssColor } from './orbgl';
+import { createGlowOrb, orbCssColor } from './theme/orbgl';
 
 export interface VoiceHooks {
   /** Sends what was said; false when it could not be sent. */

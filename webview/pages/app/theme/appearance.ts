@@ -5,8 +5,8 @@
  */
 
 import { createShaderBackdrop, renderShaderPreview, type ShaderBackdrop } from './backdropgl';
-import { json, textPref } from './core/prefs';
-import { callQuiet } from './core/call';
+import { json, textPref } from '../core/prefs';
+import { callQuiet } from '../core/call';
 
 export interface AccentPreset {
   id: string;

@@ -25,7 +25,7 @@ import { audioApi, audioSettings, refreshAudioSettings, speakText, type AudioVie
 import { SHORTCUTS, bindingFor, comboOf, display, setBinding } from './core/shortcuts';
 import { EMOJI_STYLES, emojiStatus, emojiStyle, onEmojiStatus, setEmojiStyle, type EmojiStatus, type EmojiStyle } from './ui/emoji-fluent';
 import { uploadsCard } from './uploads';
-import { setMaterial, storedMaterial, type Material } from './appearance';
+import { setMaterial, storedMaterial, type Material } from './theme/appearance';
 import {
   ACCENTS,
   BACKDROPS,
@@ -47,13 +47,13 @@ import {
   storedAccent,
   storedBackground,
   type TextSize,
-} from './appearance';
+} from './theme/appearance';
 import { setVoicePauseMs, voicePauseMs } from './dictation';
 import { setWakePrefs, wakePrefs } from './wakeword';
 import { setVimEnabled, vimEnabled } from './ui/vim';
 import { sharedLinksCard } from './share';
 import { effectiveLanguage, setStoredLanguage, storedLanguage } from './core/i18n';
-import { setOrbColor, storedOrbColor, type OrbColor } from './orbgl';
+import { setOrbColor, storedOrbColor, type OrbColor } from './theme/orbgl';
 import { choice } from './core/prefs';
 import { call, shown } from './core/call';
 
