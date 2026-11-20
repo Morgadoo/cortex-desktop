@@ -80,7 +80,7 @@ fn write(config_dir: &Path, secrets: &[Secret]) -> Result<(), String> {
 }
 
 /// `GITHUB_TOKEN`-style: capitals, digits and underscores, not starting with a digit.
-pub fn valid_name(name: &str) -> Result<(), String> {
+pub(in crate::chat::storage) fn valid_name(name: &str) -> Result<(), String> {
     let ok = !name.is_empty()
         && name.len() <= 64
         && name

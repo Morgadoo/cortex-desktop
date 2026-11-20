@@ -53,7 +53,7 @@ fn csv_field(value: &str) -> String {
     }
 }
 
-pub fn to_csv(rows: &[Vec<String>]) -> String {
+pub(in crate::chat::toolkit) fn to_csv(rows: &[Vec<String>]) -> String {
     rows.iter()
         .map(|r| r.iter().map(|v| csv_field(v)).collect::<Vec<_>>().join(","))
         .collect::<Vec<_>>()
@@ -61,7 +61,7 @@ pub fn to_csv(rows: &[Vec<String>]) -> String {
 }
 
 /// A sheet canvas's content: the CSV, unwrapped from a ```csv fence if the model added one.
-pub fn sheet_csv(content: &str) -> String {
+pub(in crate::chat::toolkit) fn sheet_csv(content: &str) -> String {
     let trimmed = content.trim();
     trimmed
         .strip_prefix("```csv")

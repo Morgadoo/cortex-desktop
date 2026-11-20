@@ -23,7 +23,7 @@ pub fn diff(
 }
 
 /// The item as it is now, for diffing its newest version against.
-pub fn now(config_dir: &Path, kind: &str, id: &str) -> Option<Value> {
+pub(in crate::chat::automation) fn now(config_dir: &Path, kind: &str, id: &str) -> Option<Value> {
     match (kind, id) {
         ("memories", "all") => serde_json::to_value(crate::chat::memory::load(config_dir)).ok(),
         ("knowledge", "pages") => {

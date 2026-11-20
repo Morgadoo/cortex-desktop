@@ -41,7 +41,10 @@ pub struct ComputerSettings {
 }
 
 /// Whether an action may run with `window` in front, under the per-app rules.
-pub fn app_allowed(settings: &ComputerSettings, window: &str) -> Result<(), String> {
+pub(in crate::chat::toolkit) fn app_allowed(
+    settings: &ComputerSettings,
+    window: &str,
+) -> Result<(), String> {
     let w = window.to_lowercase();
     let has = |rule: &String| !rule.trim().is_empty() && w.contains(&rule.trim().to_lowercase());
     if let Some(rule) = settings.blocked_apps.iter().find(|r| has(r)) {

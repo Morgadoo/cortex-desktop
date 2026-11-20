@@ -40,7 +40,7 @@ fn locate(program: &str) -> Option<PathBuf> {
 }
 
 /// Which engines can run here.
-pub fn engines() -> Vec<&'static str> {
+pub(in crate::chat::multimedia) fn engines() -> Vec<&'static str> {
     let mut out = Vec::new();
     if locate("npx").is_some() {
         out.push("html");
@@ -106,7 +106,7 @@ pub fn definition() -> ChatTool {
 }
 
 /// A safe folder name from the model's.
-pub fn slug(name: &str) -> String {
+pub(in crate::chat::multimedia) fn slug(name: &str) -> String {
     let s = crate::support::names::slug(name, 48);
     if s.is_empty() {
         format!("animation-{}", chrono::Local::now().format("%Y%m%d-%H%M%S"))
@@ -117,7 +117,7 @@ pub fn slug(name: &str) -> String {
 
 /// Checks an HTML composition for what HyperFrames needs, so a mistake is told back to the model
 /// before minutes of rendering.
-pub fn check_html(source: &str) -> Result<(), String> {
+pub(in crate::chat::multimedia) fn check_html(source: &str) -> Result<(), String> {
     let lower = source.to_lowercase();
     if !lower.contains("data-composition-id") {
         return Err("The root element needs data-composition-id=\"main\".".into());

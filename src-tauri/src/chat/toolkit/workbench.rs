@@ -191,12 +191,12 @@ pub async fn status() -> Status {
 }
 
 /// The status as last checked, without waiting: what the `run_code` description goes by.
-pub fn status_now() -> Option<Status> {
+pub(in crate::chat::toolkit) fn status_now() -> Option<Status> {
     cached()
 }
 
 /// Whether runs go to the workbench now: on, and built. Gives whether the GPU works.
-pub async fn ready(config_dir: &Path) -> Option<bool> {
+pub(in crate::chat::toolkit) async fn ready(config_dir: &Path) -> Option<bool> {
     if !enabled(config_dir) {
         return None;
     }
@@ -272,7 +272,7 @@ pub struct Run<'a> {
 
 /// The arguments after `podman`: a fresh container that sees only the workspace and the agent's
 /// home, and stops itself when its time is up.
-pub fn run_args(run: &Run<'_>, tag: &str) -> Vec<OsString> {
+pub(in crate::chat::toolkit) fn run_args(run: &Run<'_>, tag: &str) -> Vec<OsString> {
     let mut args: Vec<OsString> = [
         "run",
         "--rm",
@@ -330,14 +330,14 @@ pub fn run_args(run: &Run<'_>, tag: &str) -> Vec<OsString> {
 }
 
 /// The run's command, or None where Podman cannot be reached.
-pub fn command(run: &Run<'_>) -> Option<tokio::process::Command> {
+pub(in crate::chat::toolkit) fn command(run: &Run<'_>) -> Option<tokio::process::Command> {
     let mut c = podman()?;
     c.args(run_args(run, &image_tag()));
     Some(c)
 }
 
 /// Removes a run's container (when it outlived its time).
-pub async fn remove(name: &str) {
+pub(in crate::chat::toolkit) async fn remove(name: &str) {
     if let Some(mut c) = podman() {
         c.args(["rm", "--force", "--ignore", name]);
         let _ = quiet(c).await;
@@ -346,7 +346,10 @@ pub async fn remove(name: &str) {
 
 /// Writes the run's environment as Podman reads it: one `KEY=value` a line. Values that span
 /// lines cannot be written so and are left out.
-pub fn write_env_file(path: &Path, vars: &[(String, String)]) -> Result<(), String> {
+pub(in crate::chat::toolkit) fn write_env_file(
+    path: &Path,
+    vars: &[(String, String)],
+) -> Result<(), String> {
     let text: String = vars
         .iter()
         .filter(|(k, v)| {
@@ -370,7 +373,7 @@ pub fn write_env_file(path: &Path, vars: &[(String, String)]) -> Result<(), Stri
 }
 
 /// What the `run_code` description says about the workbench.
-pub fn description(gpu: bool) -> String {
+pub(in crate::chat::toolkit) fn description(gpu: bool) -> String {
     format!(
         "It runs in the agent workbench, a container that sees only this workspace (and your own \
          home folder, which keeps packages you install with pip or npm); the user's files are out of \

@@ -24,7 +24,7 @@ const VIDEO_DEFAULTS: &[(&str, &str)] = &[("xai", "grok-imagine-video")];
 /// How long a clip may take before the tool gives up.
 const WAIT: Duration = Duration::from_secs(600);
 
-pub fn video_model(file: &ProvidersFile) -> Option<String> {
+pub(in crate::chat::multimedia) fn video_model(file: &ProvidersFile) -> Option<String> {
     if let Some(chosen) = file.video_model.as_ref().filter(|c| !c.trim().is_empty()) {
         let vendor = providers::split_reference(chosen)?.0;
         return (crate::chat::media::usable(file, vendor)
@@ -37,7 +37,7 @@ pub fn video_model(file: &ProvidersFile) -> Option<String> {
         .map(|(vendor, model)| format!("{vendor}/{model}"))
 }
 
-pub fn vendors(file: &ProvidersFile) -> Vec<String> {
+pub(in crate::chat::multimedia) fn vendors(file: &ProvidersFile) -> Vec<String> {
     VIDEO_DEFAULTS
         .iter()
         .filter(|(v, _)| crate::chat::media::usable(file, v))
@@ -73,7 +73,7 @@ pub fn definition(config_dir: &Path) -> Option<ChatTool> {
     })
 }
 
-pub fn aspect(shape: &str) -> &'static str {
+pub(in crate::chat::multimedia) fn aspect(shape: &str) -> &'static str {
     match shape {
         "portrait" => "9:16",
         "square" => "1:1",
@@ -82,7 +82,7 @@ pub fn aspect(shape: &str) -> &'static str {
 }
 
 /// The request body that starts a clip.
-pub fn start_body(
+pub(in crate::chat::multimedia) fn start_body(
     model: &str,
     prompt: &str,
     seconds: u64,
@@ -98,7 +98,7 @@ pub fn start_body(
 
 /// What a poll says: the clip's address when done, an error when it ended without one, or
 /// `None` while it is still being made.
-pub fn poll_state(body: &Value) -> Option<Result<String, String>> {
+pub(in crate::chat::multimedia) fn poll_state(body: &Value) -> Option<Result<String, String>> {
     let status = body.get("status").and_then(Value::as_str).unwrap_or("");
     let url = body
         .pointer("/video/url")
@@ -148,7 +148,7 @@ async fn key(file: &ProvidersFile, vendor: &str) -> Result<String, String> {
 }
 
 /// Starts a clip at `base`, waits for it and downloads it.
-pub async fn make_at(
+pub(in crate::chat::multimedia) async fn make_at(
     base: &str,
     key: &str,
     body: &Value,

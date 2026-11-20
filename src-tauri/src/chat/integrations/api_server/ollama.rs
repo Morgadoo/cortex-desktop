@@ -54,7 +54,7 @@ pub(super) fn yes() -> bool {
 }
 
 /// The Chat Completions shape of an Ollama `/api/chat` or `/api/generate` body.
-pub fn chat_body_of_ollama(body: &OllamaBody) -> ChatBody {
+pub(in crate::chat::integrations) fn chat_body_of_ollama(body: &OllamaBody) -> ChatBody {
     let mut messages = Vec::new();
     if let Some(s) = body.system.as_ref().filter(|s| !s.trim().is_empty()) {
         messages.push(json!({ "role": "system", "content": s }));

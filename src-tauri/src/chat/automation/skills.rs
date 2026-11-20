@@ -156,7 +156,7 @@ fn load_state(config_dir: &Path) -> SkillState {
 }
 
 /// Names are folder names and tool arguments: lowercase letters, digits and hyphens.
-pub fn valid_name(name: &str) -> bool {
+pub(in crate::chat::automation) fn valid_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 64
         && name
@@ -166,7 +166,7 @@ pub fn valid_name(name: &str) -> bool {
 }
 
 /// `name`, `description` and the body of a `SKILL.md`.
-pub fn parse(text: &str) -> Option<(String, String, String)> {
+pub(in crate::chat::automation) fn parse(text: &str) -> Option<(String, String, String)> {
     let rest = text
         .trim_start_matches('\u{feff}')
         .trim_start()
@@ -220,7 +220,7 @@ pub fn parse(text: &str) -> Option<(String, String, String)> {
     Some((name?, description.unwrap_or_default(), body))
 }
 
-pub fn render(name: &str, description: &str, body: &str) -> String {
+pub(in crate::chat::automation) fn render(name: &str, description: &str, body: &str) -> String {
     let description = description.replace('\n', " ");
     format!(
         "---\nname: {name}\ndescription: {description}\n---\n\n{}\n",
@@ -432,7 +432,7 @@ fn file_path_ok(rel: &str) -> bool {
 }
 
 /// The supporting files in a skill's folder, sorted, as `/`-separated relative paths.
-pub fn supporting_files(dir: &Path) -> Vec<String> {
+pub(in crate::chat::automation) fn supporting_files(dir: &Path) -> Vec<String> {
     fn walk(base: &Path, dir: &Path, depth: usize, out: &mut Vec<String>) {
         let Ok(entries) = std::fs::read_dir(dir) else {
             return;
@@ -558,7 +558,7 @@ pub fn loaded(skill: &Skill) -> String {
 
 /// Where to fetch a skill's `SKILL.md` from a link to it: a GitHub folder or file (tree, blob or
 /// raw), a repository with the skill at its root, or any `https` link to a Markdown file.
-pub fn skill_sources(link: &str) -> Result<Vec<String>, String> {
+pub(in crate::chat::automation) fn skill_sources(link: &str) -> Result<Vec<String>, String> {
     let link = link.trim().trim_end_matches('/');
     let url = url::Url::parse(link).map_err(|_| "That is not a link.".to_string())?;
     if url.scheme() != "https" {

@@ -113,7 +113,7 @@ pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
 }
 
 /// The script with the call's arguments bound to `args` (`ARGS`, as JSON text, in Bash).
-pub fn program(tool: &CustomTool, args: &Value) -> String {
+pub(in crate::chat::toolkit) fn program(tool: &CustomTool, args: &Value) -> String {
     program_for(&tool.language, &tool.code, args)
 }
 
@@ -133,7 +133,7 @@ pub fn program_for(language: &str, code: &str, args: &Value) -> String {
 }
 
 /// A JavaScript tool that uses nothing outside the language (no Node modules, process or files).
-pub fn runs_in_wasm(tool: &CustomTool) -> bool {
+pub(in crate::chat::toolkit) fn runs_in_wasm(tool: &CustomTool) -> bool {
     tool.language == "javascript"
         && ![
             "require(",

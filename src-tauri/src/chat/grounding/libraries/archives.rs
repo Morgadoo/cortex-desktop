@@ -10,7 +10,7 @@ pub(super) const ARCHIVE_EXTENSIONS: &[&str] = &[
 
 /// A page's name without the id Notion adds (`Trip plan 1a2b…(32 hex)`), with its folders:
 /// `Projects/Trip plan 1a2b….md` → `Projects / Trip plan.md`.
-pub fn archive_name(path: &str) -> String {
+pub(in crate::chat::grounding) fn archive_name(path: &str) -> String {
     let clean = |part: &str| -> String {
         let (stem, ext) = match part.rsplit_once('.') {
             Some((stem, ext)) if !stem.is_empty() && ext.len() <= 8 => (stem, Some(ext)),
@@ -35,7 +35,10 @@ pub fn archive_name(path: &str) -> String {
 
 /// The readable files of a ZIP archive (a Notion or Confluence export, a folder of notes), as
 /// names and bytes. ZIPs inside it (Notion splits large exports into parts) are opened too.
-pub fn archive_files(bytes: &[u8], depth: u8) -> Result<Vec<(String, Vec<u8>)>, String> {
+pub(in crate::chat::grounding) fn archive_files(
+    bytes: &[u8],
+    depth: u8,
+) -> Result<Vec<(String, Vec<u8>)>, String> {
     use std::io::Read as _;
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
         .map_err(|_| "That is not a ZIP archive.".to_string())?;

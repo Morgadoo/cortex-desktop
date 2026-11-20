@@ -66,7 +66,7 @@ pub(super) fn loaded() -> &'static parking_lot::FairMutex<Option<Loaded>> {
 }
 
 /// Frees a model's memory (when it is deleted).
-pub fn unload(id: &str) {
+pub(in crate::chat::models) fn unload(id: &str) {
     if let Some(mut l) = loaded().try_lock() {
         if l.as_ref().is_some_and(|m| m.id == id) {
             *l = None;
@@ -150,7 +150,7 @@ pub(super) fn content_text(content: &Value) -> String {
 }
 
 /// Messages as `(role, text)`: tool results are told to the model as text.
-pub fn turns(messages: &[Value]) -> Vec<(String, String)> {
+pub(in crate::chat::models) fn turns(messages: &[Value]) -> Vec<(String, String)> {
     messages
         .iter()
         .filter_map(|m| {
@@ -167,7 +167,7 @@ pub fn turns(messages: &[Value]) -> Vec<(String, String)> {
 }
 
 /// The prompt in the model's chat format, ending where the assistant's answer starts.
-pub fn render(template: Template, turns: &[(String, String)]) -> String {
+pub(in crate::chat::models) fn render(template: Template, turns: &[(String, String)]) -> String {
     let mut out = String::new();
     match template {
         Template::ChatMl => {
@@ -277,7 +277,7 @@ pub(super) fn start_worker() {
 /// Writes an answer to `messages`, giving each new piece of text to `on_text`; `on_text`
 /// returning false stops it (the reader went away). Blocks the calling thread; requests that
 /// wait at the same time for the same model are answered together.
-pub fn generate(
+pub(in crate::chat::models) fn generate(
     root: &Path,
     id: &str,
     messages: &[Value],

@@ -67,7 +67,7 @@ pub enum Command {
     Unknown(String),
 }
 
-pub fn command(line: &str) -> Option<Command> {
+pub(in crate::chat::cli) fn command(line: &str) -> Option<Command> {
     let line = line.trim();
     let rest = line.strip_prefix('/')?;
     let (name, arg) = rest
@@ -99,7 +99,7 @@ pub fn command(line: &str) -> Option<Command> {
 }
 
 /// The conversation as Markdown, for `/save`.
-pub fn markdown(c: &Conversation) -> String {
+pub(in crate::chat::cli) fn markdown(c: &Conversation) -> String {
     let mut out = format!(
         "# {}\n\n",
         if c.title.is_empty() {

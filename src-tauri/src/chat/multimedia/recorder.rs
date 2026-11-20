@@ -99,7 +99,7 @@ fn thumbnail(png: &[u8]) -> Option<Vec<u8>> {
 }
 
 /// The share of pixels that changed noticeably between two thumbnails (1 when they differ in size).
-pub fn difference(a: &[u8], b: &[u8]) -> f64 {
+pub(in crate::chat::multimedia) fn difference(a: &[u8], b: &[u8]) -> f64 {
     if a.len() != b.len() || a.is_empty() {
         return 1.0;
     }
@@ -111,7 +111,7 @@ pub fn difference(a: &[u8], b: &[u8]) -> f64 {
 }
 
 /// Keeps the first and last frames and thins the middle to stay under the limit.
-pub fn thin<T>(frames: &mut Vec<T>, max: usize) {
+pub(in crate::chat::multimedia) fn thin<T>(frames: &mut Vec<T>, max: usize) {
     while frames.len() > max {
         let last = frames.len() - 1;
         let mut i = 0;
@@ -125,7 +125,7 @@ pub fn thin<T>(frames: &mut Vec<T>, max: usize) {
 
 /// Up to `n` frames for the model: evenly spread, always the first and last, and every frame
 /// where another window came forward when there is room.
-pub fn pick(frames: &[Frame], n: usize) -> Vec<usize> {
+pub(in crate::chat::multimedia) fn pick(frames: &[Frame], n: usize) -> Vec<usize> {
     if frames.len() <= n {
         return (0..frames.len()).collect();
     }
@@ -248,7 +248,7 @@ pub struct Draft {
     pub body: String,
 }
 
-pub fn parse_draft(reply: &str) -> Result<Draft, String> {
+pub(in crate::chat::multimedia) fn parse_draft(reply: &str) -> Result<Draft, String> {
     let start = reply.find('{').ok_or("The model did not return a skill.")?;
     let end = reply
         .rfind('}')

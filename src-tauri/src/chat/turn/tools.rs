@@ -14,7 +14,7 @@ pub use cortex_kernel::approval::{
 };
 
 /// The ways a command can name the app's data folder: as it is, from `~` and from `$HOME`.
-pub fn protected_places(config_dir: &std::path::Path) -> Vec<String> {
+pub(in crate::chat::turn) fn protected_places(config_dir: &std::path::Path) -> Vec<String> {
     let full = config_dir.to_string_lossy().to_string();
     let mut out = vec![full.clone()];
     if let Some(home) = std::env::var_os("HOME").map(std::path::PathBuf::from) {
@@ -30,7 +30,7 @@ pub fn protected_places(config_dir: &std::path::Path) -> Vec<String> {
 
 /// [`risk`], and the kernel's guardrail: a change that names the app's own data (where its
 /// evaluations, permissions and audit log live) is never made without the user.
-pub fn risk_here(
+pub(in crate::chat::turn) fn risk_here(
     config_dir: Option<&std::path::Path>,
     tool: &ChatTool,
     input: &Value,
@@ -76,7 +76,10 @@ fn ask_user_tool() -> ChatTool {
 
 /// The tools of every enabled, ready connector, minus disabled ones, plus the built-ins.
 /// `connectors`, when given, limits the offer to those connector ids.
-pub fn available(registry: &ToolRegistry, connectors: Option<&[String]>) -> Vec<ChatTool> {
+pub(in crate::chat::turn) fn available(
+    registry: &ToolRegistry,
+    connectors: Option<&[String]>,
+) -> Vec<ChatTool> {
     let mut tools = vec![ask_user_tool()];
     for manifest in registry.all_manifests() {
         if !manifest.enabled || !manifest.readiness.is_ready() {
@@ -175,7 +178,7 @@ async fn execute_external(
 }
 
 /// Runs a connector tool call. `ask_user` is the engine's, not this function's.
-pub async fn execute(
+pub(in crate::chat::turn) async fn execute(
     host: &dyn Host,
     tool: &ChatTool,
     input: Value,

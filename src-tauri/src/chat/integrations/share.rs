@@ -62,7 +62,7 @@ pub struct SharedLink {
 }
 
 /// `text` as a QR code, an SVG image.
-pub fn qr_svg(text: &str) -> String {
+pub(in crate::chat::integrations) fn qr_svg(text: &str) -> String {
     match qrcode::QrCode::new(text.as_bytes()) {
         Ok(code) => code
             .render::<qrcode::render::svg::Color>()
@@ -79,7 +79,7 @@ fn dir(config_dir: &Path) -> PathBuf {
     config_dir.join("chat").join("shares")
 }
 
-pub fn list(config_dir: &Path) -> Vec<Share> {
+pub(in crate::chat::integrations) fn list(config_dir: &Path) -> Vec<Share> {
     crate::chat::at_rest::read_to_string(dir(config_dir).join("shares.json"))
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok())
@@ -96,7 +96,7 @@ fn write_list(config_dir: &Path, shares: &[Share]) -> Result<(), String> {
 }
 
 /// A token is 32 lowercase hex characters; anything else is never a file name here.
-pub fn valid_token(token: &str) -> bool {
+pub(in crate::chat::integrations) fn valid_token(token: &str) -> bool {
     token.len() == 32
         && token
             .bytes()
@@ -105,7 +105,7 @@ pub fn valid_token(token: &str) -> bool {
 
 /// This computer's address on its network: the one the system would use to reach the internet
 /// (a UDP "connect" sends nothing). Loopback when there is no network.
-pub fn lan_address() -> IpAddr {
+pub(in crate::chat::integrations) fn lan_address() -> IpAddr {
     UdpSocket::bind("0.0.0.0:0")
         .and_then(|s| {
             s.connect("192.0.2.1:9")?;
@@ -133,7 +133,7 @@ fn link(share: Share, port: u16) -> SharedLink {
 static RUNNING: Mutex<Option<u16>> = Mutex::new(None);
 
 /// Starts the server unless it runs; returns its port.
-pub async fn ensure_server(config_dir: &Path) -> Result<u16, String> {
+pub(in crate::chat::integrations) async fn ensure_server(config_dir: &Path) -> Result<u16, String> {
     if let Some(port) = *RUNNING.lock().unwrap() {
         return Ok(port);
     }

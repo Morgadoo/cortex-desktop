@@ -4,7 +4,7 @@ use super::*;
 
 /// A message without the composer's directives ("Use a canvas…", "Use the … skill.", quoted
 /// selections), which say how to answer rather than what the conversation is about.
-pub fn strip_directives(text: &str) -> String {
+pub(in crate::chat::turn) fn strip_directives(text: &str) -> String {
     let mut rest = text.trim_start();
     loop {
         if let Some(r) = rest.strip_prefix("Use a canvas for this.") {

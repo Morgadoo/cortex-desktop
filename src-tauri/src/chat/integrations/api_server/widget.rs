@@ -79,7 +79,9 @@ pub struct WidgetBody {
 
 /// The widget's conversation, made safe: only user and assistant turns (a page sets no
 /// instructions), the latest few, each cut to a length, ending with the user's.
-pub fn widget_messages(body: &WidgetBody) -> Result<Vec<Value>, String> {
+pub(in crate::chat::integrations) fn widget_messages(
+    body: &WidgetBody,
+) -> Result<Vec<Value>, String> {
     let mut messages: Vec<Value> = body
         .messages
         .iter()

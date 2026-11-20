@@ -54,7 +54,7 @@ fn marker_path(config_dir: &Path) -> PathBuf {
     config_dir.join("chat").join("encryption.json")
 }
 
-pub fn marker(config_dir: &Path) -> Marker {
+pub(in crate::chat::storage) fn marker(config_dir: &Path) -> Marker {
     std::fs::read_to_string(marker_path(config_dir))
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok())
@@ -233,14 +233,17 @@ fn save_marker(config_dir: &Path, enabled: bool) -> Result<(), String> {
 }
 
 /// Turns encryption on with `key` (a new one from [`enable`]); seals what is there.
-pub fn enable_with(config_dir: &Path, key: [u8; 32]) -> Result<usize, String> {
+pub(in crate::chat::storage) fn enable_with(
+    config_dir: &Path,
+    key: [u8; 32],
+) -> Result<usize, String> {
     *STATE.write().unwrap() = Some((config_dir.to_path_buf(), key));
     save_marker(config_dir, true)?;
     rewrite_all(config_dir)
 }
 
 /// Turns encryption off: every file is written back in the clear.
-pub fn disable_files(config_dir: &Path) -> Result<usize, String> {
+pub(in crate::chat::storage) fn disable_files(config_dir: &Path) -> Result<usize, String> {
     // Open with the key, then write plain.
     let key = STATE.read().unwrap().as_ref().map(|(_, k)| *k);
     let mut n = 0;

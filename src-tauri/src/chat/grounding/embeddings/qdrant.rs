@@ -23,7 +23,7 @@ async fn key() -> String {
 }
 
 /// One collection per embedding model, since each has its own width and meaning.
-pub fn collection(model: &str) -> String {
+pub(in crate::chat::grounding) fn collection(model: &str) -> String {
     let tag: String = model
         .chars()
         .map(|c| {
@@ -39,7 +39,7 @@ pub fn collection(model: &str) -> String {
 }
 
 /// A stable point id for a passage (FNV-1a, below 2^63 so every JSON reader keeps it exact).
-pub fn point_id(library: &str, document: &str, passage: usize) -> u64 {
+pub(in crate::chat::grounding) fn point_id(library: &str, document: &str, passage: usize) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for b in format!("{library}/{document}/{passage}").bytes() {
         h ^= u64::from(b);
@@ -143,7 +143,10 @@ fn read_marker(config_dir: &Path) -> Marker {
 /// Brings the collection in line with the libraries: new and changed documents are added,
 /// removed ones (and removed libraries) are deleted. Only documents already embedded are
 /// sent; the vectors come from the local cache.
-pub async fn sync(config_dir: &Path, settings: &EmbeddingSettings) -> Result<(), String> {
+pub(in crate::chat::grounding) async fn sync(
+    config_dir: &Path,
+    settings: &EmbeddingSettings,
+) -> Result<(), String> {
     let name = collection(&settings.model);
     let mut marker = read_marker(config_dir);
     let known = marker
@@ -298,7 +301,10 @@ pub async fn search(
 }
 
 /// Hits as passages, named by the libraries' and documents' current names.
-pub fn read_hits(answer: &Value, libraries: &[libraries::Library]) -> Vec<Passage> {
+pub(in crate::chat::grounding) fn read_hits(
+    answer: &Value,
+    libraries: &[libraries::Library],
+) -> Vec<Passage> {
     answer
         .get("result")
         .and_then(Value::as_array)

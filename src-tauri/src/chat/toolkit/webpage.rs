@@ -18,7 +18,7 @@ const TIMEOUT_SECS: u64 = 45;
 const MAX_TEXT: usize = 20_000;
 
 /// The browser to drive: `CORTEX_BROWSER`, else the first Chromium-family browser found.
-pub fn find_browser() -> Option<PathBuf> {
+pub(in crate::chat::toolkit) fn find_browser() -> Option<PathBuf> {
     if let Some(p) = std::env::var_os("CORTEX_BROWSER")
         .map(PathBuf::from)
         .filter(|p| p.is_file())
@@ -74,7 +74,7 @@ pub fn find_browser() -> Option<PathBuf> {
 }
 
 /// The profile folder of an agent (or of the assistant when `agent` is `None`).
-pub fn profile_dir(config_dir: &Path, agent: Option<&str>) -> PathBuf {
+pub(in crate::chat::toolkit) fn profile_dir(config_dir: &Path, agent: Option<&str>) -> PathBuf {
     let name: String = agent
         .unwrap_or("assistant")
         .chars()
@@ -91,7 +91,7 @@ pub fn profile_dir(config_dir: &Path, agent: Option<&str>) -> PathBuf {
 }
 
 /// The arguments for one headless run.
-pub fn headless_args(
+pub(in crate::chat::toolkit) fn headless_args(
     profile: &Path,
     url: &str,
     width: u32,
@@ -168,7 +168,7 @@ async fn run(browser: &Path, args: Vec<String>) -> Result<Vec<u8>, String> {
 }
 
 /// The page's title and readable text from its rendered HTML.
-pub fn page_text(html: &str) -> (String, String) {
+pub(in crate::chat::toolkit) fn page_text(html: &str) -> (String, String) {
     let doc = scraper::Html::parse_document(html);
     let title = scraper::Selector::parse("title")
         .ok()
@@ -493,7 +493,7 @@ const CONTROLS_JS: &str = "JSON.stringify([...document.querySelectorAll('input:n
   return e.tagName.toLowerCase() + (e.type && e.tagName === 'INPUT' ? '[' + e.type + ']' : '') + ' \"' + label + '\" → ' + target; }))";
 
 /// The script for one step; it returns a short report, or throws when the target is missing.
-pub fn step_js(step: &Value) -> Result<String, String> {
+pub(in crate::chat::toolkit) fn step_js(step: &Value) -> Result<String, String> {
     let s = |k: &str| step.get(k).and_then(Value::as_str).map(str::to_string);
     if let Some(target) = s("click") {
         return Ok(format!("(() => {{ const el = {}; if (!el) throw new Error('nothing matches {}'); el.scrollIntoView({{block:'center'}}); el.click(); return 'clicked'; }})()", find_js(&target), target.replace('\'', "")));

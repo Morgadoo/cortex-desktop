@@ -54,7 +54,7 @@ pub struct Task {
 
 /// The tools one task's worker gets: those workers may use, that its agent allows, and, when the
 /// task names some, only those (the kernel's `spawn(role, task, tools)`).
-pub fn task_tools(
+pub(in crate::chat::turn) fn task_tools(
     worker_tools: &[ChatTool],
     agent: Option<&crate::chat::agents::Agent>,
     wanted: &[String],
@@ -76,7 +76,7 @@ pub struct Report {
     pub steps: usize,
 }
 
-pub fn worker_tools(offered: &[ChatTool]) -> Vec<ChatTool> {
+pub(in crate::chat::turn) fn worker_tools(offered: &[ChatTool]) -> Vec<ChatTool> {
     offered
         .iter()
         .filter(|t| WORKER_TOOLS.contains(&t.name.as_str()))
@@ -106,7 +106,7 @@ impl Mode {
 }
 
 /// The task as the next member sees it, with what the earlier ones reported.
-pub fn after(task: &Task, earlier: &[Report]) -> Task {
+pub(in crate::chat::turn) fn after(task: &Task, earlier: &[Report]) -> Task {
     if earlier.is_empty() {
         return task.clone();
     }
@@ -125,7 +125,7 @@ pub fn after(task: &Task, earlier: &[Report]) -> Task {
 }
 
 /// A member's second-round task in a debate: the others' first answers, to answer.
-pub fn rebuttal(task: &Task, own: usize, first: &[Report]) -> Task {
+pub(in crate::chat::turn) fn rebuttal(task: &Task, own: usize, first: &[Report]) -> Task {
     let others: Vec<String> = first
         .iter()
         .enumerate()
@@ -144,7 +144,7 @@ pub fn rebuttal(task: &Task, own: usize, first: &[Report]) -> Task {
     }
 }
 
-pub fn parse_tasks(args: &Value) -> Result<Vec<Task>, String> {
+pub(in crate::chat::turn) fn parse_tasks(args: &Value) -> Result<Vec<Task>, String> {
     let tasks: Vec<Task> =
         serde_json::from_value(args.get("tasks").cloned().unwrap_or(Value::Null))
             .map_err(|_| "`tasks` must be a list of {title, instructions}.".to_string())?;
@@ -456,7 +456,7 @@ async fn run_one(
 /// Runs every task at once; reports come back in task order. A task for a named agent runs
 /// with that agent's instructions, its model, and only the reading tools it is allowed.
 #[allow(clippy::too_many_arguments)]
-pub async fn run_all(
+pub(in crate::chat::turn) async fn run_all(
     host: &Arc<dyn Host>,
     config_dir: &Path,
     model_reference: &str,
@@ -587,7 +587,7 @@ pub fn transcript(config_dir: &Path, call_id: &str, index: usize) -> Vec<Step> {
 }
 
 /// What the main conversation receives.
-pub fn render(reports: &[Report]) -> String {
+pub(in crate::chat::turn) fn render(reports: &[Report]) -> String {
     serde_json::to_string_pretty(&serde_json::json!({ "reports": reports })).unwrap_or_default()
 }
 

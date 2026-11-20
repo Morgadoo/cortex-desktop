@@ -233,7 +233,7 @@ pub(super) fn signing_key(config_dir: &Path) -> Option<[u8; 32]> {
 
 /// The signing key from the keychain, made the first time it is needed. Without a keychain,
 /// tools are not signed and the hash pin alone holds them to what the user approved.
-pub async fn ensure_signing_key(config_dir: &Path) {
+pub(in crate::chat::toolkit) async fn ensure_signing_key(config_dir: &Path) {
     if signing_key(config_dir).is_some() {
         return;
     }
@@ -248,7 +248,10 @@ pub async fn ensure_signing_key(config_dir: &Path) {
 
 /// [`ensure_signing_key`] with `store` for the keychain: reads the key, or makes and keeps one and
 /// reads it back to be sure it is there.
-pub async fn ensure_signing_key_in(config_dir: &Path, store: &crate::tools::auth::Secrets) {
+pub(in crate::chat::toolkit) async fn ensure_signing_key_in(
+    config_dir: &Path,
+    store: &crate::tools::auth::Secrets,
+) {
     let key = async {
         if let Some(hex) = store.load(SIGNING_KEY_NAME).await? {
             return Ok::<_, String>(Some(hex));

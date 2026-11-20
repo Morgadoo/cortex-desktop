@@ -3,7 +3,7 @@
 use super::*;
 
 /// Overlapping passages, cut at whitespace where possible.
-pub fn passages(text: &str) -> Vec<String> {
+pub(in crate::chat::grounding) fn passages(text: &str) -> Vec<String> {
     let chars: Vec<char> = text.chars().collect();
     let mut out = Vec::new();
     let mut start = 0;
@@ -36,7 +36,12 @@ pub fn passages(text: &str) -> Vec<String> {
 pub use crate::chat::retrieval::tokens;
 
 /// BM25 over the passages of the given libraries (all when `only` is empty).
-pub fn search(config_dir: &Path, only: &[String], query: &str, k: usize) -> Vec<Passage> {
+pub(in crate::chat::grounding) fn search(
+    config_dir: &Path,
+    only: &[String],
+    query: &str,
+    k: usize,
+) -> Vec<Passage> {
     let query_terms = tokens(query);
     if query_terms.is_empty() {
         return Vec::new();

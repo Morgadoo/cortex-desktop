@@ -49,7 +49,7 @@ pub fn pack(style: &str) -> Option<&'static Pack> {
     PACKS.iter().find(|p| p.style == style)
 }
 
-pub fn dir(root: &Path, style: &str) -> PathBuf {
+pub(in crate::chat::ui) fn dir(root: &Path, style: &str) -> PathBuf {
     root.join("emoji").join(format!("fluent-{style}-1.1.0"))
 }
 
@@ -62,7 +62,7 @@ fn valid_name(name: &str) -> bool {
             .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase() || c == '-')
 }
 
-pub fn installed(root: &Path, style: &str) -> bool {
+pub(in crate::chat::ui) fn installed(root: &Path, style: &str) -> bool {
     dir(root, style).join(".complete").is_file()
 }
 
@@ -91,7 +91,7 @@ pub fn index(root: &Path, style: &str) -> Vec<String> {
 }
 
 /// Whether `bytes` match npm's `sha512-<base64>` integrity string.
-pub fn verify(bytes: &[u8], integrity: &str) -> bool {
+pub(in crate::chat::ui) fn verify(bytes: &[u8], integrity: &str) -> bool {
     let Some(expected) = integrity.strip_prefix("sha512-") else {
         return false;
     };
@@ -100,7 +100,7 @@ pub fn verify(bytes: &[u8], integrity: &str) -> bool {
 
 /// Writes the pack's images (`package/assets/<name>.<ext>`) from the tarball into `target`;
 /// anything else in it is ignored.
-pub fn extract(tgz: &[u8], ext: &str, target: &Path) -> Result<usize, String> {
+pub(in crate::chat::ui) fn extract(tgz: &[u8], ext: &str, target: &Path) -> Result<usize, String> {
     std::fs::create_dir_all(target).map_err(|e| e.to_string())?;
     let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(tgz));
     let mut count = 0;

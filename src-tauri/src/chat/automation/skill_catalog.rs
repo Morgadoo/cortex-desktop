@@ -56,7 +56,7 @@ fn save(config_dir: &Path, s: &Store) -> Result<(), String> {
 }
 
 /// `owner/repo` from what the user typed: the pair itself or a GitHub link.
-pub fn repo_of(input: &str) -> Option<String> {
+pub(in crate::chat::automation) fn repo_of(input: &str) -> Option<String> {
     let t = input.trim().trim_end_matches('/').trim_end_matches(".git");
     let t = t
         .strip_prefix("https://github.com/")
@@ -94,7 +94,7 @@ async fn get_text(client: &reqwest::Client, url: &str) -> Result<String, String>
 }
 
 /// The skills a marketplace file lists: `(group, folder)` pairs, folders without `./`.
-pub fn skill_paths(marketplace: &Value) -> Vec<(String, String)> {
+pub(in crate::chat::automation) fn skill_paths(marketplace: &Value) -> Vec<(String, String)> {
     let mut out = Vec::new();
     for plugin in marketplace
         .get("plugins")
@@ -245,7 +245,7 @@ pub fn remove_catalog(config_dir: &Path, repo: &str) -> Result<(), String> {
 }
 
 /// The files under `folder` in a GitHub tree listing, relative to it.
-pub fn files_in(tree: &Value, folder: &str) -> Vec<String> {
+pub(in crate::chat::automation) fn files_in(tree: &Value, folder: &str) -> Vec<String> {
     let prefix = format!("{}/", folder.trim_end_matches('/'));
     tree.get("tree")
         .and_then(Value::as_array)

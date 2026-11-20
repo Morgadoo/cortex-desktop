@@ -45,7 +45,7 @@ fn readable(path: &Path) -> Option<Conversation> {
 }
 
 /// Called before a conversation file is replaced: keeps today's first copy of it.
-pub fn before_overwrite(config_dir: &Path, path: &Path) {
+pub(in crate::chat::storage) fn before_overwrite(config_dir: &Path, path: &Path) {
     let Some(name) = path.file_name() else { return };
     if !path.exists() {
         return;
@@ -113,7 +113,7 @@ pub fn daily(config_dir: &Path) {
 }
 
 /// Moves a conversation to the trash. A temporary one is deleted outright.
-pub fn trash(config_dir: &Path, id: &str) -> Result<(), String> {
+pub(in crate::chat::storage) fn trash(config_dir: &Path, id: &str) -> Result<(), String> {
     let path = conversation_file(config_dir, id)?;
     if !path.exists() {
         return Ok(());
@@ -195,7 +195,10 @@ pub fn delete_forever(config_dir: &Path, id: Option<&str>) -> Result<(), String>
 }
 
 /// The newest readable backup of a conversation: its date and file.
-pub fn latest_backup(config_dir: &Path, id: &str) -> Option<(String, PathBuf)> {
+pub(in crate::chat::storage) fn latest_backup(
+    config_dir: &Path,
+    id: &str,
+) -> Option<(String, PathBuf)> {
     let mut days: Vec<String> = std::fs::read_dir(backups_dir(config_dir))
         .ok()?
         .filter_map(Result::ok)

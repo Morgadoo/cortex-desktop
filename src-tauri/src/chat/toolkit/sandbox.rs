@@ -790,7 +790,7 @@ fn content_type(name: &str) -> &'static str {
 /// Serves `cortexapp://localhost/sandbox/<conversation>/<file>` so the chat can show a run's
 /// charts. Only files inside that conversation's workspace are served.
 /// The bytes a `Range: bytes=a-b` header asks for, within a file of `len` bytes.
-pub fn byte_range(header: &str, len: usize) -> Option<(usize, usize)> {
+pub(in crate::chat::toolkit) fn byte_range(header: &str, len: usize) -> Option<(usize, usize)> {
     let spec = header
         .trim()
         .strip_prefix("bytes=")?

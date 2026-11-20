@@ -6,7 +6,7 @@ use super::*;
 pub(super) const MCP_VERSION: &str = "2025-06-18";
 
 /// The tools Cortex offers MCP clients.
-pub fn mcp_tools() -> Value {
+pub(in crate::chat::integrations) fn mcp_tools() -> Value {
     json!([
         {
             "name": "search_libraries",

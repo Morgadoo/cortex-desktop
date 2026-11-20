@@ -42,7 +42,7 @@ fn cache_path(config_dir: &Path) -> PathBuf {
 }
 
 /// The catalog's index in LobeHub's layout, as listings.
-pub fn parse_index(body: &Value) -> Vec<Listing> {
+pub(in crate::chat::automation) fn parse_index(body: &Value) -> Vec<Listing> {
     let s = |v: &Value, k: &str| {
         v.get(k)
             .and_then(Value::as_str)
@@ -164,7 +164,10 @@ pub async fn listings(
 }
 
 /// A catalog agent as one of yours: its prompt, avatar, description and opening questions.
-pub fn to_agent(body: &Value, id: String) -> Result<crate::chat::agents::Agent, String> {
+pub(in crate::chat::automation) fn to_agent(
+    body: &Value,
+    id: String,
+) -> Result<crate::chat::agents::Agent, String> {
     let s = |v: Option<&Value>| {
         v.and_then(Value::as_str)
             .unwrap_or_default()

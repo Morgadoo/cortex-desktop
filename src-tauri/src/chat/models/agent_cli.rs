@@ -76,7 +76,7 @@ fn is_executable(path: &Path) -> bool {
 }
 
 /// The agent programs installed on this computer, as models.
-pub fn installed() -> Vec<ModelView> {
+pub(in crate::chat::models) fn installed() -> Vec<ModelView> {
     CLIS.iter()
         .filter(|c| locate(c.program).is_some())
         .map(|c| ModelView {
@@ -93,7 +93,7 @@ pub fn installed() -> Vec<ModelView> {
 }
 
 /// The command line for one non-interactive run.
-pub fn args(cli: &Cli, prompt: &str) -> Vec<String> {
+pub(in crate::chat::models) fn args(cli: &Cli, prompt: &str) -> Vec<String> {
     match cli.id {
         "claude-code" => vec![
             "-p".into(),
@@ -107,7 +107,7 @@ pub fn args(cli: &Cli, prompt: &str) -> Vec<String> {
 }
 
 /// The prompt: the conversation so far, then what the user says now.
-pub fn prompt(conversation: &Conversation) -> String {
+pub(in crate::chat::models) fn prompt(conversation: &Conversation) -> String {
     let Some(last) = store::last_prompt(conversation) else {
         return String::new();
     };

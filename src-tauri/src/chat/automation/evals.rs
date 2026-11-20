@@ -160,7 +160,7 @@ pub fn delete_case(config_dir: &Path, suite: &str, id: &str) -> Result<(), Strin
 }
 
 /// Writes the starter suite, three tool-selection cases, unless it exists.
-pub fn ensure_starter(config_dir: &Path) -> Result<(), String> {
+pub(in crate::chat::automation) fn ensure_starter(config_dir: &Path) -> Result<(), String> {
     if !cases(config_dir, STARTER).is_empty() {
         return Ok(());
     }
@@ -524,7 +524,10 @@ pub async fn run_suite(
 }
 
 /// Keeps a run beside its suite, where later runs are compared with it.
-pub fn save_run(config_dir: &Path, run: &SuiteRun) -> Result<(), String> {
+pub(in crate::chat::automation) fn save_run(
+    config_dir: &Path,
+    run: &SuiteRun,
+) -> Result<(), String> {
     let dir = suite_dir(config_dir, &run.suite)?.join("runs");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let stamp = run.at.format("%Y%m%dT%H%M%S%3fZ");
@@ -537,7 +540,9 @@ pub fn save_run(config_dir: &Path, run: &SuiteRun) -> Result<(), String> {
 
 /// A host whose turns run against a throwaway copy of `host`'s data: what an eval runs on, so
 /// nothing a case does (a fact it saves, a tool it writes, a use it counts) reaches the live data.
-pub fn on_a_copy(host: &Arc<dyn Host>) -> Result<(TrialFolder, Arc<dyn Host>), String> {
+pub(in crate::chat::automation) fn on_a_copy(
+    host: &Arc<dyn Host>,
+) -> Result<(TrialFolder, Arc<dyn Host>), String> {
     let folder = trial_folder(&host.config_dir()?)?;
     let copy: Arc<dyn Host> = Arc::new(InFolder::new(host.clone(), folder.dir.clone()));
     Ok((folder, copy))
@@ -633,7 +638,7 @@ pub async fn nightly_and_notify(host: &Arc<dyn Host>, model: &str) -> Vec<Nightl
 }
 
 /// The notice for a nightly result whose score dropped since the last full run, if it did.
-pub fn drop_notice(result: &Nightly) -> Option<(&'static str, String)> {
+pub(in crate::chat::automation) fn drop_notice(result: &Nightly) -> Option<(&'static str, String)> {
     let before = result.before?;
     (result.score + 1e-9 < before).then(|| {
         (

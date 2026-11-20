@@ -147,7 +147,7 @@ fn content_root(doc: &Html) -> Option<ElementRef<'_>> {
 }
 
 /// Reads an article out of a page's HTML.
-pub fn extract(html: &str, url: &str) -> Article {
+pub(in crate::chat::grounding) fn extract(html: &str, url: &str) -> Article {
     let doc = Html::parse_document(html);
     let host = url::Url::parse(url)
         .ok()

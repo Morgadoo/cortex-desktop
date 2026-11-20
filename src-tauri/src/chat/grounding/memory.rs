@@ -183,7 +183,11 @@ pub const LIST_ALL: usize = 40;
 const LIST_RELEVANT: usize = 25;
 
 /// Whether a fact applies in a chat of `project` with `agent`.
-pub fn applies(m: &Memory, project: Option<&str>, agent: Option<&str>) -> bool {
+pub(in crate::chat::grounding) fn applies(
+    m: &Memory,
+    project: Option<&str>,
+    agent: Option<&str>,
+) -> bool {
     match m.scope.as_deref().and_then(|s| s.split_once(':')) {
         Some(("project", id)) => project == Some(id),
         Some(("agent", id)) => agent == Some(id),

@@ -18,7 +18,7 @@ pub struct MessagesBody {
 }
 
 /// The same request as the OpenAI shape: the system text becomes a system message.
-pub fn chat_body_of(body: &MessagesBody) -> ChatBody {
+pub(in crate::chat::integrations) fn chat_body_of(body: &MessagesBody) -> ChatBody {
     let mut messages = Vec::new();
     if let Some(system) = &body.system {
         let text = content_text(system);

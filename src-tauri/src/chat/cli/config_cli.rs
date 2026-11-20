@@ -127,7 +127,7 @@ const FILES: &[File] = &[
 ];
 
 /// One schema describing every settings file, keyed by its path in the settings folder.
-pub fn all_schemas() -> Value {
+pub(in crate::chat::cli) fn all_schemas() -> Value {
     let mut properties = serde_json::Map::new();
     for f in FILES {
         let mut schema = serde_json::to_value((f.schema)()).unwrap_or(Value::Null);
@@ -237,7 +237,7 @@ fn unknown_settings(value: &Value, schema: &Value, root: &Value, at: &str, out: 
 }
 
 /// Unknown settings across the settings files, as `file: message`.
-pub fn warnings(config_dir: &Path) -> Vec<String> {
+pub(in crate::chat::cli) fn warnings(config_dir: &Path) -> Vec<String> {
     let mut out = Vec::new();
     for f in FILES {
         let Ok(text) = crate::chat::at_rest::read_to_string(config_dir.join(f.path)) else {
@@ -291,7 +291,7 @@ pub fn maybe_run() -> Option<i32> {
     Some(run(&args[1..], &mut std::io::stdout()))
 }
 
-pub fn run(args: &[String], out: &mut impl std::io::Write) -> i32 {
+pub(in crate::chat::cli) fn run(args: &[String], out: &mut impl std::io::Write) -> i32 {
     let config_dir = crate::reporting::early_config_dir();
     match args.first().map(String::as_str) {
         Some("schema") => match args.get(1) {

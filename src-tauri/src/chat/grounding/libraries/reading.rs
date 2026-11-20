@@ -287,7 +287,7 @@ pub fn read_text(path: &Path) -> Result<String, String> {
 }
 
 /// The text of a file, by its kind, with whitespace collapsed for indexing.
-pub fn extract(path: &Path) -> Result<String, String> {
+pub(in crate::chat::grounding) fn extract(path: &Path) -> Result<String, String> {
     let ext = path
         .extension()
         .and_then(|e| e.to_str())

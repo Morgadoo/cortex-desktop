@@ -3,7 +3,7 @@
 use super::*;
 
 /// What a webhook receives when a run finishes.
-pub fn webhook_payload(
+pub(in crate::chat::automation) fn webhook_payload(
     task: &Task,
     conversation_id: &str,
     status: TaskStatus,

@@ -175,7 +175,7 @@ pub struct ProvidersFile {
     pub image_server: Option<String>,
 }
 
-pub fn file_path(config_dir: &Path) -> PathBuf {
+pub(in crate::chat::models) fn file_path(config_dir: &Path) -> PathBuf {
     config_dir.join("chat").join("providers.json")
 }
 
@@ -209,7 +209,7 @@ pub struct ProviderView {
 }
 
 /// The endpoint rig sends to when no base URL is set.
-pub fn default_base_url(vendor: &str) -> Option<String> {
+pub(in crate::chat::models) fn default_base_url(vendor: &str) -> Option<String> {
     let config = ProviderId::catalog(vendor)?.config(String::new())?;
     Some(config.base_url().to_string())
 }
@@ -227,7 +227,7 @@ pub fn normalize_base_url(vendor: &str, base_url: &str) -> String {
     }
 }
 
-pub fn requires_key(vendor: &str) -> bool {
+pub(in crate::chat::models) fn requires_key(vendor: &str) -> bool {
     ProviderId::catalog(vendor).is_some_and(|id| id.requires_credential())
 }
 
@@ -241,7 +241,7 @@ pub fn env_key(vendor: &str) -> Option<&'static str> {
         .find(|name| std::env::var(name).is_ok_and(|v| !v.trim().is_empty()))
 }
 
-pub fn is_ready(vendor: &str, settings: &ProviderSettings) -> bool {
+pub(in crate::chat::models) fn is_ready(vendor: &str, settings: &ProviderSettings) -> bool {
     settings.enabled && (settings.has_key || !requires_key(vendor) || env_key(vendor).is_some())
 }
 
@@ -444,7 +444,7 @@ pub fn split_reference(reference: &str) -> Option<(&str, &str)> {
 }
 
 /// The model `reference` names, connected with the user's key and base URL.
-pub fn connect(
+pub(in crate::chat::models) fn connect(
     reference: &str,
     settings: &ProviderSettings,
     api_key: Option<String>,

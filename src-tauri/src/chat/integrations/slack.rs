@@ -121,7 +121,7 @@ pub async fn check(app_token: &str, bot_token: &str) -> Result<String, String> {
 }
 
 /// A message's text without the mention of the app at its start.
-pub fn clean(text: &str) -> String {
+pub(in crate::chat::integrations) fn clean(text: &str) -> String {
     let t = text.trim();
     let t = if t.starts_with("<@") {
         t.split_once('>').map_or(t, |(_, rest)| rest)
@@ -141,7 +141,7 @@ pub enum Action {
 }
 
 /// What an event means. Messages from bots (including this one) are ignored.
-pub fn decide(settings: &Settings, event: &Value) -> Action {
+pub(in crate::chat::integrations) fn decide(settings: &Settings, event: &Value) -> Action {
     let kind = event
         .get("type")
         .and_then(Value::as_str)

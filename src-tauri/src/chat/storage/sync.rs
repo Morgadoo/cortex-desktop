@@ -349,7 +349,11 @@ fn hostname() -> Option<String> {
 }
 
 /// Syncs the config folder with `<folder>/Cortex Sync` under `key`.
-pub fn sync_once(config_dir: &Path, remote: &Path, key: &[u8; 32]) -> Report {
+pub(in crate::chat::storage) fn sync_once(
+    config_dir: &Path,
+    remote: &Path,
+    key: &[u8; 32],
+) -> Report {
     let mut report = Report::default();
     let b64 = base64::engine::general_purpose::STANDARD;
     let items_dir = remote.join("items");

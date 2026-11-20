@@ -49,7 +49,7 @@ fn unwrap_bing(href: &str) -> Option<String> {
         .filter(|u| u.starts_with("http"))
 }
 
-pub fn parse_bing(html: &str) -> Vec<Hit> {
+pub(in crate::chat::grounding) fn parse_bing(html: &str) -> Vec<Hit> {
     let doc = Html::parse_document(html);
     let item = Selector::parse("li.b_algo").expect("selector");
     let link = Selector::parse("h2 a").expect("selector");
@@ -85,7 +85,7 @@ fn unwrap_ddg(href: &str) -> Option<String> {
     }
 }
 
-pub fn parse_ddg(html: &str) -> Vec<Hit> {
+pub(in crate::chat::grounding) fn parse_ddg(html: &str) -> Vec<Hit> {
     let doc = Html::parse_document(html);
     let item = Selector::parse(".result").expect("selector");
     let link = Selector::parse("a.result__a").expect("selector");
@@ -160,17 +160,17 @@ async fn key() -> Result<Option<String>, String> {
 }
 
 /// SearXNG's JSON results (`format=json` must be enabled on the instance).
-pub fn parse_searxng(body: &serde_json::Value) -> Vec<Hit> {
+pub(in crate::chat::grounding) fn parse_searxng(body: &serde_json::Value) -> Vec<Hit> {
     hits_from(body.get("results"), "title", "url", "content")
 }
 
 /// Brave Search API: `web.results`.
-pub fn parse_brave(body: &serde_json::Value) -> Vec<Hit> {
+pub(in crate::chat::grounding) fn parse_brave(body: &serde_json::Value) -> Vec<Hit> {
     hits_from(body.pointer("/web/results"), "title", "url", "description")
 }
 
 /// Tavily: `results`.
-pub fn parse_tavily(body: &serde_json::Value) -> Vec<Hit> {
+pub(in crate::chat::grounding) fn parse_tavily(body: &serde_json::Value) -> Vec<Hit> {
     hits_from(body.get("results"), "title", "url", "content")
 }
 
@@ -302,7 +302,7 @@ pub fn clean_sites(values: &[String]) -> Vec<String> {
 }
 
 /// The query with `site:` operators, which Bing, DuckDuckGo, SearXNG and Brave understand.
-pub fn with_sites(query: &str, sites: &[String]) -> String {
+pub(in crate::chat::grounding) fn with_sites(query: &str, sites: &[String]) -> String {
     match sites {
         [] => query.to_string(),
         [one] => format!("{query} site:{one}"),
@@ -317,7 +317,7 @@ pub fn with_sites(query: &str, sites: &[String]) -> String {
 }
 
 /// Whether a URL is on one of the sites (the site itself or a subdomain of it).
-pub fn on_sites(url: &str, sites: &[String]) -> bool {
+pub(in crate::chat::grounding) fn on_sites(url: &str, sites: &[String]) -> bool {
     let host = url
         .split("://")
         .nth(1)
@@ -369,7 +369,7 @@ pub async fn search_sites(
         .collect())
 }
 
-pub async fn search_with(
+pub(in crate::chat::grounding) async fn search_with(
     config_dir: &std::path::Path,
     query: &str,
     max: usize,
@@ -481,7 +481,11 @@ async fn tavily(
 }
 
 /// Up to `max` results for `query`, from the first engine that answers with any.
-pub async fn search(query: &str, max: usize, recency: Option<Recency>) -> Result<Vec<Hit>, String> {
+pub(in crate::chat::grounding) async fn search(
+    query: &str,
+    max: usize,
+    recency: Option<Recency>,
+) -> Result<Vec<Hit>, String> {
     let client = client()?;
     let mut errors = Vec::new();
 

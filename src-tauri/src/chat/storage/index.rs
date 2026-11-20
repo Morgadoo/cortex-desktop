@@ -235,7 +235,7 @@ fn synced<R>(config_dir: &Path, read: impl FnOnce(&IndexFile) -> R) -> R {
 }
 
 /// The sidebar rows: pinned first, then newest.
-pub fn list(config_dir: &Path) -> Vec<ConversationSummary> {
+pub(in crate::chat::storage) fn list(config_dir: &Path) -> Vec<ConversationSummary> {
     let mut out: Vec<ConversationSummary> = synced(config_dir, |index| {
         index
             .entries
@@ -252,7 +252,7 @@ pub fn list(config_dir: &Path) -> Vec<ConversationSummary> {
 }
 
 /// Conversation files that exist but cannot be read.
-pub fn damaged(config_dir: &Path) -> Vec<String> {
+pub(in crate::chat::storage) fn damaged(config_dir: &Path) -> Vec<String> {
     synced(config_dir, |index| {
         index
             .entries

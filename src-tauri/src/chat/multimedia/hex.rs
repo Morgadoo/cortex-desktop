@@ -54,7 +54,10 @@ struct Discovery {
 /// Hex's data folder: `HEX_APPLICATION_SUPPORT_DIR` when set, else the system's per-user data
 /// folder (`~/.local/share/hex` or `$XDG_DATA_HOME/hex` on Linux, `~/Library/Application
 /// Support/hex` on macOS, `%APPDATA%\hex` on Windows). `env` reads a variable.
-pub fn support_dir(os: &str, env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+pub(in crate::chat::multimedia) fn support_dir(
+    os: &str,
+    env: impl Fn(&str) -> Option<String>,
+) -> Option<PathBuf> {
     if let Some(dir) = env("HEX_APPLICATION_SUPPORT_DIR").filter(|d| !d.is_empty()) {
         return Some(dir.into());
     }
@@ -71,12 +74,12 @@ pub fn support_dir(os: &str, env: impl Fn(&str) -> Option<String>) -> Option<Pat
 }
 
 /// This computer's discovery file.
-pub fn discovery_path() -> Option<PathBuf> {
+pub(in crate::chat::multimedia) fn discovery_path() -> Option<PathBuf> {
     support_dir(std::env::consts::OS, |k| std::env::var(k).ok()).map(|d| d.join("local-api.json"))
 }
 
 /// Reads a discovery file; the reason it can't be used is never the token itself.
-pub fn parse_discovery(bytes: &[u8]) -> Result<Endpoint, String> {
+pub(in crate::chat::multimedia) fn parse_discovery(bytes: &[u8]) -> Result<Endpoint, String> {
     let Ok(d) = serde_json::from_slice::<Discovery>(bytes) else {
         return Err("Hex's discovery file could not be read.".into());
     };
@@ -118,7 +121,7 @@ impl Model {
 
 /// The user's model when Hex has it ready, else the first ready one of [`PREFERRED_MODELS`],
 /// else any ready one.
-pub fn pick_model(models: &[Model], chosen: &str) -> Option<String> {
+pub(in crate::chat::multimedia) fn pick_model(models: &[Model], chosen: &str) -> Option<String> {
     let ready = |id: &str| models.iter().any(|m| m.id == id && m.usable());
     Some(chosen)
         .filter(|id| !id.is_empty() && ready(id))
@@ -376,7 +379,7 @@ async fn status_of(connected: Result<Client, Failure>) -> Status {
 }
 
 /// 16-bit PCM WAV, 16 kHz mono, of `samples` in [-1, 1].
-pub fn wav(samples: &[f32]) -> Vec<u8> {
+pub(in crate::chat::multimedia) fn wav(samples: &[f32]) -> Vec<u8> {
     let data_len = (samples.len() * 2) as u32;
     let mut out = Vec::with_capacity(44 + data_len as usize);
     out.extend_from_slice(b"RIFF");

@@ -120,7 +120,7 @@ pub fn models(file: &providers::ProvidersFile) -> Option<(String, String)> {
 }
 
 /// The Auto entry for the model picker, when it is set up.
-pub fn model_view(file: &providers::ProvidersFile) -> Option<ModelView> {
+pub(in crate::chat::models) fn model_view(file: &providers::ProvidersFile) -> Option<ModelView> {
     models(file).map(|_| ModelView {
         reference: AUTO.into(),
         vendor: "auto".into(),

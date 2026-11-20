@@ -14,7 +14,7 @@ pub(super) fn tool(name: &str, description: &str, parameters: Value) -> ChatTool
 }
 
 /// The built-in tools on offer: memory only while it is on, `use_skill` only with skills enabled.
-pub fn definitions(config_dir: &Path) -> Vec<ChatTool> {
+pub(in crate::chat::turn) fn definitions(config_dir: &Path) -> Vec<ChatTool> {
     let mut out = vec![tool(
         WEB_SEARCH,
         "Search the web. Use it for current events, prices, versions, people, places and any fact \

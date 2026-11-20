@@ -240,7 +240,10 @@ fn tree_link(repo: &str, reference: Option<&str>, path: Option<&str>) -> String 
 
 /// The plugins a `marketplace.json` lists. `home` is the marketplace's own repository and ref,
 /// which plugins kept inside it (`"source": "./plugins/x"`) come from.
-pub fn market_entries(market: &Value, home: (&str, &str)) -> Vec<MarketEntry> {
+pub(in crate::chat::automation) fn market_entries(
+    market: &Value,
+    home: (&str, &str),
+) -> Vec<MarketEntry> {
     let base = market
         .pointer("/metadata/pluginRoot")
         .and_then(Value::as_str)
@@ -351,7 +354,7 @@ pub fn subfolder(files: Files, folder: &str) -> Files {
 }
 
 /// Front matter `key: value` lines and the body of a Markdown file.
-pub fn front_matter(text: &str) -> (BTreeMap<String, String>, String) {
+pub(in crate::chat::automation) fn front_matter(text: &str) -> (BTreeMap<String, String>, String) {
     let text = text.trim_start_matches('\u{feff}');
     let mut map = BTreeMap::new();
     let Some(rest) = text.trim_start().strip_prefix("---") else {
@@ -374,7 +377,7 @@ pub fn front_matter(text: &str) -> (BTreeMap<String, String>, String) {
 }
 
 /// A name as skills and ids allow it: lowercase letters, digits and hyphens.
-pub fn slug(name: &str) -> String {
+pub(in crate::chat::automation) fn slug(name: &str) -> String {
     crate::support::names::slug(name, 60)
 }
 

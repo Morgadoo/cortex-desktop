@@ -165,7 +165,7 @@ fn cache_path(doc_dir: &Path, document_id: &str, model: &str) -> PathBuf {
     doc_dir.join(format!("{document_id}.{tag}.vec.json"))
 }
 
-pub fn read_cache(
+pub(in crate::chat::grounding) fn read_cache(
     doc_dir: &Path,
     document_id: &str,
     model: &str,
@@ -215,7 +215,7 @@ pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
 /// in both, comes first. Passages are the same when library, document and position match.
 /// Equal scores (one passage first in one list, another first in the other) go to the passage
 /// the first list ranks higher, so the order never depends on chance.
-pub fn fuse(lists: &[Vec<Passage>], k: usize) -> Vec<Passage> {
+pub(in crate::chat::grounding) fn fuse(lists: &[Vec<Passage>], k: usize) -> Vec<Passage> {
     // A passage: library, document, position.
     type Key = (String, String, usize);
     // Score, then (list, rank) where the passage was first seen, for ties.
@@ -394,7 +394,7 @@ async fn rerank_key() -> Result<String, String> {
 }
 
 /// The candidates' order by the reranker: `(index, relevance)`, best first, at most `k`.
-pub async fn rerank(
+pub(in crate::chat::grounding) async fn rerank(
     settings: &EmbeddingSettings,
     key: &str,
     query: &str,

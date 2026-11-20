@@ -82,7 +82,7 @@ fn pick(
         .map(|(vendor, model)| format!("{vendor}/{model}"))
 }
 
-pub fn image_model(file: &ProvidersFile) -> Option<String> {
+pub(in crate::chat::multimedia) fn image_model(file: &ProvidersFile) -> Option<String> {
     // A local image server needs no key: chosen, or the only image maker there is.
     let local = file.image_server.as_ref().filter(|u| !u.trim().is_empty());
     if let Some(chosen) = file
@@ -104,7 +104,7 @@ pub fn image_model(file: &ProvidersFile) -> Option<String> {
 pub const SDWEBUI_PREFIX: &str = "sdwebui/";
 
 /// The request body for the AUTOMATIC1111 API.
-pub fn sdwebui_body(
+pub(in crate::chat::multimedia) fn sdwebui_body(
     prompt: &str,
     width: u32,
     height: u32,
@@ -133,7 +133,7 @@ pub fn sdwebui_body(
 }
 
 /// Makes one image on the local server; returns its bytes.
-pub async fn sdwebui_image(
+pub(in crate::chat::multimedia) async fn sdwebui_image(
     server: &str,
     model: &str,
     prompt: &str,
@@ -432,7 +432,10 @@ pub fn speakable(markdown: &str) -> String {
 }
 
 /// Reads `text` aloud with the chosen voice model; returns the audio and its media type.
-pub async fn speak(config_dir: &Path, text: &str) -> Result<(Vec<u8>, String), String> {
+pub(in crate::chat::multimedia) async fn speak(
+    config_dir: &Path,
+    text: &str,
+) -> Result<(Vec<u8>, String), String> {
     let reference = voice_model(&providers::load(config_dir)).ok_or(
         "Read aloud needs a provider with text-to-speech (OpenAI or xAI) in Settings → Providers.",
     )?;
@@ -460,7 +463,7 @@ pub async fn speak(config_dir: &Path, text: &str) -> Result<(Vec<u8>, String), S
 }
 
 /// Turns recorded speech into text with the chosen speech model.
-pub async fn transcribe(
+pub(in crate::chat::multimedia) async fn transcribe(
     config_dir: &Path,
     audio: Vec<u8>,
     file_name: &str,
@@ -632,7 +635,7 @@ fn one() -> u32 {
     1
 }
 
-pub fn studio_size(shape: &str) -> (u32, u32) {
+pub(in crate::chat::multimedia) fn studio_size(shape: &str) -> (u32, u32) {
     match shape {
         "landscape" => (1536, 1024),
         "portrait" => (1024, 1536),
@@ -641,7 +644,11 @@ pub fn studio_size(shape: &str) -> (u32, u32) {
 }
 
 /// xAI takes the shape as an aspect ratio, which rig's request leaves at 1:1.
-pub fn aspect_for(vendor: &str, width: u32, height: u32) -> Option<&'static str> {
+pub(in crate::chat::multimedia) fn aspect_for(
+    vendor: &str,
+    width: u32,
+    height: u32,
+) -> Option<&'static str> {
     (vendor == "xai").then(|| match width.cmp(&height) {
         std::cmp::Ordering::Greater => "3:2",
         std::cmp::Ordering::Less => "2:3",
@@ -662,7 +669,10 @@ fn merge(a: Option<Value>, b: Option<Value>) -> Option<Value> {
 }
 
 /// Extra request fields: quality, and a seed for models that take one.
-pub fn studio_params(quality: Option<&str>, seed: Option<u64>) -> Option<Value> {
+pub(in crate::chat::multimedia) fn studio_params(
+    quality: Option<&str>,
+    seed: Option<u64>,
+) -> Option<Value> {
     let mut p = serde_json::Map::new();
     if let Some(q) = quality.filter(|q| matches!(*q, "low" | "medium" | "high" | "auto")) {
         p.insert("quality".into(), json!(q));
@@ -675,7 +685,7 @@ pub fn studio_params(quality: Option<&str>, seed: Option<u64>) -> Option<Value> 
 
 /// Makes the images in a conversation's workspace; returns their files, and the errors of
 /// those that failed.
-pub async fn make_images(
+pub(in crate::chat::multimedia) async fn make_images(
     config_dir: &Path,
     workspace: &str,
     request: StudioRequest,

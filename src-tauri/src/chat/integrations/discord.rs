@@ -125,7 +125,7 @@ pub async fn check(token: &str) -> Result<String, String> {
 }
 
 /// A message's text without mentions of the bot.
-pub fn clean(text: &str, bot_id: &str) -> String {
+pub(in crate::chat::integrations) fn clean(text: &str, bot_id: &str) -> String {
     text.replace(&format!("<@{bot_id}>"), "")
         .replace(&format!("<@!{bot_id}>"), "")
         .trim()
@@ -143,7 +143,11 @@ pub enum Action {
 
 /// What a `MESSAGE_CREATE` means. Bots (including this one) are ignored; in a server, only
 /// messages that mention the bot count.
-pub fn decide(settings: &Settings, message: &Value, bot_id: &str) -> Action {
+pub(in crate::chat::integrations) fn decide(
+    settings: &Settings,
+    message: &Value,
+    bot_id: &str,
+) -> Action {
     let author = message.get("author").cloned().unwrap_or(Value::Null);
     let user = author
         .get("id")

@@ -64,7 +64,7 @@ pub fn save(config_dir: &Path, hooks: &[Hook]) -> Result<(), String> {
 }
 
 /// Whether a hook's matcher covers a tool.
-pub fn matches(matcher: &str, tool: &str) -> bool {
+pub(in crate::chat::turn) fn matches(matcher: &str, tool: &str) -> bool {
     let parts: Vec<&str> = matcher
         .split(',')
         .map(str::trim)
@@ -86,7 +86,11 @@ pub struct Ran {
 }
 
 /// Runs one hook command with the event on its input.
-pub async fn run_command(command: &str, event: &Value, workdir: Option<&Path>) -> Ran {
+pub(in crate::chat::turn) async fn run_command(
+    command: &str,
+    event: &Value,
+    workdir: Option<&Path>,
+) -> Ran {
     #[cfg(windows)]
     let mut cmd = {
         let mut c = tokio::process::Command::new("cmd");
@@ -157,7 +161,7 @@ pub async fn run_command(command: &str, event: &Value, workdir: Option<&Path>) -
 }
 
 /// Runs the `before_tool` hooks for a call; `Some(reason)` when one of them blocks it.
-pub async fn before_tool(
+pub(in crate::chat::turn) async fn before_tool(
     config_dir: &Path,
     conversation_id: &str,
     tool: &str,
@@ -191,7 +195,7 @@ pub async fn before_tool(
 }
 
 /// Runs the `after_tool` hooks for a call; what they print, to add to the result.
-pub async fn after_tool(
+pub(in crate::chat::turn) async fn after_tool(
     config_dir: &Path,
     conversation_id: &str,
     tool: &str,
@@ -216,7 +220,7 @@ pub async fn after_tool(
 }
 
 /// Runs the `turn_end` hooks once a reply has finished.
-pub async fn turn_end(
+pub(in crate::chat::turn) async fn turn_end(
     config_dir: &Path,
     conversation_id: &str,
     answer: &str,
@@ -236,7 +240,7 @@ pub async fn turn_end(
 }
 
 /// A Claude Code tool matcher (`Write|Edit`, `Bash`, `*`) as Cortex tool names.
-pub fn claude_matcher(matcher: &str) -> String {
+pub(in crate::chat::turn) fn claude_matcher(matcher: &str) -> String {
     let mut out: Vec<&str> = Vec::new();
     for part in matcher.split('|').map(str::trim) {
         let mapped: &[&str] = match part {

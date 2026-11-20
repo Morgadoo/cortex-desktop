@@ -116,7 +116,10 @@ fn value_of(args: &[String], flag: &str) -> Option<String> {
 /// Reads `-p <prompt>` (or `--print`) and its options; `None` when there is no `-p`, so the app
 /// starts as usual. `-p -`, or `-p` with nothing after it, reads standard input; `--prompt-file`
 /// reads a file. A bad option is an `Err` (exit code 1).
-pub fn parse(args: &[String], stdin: impl FnOnce() -> String) -> Option<Result<Args, String>> {
+pub(in crate::chat::cli) fn parse(
+    args: &[String],
+    stdin: impl FnOnce() -> String,
+) -> Option<Result<Args, String>> {
     let at = args.iter().position(|a| a == "-p" || a == "--print")?;
     Some((|| {
         let number = |flag: &str| -> Result<Option<f64>, String> {
@@ -189,7 +192,7 @@ pub fn maybe_run() -> Option<i32> {
     Some(export.exit_code)
 }
 
-pub fn write_export(dir: &Path, export: &Export) -> Result<(), String> {
+pub(in crate::chat::cli) fn write_export(dir: &Path, export: &Export) -> Result<(), String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     crate::chat::at_rest::write(
         dir.join("export.json"),
@@ -236,7 +239,7 @@ fn steps_of(events: &[ChatEvent]) -> Vec<Step> {
 
 /// One request, answered with the read-only tools, within the limits asked for. It runs through
 /// the app's own agent loop, unattended, in a temporary conversation that is deleted after.
-pub async fn run(args: &Args) -> Export {
+pub(in crate::chat::cli) async fn run(args: &Args) -> Export {
     let started = Instant::now();
     let mut export = Export {
         prompt: args.prompt.clone(),

@@ -56,7 +56,7 @@ fn walk(base: &Path, dir: &Path, depth: usize, out: &mut Vec<(String, std::fs::M
 }
 
 /// The files in a chat's workspace.
-pub fn files(config_dir: &Path, conversation_id: &str) -> Vec<Output> {
+pub(in crate::chat::toolkit) fn files(config_dir: &Path, conversation_id: &str) -> Vec<Output> {
     let Ok(dir) = crate::chat::sandbox::workspace(config_dir, conversation_id) else {
         return Vec::new();
     };

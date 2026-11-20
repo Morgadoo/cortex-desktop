@@ -18,7 +18,7 @@ pub struct ResponsesBody {
 }
 
 /// The same request as the Chat Completions shape.
-pub fn chat_body_of_responses(body: &ResponsesBody) -> ChatBody {
+pub(in crate::chat::integrations) fn chat_body_of_responses(body: &ResponsesBody) -> ChatBody {
     let mut messages = Vec::new();
     if let Some(i) = body.instructions.as_ref().filter(|i| !i.trim().is_empty()) {
         messages.push(json!({ "role": "system", "content": i }));

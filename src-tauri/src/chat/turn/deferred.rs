@@ -25,18 +25,18 @@ const CORE: &[&str] = &[
 ];
 
 /// Whether a tool may wait to be loaded: a connector's, outside the core.
-pub fn deferrable(tool: &ChatTool) -> bool {
+pub(in crate::chat::turn) fn deferrable(tool: &ChatTool) -> bool {
     tool.connector_id
         .as_deref()
         .is_some_and(|c| !CORE.contains(&c))
 }
 
 /// Whether this request should load some tools on demand.
-pub fn should_defer(offered: &[ChatTool]) -> bool {
+pub(in crate::chat::turn) fn should_defer(offered: &[ChatTool]) -> bool {
     offered.iter().filter(|t| deferrable(t)).count() > DEFER_OVER
 }
 
-pub fn find_tools_tool() -> ChatTool {
+pub(in crate::chat::turn) fn find_tools_tool() -> ChatTool {
     ChatTool {
         name: FIND_TOOLS.into(),
         description: "Find and load tools that are not loaded yet (see \"More tools\" in your instructions). \
@@ -54,7 +54,11 @@ pub fn find_tools_tool() -> ChatTool {
 }
 
 /// The deferred tools that best match `query`, by shared words in name and description.
-pub fn search<'a>(offered: &'a [ChatTool], query: &str, limit: usize) -> Vec<&'a ChatTool> {
+pub(in crate::chat::turn) fn search<'a>(
+    offered: &'a [ChatTool],
+    query: &str,
+    limit: usize,
+) -> Vec<&'a ChatTool> {
     use crate::chat::retrieval::{tokens, Corpus};
     let candidates: Vec<&ChatTool> = offered.iter().filter(|t| deferrable(t)).collect();
     // The name counts three times; words match as prefixes, so `email` finds `emails`.
@@ -77,12 +81,12 @@ pub fn search<'a>(offered: &'a [ChatTool], query: &str, limit: usize) -> Vec<&'a
 
 /// Runs `find_tools`: the matches, as the tool result, and the names to load.
 #[cfg(test)]
-pub fn find(offered: &[ChatTool], args: &Value) -> (String, Vec<String>) {
+pub(in crate::chat::turn) fn find(offered: &[ChatTool], args: &Value) -> (String, Vec<String>) {
     find_with(offered, args, None)
 }
 
 /// [`find`], with a semantic ranking of the deferrable tools (best first, by name) fused in.
-pub fn find_with(
+pub(in crate::chat::turn) fn find_with(
     offered: &[ChatTool],
     args: &Value,
     semantic: Option<Vec<String>>,
@@ -126,7 +130,7 @@ pub fn find_with(
 }
 
 /// The part of the instructions that says which tools wait to be loaded.
-pub fn prompt(offered: &[ChatTool], loaded: &[String]) -> String {
+pub(in crate::chat::turn) fn prompt(offered: &[ChatTool], loaded: &[String]) -> String {
     let mut by_connector: Vec<(String, usize)> = Vec::new();
     for tool in offered
         .iter()

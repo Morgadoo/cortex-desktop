@@ -52,7 +52,7 @@ fn path(config_dir: &Path) -> PathBuf {
 }
 
 /// The user's own ACP agents.
-pub fn load(config_dir: &Path) -> Vec<AcpAgent> {
+pub(in crate::chat::models) fn load(config_dir: &Path) -> Vec<AcpAgent> {
     crate::chat::at_rest::read_to_string(path(config_dir))
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok())
@@ -139,7 +139,7 @@ fn content_text(v: &Value) -> Option<String> {
 }
 
 /// One `session/update` notification as an event.
-pub fn update_event(update: &Value) -> Option<Event> {
+pub(in crate::chat::models) fn update_event(update: &Value) -> Option<Event> {
     match update["sessionUpdate"].as_str()? {
         "agent_message_chunk" => content_text(&update["content"]).map(Event::Text),
         "agent_thought_chunk" => content_text(&update["content"]).map(Event::Thought),
@@ -152,7 +152,7 @@ pub fn update_event(update: &Value) -> Option<Event> {
 
 /// The option a permission answer picks: the first `allow_once` (or `allow_always`) when
 /// allowed, the first `reject_once` (or `reject_always`) when not.
-pub fn pick_option(options: &Value, allow: bool) -> Option<String> {
+pub(in crate::chat::models) fn pick_option(options: &Value, allow: bool) -> Option<String> {
     let opts = options.as_array()?;
     let kinds: &[&str] = if allow {
         &["allow_once", "allow_always"]
@@ -168,7 +168,7 @@ pub fn pick_option(options: &Value, allow: bool) -> Option<String> {
 
 /// Runs one prompt with an agent program: initialize, new session, prompt; streams events to
 /// `on_event` and asks `permit` about permission requests. Returns the stop reason.
-pub async fn drive<F, P, Fut>(
+pub(in crate::chat::models) async fn drive<F, P, Fut>(
     program: &Path,
     args: &[String],
     cwd: &Path,

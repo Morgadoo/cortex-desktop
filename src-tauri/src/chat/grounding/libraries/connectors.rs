@@ -12,7 +12,7 @@ pub const CONNECTOR_SOURCE: &str = "mcp:";
 pub(super) const CONNECTOR_MAX_DOCS: usize = 500;
 
 /// A fingerprint of a document's text, to see that it changed.
-pub fn text_fingerprint(text: &str) -> i64 {
+pub(in crate::chat::grounding) fn text_fingerprint(text: &str) -> i64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     text.hash(&mut h);

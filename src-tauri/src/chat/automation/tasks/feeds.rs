@@ -61,7 +61,7 @@ pub(super) fn attribute(xml: &str, tag: &str, name: &str) -> Option<String> {
 }
 
 /// The items of an RSS 2.0, RSS 1.0 or Atom feed, newest first as published.
-pub fn parse_feed(xml: &str) -> Vec<FeedItem> {
+pub(in crate::chat::automation) fn parse_feed(xml: &str) -> Vec<FeedItem> {
     let (open, close) = if xml.contains("<entry") {
         ("<entry", "</entry>")
     } else {
@@ -99,7 +99,7 @@ pub fn parse_feed(xml: &str) -> Vec<FeedItem> {
 
 /// Feed tasks whose feeds have new items: each with the prompt naming them. Feeds are fetched
 /// at most every 10 minutes per task.
-pub async fn take_new_feed_items(config_dir: &Path) -> Vec<Task> {
+pub(in crate::chat::automation) async fn take_new_feed_items(config_dir: &Path) -> Vec<Task> {
     let due: Vec<(String, String)> = load(config_dir)
         .into_iter()
         .filter(|t| t.enabled)

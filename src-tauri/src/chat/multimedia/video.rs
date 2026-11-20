@@ -33,7 +33,7 @@ pub struct Digest {
 
 /// Times to take frames at: spread over the video, avoiding the very first and last moments
 /// (often black).
-pub fn frame_times(seconds: f64, n: usize) -> Vec<f64> {
+pub(in crate::chat::multimedia) fn frame_times(seconds: f64, n: usize) -> Vec<f64> {
     if seconds <= 0.0 || n == 0 {
         return vec![0.0];
     }

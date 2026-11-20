@@ -125,7 +125,10 @@ fn keyed(c: &Capabilities) -> Vec<String> {
 }
 
 /// What a tool may reach at `now`: its grants, less each that has lapsed.
-pub fn active_grants(tool: &ScriptTool, now: DateTime<Utc>) -> Capabilities {
+pub(in crate::chat::toolkit) fn active_grants(
+    tool: &ScriptTool,
+    now: DateTime<Utc>,
+) -> Capabilities {
     let live = |kind: &str, item: &String| {
         tool.expires
             .get(&format!("{kind}:{item}"))
@@ -157,7 +160,7 @@ fn dir(config_dir: &Path) -> PathBuf {
 }
 
 /// Lowercase letters, digits and underscores, 3 to 40 of them, starting with a letter.
-pub fn valid_name(name: &str) -> bool {
+pub(in crate::chat::toolkit) fn valid_name(name: &str) -> bool {
     (3..=40).contains(&name.len())
         && name.starts_with(|c: char| c.is_ascii_lowercase())
         && name
@@ -176,7 +179,7 @@ fn path(config_dir: &Path, name: &str) -> Result<PathBuf, String> {
 }
 
 /// The full SHA-256 of `content`, as hex: what an approval pins.
-pub fn hash(content: &str) -> String {
+pub(in crate::chat::toolkit) fn hash(content: &str) -> String {
     use sha2::{Digest, Sha256};
     format!("{:x}", Sha256::digest(content.as_bytes()))
 }

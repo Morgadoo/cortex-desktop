@@ -60,7 +60,7 @@ pub(super) fn check_state(v: &serde_json::Value) -> String {
 }
 
 /// Reads `gh pr view --json …` output.
-pub fn parse_gh_pr(json: &str) -> Option<PrStatus> {
+pub(in crate::chat::toolkit) fn parse_gh_pr(json: &str) -> Option<PrStatus> {
     let v: serde_json::Value = serde_json::from_str(json).ok()?;
     let state = match (
         v["state"].as_str().unwrap_or_default(),
@@ -106,7 +106,7 @@ pub fn parse_gh_pr(json: &str) -> Option<PrStatus> {
 }
 
 /// Reads `glab mr view -F json` output.
-pub fn parse_glab_mr(json: &str) -> Option<PrStatus> {
+pub(in crate::chat::toolkit) fn parse_glab_mr(json: &str) -> Option<PrStatus> {
     let v: serde_json::Value = serde_json::from_str(json).ok()?;
     let state = match (
         v["state"].as_str().unwrap_or_default(),
@@ -150,7 +150,11 @@ pub fn parse_glab_mr(json: &str) -> Option<PrStatus> {
 
 /// The pull request of the folder's current branch, through `gh` or `glab`; `None` when there is
 /// none or neither tool is installed and signed in. `tools` names the programs (tests swap them).
-pub fn pr_status_with(dir: &str, gh: &str, glab: &str) -> Option<PrStatus> {
+pub(in crate::chat::toolkit) fn pr_status_with(
+    dir: &str,
+    gh: &str,
+    glab: &str,
+) -> Option<PrStatus> {
     let out = Command::new(gh)
         .current_dir(dir)
         .args([
@@ -179,7 +183,7 @@ pub fn pr_status(dir: &str) -> Option<PrStatus> {
 }
 
 /// `owner/repo` of a GitHub remote URL (https or ssh), if it is one.
-pub fn github_repo(remote: &str) -> Option<String> {
+pub(in crate::chat::toolkit) fn github_repo(remote: &str) -> Option<String> {
     let remote = remote.trim().trim_end_matches('/').trim_end_matches(".git");
     let path = remote
         .strip_prefix("https://github.com/")
@@ -194,7 +198,7 @@ pub fn github_repo(remote: &str) -> Option<String> {
 
 /// Host and repository path of a remote URL (https, ssh or scp-style), e.g.
 /// `("gitlab.com", "group/sub/app")`.
-pub fn remote_location(remote: &str) -> Option<(String, String)> {
+pub(in crate::chat::toolkit) fn remote_location(remote: &str) -> Option<(String, String)> {
     let remote = remote.trim().trim_end_matches('/').trim_end_matches(".git");
     let rest = if let Some(r) = remote
         .strip_prefix("https://")
@@ -217,7 +221,11 @@ pub fn remote_location(remote: &str) -> Option<(String, String)> {
 }
 
 /// The page that opens a pull (or merge) request on a known kind of host.
-pub fn compare_page(remote: &str, base: &str, branch: &str) -> Option<String> {
+pub(in crate::chat::toolkit) fn compare_page(
+    remote: &str,
+    base: &str,
+    branch: &str,
+) -> Option<String> {
     let (host, path) = remote_location(remote)?;
     let enc = |s: &str| {
         s.replace('%', "%25")
@@ -261,7 +269,7 @@ pub fn compare_page(remote: &str, base: &str, branch: &str) -> Option<String> {
 
 /// The link a host prints while pushing a new branch ("To create a merge request…"): GitLab,
 /// Gitea, Forgejo and Bitbucket do this, self-hosted ones included.
-pub fn link_from_push(output: &str) -> Option<String> {
+pub(in crate::chat::toolkit) fn link_from_push(output: &str) -> Option<String> {
     output.lines().find_map(|line| {
         let line = line.trim_start_matches("remote:").trim();
         let start = line.find("https://").or_else(|| line.find("http://"))?;

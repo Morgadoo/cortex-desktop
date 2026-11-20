@@ -234,7 +234,10 @@ pub fn changed_since(
 }
 
 /// Where a library keeps its documents' text (and their cached vectors).
-pub fn docs_dir(config_dir: &Path, library_id: &str) -> Result<PathBuf, String> {
+pub(in crate::chat::grounding) fn docs_dir(
+    config_dir: &Path,
+    library_id: &str,
+) -> Result<PathBuf, String> {
     Ok(lib_dir(config_dir, library_id)?.join("docs"))
 }
 

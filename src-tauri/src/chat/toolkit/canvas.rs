@@ -225,7 +225,7 @@ pub fn app_html(content: &str) -> String {
 
 /// The page of an app's own window: the app in the same sandboxed frame as inside Cortex, so it
 /// gets no more access in a window than it has in a chat.
-pub fn window_html(id: &str, title: &str, windows: bool) -> String {
+pub(in crate::chat::toolkit) fn window_html(id: &str, title: &str, windows: bool) -> String {
     let base = if windows {
         "http://cortexapp.localhost"
     } else {

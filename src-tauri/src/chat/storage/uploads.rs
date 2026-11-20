@@ -30,7 +30,7 @@ pub struct Upload {
 const REMOVED: &str = "[The user removed this file.]";
 
 /// `(name, body)` of each attachment block in `text`.
-pub fn attachments(text: &str) -> Vec<(String, String)> {
+pub(in crate::chat::storage) fn attachments(text: &str) -> Vec<(String, String)> {
     let mut out = Vec::new();
     let mut rest = text;
     while let Some(start) = rest.find("<attachment name=\"") {
@@ -48,7 +48,7 @@ pub fn attachments(text: &str) -> Vec<(String, String)> {
 }
 
 /// Every upload in one conversation.
-pub fn in_conversation(c: &store::Conversation) -> Vec<Upload> {
+pub(in crate::chat::storage) fn in_conversation(c: &store::Conversation) -> Vec<Upload> {
     let mut out = Vec::new();
     for (i, message) in c.messages.iter().enumerate() {
         let Message::User { content } = message else {

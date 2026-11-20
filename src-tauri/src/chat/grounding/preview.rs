@@ -77,7 +77,9 @@ fn meta(html: &str, keys: &[&str]) -> Option<String> {
 }
 
 /// Title, description, image URL and date from a page's HTML.
-pub fn parse(html: &str) -> (String, String, Option<String>, Option<String>) {
+pub(in crate::chat::grounding) fn parse(
+    html: &str,
+) -> (String, String, Option<String>, Option<String>) {
     let title = meta(html, &["og:title", "twitter:title"]).or_else(|| {
         regex::Regex::new(r"(?is)<title[^>]*>(.*?)</title>")
             .ok()?

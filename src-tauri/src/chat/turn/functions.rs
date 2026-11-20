@@ -101,7 +101,7 @@ pub fn models(config_dir: &Path) -> Vec<crate::chat::providers::ModelView> {
         .collect()
 }
 
-pub fn find_pipe(config_dir: &Path, reference: &str) -> Option<Function> {
+pub(in crate::chat::turn) fn find_pipe(config_dir: &Path, reference: &str) -> Option<Function> {
     let id = reference.strip_prefix(VENDOR)?.strip_prefix('/')?;
     list(config_dir)
         .into_iter()
@@ -186,13 +186,13 @@ fn filters(config_dir: &Path) -> Vec<Function> {
         .collect()
 }
 
-pub fn has_filters(config_dir: &Path) -> bool {
+pub(in crate::chat::turn) fn has_filters(config_dir: &Path) -> bool {
     !filters(config_dir).is_empty()
 }
 
 /// Passes a text through every filter in turn. `Err` is the reason a filter refused it. A filter
 /// that fails is reported in the log and skipped, so a bug in one does not stop the chat.
-pub async fn apply(
+pub(in crate::chat::turn) async fn apply(
     config_dir: &Path,
     conversation_id: &str,
     stage: &str,
@@ -221,7 +221,9 @@ pub async fn apply(
 }
 
 /// The conversation as `{role, content}` pairs, for a pipe.
-pub fn messages(conversation: &crate::chat::store::Conversation) -> Vec<Value> {
+pub(in crate::chat::turn) fn messages(
+    conversation: &crate::chat::store::Conversation,
+) -> Vec<Value> {
     crate::chat::store::turns(conversation)
         .iter()
         .map(|t| {

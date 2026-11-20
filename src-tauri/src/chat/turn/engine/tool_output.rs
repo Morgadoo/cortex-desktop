@@ -37,7 +37,7 @@ pub(super) fn save_tool_output(
 }
 
 /// A part of a saved long output, from `offset` characters, at most 20,000.
-pub fn read_tool_output(
+pub(in crate::chat::turn) fn read_tool_output(
     config_dir: &std::path::Path,
     conversation: &str,
     call_id: &str,

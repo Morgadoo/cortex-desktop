@@ -49,7 +49,7 @@ pub fn save(config_dir: &Path, e: &Extraction) -> Result<(), String> {
 }
 
 /// Text from Docling's answer: Markdown, else plain text.
-pub fn docling_text(body: &serde_json::Value) -> Option<String> {
+pub(in crate::chat::grounding) fn docling_text(body: &serde_json::Value) -> Option<String> {
     let doc = body
         .get("document")
         .or_else(|| body.get("documents").and_then(|d| d.get(0)))?;

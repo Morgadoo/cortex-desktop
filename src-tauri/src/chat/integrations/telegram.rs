@@ -113,12 +113,12 @@ pub async fn check(token: &str) -> Result<String, String> {
 }
 
 /// Splits an answer into Telegram-sized messages, at paragraph or line breaks where it can.
-pub fn chunks(text: &str) -> Vec<String> {
+pub(in crate::chat::integrations) fn chunks(text: &str) -> Vec<String> {
     chunks_of(text, MAX_MESSAGE)
 }
 
 /// Splits text into pieces of at most `max` characters, at line breaks where it can.
-pub fn chunks_of(text: &str, max: usize) -> Vec<String> {
+pub(in crate::chat::integrations) fn chunks_of(text: &str, max: usize) -> Vec<String> {
     let mut out = Vec::new();
     let mut current = String::new();
     for line in text.split_inclusive('\n') {
@@ -155,7 +155,12 @@ pub enum Action {
 }
 
 /// Decides what an update means, given who is paired and the open pairing code.
-pub fn decide(settings: &Settings, user_id: i64, user_name: &str, text: &str) -> Action {
+pub(in crate::chat::integrations) fn decide(
+    settings: &Settings,
+    user_id: i64,
+    user_name: &str,
+    text: &str,
+) -> Action {
     let text = text.trim();
     if text.is_empty() {
         return Action::Ignore;
@@ -210,7 +215,7 @@ async fn ask(
 /// Runs a message from a channel (Telegram, Slack) as a turn in a Cortex chat: the chat
 /// `existing` when it still exists, else a new one titled `title`. Returns the chat's id and the
 /// answer. Unattended unless `allow_changes`: nobody can approve from the channel.
-pub async fn run_message(
+pub(in crate::chat::integrations) async fn run_message(
     app: &AppHandle,
     config_dir: &Path,
     agent_id: Option<String>,

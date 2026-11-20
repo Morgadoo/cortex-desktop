@@ -249,7 +249,7 @@ fn weekday(code: &str) -> Option<Weekday> {
 
 /// The start times of an event from `from` to `to`, with its repeat rule (daily, weekly with
 /// days, monthly, yearly; interval, count, until; exceptions). At most `limit`.
-pub fn starts(
+pub(in crate::chat::grounding) fn starts(
     event: &Event,
     from: DateTime<Utc>,
     to: DateTime<Utc>,

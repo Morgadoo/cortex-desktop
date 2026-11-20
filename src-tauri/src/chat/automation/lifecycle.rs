@@ -40,7 +40,7 @@ impl Report {
 }
 
 /// One pass of the lifecycle, as of `now`: the kernel decides, this applies.
-pub async fn maintain(config_dir: &Path, now: DateTime<Utc>) -> Report {
+pub(in crate::chat::automation) async fn maintain(config_dir: &Path, now: DateTime<Utc>) -> Report {
     let artifacts = traces::artifacts(config_dir, None);
     // Each tool in use is judged on its calls since the user last approved it, within the week:
     // failures of a version the user has since replaced do not count against the new one.
@@ -155,7 +155,10 @@ fn state_path(config_dir: &Path) -> std::path::PathBuf {
 }
 
 /// Runs [`maintain`] at most once a day; returns its report when it ran.
-pub async fn daily(config_dir: &Path, now: DateTime<Utc>) -> Option<Report> {
+pub(in crate::chat::automation) async fn daily(
+    config_dir: &Path,
+    now: DateTime<Utc>,
+) -> Option<Report> {
     let path = state_path(config_dir);
     let state: State = crate::chat::at_rest::read_to_string(&path)
         .ok()

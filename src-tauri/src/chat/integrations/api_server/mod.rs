@@ -87,7 +87,7 @@ pub struct WidgetSettings {
 }
 
 /// An origin as browsers send it: scheme, host and port, no path or trailing slash.
-pub fn normalize_origin(origin: &str) -> String {
+pub(in crate::chat::integrations) fn normalize_origin(origin: &str) -> String {
     let o = origin.trim().trim_end_matches('/');
     match o.find("://") {
         Some(i) => match o[i + 3..].find('/') {
@@ -544,7 +544,9 @@ fn content_text(content: &Value) -> String {
 
 /// The request for an OpenAI-style body: system messages become the preamble, the last user
 /// message the prompt, the rest the history.
-pub fn request_of(body: &ChatBody) -> Result<CompletionRequest, String> {
+pub(in crate::chat::integrations) fn request_of(
+    body: &ChatBody,
+) -> Result<CompletionRequest, String> {
     let mut system: Vec<String> = Vec::new();
     let mut turns: Vec<Message> = Vec::new();
     for m in &body.messages {

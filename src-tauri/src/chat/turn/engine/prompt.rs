@@ -25,7 +25,9 @@ pub(super) const TONES: &[(&str, &str)] = &[
 /// The user's date and time zone, so "today" and deadlines mean what they mean to the user
 /// rather than in UTC. No clock time: the preamble then stays the same all day, which keeps
 /// provider prompt caches warm.
-pub fn local_time_line<Tz: chrono::TimeZone>(now: chrono::DateTime<Tz>) -> String
+pub(in crate::chat::turn) fn local_time_line<Tz: chrono::TimeZone>(
+    now: chrono::DateTime<Tz>,
+) -> String
 where
     Tz::Offset: std::fmt::Display,
 {
@@ -68,7 +70,10 @@ pub fn preamble(context: &Context<'_>, tools: &[ChatTool]) -> String {
 }
 
 /// The system prompt's base, as named sections (see [`crate::chat::prompt`]).
-pub fn preamble_prompt(context: &Context<'_>, tools: &[ChatTool]) -> crate::chat::prompt::Prompt {
+pub(in crate::chat::turn) fn preamble_prompt(
+    context: &Context<'_>,
+    tools: &[ChatTool],
+) -> crate::chat::prompt::Prompt {
     use crate::chat::prompt::{Prompt, ESSENTIAL, OPTIONAL, USEFUL};
     let default_instructions = Instructions::default();
     let instructions = context.instructions.unwrap_or(&default_instructions);

@@ -58,7 +58,7 @@ pub fn load(config_dir: &Path) -> Vec<RecentFile> {
 }
 
 /// Puts the files first in the list (moving any the list already has), within the limits.
-pub fn remember(list: &mut Vec<RecentFile>, files: Vec<RecentFile>) {
+pub(in crate::chat::storage) fn remember(list: &mut Vec<RecentFile>, files: Vec<RecentFile>) {
     for file in files.into_iter().rev() {
         if file.name.trim().is_empty() || file.size() == 0 || file.size() > MAX_FILE {
             continue;

@@ -290,7 +290,7 @@ pub fn delete(config_dir: &Path, id: &str) -> Result<Vec<Task>, String> {
 }
 
 /// Marks the due tasks as started and returns them; their next runs are computed from now.
-pub fn take_due(config_dir: &Path, now: DateTime<Utc>) -> Vec<Task> {
+pub(in crate::chat::automation) fn take_due(config_dir: &Path, now: DateTime<Utc>) -> Vec<Task> {
     let mut tasks = load(config_dir);
     let mut due = Vec::new();
     for task in tasks.iter_mut() {
@@ -329,7 +329,7 @@ mod scheduler;
 mod timing;
 mod webhooks;
 pub use feeds::*;
-pub use folders::*;
+pub(in crate::chat::automation) use folders::*;
 pub use scheduler::*;
 pub use timing::*;
 pub use webhooks::*;

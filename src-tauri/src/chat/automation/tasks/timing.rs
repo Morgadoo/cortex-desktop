@@ -58,7 +58,7 @@ pub(super) fn calendar(frequency: &Frequency) -> Option<crate::schedules::Timing
     }
 }
 
-pub fn next_run(
+pub(in crate::chat::automation) fn next_run(
     frequency: &Frequency,
     after: DateTime<Utc>,
 ) -> Result<Option<DateTime<Utc>>, String> {

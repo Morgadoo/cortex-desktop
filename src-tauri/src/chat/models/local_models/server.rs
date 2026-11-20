@@ -7,7 +7,7 @@ use super::*;
 pub(super) static PORT: tokio::sync::OnceCell<u16> = tokio::sync::OnceCell::const_new();
 
 /// The port of the built-in endpoint, started on first use.
-pub async fn endpoint() -> Result<u16, String> {
+pub(in crate::chat::models) async fn endpoint() -> Result<u16, String> {
     PORT.get_or_try_init(|| async {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
@@ -257,7 +257,7 @@ pub fn brief(
 }
 
 /// The model a `local/<id>` reference runs on, through the built-in endpoint.
-pub async fn connect(
+pub(in crate::chat::models) async fn connect(
     reference: &str,
 ) -> Result<rig_core::DynModel<rig_core::operation::Completion>, String> {
     let id = reference

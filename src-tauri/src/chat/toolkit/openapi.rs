@@ -74,7 +74,7 @@ fn slug(name: &str) -> String {
 }
 
 /// The spec's base URL: its first `servers` entry, resolved against where the spec came from.
-pub fn base_url(spec: &Value, spec_url: &str) -> Result<String, String> {
+pub(in crate::chat::toolkit) fn base_url(spec: &Value, spec_url: &str) -> Result<String, String> {
     let declared = spec
         .pointer("/servers/0/url")
         .and_then(Value::as_str)
@@ -123,7 +123,7 @@ pub struct Operation {
 }
 
 /// The operations a spec offers, with their argument schemas.
-pub fn operations(spec: &Value) -> Vec<Operation> {
+pub(in crate::chat::toolkit) fn operations(spec: &Value) -> Vec<Operation> {
     let mut out = Vec::new();
     let Some(paths) = spec.get("paths").and_then(Value::as_object) else {
         return out;
@@ -352,7 +352,7 @@ pub fn remove(config_dir: &Path, id: &str) -> Result<Vec<Server>, String> {
 }
 
 /// The request an operation call makes: method, full URL and JSON body.
-pub fn request_for(
+pub(in crate::chat::toolkit) fn request_for(
     base_url: &str,
     op: &Operation,
     input: &Value,

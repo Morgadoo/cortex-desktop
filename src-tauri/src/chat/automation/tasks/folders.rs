@@ -36,7 +36,10 @@ pub(super) fn folder_files(
 }
 
 /// The folder tasks whose folders have new, settled files: each with the prompt naming them.
-pub fn take_new_files(config_dir: &Path, now: std::time::SystemTime) -> Vec<Task> {
+pub(in crate::chat::automation) fn take_new_files(
+    config_dir: &Path,
+    now: std::time::SystemTime,
+) -> Vec<Task> {
     let mut tasks = load(config_dir);
     let mut started = Vec::new();
     let mut changed = false;

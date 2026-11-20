@@ -53,7 +53,10 @@ pub trait Connection: 'static {
 }
 
 /// Connects while the platform is on, reconnecting after a pause whenever a session ends.
-pub fn keep_connected<P: Connection>(app: &AppHandle, running: &'static OneAtATime) {
+pub(in crate::chat::integrations) fn keep_connected<P: Connection>(
+    app: &AppHandle,
+    running: &'static OneAtATime,
+) {
     let Some(claim) = running.claim() else {
         return;
     };
@@ -91,7 +94,7 @@ pub enum Gate<'a> {
 
 /// Sorts a message: `pair_command` followed by `pairing_code` pairs the sender; only paired users
 /// get answers.
-pub fn gate<'a, U: PartialEq>(
+pub(in crate::chat::integrations) fn gate<'a, U: PartialEq>(
     text: &'a str,
     pair_command: &str,
     pairing_code: Option<&str>,

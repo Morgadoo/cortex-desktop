@@ -46,7 +46,7 @@ fn bundled(code: &str) -> Option<&'static str> {
     }
 }
 
-pub fn catalog() -> Vec<String> {
+pub(in crate::chat::ui) fn catalog() -> Vec<String> {
     serde_json::from_str(CATALOG).unwrap_or_default()
 }
 
@@ -87,7 +87,7 @@ fn path(config_dir: &Path, code: &str) -> Option<PathBuf> {
 }
 
 /// What has been translated for `code` so far.
-pub fn load(config_dir: &Path, code: &str) -> BTreeMap<String, String> {
+pub(in crate::chat::ui) fn load(config_dir: &Path, code: &str) -> BTreeMap<String, String> {
     path(config_dir, code)
         .and_then(|p| crate::chat::at_rest::read_to_string(p).ok())
         .and_then(|t| serde_json::from_str(&t).ok())
@@ -124,13 +124,13 @@ fn placeholders(s: &str) -> Vec<String> {
     out
 }
 
-pub fn keeps_placeholders(original: &str, translated: &str) -> bool {
+pub(in crate::chat::ui) fn keeps_placeholders(original: &str, translated: &str) -> bool {
     placeholders(original) == placeholders(translated)
 }
 
 /// Reads the model's reply: a JSON object from each original to its translation. Entries that
 /// are missing, empty or lose a placeholder are dropped.
-pub fn parse_reply(reply: &str, asked: &[String]) -> BTreeMap<String, String> {
+pub(in crate::chat::ui) fn parse_reply(reply: &str, asked: &[String]) -> BTreeMap<String, String> {
     let Some(start) = reply.find('{') else {
         return BTreeMap::new();
     };

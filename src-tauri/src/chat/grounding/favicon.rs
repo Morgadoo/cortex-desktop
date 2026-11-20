@@ -20,7 +20,7 @@ const MAX_PAGE_BYTES: usize = 256 * 1024;
 const MISS_TTL: Duration = Duration::from_secs(7 * 86_400);
 
 /// A host name as it may appear in a URL: letters, digits, dots and hyphens.
-pub fn valid_host(host: &str) -> bool {
+pub(in crate::chat::grounding) fn valid_host(host: &str) -> bool {
     !host.is_empty()
         && host.len() <= 253
         && host.contains('.')
@@ -62,7 +62,7 @@ fn image_type(bytes: &[u8], content_type: &str) -> Option<&'static str> {
 }
 
 /// The icon a home page declares: `<link rel="icon" href="…">` and its variants.
-pub fn icon_link(html: &str) -> Option<String> {
+pub(in crate::chat::grounding) fn icon_link(html: &str) -> Option<String> {
     let tag = regex::Regex::new(r#"(?is)<link\b[^>]*>"#).ok()?;
     let rel = regex::Regex::new(r#"(?is)\brel\s*=\s*["']([^"']*)["']"#).ok()?;
     let href = regex::Regex::new(r#"(?is)\bhref\s*=\s*["']([^"']+)["']"#).ok()?;

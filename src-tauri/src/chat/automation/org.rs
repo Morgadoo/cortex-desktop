@@ -68,7 +68,7 @@ pub fn changes(arguments: &Value) -> bool {
 }
 
 /// Every agent under `id`, at every level (cycles in hand-edited files are ignored).
-pub fn descendants(all: &[Agent], id: &str) -> Vec<String> {
+pub(in crate::chat::automation) fn descendants(all: &[Agent], id: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut seen = HashSet::from([id.to_string()]);
     let mut frontier = vec![id.to_string()];
@@ -87,7 +87,7 @@ pub fn descendants(all: &[Agent], id: &str) -> Vec<String> {
 }
 
 /// How many managers are above `id` (0 for an agent that reports to nobody).
-pub fn level(all: &[Agent], id: &str) -> usize {
+pub(in crate::chat::automation) fn level(all: &[Agent], id: &str) -> usize {
     let mut seen = HashSet::from([id.to_string()]);
     let mut current = id.to_string();
     let mut n = 0;
@@ -144,7 +144,7 @@ fn narrowed_tools(manager: &Agent, requested: Option<&Value>) -> Result<Vec<Stri
 }
 
 /// One line per agent under `root`, indented by level.
-pub fn tree(all: &[Agent], root: &Agent) -> String {
+pub(in crate::chat::automation) fn tree(all: &[Agent], root: &Agent) -> String {
     fn walk(
         all: &[Agent],
         id: &str,

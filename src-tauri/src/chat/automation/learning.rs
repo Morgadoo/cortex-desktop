@@ -38,7 +38,7 @@ pub fn save(config_dir: &Path, learning: &Learning) -> Result<(), String> {
 }
 
 /// Whether the daily eval run is due (turned on, and a day since the last); marks it started.
-pub fn take_evals(config_dir: &Path, now: DateTime<Utc>) -> bool {
+pub(in crate::chat::automation) fn take_evals(config_dir: &Path, now: DateTime<Utc>) -> bool {
     let mut learning = load(config_dir);
     if !learning.nightly_evals
         || learning
@@ -52,7 +52,7 @@ pub fn take_evals(config_dir: &Path, now: DateTime<Utc>) -> bool {
 }
 
 /// Whether the weekly review is due; marks it started when it is.
-pub fn take_review(config_dir: &Path, now: DateTime<Utc>) -> bool {
+pub(in crate::chat::automation) fn take_review(config_dir: &Path, now: DateTime<Utc>) -> bool {
     let mut l = load(config_dir);
     let due = l.review_knowledge && l.last_review.is_none_or(|t| now - t >= Duration::days(7));
     if due {
@@ -65,7 +65,7 @@ pub fn take_review(config_dir: &Path, now: DateTime<Utc>) -> bool {
 /// The task the review runs as: not stored, so it never shows on the Scheduled page. It also
 /// diagnoses: the week's failures from the traces are in its prompt, so it reads what went wrong
 /// and proposes fixes alongside the knowledge clean-up (the kernel's Diagnose step).
-pub fn review_task(config_dir: &Path) -> crate::chat::tasks::Task {
+pub(in crate::chat::automation) fn review_task(config_dir: &Path) -> crate::chat::tasks::Task {
     let failures = crate::chat::traces::failure_report(config_dir, 7);
     crate::chat::tasks::Task {
         id: "knowledge-review".into(),

@@ -17,7 +17,7 @@ pub(super) const LANGUAGES: &[&str] = &[
 
 /// The mel filter bank Whisper was trained with (librosa's Slaney-style filters), `n_mels`
 /// rows of `n_fft / 2 + 1` weights.
-pub fn mel_filters(n_mels: usize) -> Vec<f32> {
+pub(in crate::chat::models) fn mel_filters(n_mels: usize) -> Vec<f32> {
     let sr = 16_000.0f64;
     let n_fft = 400usize;
     let bins = n_fft / 2 + 1;
@@ -59,7 +59,7 @@ pub fn mel_filters(n_mels: usize) -> Vec<f32> {
 }
 
 /// Mono 16 kHz samples from a WAV file (16-bit, 24-bit, 32-bit or float), mixed and resampled.
-pub fn wav_samples(bytes: &[u8]) -> Result<Vec<f32>, String> {
+pub(in crate::chat::models) fn wav_samples(bytes: &[u8]) -> Result<Vec<f32>, String> {
     if bytes.len() < 12 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
         return Err("not a WAV file".into());
     }
@@ -107,7 +107,7 @@ pub fn wav_samples(bytes: &[u8]) -> Result<Vec<f32>, String> {
 }
 
 /// Linear resampling, enough for speech.
-pub fn resample(samples: &[f32], from: usize, to: usize) -> Vec<f32> {
+pub(in crate::chat::models) fn resample(samples: &[f32], from: usize, to: usize) -> Vec<f32> {
     if from == to || samples.is_empty() {
         return samples.to_vec();
     }
@@ -364,7 +364,7 @@ pub fn transcribe(
 /// A live guess with a phrase said again and again ("Remind me Remind me Remind me"), which
 /// Whisper writes when it reads a second of audio, said once. The final transcript keeps
 /// everything as heard.
-pub fn collapse_repeats(text: &str) -> String {
+pub(in crate::chat::models) fn collapse_repeats(text: &str) -> String {
     let key = |w: &str| {
         w.trim_matches(|c: char| !c.is_alphanumeric())
             .to_lowercase()

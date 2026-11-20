@@ -118,7 +118,7 @@ fn is_noise(text: &str) -> bool {
 type Source<'a> = (&'a str, PathBuf, usize, &'a dyn Fn(&str) -> bool);
 
 /// Reads a session file of either agent, line by line.
-pub fn read(path: &Path) -> Result<Session, String> {
+pub(in crate::chat::storage) fn read(path: &Path) -> Result<Session, String> {
     let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let mut session = Session::default();
     for line in std::io::BufReader::new(file).lines() {

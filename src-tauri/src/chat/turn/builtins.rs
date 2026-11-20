@@ -23,7 +23,7 @@ pub enum Effect {
     Standing,
 }
 
-pub fn effect(name: &str) -> Effect {
+pub(in crate::chat::turn) fn effect(name: &str) -> Effect {
     match name {
         REMEMBER | FORGET | KNOWLEDGE_WRITE => Effect::Memory,
         SCHEDULE_TASK | SAVE_SKILL => Effect::Standing,
@@ -128,7 +128,7 @@ mod schemas;
 mod work;
 use insight::*;
 use recall::*;
-pub use schemas::*;
+pub(in crate::chat::turn) use schemas::*;
 pub(crate) use work::*;
 
 #[cfg(test)]

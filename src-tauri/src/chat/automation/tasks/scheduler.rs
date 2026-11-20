@@ -129,7 +129,7 @@ pub struct Maintenance {
 
 /// Starts what [`maintenance`] found due that needs the app: the eval suites on their model, and
 /// the review as a task. What already ran is logged.
-pub fn dispatch(
+pub(in crate::chat::automation) fn dispatch(
     due: Maintenance,
     start_evals: impl FnOnce(String),
     start_review: impl FnOnce(Task),
@@ -156,7 +156,10 @@ pub fn dispatch(
 /// The kernel's scheduled maintenance, as of `now`: the lifecycle pass and every written tool's
 /// regression checks once a day; the eval suites nightly and the knowledge review (with the
 /// week's failures) weekly, when turned on. The loop runs what this returns that needs the app.
-pub async fn maintenance(config_dir: &Path, now: DateTime<Utc>) -> Maintenance {
+pub(in crate::chat::automation) async fn maintenance(
+    config_dir: &Path,
+    now: DateTime<Utc>,
+) -> Maintenance {
     let mut due = Maintenance::default();
     if let Some(report) = crate::chat::lifecycle::daily(config_dir, now).await {
         due.lifecycle = Some(report);
