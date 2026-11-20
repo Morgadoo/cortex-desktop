@@ -85,22 +85,18 @@ pub fn chat_delete_library(app: AppHandle, id: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn chat_add_documents(app: AppHandle, id: String) -> Result<Option<AddResult>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog()
-        .file()
-        .set_title("Add documents")
-        .add_filter(
+    let Some(paths) = crate::support::dialogs::pick_files(
+        app.dialog().file().set_title("Add documents").add_filter(
             "Documents",
             &[
                 "pdf", "docx", "pptx", "odt", "odp", "md", "txt", "html", "htm", "csv", "json",
                 "yaml", "yml", "xml", "rs", "py", "js", "ts", "go", "java", "c", "cpp", "h", "sql",
                 "log", "png", "jpg", "jpeg", "webp", "gif",
             ],
-        )
-        .pick_files(move |paths| {
-            let _ = tx.send(paths);
-        });
-    let Some(paths) = rx.await.map_err(|e| e.to_string())? else {
+        ),
+    )
+    .await?
+    else {
         return Ok(None);
     };
     let dir = config_dir(&app)?;

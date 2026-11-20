@@ -149,15 +149,14 @@ pub fn chat_acp_agents(
 #[tauri::command]
 pub async fn chat_import_agent(app: AppHandle) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog()
-        .file()
-        .set_title("Import an agent")
-        .add_filter("Agent", &["json"])
-        .pick_file(move |path| {
-            let _ = tx.send(path);
-        });
-    let Some(path) = rx.await.map_err(|e| e.to_string())? else {
+    let Some(path) = crate::support::dialogs::pick_file(
+        app.dialog()
+            .file()
+            .set_title("Import an agent")
+            .add_filter("Agent", &["json"]),
+    )
+    .await?
+    else {
         return Ok(None);
     };
     let path = path.into_path().map_err(|e| e.to_string())?;

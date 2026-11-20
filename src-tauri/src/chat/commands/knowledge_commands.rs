@@ -403,15 +403,14 @@ pub fn chat_set_skill_enabled(
 #[tauri::command]
 pub async fn chat_import_skill(app: AppHandle) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog()
-        .file()
-        .set_title("Import a skill (SKILL.md)")
-        .add_filter("Skill", &["md"])
-        .pick_file(move |path| {
-            let _ = tx.send(path);
-        });
-    let Some(path) = rx.await.map_err(|e| e.to_string())? else {
+    let Some(path) = crate::support::dialogs::pick_file(
+        app.dialog()
+            .file()
+            .set_title("Import a skill (SKILL.md)")
+            .add_filter("Skill", &["md"]),
+    )
+    .await?
+    else {
         return Ok(None);
     };
     let path = path.into_path().map_err(|e| e.to_string())?;
@@ -551,14 +550,13 @@ pub async fn chat_import_plugin(
         }
         None => {
             use tauri_plugin_dialog::DialogExt;
-            let (tx, rx) = tokio::sync::oneshot::channel();
-            app.dialog()
-                .file()
-                .set_title("Choose a Claude plugin or marketplace folder")
-                .pick_folder(move |path| {
-                    let _ = tx.send(path);
-                });
-            let Some(path) = rx.await.map_err(|e| e.to_string())? else {
+            let Some(path) = crate::support::dialogs::pick_folder(
+                app.dialog()
+                    .file()
+                    .set_title("Choose a Claude plugin or marketplace folder"),
+            )
+            .await?
+            else {
                 return Ok(None);
             };
             let path = path.into_path().map_err(|e| e.to_string())?;

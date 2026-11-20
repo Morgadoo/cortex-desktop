@@ -151,18 +151,14 @@ pub async fn chat_save_file(app: AppHandle, name: String, data: String) -> Resul
         .filter(|c| !matches!(c, '/' | '\\' | ':') && !c.is_control())
         .take(120)
         .collect();
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog()
-        .file()
-        .set_file_name(if name.is_empty() {
+    let Some(path) =
+        crate::support::dialogs::save_file(app.dialog().file().set_file_name(if name.is_empty() {
             "file".to_string()
         } else {
             name
-        })
-        .save_file(move |path| {
-            let _ = tx.send(path);
-        });
-    let Some(path) = rx.await.map_err(|e| e.to_string())? else {
+        }))
+        .await?
+    else {
         return Ok(false);
     };
     crate::chat::at_rest::write(path.into_path().map_err(|e| e.to_string())?, bytes)

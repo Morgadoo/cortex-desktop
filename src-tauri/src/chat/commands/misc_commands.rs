@@ -343,15 +343,14 @@ pub async fn chat_save_bytes(app: AppHandle, name: String, data: String) -> Resu
         .decode(data.as_bytes())
         .map_err(|e| e.to_string())?;
     let ext = name.rsplit('.').next().unwrap_or("bin").to_string();
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog()
-        .file()
-        .set_file_name(&name)
-        .add_filter(ext.to_uppercase(), &[ext.as_str()])
-        .save_file(move |path| {
-            let _ = tx.send(path);
-        });
-    let Some(path) = rx.await.map_err(|e| e.to_string())? else {
+    let Some(path) = crate::support::dialogs::save_file(
+        app.dialog()
+            .file()
+            .set_file_name(&name)
+            .add_filter(ext.to_uppercase(), &[ext.as_str()]),
+    )
+    .await?
+    else {
         return Ok(false);
     };
     let path = path.into_path().map_err(|e| e.to_string())?;

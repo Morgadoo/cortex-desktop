@@ -230,14 +230,9 @@ pub async fn chat_save_output(
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog()
-        .file()
-        .set_file_name(&name)
-        .save_file(move |p| {
-            let _ = tx.send(p);
-        });
-    let Some(target) = rx.await.map_err(|e| e.to_string())? else {
+    let Some(target) =
+        crate::support::dialogs::save_file(app.dialog().file().set_file_name(&name)).await?
+    else {
         return Ok(false);
     };
     std::fs::write(target.into_path().map_err(|e| e.to_string())?, bytes)

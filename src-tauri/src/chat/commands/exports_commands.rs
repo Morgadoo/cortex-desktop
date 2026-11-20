@@ -22,17 +22,13 @@ pub async fn chat_export_audit(
     } else {
         (crate::chat::audit::to_csv(&entries), "csv")
     };
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog()
-        .file()
-        .set_file_name(format!(
+    let Some(target) =
+        crate::support::dialogs::save_file(app.dialog().file().set_file_name(format!(
             "cortex-activity-{}.{ext}",
             chrono::Local::now().format("%Y-%m-%d")
-        ))
-        .save_file(move |p| {
-            let _ = tx.send(p);
-        });
-    let Some(target) = rx.await.map_err(|e| e.to_string())? else {
+        )))
+        .await?
+    else {
         return Ok(false);
     };
     std::fs::write(target.into_path().map_err(|e| e.to_string())?, text)
@@ -49,14 +45,13 @@ pub async fn chat_export_skill_catalog(
     author: String,
 ) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog()
-        .file()
-        .set_title("Where to write the catalogue")
-        .pick_folder(move |p| {
-            let _ = tx.send(p);
-        });
-    let Some(folder) = rx.await.map_err(|e| e.to_string())? else {
+    let Some(folder) = crate::support::dialogs::pick_folder(
+        app.dialog()
+            .file()
+            .set_title("Where to write the catalogue"),
+    )
+    .await?
+    else {
         return Ok(None);
     };
     let folder = folder.into_path().map_err(|e| e.to_string())?;
@@ -70,15 +65,14 @@ pub async fn chat_import_conversations(
     app: AppHandle,
 ) -> Result<Option<crate::chat::import::ImportReport>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog()
-        .file()
-        .set_title("Import a ChatGPT or Claude export")
-        .add_filter("Export", &["zip", "json"])
-        .pick_file(move |path| {
-            let _ = tx.send(path);
-        });
-    let Some(path) = rx.await.map_err(|e| e.to_string())? else {
+    let Some(path) = crate::support::dialogs::pick_file(
+        app.dialog()
+            .file()
+            .set_title("Import a ChatGPT or Claude export")
+            .add_filter("Export", &["zip", "json"]),
+    )
+    .await?
+    else {
         return Ok(None);
     };
     let path = path.into_path().map_err(|e| e.to_string())?;
@@ -96,15 +90,14 @@ pub async fn chat_export_conversation(app: AppHandle, id: String) -> Result<bool
     let conversation = store::load_conversation(&config_dir(&app)?, &id)?;
     crate::chat::traces::signal(&config_dir(&app)?, &id, None, "exported");
     let text = conversation_markdown(&conversation);
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog()
-        .file()
-        .set_file_name(format!("{}.md", sanitize_file_name(&conversation.title)))
-        .add_filter("Markdown", &["md"])
-        .save_file(move |path| {
-            let _ = tx.send(path);
-        });
-    let Some(path) = rx.await.map_err(|e| e.to_string())? else {
+    let Some(path) = crate::support::dialogs::save_file(
+        app.dialog()
+            .file()
+            .set_file_name(format!("{}.md", sanitize_file_name(&conversation.title)))
+            .add_filter("Markdown", &["md"]),
+    )
+    .await?
+    else {
         return Ok(false);
     };
     let path = path.into_path().map_err(|e| e.to_string())?;
@@ -119,7 +112,6 @@ pub async fn chat_export_canvas(app: AppHandle, id: String) -> Result<bool, Stri
     let canvas = crate::chat::canvas::load(&config_dir(&app)?, &id)?;
     let sheet = canvas.kind == "sheet";
     let web_app = canvas.kind == "app";
-    let (tx, rx) = tokio::sync::oneshot::channel();
     let dialog = app.dialog().file();
     let multi_file = web_app && crate::chat::canvas::app_files(canvas.content()).is_some();
     let dialog = if multi_file {
@@ -142,10 +134,7 @@ pub async fn chat_export_canvas(app: AppHandle, id: String) -> Result<bool, Stri
             .set_file_name(format!("{}.md", sanitize_file_name(&canvas.title)))
             .add_filter("Markdown", &["md"])
     };
-    dialog.save_file(move |path| {
-        let _ = tx.send(path);
-    });
-    let Some(path) = rx.await.map_err(|e| e.to_string())? else {
+    let Some(path) = crate::support::dialogs::save_file(dialog).await? else {
         return Ok(false);
     };
     let path = path.into_path().map_err(|e| e.to_string())?;
@@ -215,15 +204,14 @@ pub async fn chat_export_diagnostics(app: AppHandle) -> Result<bool, String> {
         "localApiRecent": crate::chat::api_server::recent().into_iter().take(20).map(|e| serde_json::json!({ "endpoint": e.endpoint, "status": e.status, "ms": e.ms })).collect::<Vec<_>>(),
         "createdAt": chrono::Utc::now(),
     });
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog()
-        .file()
-        .set_file_name("cortex-diagnostics.json")
-        .add_filter("JSON", &["json"])
-        .save_file(move |path| {
-            let _ = tx.send(path);
-        });
-    let Some(path) = rx.await.map_err(|e| e.to_string())? else {
+    let Some(path) = crate::support::dialogs::save_file(
+        app.dialog()
+            .file()
+            .set_file_name("cortex-diagnostics.json")
+            .add_filter("JSON", &["json"]),
+    )
+    .await?
+    else {
         return Ok(false);
     };
     let path = path.into_path().map_err(|e| e.to_string())?;
@@ -243,15 +231,14 @@ pub async fn chat_import_archive(
     library_id: String,
 ) -> Result<Option<crate::chat::libraries::ArchiveReport>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog()
-        .file()
-        .set_title("Import an export (Notion, Confluence, notes)")
-        .add_filter("ZIP archive", &["zip"])
-        .pick_file(move |path| {
-            let _ = tx.send(path);
-        });
-    let Some(path) = rx.await.map_err(|e| e.to_string())? else {
+    let Some(path) = crate::support::dialogs::pick_file(
+        app.dialog()
+            .file()
+            .set_title("Import an export (Notion, Confluence, notes)")
+            .add_filter("ZIP archive", &["zip"]),
+    )
+    .await?
+    else {
         return Ok(None);
     };
     let path = path.into_path().map_err(|e| e.to_string())?;
@@ -282,18 +269,17 @@ pub async fn chat_export_agent(app: AppHandle, id: String) -> Result<bool, Strin
         .filter_map(|s| serde_json::to_value(s).ok())
         .collect();
     bundle.mcp_servers = crate::chat::agents::shareable_mcp_servers(&bundle.agent, servers);
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog()
-        .file()
-        .set_file_name(format!(
-            "{}.cortex-agent.json",
-            sanitize_file_name(&bundle.agent.name)
-        ))
-        .add_filter("Agent", &["json"])
-        .save_file(move |path| {
-            let _ = tx.send(path);
-        });
-    let Some(path) = rx.await.map_err(|e| e.to_string())? else {
+    let Some(path) = crate::support::dialogs::save_file(
+        app.dialog()
+            .file()
+            .set_file_name(format!(
+                "{}.cortex-agent.json",
+                sanitize_file_name(&bundle.agent.name)
+            ))
+            .add_filter("Agent", &["json"]),
+    )
+    .await?
+    else {
         return Ok(false);
     };
     let path = path.into_path().map_err(|e| e.to_string())?;
@@ -311,15 +297,14 @@ pub async fn chat_export_conversation_json(app: AppHandle, id: String) -> Result
     use tauri_plugin_dialog::DialogExt;
     let conversation = store::load_conversation(&config_dir(&app)?, &id)?;
     let view = store::view(&conversation);
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog()
-        .file()
-        .set_file_name(format!("{}.json", sanitize_file_name(&conversation.title)))
-        .add_filter("JSON", &["json"])
-        .save_file(move |path| {
-            let _ = tx.send(path);
-        });
-    let Some(path) = rx.await.map_err(|e| e.to_string())? else {
+    let Some(path) = crate::support::dialogs::save_file(
+        app.dialog()
+            .file()
+            .set_file_name(format!("{}.json", sanitize_file_name(&conversation.title)))
+            .add_filter("JSON", &["json"]),
+    )
+    .await?
+    else {
         return Ok(false);
     };
     let path = path.into_path().map_err(|e| e.to_string())?;
@@ -345,14 +330,10 @@ pub async fn chat_export_conversation_json(app: AppHandle, id: String) -> Result
 #[tauri::command]
 pub async fn chat_export_all(app: AppHandle) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog()
-        .file()
-        .set_title("Export to folder")
-        .pick_folder(move |path| {
-            let _ = tx.send(path);
-        });
-    let Some(target) = rx.await.map_err(|e| e.to_string())? else {
+    let Some(target) =
+        crate::support::dialogs::pick_folder(app.dialog().file().set_title("Export to folder"))
+            .await?
+    else {
         return Ok(None);
     };
     let target = target.into_path().map_err(|e| e.to_string())?;
@@ -399,15 +380,14 @@ pub async fn chat_save_shared_page(
     if html.len() > 64 * 1024 * 1024 {
         return Err("The conversation is too large to save as one page.".into());
     }
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog()
-        .file()
-        .set_file_name(format!("{}.html", sanitize_file_name(&title)))
-        .add_filter("Web page", &["html"])
-        .save_file(move |path| {
-            let _ = tx.send(path);
-        });
-    let Some(path) = rx.await.map_err(|e| e.to_string())? else {
+    let Some(path) = crate::support::dialogs::save_file(
+        app.dialog()
+            .file()
+            .set_file_name(format!("{}.html", sanitize_file_name(&title)))
+            .add_filter("Web page", &["html"]),
+    )
+    .await?
+    else {
         return Ok(false);
     };
     let path = path.into_path().map_err(|e| e.to_string())?;

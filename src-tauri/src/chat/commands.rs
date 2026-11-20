@@ -277,14 +277,10 @@ pub async fn chat_add_library_folder(
     id: String,
 ) -> Result<Option<crate::chat::libraries::SyncReport>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog()
-        .file()
-        .set_title("Mirror a folder")
-        .pick_folder(move |path| {
-            let _ = tx.send(path);
-        });
-    let Some(path) = rx.await.map_err(|e| e.to_string())? else {
+    let Some(path) =
+        crate::support::dialogs::pick_folder(app.dialog().file().set_title("Mirror a folder"))
+            .await?
+    else {
         return Ok(None);
     };
     let folder = path.into_path().map_err(|e| e.to_string())?;
