@@ -6,7 +6,6 @@ build/
 dmg/
 !src-tauri/dmg/
 
-docs/
 
 # Build output: webview/ and the per-run E2E stub, built by scripts/build-webview.mjs and
 # e2e/build-stub.sh
