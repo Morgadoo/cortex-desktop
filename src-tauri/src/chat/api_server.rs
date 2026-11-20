@@ -134,8 +134,7 @@ pub fn save(config_dir: &Path, settings: &ApiServerSettings) -> Result<(), Strin
 }
 
 fn secrets() -> Result<crate::tools::auth::Secrets, String> {
-    let account = crate::account::AccountId::parse(super::LOCAL_ACCOUNT)?;
-    Ok(crate::tools::auth::keychain_secrets(account))
+    crate::chat::secrets::local()
 }
 
 /// The token requests must carry, created on first use.

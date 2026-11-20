@@ -340,10 +340,7 @@ pub async fn view(
             Err(e) => return err(e),
         }
     }
-    Outcome {
-        text: out.to_string(),
-        is_error: false,
-    }
+    Outcome::ok(out.to_string())
 }
 
 /// Opens an agent's profile in a visible browser window, to sign in to sites for it.

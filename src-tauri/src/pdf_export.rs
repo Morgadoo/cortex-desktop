@@ -52,9 +52,7 @@ pub async fn export_pdf(
     title: Option<String>,
     file_name: String,
 ) -> Result<PdfExportResult, String> {
-    if webview.label() != crate::main_window::LABEL {
-        return Err("PDF export requires the main webview".into());
-    }
+    crate::main_window::require(webview.label(), "PDF export requires the main webview")?;
     if html.len() > MAX_HTML_BYTES {
         return Err("The document is too large to export".into());
     }

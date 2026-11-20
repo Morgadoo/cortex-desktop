@@ -23,10 +23,6 @@ use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use super::LOCAL_ACCOUNT;
-use crate::account::AccountId;
-use crate::tools::auth::keychain_secrets;
-
 /// The folder Cortex makes inside the chosen one.
 pub const DIR_NAME: &str = "Cortex Sync";
 const MAGIC: &[u8] = b"LUMOSYNC1";
@@ -555,13 +551,11 @@ pub fn sync_once(config_dir: &Path, remote: &Path, key: &[u8; 32]) -> Report {
 // ---- passphrase and running ----------------------------------------------------------------
 
 pub async fn passphrase() -> Result<Option<String>, String> {
-    let account = AccountId::parse(LOCAL_ACCOUNT)?;
-    keychain_secrets(account).load(PASSPHRASE).await
+    crate::chat::secrets::local()?.load(PASSPHRASE).await
 }
 
 pub async fn set_passphrase(value: Option<&str>) -> Result<(), String> {
-    let account = AccountId::parse(LOCAL_ACCOUNT)?;
-    let store = keychain_secrets(account);
+    let store = crate::chat::secrets::local()?;
     match value {
         Some(v) => store.store(PASSPHRASE, v).await,
         None => store.delete(PASSPHRASE).await,

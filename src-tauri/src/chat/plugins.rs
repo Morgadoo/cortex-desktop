@@ -315,10 +315,7 @@ pub async fn read_market(link: &str) -> Result<Option<Vec<MarketEntry>>, String>
         ),
         _ => return Err("Give a link to a repository, like https://github.com/owner/repo.".into()),
     };
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = crate::support::http::client(std::time::Duration::from_secs(30))?;
     for reference in refs {
         let prefix = if folder.is_empty() {
             String::new()
@@ -378,15 +375,7 @@ pub fn front_matter(text: &str) -> (BTreeMap<String, String>, String) {
 
 /// A name as skills and ids allow it: lowercase letters, digits and hyphens.
 pub fn slug(name: &str) -> String {
-    let mut out = String::new();
-    for c in name.trim().chars().flat_map(char::to_lowercase) {
-        if c.is_ascii_alphanumeric() {
-            out.push(c);
-        } else if !out.ends_with('-') && !out.is_empty() {
-            out.push('-');
-        }
-    }
-    out.trim_matches('-').chars().take(60).collect()
+    crate::support::names::slug(name, 60)
 }
 
 fn text(files: &Files, path: &str) -> Option<String> {

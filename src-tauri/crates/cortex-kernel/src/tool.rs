@@ -65,6 +65,24 @@ pub struct Outcome {
     pub is_error: bool,
 }
 
+impl Outcome {
+    /// A result for the model.
+    pub fn ok(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            is_error: false,
+        }
+    }
+
+    /// A failure the model is told about, so it can try another way.
+    pub fn err(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            is_error: true,
+        }
+    }
+}
+
 pub fn value_text(value: &Value) -> String {
     match value {
         Value::String(text) => text.clone(),

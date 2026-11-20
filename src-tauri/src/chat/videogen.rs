@@ -137,7 +137,7 @@ fn base_url(file: &ProvidersFile, vendor: &str) -> String {
 
 async fn key(file: &ProvidersFile, vendor: &str) -> Result<String, String> {
     let saved = if file.providers.get(vendor).is_some_and(|s| s.has_key) {
-        super::engine::api_key(vendor).await?
+        super::secrets::api_key(vendor).await?
     } else {
         None
     };
@@ -154,10 +154,7 @@ pub async fn make_at(
     body: &Value,
     poll_every: Duration,
 ) -> Result<Vec<u8>, String> {
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(120))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = crate::support::http::client(Duration::from_secs(120))?;
     let started = client
         .post(format!("{base}/videos/generations"))
         .bearer_auth(key)
@@ -248,10 +245,7 @@ pub async fn generate(config_dir: &Path, conversation_id: &str, args: &Value) ->
             text,
             is_error: false,
         },
-        Err(e) => Outcome {
-            text: e,
-            is_error: true,
-        },
+        Err(e) => Outcome::err(e),
     }
 }
 

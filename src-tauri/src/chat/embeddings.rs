@@ -100,8 +100,7 @@ pub fn ready(settings: &EmbeddingSettings) -> bool {
 }
 
 async fn key() -> Result<String, String> {
-    let account = crate::account::AccountId::parse(super::LOCAL_ACCOUNT)?;
-    Ok(crate::tools::auth::keychain_secrets(account)
+    Ok(crate::chat::secrets::local()?
         .load(SECRET)
         .await?
         .unwrap_or_default())
@@ -387,8 +386,7 @@ pub async fn search(
 }
 
 async fn rerank_key() -> Result<String, String> {
-    let account = crate::account::AccountId::parse(super::LOCAL_ACCOUNT)?;
-    Ok(crate::tools::auth::keychain_secrets(account)
+    Ok(crate::chat::secrets::local()?
         .load(RERANK_SECRET)
         .await?
         .unwrap_or_default())
@@ -402,10 +400,7 @@ pub async fn rerank(
     candidates: &[Passage],
     k: usize,
 ) -> Result<Vec<(usize, f64)>, String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = crate::support::http::client(std::time::Duration::from_secs(30))?;
     let documents: Vec<&str> = candidates.iter().map(|p| p.text.as_str()).collect();
     let url = format!("{}/rerank", settings.rerank_url.trim_end_matches('/'));
     let mut request = client.post(&url).json(&serde_json::json!({
@@ -524,10 +519,7 @@ pub mod qdrant {
         path: &str,
         body: Option<Value>,
     ) -> Result<(u16, Value), String> {
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(60))
-            .build()
-            .map_err(|e| e.to_string())?;
+        let client = crate::support::http::client(std::time::Duration::from_secs(60))?;
         let mut request = client.request(method, format!("{}{path}", settings.qdrant_url));
         let key = key().await;
         if !key.is_empty() {

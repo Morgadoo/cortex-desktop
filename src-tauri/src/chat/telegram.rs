@@ -58,7 +58,7 @@ fn api_base() -> String {
 }
 
 pub async fn token() -> Option<String> {
-    super::engine::api_key(SECRET)
+    super::secrets::api_key(SECRET)
         .await
         .ok()
         .flatten()
@@ -66,8 +66,7 @@ pub async fn token() -> Option<String> {
 }
 
 pub async fn set_token(token: &str) -> Result<(), String> {
-    let account = crate::account::AccountId::parse(super::LOCAL_ACCOUNT)?;
-    let secrets = crate::tools::auth::keychain_secrets(account);
+    let secrets = crate::chat::secrets::local()?;
     if token.trim().is_empty() {
         secrets.delete(&super::providers::secret_name(SECRET)).await
     } else {
@@ -78,10 +77,7 @@ pub async fn set_token(token: &str) -> Result<(), String> {
 }
 
 fn client() -> reqwest::Client {
-    reqwest::Client::builder()
-        .timeout(Duration::from_secs(60))
-        .build()
-        .unwrap_or_default()
+    crate::support::http::client(Duration::from_secs(60)).unwrap_or_default()
 }
 
 async fn call(token: &str, method: &str, body: Value) -> Result<Value, String> {

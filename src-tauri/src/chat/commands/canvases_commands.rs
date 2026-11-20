@@ -41,10 +41,7 @@ pub async fn chat_set_image_server(
             return Err("Give the server's address, like http://127.0.0.1:7860.".into());
         }
         // A quick check that something answers there.
-        let ok = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(8))
-            .build()
-            .map_err(|e| e.to_string())?
+        let ok = crate::support::http::client(std::time::Duration::from_secs(8))?
             .get(format!("{u}/sdapi/v1/sd-models"))
             .send()
             .await;

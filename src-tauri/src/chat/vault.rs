@@ -113,8 +113,7 @@ pub async fn save(
         return Err("Give the secret's value.".into());
     }
     if let Some(value) = value {
-        let account = AccountId::parse(LOCAL_ACCOUNT)?;
-        keychain_secrets(account)
+        crate::chat::secrets::local()?
             .store(&keychain_name(&secret.name), &value)
             .await?;
     }
@@ -131,8 +130,7 @@ pub async fn delete(config_dir: &Path, name: &str) -> Result<Vec<Secret>, String
     let mut all = list(config_dir);
     all.retain(|s| s.name != name);
     write(config_dir, &all)?;
-    let account = AccountId::parse(LOCAL_ACCOUNT)?;
-    keychain_secrets(account)
+    crate::chat::secrets::local()?
         .delete(&keychain_name(name))
         .await?;
     Ok(all)

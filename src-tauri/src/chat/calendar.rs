@@ -48,10 +48,7 @@ pub async fn fetch(location: &str) -> Result<String, String> {
 }
 
 async fn fetch_url(url: &str) -> Result<String, String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = crate::support::http::client(std::time::Duration::from_secs(30))?;
     let response = client.get(url).send().await.map_err(|e| e.to_string())?;
     if !response.status().is_success() {
         return Err(format!("the calendar link answered {}", response.status()));

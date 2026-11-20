@@ -6,9 +6,7 @@ use tauri::{AppHandle, Manager, State};
 use super::engine::{self, TurnRequest};
 use super::providers::{self, ModelView, ProviderView};
 use super::store::{self, ConversationSummary, ConversationView, Instructions, Project};
-use super::{ChatState, LOCAL_ACCOUNT};
-use crate::account::AccountId;
-use crate::tools::auth::keychain_secrets;
+use super::ChatState;
 
 // The commands, by area; each is re-exported here, where the app's handler list names them.
 mod agents_commands;
@@ -41,7 +39,7 @@ fn config_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
 }
 
 fn secrets() -> Result<crate::tools::auth::Secrets, String> {
-    Ok(keychain_secrets(AccountId::parse(LOCAL_ACCOUNT)?))
+    super::secrets::local()
 }
 
 #[derive(Debug, Deserialize)]

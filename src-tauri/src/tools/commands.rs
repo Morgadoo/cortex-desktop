@@ -287,9 +287,10 @@ pub async fn register_schedule_execution_context(
     app_handle: AppHandle,
     coordinator: State<'_, ScheduleCoordinator>,
 ) -> Result<ScheduleToolContext, String> {
-    if webview.label() != crate::main_window::LABEL {
-        return Err("schedule execution requires the main webview".into());
-    }
+    crate::main_window::require(
+        webview.label(),
+        "schedule execution requires the main webview",
+    )?;
     record_request_account(&app_handle, Some(&user_id)).await?;
     coordinator
         .register_execution_context(
@@ -322,9 +323,10 @@ pub async fn invoke_tool(
         .map(|context| context.run_id.clone());
     let authorization = match schedule_context {
         Some(context) => {
-            if webview.label() != crate::main_window::LABEL {
-                return Err("schedule execution requires the main webview".into());
-            }
+            crate::main_window::require(
+                webview.label(),
+                "schedule execution requires the main webview",
+            )?;
             let authorization_connector = if connector_id == "tool_results"
                 && matches!(tool_name.as_str(), "read" | "complete_file")
             {

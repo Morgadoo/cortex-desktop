@@ -239,10 +239,7 @@ async fn execute_external(
             text,
             is_error: true,
         },
-        Err(e) => Outcome {
-            text: e.to_ipc_string(),
-            is_error: true,
-        },
+        Err(e) => Outcome::err(e.to_ipc_string()),
     }
 }
 
@@ -273,10 +270,7 @@ pub async fn execute(
         _ => tool,
     };
     let Some(connector_id) = tool.connector_id.as_deref() else {
-        return Outcome {
-            text: "This tool is handled by the app.".into(),
-            is_error: true,
-        };
+        return Outcome::err("This tool is handled by the app.");
     };
     if mode == ApprovalMode::Plan && needs_approval(tool, &input, mode) {
         return Outcome {
@@ -352,14 +346,8 @@ pub async fn execute(
         )
         .await
     {
-        Ok(value) => Outcome {
-            text: value_text(&value),
-            is_error: false,
-        },
-        Err(e) => Outcome {
-            text: e.to_ipc_string(),
-            is_error: true,
-        },
+        Ok(value) => Outcome::ok(value_text(&value)),
+        Err(e) => Outcome::err(e.to_ipc_string()),
     }
 }
 

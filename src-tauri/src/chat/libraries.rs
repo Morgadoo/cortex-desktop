@@ -765,11 +765,7 @@ pub async fn add_web_page(
     if !matches!(parsed.scheme(), "http" | "https") {
         return Err("Only http and https pages can be saved.".into());
     }
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(25))
-        .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Cortex")
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = crate::support::http::browser_client(std::time::Duration::from_secs(25))?;
     let response = client
         .get(parsed.clone())
         .send()

@@ -26,9 +26,7 @@ use super::{
     agents, builtins, canvas, context, deferred, knowledge, libraries, media, memory, privacy,
     providers, sandbox, skills, subagents, tasks, terminal,
 };
-use super::{ChatState, EVENT, LOCAL_ACCOUNT};
-use crate::account::AccountId;
-use crate::tools::auth::keychain_secrets;
+use super::{ChatState, EVENT};
 use crate::tools::registry::ApprovalDecision;
 
 /// Model calls in one turn before the engine stops a tool loop that does not converge. The last
@@ -497,14 +495,6 @@ pub fn preamble_prompt(context: &Context<'_>, tools: &[ChatTool]) -> super::prom
     p
 }
 
-/// The API key for `vendor` from the keychain, if one is saved.
-pub(crate) async fn api_key(vendor: &str) -> Result<Option<String>, String> {
-    let account = AccountId::parse(LOCAL_ACCOUNT)?;
-    keychain_secrets(account)
-        .load(&providers::secret_name(vendor))
-        .await
-}
-
 pub async fn connect_model(
     config_dir: &std::path::Path,
     reference: &str,
@@ -527,7 +517,7 @@ pub async fn connect_model(
     let file = providers::load(config_dir);
     let settings = file.providers.get(vendor).cloned().unwrap_or_default();
     let key = if settings.has_key {
-        api_key(vendor).await?
+        super::secrets::api_key(vendor).await?
     } else {
         None
     };
@@ -2127,7 +2117,7 @@ impl Steps for TurnSteps<'_> {
             let outcome = if call.function.name.as_str() == ASK_USER
                 && request.approval.unattended()
             {
-                tools::Outcome { text: "Nobody is available to answer during this scheduled run; continue with your best judgement and state your assumptions.".into(), is_error: false }
+                tools::Outcome::ok("Nobody is available to answer during this scheduled run; continue with your best judgement and state your assumptions.")
             } else if call.function.name.as_str() == ASK_USER {
                 ask_user(host.as_ref(), id, call, cancel).await
             } else {
@@ -2227,10 +2217,7 @@ fn restore_streamed(redactions: &privacy::Redactions, held: &mut String, chunk: 
 }
 
 fn cancelled_outcome() -> tools::Outcome {
-    tools::Outcome {
-        text: "Cancelled by the user.".into(),
-        is_error: true,
-    }
+    tools::Outcome::err("Cancelled by the user.")
 }
 
 /// Tools the user chose "Always allow" for under an agent's ask-first policy, by conversation.
@@ -2311,10 +2298,7 @@ where
     if let Some(reason) =
         super::hooks::before_tool(config_dir, conversation_id, name, arguments, workdir).await
     {
-        return tools::Outcome {
-            text: format!("A hook blocked this call: {reason}"),
-            is_error: true,
-        };
+        return tools::Outcome::err(format!("A hook blocked this call: {reason}"));
     }
     // The agent's vault secrets reach the processes this call starts, and never the model.
     let secrets = super::vault::env_for(config_dir, agent).await;
@@ -2429,12 +2413,7 @@ impl Runner<'_> {
         in_plan: &str,
         unattended: &str,
     ) -> Result<(), tools::Outcome> {
-        let refuse = |text: &str| {
-            Err(tools::Outcome {
-                text: text.into(),
-                is_error: true,
-            })
-        };
+        let refuse = |text: &str| Err(tools::Outcome::err(text));
         match change_gate(
             self.request.approval,
             asked || session_allowed(self.id, name),
@@ -2470,10 +2449,7 @@ impl Runner<'_> {
     /// asks in Ask, is refused in Plan and in scheduled runs nobody watches), then the page's
     /// agent list refreshes.
     async fn manage_agents(&self, arguments: &Value, asked: bool) -> tools::Outcome {
-        let refuse = |text: &str| tools::Outcome {
-            text: text.into(),
-            is_error: true,
-        };
+        let refuse = |text: &str| tools::Outcome::err(text);
         let Some(agent) = self.agent else {
             return refuse("Only agents can manage agents.");
         };
@@ -2512,19 +2488,13 @@ impl Runner<'_> {
         let name = call.function.name.as_str();
         let arguments = Value::Object(call.function.arguments.clone());
         if let Some(raw) = &call.function.invalid_arguments {
-            return tools::Outcome {
-                text: format!("The arguments were not a JSON object: {raw}"),
-                is_error: true,
-            };
+            return tools::Outcome::err(format!("The arguments were not a JSON object: {raw}"));
         }
         // Only what this turn offered runs: an agent's allowed tools, a worker's or eval's
         // `only_tools`, the composer's tools turned off, a temporary chat's missing memory tools.
         // A model that names anything else, from an injected page or a guess, is refused.
         if !self.offered.iter().any(|t| t.name == name) {
-            return tools::Outcome {
-                text: format!("There is no tool named {name} here."),
-                is_error: true,
-            };
+            return tools::Outcome::err(format!("There is no tool named {name} here."));
         }
         // The agent's "ask first" policy covers every tool, built-in and reading ones included,
         // except those that always ask with their own fuller card (review, scores, access): asking
@@ -2557,7 +2527,7 @@ impl Runner<'_> {
             };
             match self.host.approve(&gate, &arguments, None).await {
                 ApprovalDecision::Deny => {
-                    return tools::Outcome { text: "The user declined this tool call. Do not retry it; ask what they would like instead.".into(), is_error: true };
+                    return tools::Outcome::err("The user declined this tool call. Do not retry it; ask what they would like instead.");
                 }
                 // "Always allow" lasts for this conversation, as in Vibe.
                 ApprovalDecision::Always => allow_for_session(self.id, name),
@@ -2591,16 +2561,13 @@ impl Runner<'_> {
                         if self.host.approve(tool, &arguments, Some(&reason)).await
                             == ApprovalDecision::Deny
                         {
-                            return tools::Outcome { text: "The user declined this tool call. Do not retry it; ask what they would like instead.".into(), is_error: true };
+                            return tools::Outcome::err("The user declined this tool call. Do not retry it; ask what they would like instead.");
                         }
                     }
                 }
                 tools::execute(self.host.as_ref(), tool, arguments, mode, self.id).await
             }
-            None => tools::Outcome {
-                text: format!("There is no tool named {name}."),
-                is_error: true,
-            },
+            None => tools::Outcome::err(format!("There is no tool named {name}.")),
         }
     }
 }
@@ -2608,10 +2575,7 @@ impl Runner<'_> {
 impl Runner<'_> {
     /// Background commands in the session's folder; starting one asks like any shell command.
     async fn terminal(&self, name: &str, arguments: &Value) -> tools::Outcome {
-        let fail = |text: &str| tools::Outcome {
-            text: text.into(),
-            is_error: true,
-        };
+        let fail = |text: &str| tools::Outcome::err(text);
         let arg = |k: &str| {
             arguments
                 .get(k)
@@ -2644,10 +2608,7 @@ impl Runner<'_> {
             },
             terminal::STOP => match terminal::get(&arg("id")) {
                 Some(view) if view.conversation_id == self.id => match terminal::stop(&view.id) {
-                    Ok(()) => tools::Outcome {
-                        text: "Stopped.".into(),
-                        is_error: false,
-                    },
+                    Ok(()) => tools::Outcome::ok("Stopped."),
                     Err(e) => fail(&e),
                 },
                 _ => fail("There is no background command with that id here."),
@@ -2741,19 +2702,11 @@ impl Runner<'_> {
             sandbox::always_allowed(self.config_dir),
         );
         match gate {
-            sandbox::CodeGate::Refuse(text) => {
-                return tools::Outcome {
-                    text: text.into(),
-                    is_error: true,
-                }
-            }
+            sandbox::CodeGate::Refuse(text) => return tools::Outcome::err(text),
             sandbox::CodeGate::Run => {}
             sandbox::CodeGate::Ask(reason) => {
                 let Some(tool) = self.offered.iter().find(|t| t.name == sandbox::RUN_CODE) else {
-                    return tools::Outcome {
-                        text: "Running code is not available.".into(),
-                        is_error: true,
-                    };
+                    return tools::Outcome::err("Running code is not available.");
                 };
                 let gate = ChatTool {
                     connector_id: Some("sandbox".into()),
@@ -2761,10 +2714,7 @@ impl Runner<'_> {
                 };
                 match self.host.approve(&gate, arguments, reason).await {
                     ApprovalDecision::Deny => {
-                        return tools::Outcome {
-                            text: "The user declined to run this code. Do not retry it; ask what they would like instead.".into(),
-                            is_error: true,
-                        }
+                        return tools::Outcome::err("The user declined to run this code. Do not retry it; ask what they would like instead.")
                     }
                     // "Always" covers isolated runs; an unsandboxed one asks every time.
                     ApprovalDecision::Always if reason.is_none() => {
@@ -2819,11 +2769,11 @@ async fn ask_user(
     tokio::select! {
         _ = cancelled(cancel) => {
             state.forget_question(&call_id);
-            tools::Outcome { text: "The user dismissed the question.".into(), is_error: true }
+            tools::Outcome::err("The user dismissed the question.")
         }
         answer = answer => match answer {
             Ok(text) => tools::Outcome { text, is_error: false },
-            Err(_) => tools::Outcome { text: "The user dismissed the question.".into(), is_error: true },
+            Err(_) => tools::Outcome::err("The user dismissed the question."),
         }
     }
 }

@@ -174,10 +174,7 @@ pub fn known_voices(engine: &str) -> Vec<(String, String)> {
 }
 
 async fn secret(name: &str) -> Result<Option<String>, String> {
-    let account = crate::account::AccountId::parse(super::LOCAL_ACCOUNT)?;
-    crate::tools::auth::keychain_secrets(account)
-        .load(name)
-        .await
+    crate::chat::secrets::local()?.load(name).await
 }
 
 fn mime_of(audio: &[u8]) -> &'static str {
@@ -190,10 +187,7 @@ fn mime_of(audio: &[u8]) -> &'static str {
 }
 
 fn http() -> reqwest::Client {
-    reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(120))
-        .build()
-        .unwrap_or_default()
+    crate::support::http::client(std::time::Duration::from_secs(120)).unwrap_or_default()
 }
 
 /// Reads `text` (already prose) aloud with the chosen engine. `Ok(None)` means the page speaks it

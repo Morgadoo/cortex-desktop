@@ -5,6 +5,17 @@ use crate::{downloads, settings, tray, updater, webview};
 
 pub const LABEL: &str = "cortex-window";
 
+/// Refuses a command called from any webview but the main window's, with `refusal` as the
+/// reason. Commands that act for the signed-in page (exports, downloads, schedules) use it, so a
+/// satellite window or an embedded frame cannot.
+pub fn require(label: &str, refusal: &str) -> Result<(), String> {
+    if label == LABEL {
+        Ok(())
+    } else {
+        Err(refusal.to_string())
+    }
+}
+
 const BUNDLED_PAGES_CAPABILITY: &str = include_str!("../capabilities/default.json");
 
 /// The bundled pages' permissions, granted to the hosted web app only at `lumo_url`'s exact

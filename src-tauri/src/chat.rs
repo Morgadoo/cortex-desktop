@@ -73,6 +73,7 @@ pub mod sandbox;
 pub mod script_tools;
 pub mod search;
 pub mod search_all;
+pub mod secrets;
 pub mod share;
 pub mod sheets;
 pub mod skill_catalog;

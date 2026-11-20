@@ -28,10 +28,7 @@ pub enum NotificationPermission {
 }
 
 fn require_main(webview: &Webview) -> Result<(), String> {
-    if webview.label() != crate::main_window::LABEL {
-        return Err("notifications require the main webview".into());
-    }
-    Ok(())
+    crate::main_window::require(webview.label(), "notifications require the main webview")
 }
 
 async fn permission(app: &AppHandle, request: bool) -> Result<bool, String> {

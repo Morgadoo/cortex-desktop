@@ -533,10 +533,7 @@ pub async fn chat_import_plugin(
     let files = match link.map(|l| l.trim().to_string()).filter(|l| !l.is_empty()) {
         Some(link) => {
             let (urls, folder) = plugins::github_sources(&link)?;
-            let client = reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(120))
-                .build()
-                .map_err(|e| e.to_string())?;
+            let client = crate::support::http::client(std::time::Duration::from_secs(120))?;
             let mut last = "The repository could not be downloaded.".to_string();
             let mut found = None;
             for url in urls {

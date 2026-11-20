@@ -491,17 +491,11 @@ pub const NAMES: &[&str] = &[
 ];
 
 fn ok(text: impl Into<String>) -> Outcome {
-    Outcome {
-        text: text.into(),
-        is_error: false,
-    }
+    Outcome::ok(text)
 }
 
 fn err(text: impl Into<String>) -> Outcome {
-    Outcome {
-        text: text.into(),
-        is_error: true,
-    }
+    Outcome::err(text)
 }
 
 pub async fn run(config_dir: &Path, name: &str, args: &Value) -> Outcome {

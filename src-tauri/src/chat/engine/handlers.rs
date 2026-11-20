@@ -82,10 +82,7 @@ fn on_delegate<'a>(
                     is_error: reports.iter().all(|r| r.status != "done"),
                 }
             }
-            Err(e) => tools::Outcome {
-                text: e,
-                is_error: true,
-            },
+            Err(e) => tools::Outcome::err(e),
         }
     })
 }
@@ -139,10 +136,7 @@ fn on_find_tools<'a>(
             .and_then(Value::as_str)
             .unwrap_or_default();
         let semantic = semantic_tool_ranking(r.config_dir, r.offered, query).await;
-        tools::Outcome {
-            text: deferred::find_with(r.offered, &arguments, semantic).0,
-            is_error: false,
-        }
+        tools::Outcome::ok(deferred::find_with(r.offered, &arguments, semantic).0)
     })
 }
 
@@ -159,24 +153,15 @@ fn on_notebook<'a>(
             .ok()
             .and_then(|c| c.agent_id)
         else {
-            return tools::Outcome {
-                text: "Only agents keep a notebook.".into(),
-                is_error: true,
-            };
+            return tools::Outcome::err("Only agents keep a notebook.");
         };
         let content = arguments
             .get("content")
             .and_then(Value::as_str)
             .unwrap_or_default();
         match agents::save_notebook(r.config_dir, &agent_id, content) {
-            Ok(()) => tools::Outcome {
-                text: "Notebook saved.".into(),
-                is_error: false,
-            },
-            Err(e) => tools::Outcome {
-                text: e,
-                is_error: true,
-            },
+            Ok(()) => tools::Outcome::ok("Notebook saved."),
+            Err(e) => tools::Outcome::err(e),
         }
     })
 }
@@ -199,20 +184,12 @@ fn on_canvas<'a>(
         let content = match files {
             Some(files) => match canvas::bundle(&files) {
                 Ok(c) => Some(c),
-                Err(e) => {
-                    return tools::Outcome {
-                        text: e,
-                        is_error: true,
-                    }
-                }
+                Err(e) => return tools::Outcome::err(e),
             },
             None => text("content").filter(|c| !c.trim().is_empty()),
         };
         let Some(content) = content else {
-            return tools::Outcome {
-                text: "Give the canvas content.".into(),
-                is_error: true,
-            };
+            return tools::Outcome::err("Give the canvas content.");
         };
         let id = text("id").filter(|i| !i.trim().is_empty());
         let kind = if arguments.get("files").is_some() {
@@ -221,11 +198,8 @@ fn on_canvas<'a>(
             text("kind")
         };
         match canvas::write_kind(r.config_dir, r.id, id.as_deref(), text("title").as_deref(), &content, "assistant", kind.as_deref()) {
-            Ok(c) => tools::Outcome {
-                text: serde_json::json!({ "id": c.id, "title": c.title, "kind": c.kind, "version": c.versions.len() }).to_string(),
-                is_error: false,
-            },
-            Err(e) => tools::Outcome { text: e, is_error: true },
+            Ok(c) => tools::Outcome::ok(serde_json::json!({ "id": c.id, "title": c.title, "kind": c.kind, "version": c.versions.len() }).to_string()),
+            Err(e) => tools::Outcome::err(e),
         }
     })
 }
@@ -274,7 +248,9 @@ fn on_browser_act<'a>(
             )
         {
             if r.request.approval.unattended() {
-                return tools::Outcome { text: "Using web pages needs the user's approval, and nobody is watching this run.".into(), is_error: true };
+                return tools::Outcome::err(
+                    "Using web pages needs the user's approval, and nobody is watching this run.",
+                );
             }
             let gate = ChatTool {
                 name: name.into(),
@@ -384,16 +360,10 @@ fn on_notify<'a>(
         };
         let title = text("title");
         if title.trim().is_empty() {
-            return tools::Outcome {
-                text: "Give the notification a title.".into(),
-                is_error: true,
-            };
+            return tools::Outcome::err("Give the notification a title.");
         }
         r.host.notify(&title, &text("body"));
-        tools::Outcome {
-            text: "Notification shown.".into(),
-            is_error: false,
-        }
+        tools::Outcome::ok("Notification shown.")
     })
 }
 
@@ -466,12 +436,7 @@ fn on_builtin<'a>(
             .await
             {
                 Ok(scores) => scores,
-                Err(why) => {
-                    return tools::Outcome {
-                        text: why,
-                        is_error: true,
-                    }
-                }
+                Err(why) => return tools::Outcome::err(why),
             };
             if !asked {
                 let verdict = independent_review(
@@ -632,10 +597,7 @@ fn on_create_tool<'a>(
             if script_tools::load(r.config_dir, name.trim())
                 .is_some_and(|t| t.status != script_tools::Status::Candidate)
             {
-                return tools::Outcome {
-                    text: format!("`{name}` is an approved tool; rewriting it needs the user, who is not here. Use it as it is, or describe the change."),
-                    is_error: true,
-                };
+                return tools::Outcome::err(format!("`{name}` is an approved tool; rewriting it needs the user, who is not here. Use it as it is, or describe the change."));
             }
         }
         match script_tools::create(r.config_dir, r.id, &arguments).await {
@@ -685,10 +647,7 @@ fn on_promote_tool<'a>(
 ) -> BoxFuture<'a, tools::Outcome> {
     Box::pin(async move {
         use crate::chat::script_tools;
-        let refuse = |text: &str| tools::Outcome {
-            text: text.into(),
-            is_error: true,
-        };
+        let refuse = |text: &str| tools::Outcome::err(text);
         let name = arguments
             .get("name")
             .and_then(Value::as_str)
@@ -752,10 +711,7 @@ fn on_promote_tool<'a>(
                 "The user declined this tool. Do not promote it again unless they ask; describe what it would do instead.",
             ),
             _ => match script_tools::promote_as_shown(r.config_dir, &tool, days).await {
-                Ok(text) => tools::Outcome {
-                    text: format!("{text}{}", scores_note(&scores)),
-                    is_error: false,
-                },
+                Ok(text) => tools::Outcome::ok(format!("{text}{}", scores_note(&scores))),
                 Err(e) => refuse(&e),
             },
         }
@@ -859,10 +815,7 @@ fn on_propose_change<'a>(
 ) -> BoxFuture<'a, tools::Outcome> {
     Box::pin(async move {
         use crate::chat::proposals;
-        let refuse = |text: &str| tools::Outcome {
-            text: text.into(),
-            is_error: true,
-        };
+        let refuse = |text: &str| tools::Outcome::err(text);
         let proposal = match proposals::parse(&arguments) {
             Ok(p) => p,
             Err(e) => return refuse(&e),
@@ -909,10 +862,10 @@ fn on_propose_change<'a>(
                 refuse("The user declined this change. Do not propose it again unless they ask.")
             }
             _ => match proposals::apply(r.config_dir, r.id, &proposal.change) {
-                Ok(text) => tools::Outcome {
-                    text: format!("{text} (Reviewer: {verdict}){}", scores_note(&scores)),
-                    is_error: false,
-                },
+                Ok(text) => tools::Outcome::ok(format!(
+                    "{text} (Reviewer: {verdict}){}",
+                    scores_note(&scores)
+                )),
                 Err(e) => refuse(&e),
             },
         }
@@ -964,10 +917,7 @@ fn on_context_status<'a>(
 ) -> BoxFuture<'a, tools::Outcome> {
     Box::pin(async move {
         let Ok(c) = store::load_conversation(r.config_dir, r.id) else {
-            return tools::Outcome {
-                text: "The conversation could not be read.".into(),
-                is_error: true,
-            };
+            return tools::Outcome::err("The conversation could not be read.");
         };
         let window = context::context_window(&r.request.model);
         let status = serde_json::json!({
@@ -979,10 +929,7 @@ fn on_context_status<'a>(
             "toolsLoadedOnDemand": c.loaded_tools,
             "earlierMessagesSummarized": c.summary.as_ref().map_or(0, |s| s.upto),
         });
-        tools::Outcome {
-            text: serde_json::to_string_pretty(&status).unwrap_or_default(),
-            is_error: false,
-        }
+        tools::Outcome::ok(serde_json::to_string_pretty(&status).unwrap_or_default())
     })
 }
 
@@ -1003,10 +950,7 @@ fn on_unload_tools<'a>(
             .filter_map(Value::as_str)
             .map(str::to_string)
             .collect();
-        tools::Outcome {
-            text: serde_json::json!({ "unloaded": names }).to_string(),
-            is_error: false,
-        }
+        tools::Outcome::ok(serde_json::json!({ "unloaded": names }).to_string())
     })
 }
 
@@ -1077,14 +1021,10 @@ fn on_retire_tool<'a>(
             return refused;
         }
         match script_tools::retire(r.config_dir, &name) {
-            Ok(()) => tools::Outcome {
-                text: format!("`{name}` is retired; promote_tool brings it back."),
-                is_error: false,
-            },
-            Err(e) => tools::Outcome {
-                text: e,
-                is_error: true,
-            },
+            Ok(()) => {
+                tools::Outcome::ok(format!("`{name}` is retired; promote_tool brings it back."))
+            }
+            Err(e) => tools::Outcome::err(e),
         }
     })
 }
@@ -1099,10 +1039,7 @@ fn on_request_capability<'a>(
 ) -> BoxFuture<'a, tools::Outcome> {
     Box::pin(async move {
         use crate::chat::script_tools;
-        let refuse = |text: &str| tools::Outcome {
-            text: text.into(),
-            is_error: true,
-        };
+        let refuse = |text: &str| tools::Outcome::err(text);
         if r.request.approval == ApprovalMode::Plan || r.request.approval.unattended() {
             return refuse("Nobody can grant access in this mode; ask in a chat.");
         }

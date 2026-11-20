@@ -105,10 +105,7 @@ fn locale(language: &str) -> &'static str {
 }
 
 fn client() -> Result<reqwest::Client, String> {
-    reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| e.to_string())
+    crate::support::http::client(std::time::Duration::from_secs(30))
 }
 
 async fn fetch_json(url: &str) -> Result<Value, String> {

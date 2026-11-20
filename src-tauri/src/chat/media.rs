@@ -150,10 +150,7 @@ pub async fn sdwebui_image(
         "txt2img"
     };
     let checkpoint = model.strip_prefix(SDWEBUI_PREFIX);
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(600))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = crate::support::http::client(std::time::Duration::from_secs(600))?;
     let response = client
         .post(format!("{base}/sdapi/v1/{endpoint}"))
         .json(&sdwebui_body(
@@ -261,7 +258,7 @@ pub(crate) async fn connect(
         .cloned()
         .unwrap_or_default();
     let key = if settings.has_key {
-        super::engine::api_key(vendor).await?
+        super::secrets::api_key(vendor).await?
     } else {
         None
     };
@@ -336,10 +333,7 @@ pub async fn generate(config_dir: &Path, conversation_id: &str, args: &Value) ->
                 .to_string(),
             is_error: false,
         },
-        Err(e) => Outcome {
-            text: e,
-            is_error: true,
-        },
+        Err(e) => Outcome::err(e),
     }
 }
 

@@ -63,10 +63,7 @@ pub fn docling_text(body: &serde_json::Value) -> Option<String> {
 /// Converts a file with the configured server.
 pub async fn convert(e: &Extraction, name: &str, bytes: Vec<u8>) -> Result<String, String> {
     let base = e.url.trim().trim_end_matches('/');
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(300))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = crate::support::http::client(std::time::Duration::from_secs(300))?;
     match e.engine.as_str() {
         "tika" => {
             let r = client

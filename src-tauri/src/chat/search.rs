@@ -156,10 +156,7 @@ pub fn save_settings(
 }
 
 async fn key() -> Result<Option<String>, String> {
-    let account = crate::account::AccountId::parse(super::LOCAL_ACCOUNT)?;
-    crate::tools::auth::keychain_secrets(account)
-        .load(SECRET)
-        .await
+    crate::chat::secrets::local()?.load(SECRET).await
 }
 
 /// SearXNG's JSON results (`format=json` must be enabled on the instance).

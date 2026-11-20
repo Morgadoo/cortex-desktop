@@ -338,9 +338,7 @@ async fn ollama_models(base_url: &str) -> Vec<String> {
         name: String,
     }
     let root = base_url.trim_end_matches('/').trim_end_matches("/v1");
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(2))
-        .build();
+    let client = crate::support::http::client(Duration::from_secs(2));
     let Ok(client) = client else {
         return Vec::new();
     };
@@ -366,10 +364,7 @@ async fn openai_compatible_models(base_url: &str) -> Vec<String> {
         id: String,
     }
     let root = base_url.trim_end_matches('/').trim_end_matches("/v1");
-    let Ok(client) = reqwest::Client::builder()
-        .timeout(Duration::from_secs(2))
-        .build()
-    else {
+    let Ok(client) = crate::support::http::client(Duration::from_secs(2)) else {
         return Vec::new();
     };
     match client.get(format!("{root}/v1/models")).send().await {

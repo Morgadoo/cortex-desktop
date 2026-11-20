@@ -198,10 +198,7 @@ pub async fn install(root: &Path, style: &str) -> Result<usize, String> {
 }
 
 async fn download_and_unpack(root: &Path, pack: &Pack) -> Result<usize, String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(600))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = crate::support::http::client(std::time::Duration::from_secs(600))?;
     let response = client
         .get(pack.url)
         .send()

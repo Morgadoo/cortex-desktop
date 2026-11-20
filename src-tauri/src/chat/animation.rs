@@ -107,21 +107,11 @@ pub fn definition() -> ChatTool {
 
 /// A safe folder name from the model's.
 pub fn slug(name: &str) -> String {
-    let s: String = name
-        .trim()
-        .to_lowercase()
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
-        .collect();
-    let s = s
-        .split('-')
-        .filter(|p| !p.is_empty())
-        .collect::<Vec<_>>()
-        .join("-");
+    let s = crate::support::names::slug(name, 48);
     if s.is_empty() {
         format!("animation-{}", chrono::Local::now().format("%Y%m%d-%H%M%S"))
     } else {
-        s.chars().take(48).collect()
+        s
     }
 }
 
@@ -176,10 +166,7 @@ pub async fn make(config_dir: &Path, conversation_id: &str, args: &Value) -> Out
             text,
             is_error: false,
         },
-        Err(e) => Outcome {
-            text: e,
-            is_error: true,
-        },
+        Err(e) => Outcome::err(e),
     }
 }
 

@@ -391,11 +391,7 @@ impl Drop for SkillCache {
 }
 
 fn require_main(label: &str) -> Result<(), String> {
-    if label == crate::main_window::LABEL {
-        Ok(())
-    } else {
-        Err("Skill cache requires the main webview".into())
-    }
+    crate::main_window::require(label, "Skill cache requires the main webview")
 }
 
 #[derive(Deserialize)]

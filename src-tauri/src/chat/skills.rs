@@ -598,10 +598,7 @@ pub fn skill_sources(link: &str) -> Result<Vec<String>, String> {
 /// Downloads a skill from a link and saves it; returns its name. Only the instructions come
 /// along: scripts and other files in the skill's folder are not downloaded.
 pub async fn import_from_link(config_dir: &Path, link: &str) -> Result<String, String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(20))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = crate::support::http::client(std::time::Duration::from_secs(20))?;
     let mut last = String::from("No SKILL.md was found there.");
     for source in skill_sources(link)? {
         let response = match client.get(&source).send().await {

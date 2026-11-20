@@ -70,21 +70,7 @@ pub fn secret_name(id: &str) -> String {
 
 /// A short, tool-name-safe id from the server's name.
 fn slug(name: &str) -> String {
-    let s: String = name
-        .to_lowercase()
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
-        .collect();
-    let s = s
-        .split('-')
-        .filter(|p| !p.is_empty())
-        .collect::<Vec<_>>()
-        .join("-");
-    s.chars()
-        .take(24)
-        .collect::<String>()
-        .trim_end_matches('-')
-        .to_string()
+    crate::support::names::slug(name, 24)
 }
 
 /// The spec's base URL: its first `servers` entry, resolved against where the spec came from.
@@ -262,10 +248,7 @@ pub fn tools(config_dir: &Path) -> Vec<ChatTool> {
 }
 
 async fn fetch_spec(spec_url: &str) -> Result<Value, String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = crate::support::http::client(std::time::Duration::from_secs(30))?;
     let response = client
         .get(spec_url)
         .send()
@@ -445,10 +428,7 @@ pub async fn call(config_dir: &Path, tool: &ChatTool, input: &Value) -> Result<S
         .find(|o| o.id == tool.tool_name)
         .ok_or("That operation is no longer in the spec.")?;
     let (method, url, body) = request_for(&server.base_url, &op, input)?;
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(60))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = crate::support::http::client(std::time::Duration::from_secs(60))?;
     let mut request = client.request(
         reqwest::Method::from_bytes(method.as_bytes()).map_err(|e| e.to_string())?,
         &url,

@@ -193,10 +193,7 @@ pub async fn notify_webhook(task: &Task, conversation_id: &str, status: &str, an
     else {
         return;
     };
-    let Ok(client) = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-    else {
+    let Ok(client) = crate::support::http::client(std::time::Duration::from_secs(15)) else {
         return;
     };
     match client

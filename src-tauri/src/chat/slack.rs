@@ -53,12 +53,12 @@ fn api_base() -> String {
 }
 
 pub async fn tokens() -> Option<(String, String)> {
-    let app = super::engine::api_key(APP_TOKEN)
+    let app = super::secrets::api_key(APP_TOKEN)
         .await
         .ok()
         .flatten()
         .filter(|t| !t.is_empty())?;
-    let bot = super::engine::api_key(BOT_TOKEN)
+    let bot = super::secrets::api_key(BOT_TOKEN)
         .await
         .ok()
         .flatten()
@@ -67,8 +67,7 @@ pub async fn tokens() -> Option<(String, String)> {
 }
 
 pub async fn set_tokens(app_token: &str, bot_token: &str) -> Result<(), String> {
-    let account = crate::account::AccountId::parse(super::LOCAL_ACCOUNT)?;
-    let secrets = crate::tools::auth::keychain_secrets(account);
+    let secrets = crate::chat::secrets::local()?;
     for (name, value) in [(APP_TOKEN, app_token), (BOT_TOKEN, bot_token)] {
         if value.trim().is_empty() {
             secrets.delete(&super::providers::secret_name(name)).await?;
@@ -82,10 +81,7 @@ pub async fn set_tokens(app_token: &str, bot_token: &str) -> Result<(), String> 
 }
 
 async fn call(token: &str, method: &str, body: Value) -> Result<Value, String> {
-    let r = reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()
-        .map_err(|e| e.to_string())?
+    let r = crate::support::http::client(Duration::from_secs(30))?
         .post(format!("{}/{method}", api_base()))
         .bearer_auth(token)
         .json(&body)
