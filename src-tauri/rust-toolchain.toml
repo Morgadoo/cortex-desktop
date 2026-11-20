@@ -1,0 +1,6 @@
+# The compiler CI and every developer build with. Bump it deliberately, in a change of its own,
+# so a new release cannot fail CI on an unrelated change.
+[toolchain]
+channel = "1.100.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

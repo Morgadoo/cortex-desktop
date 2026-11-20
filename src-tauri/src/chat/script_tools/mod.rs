@@ -2120,18 +2120,26 @@ mod tests {
         assert!(err.contains("in the last minute"), "{err}");
     }
 
-    /// The rig-core API the app is built on is pinned to one exact version.
+    /// The rig-core API the app is built on is pinned to one exact version, written once in the
+    /// workspace and inherited by every member that uses it.
     #[test]
     fn rig_core_is_pinned_exactly() {
-        for manifest in [
-            include_str!("../../../Cargo.toml"),
-            include_str!("../../../crates/cortex-kernel/Cargo.toml"),
-        ] {
-            let line = manifest
+        let rig = |manifest: &'static str| {
+            manifest
                 .lines()
-                .find(|l| l.starts_with("rig-core"))
-                .expect("rig-core is a dependency");
-            assert!(line.contains("version = \"=0.46.0\""), "{line}");
+                .filter(|l| l.starts_with("rig-core"))
+                .collect::<Vec<_>>()
+        };
+        let root = include_str!("../../../Cargo.toml");
+        let workspace = &root[root
+            .find("[workspace.dependencies]")
+            .expect("the workspace declares shared dependencies")..];
+        let pin = rig(workspace)[0];
+        assert!(pin.contains("version = \"=0.46.0\""), "{pin}");
+        for line in rig(root).into_iter().skip(1).chain(rig(include_str!(
+            "../../../crates/cortex-kernel/Cargo.toml"
+        ))) {
+            assert!(line.contains("workspace = true"), "{line}");
         }
     }
 
