@@ -8,6 +8,7 @@ import { tauriInvoke } from '../../../shared/tauri';
 // Generated from the Rust types (scripts/generate-types.sh), so the two cannot drift.
 import type {
   AgentSpend,
+  ChatEvent,
   ChatParams,
   ContextBreakdown,
   Conversation,
@@ -28,9 +29,32 @@ import type {
   TrashItem,
   Turn,
   UsageTotals,
+  Workflow,
 } from './generated/ipc';
 
-export type { AgentSpend, ChatParams, ContextBreakdown, Conversation, ConversationSummary, Frequency, Instructions, Memories, Memory, Part, Project, ProviderSettings, SearchHit, Skill, Speed, StorageHealth, TrashItem, Turn, UsageTotals };
+export type {
+  AgentSpend,
+  ChatEvent,
+  ChatParams,
+  ContextBreakdown,
+  Conversation,
+  ConversationSummary,
+  Frequency,
+  Instructions,
+  Memories,
+  Memory,
+  Part,
+  Project,
+  ProviderSettings,
+  SearchHit,
+  Skill,
+  Speed,
+  StorageHealth,
+  TrashItem,
+  Turn,
+  UsageTotals,
+  Workflow,
+};
 export type Provider = ProviderView;
 export type Model = ModelView;
 
@@ -96,24 +120,6 @@ export interface Task {
 
 export type ApprovalMode = 'ask' | 'accept_edits' | 'plan' | 'auto';
 
-export type ChatEvent =
-  | { type: 'started'; conversationId: string }
-  | { type: 'steered'; conversationId: string; text: string }
-  | { type: 'text'; conversationId: string; text: string }
-  | { type: 'reasoning'; conversationId: string; text: string }
-  | { type: 'toolPending'; conversationId: string; name: string }
-  | { type: 'toolStart'; conversationId: string; callId: string; name: string; arguments: Record<string, unknown> }
-  | { type: 'toolEnd'; conversationId: string; callId: string; output: string; isError: boolean }
-  | { type: 'question'; conversationId: string; callId: string; question: string; options: string[] }
-  | { type: 'title'; conversationId: string; title: string }
-  | { type: 'subagent'; conversationId: string; callId: string; index: number; title: string; status: string; activity: string }
-  | { type: 'usage'; conversationId: string; usage: UsageTotals; contextWindow: number }
-  | { type: 'compacting'; conversationId: string }
-  | { type: 'compacted'; conversationId: string; upto: number }
-  | { type: 'done'; conversationId: string; cancelled: boolean }
-  | { type: 'notice'; conversationId: string; text: string }
-  | { type: 'error'; conversationId: string; message: string };
-
 export interface ApprovalRequest {
   request_id: string;
   connector_id: string | null;
@@ -123,16 +129,6 @@ export interface ApprovalRequest {
 }
 
 /** A connector as `get_tool_registry` reports it; only the fields the page reads. */
-export interface Workflow {
-  id: string;
-  name: string;
-  description: string;
-  steps: string[];
-  builtin: boolean;
-  /** The version marked production, which is what runs; the fields above are then a draft. */
-  production?: { at: string; name: string; steps: string[] };
-}
-
 export interface ConnectorManifest {
   id: string;
   display_name: string;

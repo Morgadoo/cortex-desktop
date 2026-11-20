@@ -168,8 +168,11 @@ then run `bash scripts/generate-types.sh` and import it from `core/generated/ipc
 follows the type's `serde` attributes, so the declaration is what the window really gets. The
 provider, model, project, instructions, chat settings, memory, speed and schedule types are
 converted, and so are the conversation (its turns, parts, versions and usage), the sidebar rows,
-search hits, the trash, storage health, the context breakdown, an agent's spend and skills; the
-others in `api.ts` are still written by hand and move over one area at a time.
+search hits, the trash, storage health, the context breakdown, an agent's spend, skills, workflows
+and the events a turn streams; the others in `api.ts` are still written by hand and move over
+one area at a time. Agents and scheduled tasks wait on one thing: fields serde leaves out when
+empty (`skip_serializing_if = "Vec::is_empty"`), which ts-rs can only mark optional on an
+`Option`.
 
 - A 64-bit integer field needs `#[cfg_attr(feature = "typescript", ts(type = "number"))]`: it
   travels as a JSON number, not a `bigint`.

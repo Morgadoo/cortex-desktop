@@ -12,6 +12,11 @@ use crate::chat::store::{chat_dir, valid_id, write_json};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(
+    feature = "typescript",
+    derive(ts_rs::TS),
+    ts(rename = "WorkflowFields")
+)]
 pub struct Workflow {
     pub id: String,
     pub name: String,
@@ -194,16 +199,23 @@ mod tests {
 /// A workflow as the app shows it: with its production version, when one is marked.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(
+    feature = "typescript",
+    derive(ts_rs::TS),
+    ts(export, rename = "Workflow")
+)]
 pub struct WorkflowView {
     #[serde(flatten)]
     pub workflow: Workflow,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "typescript", ts(optional))]
     pub production: Option<Live>,
 }
 
 /// The production version's parts that run.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(rename = "LiveWorkflow"))]
 pub struct Live {
     pub at: chrono::DateTime<chrono::Utc>,
     pub name: String,

@@ -273,9 +273,12 @@ const strings = new Set()
 // WebGL backdrops: their strings are shader source, never shown.
 const SHADERS = new Set(['orbgl.ts', 'backdropgl.ts'])
 
-// Every source file under the page's folder, sub-folders included. Tests are not the interface.
+// Every source file under the page's folder, sub-folders included. Tests are not the interface,
+// and core/generated/ holds only type declarations made from the Rust types.
+const GENERATED = join(srcDir, 'core', 'generated')
 const sources = readdirSync(srcDir, { recursive: true, withFileTypes: true })
   .filter((e) => e.isFile() && e.name.endsWith('.ts') && !e.name.endsWith('.test.ts') && !SHADERS.has(e.name))
+  .filter((e) => e.parentPath !== GENERATED)
   .map((e) => relative(srcDir, join(e.parentPath, e.name)))
   .sort()
 for (const file of sources) {

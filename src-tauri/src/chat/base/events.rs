@@ -13,6 +13,7 @@ use crate::chat::{ChatState, EVENT};
 /// Where a sub-agent's run stands, as the page and the delegating model see it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 pub enum RunStatus {
     Running,
     Done,
@@ -22,6 +23,7 @@ pub enum RunStatus {
 /// What the page sees of a turn, on [`crate::chat::EVENT`].
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
 pub enum ChatEvent {
     #[serde(rename_all = "camelCase")]
     Started { conversation_id: String },
@@ -52,6 +54,7 @@ pub enum ChatEvent {
         conversation_id: String,
         call_id: String,
         name: String,
+        #[cfg_attr(feature = "typescript", ts(type = "Record<string, unknown>"))]
         arguments: Value,
     },
     #[serde(rename_all = "camelCase")]
@@ -89,6 +92,7 @@ pub enum ChatEvent {
     Usage {
         conversation_id: String,
         usage: cortex_kernel::context::UsageTotals,
+        #[cfg_attr(feature = "typescript", ts(type = "number"))]
         context_window: u64,
     },
     /// Earlier turns are being summarized to make room.

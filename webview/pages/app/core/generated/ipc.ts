@@ -6,6 +6,11 @@
 export type AgentSpend = { runs: number, tokens: number, cost: number, };
 
 /**
+ * What the page sees of a turn, on [`crate::chat::EVENT`].
+ */
+export type ChatEvent = { "type": "started", conversationId: string, } | { "type": "steered", conversationId: string, text: string, } | { "type": "text", conversationId: string, text: string, } | { "type": "reasoning", conversationId: string, text: string, } | { "type": "toolPending", conversationId: string, name: string, } | { "type": "toolStart", conversationId: string, callId: string, name: string, arguments: Record<string, unknown>, } | { "type": "toolEnd", conversationId: string, callId: string, output: string, isError: boolean, } | { "type": "question", conversationId: string, callId: string, question: string, options: Array<string>, } | { "type": "title", conversationId: string, title: string, } | { "type": "subagent", conversationId: string, callId: string, index: number, title: string, status: RunStatus, activity: string, } | { "type": "usage", conversationId: string, usage: UsageTotals, contextWindow: number, } | { "type": "compacting", conversationId: string, } | { "type": "compacted", conversationId: string, upto: number, } | { "type": "done", conversationId: string, cancelled: boolean, } | { "type": "notice", conversationId: string, text: string, } | { "type": "error", conversationId: string, message: string, };
+
+/**
  * Model settings for one conversation; unset ones follow the model's defaults.
  */
 export type ChatParams = { 
@@ -94,6 +99,11 @@ export type Instructions = { tone: string, custom: string,
  * How the assistant should call the user.
  */
 name: string, };
+
+/**
+ * The production version's parts that run.
+ */
+export type LiveWorkflow = { at: string, name: string, steps: Array<string>, };
 
 export type Memories = { 
 /**
@@ -198,6 +208,11 @@ envKey: string | null, settings: ProviderSettings,
  */
 ready: boolean, };
 
+/**
+ * Where a sub-agent's run stands, as the page and the delegating model see it.
+ */
+export type RunStatus = "running" | "done" | "failed";
+
 export type SearchHit = { id: string, title: string, 
 /**
  * The words around the first match in what was said; empty when only the title matches.
@@ -275,4 +290,13 @@ kind: 'answer' | 'prompt',
  * 0-based position of the showing branch.
  */
 current: number, total: number, };
+
+/**
+ * A workflow as the app shows it: with its production version, when one is marked.
+ */
+export type Workflow = { production?: LiveWorkflow, id: string, name: string, description: string, steps: Array<string>, 
+/**
+ * Ships with the app; editing one saves a copy of your own.
+ */
+builtin: boolean, };
 
