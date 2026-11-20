@@ -1,11 +1,11 @@
 /** Context pages (connectors, skills, scheduled tasks…) and the instructions dialog. */
-import { api, type ConnectorManifest, type Instructions } from './core/api';
-import { clear, h, icon, markdown, modal, toast } from './ui/dom';
-import { state, type Page } from './core/state';
-import { openSettings } from './settings';
-import { listen, tauriInvoke } from '../../shared/tauri';
-import { CONNECTOR_CATEGORIES, FEATURED_MCP_SERVERS, type ConnectorCatalogEntry } from '../../shared/connector-catalog';
-import { emptyState, modalHeader } from './ui/ui';
+import { api, type ConnectorManifest, type Instructions } from '../core/api';
+import { clear, h, icon, markdown, modal, toast } from '../ui/dom';
+import { state, type Page } from '../core/state';
+import { openSettings } from '../settings';
+import { listen, tauriInvoke } from '../../../shared/tauri';
+import { CONNECTOR_CATEGORIES, FEATURED_MCP_SERVERS, type ConnectorCatalogEntry } from '../../../shared/connector-catalog';
+import { emptyState, modalHeader } from '../ui/ui';
 
 const TONES: { id: string; label: string; description: string }[] = [
   { id: '', label: 'Default', description: 'Natural style, no personalization.' },
