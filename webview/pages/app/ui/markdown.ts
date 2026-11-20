@@ -1,9 +1,7 @@
 /** Model output as safe HTML: Markdown, maths and code blocks, sanitised by DOMPurify. The only module that writes HTML into the page. */
 import DOMPurify from 'dompurify';
 import katex from 'katex';
-import { tauriInvoke } from '../../../shared/tauri';
 import { marked } from 'marked';
-import { saveFile } from '../core/files';
 import { h } from './h';
 import { icon } from './icons';
 
@@ -80,11 +78,19 @@ function renderMath(root: DocumentFragment, formulas: { tex: string; display: bo
 }
 
 const RUNNABLE: Record<string, string> = { python: 'python', py: 'python', python3: 'python', javascript: 'javascript', js: 'javascript', node: 'javascript', bash: 'bash', sh: 'bash', shell: 'bash' };
-/** The sandbox's installed languages, learned once. */
-let runnable: string[] = [];
-void tauriInvoke<string[]>('chat_snippet_languages')
-  .then((l) => (runnable = l))
-  .catch(() => undefined);
+
+/**
+ * What a code block offers besides copying. Rendering stays free of backend calls: the shell
+ * connects these at start (shell/code-blocks.ts).
+ */
+export const codeBlocks: {
+  /** The sandbox's installed languages; a block in one of them gets a Run button. */
+  languages: string[];
+  /** Runs a snippet; resolves to the sandbox's JSON report, rejects with an error to show. */
+  run: (language: string, code: string) => Promise<string>;
+  /** Offers the block as a file. */
+  save: (name: string, blob: Blob) => void;
+} = { languages: [], run: () => Promise.resolve(''), save: () => undefined };
 
 const EXTENSIONS: Record<string, string> = {
   python: 'py',
@@ -186,11 +192,11 @@ export function markdown(text: string, options: { breaks?: boolean } = {}): Docu
     });
     // Save the block as a file, named by its language.
     const save = h('button', { class: 'code-copy', title: 'Download as a file' }, icon('download', 14));
-    save.addEventListener('click', () => void saveFile(`snippet.${EXTENSIONS[lang.toLowerCase()] ?? 'txt'}`, new Blob([code?.textContent ?? ''], { type: 'text/plain' })));
+    save.addEventListener('click', () => codeBlocks.save(`snippet.${EXTENSIONS[lang.toLowerCase()] ?? 'txt'}`, new Blob([code?.textContent ?? ''], { type: 'text/plain' })));
     // Python, JavaScript and shell blocks run in the sandbox at a click, output below (Open WebUI).
     const runLang = RUNNABLE[lang.toLowerCase()];
     let run: HTMLElement | null = null;
-    if (runLang && runnable.includes(runLang)) {
+    if (runLang && codeBlocks.languages.includes(runLang)) {
       const output = h('pre', { class: 'run-output' });
       run = h('button', { class: 'code-copy', title: 'Run' }, icon('play', 14));
       run.addEventListener('click', async () => {
@@ -211,7 +217,7 @@ export function markdown(text: string, options: { breaks?: boolean } = {}): Docu
           output.classList.toggle('failed', failed);
         };
         try {
-          show(await tauriInvoke<string>('chat_run_snippet', { language: runLang, code: code?.textContent ?? '' }), false);
+          show(await codeBlocks.run(runLang, code?.textContent ?? ''), false);
         } catch (e) {
           show(String(e), true);
         } finally {

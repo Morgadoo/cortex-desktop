@@ -4,6 +4,7 @@
  * this page renders what it streams back.
  */
 import '../core/storage-migration';
+import './code-blocks';
 import { openSearchMode } from '../chat/searchmode';
 import { actionFor } from '../core/shortcuts';
 import { api, type ApprovalRequest, type ChatEvent } from '../core/api';
