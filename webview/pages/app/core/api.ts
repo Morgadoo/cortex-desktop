@@ -6,9 +6,9 @@
 import { tauriInvoke } from '../../../shared/tauri';
 
 // Generated from the Rust types (scripts/generate-types.sh), so the two cannot drift.
-import type { ModelView, ProviderSettings, ProviderView } from './generated/ipc';
+import type { ChatParams, Frequency, Instructions, Memories, Memory, ModelView, Project, ProviderSettings, ProviderView, Speed } from './generated/ipc';
 
-export type { ProviderSettings };
+export type { ChatParams, Frequency, Instructions, Memories, Memory, Project, ProviderSettings, Speed };
 export type Provider = ProviderView;
 export type Model = ModelView;
 
@@ -88,14 +88,6 @@ export interface UsageTotals {
   contextTokens: number;
 }
 
-export interface ChatParams {
-  temperature: number | null;
-  maxTokens: number | null;
-  /** Nucleus sampling, 0–1. */
-  topP?: number | null;
-  instructions: string;
-}
-
 export interface Conversation {
   id: string;
   usage: UsageTotals;
@@ -115,46 +107,6 @@ export interface Conversation {
   running: boolean;
   /** Which answer to the last prompt shows, when it was answered more than once. */
   versions: { from: number; kind: 'answer' | 'prompt'; current: number; total: number }[];
-}
-
-export interface Project {
-  id: string;
-  name: string;
-  instructions: string;
-  tone: string;
-  icon: string;
-  libraryId: string | null;
-  shareChats: boolean;
-}
-
-export interface Instructions {
-  tone: string;
-  custom: string;
-  name: string;
-}
-
-export interface Memory {
-  id: string;
-  text: string;
-  createdAt: string;
-  source: string;
-  /** preference, work, person, project, habit, fact, or empty. */
-  category: string;
-  /** 1 (a detail) to 3 (always keep in mind). */
-  importance: number;
-  /** `stated` by the user or `inferred` by the assistant. */
-  confidence: string;
-  /** The chat it was learned in. */
-  conversation?: string;
-}
-
-export interface Memories {
-  enabled: boolean;
-  /** Whether the assistant may save and change what it knows. */
-  update?: boolean;
-  items: Memory[];
-  /** Vibe's "Sensitive data" switch: card numbers, bank accounts, passwords and keys are not saved. */
-  keepSensitiveOut: boolean;
 }
 
 export interface Skill {
@@ -209,16 +161,6 @@ export interface AgentSpend {
   cost: number;
 }
 
-export type Frequency =
-  | { kind: 'once'; date: string; time: string }
-  | { kind: 'daily'; time: string }
-  | { kind: 'weekly'; days: number[]; time: string }
-  | { kind: 'monthly'; day: number; time: string }
-  | { kind: 'yearly'; month: number; day: number; time: string }
-  | { kind: 'newFiles'; folder: string }
-  | { kind: 'newFeedItems'; url: string }
-  | { kind: 'cron'; expression: string };
-
 export interface Task {
   id: string;
   title: string;
@@ -243,7 +185,6 @@ export interface Task {
   schedule: string;
 }
 
-export type Speed = 'fast' | 'low' | 'think' | 'deep';
 export type ApprovalMode = 'ask' | 'accept_edits' | 'plan' | 'auto';
 
 export type ChatEvent =

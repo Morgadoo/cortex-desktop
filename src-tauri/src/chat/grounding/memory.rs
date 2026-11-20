@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
 pub struct Memory {
     pub id: String,
     pub text: String,
@@ -59,6 +60,7 @@ pub struct Filing {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", default)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
 pub struct Memories {
     /// Use what is known (memories and knowledge pages) in conversations.
     pub enabled: bool,

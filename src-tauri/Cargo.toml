@@ -124,7 +124,7 @@ cortex-retrieval = { workspace = true }
 cortex-sandbox = { workspace = true }
 cortex-traces = { workspace = true }
 # TypeScript declarations of the types the window sees (scripts/generate-types.sh).
-ts-rs = { version = "12.0.1", optional = true }
+ts-rs = { version = "12.0.1", optional = true, features = ["chrono-impl"] }
 
 [features]
 test-utils = []

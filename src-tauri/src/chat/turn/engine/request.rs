@@ -48,6 +48,7 @@ pub fn user_message(text: &str, images: &[ImageInput]) -> Result<Message, String
 /// The composer's speed setting: how much the model reasons (Vibe's thinking levels).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
 pub enum Speed {
     /// No extended reasoning.
     #[default]

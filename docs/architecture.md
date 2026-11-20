@@ -165,8 +165,10 @@ Derive its TypeScript declaration from the Rust type instead of writing it again
 
 then run `bash scripts/generate-types.sh` and import it from `core/generated/ipc.ts`. ts-rs
 follows the type's `serde` attributes, so the declaration is what the window really gets. The
-provider and model types are the first converted; the others in `api.ts` are still written by
-hand and move over one area at a time.
+provider, model, project, instructions, chat settings, memory, speed and schedule types are
+converted; the others in `api.ts` are still written by hand and move over one area at a time. A
+64-bit integer field needs `#[cfg_attr(feature = "typescript", ts(type = "number"))]`: it
+travels as a JSON number, not a `bigint`.
 
 ### A built-in tool
 

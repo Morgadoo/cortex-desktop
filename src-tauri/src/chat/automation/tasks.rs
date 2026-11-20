@@ -24,6 +24,7 @@ use crate::chat::store::valid_id;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
 pub enum Frequency {
     /// One run at a local date and time.
     #[serde(rename_all = "camelCase")]

@@ -180,12 +180,14 @@ impl Conversation {
 /// Model settings for one conversation; unset ones follow the model's defaults.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
 pub struct ChatParams {
     /// 0 (focused) to 2 (inventive).
     #[serde(default)]
     pub temperature: Option<f64>,
     /// The longest reply, in tokens.
     #[serde(default)]
+    #[cfg_attr(feature = "typescript", ts(type = "number | null"))]
     pub max_tokens: Option<u64>,
     /// Nucleus sampling: only the likeliest words adding up to this share are considered (0–1).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -324,6 +326,7 @@ pub fn list_conversations(config_dir: &Path) -> Vec<ConversationSummary> {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
 pub struct Project {
     pub id: String,
     pub name: String,
@@ -359,6 +362,7 @@ pub fn save_projects(config_dir: &Path, projects: &[Project]) -> Result<(), Stri
 /// The user's standing instructions: a tone preset and free text.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS), ts(export))]
 pub struct Instructions {
     pub tone: String,
     pub custom: String,

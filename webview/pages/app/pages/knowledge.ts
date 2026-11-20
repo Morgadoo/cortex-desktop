@@ -77,7 +77,7 @@ function editKnowledgePage(page: KnowledgePageData | null, onSaved: (pages: Know
 export class KnowledgePage {
   readonly el = h('div', { class: 'page' });
   readonly key = 'page:knowledge';
-  private memories: Memories = { enabled: true, items: [], keepSensitiveOut: true };
+  private memories: Memories = { enabled: true, update: true, items: [], keepSensitiveOut: true };
   private memoryQuery = '';
   private memorySource: 'all' | 'you' | 'assistant' = 'all';
   private memoryCategory = '';
