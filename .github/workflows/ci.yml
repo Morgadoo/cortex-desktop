@@ -90,6 +90,34 @@ jobs:
       - name: The kernel plan's evidence
         run: python3 scripts/check-kernel-plan.py
 
+  platforms:
+    # The Windows- and macOS-only code (#[cfg(windows)], #[cfg(target_os = "macos")]) is never
+    # compiled by the Linux jobs. This compiles and lints it; no tests, no bundles.
+    name: Compile (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          shared-key: cortex-${{ matrix.os }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci && npm run build:webview
+      - name: Lints
+        working-directory: src-tauri
+        run: cargo clippy --workspace -- -D warnings
+
   live:
     name: Live (Qdrant, Tika, built-in models)
     needs: rust
