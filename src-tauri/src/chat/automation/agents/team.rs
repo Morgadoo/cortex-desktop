@@ -1,6 +1,7 @@
 //! Agents together: the team and group prompts, messages between agents, shared files and routing a message to the right agent.
 
 use super::*;
+use crate::chat::error::ChatError;
 
 /// The agents another agent (or the assistant) can hand tasks to.
 pub fn team_prompt(agents: &[Agent], except: Option<&str>) -> Option<String> {
@@ -54,7 +55,7 @@ pub fn message_text(from: &str, message: &str, files: &[(String, String)]) -> St
 pub fn read_shared(
     paths: &[String],
     workdir: Option<&Path>,
-) -> Result<Vec<(String, String)>, String> {
+) -> Result<Vec<(String, String)>, ChatError> {
     let mut out = Vec::new();
     for p in paths.iter().take(5) {
         let path = Path::new(p);
@@ -62,11 +63,17 @@ pub fn read_shared(
             path.to_path_buf()
         } else {
             workdir
-                .ok_or("Relative paths need the chat's folder; give a full path.")?
+                .ok_or_else(|| {
+                    ChatError::Invalid(
+                        "Relative paths need the chat's folder; give a full path.".into(),
+                    )
+                })?
                 .join(path)
         };
-        let bytes = std::fs::read(&full).map_err(|e| format!("could not read {p}: {e}"))?;
-        let text = String::from_utf8(bytes).map_err(|_| format!("{p} is not a text file."))?;
+        let bytes = std::fs::read(&full)
+            .map_err(|e| ChatError::Invalid(format!("could not read {p}: {e}")))?;
+        let text = String::from_utf8(bytes)
+            .map_err(|_| ChatError::Invalid(format!("{p} is not a text file.")))?;
         let name = full
             .file_name()
             .map_or_else(|| p.clone(), |n| n.to_string_lossy().into_owned());
@@ -79,8 +86,9 @@ pub fn read_shared(
 pub fn files_library(
     config_dir: &Path,
     id: &str,
-) -> Result<crate::chat::libraries::Library, String> {
-    let mut agent = find(config_dir, id).ok_or("No such agent.")?;
+) -> Result<crate::chat::libraries::Library, ChatError> {
+    let mut agent =
+        find(config_dir, id).ok_or_else(|| ChatError::Invalid("No such agent.".into()))?;
     let all = crate::chat::libraries::list(config_dir);
     let wanted = format!("{} files", agent.name);
     if let Some(l) = all
@@ -112,12 +120,13 @@ pub fn routing_enabled(config_dir: &Path) -> bool {
         .unwrap_or(false)
 }
 
-pub fn set_routing(config_dir: &Path, enabled: bool) -> Result<(), String> {
+pub fn set_routing(config_dir: &Path, enabled: bool) -> Result<(), ChatError> {
     crate::chat::store::write_json(
         &chat_dir(config_dir).join("agent-routing.json"),
         &serde_json::json!({ "enabled": enabled }),
     )
     .map_err(String::from)
+    .map_err(ChatError::Invalid)
 }
 
 /// The question that picks an agent for a new chat.

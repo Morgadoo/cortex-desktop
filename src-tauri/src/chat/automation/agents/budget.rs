@@ -1,6 +1,7 @@
 //! What an agent spent this month, and the budget that stops it.
 
 use super::*;
+use crate::chat::error::ChatError;
 
 /// What an agent's conversations cost this calendar month.
 #[derive(Debug, Clone, Default, Serialize, PartialEq)]
@@ -37,7 +38,7 @@ pub fn spend_this_month(config_dir: &Path) -> std::collections::HashMap<String, 
 }
 
 /// Refuses a turn when the agent's monthly budget is used up.
-pub fn check_budget(config_dir: &Path, agent: &Agent) -> Result<(), String> {
+pub fn check_budget(config_dir: &Path, agent: &Agent) -> Result<(), ChatError> {
     let Some(budget) = agent.monthly_budget.filter(|b| *b > 0.0) else {
         return Ok(());
     };
@@ -57,10 +58,10 @@ pub fn check_budget(config_dir: &Path, agent: &Agent) -> Result<(), String> {
                 .map_or(0.0, |s| s.cost)
         });
     if spent >= budget {
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "{} has used its monthly budget (${spent:.2} of ${budget:.2}). Raise the budget on its page to continue.",
             agent.name
-        ));
+        )));
     }
     Ok(())
 }

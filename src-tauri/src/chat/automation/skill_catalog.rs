@@ -6,6 +6,7 @@
 //! Everything comes from raw.githubusercontent.com. Adding a skill saves its instructions, and its
 //! scripts and other files where GitHub can list the skill's folder.
 
+use crate::chat::error::ChatError;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -51,8 +52,10 @@ fn load(config_dir: &Path) -> Store {
     s
 }
 
-fn save(config_dir: &Path, s: &Store) -> Result<(), String> {
-    crate::chat::store::write_json(&path(config_dir), s).map_err(String::from)
+fn save(config_dir: &Path, s: &Store) -> Result<(), ChatError> {
+    crate::chat::store::write_json(&path(config_dir), s)
+        .map_err(String::from)
+        .map_err(ChatError::Invalid)
 }
 
 /// `owner/repo` from what the user typed: the pair itself or a GitHub link.
@@ -77,16 +80,16 @@ fn raw_base() -> String {
         .unwrap_or_else(|_| "https://raw.githubusercontent.com".into())
 }
 
-fn client() -> Result<reqwest::Client, String> {
-    crate::support::http::client(Duration::from_secs(20))
+fn client() -> Result<reqwest::Client, ChatError> {
+    crate::support::http::client(Duration::from_secs(20)).map_err(ChatError::Invalid)
 }
 
-async fn get_text(client: &reqwest::Client, url: &str) -> Result<String, String> {
-    let r = client.get(url).send().await.map_err(|e| e.to_string())?;
+async fn get_text(client: &reqwest::Client, url: &str) -> Result<String, ChatError> {
+    let r = client.get(url).send().await.map_err(ChatError::internal)?;
     if !r.status().is_success() {
-        return Err(format!("{url} answered {}", r.status()));
+        return Err(ChatError::Invalid(format!("{url} answered {}", r.status())));
     }
-    r.text().await.map_err(|e| e.to_string())
+    r.text().await.map_err(ChatError::internal)
 }
 
 /// The skills a marketplace file lists: `(group, folder)` pairs, folders without `./`.
@@ -136,7 +139,7 @@ pub(in crate::chat::automation) fn skill_paths(marketplace: &Value) -> Vec<(Stri
 }
 
 /// One catalogue's skills, with each skill's name and description read from its SKILL.md.
-async fn read_catalog(client: &reqwest::Client, repo: &str) -> Result<Vec<Listing>, String> {
+async fn read_catalog(client: &reqwest::Client, repo: &str) -> Result<Vec<Listing>, ChatError> {
     let mut last = String::new();
     for branch in ["main", "master"] {
         let url = format!(
@@ -146,12 +149,13 @@ async fn read_catalog(client: &reqwest::Client, repo: &str) -> Result<Vec<Listin
         let text = match get_text(client, &url).await {
             Ok(t) => t,
             Err(e) => {
-                last = e;
+                last = e.to_string();
                 continue;
             }
         };
-        let market: Value = serde_json::from_str(&text)
-            .map_err(|e| format!("{repo}: the catalogue file is not readable ({e})."))?;
+        let market: Value = serde_json::from_str(&text).map_err(|e| {
+            ChatError::Invalid(format!("{repo}: the catalogue file is not readable ({e})."))
+        })?;
         let paths = skill_paths(&market);
         let reads = paths.iter().map(|(group, p)| {
             let url = format!("{}/{repo}/{branch}/{p}/SKILL.md", raw_base());
@@ -177,9 +181,9 @@ async fn read_catalog(client: &reqwest::Client, repo: &str) -> Result<Vec<Listin
         found.sort_by(|a, b| a.name.cmp(&b.name));
         return Ok(found);
     }
-    Err(format!(
+    Err(ChatError::Invalid(format!(
         "{repo} has no skill catalogue (.claude-plugin/marketplace.json): {last}"
-    ))
+    )))
 }
 
 pub struct Browse {
@@ -189,7 +193,7 @@ pub struct Browse {
 }
 
 /// Every catalogue's skills, from the cache when it is recent.
-pub async fn browse(config_dir: &Path, refresh: bool) -> Result<Browse, String> {
+pub async fn browse(config_dir: &Path, refresh: bool) -> Result<Browse, ChatError> {
     let mut store = load(config_dir);
     let fresh = store
         .fetched_at
@@ -203,11 +207,11 @@ pub async fn browse(config_dir: &Path, refresh: bool) -> Result<Browse, String> 
     }
     let client = client()?;
     let mut listings = Vec::new();
-    let mut errors = Vec::new();
+    let mut errors: Vec<String> = Vec::new();
     for repo in &store.catalogs {
         match read_catalog(&client, repo).await {
             Ok(l) => listings.extend(l),
-            Err(e) => errors.push(e),
+            Err(e) => errors.push(e.to_string()),
         }
     }
     if !listings.is_empty() {
@@ -222,8 +226,9 @@ pub async fn browse(config_dir: &Path, refresh: bool) -> Result<Browse, String> 
     })
 }
 
-pub async fn add_catalog(config_dir: &Path, input: &str) -> Result<(), String> {
-    let repo = repo_of(input).ok_or("Give a GitHub repository, like owner/repo.")?;
+pub async fn add_catalog(config_dir: &Path, input: &str) -> Result<(), ChatError> {
+    let repo = repo_of(input)
+        .ok_or_else(|| ChatError::Invalid("Give a GitHub repository, like owner/repo.".into()))?;
     read_catalog(&client()?, &repo).await?;
     let mut store = load(config_dir);
     if !store.catalogs.contains(&repo) {
@@ -233,7 +238,7 @@ pub async fn add_catalog(config_dir: &Path, input: &str) -> Result<(), String> {
     save(config_dir, &store)
 }
 
-pub fn remove_catalog(config_dir: &Path, repo: &str) -> Result<(), String> {
+pub fn remove_catalog(config_dir: &Path, repo: &str) -> Result<(), ChatError> {
     let mut store = load(config_dir);
     store.catalogs.retain(|c| c != repo);
     store.listings.retain(|l| l.catalog != repo);
@@ -268,11 +273,11 @@ pub async fn install(
     catalog: &str,
     branch: &str,
     folder: &str,
-) -> Result<Installed, String> {
-    let repo = repo_of(catalog).ok_or("Not a catalogue.")?;
+) -> Result<Installed, ChatError> {
+    let repo = repo_of(catalog).ok_or_else(|| ChatError::Invalid("Not a catalogue.".into()))?;
     if folder.split('/').any(|s| s == ".." || s.is_empty()) || !matches!(branch, "main" | "master")
     {
-        return Err("Not a skill of that catalogue.".into());
+        return Err(ChatError::Invalid("Not a skill of that catalogue.".into()));
     }
     let client = client()?;
     let text = get_text(
@@ -280,8 +285,8 @@ pub async fn install(
         &format!("{}/{repo}/{branch}/{folder}/SKILL.md", raw_base()),
     )
     .await?;
-    let (name, description, body) =
-        crate::chat::skills::parse(&text).ok_or("That skill has no name and description.")?;
+    let (name, description, body) = crate::chat::skills::parse(&text)
+        .ok_or_else(|| ChatError::Invalid("That skill has no name and description.".into()))?;
     crate::chat::skills::save(config_dir, &name, &description, &body)?;
     // Its scripts, references and templates: listed by GitHub's API, fetched from raw files.
     let api =
@@ -305,14 +310,14 @@ pub async fn install(
         });
     };
     let mut files = 0;
-    let mut skipped = Vec::new();
+    let mut skipped: Vec<String> = Vec::new();
     for rel in files_in(&tree, folder).into_iter().take(MAX_FILES) {
         let url = format!("{}/{repo}/{branch}/{folder}/{rel}", raw_base());
         match client.get(&url).send().await {
             Ok(r) if r.status().is_success() => match r.bytes().await {
                 Ok(b) => match crate::chat::skills::add_file(config_dir, &name, &rel, &b) {
                     Ok(()) => files += 1,
-                    Err(e) => skipped.push(e),
+                    Err(e) => skipped.push(e.to_string()),
                 },
                 Err(e) => skipped.push(e.to_string()),
             },
@@ -343,23 +348,24 @@ pub fn export(
     dest: &Path,
     catalog_name: &str,
     author: &str,
-) -> Result<usize, String> {
+) -> Result<usize, ChatError> {
     if names.is_empty() {
-        return Err("Choose at least one skill.".into());
+        return Err(ChatError::Invalid("Choose at least one skill.".into()));
     }
     let skills_root = dest.join("skills");
-    std::fs::create_dir_all(dest.join(".claude-plugin")).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(dest.join(".claude-plugin")).map_err(ChatError::internal)?;
     let mut paths = Vec::new();
     for name in names {
         let skill = crate::chat::skills::find(config_dir, name)
-            .ok_or_else(|| format!("There is no skill named {name}."))?;
+            .ok_or_else(|| format!("There is no skill named {name}."))
+            .map_err(ChatError::Invalid)?;
         let dir = skills_root.join(&skill.name);
-        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(&dir).map_err(ChatError::internal)?;
         std::fs::write(
             dir.join("SKILL.md"),
             crate::chat::skills::render(&skill.name, &skill.description, &skill.body),
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(ChatError::internal)?;
         for rel in &skill.files {
             // Whole and exact (binaries too): read from the skill's folder, decrypted if kept sealed.
             let bytes = crate::chat::at_rest::read(
@@ -367,12 +373,12 @@ pub fn export(
                     .join(&skill.name)
                     .join(rel),
             )
-            .map_err(|e| e.to_string())?;
+            .map_err(ChatError::internal)?;
             let target = dir.join(rel);
             if let Some(parent) = target.parent() {
-                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+                std::fs::create_dir_all(parent).map_err(ChatError::internal)?;
             }
-            std::fs::write(target, bytes).map_err(|e| e.to_string())?;
+            std::fs::write(target, bytes).map_err(ChatError::internal)?;
         }
         paths.push(format!("./skills/{}", skill.name));
     }
@@ -395,12 +401,12 @@ pub fn export(
     });
     std::fs::write(
         dest.join(".claude-plugin").join("marketplace.json"),
-        serde_json::to_string_pretty(&market).map_err(|e| e.to_string())?,
+        serde_json::to_string_pretty(&market).map_err(ChatError::internal)?,
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(ChatError::internal)?;
     let readme = format!("# {}\n\nSkills shared from Cortex. Add this catalogue in Cortex (Skills → Import → Browse skill catalogues → Add catalogue, then `owner/repo`), or with any app that reads `.claude-plugin/marketplace.json`.\n\n{}\n", catalog_name.trim(), names.iter().map(|n| format!("- {n}")).collect::<Vec<_>>().join("\n"));
     if !dest.join("README.md").exists() {
-        std::fs::write(dest.join("README.md"), readme).map_err(|e| e.to_string())?;
+        std::fs::write(dest.join("README.md"), readme).map_err(ChatError::internal)?;
     }
     Ok(names.len())
 }

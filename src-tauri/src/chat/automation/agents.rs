@@ -4,6 +4,7 @@
 //! under. Its instructions replace the generic persona, its model overrides the composer's, and
 //! its tool list narrows what it may use. Saved in `<config>/chat/agents.json`.
 
+use crate::chat::error::ChatError;
 use crate::support::settings_file::SettingsFile;
 use std::path::{Path, PathBuf};
 
@@ -125,12 +126,12 @@ pub fn find(config_dir: &Path, id: &str) -> Option<Agent> {
     load(config_dir).into_iter().find(|a| a.id == id)
 }
 
-pub fn save(config_dir: &Path, agent: Agent) -> Result<Vec<Agent>, String> {
+pub fn save(config_dir: &Path, agent: Agent) -> Result<Vec<Agent>, ChatError> {
     if !valid_id(&agent.id) {
-        return Err("invalid agent id".into());
+        return Err(ChatError::Invalid("invalid agent id".into()));
     }
     if agent.name.trim().is_empty() {
-        return Err("An agent needs a name.".into());
+        return Err(ChatError::Invalid("An agent needs a name.".into()));
     }
     let mut agents = load(config_dir);
     match agents.iter_mut().find(|a| a.id == agent.id) {
@@ -144,7 +145,7 @@ pub fn save(config_dir: &Path, agent: Agent) -> Result<Vec<Agent>, String> {
     Ok(agents)
 }
 
-pub fn delete(config_dir: &Path, id: &str) -> Result<Vec<Agent>, String> {
+pub fn delete(config_dir: &Path, id: &str) -> Result<Vec<Agent>, ChatError> {
     let mut agents = load(config_dir);
     agents.retain(|a| a.id != id);
     AGENTS_FILE.save(config_dir, &agents)?;
@@ -528,6 +529,7 @@ mod tests {
         agent.monthly_budget = Some(1.0);
         assert!(check_budget(dir.path(), &agent)
             .unwrap_err()
+            .to_string()
             .contains("monthly budget"));
         agent.monthly_budget = Some(2.0);
         assert!(check_budget(dir.path(), &agent).is_ok());

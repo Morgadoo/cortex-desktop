@@ -205,7 +205,7 @@ impl Runner<'_> {
                     is_error: false,
                 }
             }
-            Err(e) => refuse(&e),
+            Err(e) => refuse(&e.to_string()),
         }
     }
 

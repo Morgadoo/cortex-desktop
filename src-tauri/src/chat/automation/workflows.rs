@@ -4,6 +4,7 @@
 //! its plan, and works through them with whatever tools the conversation has. A workflow is a
 //! recipe the user can read and edit, not code.
 
+use crate::chat::error::ChatError;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -116,16 +117,20 @@ pub fn load(config_dir: &Path) -> Vec<Workflow> {
     mine
 }
 
-fn save_mine(config_dir: &Path, workflows: &[Workflow]) -> Result<(), String> {
+fn save_mine(config_dir: &Path, workflows: &[Workflow]) -> Result<(), ChatError> {
     let mine: Vec<&Workflow> = workflows.iter().filter(|w| !w.builtin).collect();
-    write_json(&path(config_dir), &mine).map_err(String::from)
+    write_json(&path(config_dir), &mine)
+        .map_err(String::from)
+        .map_err(ChatError::Invalid)
 }
 
-pub fn save(config_dir: &Path, mut workflow: Workflow) -> Result<Vec<Workflow>, String> {
+pub fn save(config_dir: &Path, mut workflow: Workflow) -> Result<Vec<Workflow>, ChatError> {
     workflow.name = crate::support::text::clip(workflow.name.trim(), 80);
     workflow.steps.retain(|s| !s.trim().is_empty());
     if workflow.name.is_empty() || workflow.steps.is_empty() {
-        return Err("A workflow needs a name and at least one step.".into());
+        return Err(ChatError::Invalid(
+            "A workflow needs a name and at least one step.".into(),
+        ));
     }
     // Editing a built-in one saves a copy of your own under a new id.
     if workflow.builtin || !valid_id(&workflow.id) {
@@ -150,7 +155,7 @@ pub fn save(config_dir: &Path, mut workflow: Workflow) -> Result<Vec<Workflow>, 
     Ok(load(config_dir))
 }
 
-pub fn delete(config_dir: &Path, id: &str) -> Result<Vec<Workflow>, String> {
+pub fn delete(config_dir: &Path, id: &str) -> Result<Vec<Workflow>, ChatError> {
     let mut all = load(config_dir);
     all.retain(|w| w.builtin || w.id != id);
     save_mine(config_dir, &all)?;
@@ -268,15 +273,16 @@ pub fn draft_prompt(request: &str, current: Option<&Workflow>) -> String {
 }
 
 /// Reads a model's draft workflow.
-pub fn parse_draft(text: &str) -> Result<Workflow, String> {
+pub fn parse_draft(text: &str) -> Result<Workflow, ChatError> {
     let start = text
         .find('{')
-        .ok_or("The model did not return a workflow.")?;
+        .ok_or_else(|| ChatError::Invalid("The model did not return a workflow.".into()))?;
     let end = text
         .rfind('}')
-        .ok_or("The model did not return a workflow.")?;
+        .ok_or_else(|| ChatError::Invalid("The model did not return a workflow.".into()))?;
     let value: serde_json::Value = serde_json::from_str(&text[start..=end])
-        .map_err(|_| "The model's draft was not valid JSON; try again.".to_string())?;
+        .map_err(|_| "The model's draft was not valid JSON; try again.".to_string())
+        .map_err(ChatError::Invalid)?;
     let field = |k: &str| {
         value
             .get(k)
@@ -297,7 +303,9 @@ pub fn parse_draft(text: &str) -> Result<Workflow, String> {
         })
         .unwrap_or_default();
     if field("name").is_empty() || steps.is_empty() {
-        return Err("The draft had no name or steps; try again.".into());
+        return Err(ChatError::Invalid(
+            "The draft had no name or steps; try again.".into(),
+        ));
     }
     Ok(Workflow {
         id: String::new(),

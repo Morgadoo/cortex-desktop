@@ -1,10 +1,11 @@
 //! When a task runs next, and how its schedule reads in words: times of day, weekdays, months and cron.
 
 use super::*;
+use crate::chat::error::ChatError;
 
-pub(super) fn parse_time(time: &str) -> Result<NaiveTime, String> {
+pub(super) fn parse_time(time: &str) -> Result<NaiveTime, ChatError> {
     NaiveTime::parse_from_str(time.trim(), "%H:%M")
-        .map_err(|_| format!("`{time}` is not a time like 09:30"))
+        .map_err(|_| ChatError::Invalid(format!("`{time}` is not a time like 09:30")))
 }
 
 pub(super) fn local(date: NaiveDate, time: NaiveTime) -> Option<DateTime<Utc>> {
@@ -61,7 +62,7 @@ pub(super) fn calendar(frequency: &Frequency) -> Option<crate::schedules::Timing
 pub(in crate::chat::automation) fn next_run(
     frequency: &Frequency,
     after: DateTime<Utc>,
-) -> Result<Option<DateTime<Utc>>, String> {
+) -> Result<Option<DateTime<Utc>>, ChatError> {
     if let Some(timing) = calendar(frequency) {
         let schedule = crate::schedules::Schedule {
             id: "task".into(),
@@ -79,8 +80,9 @@ pub(in crate::chat::automation) fn next_run(
     let today = now.date_naive();
     match frequency {
         Frequency::Once { date, time } => {
-            let date = NaiveDate::parse_from_str(date.trim(), "%Y-%m-%d")
-                .map_err(|_| format!("`{date}` is not a date like 2026-12-01"))?;
+            let date = NaiveDate::parse_from_str(date.trim(), "%Y-%m-%d").map_err(|_| {
+                ChatError::Invalid(format!("`{date}` is not a date like 2026-12-01"))
+            })?;
             let at = local(date, parse_time(time)?);
             Ok(at.filter(|t| *t > after))
         }
@@ -92,7 +94,9 @@ pub(in crate::chat::automation) fn next_run(
         }
         Frequency::Weekly { days, time } => {
             if days.is_empty() || days.iter().any(|d| *d > 6) {
-                return Err("Weekly tasks need days from 0 (Monday) to 6 (Sunday).".into());
+                return Err(ChatError::Invalid(
+                    "Weekly tasks need days from 0 (Monday) to 6 (Sunday).".into(),
+                ));
             }
             let time = parse_time(time)?;
             Ok((0..15)
@@ -103,7 +107,9 @@ pub(in crate::chat::automation) fn next_run(
         }
         Frequency::Monthly { day, time } => {
             if *day == 0 || *day > 31 {
-                return Err("A monthly task runs on a day from 1 to 31.".into());
+                return Err(ChatError::Invalid(
+                    "A monthly task runs on a day from 1 to 31.".into(),
+                ));
             }
             let time = parse_time(time)?;
             let mut year = today.year();
@@ -131,9 +137,9 @@ pub(in crate::chat::automation) fn next_run(
         Frequency::Cron { expression } => next_cron(expression, after),
         Frequency::Yearly { month, day, time } => {
             if *month == 0 || *month > 12 || *day == 0 || *day > 31 {
-                return Err(
+                return Err(ChatError::Invalid(
                     "A yearly task needs a month from 1 to 12 and a day from 1 to 31.".into(),
-                );
+                ));
             }
             let time = parse_time(time)?;
             for year in today.year()..=today.year() + 2 {

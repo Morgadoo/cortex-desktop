@@ -19,6 +19,7 @@
 //! notes, scripts), as Claude's and Open WebUI's skills do. The model is told their names when it
 //! loads the skill, and reads one with `use_skill` and its `file` argument.
 
+use crate::chat::error::ChatError;
 use crate::support::settings_file::SettingsFile;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -280,23 +281,25 @@ pub fn find(config_dir: &Path, name: &str) -> Option<Skill> {
     list(config_dir).into_iter().find(|s| s.name == name)
 }
 
-pub fn save(config_dir: &Path, name: &str, description: &str, body: &str) -> Result<(), String> {
+pub fn save(config_dir: &Path, name: &str, description: &str, body: &str) -> Result<(), ChatError> {
     if !valid_name(name) {
-        return Err(
+        return Err(ChatError::Invalid(
             "A skill name uses lowercase letters, digits and hyphens, like `weekly-report`.".into(),
-        );
+        ));
     }
     if description.trim().is_empty() {
-        return Err("Describe when the assistant should use this skill.".into());
+        return Err(ChatError::Invalid(
+            "Describe when the assistant should use this skill.".into(),
+        ));
     }
     let dir = skills_dir(config_dir).join(name);
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(ChatError::internal)?;
     let next = render(name, description, body);
     // The version being replaced is kept, so any earlier one can come back.
     if let Ok(previous) = crate::chat::at_rest::read_to_string(dir.join("SKILL.md")) {
         if previous != next {
             let history = dir.join("history");
-            std::fs::create_dir_all(&history).map_err(|e| e.to_string())?;
+            std::fs::create_dir_all(&history).map_err(ChatError::internal)?;
             let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%S%3fZ").to_string();
             // Two saves in the same millisecond still keep both.
             let mut file = history.join(format!("{stamp}.md"));
@@ -305,11 +308,11 @@ pub fn save(config_dir: &Path, name: &str, description: &str, body: &str) -> Res
                 file = history.join(format!("{stamp}-{n}.md"));
                 n += 1;
             }
-            crate::chat::at_rest::write(file, previous).map_err(|e| e.to_string())?;
+            crate::chat::at_rest::write(file, previous).map_err(ChatError::internal)?;
             prune_history(&history);
         }
     }
-    crate::chat::at_rest::write(dir.join("SKILL.md"), next).map_err(|e| e.to_string())
+    crate::chat::at_rest::write(dir.join("SKILL.md"), next).map_err(ChatError::internal)
 }
 
 /// Versions kept per skill.
@@ -340,9 +343,9 @@ pub struct Version {
 }
 
 /// A skill's earlier versions, newest first.
-pub fn history(config_dir: &Path, name: &str) -> Result<Vec<Version>, String> {
+pub fn history(config_dir: &Path, name: &str) -> Result<Vec<Version>, ChatError> {
     if !valid_name(name) {
-        return Err("invalid skill name".into());
+        return Err(ChatError::Invalid("invalid skill name".into()));
     }
     let dir = skills_dir(config_dir).join(name).join("history");
     let mut out: Vec<Version> = std::fs::read_dir(&dir)
@@ -365,43 +368,49 @@ pub fn history(config_dir: &Path, name: &str) -> Result<Vec<Version>, String> {
 }
 
 /// Brings an earlier version back (the current one joins the history).
-pub fn restore(config_dir: &Path, name: &str, version: &str) -> Result<(), String> {
+pub fn restore(config_dir: &Path, name: &str, version: &str) -> Result<(), ChatError> {
     let found = history(config_dir, name)?
         .into_iter()
         .find(|v| v.id == version)
-        .ok_or("That version is gone.")?;
+        .ok_or_else(|| ChatError::Invalid("That version is gone.".into()))?;
     save(config_dir, name, &found.description, &found.body)
 }
 
-pub fn delete(config_dir: &Path, name: &str) -> Result<(), String> {
+pub fn delete(config_dir: &Path, name: &str) -> Result<(), ChatError> {
     if !valid_name(name) {
-        return Err("invalid skill name".into());
+        return Err(ChatError::Invalid("invalid skill name".into()));
     }
     let dir = skills_dir(config_dir).join(name);
     match std::fs::remove_dir_all(&dir) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(e.to_string()),
+        Err(e) => Err(ChatError::Invalid(e.to_string())),
     }
 }
 
-pub fn set_enabled(config_dir: &Path, name: &str, enabled: bool) -> Result<(), String> {
+pub fn set_enabled(config_dir: &Path, name: &str, enabled: bool) -> Result<(), ChatError> {
     let mut state = load_state(config_dir);
     state.enabled.insert(name.to_string(), enabled);
-    SKILLS_FILE.save(config_dir, &state).map_err(String::from)
+    SKILLS_FILE
+        .save(config_dir, &state)
+        .map_err(String::from)
+        .map_err(ChatError::Invalid)
 }
 
 /// Imports a `SKILL.md`, or a folder holding one with its supporting files.
-pub fn import(config_dir: &Path, source: &Path) -> Result<String, String> {
+pub fn import(config_dir: &Path, source: &Path) -> Result<String, ChatError> {
     let file = if source.is_dir() {
         source.join("SKILL.md")
     } else {
         source.to_path_buf()
     };
     let text = crate::chat::at_rest::read_to_string(&file)
-        .map_err(|e| format!("could not read {file:?}: {e}"))?;
-    let (name, description, body) =
-        parse(&text).ok_or("That file has no `---` front matter with a name and description.")?;
+        .map_err(|e| ChatError::Invalid(format!("could not read {file:?}: {e}")))?;
+    let (name, description, body) = parse(&text).ok_or_else(|| {
+        ChatError::Invalid(
+            "That file has no `---` front matter with a name and description.".into(),
+        )
+    })?;
     save(config_dir, &name, &description, &body)?;
     if source.is_dir() {
         for rel in supporting_files(source) {
@@ -466,39 +475,43 @@ pub(in crate::chat::automation) fn supporting_files(dir: &Path) -> Vec<String> {
     out
 }
 
-fn user_skill_dir(config_dir: &Path, name: &str) -> Result<PathBuf, String> {
+fn user_skill_dir(config_dir: &Path, name: &str) -> Result<PathBuf, ChatError> {
     if !valid_name(name) {
-        return Err("invalid skill name".into());
+        return Err(ChatError::Invalid("invalid skill name".into()));
     }
     let dir = skills_dir(config_dir).join(name);
     if !dir.join("SKILL.md").is_file() {
-        return Err("Save the skill before adding files to it (a built-in skill needs your own copy first).".into());
+        return Err(ChatError::Invalid("Save the skill before adding files to it (a built-in skill needs your own copy first).".into()));
     }
     Ok(dir)
 }
 
 /// Adds or replaces a supporting file.
-pub fn add_file(config_dir: &Path, name: &str, rel: &str, bytes: &[u8]) -> Result<(), String> {
+pub fn add_file(config_dir: &Path, name: &str, rel: &str, bytes: &[u8]) -> Result<(), ChatError> {
     let dir = user_skill_dir(config_dir, name)?;
     let rel = rel.replace('\\', "/");
     if !file_path_ok(&rel) {
-        return Err(format!("{rel} cannot be a skill file's name."));
+        return Err(ChatError::Invalid(format!(
+            "{rel} cannot be a skill file's name."
+        )));
     }
     if bytes.len() > MAX_FILE_BYTES {
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "{rel} is over {} MB.",
             MAX_FILE_BYTES / 1024 / 1024
-        ));
+        )));
     }
     let files = supporting_files(&dir);
     if files.len() >= MAX_FILES && !files.contains(&rel) {
-        return Err(format!("A skill holds at most {MAX_FILES} files."));
+        return Err(ChatError::Invalid(format!(
+            "A skill holds at most {MAX_FILES} files."
+        )));
     }
     let target = dir.join(&rel);
     if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(parent).map_err(ChatError::internal)?;
     }
-    crate::chat::at_rest::write(&target, bytes).map_err(|e| e.to_string())?;
+    crate::chat::at_rest::write(&target, bytes).map_err(ChatError::internal)?;
     #[cfg(unix)]
     if rel.ends_with(".sh") || rel.starts_with("scripts/") || rel.starts_with("bin/") {
         use std::os::unix::fs::PermissionsExt as _;
@@ -507,12 +520,12 @@ pub fn add_file(config_dir: &Path, name: &str, rel: &str, bytes: &[u8]) -> Resul
     Ok(())
 }
 
-pub fn remove_file(config_dir: &Path, name: &str, rel: &str) -> Result<(), String> {
+pub fn remove_file(config_dir: &Path, name: &str, rel: &str) -> Result<(), ChatError> {
     let dir = user_skill_dir(config_dir, name)?;
     if !file_path_ok(rel) {
-        return Err("No such file.".into());
+        return Err(ChatError::Invalid("No such file.".into()));
     }
-    std::fs::remove_file(dir.join(rel)).map_err(|e| e.to_string())?;
+    std::fs::remove_file(dir.join(rel)).map_err(ChatError::internal)?;
     // Folders left empty go too.
     let mut parent = dir.join(rel).parent().map(Path::to_path_buf);
     while let Some(p) = parent.filter(|p| p != &dir) {
@@ -525,13 +538,14 @@ pub fn remove_file(config_dir: &Path, name: &str, rel: &str) -> Result<(), Strin
 }
 
 /// A supporting file's text; a binary file is described with its full path, for tools that run it.
-pub fn read_file(config_dir: &Path, name: &str, rel: &str) -> Result<String, String> {
+pub fn read_file(config_dir: &Path, name: &str, rel: &str) -> Result<String, ChatError> {
     if !valid_name(name) || !file_path_ok(rel) {
-        return Err("No such file in that skill.".into());
+        return Err(ChatError::Invalid("No such file in that skill.".into()));
     }
     let path = skills_dir(config_dir).join(name).join(rel);
-    let bytes =
-        crate::chat::at_rest::read(&path).map_err(|_| "No such file in that skill.".to_string())?;
+    let bytes = crate::chat::at_rest::read(&path)
+        .map_err(|_| "No such file in that skill.".to_string())
+        .map_err(ChatError::Invalid)?;
     match String::from_utf8(bytes) {
         Ok(text) if text.chars().count() > MAX_FILE_CHARS => Ok(format!(
             "{}\n\n[cut at {MAX_FILE_CHARS} characters]",
@@ -560,11 +574,13 @@ pub fn loaded(skill: &Skill) -> String {
 
 /// Where to fetch a skill's `SKILL.md` from a link to it: a GitHub folder or file (tree, blob or
 /// raw), a repository with the skill at its root, or any `https` link to a Markdown file.
-pub(in crate::chat::automation) fn skill_sources(link: &str) -> Result<Vec<String>, String> {
+pub(in crate::chat::automation) fn skill_sources(link: &str) -> Result<Vec<String>, ChatError> {
     let link = link.trim().trim_end_matches('/');
-    let url = url::Url::parse(link).map_err(|_| "That is not a link.".to_string())?;
+    let url = url::Url::parse(link)
+        .map_err(|_| "That is not a link.".to_string())
+        .map_err(ChatError::Invalid)?;
     if url.scheme() != "https" {
-        return Err("Use an https link.".into());
+        return Err(ChatError::Invalid("Use an https link.".into()));
     }
     let parts: Vec<&str> = url
         .path()
@@ -589,18 +605,23 @@ pub(in crate::chat::automation) fn skill_sources(link: &str) -> Result<Vec<Strin
                 "https://raw.githubusercontent.com/{owner}/{repo}/{reference}/{}",
                 rest.join("/")
             ))]),
-            _ => Err("Link to the skill's folder or its SKILL.md on GitHub.".into()),
+            _ => Err(ChatError::Invalid(
+                "Link to the skill's folder or its SKILL.md on GitHub.".into(),
+            )),
         },
         Some("raw.githubusercontent.com") => Ok(vec![skill_md(link.to_string())]),
         Some(_) if link.to_lowercase().ends_with(".md") => Ok(vec![link.to_string()]),
-        _ => Err("Link to a SKILL.md file, or to a skill's folder on GitHub.".into()),
+        _ => Err(ChatError::Invalid(
+            "Link to a SKILL.md file, or to a skill's folder on GitHub.".into(),
+        )),
     }
 }
 
 /// Downloads a skill from a link and saves it; returns its name. Only the instructions come
 /// along: scripts and other files in the skill's folder are not downloaded.
-pub async fn import_from_link(config_dir: &Path, link: &str) -> Result<String, String> {
-    let client = crate::support::http::client(std::time::Duration::from_secs(20))?;
+pub async fn import_from_link(config_dir: &Path, link: &str) -> Result<String, ChatError> {
+    let client = crate::support::http::client(std::time::Duration::from_secs(20))
+        .map_err(ChatError::Invalid)?;
     let mut last = String::from("No SKILL.md was found there.");
     for source in skill_sources(link)? {
         let response = match client.get(&source).send().await {
@@ -614,17 +635,22 @@ pub async fn import_from_link(config_dir: &Path, link: &str) -> Result<String, S
             last = format!("{source} answered {}.", response.status());
             continue;
         }
-        let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+        let bytes = response.bytes().await.map_err(ChatError::internal)?;
         if bytes.len() > 512 * 1024 {
-            return Err("That file is too large for a skill.".into());
+            return Err(ChatError::Invalid(
+                "That file is too large for a skill.".into(),
+            ));
         }
         let text = String::from_utf8_lossy(&bytes);
-        let (name, description, body) = parse(&text)
-            .ok_or("That file has no `---` front matter with a name and description.")?;
+        let (name, description, body) = parse(&text).ok_or_else(|| {
+            ChatError::Invalid(
+                "That file has no `---` front matter with a name and description.".into(),
+            )
+        })?;
         save(config_dir, &name, &description, &body)?;
         return Ok(name);
     }
-    Err(last)
+    Err(ChatError::Invalid(last))
 }
 
 /// The part of the system prompt that lists the enabled skills.

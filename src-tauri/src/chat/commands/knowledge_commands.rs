@@ -31,6 +31,7 @@ pub fn chat_version_diff(
     current: Option<serde_json::Value>,
 ) -> Result<String, String> {
     crate::chat::history::diff(&config_dir(&app)?, &kind, &id, &version, current.as_ref())
+        .map_err(String::from)
 }
 
 /// Brings back an earlier version of a memory list, knowledge pages, instructions, a notebook,
@@ -42,7 +43,7 @@ pub fn chat_restore_version(
     id: String,
     version: String,
 ) -> Result<(), String> {
-    crate::chat::history::restore(&config_dir(&app)?, &kind, &id, &version)
+    crate::chat::history::restore(&config_dir(&app)?, &kind, &id, &version).map_err(String::from)
 }
 
 /// The user's eval suites and their cases: the user owns them; no tool writes them.
@@ -127,12 +128,14 @@ pub async fn chat_skill_catalog(
 
 #[tauri::command]
 pub async fn chat_add_skill_catalog(app: AppHandle, repo: String) -> Result<(), String> {
-    crate::chat::skill_catalog::add_catalog(&config_dir(&app)?, &repo).await
+    crate::chat::skill_catalog::add_catalog(&config_dir(&app)?, &repo)
+        .await
+        .map_err(String::from)
 }
 
 #[tauri::command]
 pub fn chat_remove_skill_catalog(app: AppHandle, repo: String) -> Result<(), String> {
-    crate::chat::skill_catalog::remove_catalog(&config_dir(&app)?, &repo)
+    crate::chat::skill_catalog::remove_catalog(&config_dir(&app)?, &repo).map_err(String::from)
 }
 
 /// Adds a catalogue skill; says how many of its files came along.
@@ -415,7 +418,9 @@ pub async fn chat_import_skill(app: AppHandle) -> Result<Option<String>, String>
         return Ok(None);
     };
     let path = path.into_path().map_err(|e| e.to_string())?;
-    crate::chat::skills::import(&config_dir(&app)?, &path).map(Some)
+    crate::chat::skills::import(&config_dir(&app)?, &path)
+        .map(Some)
+        .map_err(String::from)
 }
 
 /// Adds files the user picks to a skill's folder (under `folder`, when given); returns the skills.
@@ -455,7 +460,7 @@ pub async fn chat_skill_add_files(
 /// A skill's supporting file, as text.
 #[tauri::command]
 pub fn chat_skill_read_file(app: AppHandle, name: String, path: String) -> Result<String, String> {
-    crate::chat::skills::read_file(&config_dir(&app)?, &name, &path)
+    crate::chat::skills::read_file(&config_dir(&app)?, &name, &path).map_err(String::from)
 }
 
 /// Writes a text file into a skill's folder (a new file, or an edit).
@@ -485,7 +490,9 @@ pub fn chat_skill_remove_file(
 /// Imports a skill from a link (a GitHub folder or a SKILL.md); returns its name.
 #[tauri::command]
 pub async fn chat_import_skill_url(app: AppHandle, url: String) -> Result<String, String> {
-    crate::chat::skills::import_from_link(&config_dir(&app)?, &url).await
+    crate::chat::skills::import_from_link(&config_dir(&app)?, &url)
+        .await
+        .map_err(String::from)
 }
 
 /// The learning switches (weekly knowledge review, skills from work); `change` sets them.
@@ -518,7 +525,9 @@ pub fn chat_versions(
 pub async fn chat_plugin_marketplace(
     link: String,
 ) -> Result<Option<Vec<crate::chat::plugins::MarketEntry>>, String> {
-    crate::chat::plugins::read_market(&link).await
+    crate::chat::plugins::read_market(&link)
+        .await
+        .map_err(String::from)
 }
 
 /// Imports Claude plugins (or a marketplace of them) from a GitHub link, or from a folder the
@@ -619,7 +628,7 @@ pub fn chat_skill_history(
     app: AppHandle,
     name: String,
 ) -> Result<Vec<crate::chat::skills::Version>, String> {
-    crate::chat::skills::history(&config_dir(&app)?, &name)
+    crate::chat::skills::history(&config_dir(&app)?, &name).map_err(String::from)
 }
 
 #[tauri::command]

@@ -40,6 +40,7 @@ pub async fn chat_agent_market(
         refresh.unwrap_or(false),
     )
     .await
+    .map_err(String::from)
 }
 
 /// Adds a catalog agent as one of the user's agents.
@@ -60,6 +61,7 @@ pub async fn chat_install_market_agent(
         &identifier,
     )
     .await
+    .map_err(String::from)
 }
 
 #[tauri::command]
@@ -77,7 +79,7 @@ pub fn chat_save_agent(
     app: AppHandle,
     agent: crate::chat::agents::Agent,
 ) -> Result<Vec<crate::chat::agents::Agent>, String> {
-    crate::chat::agents::save(&config_dir(&app)?, agent)
+    crate::chat::agents::save(&config_dir(&app)?, agent).map_err(String::from)
 }
 
 #[tauri::command]
@@ -85,7 +87,7 @@ pub fn chat_delete_agent(
     app: AppHandle,
     id: String,
 ) -> Result<Vec<crate::chat::agents::Agent>, String> {
-    crate::chat::agents::delete(&config_dir(&app)?, &id)
+    crate::chat::agents::delete(&config_dir(&app)?, &id).map_err(String::from)
 }
 
 /// Whether new chats go to the best-suited agent by themselves.
@@ -104,7 +106,7 @@ pub fn chat_agent_files(
     app: AppHandle,
     id: String,
 ) -> Result<crate::chat::libraries::Library, String> {
-    crate::chat::agents::files_library(&config_dir(&app)?, &id)
+    crate::chat::agents::files_library(&config_dir(&app)?, &id).map_err(String::from)
 }
 
 /// Opens an agent's browser profile in a window, to sign in to sites for it; `clear` forgets it.
@@ -238,7 +240,7 @@ pub fn chat_agent_notebook(app: AppHandle, id: String) -> Result<String, String>
 
 #[tauri::command]
 pub fn chat_save_agent_notebook(app: AppHandle, id: String, text: String) -> Result<(), String> {
-    crate::chat::agents::save_notebook(&config_dir(&app)?, &id, &text)
+    crate::chat::agents::save_notebook(&config_dir(&app)?, &id, &text).map_err(String::from)
 }
 
 /// What each agent's conversations cost this month, by agent id.

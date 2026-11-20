@@ -11,6 +11,7 @@
 //! at most `MAX_DEPTH` levels deep and `MAX_ORG` agents large. Every change keeps the previous
 //! version (`versions`), so it can be restored.
 
+use crate::chat::error::ChatError;
 use std::collections::HashSet;
 use std::path::Path;
 
@@ -115,7 +116,7 @@ fn height(all: &[Agent], id: &str) -> usize {
 }
 
 /// The tools a manager may give: some of its own, or its own when none are named.
-fn narrowed_tools(manager: &Agent, requested: Option<&Value>) -> Result<Vec<String>, String> {
+fn narrowed_tools(manager: &Agent, requested: Option<&Value>) -> Result<Vec<String>, ChatError> {
     let Some(list) = requested.and_then(Value::as_array) else {
         return Ok(manager.tools.clone());
     };
@@ -131,10 +132,10 @@ fn narrowed_tools(manager: &Agent, requested: Option<&Value>) -> Result<Vec<Stri
         .map(String::as_str)
         .collect();
     if !refused.is_empty() {
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "You can only give tools you have yourself; not: {}.",
             refused.join(", ")
-        ));
+        )));
     }
     // An empty list means every tool, which only a manager with every tool can give.
     if list.is_empty() {
@@ -223,16 +224,20 @@ fn text(arguments: &Value, key: &str) -> Option<String> {
 }
 
 /// The agent named `name` in `manager`'s organization (not the manager itself).
-fn in_org<'a>(all: &'a [Agent], manager: &Agent, name: &str) -> Result<&'a Agent, String> {
-    let target = agents::by_name(all, name).ok_or_else(|| format!("No agent is called {name}."))?;
+fn in_org<'a>(all: &'a [Agent], manager: &Agent, name: &str) -> Result<&'a Agent, ChatError> {
+    let target = agents::by_name(all, name)
+        .ok_or_else(|| format!("No agent is called {name}."))
+        .map_err(ChatError::Invalid)?;
     if target.id == manager.id {
-        return Err("You cannot change yourself; the user edits you.".into());
+        return Err(ChatError::Invalid(
+            "You cannot change yourself; the user edits you.".into(),
+        ));
     }
     if !descendants(all, &manager.id).contains(&target.id) {
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "{} is not in your organization; you can only change agents under you.",
             target.name
-        ));
+        )));
     }
     Ok(target)
 }
@@ -242,7 +247,7 @@ fn resolve_manager<'a>(
     all: &'a [Agent],
     manager: &'a Agent,
     name: Option<&str>,
-) -> Result<&'a Agent, String> {
+) -> Result<&'a Agent, ChatError> {
     match name.filter(|n| !n.is_empty()) {
         None => Ok(manager),
         Some(n) if agents::by_name(all, n).is_some_and(|a| a.id == manager.id) => Ok(manager),
@@ -261,15 +266,17 @@ pub fn apply(
     config_dir: &Path,
     manager_id: &str,
     arguments: &Value,
-) -> Result<(String, bool), String> {
+) -> Result<(String, bool), ChatError> {
     let all = agents::load(config_dir);
     let manager = all
         .iter()
         .find(|a| a.id == manager_id)
         .cloned()
-        .ok_or("Only agents can manage agents.")?;
+        .ok_or_else(|| ChatError::Invalid("Only agents can manage agents.".into()))?;
     if !manager.can_manage_agents {
-        return Err("The user has not allowed you to manage agents.".into());
+        return Err(ChatError::Invalid(
+            "The user has not allowed you to manage agents.".into(),
+        ));
     }
     let action = text(arguments, "action").unwrap_or_default();
     match action.as_str() {
@@ -277,7 +284,9 @@ pub fn apply(
         "create" => create(config_dir, &all, &manager, arguments),
         "update" => update(config_dir, &all, &manager, arguments),
         "remove" => remove(config_dir, &all, &manager, arguments),
-        _ => Err("`action` is one of list, create, update or remove.".into()),
+        _ => Err(ChatError::Invalid(
+            "`action` is one of list, create, update or remove.".into(),
+        )),
     }
 }
 
@@ -286,29 +295,31 @@ fn create(
     all: &[Agent],
     manager: &Agent,
     arguments: &Value,
-) -> Result<(String, bool), String> {
+) -> Result<(String, bool), ChatError> {
     let name = text(arguments, "name")
         .filter(|n| !n.is_empty())
-        .ok_or("Give the new agent a `name`.")?;
+        .ok_or_else(|| ChatError::Invalid("Give the new agent a `name`.".into()))?;
     if name_taken(all, &name, None) {
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "An agent is already called {name}; pick another name, or update it."
-        ));
+        )));
     }
     let instructions = text(arguments, "instructions").unwrap_or_default();
     if instructions.is_empty() {
-        return Err("Give it `instructions`: who it is, its rules and how it works.".into());
+        return Err(ChatError::Invalid(
+            "Give it `instructions`: who it is, its rules and how it works.".into(),
+        ));
     }
     if descendants(all, &manager.id).len() >= MAX_ORG {
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "Your organization is full ({MAX_ORG} agents); remove one first."
-        ));
+        )));
     }
     let boss = resolve_manager(all, manager, text(arguments, "reports_to").as_deref())?;
     if level(all, &boss.id) + 1 > MAX_DEPTH {
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "That would be more than {MAX_DEPTH} levels deep; put it higher up."
-        ));
+        )));
     }
     let tools = narrowed_tools(manager, arguments.get("tools"))?;
     let avatar: String = text(arguments, "avatar")
@@ -371,15 +382,18 @@ fn update(
     all: &[Agent],
     manager: &Agent,
     arguments: &Value,
-) -> Result<(String, bool), String> {
-    let name = text(arguments, "name").ok_or("Name the agent to update in `name`.")?;
+) -> Result<(String, bool), ChatError> {
+    let name = text(arguments, "name")
+        .ok_or_else(|| ChatError::Invalid("Name the agent to update in `name`.".into()))?;
     let mut agent = in_org(all, manager, &name)?.clone();
     let mut changed: Vec<&str> = Vec::new();
     if let Some(new_name) =
         text(arguments, "new_name").filter(|n| !n.is_empty() && *n != agent.name)
     {
         if name_taken(all, &new_name, Some(&agent.id)) {
-            return Err(format!("An agent is already called {new_name}."));
+            return Err(ChatError::Invalid(format!(
+                "An agent is already called {new_name}."
+            )));
         }
         agent.name = new_name;
         changed.push("name");
@@ -418,21 +432,23 @@ fn update(
     if let Some(boss_name) = text(arguments, "reports_to").filter(|n| !n.is_empty()) {
         let boss = resolve_manager(all, manager, Some(&boss_name))?;
         if boss.id == agent.id || descendants(all, &agent.id).contains(&boss.id) {
-            return Err(format!(
+            return Err(ChatError::Invalid(format!(
                 "{} cannot report to itself or to an agent under it.",
                 agent.name
-            ));
+            )));
         }
         if level(all, &boss.id) + 1 + height(all, &agent.id) > MAX_DEPTH {
-            return Err(format!(
+            return Err(ChatError::Invalid(format!(
                 "That would make your organization more than {MAX_DEPTH} levels deep."
-            ));
+            )));
         }
         agent.reports_to = Some(boss.id.clone());
         changed.push("reports_to");
     }
     if changed.is_empty() {
-        return Err("Nothing to change: pass the fields to update.".into());
+        return Err(ChatError::Invalid(
+            "Nothing to change: pass the fields to update.".into(),
+        ));
     }
     let shown = agent.name.clone();
     let saved = agents::save(config_dir, agent)?;
@@ -451,8 +467,9 @@ fn remove(
     all: &[Agent],
     manager: &Agent,
     arguments: &Value,
-) -> Result<(String, bool), String> {
-    let name = text(arguments, "name").ok_or("Name the agent to remove in `name`.")?;
+) -> Result<(String, bool), ChatError> {
+    let name = text(arguments, "name")
+        .ok_or_else(|| ChatError::Invalid("Name the agent to remove in `name`.".into()))?;
     let target = in_org(all, manager, &name)?.clone();
     // Its reports move up to its manager.
     for report in all
@@ -490,7 +507,7 @@ mod tests {
     }
 
     fn call(dir: &Path, who: &str, args: Value) -> Result<(String, bool), String> {
-        apply(dir, who, &args)
+        apply(dir, who, &args).map_err(String::from)
     }
 
     #[test]

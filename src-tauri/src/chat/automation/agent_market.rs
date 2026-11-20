@@ -6,6 +6,7 @@
 //! prompt, an avatar and starter questions: no code runs, and the agent gets Cortex's tools under
 //! your settings like any agent you write.
 
+use crate::chat::error::ChatError;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -104,22 +105,25 @@ fn locale(language: &str) -> &'static str {
     }
 }
 
-fn client() -> Result<reqwest::Client, String> {
-    crate::support::http::client(std::time::Duration::from_secs(30))
+fn client() -> Result<reqwest::Client, ChatError> {
+    crate::support::http::client(std::time::Duration::from_secs(30)).map_err(ChatError::Invalid)
 }
 
-async fn fetch_json(url: &str) -> Result<Value, String> {
+async fn fetch_json(url: &str) -> Result<Value, ChatError> {
     let r = client()?
         .get(url)
         .send()
         .await
-        .map_err(|e| format!("The agent catalog did not answer: {e}"))?;
+        .map_err(|e| ChatError::Invalid(format!("The agent catalog did not answer: {e}")))?;
     if !r.status().is_success() {
-        return Err(format!("The agent catalog answered {}.", r.status()));
+        return Err(ChatError::Invalid(format!(
+            "The agent catalog answered {}.",
+            r.status()
+        )));
     }
-    r.json()
-        .await
-        .map_err(|e| format!("The agent catalog sent something unreadable: {e}"))
+    r.json().await.map_err(|e| {
+        ChatError::Invalid(format!("The agent catalog sent something unreadable: {e}"))
+    })
 }
 
 /// The catalog, from the cache when it is recent.
@@ -128,7 +132,7 @@ pub async fn listings(
     source: &str,
     language: &str,
     refresh: bool,
-) -> Result<Vec<Listing>, String> {
+) -> Result<Vec<Listing>, ChatError> {
     let source = source.trim().trim_end_matches('/');
     let lang = locale(language);
     if !refresh {
@@ -149,7 +153,9 @@ pub async fn listings(
     };
     let listings = parse_index(&body);
     if listings.is_empty() {
-        return Err("The agent catalog lists no agents.".into());
+        return Err(ChatError::Invalid(
+            "The agent catalog lists no agents.".into(),
+        ));
     }
     let _ = crate::chat::store::write_json(
         &cache_path(config_dir),
@@ -167,7 +173,7 @@ pub async fn listings(
 pub(in crate::chat::automation) fn to_agent(
     body: &Value,
     id: String,
-) -> Result<crate::chat::agents::Agent, String> {
+) -> Result<crate::chat::agents::Agent, ChatError> {
     let s = |v: Option<&Value>| {
         v.and_then(Value::as_str)
             .unwrap_or_default()
@@ -178,7 +184,9 @@ pub(in crate::chat::automation) fn to_agent(
     let name = s(meta.and_then(|m| m.get("title")));
     let instructions = s(body.pointer("/config/systemRole"));
     if name.is_empty() || instructions.is_empty() {
-        return Err("That agent has no name or instructions.".into());
+        return Err(ChatError::Invalid(
+            "That agent has no name or instructions.".into(),
+        ));
     }
     let mut starters: Vec<String> = body
         .get("openingQuestions")
@@ -243,13 +251,13 @@ pub async fn install(
     source: &str,
     language: &str,
     identifier: &str,
-) -> Result<crate::chat::agents::Agent, String> {
+) -> Result<crate::chat::agents::Agent, ChatError> {
     if identifier.is_empty()
         || !identifier
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
-        return Err("Not an agent of the catalog.".into());
+        return Err(ChatError::Invalid("Not an agent of the catalog.".into()));
     }
     let source = source.trim().trim_end_matches('/');
     let lang = locale(language);

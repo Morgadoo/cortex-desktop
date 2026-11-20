@@ -1,6 +1,7 @@
 //! The app's background loop: due tasks, mirrored libraries and the daily maintenance jobs.
 
 use super::*;
+use crate::chat::error::ChatError;
 
 /// Starts the scheduler loop.
 pub fn start(app: AppHandle) {
@@ -97,12 +98,12 @@ pub fn start(app: AppHandle) {
 }
 
 /// Runs a task now, outside its schedule.
-pub fn run_now(app: &AppHandle, id: &str) -> Result<(), String> {
-    let config_dir = crate::settings::get_config_dir(app)?;
+pub fn run_now(app: &AppHandle, id: &str) -> Result<(), ChatError> {
+    let config_dir = crate::settings::get_config_dir(app).map_err(ChatError::Invalid)?;
     let task = load(&config_dir)
         .into_iter()
         .find(|t| t.id == id)
-        .ok_or("No such task.")?;
+        .ok_or_else(|| ChatError::Invalid("No such task.".into()))?;
     record(
         &config_dir,
         id,

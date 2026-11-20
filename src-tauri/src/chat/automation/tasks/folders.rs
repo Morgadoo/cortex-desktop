@@ -1,6 +1,7 @@
 //! Folder triggers: the files that arrived since a task last looked, once they stopped changing.
 
 use super::*;
+use crate::chat::error::ChatError;
 
 /// How long a new file must stay unchanged before it counts (it may still be copying).
 pub(super) const SETTLE: Duration = Duration::from_secs(5);
@@ -9,8 +10,9 @@ pub(super) const SETTLE: Duration = Duration::from_secs(5);
 pub(super) fn folder_files(
     folder: &Path,
     now: std::time::SystemTime,
-) -> Result<Vec<(String, bool)>, String> {
-    let entries = std::fs::read_dir(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+) -> Result<Vec<(String, bool)>, ChatError> {
+    let entries = std::fs::read_dir(folder)
+        .map_err(|e| ChatError::Invalid(format!("{}: {e}", folder.display())))?;
     let mut out = Vec::new();
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();

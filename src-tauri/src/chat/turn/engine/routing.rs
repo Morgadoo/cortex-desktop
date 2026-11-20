@@ -52,7 +52,7 @@ pub(super) async fn message_agent(
         .unwrap_or_default();
     let files = match agents::read_shared(&paths, workdir.map(std::path::Path::new)) {
         Ok(f) => f,
-        Err(e) => return fail(e),
+        Err(e) => return fail(e.to_string()),
     };
     let Some(depth) = host.chat_state().enter_message(agents::MAX_MESSAGE_DEPTH) else {
         return fail(

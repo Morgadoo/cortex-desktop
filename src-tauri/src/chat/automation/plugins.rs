@@ -10,6 +10,7 @@
 //! folder. Hooks are not run. The source is a folder on disk or a GitHub repository, read from
 //! its ZIP download; files are read into memory first, so parsing is the same for both.
 
+use crate::chat::error::ChatError;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -73,9 +74,16 @@ pub struct Imported {
     pub skipped: Vec<String>,
 }
 
-fn add(files: &mut Files, total: &mut usize, path: String, bytes: Vec<u8>) -> Result<(), String> {
+fn add(
+    files: &mut Files,
+    total: &mut usize,
+    path: String,
+    bytes: Vec<u8>,
+) -> Result<(), ChatError> {
     if files.len() >= MAX_FILES || *total + bytes.len() > MAX_TOTAL {
-        return Err("That source is too large to import.".into());
+        return Err(ChatError::Invalid(
+            "That source is too large to import.".into(),
+        ));
     }
     *total += bytes.len();
     files.insert(path, bytes);
@@ -90,12 +98,13 @@ fn skipped_dir(name: &str) -> bool {
 }
 
 /// The files of a folder on disk.
-pub fn from_dir(root: &Path) -> Result<Files, String> {
+pub fn from_dir(root: &Path) -> Result<Files, ChatError> {
     let mut files = Files::new();
     let mut total = 0;
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
-        let entries = std::fs::read_dir(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        let entries = std::fs::read_dir(&dir)
+            .map_err(|e| ChatError::Invalid(format!("{}: {e}", dir.display())))?;
         for entry in entries.flatten() {
             let path = entry.path();
             let name = entry.file_name().to_string_lossy().to_string();
@@ -110,14 +119,14 @@ pub fn from_dir(root: &Path) -> Result<Files, String> {
             {
                 let rel = path
                     .strip_prefix(root)
-                    .map_err(|e| e.to_string())?
+                    .map_err(ChatError::internal)?
                     .to_string_lossy()
                     .replace('\\', "/");
                 add(
                     &mut files,
                     &mut total,
                     rel,
-                    crate::chat::at_rest::read(&path).map_err(|e| e.to_string())?,
+                    crate::chat::at_rest::read(&path).map_err(ChatError::internal)?,
                 )?;
             }
         }
@@ -127,13 +136,13 @@ pub fn from_dir(root: &Path) -> Result<Files, String> {
 
 /// The files of a ZIP archive; a single folder holding everything (as GitHub's downloads have)
 /// is taken off the paths.
-pub fn from_zip(bytes: &[u8]) -> Result<Files, String> {
+pub fn from_zip(bytes: &[u8]) -> Result<Files, ChatError> {
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
-        .map_err(|e| format!("not a ZIP archive: {e}"))?;
+        .map_err(|e| ChatError::Invalid(format!("not a ZIP archive: {e}")))?;
     let mut files = Files::new();
     let mut total = 0;
     for i in 0..archive.len() {
-        let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
+        let mut entry = archive.by_index(i).map_err(ChatError::internal)?;
         if !entry.is_file() || entry.size() as usize > MAX_FILE {
             continue;
         }
@@ -145,7 +154,7 @@ pub fn from_zip(bytes: &[u8]) -> Result<Files, String> {
             continue;
         }
         let mut data = Vec::new();
-        std::io::Read::read_to_end(&mut entry, &mut data).map_err(|e| e.to_string())?;
+        std::io::Read::read_to_end(&mut entry, &mut data).map_err(ChatError::internal)?;
         add(&mut files, &mut total, rel, data)?;
     }
     let first = files
@@ -164,15 +173,15 @@ pub fn from_zip(bytes: &[u8]) -> Result<Files, String> {
 
 /// The ZIP downloads to try for a GitHub link, and the folder inside the repository it points
 /// at: `github.com/owner/repo`, or `…/tree/<ref>/<folder>`.
-pub fn github_sources(link: &str) -> Result<(Vec<String>, String), String> {
+pub fn github_sources(link: &str) -> Result<(Vec<String>, String), ChatError> {
     let rest = link.trim().trim_end_matches('/').trim_end_matches(".git");
     let rest = rest
         .strip_prefix("https://")
         .or_else(|| rest.strip_prefix("http://"))
         .unwrap_or(rest);
-    let path = rest
-        .strip_prefix("github.com/")
-        .ok_or("Give a folder on this computer or a github.com link.")?;
+    let path = rest.strip_prefix("github.com/").ok_or_else(|| {
+        ChatError::Invalid("Give a folder on this computer or a github.com link.".into())
+    })?;
     let parts: Vec<&str> = path.split('/').filter(|p| !p.is_empty()).collect();
     match parts.as_slice() {
         [owner, repo] => Ok((
@@ -188,7 +197,9 @@ pub fn github_sources(link: &str) -> Result<(Vec<String>, String), String> {
             )],
             folder.join("/"),
         )),
-        _ => Err("Give a link to a repository, like https://github.com/owner/repo.".into()),
+        _ => Err(ChatError::Invalid(
+            "Give a link to a repository, like https://github.com/owner/repo.".into(),
+        )),
     }
 }
 
@@ -295,7 +306,7 @@ pub(in crate::chat::automation) fn market_entries(
 
 /// Reads the marketplace a GitHub link points at, from its raw file; `None` when the
 /// repository has no `.claude-plugin/marketplace.json` (it is then a plugin itself).
-pub async fn read_market(link: &str) -> Result<Option<Vec<MarketEntry>>, String> {
+pub async fn read_market(link: &str) -> Result<Option<Vec<MarketEntry>>, ChatError> {
     let rest = link.trim().trim_end_matches('/').trim_end_matches(".git");
     let rest = rest
         .strip_prefix("https://")
@@ -303,7 +314,7 @@ pub async fn read_market(link: &str) -> Result<Option<Vec<MarketEntry>>, String>
         .unwrap_or(rest);
     let path = rest
         .strip_prefix("github.com/")
-        .ok_or("Give a github.com link.")?;
+        .ok_or_else(|| ChatError::Invalid("Give a github.com link.".into()))?;
     let parts: Vec<&str> = path.split('/').filter(|p| !p.is_empty()).collect();
     let (repo, refs, folder): (String, Vec<String>, String) = match parts.as_slice() {
         [owner, repo] => (
@@ -316,9 +327,14 @@ pub async fn read_market(link: &str) -> Result<Option<Vec<MarketEntry>>, String>
             vec![(*reference).to_string()],
             folder.join("/"),
         ),
-        _ => return Err("Give a link to a repository, like https://github.com/owner/repo.".into()),
+        _ => {
+            return Err(ChatError::Invalid(
+                "Give a link to a repository, like https://github.com/owner/repo.".into(),
+            ))
+        }
     };
-    let client = crate::support::http::client(std::time::Duration::from_secs(30))?;
+    let client = crate::support::http::client(std::time::Duration::from_secs(30))
+        .map_err(ChatError::Invalid)?;
     for reference in refs {
         let prefix = if folder.is_empty() {
             String::new()
@@ -332,10 +348,9 @@ pub async fn read_market(link: &str) -> Result<Option<Vec<MarketEntry>>, String>
         if !response.status().is_success() {
             continue;
         }
-        let market: Value = response
-            .json()
-            .await
-            .map_err(|e| format!("The marketplace file could not be read: {e}"))?;
+        let market: Value = response.json().await.map_err(|e| {
+            ChatError::Invalid(format!("The marketplace file could not be read: {e}"))
+        })?;
         return Ok(Some(market_entries(&market, (&repo, &reference))));
     }
     Ok(None)
@@ -638,7 +653,7 @@ pub fn plugin_dir(config_dir: &Path, name: &str) -> PathBuf {
 }
 
 /// Keeps the plugin's files on disk, replacing an earlier copy.
-pub fn keep_files(files: &Files, root: &str, dir: &Path) -> Result<(), String> {
+pub fn keep_files(files: &Files, root: &str, dir: &Path) -> Result<(), ChatError> {
     let _ = std::fs::remove_dir_all(dir);
     let prefix = if root.is_empty() {
         String::new()
@@ -652,9 +667,9 @@ pub fn keep_files(files: &Files, root: &str, dir: &Path) -> Result<(), String> {
         }
         let target = dir.join(rel);
         if let Some(parent) = target.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            std::fs::create_dir_all(parent).map_err(ChatError::internal)?;
         }
-        crate::chat::at_rest::write(&target, bytes).map_err(|e| e.to_string())?;
+        crate::chat::at_rest::write(&target, bytes).map_err(ChatError::internal)?;
         #[cfg(unix)]
         if rel.ends_with(".sh") || rel.starts_with("bin/") || rel.starts_with("scripts/") {
             use std::os::unix::fs::PermissionsExt as _;
@@ -666,7 +681,11 @@ pub fn keep_files(files: &Files, root: &str, dir: &Path) -> Result<(), String> {
 
 /// Saves a plugin's skills and agents. A skill whose name is taken by a different skill gets the
 /// plugin's name in front; an agent of the same name is updated.
-pub fn install(config_dir: &Path, plugin: &PluginDraft, out: &mut Imported) -> Result<(), String> {
+pub fn install(
+    config_dir: &Path,
+    plugin: &PluginDraft,
+    out: &mut Imported,
+) -> Result<(), ChatError> {
     for skill in &plugin.skills {
         if !crate::chat::skills::valid_name(&skill.name) || skill.body.trim().is_empty() {
             out.skipped.push(format!("skill {}", skill.name));
@@ -703,7 +722,7 @@ pub fn install(config_dir: &Path, plugin: &PluginDraft, out: &mut Imported) -> R
             "instructions": draft.instructions,
             "createdAt": chrono::Utc::now(),
         }))
-        .map_err(|e| e.to_string())?;
+        .map_err(ChatError::internal)?;
         if let Some(old) = existing.iter().find(|a| a.id == agent.id) {
             agent.created_at = old.created_at;
             agent.avatar.clone_from(&old.avatar);

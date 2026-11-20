@@ -1,6 +1,7 @@
 //! Drafting an agent from a sentence, and refining a draft.
 
 use super::*;
+use crate::chat::error::ChatError;
 
 /// The instruction that turns a one-line description into an agent.
 pub fn draft_prompt(description: &str, tools: &[&str], skills: &[String]) -> String {
@@ -33,13 +34,16 @@ pub fn refine_prompt(current: &Agent, request: &str, tools: &[&str], skills: &[S
 }
 
 /// Reads the model's draft. Unknown tools and skills are dropped.
-pub fn parse_draft(text: &str, tools: &[&str], skills: &[String]) -> Result<Agent, String> {
-    let start = text.find('{').ok_or("The model did not return an agent.")?;
+pub fn parse_draft(text: &str, tools: &[&str], skills: &[String]) -> Result<Agent, ChatError> {
+    let start = text
+        .find('{')
+        .ok_or_else(|| ChatError::Invalid("The model did not return an agent.".into()))?;
     let end = text
         .rfind('}')
-        .ok_or("The model did not return an agent.")?;
+        .ok_or_else(|| ChatError::Invalid("The model did not return an agent.".into()))?;
     let value: serde_json::Value = serde_json::from_str(&text[start..=end])
-        .map_err(|_| "The model's draft was not valid JSON; try again.".to_string())?;
+        .map_err(|_| "The model's draft was not valid JSON; try again.".to_string())
+        .map_err(ChatError::Invalid)?;
     let field = |k: &str| {
         value
             .get(k)
@@ -61,7 +65,9 @@ pub fn parse_draft(text: &str, tools: &[&str], skills: &[String]) -> Result<Agen
     };
     let name = field("name");
     if name.is_empty() {
-        return Err("The draft had no name; try again.".into());
+        return Err(ChatError::Invalid(
+            "The draft had no name; try again.".into(),
+        ));
     }
     Ok(Agent {
         id: uuid::Uuid::new_v4().to_string(),

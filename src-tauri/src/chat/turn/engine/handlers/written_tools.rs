@@ -212,30 +212,26 @@ where
     if suites.is_empty() {
         return Ok(None);
     }
-    let folder = evals::trial_folder(r.config_dir).map_err(ChatError::Invalid)?;
+    let folder = evals::trial_folder(r.config_dir)?;
     let host: Arc<dyn Host> = Arc::new(evals::InFolder::new(r.host.clone(), folder.dir.clone()));
     let mut before = Vec::new();
     for suite in &suites {
         before.push(
-            evals::run_suite(&host, suite, &r.request.model, &evals::Without::default())
-                .await
-                .map_err(ChatError::Invalid)?,
+            evals::run_suite(&host, suite, &r.request.model, &evals::Without::default()).await?,
         );
     }
     apply(folder.dir.clone()).await?;
     let mut scores = Vec::new();
     for (suite, base) in suites.iter().zip(&before) {
-        let after = evals::run_suite(&host, suite, &r.request.model, &evals::Without::default())
-            .await
-            .map_err(ChatError::Invalid)?;
+        let after =
+            evals::run_suite(&host, suite, &r.request.model, &evals::Without::default()).await?;
         let mut comparison = evals::compare(base, &after);
         if !comparison.holds() {
             // Models answer differently from run to run: one worse run is checked once more
             // before the change is held to have made the suite worse.
             let again =
                 evals::run_suite(&host, suite, &r.request.model, &evals::Without::default())
-                    .await
-                    .map_err(ChatError::Invalid)?;
+                    .await?;
             let second = evals::compare(base, &again);
             if second.holds() {
                 comparison = second;

@@ -222,9 +222,10 @@ node scripts/screenshot-pages.mjs --compare shots/before shots/after
 Storage returns `StoreError` (`cortex-store`): which file, and whether it was missing, locked,
 unreadable or unwritable. The layers above return `chat::error::ChatError`, which wraps it and adds
 network, model and invalid-request failures; `?` converts one into the other. Words meant for the
-user go in `Invalid`. Only the commands turn an error into a `String`, the text the window shows.
-Some layers (models, grounding, toolkit, multimedia, turn, automation) still return `String` and
-move over one at a time.
+user go in `Invalid`; a library's error with no kind of its own is `Internal`. Only the commands
+(and the CLI and chat-app integrations) turn an error into a `String`, the text the window shows,
+as do the few boundaries outside `chat/` that take text: the kernel's step loop, the tool
+registry's connector call and the sandbox's nested calls.
 
 ### A module
 

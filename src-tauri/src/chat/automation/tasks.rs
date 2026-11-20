@@ -11,6 +11,7 @@
 //! are noted when the task is saved; each scheduler tick, files that appeared since and have not
 //! changed for a few seconds start a run, with their names added to the prompt.
 
+use crate::chat::error::ChatError;
 use crate::support::settings_file::SettingsFile;
 use std::path::Path;
 use std::time::Duration;
@@ -53,16 +54,16 @@ pub enum Frequency {
 }
 
 /// The next time a cron expression fires after `after`, in the user's local time.
-fn next_cron(expression: &str, after: DateTime<Utc>) -> Result<Option<DateTime<Utc>>, String> {
+fn next_cron(expression: &str, after: DateTime<Utc>) -> Result<Option<DateTime<Utc>>, ChatError> {
     let fields = expression.split_whitespace().count();
     if fields != 5 {
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "`{expression}` is not a five-field cron expression like `0 9 * * 1-5`."
-        ));
+        )));
     }
     let cron: croner::Cron = expression
         .parse()
-        .map_err(|e| format!("`{expression}` is not a cron expression: {e}"))?;
+        .map_err(|e| ChatError::Invalid(format!("`{expression}` is not a cron expression: {e}")))?;
     Ok(cron
         .find_next_occurrence(&after.with_timezone(&Local), false)
         .ok()
@@ -149,12 +150,12 @@ pub fn comment(
     id: &str,
     text: Option<&str>,
     remove: Option<usize>,
-) -> Result<Vec<Task>, String> {
+) -> Result<Vec<Task>, ChatError> {
     let mut tasks = load(config_dir);
     let task = tasks
         .iter_mut()
         .find(|t| t.id == id)
-        .ok_or("No such task.")?;
+        .ok_or_else(|| ChatError::Invalid("No such task.".into()))?;
     match (text.map(str::trim).filter(|t| !t.is_empty()), remove) {
         (Some(t), _) => task.comments.push(Comment {
             at: Utc::now(),
@@ -163,7 +164,7 @@ pub fn comment(
         (None, Some(i)) if i < task.comments.len() => {
             task.comments.remove(i);
         }
-        _ => return Err("Write a comment.".into()),
+        _ => return Err(ChatError::Invalid("Write a comment.".into())),
     }
     store(config_dir, &tasks)?;
     Ok(tasks)
@@ -208,8 +209,11 @@ pub fn load(config_dir: &Path) -> Vec<Task> {
     TASKS_FILE.load(config_dir)
 }
 
-fn store(config_dir: &Path, tasks: &[Task]) -> Result<(), String> {
-    TASKS_FILE.save(config_dir, tasks).map_err(String::from)
+fn store(config_dir: &Path, tasks: &[Task]) -> Result<(), ChatError> {
+    TASKS_FILE
+        .save(config_dir, tasks)
+        .map_err(String::from)
+        .map_err(ChatError::Invalid)
 }
 
 /// A planned run, for the calendar.
@@ -245,12 +249,14 @@ pub fn occurrences(tasks: &[Task], from: DateTime<Utc>, to: DateTime<Utc>) -> Ve
 }
 
 /// Saves a task, validating it and computing its next run.
-pub fn save(config_dir: &Path, mut task: Task) -> Result<Vec<Task>, String> {
+pub fn save(config_dir: &Path, mut task: Task) -> Result<Vec<Task>, ChatError> {
     if !valid_id(&task.id) {
-        return Err("invalid task id".into());
+        return Err(ChatError::Invalid("invalid task id".into()));
     }
     if task.title.trim().is_empty() || task.prompt.trim().is_empty() {
-        return Err("A task needs a title and a prompt.".into());
+        return Err(ChatError::Invalid(
+            "A task needs a title and a prompt.".into(),
+        ));
     }
     task.next_run = if task.enabled {
         next_run(&task.frequency, Utc::now())?
@@ -259,7 +265,9 @@ pub fn save(config_dir: &Path, mut task: Task) -> Result<Vec<Task>, String> {
     };
     if let Frequency::NewFeedItems { url } = &task.frequency {
         if !url::Url::parse(url).is_ok_and(|u| matches!(u.scheme(), "http" | "https")) {
-            return Err("Give the feed's web address (https://…).".into());
+            return Err(ChatError::Invalid(
+                "Give the feed's web address (https://…).".into(),
+            ));
         }
         let previous = load(config_dir).into_iter().find(|t| t.id == task.id);
         task.seen = previous
@@ -267,7 +275,7 @@ pub fn save(config_dir: &Path, mut task: Task) -> Result<Vec<Task>, String> {
             .and_then(|p| p.seen);
     } else if let Frequency::NewFiles { folder } = &task.frequency {
         if !Path::new(folder).is_dir() {
-            return Err("Choose a folder that exists.".into());
+            return Err(ChatError::Invalid("Choose a folder that exists.".into()));
         }
         // The same folder keeps what was already seen; a changed one starts a fresh baseline.
         let previous = load(config_dir).into_iter().find(|t| t.id == task.id);
@@ -275,7 +283,7 @@ pub fn save(config_dir: &Path, mut task: Task) -> Result<Vec<Task>, String> {
             .filter(|p| p.frequency == task.frequency)
             .and_then(|p| p.seen);
     } else if task.enabled && task.next_run.is_none() && task.last_run.is_none() {
-        return Err("That time has already passed.".into());
+        return Err(ChatError::Invalid("That time has already passed.".into()));
     }
     let mut tasks = load(config_dir);
     match tasks.iter_mut().find(|t| t.id == task.id) {
@@ -290,7 +298,7 @@ pub fn save(config_dir: &Path, mut task: Task) -> Result<Vec<Task>, String> {
     Ok(tasks)
 }
 
-pub fn delete(config_dir: &Path, id: &str) -> Result<Vec<Task>, String> {
+pub fn delete(config_dir: &Path, id: &str) -> Result<Vec<Task>, ChatError> {
     let mut tasks = load(config_dir);
     tasks.retain(|t| t.id != id);
     store(config_dir, &tasks)?;

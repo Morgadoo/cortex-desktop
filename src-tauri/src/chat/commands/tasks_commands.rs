@@ -12,17 +12,21 @@ pub fn chat_save_task(
     app: AppHandle,
     task: crate::chat::tasks::Task,
 ) -> Result<Vec<TaskView>, String> {
-    crate::chat::tasks::save(&config_dir(&app)?, task).map(task_views)
+    crate::chat::tasks::save(&config_dir(&app)?, task)
+        .map(task_views)
+        .map_err(String::from)
 }
 
 #[tauri::command]
 pub fn chat_delete_task(app: AppHandle, id: String) -> Result<Vec<TaskView>, String> {
-    crate::chat::tasks::delete(&config_dir(&app)?, &id).map(task_views)
+    crate::chat::tasks::delete(&config_dir(&app)?, &id)
+        .map(task_views)
+        .map_err(String::from)
 }
 
 #[tauri::command]
 pub fn chat_run_task(app: AppHandle, id: String) -> Result<(), String> {
-    crate::chat::tasks::run_now(&app, &id)
+    crate::chat::tasks::run_now(&app, &id).map_err(String::from)
 }
 
 /// Planned task runs between two times, for the Scheduled page's calendar.
@@ -122,4 +126,5 @@ pub fn chat_task_comment(
     remove: Option<usize>,
 ) -> Result<Vec<crate::chat::tasks::Task>, String> {
     crate::chat::tasks::comment(&config_dir(&app)?, &id, text.as_deref(), remove)
+        .map_err(String::from)
 }

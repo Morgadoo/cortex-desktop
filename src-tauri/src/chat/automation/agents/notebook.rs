@@ -1,15 +1,16 @@
 //! The notebook an agent keeps across its conversations and runs.
 
 use super::*;
+use crate::chat::error::ChatError;
 
 /// The tool an agent uses to keep its notebook.
 pub const NOTEBOOK_TOOL: &str = "update_notebook";
 /// Characters a notebook may hold; it goes into every prompt of the agent.
 pub const NOTEBOOK_CHARS: usize = 12_000;
 
-pub(super) fn notebook_path(config_dir: &Path, id: &str) -> Result<PathBuf, String> {
+pub(super) fn notebook_path(config_dir: &Path, id: &str) -> Result<PathBuf, ChatError> {
     if !valid_id(id) {
-        return Err("invalid agent id".into());
+        return Err(ChatError::Invalid("invalid agent id".into()));
     }
     Ok(chat_dir(config_dir)
         .join("agents")
@@ -25,16 +26,16 @@ pub fn notebook(config_dir: &Path, id: &str) -> String {
         .unwrap_or_default()
 }
 
-pub fn save_notebook(config_dir: &Path, id: &str, text: &str) -> Result<(), String> {
+pub fn save_notebook(config_dir: &Path, id: &str, text: &str) -> Result<(), ChatError> {
     let text = text.trim();
     if text.chars().count() > NOTEBOOK_CHARS {
-        return Err(format!(
+        return Err(ChatError::Invalid(format!(
             "The notebook holds at most {NOTEBOOK_CHARS} characters; condense it."
-        ));
+        )));
     }
     let path = notebook_path(config_dir, id)?;
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(parent).map_err(ChatError::internal)?;
     }
     // The notebook as it was stays restorable.
     crate::chat::versions::keep(
@@ -44,7 +45,7 @@ pub fn save_notebook(config_dir: &Path, id: &str, text: &str) -> Result<(), Stri
         &notebook(config_dir, id),
         &text.to_string(),
     )?;
-    crate::chat::at_rest::write(path, text).map_err(|e| e.to_string())
+    crate::chat::at_rest::write(path, text).map_err(ChatError::internal)
 }
 
 pub fn notebook_tool() -> cortex_kernel::tool::ChatTool {

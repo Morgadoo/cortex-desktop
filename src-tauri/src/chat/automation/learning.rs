@@ -7,6 +7,7 @@
 //!   steps, a short reflection asks whether it followed a procedure worth reusing. If so, the
 //!   procedure is saved as a skill, turned off, and the user is told, to review and turn on.
 
+use crate::chat::error::ChatError;
 use crate::support::settings_file::SettingsFile;
 use std::path::Path;
 
@@ -31,10 +32,11 @@ pub fn load(config_dir: &Path) -> Learning {
     LEARNING_FILE.load(config_dir)
 }
 
-pub fn save(config_dir: &Path, learning: &Learning) -> Result<(), String> {
+pub fn save(config_dir: &Path, learning: &Learning) -> Result<(), ChatError> {
     LEARNING_FILE
         .save(config_dir, learning)
         .map_err(String::from)
+        .map_err(ChatError::Invalid)
 }
 
 /// Whether the daily eval run is due (turned on, and a day since the last); marks it started.
@@ -151,7 +153,7 @@ pub fn parse_reflection(text: &str, existing: &[String]) -> Option<LearnedSkill>
 }
 
 /// Saves a learned skill, turned off, marked with the agent it came from.
-pub fn keep(config_dir: &Path, agent: &str, skill: &LearnedSkill) -> Result<(), String> {
+pub fn keep(config_dir: &Path, agent: &str, skill: &LearnedSkill) -> Result<(), ChatError> {
     let body = format!(
         "{}\n\n(Learned by {agent} from its own work; review before relying on it.)",
         skill.body

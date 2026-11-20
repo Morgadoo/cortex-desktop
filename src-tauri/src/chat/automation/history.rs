@@ -4,6 +4,7 @@
 //! The versions themselves are kept by [`crate::chat::versions`], which knows nothing of what it
 //! stores; this module, above every kind, is the one place that does.
 
+use crate::chat::error::ChatError;
 use std::path::Path;
 
 use serde_json::Value;
@@ -16,11 +17,12 @@ pub fn diff(
     id: &str,
     version: &str,
     current: Option<&Value>,
-) -> Result<String, String> {
+) -> Result<String, ChatError> {
     crate::chat::versions::diff(config_dir, kind, id, version, || {
         current.cloned().or_else(|| now(config_dir, kind, id))
     })
     .map_err(String::from)
+    .map_err(ChatError::Invalid)
 }
 
 /// The item as it is now, for diffing its newest version against.
@@ -69,27 +71,30 @@ pub(in crate::chat::automation) fn now(config_dir: &Path, kind: &str, id: &str) 
 /// Brings back version `version` of an item: it is saved again the way the item is always saved,
 /// so the version it replaces is kept in turn and the change can itself be undone. The kernel's
 /// `revert`, for every kind kept here.
-pub fn restore(config_dir: &Path, kind: &str, id: &str, version: &str) -> Result<(), String> {
+pub fn restore(config_dir: &Path, kind: &str, id: &str, version: &str) -> Result<(), ChatError> {
     let value = crate::chat::versions::list(config_dir, kind, id)?
         .into_iter()
         .find(|v| v.id == version)
-        .ok_or("There is no such version.")?
+        .ok_or_else(|| ChatError::Invalid("There is no such version.".into()))?
         .value;
-    fn parse<T: serde::de::DeserializeOwned>(value: Value) -> Result<T, String> {
+    fn parse<T: serde::de::DeserializeOwned>(value: Value) -> Result<T, ChatError> {
         serde_json::from_value(value)
-            .map_err(|e| format!("That version can no longer be read: {e}"))
+            .map_err(|e| ChatError::Invalid(format!("That version can no longer be read: {e}")))
     }
     match (kind, id) {
-        ("memories", "all") => {
-            crate::chat::memory::save(config_dir, &parse(value)?).map_err(String::from)
-        }
+        ("memories", "all") => crate::chat::memory::save(config_dir, &parse(value)?)
+            .map_err(String::from)
+            .map_err(ChatError::Invalid),
         ("knowledge", "pages") => crate::chat::knowledge::save_all(
             config_dir,
             &parse::<Vec<crate::chat::knowledge::Page>>(value)?,
         )
-        .map_err(String::from),
+        .map_err(String::from)
+        .map_err(ChatError::Invalid),
         ("instructions", "user") => {
-            crate::chat::store::save_instructions(config_dir, &parse(value)?).map_err(String::from)
+            crate::chat::store::save_instructions(config_dir, &parse(value)?)
+                .map_err(String::from)
+                .map_err(ChatError::Invalid)
         }
         ("notebooks", agent) => {
             crate::chat::agents::save_notebook(config_dir, agent, &parse::<String>(value)?)
@@ -101,11 +106,13 @@ pub fn restore(config_dir: &Path, kind: &str, id: &str, version: &str) -> Result
             // version comes back approved and an unapproved one stays a candidate.
             crate::chat::script_tools::restore_version(config_dir, parse(value)?)
                 .map_err(String::from)
+                .map_err(ChatError::Invalid)
         }
         ("tools", _) => crate::chat::custom_tools::save(config_dir, &parse(value)?)
             .map(drop)
-            .map_err(String::from),
+            .map_err(String::from)
+            .map_err(ChatError::Invalid),
         ("tasks", _) => crate::chat::tasks::save(config_dir, parse(value)?).map(drop),
-        _ => Err(format!("{kind} cannot be restored.")),
+        _ => Err(ChatError::Invalid(format!("{kind} cannot be restored."))),
     }
 }

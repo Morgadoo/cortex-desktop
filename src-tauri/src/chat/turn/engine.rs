@@ -368,7 +368,7 @@ async fn traced_turn(
         .as_deref()
         .and_then(|a| agents::find(&config_dir, a));
     if let Some(agent) = &agent {
-        agents::check_budget(&config_dir, agent).map_err(ChatError::Invalid)?;
+        agents::check_budget(&config_dir, agent)?;
     }
     crate::chat::traces::start_run(
         &config_dir,

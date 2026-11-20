@@ -92,8 +92,7 @@ pub fn apply(config_dir: &Path, conversation: &str, change: &Change) -> Result<S
         } => {
             let provenance =
                 crate::chat::builtins::skill_provenance(config_dir, name, conversation);
-            crate::chat::skills::save(config_dir, name, description, instructions)
-                .map_err(ChatError::Invalid)?;
+            crate::chat::skills::save(config_dir, name, description, instructions)?;
             crate::chat::traces::register(
                 config_dir,
                 "skill",

@@ -16,6 +16,7 @@
 //! cortex-desktop eval office --without fact:<id> --without instructions
 //! ```
 
+use crate::chat::error::ChatError;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -47,9 +48,11 @@ fn valid(name: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
-fn suite_dir(config_dir: &Path, suite: &str) -> Result<PathBuf, String> {
+fn suite_dir(config_dir: &Path, suite: &str) -> Result<PathBuf, ChatError> {
     if !valid(suite) {
-        return Err(format!("`{suite}` is not a suite name."));
+        return Err(ChatError::Invalid(format!(
+            "`{suite}` is not a suite name."
+        )));
     }
     Ok(evals_dir(config_dir).join(suite))
 }
@@ -88,17 +91,20 @@ pub fn cases(config_dir: &Path, suite: &str) -> Vec<Case> {
     out
 }
 
-pub fn add_case(config_dir: &Path, suite: &str, case: &Case) -> Result<(), String> {
+pub fn add_case(config_dir: &Path, suite: &str, case: &Case) -> Result<(), ChatError> {
     if !valid(&case.id) {
-        return Err(format!("`{}` is not a case id.", case.id));
+        return Err(ChatError::Invalid(format!(
+            "`{}` is not a case id.",
+            case.id
+        )));
     }
     let dir = suite_dir(config_dir, suite)?.join("cases");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(ChatError::internal)?;
     crate::chat::at_rest::write(
         dir.join(format!("{}.json", case.id)),
-        serde_json::to_string_pretty(case).map_err(|e| e.to_string())?,
+        serde_json::to_string_pretty(case).map_err(ChatError::internal)?,
     )
-    .map_err(|e| e.to_string())
+    .map_err(ChatError::internal)
 }
 
 /// A suite as the user edits it: its cases and how its latest full run scored.
@@ -125,7 +131,7 @@ pub fn suite_views(config_dir: &Path) -> Vec<SuiteView> {
 
 /// The user writes or edits a case. Once it says what a good answer does, a case saved from a
 /// rating stops waiting and runs.
-pub fn save_case(config_dir: &Path, suite: &str, mut case: Case) -> Result<(), String> {
+pub fn save_case(config_dir: &Path, suite: &str, mut case: Case) -> Result<(), ChatError> {
     let clean = |items: &mut Vec<String>| {
         for item in items.iter_mut() {
             *item = item.trim().to_string();
@@ -137,7 +143,9 @@ pub fn save_case(config_dir: &Path, suite: &str, mut case: Case) -> Result<(), S
     clean(&mut case.facts);
     case.prompt = case.prompt.trim().to_string();
     if case.prompt.is_empty() {
-        return Err("A case needs the prompt to send.".into());
+        return Err(ChatError::Invalid(
+            "A case needs the prompt to send.".into(),
+        ));
     }
     if case.checks() > 0 {
         case.needs_expectation = false;
@@ -145,9 +153,9 @@ pub fn save_case(config_dir: &Path, suite: &str, mut case: Case) -> Result<(), S
     add_case(config_dir, suite, &case)
 }
 
-pub fn delete_case(config_dir: &Path, suite: &str, id: &str) -> Result<(), String> {
+pub fn delete_case(config_dir: &Path, suite: &str, id: &str) -> Result<(), ChatError> {
     if !valid(id) {
-        return Err(format!("`{id}` is not a case id."));
+        return Err(ChatError::Invalid(format!("`{id}` is not a case id.")));
     }
     let path = suite_dir(config_dir, suite)?
         .join("cases")
@@ -155,12 +163,12 @@ pub fn delete_case(config_dir: &Path, suite: &str, id: &str) -> Result<(), Strin
     match std::fs::remove_file(path) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(e.to_string()),
+        Err(e) => Err(ChatError::Invalid(e.to_string())),
     }
 }
 
 /// Writes the starter suite, three tool-selection cases, unless it exists.
-pub(in crate::chat::automation) fn ensure_starter(config_dir: &Path) -> Result<(), String> {
+pub(in crate::chat::automation) fn ensure_starter(config_dir: &Path) -> Result<(), ChatError> {
     if !cases(config_dir, STARTER).is_empty() {
         return Ok(());
     }
@@ -315,7 +323,7 @@ pub fn sweep_trials(config_dir: &Path) {
     let _ = std::fs::remove_dir_all(config_dir.join("cache").join("trials"));
 }
 
-pub fn trial_folder(config_dir: &Path) -> Result<TrialFolder, String> {
+pub fn trial_folder(config_dir: &Path) -> Result<TrialFolder, ChatError> {
     fn copy(from: &Path, to: &Path, root: &Path) -> std::io::Result<()> {
         std::fs::create_dir_all(to)?;
         for entry in std::fs::read_dir(from)?.flatten() {
@@ -367,7 +375,7 @@ pub fn trial_folder(config_dir: &Path) -> Result<TrialFolder, String> {
             .join(uuid::Uuid::new_v4().simple().to_string()),
     };
     copy(config_dir, &folder.dir, config_dir)
-        .map_err(|e| format!("Could not set up the trial: {e}"))?;
+        .map_err(|e| ChatError::Invalid(format!("Could not set up the trial: {e}")))?;
     // Tools in the copy are held to the live folder's signatures.
     crate::chat::script_tools::share_signing_key(config_dir, &folder.dir);
     Ok(folder)
@@ -497,11 +505,13 @@ pub async fn run_suite(
     suite: &str,
     model: &str,
     without: &Without,
-) -> Result<SuiteRun, String> {
+) -> Result<SuiteRun, ChatError> {
     let config_dir = host.config_dir()?;
     let all = cases(&config_dir, suite);
     if all.is_empty() {
-        return Err(format!("The suite `{suite}` has no cases."));
+        return Err(ChatError::Invalid(format!(
+            "The suite `{suite}` has no cases."
+        )));
     }
     let mut results = Vec::new();
     for case in &all {
@@ -529,22 +539,22 @@ pub async fn run_suite(
 pub(in crate::chat::automation) fn save_run(
     config_dir: &Path,
     run: &SuiteRun,
-) -> Result<(), String> {
+) -> Result<(), ChatError> {
     let dir = suite_dir(config_dir, &run.suite)?.join("runs");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(ChatError::internal)?;
     let stamp = run.at.format("%Y%m%dT%H%M%S%3fZ");
     crate::chat::at_rest::write(
         dir.join(format!("{stamp}.json")),
-        serde_json::to_string_pretty(run).map_err(|e| e.to_string())?,
+        serde_json::to_string_pretty(run).map_err(ChatError::internal)?,
     )
-    .map_err(|e| e.to_string())
+    .map_err(ChatError::internal)
 }
 
 /// A host whose turns run against a throwaway copy of `host`'s data: what an eval runs on, so
 /// nothing a case does (a fact it saves, a tool it writes, a use it counts) reaches the live data.
 pub(in crate::chat::automation) fn on_a_copy(
     host: &Arc<dyn Host>,
-) -> Result<(TrialFolder, Arc<dyn Host>), String> {
+) -> Result<(TrialFolder, Arc<dyn Host>), ChatError> {
     let folder = trial_folder(&host.config_dir()?)?;
     let copy: Arc<dyn Host> = Arc::new(InFolder::new(host.clone(), folder.dir.clone()));
     Ok((folder, copy))
@@ -663,7 +673,7 @@ pub async fn ablate(
     suite: &str,
     model: &str,
     left_out: &Without,
-) -> Result<(SuiteRun, SuiteRun, Comparison), String> {
+) -> Result<(SuiteRun, SuiteRun, Comparison), ChatError> {
     let with = run_suite(host, suite, model, &Without::default()).await?;
     let without = run_suite(host, suite, model, left_out).await?;
     let comparison = compare(&with, &without);
@@ -676,14 +686,14 @@ pub fn regression_from_rating(
     config_dir: &Path,
     conversation: &crate::chat::store::Conversation,
     answer_index: usize,
-) -> Result<(), String> {
+) -> Result<(), ChatError> {
     let prompt = conversation.messages[..answer_index.min(conversation.messages.len())]
         .iter()
         .rev()
         .find(|m| matches!(m, rig_core::completion::Message::User { .. }))
         .map(cortex_kernel::context::message_text)
         .filter(|t| !t.trim().is_empty())
-        .ok_or("no prompt before that answer")?;
+        .ok_or_else(|| ChatError::Invalid("no prompt before that answer".into()))?;
     let wrong = conversation
         .messages
         .get(answer_index)
