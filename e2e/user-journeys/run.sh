@@ -6,8 +6,10 @@
 #               sources, settings, pages, search, language)
 #   multitask   switching chats while answers run, drafts, unread, two answers at once, and
 #               coming back after the app is killed mid-answer
+#   adapt       what the user says about themselves in one chat is remembered, shown to them, and
+#               used in the next chat without being said again
 #
-#   CORTEX_TEST_PROVIDERS=path/to/providers.json DEEPSEEK_API_KEY=… e2e/user-journeys/run.sh [checklist|multitask|all]
+#   CORTEX_TEST_PROVIDERS=path/to/providers.json DEEPSEEK_API_KEY=… e2e/user-journeys/run.sh [checklist|multitask|adapt|all]
 #
 # CORTEX_TEST_PROVIDERS is a chat/providers.json naming the model to use (its defaultModel); the
 # key goes in the provider's usual environment variable. Each run starts from an empty profile in
@@ -70,6 +72,12 @@ if [ "$which" = multitask ] || [ "$which" = all ]; then
     python3 "$here/multitask.py" "$OUT" run | tee -a "$OUT/summary.txt" || status=1
     sleep 3
     python3 "$here/multitask.py" "$OUT" after-restart | tee -a "$OUT/summary.txt" || status=1
+    stop_driver
+fi
+if [ "$which" = adapt ] || [ "$which" = all ]; then
+    profile
+    start_driver
+    python3 "$here/adapt.py" "$OUT" | tee -a "$OUT/summary.txt" || status=1
     stop_driver
 fi
 if grep -q '^FAIL' "$OUT/summary.txt"; then status=1; fi

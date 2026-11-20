@@ -77,7 +77,9 @@ and the script measures the whole app and the crates.
 **Checked in the real app**: section 8's checklist runs as `e2e/user-journeys/` (the real app
 under a virtual display, through tauri-driver, against a real model), in the light and dark themes,
 and passes; a second journey covers switching chats while answers run, unread marks, two answers at
-once and recovering an answer the app was killed in the middle of. Running them found and fixed:
+once and recovering an answer the app was killed in the middle of; a third shows the app adapting to
+its user: what they say about themselves in one chat is kept as facts they can see and edit, and a
+new chat acts on it without being told. Running them found and fixed:
 background answers not marked unread, an answer lost when the app closed mid-way, no way to retry a
 message stopped before any text, new chats indistinguishable while answering, and titles written
 from a clipped first line.
