@@ -121,9 +121,6 @@ try:
 
     # A second way of saying something already known, for the review to find.
     invoke("chat_add_memory", {"text": "Doesn't eat meat or fish."})
-    # An agent that researches with web search: skills are learnt from an agent's work.
-    invoke("chat_save_agent", {"agent": {"id": "price-scout", "name": "Price Scout", "tools": ["web_search"],
-        "instructions": "You compare prices for the user. Use web search once per shop, then give the cheapest."}})
     js("location.reload()")
     time.sleep(6)
     click("Context")
@@ -144,15 +141,20 @@ try:
     # Skills from work: the agent does a procedure of several steps; a reflection after the turn may
     # keep it as a skill, turned off until the user reviews it.
     before = {s["name"] for s in invoke("chat_list_skills") or []}
-    # Context → Agents → the agent → "Chat with Price Scout", as a user starts a chat with an agent.
+    # Skills are learnt from an agent's work. The user adds the ready-made Researcher (it searches
+    # the web) under Context → Agents, and chats with it.
     click("Context")
     time.sleep(1)
     js("""const items=[...document.querySelectorAll('.sidebar *')].filter(e=>e.offsetParent && e.children.length<=2 && e.textContent.trim()==='Agents');
           const sub=items.pop(); if(sub) (sub.closest('button,a,.nav-item,[role=button],.sidebar-item')||sub).click();""")
     time.sleep(1.5)
-    click("Price Scout", "main.main")
+    js("""const b=[...document.querySelectorAll('main.main button')].find(b=>b.textContent.includes('Researcher') && b.textContent.trim().endsWith('Add')); if(b) b.click();""")
     time.sleep(1.5)
-    agent_row = js("""const b=[...document.querySelectorAll('main.main button')].find(b=>b.textContent.trim()==='Chat with Price Scout'); if(!b) return false; b.click(); return true;""")
+    js("""const b=[...document.querySelectorAll('.modal button, dialog button, [role=dialog] button')].find(b=>b.textContent.trim()==='Create agent'); if(b) b.click();""")
+    time.sleep(2)
+    js("""const el=[...document.querySelectorAll('main.main *')].find(e=>e.offsetParent && e.children.length===0 && e.textContent.trim()==='Researcher'); if(el) (el.closest('button,a,[role=button],.agent-card,.card')||el).click();""")
+    time.sleep(2)
+    agent_row = js("""const b=[...document.querySelectorAll('main.main button')].find(b=>b.textContent.trim()==='Chat with Researcher'); if(!b) return false; b.click(); return true;""")
     wait_for(lambda: qs("textarea.composer-input"), 15)
     work = ask("Every Monday I check the price of a 1 kg bag of basmati rice at Continente, Pingo Doce and Lidl in Portugal. Do this week's check: search each shop, then tell me the cheapest in two sentences.")
     steps = js("return document.querySelectorAll('.turn-assistant .tool-call, .turn-assistant .tool, .turn-assistant [data-tool]').length")
