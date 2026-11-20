@@ -29,10 +29,21 @@ void main() { gl_Position = vec4(aPos, 0.0, 1.0); }
 
 /** Value noise, fBm and ACES tone mapping, shared by the orb and the Nebula backdrop. */
 export const GLSL_NOISE = `
+// A lattice point's value, by the permutation polynomial of Ashima's webgl-noise. Every step is
+// whole numbers below 2^24, so exact in a float: each corner gets the same value from every cell
+// that shares it, however the driver orders the arithmetic. (A hash of large float products, as
+// before, could differ in its last bit between call sites on Direct3D, showing the noise's grid
+// as square seams.)
+float mod289(float x) {
+  return x - floor(x * (1.0 / 289.0)) * 289.0;
+}
+float permute(float x) {
+  return mod289((x * 34.0 + 10.0) * x);
+}
 float hash(vec3 p) {
-  p = fract(p * 0.3183099 + vec3(0.1, 0.2, 0.3));
-  p *= 17.0;
-  return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+  p = p - floor(p * (1.0 / 289.0)) * 289.0;
+  // fract: a mod that lands one 289 off near a multiple still gives the same value.
+  return fract(permute(permute(permute(p.x) + p.y) + p.z) * (1.0 / 289.0));
 }
 
 float noise(vec3 x) {
