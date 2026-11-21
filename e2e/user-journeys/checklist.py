@@ -204,8 +204,10 @@ def _():
 def _():
     send("Search the web: what is the tallest mountain in Europe? One sentence.")
     idle()
-    wait_for(lambda: [b for b in d.find_elements(By.XPATH, "//button[normalize-space(.)='Sources']") if b.is_displayed()], 20)
-    d.execute_script("const b=[...document.querySelectorAll('button')].filter(b=>b.textContent.trim()==='Sources'&&b.offsetParent).pop(); b.scrollIntoView({block:'center'}); b.click();")
+    # The button reads "Sources" and its sites' icons, or a count ("Sources 8") when they do not load.
+    is_sources = "b.offsetParent && /^Sources\\s*\\d*$/.test(b.textContent.trim())"
+    wait_for(lambda: d.execute_script(f"return [...document.querySelectorAll('button')].some(b=>{is_sources})"), 20)
+    d.execute_script(f"const b=[...document.querySelectorAll('button')].filter(b=>{is_sources}).pop(); b.scrollIntoView({{block:'center'}}); b.click();")
     time.sleep(2)
     panel = [p for p in qs(".side-panel, .panel, .sources-panel") if p.is_displayed()]
     assert panel, "no panel"
