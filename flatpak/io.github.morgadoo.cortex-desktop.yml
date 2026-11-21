@@ -8,6 +8,10 @@ runtime: org.gnome.Platform
 runtime-version: '51'
 sdk: org.gnome.Sdk
 command: cortex-desktop
+build-options:
+  # Libraries go where a Flatpak looks for them: newer CMake would pick /app/lib64 for the tray
+  # icon's libraries, which neither pkg-config nor the loader search.
+  libdir: /app/lib
 
 finish-args:
   # The window: Wayland, X11 where there is no Wayland, the GPU for WebKit's rendering.
