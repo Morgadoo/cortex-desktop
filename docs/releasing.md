@@ -60,10 +60,12 @@ release whose version did not change is one no installed copy would take.
 1. checks the version and opens a **draft** release with notes generated from the merged pull
    requests;
 2. builds macOS (Apple silicon and Intel), Windows and Linux, and uploads the installers, the
-   signed update packages and `latest.json` to the draft;
+   signed update packages and `latest.json` to the draft, and builds the Flatpak
+   (`.github/workflows/flatpak.yml`);
 3. publishes it, as GitHub's latest release when it is stable, as a pre-release when the version
    has a pre-release part (`-beta.1`, `-rc.1`);
-4. copies its `latest.json` to `preview.json` on the `updater` release.
+4. attaches `Cortex.flatpak` to it, and copies its `latest.json` to `preview.json` on the
+   `updater` release.
 
 Nothing reaches users until step 3, so a failed build leaves only a draft to delete.
 
@@ -76,6 +78,15 @@ Nothing reaches users until step 3, so a failed build leaves only a draft to del
   `src-tauri/tauri.github.conf.json`.
 - **Linux.** The AppImage updates itself; `.deb` and `.rpm` installs are updated by installing
   the new package.
+- **Flatpak.** `flatpak/` holds the manifest, desktop entry and metainfo; the package is the
+  Linux build's `.deb` on the GNOME runtime, with the tray icon's library from Flathub's shared
+  modules. Inside a Flatpak the app's own updater stands aside and says so: Flatpak updates it.
+  To build one yourself: `npx tauri build --bundles deb`, then
+  `scripts/build-flatpak.sh src-tauri/target/release/bundle/deb/*.deb`; install it with
+  `flatpak install --user Cortex.flatpak`. Actions → Flatpak → Run workflow builds one from any
+  branch. Its permissions are listed, with a reason each, in the manifest. Code sessions and the
+  sandbox run inside the Flatpak's own sandbox, so the code sandbox's extra isolation
+  (bubblewrap, the Podman workbench) is not available there.
 - **A required update.** Add `"minimum_supported_version": "0.6.0"` to a release's
   `latest.json` (and to `preview.json`) to make every older copy update before it can be used.
 - **Forks.** The workflow builds the app to read releases from the repository it runs in

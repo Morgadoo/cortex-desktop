@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Cortex
+GenericName=AI assistant
+Comment=A personal AI assistant that learns how you work
+Exec=cortex-desktop %u
+Icon=io.github.morgadoo.cortex-desktop
+Terminal=false
+Categories=Utility;
+Keywords=AI;assistant;chat;agent;LLM;
+StartupWMClass=cortex-desktop
+MimeType=x-scheme-handler/cortex;x-scheme-handler/proton-lumo;
