@@ -29,7 +29,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNFQTkwRDk4ODhGMjVFMQpSV1RoSlkrSTJaRHFBMCt2VkVVVGZZei9JOThsT1RScUptLzFCaG16MzVmL1dNeU5wMStuL2Y4ego=",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY2RTg4OTdGREUyMjE4NgpSV1NHSWVMOWw0aHVEeEJ4Q1pkbE8va2ZZdkxhbTF3Z3lNbjlmTk0xOGZic09XNW5ZZTNYOEtlUQo=",
       "endpoints": ["https://github.com/Morgadoo/cortex-desktop/releases/latest/download/latest.json"]
     },
     "deep-link": {
