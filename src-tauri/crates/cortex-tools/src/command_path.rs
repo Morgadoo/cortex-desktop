@@ -338,8 +338,7 @@ mod windows {
             if !path.is_absolute() {
                 return Err(ResolveError::RelativePath(command.to_string()));
             }
-            return first_executable(&path, extensions)
-                .ok_or_else(|| ResolveError::NotExecutable(path));
+            return first_executable(&path, extensions).ok_or(ResolveError::NotExecutable(path));
         }
 
         // Directory order outranks extension order, as it does in Windows' own search.
