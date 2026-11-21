@@ -82,7 +82,6 @@ pub(super) fn show(
             lpCallbackData: done as *const AtomicBool as isize,
             ..Default::default()
         };
-        let result = TaskDialogIndirect(&config, None, None, None);
-        result
+        TaskDialogIndirect(&config, None, None, None)
     }
 }
