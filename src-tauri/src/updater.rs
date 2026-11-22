@@ -208,7 +208,26 @@ fn prompt(app: &AppHandle, update: Update, required: bool, error: Option<String>
     );
 }
 
+/// Whether this copy runs in a Flatpak, which keeps it up to date (`flatpak update`): the app's
+/// own updater, which replaces its files in place, stands aside.
+pub fn in_flatpak() -> bool {
+    std::env::var_os("FLATPAK_ID").is_some() || std::path::Path::new("/.flatpak-info").exists()
+}
+
 pub async fn check_and_prompt(app: &AppHandle) {
+    if in_flatpak() {
+        crate::dialog::branded::show(
+            app,
+            "Updates come from Flatpak",
+            "This copy of Cortex was installed with Flatpak, which keeps it up to date. To update \
+             it now, run `flatpak update` or use your software center."
+                .to_string(),
+            None,
+            crate::dialog::branded::Layout::IconOnLeft,
+            |_| {},
+        );
+        return;
+    }
     if app.state::<UpdateState>().busy.swap(true, Ordering::SeqCst) {
         return;
     }
@@ -216,7 +235,7 @@ pub async fn check_and_prompt(app: &AppHandle) {
 }
 
 pub fn startup(app: &AppHandle) {
-    if crate::e2e_testing_enabled() {
+    if crate::e2e_testing_enabled() || in_flatpak() {
         return;
     }
     // The user can turn the check at start off (Settings → General → Privacy).

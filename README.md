@@ -141,7 +141,7 @@ computer and your tools, with your approval:
 |---|---|
 | macOS | Universal (Apple silicon and Intel) `.dmg` |
 | Windows | `.msi` and `-setup.exe` installer |
-| Linux | `.deb` and `.rpm`, for Ubuntu 24.04+ and Fedora 40+ |
+| Linux | `.deb` and `.rpm` (Ubuntu 24.04+, Fedora 40+), AppImage, and a Flatpak for any distribution |
 
 ### Architecture
 
@@ -293,7 +293,8 @@ On macOS, build an ad-hoc signed app with:
 APPLE_SIGNING_IDENTITY="-" npm run build
 ```
 
-On Linux and Windows, `npm run build` is enough.
+On Linux and Windows, `npm run build` is enough. For a Flatpak, build the `.deb` and run
+`scripts/build-flatpak.sh` on it (docs/releasing.md).
 
 Bundles land in `src-tauri/target/<target>/release/bundle/`. The executable is named `cortex-desktop`
 (`cortex-desktop.exe` on Windows); the app's displayed name is `Cortex`.

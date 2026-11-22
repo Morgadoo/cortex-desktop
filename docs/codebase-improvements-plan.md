@@ -173,7 +173,7 @@ real gateway.
 | Decision | Blocks | Default this plan assumes |
 |---|---|---|
 | **D1. Hosted mode**: keep it, or remove it | 0.4, 3.8 | Keep it, behind a build feature (package 3.8). Isolating it first makes a later removal a single deletion, so this default closes no door |
-| **D2. Updater and publisher**: `tauri.conf.json` points updates at `lumo.protondownload.com` and names "Proton AG" as publisher | Nothing here; it is a release matter | Decided: updates come from this repository's GitHub releases (`docs/releasing.md`), and the publisher is novo3d.pt. The updater's public key is still Proton's until the owner generates their own |
+| **D2. Updater and publisher**: `tauri.conf.json` points updates at `lumo.protondownload.com` and names "Proton AG" as publisher | Nothing here; it is a release matter | Decided: updates come from this repository's GitHub releases (`docs/releasing.md`), and the publisher is novo3d.pt. The updater checks the owner's own signing key (`tauri.conf.json` and the `UPDATER_PUBKEY` variable) |
 | **D3. Hosted CI runners for Windows and macOS** | 0.7 | Use GitHub-hosted runners for one compile-only job. So far GitHub has assigned none to this repository: on pull requests #7 and #8 both jobs failed within two seconds with no runner, while the Linux jobs ran on the repository's own `cortex-desktop-ci` runner. The owner enables hosted runners (Actions settings or spending limit) or registers Windows and macOS runners; the release workflow needs the same machines for its installers |
 
 ### 3.2 Technical choices made here

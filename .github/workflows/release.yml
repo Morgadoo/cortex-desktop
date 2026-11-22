@@ -148,9 +148,14 @@ jobs:
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
 
+  # The Flatpak (flatpak.yml), attached to the release by the publish job.
+  flatpak:
+    needs: prepare
+    uses: ./.github/workflows/flatpak.yml
+
   publish:
     name: Publish and update the channels
-    needs: [prepare, build]
+    needs: [prepare, build, flatpak]
     runs-on: ubuntu-latest
     steps:
       - name: Publish the release
@@ -162,6 +167,13 @@ jobs:
           # A stable release becomes GitHub's "latest", which is the Stable channel.
           if [ "$PRERELEASE" = true ]; then latest=false; else latest=true; fi
           gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$ID" -F draft=false -f make_latest="$latest" > /dev/null
+      - uses: actions/download-artifact@v4
+        with:
+          name: flatpak
+      - name: Attach the Flatpak
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" Cortex.flatpak --repo "$GITHUB_REPOSITORY" --clobber
       - name: Point the Preview channel at this release
         env:
           GH_TOKEN: ${{ github.token }}

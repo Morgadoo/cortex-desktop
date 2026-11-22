@@ -20,6 +20,11 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "io
 url = { workspace = true }
 uuid = { version = "1.16.0", features = ["v4", "serde"] }
 
+[target.'cfg(windows)'.dependencies]
+# For the flag that keeps a background tool out of a console window (child_process.rs); the same
+# version the app and process-wrap use, so the build keeps one copy.
+windows = { version = "0.62.2", features = ["Win32_System_Threading"] }
+
 [features]
 # Parts only the hosted web app uses (the app's `hosted` feature turns this on).
 hosted = []

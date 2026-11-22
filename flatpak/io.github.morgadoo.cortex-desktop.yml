@@ -1,0 +1,59 @@
+# Cortex as a Flatpak, from the .deb the Linux build makes (scripts/build-flatpak.sh puts it next to
+# this file as cortex.deb, and clones Flathub's shared modules into shared-modules/).
+#
+# The GNOME runtime has what Tauri needs (WebKitGTK 4.1, GTK 3, libsoup 3); the tray icon's
+# library, libayatana-appindicator, comes from Flathub's shared modules.
+app-id: io.github.morgadoo.cortex-desktop
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: cortex-desktop
+build-options:
+  # Libraries go where a Flatpak looks for them: newer CMake would pick /app/lib64 for the tray
+  # icon's libraries, which neither pkg-config nor the loader search.
+  libdir: /app/lib
+
+finish-args:
+  # The window: Wayland, X11 where there is no Wayland, the GPU for WebKit's rendering.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # The models and connectors it talks to.
+  - --share=network
+  # Dictation, voice conversations and reading answers aloud.
+  - --socket=pulseaudio
+  # API keys and connector credentials are kept in the system keyring (Secret Service).
+  - --talk-name=org.freedesktop.secrets
+  # Notifications when an answer finishes, and the tray icon.
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # Projects, libraries and code sessions work in the user's own folders.
+  - --filesystem=home
+
+modules:
+  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
+
+  - name: cortex
+    buildsystem: simple
+    sources:
+      - type: file
+        path: cortex.deb
+      - type: file
+        path: io.github.morgadoo.cortex-desktop.desktop
+      - type: file
+        path: io.github.morgadoo.cortex-desktop.metainfo.xml
+    build-commands:
+      - ar -x cortex.deb
+      - mkdir deb && tar -xf data.tar.* -C deb
+      - install -Dm755 deb/usr/bin/cortex-desktop /app/bin/cortex-desktop
+      # Bundled resources, where Tauri looks for them next to the binary (../lib/<name>).
+      - if [ -d deb/usr/lib ]; then cp -a deb/usr/lib/. /app/lib/; fi
+      # The icons, renamed after the app id as Flatpak requires.
+      - |
+        for icon in deb/usr/share/icons/hicolor/*/apps/cortex-desktop.png; do
+          size=$(basename "$(dirname "$(dirname "$icon")")")
+          install -Dm644 "$icon" "/app/share/icons/hicolor/$size/apps/io.github.morgadoo.cortex-desktop.png"
+        done
+      - install -Dm644 io.github.morgadoo.cortex-desktop.desktop /app/share/applications/io.github.morgadoo.cortex-desktop.desktop
+      - install -Dm644 io.github.morgadoo.cortex-desktop.metainfo.xml /app/share/metainfo/io.github.morgadoo.cortex-desktop.metainfo.xml

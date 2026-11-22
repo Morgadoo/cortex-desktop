@@ -17,6 +17,8 @@ pub fn is_allowed(url: &url::Url) -> bool {
 /// Like `is_allowed`, also allowing the page as `tauri dev` serves it: from its own server
 /// (`build.devUrl`, `http://127.0.0.1:1430` when the CLI serves the built page itself), in debug
 /// builds only, and only that exact origin.
+// Only the Linux permission hook (main_window.rs) asks; WebKit on macOS grants media itself.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub fn is_allowed_in(url: &url::Url, dev_url: Option<&url::Url>) -> bool {
     is_allowed(url)
         || (cfg!(debug_assertions)

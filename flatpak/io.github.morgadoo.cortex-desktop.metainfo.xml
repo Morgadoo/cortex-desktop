@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.morgadoo.cortex-desktop</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <name>Cortex</name>
+  <summary>A personal AI assistant that learns how you work</summary>
+  <developer id="pt.novo3d">
+    <name>novo3d.pt</name>
+  </developer>
+  <description>
+    <p>
+      Cortex is a desktop AI assistant that works with the models you choose, in the cloud or on
+      your own computer, and grows with you: it remembers what you tell it about yourself, learns
+      skills from the work its agents do, and checks itself against the cases you write.
+    </p>
+    <ul>
+      <li>Chat with any provider, or with built-in models that run on this computer</li>
+      <li>Agents with their own instructions, tools and schedules</li>
+      <li>Knowledge and facts you can see, edit and delete</li>
+      <li>Connectors, libraries and a sandbox for code</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.morgadoo.cortex-desktop.desktop</launchable>
+  <url type="homepage">https://github.com/Morgadoo/cortex-desktop</url>
+  <url type="bugtracker">https://github.com/Morgadoo/cortex-desktop/issues</url>
+  <url type="vcs-browser">https://github.com/Morgadoo/cortex-desktop</url>
+  <categories>
+    <category>Utility</category>
+  </categories>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.5.9" date="2026-11-21"/>
+  </releases>
+</component>

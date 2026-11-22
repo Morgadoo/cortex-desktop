@@ -1,0 +1,6 @@
+# Made by scripts/build-flatpak.sh.
+cortex.deb
+shared-modules/
+build/
+repo/
+.flatpak-builder/
