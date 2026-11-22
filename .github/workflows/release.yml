@@ -129,15 +129,21 @@ jobs:
       - run: npm ci
       # The repository's release settings on top of tauri.conf.json: update packages on, its own
       # update signing key, and no code-signing identity of the original project's.
+      # A pre-release on Windows makes only the NSIS installer (which the updater uses): an MSI's
+      # version cannot carry a pre-release part such as -beta.2.
       - name: Release configuration
         shell: bash
         env:
           PUBKEY: ${{ vars.UPDATER_PUBKEY }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
         run: |
           node -e '
             const fs = require("fs");
             const conf = JSON.parse(fs.readFileSync("src-tauri/tauri.github.conf.json", "utf8"));
             conf.plugins = { updater: { pubkey: process.env.PUBKEY } };
+            if (process.env.RUNNER_OS === "Windows" && process.env.PRERELEASE === "true") {
+              conf.bundle = { ...conf.bundle, targets: ["nsis"] };
+            }
             fs.writeFileSync("src-tauri/tauri.release.conf.json", JSON.stringify(conf, null, 2));
           '
       - uses: tauri-apps/tauri-action@v0
