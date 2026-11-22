@@ -76,6 +76,11 @@ Nothing reaches users until step 3, so a failed build leaves only a draft to del
   SmartScreen notice. This is separate from update signing, which is always on. To sign and
   notarize, add Apple's and Microsoft's certificates as secrets and drop the overrides in
   `src-tauri/tauri.github.conf.json`.
+- **Windows installers.** A stable release has an NSIS installer (`setup.exe`, the one the
+  updater uses) and an MSI. A pre-release has only the NSIS installer, since an MSI's version
+  cannot carry a pre-release part such as `-beta.2`.
+- **A failed build.** A re-run builds the same commit with the same workflow, so after a fix,
+  delete the draft release and tag the next version (`0.6.0-beta.3`).
 - **Linux.** The AppImage updates itself; `.deb` and `.rpm` installs are updated by installing
   the new package.
 - **Flatpak.** `flatpak/` holds the manifest, desktop entry and metainfo; the package is the
