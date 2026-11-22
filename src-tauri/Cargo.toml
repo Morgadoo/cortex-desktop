@@ -37,7 +37,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("cargo-cli
 
 [package]
 name = "cortex"
-version = "0.6.0-beta.2"
+version = "0.6.0-beta.3"
 edition = "2021"
 description = "Cortex desktop app for macOS, Windows and Linux"
 authors = ["Eamonn Maguire"]
